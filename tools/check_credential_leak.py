@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Credential / secret leak firewall on the staged diff, or on a pull request's diff.
+"""Credential / secret leak firewall on the whole repository and on a change's history.
 
 Refuses Bearer tokens, API keys, private keys and operator-home paths (Windows, posix and Git
-Bash spellings) on any line `git diff --cached` adds (with --base, on any line any commit in
-`<base>..HEAD` adds, since a line removed again later is still published in main's history),
-every file read as text (what a commit would publish). The scanner's own suite and this module
-are path-skipped (injected payloads must live there). Other fixtures mark a line with
-`# credential-leak-ok` or `# credential-leak-fixture-ok`.
+Bash spellings) on any line of any tracked file (the index at commit, HEAD with --base), and on
+any line `git diff --cached` adds (with --base, on any line any commit in `<base>..HEAD` adds,
+since a line removed again later is still published in main's history), every file read as text
+(what a commit would publish). No path and no line is skipped.
 
     python -m tools.check_credential_leak                       (pre-commit)
     python -m tools.check_credential_leak --base origin/main    (CI)
@@ -23,17 +22,6 @@ from pathlib import Path
 from tools.check_end_to_end import ToolError, _diff_path
 
 REPO = Path(__file__).resolve().parents[1]
-
-# Inline markers (any line carrying one is ignored).
-_FIXTURE_MARKERS = ("credential-leak-ok", "credential-leak-fixture-ok")
-
-# Paths that deliberately contain mock secrets for detector proof — never block.
-_SKIP_PATHS = frozenset(
-    {
-        "tests/test_credential_leak_v1.py",
-        "tools/check_credential_leak.py",
-    }
-)
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # Require ≥16 token chars so prose like "Bearer token" in docs does not trip.
@@ -114,13 +102,12 @@ def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[st
     text = _added_text(root, base)
     hits: list[str] = []
     current_file = "?"
-    skip_file = False
     header = (
         False  # between a file's `diff --git` and its first hunk: an added line is not a header
     )
     for line in text.split("\n"):
         if line.startswith("diff --git "):
-            current_file, skip_file, header = "?", False, True
+            current_file, header = "?", True
             continue
         if line.startswith("@@ "):
             header = False
@@ -131,16 +118,51 @@ def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[st
                     current_file = _diff_path(line[len("+++ ") :])
                 except ToolError as e:
                     raise DiffUnreadable(str(e)) from e
-                skip_file = current_file in _SKIP_PATHS
             continue
-        if skip_file or not line.startswith("+"):
-            continue
-        body = line[1:]
-        if any(m in body for m in _FIXTURE_MARKERS):
-            continue
-        for label, pat in SECRET_PATTERNS:
-            if pat.search(body):
-                hits.append(f"{current_file}: {label}: {body.strip()[:120]}")
+        if line.startswith("+"):
+            hits.extend(_leaks(current_file, line[1:]))
+    return hits
+
+
+def _leaks(path: str, line: str) -> list[str]:
+    return [
+        f"{path}: {label}: {line.strip()[:120]}"
+        for label, pat in SECRET_PATTERNS
+        if pat.search(line)
+    ]
+
+
+def tree_leaks(root: Path = REPO, rev: str = "") -> list[str]:
+    """Every secret or operator-home path on any line of any file `rev` tracks (the index when
+    `rev` is empty), RAISING when git could not read it."""
+    listed = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", "--name-only", rev] if rev else ["git", "ls-files", "-z"],
+        cwd=root,
+        capture_output=True,
+    )
+    if listed.returncode != 0:
+        raise DiffUnreadable(f"git could not list the tracked files: exit {listed.returncode}")
+    names = [n for n in listed.stdout.decode("utf-8", errors="replace").split("\0") if n]
+    blobs = subprocess.run(
+        ["git", "cat-file", "--batch"],
+        cwd=root,
+        input="".join(f"{rev}:{n}\n" for n in names).encode("utf-8"),
+        capture_output=True,
+    )
+    if blobs.returncode != 0:
+        raise DiffUnreadable(f"git could not read the tracked files: exit {blobs.returncode}")
+    hits: list[str] = []
+    out, at = blobs.stdout, 0
+    for name in names:
+        end = out.index(b"\n", at)
+        head = out[at:end].split()
+        if len(head) != 3:
+            raise DiffUnreadable(f"git could not read {name}: {out[at:end]!r}")
+        size = int(head[2])
+        text = out[end + 1 : end + 1 + size].decode("utf-8", errors="replace")
+        at = end + 1 + size + 1
+        for line in text.split("\n"):
+            hits.extend(_leaks(name, line))
     return hits
 
 
@@ -149,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base", help="read every commit of a pull request against this base (CI)")
     base = ap.parse_args(argv).base
     try:
-        hits = find_credential_leaks(base=base)
+        hits = tree_leaks(rev="HEAD" if base else "") + find_credential_leaks(base=base)
     except DiffUnreadable as e:
         # Fail CLOSED: "clean" for a diff nobody read is the one outcome a secrets gate must
         # never produce.
@@ -172,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  … and {len(hits) - 40} more")
         rc = 1
     else:
-        print("check_credential_leak: PASS (diff clean)")
+        print("check_credential_leak: PASS (every tracked file and the diff clean)")
     return rc
 
 

@@ -85,7 +85,9 @@ def _git(root: Path, *args: str, errors: str = "strict") -> str:
         return subprocess.run(
             ["git", *args], cwd=root, capture_output=True, check=True
         ).stdout.decode("utf-8", errors)
-    except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
+    except UnicodeDecodeError as e:
+        raise ToolError(f"git {' '.join(args)}: its output could not be read: {e}") from e
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
         raise ToolError(f"git {' '.join(args)} failed: {e}") from e
 
 
@@ -582,19 +584,46 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
     return sorted(set(found))
 
 
+def shapes_in(root: Path, rev: str) -> list[str]:
+    """Every patch shape in every product file at `rev`, each line of each file judged."""
+    out = []
+    for f in _git(root, "ls-tree", "-r", "-z", "--name-only", rev).split("\0"):
+        if not (f.endswith(SHAPED_SUFFIXES) and is_product(f)):
+            continue
+        source = _git(root, "show", f"{rev}:{f}", errors="replace")
+        every = set(range(1, source.count("\n") + 2))
+        found = python_patches(source, every) if f.endswith(".py") else js_patches(f, source, every)
+        out.extend(f"{f}:{line}: {what}" for line, what in found)
+    return out
+
+
+def repo_wide(root: Path, base: str) -> tuple[list[str], list[str]]:
+    """The patch shapes of the whole repository at the merge base and at the head."""
+    fork = _git(root, "merge-base", base, "HEAD").strip()
+    return shapes_in(root, fork), shapes_in(root, "HEAD")
+
+
 def violations(root: Path, base: str) -> list[str]:
+    """Each patch shape a line the PR adds carries, and the whole repository's count of them when
+    the PR raises it (printed on every run: the count falls to 0, as a lock's does)."""
+    before, after = repo_wide(root, base)
+    print(f"patch shapes in product code, repo wide: {len(before)} -> {len(after)}")
+    out = []
     added = pr_added_lines(root, base)
     changed_code = sorted(
         f
         for f in pr_files(root, base, "AMT")
         if f.endswith(SHAPED_SUFFIXES) and behavior_change(root, base, f)
     )
-    out = []
     for f in changed_code:
         source = pr_source(root, f)
         lines = added.get(f, set())
         found = python_patches(source, lines) if f.endswith(".py") else js_patches(f, source, lines)
         out.extend(f"{f}:{line}: {what}" for line, what in found)
+    if len(after) > len(before) and not out:  # a shape no added line carries (a log removed)
+        out = sorted(set(after) - set(before)) or [
+            f"patch shapes in product code, repo wide, rose: {len(before)} -> {len(after)}"
+        ]
     return out
 
 

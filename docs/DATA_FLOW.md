@@ -803,7 +803,7 @@ syntax errors, the UP rules but UP042, whose only fix is unsafe, the W rules, S1
 the E rules but E711, E712 and E731, whose only fix is unsafe: E402, imports at the top, E501, lines at most 100 columns, E741, no `l`, `O` or `I` as a name; the B rules but those whose only fix is unsafe; I, import order, and the SIM rules with a safe fix or with no fix and nothing to fix), and `ruff format` (the one Python formatter, ruff pinned in `requirements-dev.txt`);
 a compile pass in CI (every file CPython compiles); the behavior tests (`pytest`, `tests/`) and the
 browser tests (Playwright, `tests/e2e/`) in CI; the secrets and home-path scan at commit and in CI
-(each commit of a pull request, merge resolutions included); the line-ending check at commit and
+(every tracked file, and each commit of a pull request, merge resolutions included); the line-ending check at commit and
 in CI (the pull request's change); for agents, the hooks that block destructive git. A passing check proves only what its tests exercise; every rule beyond
 them stays NOT_PROVEN.
 

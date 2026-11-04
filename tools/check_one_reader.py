@@ -142,10 +142,18 @@ def _field_list(root: Path, rev: str) -> set[str]:
     return schwab_fields(_git(root, "show", f"{rev}:{FIELDS_CSV}"))
 
 
+def second_readers(found: dict[str, set[str]]) -> int:
+    """Each module reading a Schwab field beyond its one reader, over the whole repository."""
+    return sum(len(mods) - 1 for mods in found.values() if mods)
+
+
 def violations(root: Path, base: str) -> list[str]:
     fork = _git(root, "merge-base", base, "HEAD").strip()
     fields = _field_list(root, fork) | _field_list(root, "HEAD")
     before, after = readers(root, fork, fields), readers(root, "HEAD", fields)
+    was, now = second_readers(before), second_readers(after)
+    # the count can rise only by a module added to a field's readers, which is refused below
+    print(f"second readers of Schwab fields, repo wide: {was} -> {now}")
     out = []
     for name in sorted(after):
         was = before.get(name, set())

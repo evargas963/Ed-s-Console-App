@@ -63,6 +63,24 @@ def _changed(root: Path) -> list[str]:
     )
 
 
+def test_a_patch_no_added_line_carries_is_refused_by_the_whole_repositorys_count(tmp_path):
+    """The whole repository is judged, not only the lines a PR adds: an old except that logs and
+    carries on swallows the error once its log line is removed, and the PR adds no line."""
+    old = (
+        "import logging\n"
+        "log = logging.getLogger()\n"
+        "def spot(row):\n"
+        "    try:\n"
+        "        return row['last']\n"
+        "    except KeyError as e:\n"
+        "        log.warning('no last: %s', e)\n"
+        "        return None\n"
+    )
+    root = _repo(tmp_path, {**BASE, "server.py": old})
+    _commit(root, {"server.py": old.replace("        log.warning('no last: %s', e)\n", "")})
+    assert cee.violations(root, "main") == ["server.py:6: an except that swallows the error"]
+
+
 def test_a_patch_is_refused_with_each_violation_named(tmp_path):
     root = _repo(tmp_path, BASE)
     _commit(
