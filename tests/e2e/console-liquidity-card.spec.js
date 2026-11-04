@@ -21,6 +21,48 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
   const card = (page) => page.locator('#tdmCardLiq');
   const left = (pct) => (50 + pct * 0.45) + '%';
 
+  test('on the operator\'s 1920×950 window every card shows whole, the Desk does not scroll, and the sentence is high contrast', async ({ page }) => {
+    const errs = watchErrors(page);
+    await page.setViewportSize({ width: 1920, height: 950 });
+    for (const body of [READOUT_LIVE, READOUT_AUCTION, READOUT_OFFLINE, READOUT_NO_BOOK]) {
+      await openDesk(page, body);
+      await expect(card(page).locator('.liq-body > *').first()).toBeVisible();
+      const cut = await page.evaluate(() => {
+        const out = [];
+        const root = document.getElementById('tdmRoot');
+        if (root.scrollHeight > root.clientHeight) out.push('the Desk scrolls: ' + root.scrollHeight + ' > ' + root.clientHeight);
+        document.querySelectorAll('#tdmCards > .tdm-card').forEach((c) => {
+          const box = c.getBoundingClientRect(), cs = getComputedStyle(c);
+          const bottom = box.bottom - parseFloat(cs.paddingBottom) + 1, right = box.right - parseFloat(cs.paddingRight) + 1;
+          c.querySelectorAll('*').forEach((e) => {
+            if (e.closest('svg') && e.tagName.toLowerCase() !== 'svg') return;
+            if (e.closest('.liq-detail')) return;
+            const r = e.getBoundingClientRect();
+            if (!r.width || !r.height) return;
+            if (r.bottom > bottom || r.right > right) out.push(c.id + ': ' + (e.className.baseVal ?? e.className) + ' runs past the card');
+            const s = getComputedStyle(e);
+            if (/hidden|clip/.test(s.overflowX + s.overflowY) && !e.classList.contains('liq-track') &&
+                (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)) out.push(c.id + ': ' + e.className + ' is clipped');
+          });
+        });
+        return out;
+      });
+      expect(cut, JSON.stringify(cut)).toEqual([]);
+    }
+    await openDesk(page, READOUT_LIVE);
+    const look = await card(page).locator('.liq-sent').evaluate((e) => {
+      const s = getComputedStyle(e), probe = document.createElement('i');
+      probe.style.color = 'var(--ed-ink)';   // the brightest ink the console has
+      document.body.appendChild(probe);
+      const ink = getComputedStyle(probe).color;
+      probe.remove();
+      return { color: s.color, weight: s.fontWeight, ink };
+    });
+    expect(look.color).toBe(look.ink);
+    expect(look.weight).toBe('700');
+    expect(errs).toEqual([]);
+  });
+
   test('the default view is the composite, weighted: every element in order, from the served values', async ({ page }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
@@ -33,13 +75,14 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     expect(await card(page).locator('.tdm-src').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const text = await card(page).locator('.liq-body').innerText();
     const span = (k, side) => '$' + READOUT_LIVE.readout.venues[k].views.weighted['span_' + side + '_text'];
-    const order = ['WEIGHTED TOP-5 HEADLINE', w.pct_text, w.side_word, 'Bids', w.bid_text, 'Asks', w.ask_text,
-      'Difference: ' + w.difference_text + ' shares · Total depth: ' + w.total_text + ' shares', w.sentence,
-      'VENUES', 'Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue',
+    const order = ['WEIGHTED TOP-5 HEADLINE', w.side_word, w.pct_text, 'price levels per side, not timeframes',
+      'Bids', w.bid_text, 'Asks', w.ask_text,
+      w.sentence, 'Difference: ' + w.difference_text + ' shares · Total depth: ' + w.total_text + ' shares',
+      'VENUES', 'AT THE TOUCH', LIVE_COMP.touch_text,
+      'LEAN', w.held_text, w.flips_word + ' · ' + w.flips_2m + ' flips in 2 min',
+      'Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue',
       'Top-5 spans, bid / ask: NYSE ' + span('NYSE_BOOK', 'bid') + ' / ' + span('NYSE_BOOK', 'ask') +
         ' · Nasdaq ' + span('NASDAQ_BOOK', 'bid') + ' / ' + span('NASDAQ_BOOK', 'ask'),
-      'AT THE TOUCH', LIVE_COMP.touch_text,
-      'LEAN', w.held_text, w.flips_word + ' · ' + w.flips_2m + ' flips in 2 min',
       'NYSE + Nasdaq only — not the whole market · Book ' + LIVE_COMP.book_time_ct];
     let at = -1;
     for (const s of order) { const i = text.indexOf(s, at + 1); expect(i, s).toBeGreaterThan(at); at = i; }

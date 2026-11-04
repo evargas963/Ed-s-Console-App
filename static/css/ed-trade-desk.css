@@ -54,7 +54,7 @@
 .liqm-tags{padding:0 0 6px;color:var(--ed-ink-3)}
 
 /* ---------- desk page ---------- */
-.tdm{height:100%;display:grid;grid-template-rows:minmax(420px,1fr) auto auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
+.tdm{height:100%;display:grid;grid-template-rows:minmax(380px,1fr) auto auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
 .tdm .up{color:var(--ed-pos-ink)} .tdm .dn{color:var(--ed-neg-ink)} .tdm .warn{color:var(--ed-warn)}
 .tdm-idx{display:inline-flex;gap:5px;align-items:baseline;font-size:12px;color:var(--ed-ink-2)}
 .tdm-idx span{color:var(--ed-ink-3);font-weight:600;letter-spacing:.04em}
@@ -128,8 +128,8 @@
 .tdm-q-m{font-size:12px;color:var(--ed-ink-3)}
 .tdm-dom{font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ed-ink-2)}
 
-.tdm-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:start}
-.tdm-cards>.tdm-card:not(.liq){height:196px}
+.tdm-cards{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(0,1fr));gap:10px;align-items:start}
+.tdm-cards>.tdm-card{height:318px}
 /* a card, as the reference sets it: title and Open tab; source and age; Current state beside
    Change (1h); the chart and its caption; one line of facts, the most useful first */
 .tdm-card{padding:9px 14px;display:flex;flex-direction:column;gap:4px;min-height:0;overflow:hidden}
@@ -140,7 +140,7 @@
 .tdm-open{margin-left:auto;font:600 11.5px var(--ed-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-2);
   border:1px solid var(--ed-edge-strong);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap}
 .tdm-open:hover{color:var(--ed-accent-2);border-color:var(--ed-accent-edge)}
-.tdm-src{font-size:12px;color:var(--ed-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tdm-src{font-size:12px;color:var(--ed-ink-3)}
 .tdm-cs{display:flex;justify-content:space-between;gap:10px}
 .tdm-cs small{display:block;font-size:11.5px;color:var(--ed-ink-3)}
 .tdm-state{font-size:17px;font-weight:700;letter-spacing:.03em;color:var(--ed-ink);text-transform:uppercase}
@@ -149,8 +149,7 @@
 .tdm-chg{font-size:13px;color:var(--ed-ink-3)}
 .tdm-cs>div:first-child{min-width:0}
 .tdm-cs>div:last-child{text-align:right;flex:none;white-space:nowrap}
-.tdm-rows{display:flex;flex-wrap:nowrap;gap:0 12px;font-size:11.5px;color:var(--ed-ink-3);overflow:hidden;
-  -webkit-mask-image:linear-gradient(to right,#000 88%,transparent);mask-image:linear-gradient(to right,#000 88%,transparent)}
+.tdm-rows{display:flex;flex-wrap:wrap;gap:0 12px;font-size:11.5px;color:var(--ed-ink-3)}
 .tdm-r{white-space:nowrap}
 .tdm-r b{color:var(--ed-ink-2);font-weight:600;font-variant-numeric:tabular-nums}
 /* each card's chart, as the reference draws them: the plot, then its caption */
@@ -161,51 +160,58 @@
 .tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* the Liquidity card: the order-imbalance readout, drawn from the served readout */
-.tdm-card.liq{position:relative;background:#0d1526;border:1px solid #24314d;border-radius:12px;padding:16px 18px 14px;gap:8px;color:#e8edf7}
-.liq .tdm-card-h{flex-wrap:wrap;row-gap:6px}
-.liq .tdm-card-h .t,.liq .tdm-src{color:#e8edf7}
-.liq .tdm-src{color:#8fa1c4;white-space:normal}
-.liq .scbtn{background:#1a2440;color:#8fa1c4;border:1px solid #2c3d63;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer}
-.liq .scbtn.on{background:#1f6feb;color:#fff;border-color:#1f6feb}
-.liq .liq-comp.on{background:#c9a227;color:#0d1526;border-color:#c9a227}
-.liq.liq-composite .bookvenue .scbtn.on{background:#1a2440;color:#8fa1c4;border-color:#2c3d63}
-.liq-depth{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:#8fa1c4}
-.liq-depth span{font-size:11.5px}
-.liq-body{display:flex;flex-direction:column;gap:8px}
-.liq-body.stale>:not(.liq-keep){opacity:.55;filter:grayscale(1)}
-.liq-lbl{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;letter-spacing:.06em;color:#8fa1c4;text-transform:uppercase}
-.liq-lbl b{color:#e8edf7}
-.liq-hl{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.liq-pct{font-size:52px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
-.liq-word{font-size:17px;font-weight:700;letter-spacing:.04em}
-.liq-live{font-size:12px;color:#8fa1c4}
+/* laid out and lettered as the other cards: the switches are their buttons, the state and number
+   their Current state, the bars their chart and the sentence its caption, the facts their rows */
+.tdm-card.liq{position:relative}
+.liq .tdm-card-h{gap:6px}
+.liq .tdm-card-h .bookvenue{margin-left:auto}
+.liq .tdm-card-h .tdm-open{margin-left:0}
+.liq .scbtn{font:600 11.5px var(--ed-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-2);background:none;
+  border:1px solid var(--ed-edge-strong);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap}
+.liq .scbtn.on{background:none;color:#c9a227;border-color:#c9a227}
+.liq.liq-composite .bookvenue .scbtn.on{background:none;color:var(--ed-ink-2);border-color:var(--ed-edge-strong)}
+.liq-depth{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.liq-depth small{font-size:11.5px;color:var(--ed-ink-3)}
+.liq-depth span{display:inline-flex;gap:3px}
+.liq-body{display:flex;flex-direction:column;gap:2px;min-height:0}
+.liq-body.stale>:not(.liq-keep),.liq-body.stale .liq-now>div:first-child>:not(.liq-keep),
+.liq-body.stale .liq-facts>:not(.liq-keep){opacity:.55;filter:grayscale(1)}
+.liq-lbl{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11.5px;color:var(--ed-ink-3);text-transform:uppercase;white-space:nowrap}
+.liq-lbl b{color:var(--ed-ink-2);font-weight:600}
+.liq-lbl .liq-pill{text-transform:none}
+.liq-hl{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.liq-hl[data-liqdetail]{cursor:pointer}
+.liq-word,.liq-pct{font-size:17px;font-weight:700;letter-spacing:.03em;color:var(--ed-ink);font-variant-numeric:tabular-nums}
+.liq-live{font-size:11.5px;color:var(--ed-ink-3)}
 .liq .bid{color:#3fb950} .liq .ask{color:#f85149} .liq .bal{color:#c9a227}
-.liq-bar-h{display:flex;justify-content:space-between;font-size:13px;font-weight:700}
-.liq-track{height:16px;background:#1a2440;border-radius:4px;overflow:hidden;display:flex}
+.liq-bars{display:flex;flex-direction:column;justify-content:center;gap:6px;height:46px;border-bottom:1px solid var(--ed-edge-soft)}
+.liq-bar-h{display:grid;grid-template-columns:36px 1fr 52px;align-items:center;gap:8px;font-size:11.5px;color:var(--ed-ink-3)}
+.liq-bar-h b{color:var(--ed-ink-2);text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.liq-track{height:12px;background:var(--ed-edge-soft);border-radius:3px;overflow:hidden;display:flex}
 .liq-track i{display:block;height:100%}
 .liq-track i.bid{background:#3fb950} .liq-track i.ask{background:#f85149}
-.liq-hl[data-liqdetail]{cursor:pointer}
-.liq-detail{position:absolute;inset:0;z-index:2;overflow:auto;background:#0d1526;border-radius:12px;padding:16px 18px 14px;display:flex;flex-direction:column;gap:8px}
-.liq-detail p{margin:0;font-size:12.5px;line-height:1.45;color:#e8edf7}
-.liq-line{font-size:13px;color:#e8edf7}
-.liq-small{font-size:11.5px;color:#8fa1c4}
-.liq-sent{background:#16213d;border:1px solid #2c4a7a;border-radius:8px;padding:10px 12px;font-size:15px;font-weight:700;color:#e8edf7}
-.liq-flag{font-size:12.5px;font-weight:700;color:#c9a227}
-.liq-pill{display:inline-flex;align-items:center;gap:5px;border:1px solid #c9a227;color:#c9a227;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:700;letter-spacing:.04em}
-.liq-pill.plain{border-color:#8fa1c4;color:#e8edf7}
-.liq-strip,.liq-gauge{position:relative;height:18px}
-.liq-strip::before{content:"";position:absolute;left:0;right:0;top:8px;height:2px;background:#2c3d63}
-.liq-strip::after,.liq-gauge::after{content:"";position:absolute;left:50%;top:2px;width:2px;height:14px;background:#8fa1c4}
-.liq-dot{position:absolute;top:1px;width:16px;height:16px;margin-left:-8px;border-radius:50%}
+.liq .tdm-chartbox figcaption{white-space:normal}
+.liq-sent{font-size:12.5px;font-weight:700;color:var(--ed-ink)}
+.liq-flag{font-size:11.5px;font-weight:600;color:#c9a227}
+.liq-pill{display:inline-flex;align-items:center;border:1px solid #c9a227;color:#c9a227;border-radius:999px;padding:0 7px;font-size:11px;font-weight:600;letter-spacing:.04em;white-space:nowrap;align-self:flex-start}
+.liq-pill.plain{border-color:var(--ed-edge-strong);color:var(--ed-ink-2)}
+.liq-gr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.liq-gr>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.liq-strip,.liq-gauge{position:relative;height:14px}
+.liq-strip::before{content:"";position:absolute;left:0;right:0;top:6px;height:2px;background:var(--ed-edge-strong)}
+.liq-strip::after,.liq-gauge::after{content:"";position:absolute;left:50%;top:1px;width:2px;height:12px;background:var(--ed-ink-3)}
+.liq-dot{position:absolute;top:1px;width:12px;height:12px;margin-left:-6px;border-radius:50%}
 .liq-dot.sel{box-shadow:0 0 0 2px #fff}
 .liq-dot.NYSE_BOOK{background:#3fb950} .liq-dot.NASDAQ_BOOK{background:#f85149} .liq-dot.COMPOSITE{background:#c9a227}
-.liq-gauge{height:14px;border-radius:7px;background:linear-gradient(to right,rgba(248,81,73,.35) 50%,rgba(63,185,80,.35) 50%)}
+.liq-gauge{height:12px;border-radius:6px;background:linear-gradient(to right,rgba(248,81,73,.35) 50%,rgba(63,185,80,.35) 50%)}
 .liq-gauge::after{top:0}
-.liq-gauge i{position:absolute;top:0;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:#fff}
-.liq-lean{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:#8fa1c4}
-.liq-lean svg{width:96px;height:28px;display:block}
-.liq-none{font-size:17px;font-weight:700;color:#e8edf7;padding:10px 0}
-.liq-none p{margin:4px 0 0;font-size:13px;font-weight:500;color:#8fa1c4}
+.liq-gauge i{position:absolute;top:0;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:#fff}
+.liq-lean{display:grid;grid-template-columns:20px 1fr 20px 1fr;gap:0 4px;align-items:center;font-size:11.5px;color:var(--ed-ink-3)}
+.liq-lean svg{width:100%;height:13px;display:block}
+.liq-detail{position:absolute;inset:0;z-index:2;overflow:auto;background:var(--ed-panel);padding:9px 14px;display:flex;flex-direction:column;gap:6px}
+.liq-detail p{margin:0;font-size:12.5px;line-height:1.45;color:var(--ed-ink)}
+.liq-none{font-size:17px;font-weight:700;color:var(--ed-ink);padding:6px 0}
+.liq-none p{margin:4px 0 0;font-size:12px;font-weight:500;color:var(--ed-ink-3)}
 
 .tdm-agree.panel{display:flex;flex-direction:row;align-items:center;gap:12px;padding:7px 12px;flex-wrap:wrap}
 .tdm-agree-t{font-size:17px}
