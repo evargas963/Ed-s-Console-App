@@ -147,6 +147,7 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
     asyncio.run(_run(body, feed=_Feed(clock=clock)))
 
 
+@pytest.mark.alone
 def test_an_unsubscribed_symbol_is_never_sent():
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
@@ -223,6 +224,7 @@ def _clock_from(start: float):
     return lambda: start + time.monotonic() - began
 
 
+@pytest.mark.alone
 @pytest.mark.parametrize("start", [_RTH, _CLOSED], ids=["rth", "closed"])
 def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
