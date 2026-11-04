@@ -452,8 +452,6 @@
   // The served order-imbalance readout (/api/order-flow/microstructure `readout`): every number,
   // word, sentence and flag is the server's; the card picks the venue and depth to show and places
   // the dots, bars and lines on its boxes.
-  // the book named while the read is loading or has failed (the served source line names it after)
-  var LIQ_SRC = { NYSE_BOOK: 'Schwab NYSE_BOOK', NASDAQ_BOOK: 'Schwab NASDAQ_BOOK', COMPOSITE: 'Schwab NYSE_BOOK + NASDAQ_BOOK' };
   var LIQ_NAME = { NYSE_BOOK: 'NYSE', NASDAQ_BOOK: 'Nasdaq', COMPOSITE: 'Composite' };
   function liqKey() { return S.liqVenue === 'COMPOSITE' ? 'COMPOSITE' : st().bookVenue; }
   // a served side's colour: bids green, offers red, balanced gold
@@ -501,7 +499,7 @@
     var body = c.querySelector('.liq-body'), r = rd && rd.venues[key];
     body.classList.toggle('stale', !!(r && !r.live && r.status !== 'no_book'));
     if (!r) {
-      src(c, esc(LIQ_SRC[key]) + ' · ' + (m === undefined ? 'loading…' : 'microstructure request failed'));
+      src(c, m === undefined ? 'loading…' : 'microstructure request failed');
       body.innerHTML = depth + '<div class="liq-none">' + (m === undefined ? 'Loading…' : 'UNAVAILABLE<p>The book request failed</p>') + '</div>';
       return;
     }
@@ -542,7 +540,6 @@
       (r.dedup_partial_text && !one ? '<span class="tdm-r">' + esc(r.dedup_partial_text) + '</span>' : '') +
       '<span class="tdm-r">Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue</span>' +
       '<span class="tdm-r">' + liqSpans(rd, view) + '</span>' +
-      (r.not_live_text ? '<span class="tdm-r liq-keep">' + esc(r.not_live_text) + '</span>' : '') +
       '<span class="tdm-r">NYSE + Nasdaq only — not the whole market · Book ' + esc(r.book_time_ct || '-') + '</span></div>' +
       (S.liqDetail ? liqDetail(rd, key) : '');
     body.innerHTML = h;

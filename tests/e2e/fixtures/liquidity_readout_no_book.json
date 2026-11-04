@@ -130,7 +130,6 @@
     "live": true,
     "no_number_head": "NO BOOK",
     "no_number_text": "No book for this symbol right now",
-    "not_live_text": null,
     "one_sided_text": null,
     "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 composite, newest quote of each exchange \u00b7 no book for this symbol right now",
     "status": "no_book",
@@ -173,7 +172,6 @@
     "live": true,
     "no_number_head": "NO BOOK",
     "no_number_text": "No book for this symbol right now",
-    "not_live_text": null,
     "one_sided_text": null,
     "source_text": "Schwab NASDAQ_BOOK \u00b7 no book for this symbol right now",
     "status": "no_book",
@@ -216,7 +214,6 @@
     "live": true,
     "no_number_head": "NO BOOK",
     "no_number_text": "No book for this symbol right now",
-    "not_live_text": null,
     "one_sided_text": null,
     "source_text": "Schwab NYSE_BOOK \u00b7 no book for this symbol right now",
     "status": "no_book",
@@ -247,14 +244,7 @@
      }
     }
    }
-  },
-  "weights": [
-   0.42865552877716695,
-   0.2599927206586828,
-   0.1576935563815933,
-   0.09564597678455912,
-   0.058012217397997876
-  ]
+  }
  },
  "spread_frac": 1.3154779131395975e-05,
  "spread_pts": 0.010000000000104592,

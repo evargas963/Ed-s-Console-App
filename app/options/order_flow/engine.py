@@ -669,7 +669,6 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
             "pct": _pct(_book_imbalance_from_totals(_weighted_total(bids), _weighted_total(asks)))
             if view == "weighted"
             else _pct(imb),
-            "flat_pct": _pct(imb),
             "bid_total": bt,
             "ask_total": at,
             "difference": abs(bt - at) if both else None,
@@ -866,10 +865,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
             live = snap.get("pct")
             held = None if since is None else last - since
             views[view] = {
-                **{
-                    k: snap.get(k)
-                    for k in ("flat_pct", "bid_total", "ask_total", "difference", "total_depth")
-                },
+                **{k: snap.get(k) for k in ("bid_total", "ask_total", "difference", "total_depth")},
                 "pct": sm[-1],
                 "pct_text": percent_text(sm[-1]),
                 "live_pct": live,
@@ -885,7 +881,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                 if r.get("touch_state") == "CROSSED"
                 else _sentence(zone, bid, ask),
                 "divergence": _DIVERGENCE
-                if view == "weighted" and _opposite(live, snap.get("flat_pct"))
+                if view == "weighted" and _opposite(live, snap.get("imbalance"))
                 else None,
                 "flips_2m": flips,
                 "flips_word": "CHOPPY" if flips >= OF_CHOPPY_FLIPS else "STEADY",
@@ -936,7 +932,6 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
             )
             for view in READOUT_VIEWS
         },
-        "weights": list(OF_LEVEL_WEIGHTS),
         "detail": READOUT_DETAIL,
     }
 

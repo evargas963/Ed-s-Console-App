@@ -3267,20 +3267,6 @@ def _source_text(venue: str, r: dict, window: str | None) -> str:
     return " · ".join(parts)
 
 
-def _not_live_text(r: dict) -> str | None:
-    """A venue that is not live, with numbers, says they are its last: from its book's time, or
-    that Schwab sent none. None while live, and with no number."""
-    if r["live"] or _no_number(r) is not None:
-        return None
-    parts = []
-    if r["book_time_ct"] is not None:
-        parts.append(f"Book from {r['book_time_ct']}, {r['book_age_text']} old, not live")
-    else:
-        parts.append("Not live, no book time sent")
-    parts.append("these are the last numbers, not current")
-    return " — ".join(parts)
-
-
 def _stood_from(points: list[tuple[float, dict]], venue: str) -> float:
     """The receive time of the first reading from which `venue`'s readout has stood as it is
     now: where a venue that is not live is read to (a book that stopped stands from its last
@@ -3315,7 +3301,6 @@ def liquidity_readout(t: str, now: float) -> dict:
         r["live"] = labels[v] == lmp.LIVE
         r["book_time_ct"] = None if book_ms is None else ct_label(book_ms / 1000.0)
         r["book_age_text"] = None if book_ms is None else age_text(now - book_ms / 1000.0)
-        r["not_live_text"] = _not_live_text(r)
         r["source_text"] = _source_text(v, r, window)
         why = _no_number(r)
         r["no_number_text"] = None if why is None else why[1]
