@@ -3230,7 +3230,7 @@ def _source(venue: str, r: dict) -> str:
     """Whose book: Schwab's book of `venue`, or for the composite the books it is built from."""
     if venue != COMPOSITE:
         return f"Schwab {venue}"
-    return f"Schwab {' + '.join(r['books']) or 'books'} · composite, newest quote of each exchange"
+    return f"Schwab {' + '.join(r['books'])} · composite, newest quote of each exchange"
 
 
 def _no_number(r: dict) -> tuple[str, str, str] | None:
@@ -3297,7 +3297,7 @@ def liquidity_readout(t: str, now: float) -> dict:
     readout of both Schwab books and their deduped composite the console's intake computed
     (engine.book_readout, kept in history.LEAN), read over the readouts kept
     (engine.readout_card). Each book is judged by the one live rule on its own service, the
-    composite live only while every book it is built from is; a venue that is not live keeps its
+    composite live only while both are; a venue that is not live keeps its
     last values, read to the reading its readout has stood from (`_stood_from`), with its book's
     time and age. With the exchange auction
     window of today's session as Schwab sent it (time_et.auction; None while Schwab's answer for
@@ -3305,8 +3305,7 @@ def liquidity_readout(t: str, now: float) -> dict:
     points = LEAN.points(t)
     readout = points[-1][1] if points else _NO_BOOKS
     labels = {v: price_state(t, now, v)[0] for v in BOOK_VENUES}
-    built = readout[COMPOSITE]["books"] or BOOK_VENUES
-    labels[COMPOSITE] = next((labels[v] for v in built if labels[v] != lmp.LIVE), lmp.LIVE)
+    labels[COMPOSITE] = next((labels[v] for v in BOOK_VENUES if labels[v] != lmp.LIVE), lmp.LIVE)
     ends = {v: now if labels[v] == lmp.LIVE else _stood_from(points, v) for v in readout if points}
     card = readout_card(readout, points, ends)
     window = auction(datetime.fromtimestamp(now, ET))
@@ -3322,7 +3321,8 @@ def liquidity_readout(t: str, now: float) -> dict:
         r["no_number_text"] = None if why is None else why[1]
         r["no_number_head"] = None if why is None else why[2]
         r["dedup_partial_text"] = (
-            "Dedup partial: a level came without per-exchange sizes, its total taken whole"
+            "Dedup partial: a level came without per-exchange sizes (its total taken whole), or"
+            " a quote in both books without its quote time (a timed copy counts over it)"
             if r["dedup_partial"]
             else None
         )

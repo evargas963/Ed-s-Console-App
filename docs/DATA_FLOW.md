@@ -262,11 +262,11 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   one per contributor, codes matched without regard to case; a contributor in both books (NSDQ,
   for SPY and IWM, the only tickers NYSE_BOOK carries) from the copy with the newer quote time,
   Schwab's market-maker field 2, which schwab-py names SEQUENCE; with one book held, that book;
-  the shares summed at each distinct price; a level with no per-exchange rows, or a row without
-  its quote time, taken whole and the dedup marked partial), read over at most one value a second per ticker that the console's intake
+  the shares summed at each distinct price; a level with no per-exchange rows taken whole, and a
+  copy sent without its quote time never newer than one sent with it, each marking the dedup
+  partial), read over at most one value a second per ticker that the console's intake
   records as each book arrives, the newest in that second (`history.LEAN`, 308 s), and judged
-  live per book by the one live rule, the composite only while every book it is built from is; a
-  venue not live is read
+  live per book by the one live rule, the composite only while both are; a venue not live is read
   to the reading its readout has stood from (a stopped book from its last arrival; a composite
   with one book still running moves with it), with its book's time and age. The exchange auction
   windows are the 5 minutes before and the 10 minutes before the end of Schwab's regular window

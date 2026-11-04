@@ -61,14 +61,14 @@ def _iter_content(data: dict) -> list:
     return []
 
 
-Exchanges = tuple[tuple[str, float, float], ...]
+Exchanges = tuple[tuple[str, float, float | None], ...]
 
 
 def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
     """A level's own rows, one per exchange or market maker, as sent: (EXCHANGE, BID_VOLUME or
     ASK_VOLUME, its quote time; docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers: field 2,
-    "Quote time in milliseconds", which schwab-py names SEQUENCE). None when the level carries
-    none, or a row lacks its code, size or quote time."""
+    "Quote time in milliseconds", which schwab-py names SEQUENCE; None when not sent). None when
+    the level carries none, or a row lacks its code or size."""
     if not isinstance(rows, list) or not rows:
         return None
     out = []
@@ -76,10 +76,9 @@ def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
         if not isinstance(row, dict):
             return None
         code, size = row.get("EXCHANGE"), schwab_count(row.get(size_key))
-        quoted = schwab_number(row.get("SEQUENCE"))
-        if not isinstance(code, str) or not code or size is None or quoted is None:
+        if not isinstance(code, str) or not code or size is None:
             return None
-        out.append((code, size, quoted))
+        out.append((code, size, schwab_number(row.get("SEQUENCE"))))
     return tuple(out)
 
 
@@ -589,21 +588,34 @@ _TOUCH_FLAG = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 Levels = list[tuple[float, float]]
 
 
+def _newer(quoted: float | None, than: float | None) -> bool:
+    """Whether a quote time is newer than another: a time sent is newer than one not sent."""
+    return quoted is not None and (than is None or quoted > than)
+
+
 def _composite_side(books: dict[str, dict], side: str) -> tuple[Levels, bool]:
     """One side of the composite of the books held: every quote, one per contributor (its code,
     matched without regard to case), from the book whose copy has the newer quote time (on an equal
-    time, the first in BOOK_VENUES order), the shares summed at each distinct price, best first. A
-    level that carries no per-exchange rows counts its TOTAL_VOLUME whole, and the second value
-    says one did (the dedup partial)."""
-    newest: dict[str, tuple[float, str]] = {}
-    for venue, item in books.items():
-        for _price, _total, rows in _side_levels(item, side):
-            for code, _size, quoted in rows or ():
-                key = code.upper()
-                if key not in newest or quoted > newest[key][0]:
-                    newest[key] = (quoted, venue)
+    time, or neither sent, the first in BOOK_VENUES order), the shares summed at each distinct
+    price, best first. A level that carries no per-exchange rows counts its TOTAL_VOLUME whole; it,
+    or a contributor in two books with a copy sent without its quote time, makes the dedup partial
+    (the second value)."""
+    rows_held = [
+        (code.upper(), venue, quoted)
+        for venue, item in books.items()
+        for _price, _total, rows in _side_levels(item, side)
+        if rows is not None
+        for code, _size, quoted in rows
+    ]
+    newest: dict[str, tuple[float | None, str]] = {}
+    for key, venue, quoted in rows_held:
+        if key not in newest or _newer(quoted, newest[key][0]):
+            newest[key] = (quoted, venue)
+    partial = any(
+        quoted is None and len({v for k, v, _q in rows_held if k == key}) > 1
+        for key, _venue, quoted in rows_held
+    )
     sizes: dict[float, float] = {}
-    partial = False
     for venue, item in books.items():
         for price, total, rows in _side_levels(item, side):
             if rows is None:
@@ -687,8 +699,8 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
 def book_readout(books: dict[str, dict | None]) -> dict[str, dict]:
     """The imbalance readout of each Schwab book and of their composite, from each venue's newest
     book (`state.newest_book`, every venue of BOOK_VENUES; None: no book). The composite is of the
-    books held (`books` names them): with one, that book; with none, no_book. Its time is its
-    older book's."""
+    books held (`books` names them): with one, that book; with none, no_book, `books` naming the
+    two it reads. Its time is its older book's."""
     out: dict[str, dict] = {}
     held: dict[str, dict] = {}
     for v in BOOK_VENUES:
@@ -701,7 +713,7 @@ def book_readout(books: dict[str, dict | None]) -> dict[str, dict]:
         asks = _sorted_valid_levels(book_side(item, "ASKS"), descending=False)
         out[v] = _readout(bids, asks, schwab_number(item.get("BOOK_TIME")))
     if not held:
-        out[COMPOSITE] = {"status": "no_book", "book_time_ms": None, "books": []}
+        out[COMPOSITE] = {"status": "no_book", "book_time_ms": None, "books": list(BOOK_VENUES)}
         return out
     times = [schwab_number(i.get("BOOK_TIME")) for i in held.values()]
     (bids, bid_partial), (asks, ask_partial) = (_composite_side(held, s) for s in ("BIDS", "ASKS"))

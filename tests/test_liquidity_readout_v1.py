@@ -288,14 +288,40 @@ def test_nsdq_is_one_contributor_however_spelled():
         )
 
 
-def test_a_row_without_its_quote_time_leaves_its_level_taken_whole():
-    """INDUCED: Schwab's pair with NASDAQ_BOOK's NSDQ rows sent without their quote time: which
-    copy is newer cannot be told, so each of those levels counts its TOTAL_VOLUME whole and the
-    composite says its dedup is partial."""
+def test_a_copy_without_its_quote_time_is_never_the_newer():
+    """INDUCED: Schwab's pair with NASDAQ_BOOK's NSDQ rows sent without their quote time (every row
+    of SPY's and IWM's 2026-11-02 books carries one): NYSE_BOOK's timed NSDQ counts, once, at its
+    767.39 bid and 767.41 ask (the top five 800 bid and 2,160 ask, NASDAQ_BOOK's own book
+    unchanged), and the composite says its dedup is partial, and why."""
     nq = _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "SEQUENCE", "NSDQ")
     comp = e.book_readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
     assert comp["COMPOSITE"]["dedup_partial"] is True
+    five = comp["COMPOSITE"]["views"]["5"]
+    assert (five["bid_total"], five["ask_total"]) == (800, 2160)
+    assert comp["COMPOSITE"]["views"]["1"]["bid_total"] == 160  # ARCX 80 + NSDQ 80 at 767.39
     assert comp["NASDAQ_BOOK"] == _pair_readout()["NASDAQ_BOOK"]
+    assert _served(comp)[e.COMPOSITE]["dedup_partial_text"] == (
+        "Dedup partial: a level came without per-exchange sizes (its total taken whole), or a"
+        " quote in both books without its quote time (a timed copy counts over it)"
+    )
+
+
+def test_on_an_equal_quote_time_nyse_books_copy_counts():
+    """INDUCED: Schwab's pair with NASDAQ_BOOK's NSDQ rows given NYSE_BOOK's NSDQ quote times
+    (bid 37799874, ask 37800006): an equal time keeps NYSE_BOOK's copy (767.39 x 80 bid, 767.41 x
+    120 ask), never NASDAQ_BOOK's (767.41 x 100, 767.42 x 70), never both."""
+    nyse = _PAIR["NYSE_BOOK"]["content"]
+    nq = json.loads(json.dumps(_PAIR["NASDAQ_BOOK"]["content"]))
+    for side in ("BIDS", "ASKS"):
+        (same,) = {x["SEQUENCE"] for lv in nyse[side] for x in lv[side] if x["EXCHANGE"] == "NSDQ"}
+        for lv in nq[side]:
+            for x in lv[side]:
+                if x["EXCHANGE"] == "NSDQ":
+                    x["SEQUENCE"] = same
+    comp = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": nq})["COMPOSITE"]
+    assert comp["dedup_partial"] is False
+    assert (comp["views"]["5"]["bid_total"], comp["views"]["5"]["ask_total"]) == (800, 2160)
+    assert comp["views"]["1"]["bid_total"] == 160
 
 
 def _served(readout: dict) -> dict:
@@ -366,6 +392,25 @@ def test_with_one_book_the_composite_is_that_book():
     assert got[e.COMPOSITE]["no_number_text"] is None
     assert got[e.COMPOSITE]["source_text"].startswith(
         "Schwab NASDAQ_BOOK · composite, newest quote of each exchange"
+    )
+
+
+def test_a_nasdaq_only_composite_is_live_while_the_feed_holds_both_books():
+    """Schwab's NASDAQ_BOOK messages of 2026-11-02 alone, the daemon holding SPY on both books (as
+    it holds every watchlist ticker: its status of 2026-11-04 holds 10 symbols on each): the
+    composite is NASDAQ_BOOK's book, live, its source naming that one book."""
+    rows = [r for r in _ROWS if r[1] == "NASDAQ_BOOK"]
+    comp = build_readout_payload(rows=rows)["readout"]["venues"][e.COMPOSITE]
+    assert (comp["live"], comp["feed_label"], comp["books"]) == (True, "LIVE", ["NASDAQ_BOOK"])
+    assert comp["source_text"] == "Schwab NASDAQ_BOOK · composite, newest quote of each exchange"
+    assert comp["views"]["weighted"]["pct"] is not None
+
+
+def test_with_no_book_the_composite_names_the_two_books_it_reads():
+    got = _served(_NO_BOOK)[e.COMPOSITE]
+    assert got["no_number_head"] == "NO BOOK"
+    assert got["source_text"].startswith(
+        "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · no book"
     )
 
 
