@@ -384,23 +384,26 @@ class ChainSweep:
         (waits), it asks Schwab for nothing and looks again each second: a sign-in Schwab
         refused fails every request at once, and a round of them would only log each failure."""
         while not stop.is_set():
-            if self.waits(schwab_client) is not None or not self.watchlist:
+            if not self.step(schwab_client, stop):
                 stop.wait(1.0)
-                continue
-            today = datetime.fromtimestamp(self.clock(), ET).date()
-            self.fetch_markets(
-                schwab_client,
-                [(today - timedelta(days=n)).isoformat() for n in range(MARKETS_DAYS_BACK, -1, -1)],
-            )
-            now = datetime.fromtimestamp(self.clock(), ET)
-            chains = [t for t in sorted(self.watchlist) if self.chain_due(t, now)]
-            candles = [t for t in sorted(self.watchlist) if self.candles_due(t, now)]
-            if candles:
-                self.candles(schwab_client, candles, stop)
-            if chains:
-                self.rotation(schwab_client, chains, stop)
-            if not chains and not candles:
-                stop.wait(1.0)
+
+    def step(self, schwab_client, stop: threading.Event) -> bool:
+        """One pass of `work`: whether it asked for any price history or chain."""
+        if self.waits(schwab_client) is not None or not self.watchlist:
+            return False
+        today = datetime.fromtimestamp(self.clock(), ET).date()
+        self.fetch_markets(
+            schwab_client,
+            [(today - timedelta(days=n)).isoformat() for n in range(MARKETS_DAYS_BACK, -1, -1)],
+        )
+        now = datetime.fromtimestamp(self.clock(), ET)
+        chains = [t for t in sorted(self.watchlist) if self.chain_due(t, now)]
+        candles = [t for t in sorted(self.watchlist) if self.candles_due(t, now)]
+        if candles:
+            self.candles(schwab_client, candles, stop)
+        if chains:
+            self.rotation(schwab_client, chains, stop)
+        return bool(chains or candles)
 
     def waits(self, schwab_client) -> str | None:
         """Why the daemon holds no Schwab sign-in to ask with, kept as `waiting` for its status,
