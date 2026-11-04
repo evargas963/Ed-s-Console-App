@@ -109,8 +109,7 @@ jobs:
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: |
           # xdist's `-n auto` reads os.process_cpu_count(), which reports fewer cores than the
-          # runner has; the worker count is pinned to nproc, two per core: most tests wait on
-          # the processes they start (git, ruff, the daemon) more than they compute.
+          # runner has; the worker count is pinned to nproc.
           echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
           # The two suites run one after the other: pytest on every core beside Playwright starves
           # Playwright's real-time timeouts past this job's 45-minute limit. A test marked `alone`
@@ -119,7 +118,7 @@ jobs:
           npm run test:e2e
           e2e_rc=$?
           echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
-          python -m pytest -n "$(($(nproc) * 2))" --dist loadfile --durations=20 -rs -m "not alone"
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
           pytest_rc=$?
           python -m pytest --durations=1 -rs -m alone
           alone_rc=$?
@@ -206,7 +205,8 @@ jobs:
           ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
-        run: python -m pytest -n "$(($(nproc) * 2))" --dist loadfile --durations=20 -rs -m "not alone"
+        # pinned to nproc as in pytest-full: `-n auto` started 2 workers on this 4-core runner
+        run: python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
 
       - name: Run the tests that hold a wall-clock limit, with no workers beside them
         if: success() || failure()
