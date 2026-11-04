@@ -36,6 +36,8 @@ const READOUT_OFFLINE = require(path.join(__dirname, 'liquidity_readout_offline.
 const READOUT_NO_BOOK = require(path.join(__dirname, 'liquidity_readout_no_book.json'));
 // (the books when the composite was first crossed, read inside the closing auction window)
 const READOUT_AUCTION = require(path.join(__dirname, 'liquidity_readout_close_auction.json'));
+// (INDUCED: those books with NASDAQ_BOOK's NSDQ quote times taken out, the feed down: every line at once)
+const READOUT_EVERY_LINE = require(path.join(__dirname, 'liquidity_readout_every_line.json'));
 const LIVE_COMP = READOUT_LIVE.readout.venues.COMPOSITE;
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', readout: READOUT_LIVE.readout, top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2 }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2 } },
@@ -81,6 +83,6 @@ function watchErrors(page) {
 }
 
 module.exports = {
-  CROSSES, EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, LIVE_COMP,
+  CROSSES, EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP,
   MICRO, LIQ, STRIKES, BARS, HEAT, intercept, watchErrors,
 };

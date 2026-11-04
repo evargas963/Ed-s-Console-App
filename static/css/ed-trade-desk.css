@@ -103,7 +103,7 @@
 .tdm-fam:not(.on) i{opacity:.3}
 .tdm-fam-note{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ed-ink-3)}
 .tdm-fam-note:empty{display:none}
-.tdm-chart-wrap{position:relative;flex:1;min-height:300px}
+.tdm-chart-wrap{position:relative;flex:1;min-height:240px}
 .tdm-chart{position:absolute;inset:0}
 .tdm-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ed-warn);font-size:13px;z-index:5;
   background:var(--ed-panel);padding:20px;text-align:center}
@@ -128,13 +128,15 @@
 .tdm-q-m{font-size:12px;color:var(--ed-ink-3)}
 .tdm-dom{font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ed-ink-2)}
 
-.tdm-cards{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(0,1fr));gap:10px;align-items:start}
-.tdm-cards>.tdm-card{height:318px}
+/* the operator's option 1 (2026-11-04): a wider Liquidity card, the four 312 px; a card whose
+   served lines need more grows the row, the four together, so nothing is cut */
+.tdm-cards{display:grid;grid-template-columns:minmax(0,1.35fr) repeat(3,minmax(0,1fr));gap:10px;align-items:stretch}
+.tdm-cards>.tdm-card{min-height:312px}
 /* a card, as the reference sets it: title and Open tab; source and age; Current state beside
    Change (1h); the chart and its caption; one line of facts, the most useful first */
 .tdm-card{padding:9px 14px;display:flex;flex-direction:column;gap:4px;min-height:0;overflow:hidden}
 .tdm-card>*{flex:none}
-.tdm-card-h{display:flex;align-items:center;gap:8px}
+.tdm-card-h{display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap}
 .tdm-card-h .t{font-size:19px;white-space:nowrap}
 .tdm-card-h .bookvenue{display:inline-flex;gap:3px}
 .tdm-open{margin-left:auto;font:600 11.5px var(--ed-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-2);
@@ -150,14 +152,14 @@
 .tdm-cs>div:first-child{min-width:0}
 .tdm-cs>div:last-child{text-align:right;flex:none;white-space:nowrap}
 .tdm-rows{display:flex;flex-wrap:wrap;gap:0 12px;font-size:11.5px;color:var(--ed-ink-3)}
-.tdm-r{white-space:nowrap}
+.tdm-r{min-width:0}
 .tdm-r b{color:var(--ed-ink-2);font-weight:600;font-variant-numeric:tabular-nums}
 /* each card's chart, as the reference draws them: the plot, then its caption */
 .tdm-chartbox{margin:2px 0 0;display:flex;flex-direction:column;gap:3px;flex:none}
 .tdm-plot{height:46px;border-bottom:1px solid var(--ed-edge-soft);position:relative}
 .tdm-plot svg{width:100%;height:100%;display:block;overflow:visible}
 .tdm-plot-none{height:100%;display:flex;align-items:center;color:var(--ed-ink-3);font-size:12px}
-.tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3)}
 
 /* the Liquidity card: the order-imbalance readout, drawn from the served readout */
 /* laid out and lettered as the other cards: the switches are their buttons, the state and number
@@ -170,15 +172,17 @@
   border:1px solid var(--ed-edge-strong);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap}
 .liq .scbtn.on{background:none;color:#c9a227;border-color:#c9a227}
 .liq.liq-composite .bookvenue .scbtn.on{background:none;color:var(--ed-ink-2);border-color:var(--ed-edge-strong)}
-.liq-depth{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.liq-depth{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 8px}
 .liq-depth small{font-size:11.5px;color:var(--ed-ink-3)}
 .liq-depth span{display:inline-flex;gap:3px}
 .liq-body{display:flex;flex-direction:column;gap:2px;min-height:0}
-.liq-body.stale>:not(.liq-keep),.liq-body.stale .liq-now>div:first-child>:not(.liq-keep),
+.liq-body.stale>:not(.liq-keep):not(.liq-depth),.liq-body.stale .liq-now>:not(.liq-keep),
 .liq-body.stale .liq-facts>:not(.liq-keep){opacity:.55;filter:grayscale(1)}
 .liq-lbl{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11.5px;color:var(--ed-ink-3);text-transform:uppercase;white-space:nowrap}
 .liq-lbl b{color:var(--ed-ink-2);font-weight:600}
 .liq-lbl .liq-pill{text-transform:none}
+.liq-now{display:flex;flex-direction:column;gap:2px}
+.liq-now .liq-lbl{flex-wrap:wrap;justify-content:flex-start;white-space:normal}
 .liq-hl{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .liq-hl[data-liqdetail]{cursor:pointer}
 .liq-word,.liq-pct{font-size:17px;font-weight:700;letter-spacing:.03em;color:var(--ed-ink);font-variant-numeric:tabular-nums}
@@ -190,7 +194,6 @@
 .liq-track{height:12px;background:var(--ed-edge-soft);border-radius:3px;overflow:hidden;display:flex}
 .liq-track i{display:block;height:100%}
 .liq-track i.bid{background:#3fb950} .liq-track i.ask{background:#f85149}
-.liq .tdm-chartbox figcaption{white-space:normal}
 .liq-sent{font-size:12.5px;font-weight:700;color:var(--ed-ink)}
 .liq-flag{font-size:11.5px;font-weight:600;color:#c9a227}
 .liq-pill{display:inline-flex;align-items:center;border:1px solid #c9a227;color:#c9a227;border-radius:999px;padding:0 7px;font-size:11px;font-weight:600;letter-spacing:.04em;white-space:nowrap;align-self:flex-start}
@@ -213,7 +216,7 @@
 .liq-none{font-size:17px;font-weight:700;color:var(--ed-ink);padding:6px 0}
 .liq-none p{margin:4px 0 0;font-size:12px;font-weight:500;color:var(--ed-ink-3)}
 
-.tdm-agree.panel{display:flex;flex-direction:row;align-items:center;gap:12px;padding:7px 12px;flex-wrap:wrap}
+.tdm-agree.panel{display:flex;flex-direction:row;align-items:center;gap:12px;padding:7px 12px;flex-wrap:wrap;min-height:min-content}
 .tdm-agree-t{font-size:17px}
 .tdm-agree-row{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;flex:1}
 .tdm-ag{display:flex;gap:6px;align-items:baseline;font-size:12px}

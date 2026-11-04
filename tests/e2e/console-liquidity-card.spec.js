@@ -5,7 +5,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const {
-  READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, LIVE_COMP, intercept, watchErrors,
+  READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP, intercept, watchErrors,
 } = require('./fixtures/trade_desk');
 
 test.describe('Desk: the Liquidity card draws the served order-imbalance readout', () => {
@@ -23,31 +23,47 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
 
   test('on the operator\'s 1920×950 window every card shows whole, the Desk does not scroll, and the sentence is high contrast', async ({ page }) => {
     const errs = watchErrors(page);
-    await page.setViewportSize({ width: 1920, height: 950 });
-    for (const body of [READOUT_LIVE, READOUT_AUCTION, READOUT_OFFLINE, READOUT_NO_BOOK]) {
-      await openDesk(page, body);
-      await expect(card(page).locator('.liq-body > *').first()).toBeVisible();
-      const cut = await page.evaluate(() => {
-        const out = [];
-        const root = document.getElementById('tdmRoot');
-        if (root.scrollHeight > root.clientHeight) out.push('the Desk scrolls: ' + root.scrollHeight + ' > ' + root.clientHeight);
-        document.querySelectorAll('#tdmCards > .tdm-card').forEach((c) => {
-          const box = c.getBoundingClientRect(), cs = getComputedStyle(c);
-          const bottom = box.bottom - parseFloat(cs.paddingBottom) + 1, right = box.right - parseFloat(cs.paddingRight) + 1;
-          c.querySelectorAll('*').forEach((e) => {
-            if (e.closest('svg') && e.tagName.toLowerCase() !== 'svg') return;
-            if (e.closest('.liq-detail')) return;
-            const r = e.getBoundingClientRect();
-            if (!r.width || !r.height) return;
-            if (r.bottom > bottom || r.right > right) out.push(c.id + ': ' + (e.className.baseVal ?? e.className) + ' runs past the card');
-            const s = getComputedStyle(e);
-            if (/hidden|clip/.test(s.overflowX + s.overflowY) && !e.classList.contains('liq-track') &&
-                (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)) out.push(c.id + ': ' + e.className + ' is clipped');
+    // the operator's window (Edge maximized on 1920×1080), then a smaller laptop window, where the Desk may scroll
+    for (const [width, height] of [[1920, 950], [1366, 650]]) {
+      await page.setViewportSize({ width, height });
+      for (const body of [READOUT_LIVE, READOUT_AUCTION, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_EVERY_LINE]) {
+        await openDesk(page, body);
+        await expect(card(page).locator('.liq-body > *').first()).toBeVisible();
+        const cut = await page.evaluate((whole) => {
+          const out = [];
+          const root = document.getElementById('tdmRoot');
+          if (whole && root.scrollHeight > root.clientHeight) out.push('the Desk scrolls: ' + root.scrollHeight + ' > ' + root.clientHeight);
+          // no part of the Desk is squeezed below its content: the map, the cards, the strip, the footer
+          [...root.children, document.querySelector('#tdmRoot .tdm-map')].forEach((p) => {
+            if (p.offsetHeight && p.scrollHeight > p.clientHeight + 1) out.push((p.id || p.className) + ' is squeezed: ' + p.scrollHeight + ' > ' + p.clientHeight);
           });
-        });
-        return out;
-      });
-      expect(cut, JSON.stringify(cut)).toEqual([]);
+          const map = document.querySelector('#tdmRoot .tdm-main');
+          if (map && map.getBoundingClientRect().height < 380) out.push('the market map is under 380 px: ' + map.getBoundingClientRect().height);
+          document.querySelectorAll('#tdmCards > .tdm-card').forEach((c) => {
+            // the card hides what passes its edge (overflow: hidden)
+            const box = c.getBoundingClientRect(), bottom = box.bottom + 0.5, right = box.right + 0.5;
+            c.querySelectorAll('*').forEach((e) => {
+              const r = e.getBoundingClientRect();
+              if (!r.width || !r.height) return;
+              if (r.bottom > bottom || r.right > right) out.push(c.id + ': ' + e.tagName + ' "' + e.textContent.slice(0, 40) + '" runs past the card by ' + Math.round(Math.max(r.bottom - bottom, r.right - right)) + 'px');
+              const s = getComputedStyle(e);
+              if (/hidden|clip/.test(s.overflowX + s.overflowY) &&
+                  (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)) {
+                out.push(c.id + ': ' + e.tagName + '.' + e.className + ' "' + e.textContent.slice(0, 40) + '" is clipped');
+              }
+            });
+          });
+          return out;
+        }, width === 1920);
+        expect(cut, width + '×' + height + ' ' + JSON.stringify(cut)).toEqual([]);
+      }
+    }
+    // every line the card can add, at once, shows on it
+    await page.setViewportSize({ width: 1920, height: 950 });
+    await openDesk(page, READOUT_EVERY_LINE);
+    const all = READOUT_EVERY_LINE.readout, every = all.venues.COMPOSITE;
+    for (const t of ['BOOK CROSSED', 'BOOK ' + every.feed_label, all.auction_text, every.dedup_partial_text, every.not_live_text]) {
+      await expect(card(page).locator('.liq-body')).toContainText(t);
     }
     await openDesk(page, READOUT_LIVE);
     const look = await card(page).locator('.liq-sent').evaluate((e) => {
@@ -75,7 +91,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     expect(await card(page).locator('.tdm-src').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const text = await card(page).locator('.liq-body').innerText();
     const span = (k, side) => '$' + READOUT_LIVE.readout.venues[k].views.weighted['span_' + side + '_text'];
-    const order = ['WEIGHTED TOP-5 HEADLINE', w.side_word, w.pct_text, 'price levels per side, not timeframes',
+    const order = ['price levels per side, not timeframes', 'WEIGHTED TOP-5 HEADLINE', w.side_word, w.pct_text,
       'Bids', w.bid_text, 'Asks', w.ask_text,
       w.sentence, 'Difference: ' + w.difference_text + ' shares · Total depth: ' + w.total_text + ' shares',
       'VENUES', 'AT THE TOUCH', LIVE_COMP.touch_text,

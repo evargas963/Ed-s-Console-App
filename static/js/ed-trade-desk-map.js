@@ -493,29 +493,31 @@
     var m = S.micro, rd = m && m.readout, key = liqKey(), view = S.liqView;
     c.classList.toggle('liq-composite', key === 'COMPOSITE');
     c.querySelector('[data-liqvenue]').classList.toggle('on', key === 'COMPOSITE');
-    c.querySelectorAll('[data-liqview]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-liqview') === view); });
-    var body = c.querySelector('.liq-body'), r = rd && rd.venues[key], depth = c.querySelector('.liq-depth');
-    // the depth switch stands above a card with no number, beside the headline otherwise
-    c.insertBefore(depth, body);
+    // the depth switch, first on the card whatever it shows
+    var depth = '<div class="liq-depth"><small>Depth: price levels per side, not timeframes</small><span>' +
+      [['weighted', 'Weighted'], ['1', 'Top 1'], ['3', 'Top 3'], ['5', 'Top 5']].map(function (d) {
+        return '<button type="button" class="scbtn' + (d[0] === view ? ' on' : '') + '" data-liqview="' + d[0] + '">' + d[1] + '</button>';
+      }).join('') + '</span></div>';
+    var body = c.querySelector('.liq-body'), r = rd && rd.venues[key];
     body.classList.toggle('stale', !!(r && !r.live && r.status !== 'no_book'));
     if (!r) {
       src(c, esc(LIQ_SRC[key]) + ' · ' + (m === undefined ? 'loading…' : 'microstructure request failed'));
-      body.innerHTML = '<div class="liq-none">' + (m === undefined ? 'Loading…' : 'UNAVAILABLE<p>The book request failed</p>') + '</div>';
+      body.innerHTML = depth + '<div class="liq-none">' + (m === undefined ? 'Loading…' : 'UNAVAILABLE<p>The book request failed</p>') + '</div>';
       return;
     }
     src(c, esc(r.source_text));
-    if (r.no_number_text) { body.innerHTML = '<div class="liq-none">' + esc(r.no_number_head) + '<p>' + esc(r.no_number_text) + '</p></div>'; return; }
+    if (r.no_number_text) { body.innerHTML = depth + '<div class="liq-none">' + esc(r.no_number_head) + '<p>' + esc(r.no_number_text) + '</p></div>'; return; }
     var v = r.views[view], one = r.status === 'one_sided', tone = one ? '' : liqTone(v.zone);
-    // laid out as the other cards: the state and its number beside the switch, the chart (the
-    // bars) and its caption, the three gauges, then the facts
-    var h = '<div class="tdm-cs liq-now liq-keep"><div><div class="liq-lbl liq-keep"><span>' + (view === 'weighted' ? 'WEIGHTED TOP-5 HEADLINE' : 'TOP ' + view + ' HEADLINE') + '</span>' +
+    // laid out as the other cards: the switch, the state and its number, the chart (the bars) and
+    // its caption, the three gauges, then the facts
+    var h = depth + '<div class="liq-now liq-keep"><div class="liq-lbl liq-keep"><span>' + (view === 'weighted' ? 'WEIGHTED TOP-5 HEADLINE' : 'TOP ' + view + ' HEADLINE') + '</span>' +
       (r.touch_flag ? '<span class="liq-pill">' + esc(r.touch_flag) + '</span>' : '') +
       (r.live ? '' : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + '</span>') + '</div>' +
       (one ? '<div class="liq-hl"><span class="liq-word">ONE-SIDED</span><span class="liq-pct">-</span></div>'
         : '<div class="liq-hl" data-liqdetail title="Open the detail"><span class="liq-word ' + tone + '">' + esc(v.side_word || '-') + '</span>' +
           '<span class="liq-pct ' + tone + '">' + esc(v.pct_text || '-') + '</span>' +
           '<span class="liq-live">' + esc(v.live_text || '-') + ' live</span></div>' +
-          (v.divergence ? '<div class="liq-flag">' + esc(v.divergence) + '</div>' : '')) + '</div></div>' +
+          (v.divergence ? '<div class="liq-flag">' + esc(v.divergence) + '</div>' : '')) + '</div>' +
       // the side Schwab sent levels for fills its track; a missing side draws no bar and "-"
       '<figure class="tdm-chartbox"><div class="liq-bars">' +
       liqBar('bid', 'Bids', v.bid_text, v.bid_total, one ? v.bid_total : v.total_depth) +
@@ -544,7 +546,6 @@
       '<span class="tdm-r">NYSE + Nasdaq only — not the whole market · Book ' + esc(r.book_time_ct || '-') + '</span></div>' +
       (S.liqDetail ? liqDetail(rd, key) : '');
     body.innerHTML = h;
-    body.querySelector('.liq-now').appendChild(depth);
   }
   // paints at most once a second; the reads stay on the pushes
   function paintLiqSoon() {
