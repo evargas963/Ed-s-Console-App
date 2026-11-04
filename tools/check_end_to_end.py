@@ -26,7 +26,14 @@ The product lines a PR adds carry no patch shape:
    - in page code (`.js`, `.mjs`, the scripts of `.html`): `|| <literal>`, `?? <literal>`,
      `||=` / `??=` a literal, an empty `catch`, `.catch(() => <literal>)`.
    An except, if or with is judged when its own first line is added, not when a line is added
-   inside an old one. None stays allowed: it is a missing value served as missing.
+   inside an old one. None stays allowed: it is a missing value served as missing. One running
+   total is allowed, exactly `d[k] = d.get(k, 0) + x` (the same `d` and `k` on both sides, the
+   default the number 0, `x` not a literal 0): the sum of nothing is 0, a real value, not a
+   missing one filled in. A base plus a change has the same shape (`price[t] = price.get(t, 0)
+   + move`, whose 0 is an unknown base); no check of shapes can tell it from a sum, so rule 14's
+   review is the layer that refuses it
+   (the operator's spec v2 of 2026-11-03, an open amendment for this construct only; any other
+   default, key, mapping or use of that `.get` is still refused).
 
 The description fills BODY_SECTIONS, with `--body-file`.
 
@@ -451,12 +458,52 @@ def _call_patch(node: ast.Call) -> str | None:
     return None
 
 
+def _zero_literal(node: ast.expr) -> bool:
+    """A literal zero or empty value, signed or not (`0`, `0.0`, `-0`, `''`, `None`)."""
+    while isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        node = node.operand
+    return isinstance(node, ast.Constant) and not node.value
+
+
+def _running_totals(tree: ast.AST) -> set[int]:
+    """The `.get` calls of running totals, `d[k] = d.get(k, 0) + x`: the same mapping and key on
+    both sides, the default the number 0 (an int or float, never a bool), and `x` not a literal
+    zero or empty value (`d.get(k, 0) + 0` writes a filled-in 0)."""
+    out = set()
+    for n in ast.walk(tree):
+        if not (
+            isinstance(n, ast.Assign)
+            and len(n.targets) == 1
+            and isinstance(n.targets[0], ast.Subscript)
+            and isinstance(n.value, ast.BinOp)
+            and isinstance(n.value.op, ast.Add)
+            and isinstance(n.value.left, ast.Call)
+        ):
+            continue
+        target, call = n.targets[0], n.value.left
+        if (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "get"
+            and len(call.args) == 2
+            and not call.keywords
+            and isinstance(call.args[1], ast.Constant)
+            and type(call.args[1].value) in (int, float)
+            and call.args[1].value == 0
+            and ast.dump(call.func.value) == ast.dump(target.value)
+            and ast.dump(call.args[0]) == ast.dump(target.slice)
+            and not _zero_literal(n.value.right)
+        ):
+            out.add(id(call))
+    return out
+
+
 def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
     """The patch shapes the PR adds to a Python file."""
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
         return [(e.lineno or 1, f"does not parse: {e.msg}")]
+    totals = _running_totals(tree)
     found: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.ExceptHandler, ast.If, ast.With)):
@@ -506,7 +553,7 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
                             "a missing value replaced by a literal (a None-check ternary)",
                         )
                     )
-            elif (what := _call_patch(node)) is not None:
+            elif id(node) not in totals and (what := _call_patch(node)) is not None:
                 found.append((node.lineno, what))
     return sorted(set(found))
 
