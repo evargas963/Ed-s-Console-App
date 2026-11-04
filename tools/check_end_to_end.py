@@ -54,16 +54,16 @@ from __future__ import annotations
 
 import argparse
 import ast
+import difflib
 import io
 import re
 import subprocess
 import sys
 import tempfile
 import tokenize
-from collections import Counter
 from pathlib import Path
 
-#: the product files whose added lines are read for patch shapes
+#: the files whose patch shapes are counted and judged
 SHAPED_SUFFIXES = (".py", ".js", ".mjs", ".html")
 PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
@@ -590,14 +590,19 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
     return sorted(set(found))
 
 
-def shapes(path: str, source: str) -> list[tuple[int, str, str]]:
-    """Every patch shape in `source`, each line judged: (line, what, that line's text)."""
-    every = set(range(1, source.count("\n") + 2))
-    found = (
-        python_patches(source, every) if path.endswith(".py") else js_patches(path, source, every)
-    )
-    text = source.split("\n")
-    return [(line, what, text[line - 1].strip()) for line, what in found]
+def shapes(path: str, source: str, lines: set[int] | None = None) -> list[tuple[int, str]]:
+    """The patch shapes in `source` that touch `lines` (every line when None): (line, what)."""
+    if lines is None:
+        lines = set(range(1, source.count("\n") + 2))
+    if path.endswith(".py"):
+        return python_patches(source, lines)
+    return js_patches(path, source, lines)
+
+
+def unchanged(old: str, new: str) -> dict[int, int]:
+    """{line in `new`: its line in `old`} for each line the change leaves as it was."""
+    match = difflib.SequenceMatcher(None, old.split("\n"), new.split("\n"), autojunk=False)
+    return {b + k + 1: a + k + 1 for a, b, size in match.get_matching_blocks() for k in range(size)}
 
 
 def shapes_at(root: Path, rev: str) -> int:
@@ -610,26 +615,28 @@ def shapes_at(root: Path, rev: str) -> int:
 
 
 def violations(root: Path, base: str) -> list[str]:
-    """Each patch shape the PR brings into any file of the repository: on a line it adds, or one
-    no added line carries (an old except whose log line it removes), matched by what the line says
-    so a shape moved down the file is not new and one removed elsewhere does not pay for it."""
+    """Each patch shape the PR brings into any file of the repository: one a line it adds touches,
+    or one on a line it leaves as it was that did not hold that shape before (an old except whose
+    log line it removes), each unchanged line matched to its own place in the old file."""
     fork = _git(root, "merge-base", base, "HEAD").strip()
     print(f"patch shapes, repo wide: {shapes_at(root, fork)} -> {shapes_at(root, 'HEAD')}")
-    out = []
+    out: set[tuple[str, int, str]] = set()
     added = pr_added_lines(root, base)
     new_files = set(pr_files(root, base, "A"))
     for f in pr_files(root, base, "AMT"):
         if not f.endswith(SHAPED_SUFFIXES) or code_identical(root, base, f):
             continue
-        old_text = "" if f in new_files else _git(root, "show", f"{fork}:{f}", errors="replace")
-        was = shapes(f, old_text) if old_text else []
-        old = Counter((what, text) for _, what, text in was)
-        for line, what, text in shapes(f, pr_source(root, f)):
-            if line not in added.get(f, set()) and old[(what, text)]:
-                old[(what, text)] -= 1  # an unchanged line that held this shape already
-            else:
-                out.append(f"{f}:{line}: {what}")
-    return out
+        source = pr_source(root, f)
+        out.update((f, line, what) for line, what in shapes(f, source, added.get(f, set())))
+        old = "" if f in new_files else _git(root, "show", f"{fork}:{f}", errors="replace")
+        held = set(shapes(f, old))
+        kept = unchanged(old, source)
+        out.update(
+            (f, line, what)
+            for line, what in shapes(f, source)
+            if line in kept and (kept[line], what) not in held
+        )
+    return [f"{f}:{line}: {what}" for f, line, what in sorted(out)]
 
 
 def body_violations(body: str) -> list[str]:

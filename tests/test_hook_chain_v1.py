@@ -320,6 +320,10 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
             target,
             cross.stderr,
         )
+    own = _chain(bash("echo x > notes.md", cwd=nested), root=nested)
+    assert own.returncode == 0 and own.stderr == "", own.stderr
+    cross = _chain(bash(f'echo x > "{primary / "notes.md"}"', cwd=nested), root=nested)
+    assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, cross.stderr
 
 
 def test_6_a_dev_worktree_commits_freely_production_refuses_moves_and_masked_forms_block(

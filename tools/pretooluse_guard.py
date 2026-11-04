@@ -24,5 +24,6 @@ def production_path(target: str, base: Path, primary: Path) -> Path | None:
     resolved = checkout_path(target, base, primary)
     if resolved is None or resolved == primary.resolve():
         return None
-    device = "\0" not in str(resolved) and os.path.isreserved(resolved)  # NUL, CON: no file
+    # NUL, CON: Windows devices, no file (os.path.isreserved exists only where Windows runs)
+    device = os.name == "nt" and "\0" not in str(resolved) and os.path.isreserved(resolved)
     return None if device else resolved

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -253,14 +254,15 @@ def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
 
 def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devices_are_not():
     """The shell rail places each write destination with `production_path`, against this
-    repository's own production checkout: a redirect into static/ is refused; a device or an
-    empty name is not app code there, and placing it does not raise."""
+    repository's own production checkout: a redirect into static/ or docs/ is refused; a device
+    (`/dev/null`, and `NUL` where Windows makes it one) or an empty name is no file there, and
+    placing it does not raise."""
     primary = PLG._primary_worktree_root(ROOT) or ROOT
-    bad = PLG.production_checkout_shell_app_write_violations(
-        PLG.read("echo x > static/x.js", str(primary))
-    )
-    assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
-    for cmd in ("echo x > /dev/null", "echo x > NUL", "echo x > nul", 'echo x > ""'):
+    for cmd in ("echo x > static/x.js", "echo x > docs/x.md"):
+        bad = PLG.production_checkout_shell_app_write_violations(PLG.read(cmd, str(primary)))
+        assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
+    devices = ("echo x > NUL", "echo x > nul") if os.name == "nt" else ()
+    for cmd in ("echo x > /dev/null", 'echo x > ""', *devices):
         assert (
             PLG.production_checkout_shell_app_write_violations(PLG.read(cmd, str(primary))) == []
         ), cmd

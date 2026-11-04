@@ -70,8 +70,7 @@ def test_a_secret_after_an_added_line_starting_plus_plus_is_refused(tmp_path):
 
 def test_a_secret_in_a_file_git_quotes_after_a_skipped_file_is_refused(tmp_path):
     """git quotes a name holding a non-ASCII character; that header starts a new file, so the
-    clean file before it does not carry over. (No file is skipped any more; the name is kept so
-    its history reads on.)"""
+    clean file before it does not carry over."""
     root = _staged(tmp_path, {"tools/check_credential_leak.py": "x = 1\n", "tools/é.py": SECRET})
     assert _labels(root) == [["tools/é.py", "bearer_token"]]
 
@@ -115,7 +114,7 @@ def test_a_secret_git_would_show_otherwise_is_still_read(tmp_path, files, config
 )
 def test_only_the_skipped_path_itself_is_skipped(tmp_path, path):
     """A name holding a backslash or a trailing space, which Windows cannot hold on disk, is read
-    under its own name. (No path is skipped any more; the name is kept so its history reads on.)"""
+    under its own name."""
     root = _staged_as(
         _staged(tmp_path, {}, (("core.protectNTFS", "false"),)), path, SECRET
     )  # names Windows cannot hold on disk

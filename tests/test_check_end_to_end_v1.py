@@ -107,6 +107,42 @@ def test_a_shape_removed_elsewhere_does_not_pay_for_one_brought_in(tmp_path):
     assert cee.violations(root, "main") == ["server.py:6: an except that swallows the error"]
 
 
+def test_a_shape_fixed_in_one_function_does_not_pay_for_one_brought_into_another(tmp_path):
+    """Two excepts that read alike in one file: the PR gives the first a log line and takes the
+    second's away. The second's except line is unchanged and did not swallow before."""
+    old = (
+        "import logging\n"
+        "log = logging.getLogger()\n"
+        "def a(r):\n"
+        "    try:\n"
+        "        return r['x']\n"
+        "    except KeyError:\n"
+        "        return None\n"
+        "def b(r):\n"
+        "    try:\n"
+        "        return r['y']\n"
+        "    except KeyError:\n"
+        "        log.warning('no y')\n"
+        "        return None\n"
+    )
+    new = old.replace(
+        "    except KeyError:\n        return None\ndef b",
+        "    except KeyError:\n        log.warning('no x')\n        return None\ndef b",
+    ).replace("        log.warning('no y')\n", "")
+    root = _repo(tmp_path, {**BASE, "server.py": old})
+    _commit(root, {"server.py": new})
+    assert cee.violations(root, "main") == ["server.py:12: an except that swallows the error"]
+
+
+def test_a_shape_whose_inner_line_changes_is_judged_as_added(tmp_path):
+    """A `.get` default over three lines: the PR changes the key on the inner line, so the shape
+    is the PR's, even though its first line reads as it did."""
+    root = _repo(tmp_path, {**BASE, "app/x.py": 'v = q.get(\n    "lastPrice",\n    0,\n)\n'})
+    _commit(root, {"app/x.py": 'v = q.get(\n    "mark",\n    0,\n)\n'})
+    found = cee.violations(root, "main")
+    assert len(found) == 1 and found[0].startswith("app/x.py:1: "), found
+
+
 def test_a_shape_moved_down_by_new_lines_above_it_is_not_new(tmp_path):
     """An old `or 0` pushed down a line by an added import is the same shape, not a new one."""
     root = _repo(tmp_path, {**BASE, "app/size.py": "def n(a):\n    return a or 0\n"})

@@ -168,8 +168,10 @@ then the rule binds with no machine check.
   file's line endings kept, a new test failing on the old code, the review record), not what files
   hold, and read every file of any kind a change touches. Each tool SHAPE adds (import-linter,
   ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Open with the
-  operator, 2026-11-04, each a narrowing his own earlier decision made: `capture_main`'s import
-  (rule 13); the counts `check_locks.FREE` lets rise (size, work items, docstring style); the one
+  operator, 2026-11-04, each a narrowing an earlier decision made: `capture_main`'s import
+  (rule 13, his); the counts `check_locks.FREE` lets rise (size, work items, docstring style; the
+  agent's decision of 2026-11-01, his to reverse); ruff's own fixes judged as such in product code
+  only (`check_end_to_end.tools_fix_is_safe`, "Fix what you find"); the one
   module rule of `check_one_reader` judging product modules only (tests read Schwab's fields from
   captured data: 151 second readers counted over every file, 12 over product code); the vendored
   chart library's one patch shape, which this repository cannot fix at its source.
