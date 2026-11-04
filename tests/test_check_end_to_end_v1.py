@@ -243,6 +243,43 @@ def test_each_patch_shape_a_pr_adds_is_refused(tmp_path, path, text, what):
     assert any(what in v for v in found), found
 
 
+_TOTAL = "def total(rows):\n    sizes = {}\n    for price, size in rows:\n        {line}\n"
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["sizes[price] = sizes.get(price, 0.0) + size", "sizes[price] = sizes.get(price, 0) + size"],
+)
+def test_a_running_total_is_not_a_missing_value_filled_in(tmp_path, line):
+    """The shares summed at each price of a book (PR #722): `sizes.get(price, 0)` is the sum of
+    nothing, a real 0. The operator's spec v2 of 2026-11-03 amends the check openly for this one
+    construct."""
+    assert _found(tmp_path, {"server.py": _TOTAL.replace("{line}", line)}) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # another default stands in for a missing value
+        "sizes[price] = sizes.get(price, 1) + size",
+        "sizes[price] = sizes.get(price, False) + size",
+        # another key or mapping: not the total of the key it reads
+        "sizes[size] = sizes.get(price, 0) + size",
+        "rows[price] = sizes.get(price, 0) + size",
+        # the default used as a value, not totalled back
+        "print(sizes.get(price, 0) + size)",
+        "sizes[price] = sizes.get(price, default=0) + size",
+        # adding a literal 0 writes a filled-in 0 for a missing key
+        "sizes[price] = sizes.get(price, 0) + 0",
+        "sizes[price] = sizes.get(price, 0.0) + 0.0",
+        "sizes[price] = sizes.get(price, 0) + -0",
+    ],
+)
+def test_anything_beside_the_running_total_is_still_refused(tmp_path, line):
+    found = _found(tmp_path, {"server.py": _TOTAL.replace("{line}", line)})
+    assert any("(`.get(key, <literal>)`)" in v for v in found), found
+
+
 @pytest.mark.parametrize(
     "text",
     [
