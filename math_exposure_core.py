@@ -322,7 +322,7 @@ def exposure_books(
     priced once; any subset of expiries is then a merge_exposure_books of its groups (the full
     book, 0DTE, the front expiry, <=7 / >7 days)."""
     groups: dict[tuple[str, float | None], list] = {}
-    for c in contracts or []:
+    for c in contracts:
         groups.setdefault((c.expiry, c.days_to_expiry), []).append(c)
     return {
         k: compute_exposures_by_strike(cs, spot=spot, now=now, product=product)

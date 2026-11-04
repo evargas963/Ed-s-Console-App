@@ -242,7 +242,7 @@ def _contract_inputs(
     if strike is None or strike <= 0 or mult is None or c.side is None:
         return "invalid"
     sigma = schwab_iv_to_sigma(c.volatility)
-    if sigma is None:
+    if sigma is None or sigma <= 0:
         return "no_volatility"
     if t_years is None:
         return "no_expiry"
