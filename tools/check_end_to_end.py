@@ -85,10 +85,8 @@ def _git(root: Path, *args: str, errors: str = "strict") -> str:
         return subprocess.run(
             ["git", *args], cwd=root, capture_output=True, check=True
         ).stdout.decode("utf-8", errors)
-    except UnicodeDecodeError as e:
-        raise ToolError(f"git {' '.join(args)}: its output could not be read: {e}") from e
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        raise ToolError(f"git {' '.join(args)} failed: {e}") from e
+    except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
+        raise ToolError(f"git {' '.join(args)} failed, or its output could not be read: {e}") from e
 
 
 def pr_files(root: Path, base: str, kinds: str) -> list[str]:

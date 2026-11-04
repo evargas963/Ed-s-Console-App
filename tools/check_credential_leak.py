@@ -71,29 +71,30 @@ def _added_text(root: Path, base: str | None = None) -> str:
         if base
         else ["diff", "--cached"]
     )
-    p = subprocess.run(
-        [
-            "git",
-            "-c",
-            "core.quotePath=true",
-            *which,
-            "--unified=0",
-            "--no-color",
-            "--text",
-            "--no-textconv",
-            "--no-ext-diff",
-            "--src-prefix=a/",
-            "--dst-prefix=b/",
-        ],
-        cwd=root,
-        capture_output=True,
-    )
+    return _git(
+        root,
+        "-c",
+        "core.quotePath=true",
+        *which,
+        "--unified=0",
+        "--no-color",
+        "--text",
+        "--no-textconv",
+        "--no-ext-diff",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+    ).decode("utf-8", errors="replace")
+
+
+def _git(root: Path, *args: str, given: bytes | None = None) -> bytes:
+    """git's output, RAISING when git failed: an unread file would scan clean."""
+    p = subprocess.run(["git", *args], cwd=root, input=given, capture_output=True)
     if p.returncode != 0:
         raise DiffUnreadable(
-            f"git {' '.join(which)} exited {p.returncode}: "
+            f"git {' '.join(args)} exited {p.returncode}: "
             f"{(p.stderr.decode('utf-8', errors='replace').strip().splitlines() or [''])[0]}"
         )
-    return p.stdout.decode("utf-8", errors="replace")
+    return p.stdout
 
 
 def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[str]:
@@ -135,34 +136,23 @@ def _leaks(path: str, line: str) -> list[str]:
 def tree_leaks(root: Path = REPO, rev: str = "") -> list[str]:
     """Every secret or operator-home path on any line of any file `rev` tracks (the index when
     `rev` is empty), RAISING when git could not read it."""
-    listed = subprocess.run(
-        ["git", "ls-tree", "-r", "-z", "--name-only", rev] if rev else ["git", "ls-files", "-z"],
-        cwd=root,
-        capture_output=True,
+    listing = ("ls-tree", "-r", "-z", "--name-only", rev) if rev else ("ls-files", "-z")
+    names = [n for n in _git(root, *listing).split(b"\0") if n]
+    out = _git(
+        root, "cat-file", "--batch", given=b"".join(rev.encode() + b":" + n + b"\n" for n in names)
     )
-    if listed.returncode != 0:
-        raise DiffUnreadable(f"git could not list the tracked files: exit {listed.returncode}")
-    names = [n for n in listed.stdout.decode("utf-8", errors="replace").split("\0") if n]
-    blobs = subprocess.run(
-        ["git", "cat-file", "--batch"],
-        cwd=root,
-        input="".join(f"{rev}:{n}\n" for n in names).encode("utf-8"),
-        capture_output=True,
-    )
-    if blobs.returncode != 0:
-        raise DiffUnreadable(f"git could not read the tracked files: exit {blobs.returncode}")
     hits: list[str] = []
-    out, at = blobs.stdout, 0
+    at = 0
     for name in names:
         end = out.index(b"\n", at)
-        head = out[at:end].split()
-        if len(head) != 3:
-            raise DiffUnreadable(f"git could not read {name}: {out[at:end]!r}")
-        size = int(head[2])
+        head = out[at:end].decode("utf-8", errors="replace")
+        if head.endswith(" missing"):  # a name the index lists that git cannot read
+            raise DiffUnreadable(head)
+        size = int(head.rsplit(" ", 1)[1])
         text = out[end + 1 : end + 1 + size].decode("utf-8", errors="replace")
         at = end + 1 + size + 1
         for line in text.split("\n"):
-            hits.extend(_leaks(name, line))
+            hits.extend(_leaks(name.decode("utf-8", errors="replace"), line))
     return hits
 
 
