@@ -51,8 +51,8 @@ class OptionContract:
     strike: float | None
     #: Schwab's expirationDate as sent (time_et.time_to_expiry_years reads its time)
     expiration: Any
-    #: its calendar day (YYYY-MM-DD); "" when it was not sent as a date
-    expiry: str
+    #: its calendar day (YYYY-MM-DD); None when it was not sent as a date
+    expiry: str | None
     #: the expiration as a time (epoch seconds); None when it is not one
     expires_at: float | None
     days_to_expiry: float | None
@@ -63,8 +63,7 @@ class OptionContract:
     multiplier: float | None
     #: Schwab's volatility, a percent
     volatility: float | None
-    #: Schwab's -999 volatility: the contract's Greeks have no value
-    greeks_void: bool
+    #: each Greek: None when not sent, -999, or the contract's volatility was sent as -999
     gamma: float | None
     delta: float | None
     theta: float | None
@@ -76,7 +75,7 @@ class OptionContract:
     non_standard: bool
     #: every other field, each number by rule 2, for the screen only
     listing: Mapping[str, Any] = field(repr=False)
-    #: the fields Schwab sent: the screen shows a field only when it was sent
+    #: the fields Schwab sent: the screen shows a field Schwab did not send only with a value
     sent: frozenset[str] = field(repr=False, default=frozenset())
 
 
@@ -115,7 +114,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         side=side if side in ("CALL", "PUT") else None,
         strike=schwab_number(raw.get("strikePrice")),
         expiration=expiration,
-        expiry=expiration[:10] if isinstance(expiration, str) and len(expiration) >= 10 else "",
+        expiry=expiration[:10] if isinstance(expiration, str) and len(expiration) >= 10 else None,
         expires_at=_expires_at(expiration, raw.get("symbol")),
         days_to_expiry=schwab_number(raw.get("daysToExpiration")),
         settlement=raw.get("settlementType"),
@@ -123,7 +122,6 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         volume=schwab_count(raw.get("totalVolume")),
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
         volatility=schwab_number(vol_sent),
-        greeks_void=void,
         **{g: _greek(raw, g, void) for g in GREEKS},
         gamma_time=schwab_number(times.get("gamma")) if isinstance(times, dict) else None,
         non_standard=raw.get("nonStandard") is True,
@@ -152,9 +150,10 @@ def listed_expiries(answer: Mapping[str, Any], today: date) -> list[date]:
 
 
 def chain_row(c: OptionContract, gamma_shown: bool) -> dict[str, Any]:
-    """The contract as the chain screens show it, under Schwab's field names, each field Schwab
-    sent and no other: the gamma only when it is a value at the price the chain was priced at
-    (`gamma_shown`, math_exposure_core.gamma_reported)."""
+    """The contract as the chain screens show it, under Schwab's field names: each field Schwab
+    sent, and each value the record holds (a streamed count or a carried Greek), and no other;
+    the gamma only when it is a value at the price the chain was priced at (`gamma_shown`,
+    math_exposure_core.gamma_reported)."""
     read = {
         "symbol": c.symbol,
         "putCall": c.side,
@@ -170,4 +169,4 @@ def chain_row(c: OptionContract, gamma_shown: bool) -> dict[str, Any]:
         "gamma": c.gamma if gamma_shown else None,
         **{g: getattr(c, g) for g in GREEKS if g != "gamma"},
     }
-    return {**c.listing, **{k: v for k, v in read.items() if k in c.sent}}
+    return {**c.listing, **{k: v for k, v in read.items() if k in c.sent or v is not None}}

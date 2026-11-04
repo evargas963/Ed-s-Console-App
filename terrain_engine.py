@@ -473,7 +473,8 @@ def atm_sigma_by_expiry(
         if c.side not in sides or d < sides[c.side][0]:
             sides[c.side] = (d, schwab_iv_to_sigma(c.volatility))
     out: dict[tuple[str, float | None], float | None] = {}
-    for k, s in sorted(legs.items(), key=lambda kv: kv[0][0]):
+    # a contract with no expiry date keeps its own key (None), last
+    for k, s in sorted(legs.items(), key=lambda kv: (kv[0][0] is None, kv[0][0])):
         sig = [s[x][1] for x in ("CALL", "PUT") if x in s]
         out[k] = (sig[0] + sig[1]) / 2.0 if len(sig) == 2 and None not in sig else None
     return out
@@ -790,7 +791,9 @@ def same_day_levels(
     t_close = time_to_expiry_years(today, now, product=option_close_product(ticker))
     if not t_close:
         return blank
-    front = min((c.expiry for c in contracts if c.expiry and c.expiry >= today), default=None)
+    front = min(
+        (c.expiry for c in contracts if c.expiry is not None and c.expiry >= today), default=None
+    )
     if front is None:
         return blank
     parsed: list = []
@@ -881,6 +884,7 @@ def compute_terrain(
     # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
     books = exposure_books(contracts, spot=spot, now=_terrain_now, product=product)
     exposures, diag = merge_exposure_books(books.values())
+    dated = {k: b for k, b in books.items() if k[0] is not None}
     _dtes = [d for (_e, d) in books if d is not None]
     _front_dte = min(_dtes, default=None)
     if not exposures:
@@ -950,9 +954,9 @@ def compute_terrain(
 
     charm_by_expiry = {}
     iv_by_expiry = {}
-    expiry_rows: dict[str, list] = {}
+    expiry_rows: dict[str | None, list] = {}
     for c in contracts:
-        # no readable date keeps its row under "", so its side is unknown
+        # no readable date keeps its row under None, so its side is unknown
         expiry_rows.setdefault(c.expiry, []).append(c)
     for exp, rows in expiry_rows.items():
         charm_by_expiry[exp] = compute_charm_by_strike(
@@ -1022,20 +1026,21 @@ def compute_terrain(
         charm_by_strike=charm_by_strike,
         charm_by_expiry=charm_by_expiry,
         iv_by_expiry=iv_by_expiry,
+        # each expiry's own: a contract with no expiry date is in the book, under no expiry
         pcr_by_expiry={
             e: put_call_oi_ratio(book)
-            for (e, _d), (book, _diag) in sorted(books.items(), key=lambda kv: kv[0][0])
+            for (e, _d), (book, _diag) in sorted(dated.items(), key=lambda kv: kv[0][0])
         },
         atm_iv_pct_by_expiry={
             e: None if s is None else s * 100.0
             for (e, _d), s in atm_sigma_by_expiry(contracts, spot).items()
-            if e
+            if e is not None
         },
         pcr_volume_by_expiry={
-            e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()
+            e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in dated.items()
         },
         pcr_all=put_call_oi_ratio(exposures),
         pcr_volume_all=put_call_volume_ratio(exposures),
-        expiries=sorted({e for (e, _d) in books}),
-        expiry_dte={e: d for (e, d) in books},
+        expiries=sorted({e for (e, _d) in dated}),
+        expiry_dte={e: d for (e, d) in dated},
     )

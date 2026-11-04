@@ -1398,16 +1398,7 @@ def _contract_ticker(sym: str) -> str | None:
 
 
 #: a quote's values, carried together: its greeks with their volatility and Schwab's time
-_QUOTE_GREEKS = (
-    "gamma",
-    "delta",
-    "theta",
-    "vega",
-    "rho",
-    "volatility",
-    "greeks_void",
-    "gamma_time",
-)
+_QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility", "gamma_time")
 _QUOTE_COUNTS = ("open_interest", "volume")
 
 
@@ -1452,15 +1443,12 @@ def _previous_counts(memory, stored, price, product):
     """The last reported contract per symbol: each count above zero and the greeks of its newest
     quote that reported them (_carried). `memory` is newer than `stored`."""
     by_sym: dict[str, OptionContract] = {}
-    for part in (stored, memory):
-        if part is None:  # no capture stored before it, or nothing published yet
-            continue
-        for c in part:
-            if c.symbol:
-                by_sym[c.symbol] = _carried(
-                    c, by_sym.get(c.symbol), price, product, lambda count: not _positive(count)
-                )
-    return list(by_sym.values())
+    for c in [*(stored or ()), *(memory or ())]:
+        if c.symbol:
+            by_sym[c.symbol] = _carried(
+                c, by_sym.get(c.symbol), price, product, lambda count: not _positive(count)
+            )
+    return list(by_sym.values()) or None
 
 
 def _publish_levels(
@@ -1796,7 +1784,7 @@ def _on_chain(
     if contracts is None:
         _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
         return
-    _wait_to_price(tk, DELIVERED, read_chain(contracts), ts, spot)
+    _wait_to_price(tk, DELIVERED, contracts, ts, spot)
 
 
 def _wait_to_price(
@@ -1857,7 +1845,8 @@ def _price_chain(
             if captures:
                 _publish_levels(tk, captures=captures)
             return
-        _publish_levels(tk, contracts, fetched_ts, chain_spot=spot)
+        # read here, on the pricing thread: a whole chain, never on the event loop
+        _publish_levels(tk, read_chain(contracts), fetched_ts, chain_spot=spot)
         _terrain_refresh_last_error.pop(tk, None)
     except Exception as e:  # kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
@@ -2642,7 +2631,7 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
     or malformed expiry is counted, never given a column."""
     by_expiry: dict[str, list] = {}
     for (exp, _dte), book in (books or {}).items():
-        if len(exp) == 10:
+        if exp is not None:
             by_expiry.setdefault(exp, []).append(book)
     per_expiry = {
         e: (bs[0][0] if len(bs) == 1 else merge_exposure_books(bs)[0])

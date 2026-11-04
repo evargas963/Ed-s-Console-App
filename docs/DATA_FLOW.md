@@ -470,7 +470,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   the captures) reads the Greeks it sets. Each contract's fields are read once, by
   `option_contract.read_contract` (rule 2 for each: -999, text and NaN are no value; a -999
   volatility leaves the contract's Greeks no value), where the chain arrives: the console's
-  `_on_chain`, the stored-capture loader `last_capture_per_day`, and the daemon's option rule
+  pricing thread (`_price_chain`, off the event loop), the stored-capture loader `last_capture_per_day`, and the daemon's option rule
   (`Daemon._took_chain`); every calculator, the carry rules, the gamma surface and /api/chain
   (`option_contract.chain_row`) take the record. Enforced by: `tests/test_canonical_gex_input_validity_v1.py`,
   `tools/check_one_reader.py`. The Greeks (gamma, delta, theta, vega, rho,
