@@ -17,7 +17,8 @@ RULES = (
     "2. We use Schwab's data, as Schwab sends it; a value is derived only where Schwab does not"
     " send it.\n"
     "3. This is a financial app: answer each question by what a bank would do.\n"
-    "Before any edit of product code (app/, static/, server.py), answer in one line each: Which"
+    "Before any edit of product code (every file tools/check_end_to_end.is_product counts), answer"
+    " in one line each: Which"
     " Schwab field, or which registered derived value? What is the simplest direct wire? What"
     " would a bank do?"
 )
