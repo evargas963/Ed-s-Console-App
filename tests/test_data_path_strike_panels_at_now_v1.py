@@ -18,6 +18,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 from app.options.order_flow import streaming as ofs
+from option_contract import read_chain
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads(
@@ -50,7 +51,7 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
             tk,
             captures=[
                 {
-                    "contracts": CRWD.chain,
+                    "contracts": read_chain(CRWD.chain),
                     "ts_utc": at,
                     "spot": CRWD.spot,
                     "et_date": CRWD.now.date().isoformat(),

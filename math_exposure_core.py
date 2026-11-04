@@ -6,15 +6,12 @@ from the chain and position structure.
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, replace
+from datetime import datetime
 
-from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from time_et import EQUITY_OPTIONS, MIN_TIME_TO_EXPIRY_YEARS, time_to_expiry_years
-
-# Schwab options API missing-greek sentinel (documented wire value).
-MISSING_GREEK_SENTINEL: float = -999.0
+from numeric_contract import float_finite_or_none
+from option_contract import OptionContract
+from time_et import time_to_expiry_years
 
 
 def schwab_iv_to_sigma(iv: float | None) -> float | None:
@@ -34,51 +31,6 @@ def book_net_gex(exposures: dict) -> float | None:
     strike carried a valid gamma."""
     vals = [v for b in exposures.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None]
     return sum(vals) if vals else None
-
-
-def vendor_greeks_unavailable(iv: float | None) -> bool:
-    """True when Schwab marks the contract's Greeks as having no value: volatility == -999."""
-    return iv is not None and iv == MISSING_GREEK_SENTINEL
-
-
-def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
-    """True when Schwab sent a value for this Greek: present and not Schwab's -999 no-value code (on
-    the Greek itself or on the contract's volatility). A gamma is judged by gamma_reported."""
-    return (
-        value is not None and value != MISSING_GREEK_SENTINEL and not vendor_greeks_unavailable(iv)
-    )
-
-
-def gamma_reported(ct: dict, price: float | None, *, product: str = EQUITY_OPTIONS) -> bool:
-    """True when the contract's gamma is a value: greek_reported, and not more than twice the
-    largest gamma any option can have at its own volatility, `price` and time left
-    (largest_gamma). The one test of a gamma; unknown inputs leave it as sent."""
-    gamma = schwab_number(ct.get("gamma"))
-    if not greek_reported(gamma, iv=ct.get("volatility")):
-        return False
-    largest = largest_gamma(ct, price, product=product)
-    return largest is None or gamma <= 2.0 * largest
-
-
-def largest_gamma(ct: dict, price: float | None, *, product: str = EQUITY_OPTIONS) -> float | None:
-    """The largest gamma any option can have at the contract's own volatility, `price` and the time
-    left when Schwab computed its gamma (greeksTime.gamma): the at-the-money peak
-    1 / (S * sigma * sqrt(2 * pi * T)). None when one of them is not known, and in the last ten
-    minutes, where time_to_expiry_years gives its floor instead of the time left."""
-    sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))
-    times = ct.get("greeksTime")
-    stamp = schwab_number(times.get("gamma")) if isinstance(times, dict) else None
-    if price is None or price <= 0 or sigma is None or stamp is None or stamp <= 0:
-        return None
-    t = time_to_expiry_years(
-        ct.get("expirationDate"),
-        datetime.fromtimestamp(stamp / 1000.0, tz=UTC),
-        settlement_type=ct.get("settlementType"),
-        product=product,
-    )
-    if t is None or t <= MIN_TIME_TO_EXPIRY_YEARS:
-        return None
-    return 1.0 / (price * sigma * math.sqrt(2.0 * math.pi * t))
 
 
 #: Bucket fields priced from Schwab's gamma / delta / volatility -> the counts of contracts on the
@@ -175,7 +127,7 @@ def _strike_bucket(exposures_by_strike: dict[float, dict], strike: float) -> dic
 
 
 def compute_exposures_by_strike(
-    contracts: list[dict],
+    contracts: list[OptionContract],
     *,
     spot: float | None = None,
     now: datetime,
@@ -208,28 +160,24 @@ def compute_exposures_by_strike(
     # is memoised per distinct expiry string.
     _tte_cache: dict[tuple, float | None] = {}
 
-    def _tte_memo(ct: dict) -> float | None:
-        key = (str(ct.get("expirationDate")), ct.get("settlementType"))
+    def _tte_memo(c: OptionContract) -> float | None:
+        key = (str(c.expiration), c.settlement)
         if key not in _tte_cache:
             _tte_cache[key] = time_to_expiry_years(
                 key[0], now=now, settlement_type=key[1], product=product
             )
         return _tte_cache[key]
 
-    for ct in contracts:
+    for c in contracts:
         total += 1
-        strike = schwab_number(ct.get("strikePrice"))
-        if strike is None:
+        strike = c.strike
+        if strike is None or c.side is None:
             continue
-
-        oi = schwab_count(ct.get("openInterest"))  # -999 / text / negative: unreported
-        side = (ct.get("putCall") or "").upper()
-        if side not in ("CALL", "PUT"):
-            continue
-
+        oi = c.open_interest
         b = _strike_bucket(exposures, strike)
+        side = c.side
         leg = side.lower()
-        vol = schwab_count(ct.get("totalVolume"))
+        vol = c.volume
         if vol is None:
             b["volume_unreported"] += 1
         else:
@@ -243,10 +191,7 @@ def compute_exposures_by_strike(
             prev = b[f"{leg}_oi"]
             b[f"{leg}_oi"] = oi if prev is None else float(prev) + oi
 
-        # a negative multiplier is not a contract size (rule 2); 0 is taken as sent
-        mult = schwab_number(ct.get("multiplier"))
-        if mult is not None and mult < 0:
-            mult = None
+        mult = c.multiplier
         if oi is None or mult is None:  # the contract's exposure terms are not known
             missing += oi is not None
             b[f"{leg}_oi_mult_unreported"] += 1
@@ -254,11 +199,9 @@ def compute_exposures_by_strike(
                 b[f"{leg}_{g}_unreported"] += 1
             continue
 
-        delta = schwab_number(ct.get("delta"))
-        gamma = schwab_number(ct.get("gamma"))
-        iv = schwab_number(ct.get("volatility"))
-        delta_ok = greek_reported(delta, iv=ct.get("volatility"))  # raw: a -999 IV voids its greeks
-        gamma_ok = gamma_reported(ct, spot, product=product)
+        delta, gamma, iv = c.delta, c.gamma, c.volatility
+        delta_ok = delta is not None
+        gamma_ok = gamma is not None
         if not delta_ok or not gamma_ok:
             missing += 1
         if oi > 0:  # open interest 0 adds a known 0 whatever its Greeks
@@ -283,11 +226,8 @@ def compute_exposures_by_strike(
                 )  # $-GEX per 1% spot move
             # exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna), per
             # vol point; vanna is the same for a call and a put at a strike and expiry.
-            _iv_ok = (
-                iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-            )
-            _T = _tte_memo(ct)
-            if _iv_ok and _T is not None and _T > 0:
+            _T = _tte_memo(c)
+            if iv is not None and iv > 0 and _T is not None and _T > 0:
                 from math_levels import bs_vanna as _bsv
 
                 _sig = schwab_iv_to_sigma(iv)
@@ -336,23 +276,18 @@ def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
 
 
 def exposure_books(
-    contracts: list[dict],
+    contracts: list[OptionContract],
     *,
     spot: float | None,
     now: datetime,
     product: str = "EQO",
 ) -> dict[tuple[str, float | None], tuple[dict[float, dict], ExposureDiagnostics]]:
-    """compute_exposures_by_strike once per (expiration date, days to
-    expiry) group. Every contract is priced once; any subset of expiries is then a
-    merge_exposure_books of its groups (the full book, 0DTE, the front expiry, <=7 / >7 days)."""
+    """compute_exposures_by_strike once per (expiry, days to expiry) group. Every contract is
+    priced once; any subset of expiries is then a merge_exposure_books of its groups (the full
+    book, 0DTE, the front expiry, <=7 / >7 days)."""
     groups: dict[tuple[str, float | None], list] = {}
-    for ct in contracts or []:
-        if isinstance(ct, dict):
-            key = (
-                str(ct.get("expirationDate") or "")[:10],
-                schwab_number(ct.get("daysToExpiration")),
-            )
-            groups.setdefault(key, []).append(ct)
+    for c in contracts:
+        groups.setdefault((c.expiry, c.days_to_expiry), []).append(c)
     return {
         k: compute_exposures_by_strike(cs, spot=spot, now=now, product=product)
         for k, cs in groups.items()
@@ -392,59 +327,52 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
 _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
-#: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
-#: A newer streamed open interest or volume replaces the chain's. Gamma, delta, and volatility
-#: do not: those are the quote the sweep stored, one service for every contract. `total_volume`
-#: is how a volume-only tick reaches the column: _per_strike and the exposure book both read
-#: the contract's `totalVolume`.
+#: streamed-state key (app.options.order_flow.state, read by schwab_count) -> the record field it
+#: replaces. A newer streamed open interest or volume replaces the chain's. Gamma, delta, and
+#: volatility do not: those are the quote the sweep stored, one service for every contract.
 _STREAMED_COUNT_FIELDS: tuple[tuple[str, str], ...] = (
-    ("open_interest", "openInterest"),
-    ("total_volume", "totalVolume"),
+    ("open_interest", "open_interest"),
+    ("total_volume", "volume"),
 )
 
 
 def overlay_streamed_contract_fields(
-    contracts: list[dict],
+    contracts: list[OptionContract],
     streamed_by_symbol: dict[str, dict],
     chain_received_ts: float | None,
-) -> tuple[list[dict], int]:
+) -> tuple[list[OptionContract], int]:
     """A contract's streamed open interest and volume onto the chain, matched by `symbol`.
     Gamma, delta, and volatility stay the quote the sweep stored. For open interest and volume
     the receive times decide: a streamed field (`<field>_ts_recv`) received after the chain
     (`chain_received_ts`) replaces the chain's; one received before it does not. A chain with
     no receive time is replaced by every streamed open interest and volume.
 
-    Pure: `contracts` and its dicts are never mutated; only a contract that gets a field is
-    copied. Returns (new_contracts, overlaid_count).
+    Pure: a contract that gets a field is a new record, every other the same one. Returns
+    (new_contracts, overlaid_count).
     """
     if not contracts:
         return [], 0
     if not streamed_by_symbol:
         return list(contracts), 0
-    out: list[dict] = []
+    out: list[OptionContract] = []
     overlaid = 0
-    for ct in contracts:
-        sym = ct.get("symbol") if isinstance(ct, dict) else None
-        streamed = streamed_by_symbol.get(sym) if sym else None
-        if not streamed:
-            out.append(ct)
-            continue
-        new_ct = None
-        for streamed_key, chain_key in _STREAMED_COUNT_FIELDS:
-            val = streamed.get(streamed_key)
-            if val is None:
-                continue
-            rx = streamed.get(f"{streamed_key}_ts_recv")
-            if chain_received_ts is not None and (rx is None or rx <= chain_received_ts):
-                continue
-            if new_ct is None:
-                new_ct = dict(ct)
-            new_ct[chain_key] = val
-        if new_ct is not None:
-            overlaid += 1
-            out.append(new_ct)
-        else:
-            out.append(ct)
+    for c in contracts:
+        streamed = streamed_by_symbol.get(c.symbol) if c.symbol else None
+        newer = {
+            name: streamed[key]
+            for key, name in _STREAMED_COUNT_FIELDS
+            if streamed
+            and streamed.get(key) is not None
+            and (
+                chain_received_ts is None
+                or (
+                    streamed.get(f"{key}_ts_recv") is not None
+                    and streamed[f"{key}_ts_recv"] > chain_received_ts
+                )
+            )
+        }
+        overlaid += bool(newer)
+        out.append(replace(c, **newer) if newer else c)
     return out, overlaid
 
 

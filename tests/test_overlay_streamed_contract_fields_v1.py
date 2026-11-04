@@ -5,6 +5,7 @@ decides which open interest or volume is newer. Pure function: no network, no ca
 from __future__ import annotations
 
 from math_exposure_core import overlay_streamed_contract_fields
+from option_contract import read_contract
 
 #: the chain's receive time in these tests; a streamed field after it is newer
 CHAIN_RX = 1_000.0
@@ -25,7 +26,7 @@ def _contract(symbol, **fields):
         "openInterest": 100,
     }
     base.update(fields)
-    return base
+    return read_contract(base)
 
 
 def _newer(**fields):
@@ -62,10 +63,10 @@ def test_open_interest_is_overlaid_and_a_greek_is_not():
     streamed = {"A": _newer(gamma=0.05, delta=0.55, open_interest=250)}
     out, n = overlay_streamed_contract_fields(contracts, streamed, CHAIN_RX)
     assert n == 1
-    assert out[0]["gamma"] == 0.01
-    assert out[0]["delta"] == 0.40
-    assert out[0]["openInterest"] == 250
-    assert out[0]["strikePrice"] == 580.0, "fields not in the overlay are preserved"
+    assert out[0].gamma == 0.01
+    assert out[0].delta == 0.40
+    assert out[0].open_interest == 250
+    assert out[0].strike == 580.0, "fields not in the overlay are preserved"
 
 
 def test_the_input_contract_dict_is_never_mutated():
@@ -73,8 +74,8 @@ def test_the_input_contract_dict_is_never_mutated():
     contracts = [original]
     out, n = overlay_streamed_contract_fields(contracts, {"A": _newer(open_interest=250)}, CHAIN_RX)
     assert n == 1
-    assert original["openInterest"] == 100, "the caller's original dict must be untouched"
-    assert out[0]["openInterest"] == 250
+    assert original.open_interest == 100, "the caller's original record must be untouched"
+    assert out[0].open_interest == 250
     assert out[0] is not original
 
 
@@ -84,12 +85,12 @@ def test_a_streamed_gamma_leaves_the_chain_and_a_volume_replaces_it():
     out, n = overlay_streamed_contract_fields(contracts, {"A": _newer(gamma=0.07)}, CHAIN_RX)
     assert n == 0
     assert out[0] is contracts[0]
-    assert out[0]["gamma"] == 0.01
+    assert out[0].gamma == 0.01
     out, n = overlay_streamed_contract_fields(contracts, {"A": _newer(total_volume=900)}, CHAIN_RX)
     assert n == 1
-    assert out[0]["totalVolume"] == 900
-    assert out[0]["gamma"] == 0.01
-    assert out[0]["openInterest"] == 100
+    assert out[0].volume == 900
+    assert out[0].gamma == 0.01
+    assert out[0].open_interest == 100
 
 
 def test_only_the_matching_symbol_is_copied_others_stay_the_original_object():
@@ -118,7 +119,7 @@ def test_a_streamed_value_from_before_the_chain_never_overrides_it():
     out, n = overlay_streamed_contract_fields(contracts, streamed, CHAIN_RX)
     assert n == 0
     assert out[0] is contracts[0]
-    assert (out[0]["gamma"], out[0]["openInterest"], out[0]["totalVolume"]) == (0.01, 100, 7)
+    assert (out[0].gamma, out[0].open_interest, out[0].volume) == (0.01, 100, 7)
     old = {"A": {"open_interest": 90, "open_interest_ts_recv": CHAIN_RX - day}}
     out, n = overlay_streamed_contract_fields(contracts, old, CHAIN_RX)
     assert n == 0 and out[0] is contracts[0]
@@ -128,7 +129,7 @@ def test_a_contract_with_no_symbol_field_is_untouched_never_raises():
     # institutional-synthetic-ok: exercising the missing-'symbol'-key edge case needs a
     # contract that specifically lacks it -- a real captured chain's own contracts always
     # carry one, so this fail-closed shape cannot be sourced from tests/fixtures/.
-    contracts = [{"strikePrice": 580.0, "putCall": "CALL"}]
+    contracts = [read_contract({"strikePrice": 580.0, "putCall": "CALL"})]
     out, n = overlay_streamed_contract_fields(contracts, {"A": _newer(gamma=0.5)}, CHAIN_RX)
     assert n == 0
     assert out[0] is contracts[0]

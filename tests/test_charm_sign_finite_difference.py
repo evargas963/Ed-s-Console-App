@@ -19,6 +19,7 @@ import math
 import pytest
 
 from math_levels import bs_charm
+from option_contract import read_chain
 
 SIGMA = 0.20
 K = 100.0
@@ -108,7 +109,7 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
     # a captured chain cannot pin call_vanna == put_vanna at equal OI.
     call = dict(base, putCall="CALL")
     put = dict(base, putCall="PUT")
-    per, _ = compute_exposures_by_strike([call, put], spot=98.0, now=now)
+    per, _ = compute_exposures_by_strike(read_chain([call, put]), spot=98.0, now=now)
     b = per[100.0]
     assert b["call_vanna"] != 0.0, "call vanna did not compute"
     assert abs(b["call_vanna"] - b["put_vanna"]) < 1e-9, (
@@ -153,7 +154,7 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     from math_levels import bs_vanna
     from time_et import time_to_expiry_years
 
-    per_pct, _ = compute_exposures_by_strike([one(20.0)], spot=98.0, now=now)
+    per_pct, _ = compute_exposures_by_strike(read_chain([one(20.0)]), spot=98.0, now=now)
     v_pct = per_pct[100.0]["call_vanna"]
     assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
     assert schwab_iv_to_sigma(20.0) == 0.20 and schwab_iv_to_sigma(0.20) == 0.002

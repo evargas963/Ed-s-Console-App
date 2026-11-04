@@ -37,6 +37,7 @@ from math_levels import (
     compute_gamma_flip_v2,
     compute_gamma_profile,
 )
+from option_contract import read_chain
 from terrain_read import build_terrain_read
 from time_et import ET
 
@@ -70,7 +71,7 @@ def _chain(span: float, spot: float = 100.0, n: int = 41):
                     "expirationDate": "2027-07-16T00:00:00.000+00:00",
                 }
             )
-    return out
+    return read_chain(out)
 
 
 def test_trusted_requires_the_measured_convergence_span():

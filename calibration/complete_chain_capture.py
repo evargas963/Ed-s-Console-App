@@ -33,6 +33,7 @@ from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from live_price_rows import price_row
 from numeric_contract import schwab_number
+from option_contract import read_chain
 from schwab_client import (
     GREEK_FIELDS,
     QUOTES_BATCH_MAX,
@@ -767,9 +768,9 @@ def last_capture_per_day(
 ) -> list[dict[str, Any]]:
     """The last capture of each of the newest `days` market days (newest first) -- the close --
     each as {et_date, ts_utc, spot, spot_ts, spot_from_chain, basis, contracts} with every expiry of
-    that capture. `spot` is the chain's one spot with its trade time `spot_ts` (`spot_from_chain`
-    true); a capture written without one gives its nearest expiry's underlyingPrice, `spot_ts`
-    None and `spot_from_chain` false.
+    that capture, its contracts read once (option_contract.read_chain). `spot` is the chain's one
+    spot with its trade time `spot_ts` (`spot_from_chain` true); a capture written without one
+    gives its nearest expiry's underlyingPrice, `spot_ts` None and `spot_from_chain` false.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
     view); `before_ts` only captures taken before it."""
     tk = ticker_storage_key(ticker)
@@ -819,7 +820,7 @@ def last_capture_per_day(
                     "spot_ts": spot_ts,
                     "spot_from_chain": from_chain,
                     "basis": rows[0][4],
-                    "contracts": [c for r in rows for c in decode_json_blob(r[5])],
+                    "contracts": read_chain(c for r in rows for c in decode_json_blob(r[5])),
                 }
             )
         return out

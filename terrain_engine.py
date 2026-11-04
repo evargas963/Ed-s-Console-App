@@ -40,6 +40,7 @@ from math_levels import (
     merge_charm_maps,
     pick_charm_wall_strikes,
 )
+from option_contract import OptionContract
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
 from time_et import ET, option_close_product, time_to_expiry_years
 
@@ -366,27 +367,21 @@ def strike_window(strikes, centre, scope: str, shift: int = 0) -> tuple[int, int
     return lo, lo + n - 1, ks[c]
 
 
-def chain_ladder(contracts, spot) -> tuple[list[dict], int]:
+def chain_ladder(
+    contracts: list[OptionContract], spot, shown: list[dict]
+) -> tuple[list[dict], int]:
     """One expiry's chain as the ladder draws it, and how many contracts it could not place (no
     strike, or a putCall other than CALL/PUT). Strikes high to low; per strike one row per listed
-    contract index (a second contract at one strike and side gets its own row); each contract's
-    numbers read by rule 2 (-999, text, NaN absent); `call_itm` / `put_itm` against `spot` (None
-    without one); `spot` marks the first row of the strike nearest spot."""
-    from numeric_contract import schwab_number
-
+    contract index (a second contract at one strike and side gets its own row), each contract as
+    `shown` (option_contract.chain_row, in the order of `contracts`); `call_itm` / `put_itm`
+    against `spot` (None without one); `spot` marks the first row of the strike nearest spot."""
     by_k: dict[float, dict[str, list]] = {}
     unplaced = 0
-    for c in contracts or []:
-        k = schwab_number(c.get("strikePrice"))
-        side = {"CALL": "call", "PUT": "put"}.get(str(c.get("putCall") or "").upper())
-        if k is None or side is None:
+    for c, row in zip(contracts, shown, strict=True):
+        if c.strike is None or c.side is None:
             unplaced += 1
             continue
-        shown = {
-            f: (schwab_number(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
-            for f, v in c.items()
-        }
-        by_k.setdefault(k, {"call": [], "put": []})[side].append(shown)
+        by_k.setdefault(c.strike, {"call": [], "put": []})[c.side.lower()].append(row)
     spot_k = nearest_strike(by_k, spot)
     rows = []
     for k in sorted(by_k, reverse=True):
@@ -404,17 +399,6 @@ def chain_ladder(contracts, spot) -> tuple[list[dict], int]:
                 }
             )
     return rows, unplaced
-
-
-def _dte_of(ct: object) -> float | None:
-    """Days to expiration, or None when the contract does not say.
-
-    None cannot be compared to 7 by accident — a caller must decide what unknown means,
-    which for a maturity SPLIT is "belongs to neither side".
-    """
-    from numeric_contract import schwab_number
-
-    return schwab_number(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
 
 
 def compute_wall_value_area(
@@ -470,38 +454,35 @@ def compute_wall_value_area(
 
 
 def atm_sigma_by_expiry(
-    contracts: list[dict], spot: float
+    contracts: list[OptionContract], spot: float
 ) -> dict[tuple[str, float | None], float | None]:
-    """Each expiry's ATM implied vol as a fraction, keyed like exposure_books ((expirationDate,
-    daysToExpiration)): the mean of the call and the put IV, each at its side's strike nearest
+    """Each expiry's ATM implied vol as a fraction, keyed like exposure_books ((expiry, days to
+    expiry)): the mean of the call and the put IV, each at its side's strike nearest
     spot. Both legs or None: one side's IV never stands in for the mean,
     and a leg whose nearest contract has no IV from Schwab (-999, or 0: no sigma) has none --
     the next strike's IV never stands in for it. Schwab `volatility` is a percent, converted by
     schwab_iv_to_sigma."""
     from math_exposure_core import schwab_iv_to_sigma
-    from numeric_contract import schwab_number
 
     legs: dict[tuple[str, float | None], dict[str, tuple[float, float | None]]] = {}
     for c in contracts:
-        if not isinstance(c, dict):
+        sides = legs.setdefault((c.expiry, c.days_to_expiry), {})
+        if c.strike is None or c.side is None:
             continue
-        key = (str(c.get("expirationDate") or "")[:10], _dte_of(c))
-        sides = legs.setdefault(key, {})
-        strike = schwab_number(c.get("strikePrice"))
-        side = str(c.get("putCall") or "").upper()
-        if strike is None or side not in ("CALL", "PUT"):
-            continue
-        d = abs(strike - float(spot))
-        if side not in sides or d < sides[side][0]:
-            sides[side] = (d, schwab_iv_to_sigma(schwab_number(c.get("volatility"))))
+        d = abs(c.strike - float(spot))
+        if c.side not in sides or d < sides[c.side][0]:
+            sides[c.side] = (d, schwab_iv_to_sigma(c.volatility))
     out: dict[tuple[str, float | None], float | None] = {}
-    for k, s in sorted(legs.items(), key=lambda kv: kv[0][0]):
+    # a contract with no expiry date keeps its own key (None), last
+    for k, s in sorted(legs.items(), key=lambda kv: (kv[0][0] is None, kv[0][0])):
         sig = [s[x][1] for x in ("CALL", "PUT") if x in s]
         out[k] = (sig[0] + sig[1]) / 2.0 if len(sig) == 2 and None not in sig else None
     return out
 
 
-def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> dict | None:
+def compute_implied_one_day_move(
+    contracts: list[OptionContract], spot: float | None
+) -> dict | None:
     """The institutional sigma band: EM_1d = S x sigma_ATM x sqrt(1/252).
 
     THE STANDARD, named: SpotGamma — whose levels product ships on Bloomberg — treats the
@@ -525,11 +506,7 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     # A contract that does not state its DTE is dropped BEFORE the min, so an all-unreadable
     # chain yields None here (no front expiry).
     # the first expiry at least one day out: a same-day expiry's IV prices hours, not a day
-    _dtes = [
-        d
-        for d in (_dte_of(c) for c in contracts if isinstance(c, dict))
-        if d is not None and d >= 1
-    ]
+    _dtes = [d for c in contracts if (d := c.days_to_expiry) is not None and d >= 1]
     front = min(_dtes, default=None)
     if front is None:
         return None
@@ -794,17 +771,9 @@ SAME_DAY_LEVELS = (
 )
 
 
-def _listed_expiry_day(ct: dict) -> str | None:
-    """Schwab's expirationDate, the calendar day, or None when it was not sent as text."""
-    raw = ct.get("expirationDate")
-    if not isinstance(raw, str) or len(raw) < 10:
-        return None
-    return raw[:10]
-
-
 def same_day_levels(
     ticker: str,
-    contracts: list[dict] | None,
+    contracts: list[OptionContract] | None,
     spot: float | None,
     *,
     now: datetime,
@@ -822,41 +791,30 @@ def same_day_levels(
     t_close = time_to_expiry_years(today, now, product=option_close_product(ticker))
     if not t_close:
         return blank
-    front = None
-    for ct in contracts:
-        if not isinstance(ct, dict):
-            continue
-        exp = _listed_expiry_day(ct)
-        if exp is None or exp < today:
-            continue
-        if front is None or exp < front:
-            front = exp
+    front = min(
+        (c.expiry for c in contracts if c.expiry is not None and c.expiry >= today), default=None
+    )
     if front is None:
         return blank
     parsed: list = []
-    priced: list[dict] = []
-    repriced: list[dict] = []
-    for ct in contracts:
-        if not isinstance(ct, dict) or _listed_expiry_day(ct) != front:
+    priced: list[OptionContract] = []
+    repriced: list[OptionContract] = []
+    for c in contracts:
+        if c.expiry != front:
             continue
-        copied = dict(ct)
-        # gamma and delta below are ours, not Schwab's: nothing of Schwab's times them
-        copied.pop("greeksTime", None)
-        repriced.append(copied)
-        row = _contract_inputs(ct, now, t_years=t_close)
+        row = _contract_inputs(c, now, t_years=t_close)
         gamma = delta = None
         if isinstance(row, tuple):
             _strike, _oi, _mult, t_years, sigma, sign = row
             gamma = bs_gamma(float(spot), _strike, t_years, sigma)
             delta = bs_delta(float(spot), _strike, t_years, sigma, call=sign > 0)
         if gamma is None or delta is None:
-            copied["gamma"] = None
-            copied["delta"] = None
-            continue
-        copied["gamma"] = gamma
-        copied["delta"] = delta
-        parsed.append(row)
-        priced.append(copied)
+            gamma = delta = None
+        ours = replace(c, gamma=gamma, delta=delta)
+        repriced.append(ours)
+        if gamma is not None:
+            parsed.append(row)
+            priced.append(ours)
     if not repriced:
         return blank
     books = exposure_books(repriced, spot=spot, now=now)
@@ -897,7 +855,7 @@ def same_day_levels(
 
 
 def compute_terrain(
-    ticker: str, contracts: list[dict] | None, spot: float | None, *, now: datetime
+    ticker: str, contracts: list[OptionContract] | None, spot: float | None, *, now: datetime
 ) -> TerrainSnapshot:
     """Full terrain for one ticker. Fails closed — never invents a level.
 
@@ -925,6 +883,7 @@ def compute_terrain(
     # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
     books = exposure_books(contracts, spot=spot, now=_terrain_now, product=product)
     exposures, diag = merge_exposure_books(books.values())
+    dated = {k: b for k, b in books.items() if k[0] is not None}
     _dtes = [d for (_e, d) in books if d is not None]
     _front_dte = min(_dtes, default=None)
     if not exposures:
@@ -995,11 +954,9 @@ def compute_terrain(
     charm_by_expiry = {}
     iv_by_expiry = {}
     expiry_rows: dict[str | None, list] = {}
-    for ct in contracts:
-        if not isinstance(ct, dict):
-            continue
+    for c in contracts:
         # no readable date keeps its row under None, so its side is unknown
-        expiry_rows.setdefault(_listed_expiry_day(ct), []).append(ct)
+        expiry_rows.setdefault(c.expiry, []).append(c)
     for exp, rows in expiry_rows.items():
         charm_by_expiry[exp] = compute_charm_by_strike(
             rows, float(spot), now=_terrain_now, product=product
@@ -1068,20 +1025,21 @@ def compute_terrain(
         charm_by_strike=charm_by_strike,
         charm_by_expiry=charm_by_expiry,
         iv_by_expiry=iv_by_expiry,
+        # each expiry's own: a contract with no expiry date is in the book, under no expiry
         pcr_by_expiry={
             e: put_call_oi_ratio(book)
-            for (e, _d), (book, _diag) in sorted(books.items(), key=lambda kv: kv[0][0])
+            for (e, _d), (book, _diag) in sorted(dated.items(), key=lambda kv: kv[0][0])
         },
         atm_iv_pct_by_expiry={
             e: None if s is None else s * 100.0
             for (e, _d), s in atm_sigma_by_expiry(contracts, spot).items()
-            if e
+            if e is not None
         },
         pcr_volume_by_expiry={
-            e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()
+            e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in dated.items()
         },
         pcr_all=put_call_oi_ratio(exposures),
         pcr_volume_all=put_call_volume_ratio(exposures),
-        expiries=sorted({e for (e, _d) in books}),
-        expiry_dte={e: d for (e, d) in books},
+        expiries=sorted({e for (e, _d) in dated}),
+        expiry_dte={e: d for (e, d) in dated},
     )

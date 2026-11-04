@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from math_exposure_core import MISSING_GREEK_SENTINEL
+from numeric_contract import SCHWAB_NO_VALUE
 
 
 def test_missing_greek_sentinel_constant_value_is_negative_999_point_0():
-    assert pytest.approx(-999.0) == MISSING_GREEK_SENTINEL
+    assert pytest.approx(-999.0) == SCHWAB_NO_VALUE

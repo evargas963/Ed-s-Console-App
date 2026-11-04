@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 
 from math_levels import GAMMA_FLIP_TRUSTED
+from option_contract import OptionContract, read_chain, read_contract
 from terrain_engine import (
     TERRAIN_SCHEMA_VERSION,
     WALL_BREACHED,
@@ -24,8 +25,8 @@ from tests.real_chains import CRWD, MRVL, SPY_0DTE
 NOW = SPY_0DTE.now
 
 
-def _real_chain() -> tuple[list, float]:
-    return SPY_0DTE.chain, SPY_0DTE.spot
+def _real_chain() -> tuple[list[OptionContract], float]:
+    return read_chain(SPY_0DTE.chain), SPY_0DTE.spot
 
 
 def test_fails_closed_on_every_missing_input() -> None:
@@ -34,8 +35,8 @@ def test_fails_closed_on_every_missing_input() -> None:
         ("", None, None),
         ("SPY", None, 743.0),
         ("SPY", [], 743.0),
-        ("SPY", [{"strikePrice": 740}], None),
-        ("SPY", [{"strikePrice": 740}], 0.0),
+        ("SPY", [read_contract({"strikePrice": 740})], None),
+        ("SPY", [read_contract({"strikePrice": 740})], 0.0),
     ):
         snap = compute_terrain(ticker, chain, spot, now=NOW)
         assert snap.regime == "UNAVAILABLE"
@@ -65,7 +66,7 @@ def test_levels_are_real_strikes_or_absent() -> None:
     """
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
-    strikes = {float(c["strikePrice"]) for c in chain if c.get("strikePrice") is not None}
+    strikes = {c.strike for c in chain if c.strike is not None}
     served = snap.to_dict() | price_relations(snap.to_dict(), spot).to_dict()
 
     for name in (
@@ -130,14 +131,16 @@ def test_implied_one_day_move_matches_the_named_formula() -> None:
     spot = 700.0
     # institutional-synthetic-ok: formula verification REQUIRES known inputs — the exactness
     # assertion below is meaningless on a live chain; the real-chain test covers the live shape.
-    chain = [
-        {"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0, "daysToExpiration": 1},
-        {"putCall": "PUT", "strikePrice": 700.0, "volatility": 24.0, "daysToExpiration": 1},
-        # a farther expiry with wild IV must be IGNORED — front expiry only
-        {"putCall": "CALL", "strikePrice": 700.0, "volatility": 80.0, "daysToExpiration": 30},
-        # far-from-money same-expiry must lose to the ATM pair
-        {"putCall": "PUT", "strikePrice": 650.0, "volatility": 99.0, "daysToExpiration": 1},
-    ]
+    chain = read_chain(
+        [
+            {"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0, "daysToExpiration": 1},
+            {"putCall": "PUT", "strikePrice": 700.0, "volatility": 24.0, "daysToExpiration": 1},
+            # a farther expiry with wild IV must be IGNORED — front expiry only
+            {"putCall": "CALL", "strikePrice": 700.0, "volatility": 80.0, "daysToExpiration": 30},
+            # far-from-money same-expiry must lose to the ATM pair
+            {"putCall": "PUT", "strikePrice": 650.0, "volatility": 99.0, "daysToExpiration": 1},
+        ]
+    )
     em = compute_implied_one_day_move(chain, spot)
     assert em is not None
     sigma = (0.20 + 0.24) / 2.0
@@ -156,14 +159,32 @@ def test_implied_move_fails_closed_without_usable_iv() -> None:
     assert compute_implied_one_day_move(None, 700.0) is None
     assert (
         compute_implied_one_day_move(
-            [{"putCall": "CALL", "strikePrice": 700.0, "volatility": -5.0, "daysToExpiration": 1}],
+            read_chain(
+                [
+                    {
+                        "putCall": "CALL",
+                        "strikePrice": 700.0,
+                        "volatility": -5.0,
+                        "daysToExpiration": 1,
+                    }
+                ]
+            ),
             700.0,
         )
         is None
     ), "negative IV must not produce a band"
     assert (
         compute_implied_one_day_move(
-            [{"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0, "daysToExpiration": 1}],
+            read_chain(
+                [
+                    {
+                        "putCall": "CALL",
+                        "strikePrice": 700.0,
+                        "volatility": 20.0,
+                        "daysToExpiration": 1,
+                    }
+                ]
+            ),
             None,
         )
         is None
@@ -177,29 +198,31 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
     from terrain_engine import atm_sigma_by_expiry
 
     # institutional-synthetic-ok: the rule needs a known ATM contract with no IV beside a priced one
-    chain = [
-        {
-            "putCall": "CALL",
-            "strikePrice": 700.0,
-            "volatility": -999.0,
-            "daysToExpiration": 1,
-            "expirationDate": "2026-10-02",
-        },
-        {
-            "putCall": "CALL",
-            "strikePrice": 705.0,
-            "volatility": 30.0,
-            "daysToExpiration": 1,
-            "expirationDate": "2026-10-02",
-        },
-        {
-            "putCall": "PUT",
-            "strikePrice": 700.0,
-            "volatility": 24.0,
-            "daysToExpiration": 1,
-            "expirationDate": "2026-10-02",
-        },
-    ]
+    chain = read_chain(
+        [
+            {
+                "putCall": "CALL",
+                "strikePrice": 700.0,
+                "volatility": -999.0,
+                "daysToExpiration": 1,
+                "expirationDate": "2026-10-02",
+            },
+            {
+                "putCall": "CALL",
+                "strikePrice": 705.0,
+                "volatility": 30.0,
+                "daysToExpiration": 1,
+                "expirationDate": "2026-10-02",
+            },
+            {
+                "putCall": "PUT",
+                "strikePrice": 700.0,
+                "volatility": 24.0,
+                "daysToExpiration": 1,
+                "expirationDate": "2026-10-02",
+            },
+        ]
+    )
     assert atm_sigma_by_expiry(chain, 700.0) == {("2026-10-02", 1): None}
 
 
@@ -208,7 +231,7 @@ def test_real_chain_carries_the_sigma_band() -> None:
     chain has none; the CRWD chain (9 days out, valued at its capture) has one."""
     chain, spot = _real_chain()
     assert compute_terrain("SPY", chain, spot, now=NOW).implied_1d_move is None
-    snap = compute_terrain("CRWD", CRWD.chain, CRWD.spot, now=CRWD.now)
+    snap = compute_terrain("CRWD", read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
     em = snap.implied_1d_move
     assert em is not None, "the CRWD chain must yield a band (its ATM IV is present)"
     s = CRWD.spot
@@ -222,15 +245,15 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
     applied to the front expiry only (the implied move); it is one function for every expiry, and
     the implied move reads its front entry. Real MRVL full chain, 20 expiries, valued at its
     capture (tests/real_chains.py)."""
-    chain = MRVL.chain
+    chain = read_chain(MRVL.chain)
     snap = compute_terrain("MRVL", chain, MRVL.spot, now=MRVL.now)
     by_exp = snap.atm_iv_pct_by_expiry
-    assert list(by_exp) == sorted({c["expirationDate"][:10] for c in chain})
+    assert list(by_exp) == sorted({c.expiry for c in chain})
     assert list(snap.pcr_by_expiry) == list(by_exp), "both card lines run nearest expiry first"
     assert all(v is None or 0 < v < 1000 for v in by_exp.values())
     em = snap.implied_1d_move
-    front = min(c["daysToExpiration"] for c in chain if c["daysToExpiration"] >= 1)
-    front_exp = {c["expirationDate"][:10] for c in chain if c["daysToExpiration"] == front}.pop()
+    front = min(c.days_to_expiry for c in chain if c.days_to_expiry >= 1)
+    front_exp = {c.expiry for c in chain if c.days_to_expiry == front}.pop()
     assert em is not None and by_exp[front_exp] == em["iv_pct_atm"]
 
 
@@ -386,10 +409,10 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
     from math_probabilities import compute_pin_score
 
-    wide, spot, now = MRVL.chain, MRVL.spot, MRVL.now
-    front = min(c["expirationDate"][:10] for c in wide)
-    chain = [c for c in wide if c["expirationDate"].startswith(front)]
-    assert len({c["expirationDate"][:10] for c in wide}) > 1
+    wide, spot, now = read_chain(MRVL.chain), MRVL.spot, MRVL.now
+    front = min(c.expiry for c in wide)
+    chain = [c for c in wide if c.expiry.startswith(front)]
+    assert len({c.expiry for c in wide}) > 1
     terrain = compute_terrain("MRVL", wide, spot, now=now)
     pin = terrain.absolute_gamma_strike
     assert pin is not None

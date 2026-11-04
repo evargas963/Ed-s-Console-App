@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
+from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
 from tests.real_chains import SPY_0DTE
@@ -15,7 +16,7 @@ from tests.real_chains import SPY_0DTE
 
 def test_gamma_at_spot_is_schwabs_gamma_summed_over_the_book():
     """SPY's same-day chain of 2026-10-07 12:32 ET, valued at its capture (tests/real_chains.py)."""
-    chain, spot, now = SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now
+    chain, spot, now = read_chain(SPY_0DTE.chain), SPY_0DTE.spot, SPY_0DTE.now
     snap = compute_terrain("SPY", chain, spot, now=now)
     per, _ = compute_exposures_by_strike(chain, spot=spot, now=now)
     schwab = sum(v for b in per.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None)

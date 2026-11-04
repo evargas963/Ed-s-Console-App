@@ -6,13 +6,21 @@ from pathlib import Path
 
 import pytest
 
-from terrain_engine import chain_ladder
+from option_contract import chain_row, read_chain
+from terrain_engine import chain_ladder as _chain_ladder
 
 FX = json.loads(
     (
         Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json"
     ).read_text(encoding="utf-8")
 )
+
+
+def chain_ladder(raw, spot):
+    """The ladder /api/chain serves for the raw contracts: each read once, shown by chain_row."""
+    contracts = read_chain(raw)
+    shown = [chain_row(c) for c in contracts]
+    return _chain_ladder(contracts, spot, shown)
 
 
 @pytest.fixture(autouse=True)

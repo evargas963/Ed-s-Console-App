@@ -23,17 +23,18 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
+from option_contract import read_chain
 from stream_spine import options_quote_msg
 from tests.real_chains import CRWD
 from time_et import ET
 
 _SPOT = CRWD.spot
-_CONTRACTS = [dict(ct) for ct in CRWD.chain]
+_CONTRACTS = read_chain(CRWD.chain)
 TK = server.ticker_storage_key("CRWD")
 _AT = CRWD.now  # RTH, at the capture
 _CLOSED = datetime(2026, 10, 7, 22, 0, tzinfo=ET)  # after Schwab's 20:00 post-market end
-CALLS = [c["symbol"] for c in _CONTRACTS if c["putCall"] == "CALL"]
-PUTS = [c["symbol"] for c in _CONTRACTS if c["putCall"] == "PUT"]
+CALLS = [c.symbol for c in _CONTRACTS if c.side == "CALL"]
+PUTS = [c.symbol for c in _CONTRACTS if c.side == "PUT"]
 
 
 @pytest.fixture(autouse=True)

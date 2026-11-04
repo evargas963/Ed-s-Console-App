@@ -19,6 +19,7 @@ from pathlib import Path
 
 import time_et
 from math_levels import bs_charm, compute_charm_by_strike, pick_charm_wall_strikes
+from option_contract import read_chain
 
 #: a REAL same-day-expiry SPY chain captured 2026-10-07 12:32 ET, valued at its own capture time
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_2026_10_07.json"
@@ -27,7 +28,7 @@ NOW = datetime.fromtimestamp(_DATA["ts_utc"], time_et.ET)
 
 
 def _load_real_chain() -> tuple[list, float]:
-    return _DATA["chain"], float(_DATA["spot"])
+    return read_chain(_DATA["chain"]), float(_DATA["spot"])
 
 
 def _norm_cdf(x: float) -> float:

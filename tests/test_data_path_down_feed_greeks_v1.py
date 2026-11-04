@@ -6,6 +6,7 @@ from datetime import datetime
 
 import app.options.order_flow.state as ofls
 import server
+from option_contract import read_chain
 from tests.test_one_levels_producer_v1 import (
     _A,
     _CONTRACTS,
@@ -40,7 +41,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
         _daemon(held=[_A], socket_open=False, at=at.timestamp())
         _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
         server._publish_levels(
-            TK, _CONTRACTS, at.timestamp() - 120.0, chain_spot=(_SPOT, _T), now=at
+            TK, read_chain(_CONTRACTS), at.timestamp() - 120.0, chain_spot=(_SPOT, _T), now=at
         )
         out[at.hour] = _cached()
     rth, closed = out[11], out[22]

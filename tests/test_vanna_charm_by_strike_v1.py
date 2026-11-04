@@ -21,12 +21,13 @@ from pathlib import Path
 import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
 from tests.real_chains import CRWD
 
 _SPOT = CRWD.spot
-_CONTRACTS = [dict(ct) for ct in CRWD.chain]
+_CONTRACTS = read_chain(CRWD.chain)
 _QUOTE = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json").read_text(
         encoding="utf-8"

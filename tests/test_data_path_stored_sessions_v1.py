@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from math_levels import compute_charm_by_strike, pick_charm_wall_strikes
+from option_contract import read_chain
 from stream_spine import STREAM_SCHEMA_SQL
 from time_et import ET, INDEX_OPTIONS, valuation_instant
 
@@ -115,7 +116,7 @@ def test_a_stored_chain_is_priced_on_the_stored_market_answers(tmp_path):
     chain = json.loads(CHAIN.read_text(encoding="utf-8"))
     now = valuation_instant(datetime.fromtimestamp(chain["ts_utc"], ET), INDEX_OPTIONS)
     book = compute_charm_by_strike(
-        chain["contracts"], chain["spot"], now=now, product=INDEX_OPTIONS
+        read_chain(chain["contracts"]), chain["spot"], now=now, product=INDEX_OPTIONS
     )
     assert book and all(b["net_charm"] is not None for b in book.values())
     assert json.loads(run.stdout.splitlines()[-1]) == list(pick_charm_wall_strikes(book))

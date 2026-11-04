@@ -25,6 +25,7 @@ import live_price_rows
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
+from option_contract import read_chain
 from tests.capture_store import store_capture
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET
@@ -67,7 +68,7 @@ def _publish(tk: str, chain, delivered: datetime) -> None:
     row = ofs._price_rows[tk] = live_price_rows.price_row(tk, quote["ts_recv"])
     server._publish_levels(
         tk,
-        [dict(c) for c in chain.chain],
+        read_chain(chain.chain),
         delivered.timestamp(),
         chain_spot=(row["spot"], row["trade_ts"]),
         now=delivered,
@@ -203,13 +204,13 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
         )
         server._publish_levels(
             "SPY",
-            [dict(c) for c in sunday["chain"]],
+            read_chain(sunday["chain"]),
             sunday["ts_utc"],
             chain_spot=(friday["spot"], friday["ts_utc"]),
             now=at,
         )
         priced = {
-            c["symbol"]: c for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]
+            c.symbol: c for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]
         }
         same_day = server.terrain_answer("SPY", at)["same_day"]
     finally:
@@ -222,7 +223,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
                 (friday["ts_utc"],),
             )
     assert len(blanked) == 46
-    assert {s: priced[s]["openInterest"] for s in blanked} == {s: close_oi[s] for s in blanked}
+    assert {s: priced[s].open_interest for s in blanked} == {s: close_oi[s] for s in blanked}
     # no option market trades on Sunday, so there is no same-day close to reprice to: no 0DTE level
     # is made from the next expiry
     assert same_day and all(v is None for v in same_day.values()), same_day

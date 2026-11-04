@@ -21,6 +21,7 @@ from pathlib import Path
 import calibration.complete_chain_capture as cch
 import server
 import time_et
+from option_contract import OptionContract, read_chain
 from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
@@ -36,6 +37,10 @@ _SPOT = float(_FX["full"]["underlying"]["last"])
 
 def _contracts(payload: dict) -> list[dict]:
     return flatten_chain_contracts(payload)
+
+
+def _records(payload: dict) -> list[OptionContract]:
+    return read_chain(_contracts(payload))
 
 
 def _levels(snap) -> dict:
@@ -63,8 +68,8 @@ def test_the_fixture_is_the_full_chain_and_its_window():
 def test_the_window_gives_different_levels_than_the_full_chain():
     """The measurement itself: same code, same spot, same instant (the capture's) -- only the
     strikes differ."""
-    full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=_CAPTURED))
-    window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=_CAPTURED))
+    full = _levels(compute_terrain("MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED))
+    window = _levels(compute_terrain("MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED))
     differing = {k for k in full if full[k] != window[k]}
     assert differing, (full, window)
     assert full["gamma_flip"] is not None, "the full chain has a flip for MRVL"
@@ -92,8 +97,8 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
         )
     server._publish_levels(tk, captures=cch.last_capture_per_day(db, tk, 2))
     published = server.terrain_cache_get(tk, _CAPTURED.timestamp()) or {}
-    full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=_CAPTURED))
-    window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=_CAPTURED))
+    full = _levels(compute_terrain("MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED))
+    window = _levels(compute_terrain("MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED))
     got = {k: published.get(k) for k in full}
     assert got == full, (got, full)
     assert got != window

@@ -7,6 +7,7 @@ import math
 import pytest
 
 from numeric_contract import schwab_count, schwab_number
+from option_contract import read_chain
 from tests.real_chains import CRWD
 
 
@@ -38,7 +39,7 @@ def test_a_reported_zero_open_interest_is_reported_not_missing():
     from math_exposure_core import compute_exposures_by_strike
 
     assert sum(1 for c in CRWD.chain if c["openInterest"] == 0) == 25
-    books, _ = compute_exposures_by_strike(CRWD.chain, spot=CRWD.spot, now=CRWD.now)
+    books, _ = compute_exposures_by_strike(read_chain(CRWD.chain), spot=CRWD.spot, now=CRWD.now)
     assert sum(b["oi_unreported"] for b in books.values()) == 0
 
 
@@ -49,7 +50,7 @@ def test_minus_999_open_interest_is_unreported():
 
     chain = copy.deepcopy(CRWD.chain)
     chain[0]["openInterest"] = -999
-    books, _ = compute_exposures_by_strike(chain, spot=CRWD.spot, now=CRWD.now)
+    books, _ = compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)
     assert books[chain[0]["strikePrice"]]["oi_unreported"] == 1
 
 
@@ -63,7 +64,7 @@ def test_a_strike_whose_open_interest_is_all_zero_shows_zero_not_absent():
         by_strike.setdefault(c["strikePrice"], []).append(c["openInterest"])
     all_zero = [k for k, ois in by_strike.items() if all(o == 0 for o in ois)]
     assert all_zero
-    books, _ = compute_exposures_by_strike(CRWD.chain, spot=CRWD.spot, now=CRWD.now)
+    books, _ = compute_exposures_by_strike(read_chain(CRWD.chain), spot=CRWD.spot, now=CRWD.now)
     for k in all_zero:
         assert books[k]["call_oi"] in (0.0, None) and books[k]["put_oi"] in (0.0, None)
         for key in ("net_gex_1pct", "net_dex_dollars", "net_vanna"):

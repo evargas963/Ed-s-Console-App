@@ -7,6 +7,7 @@ from datetime import datetime
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server as srv
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, publish_daemon_rows
 from tests.real_chains import CRWD
@@ -20,9 +21,7 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
     tk = "ZZLVSPOT"
     now = RTH_INSTANT
     at = datetime.fromtimestamp(now, ET)
-    published = compute_terrain(
-        tk, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now
-    ).to_dict()
+    published = compute_terrain(tk, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now).to_dict()
     with srv._terrain_cache_lock:
         srv._terrain_cache[tk] = published | {"computed_ts_utc": now}
     try:

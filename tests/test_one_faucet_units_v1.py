@@ -13,13 +13,16 @@ import pytest
 
 import time_et
 from math_exposure_core import compute_exposures_by_strike, compute_net_vanna
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
 from tests.real_chains import CRWD, SPY_0DTE
 
 
 def _book():
-    per, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
+    per, _ = compute_exposures_by_strike(
+        read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=SPY_0DTE.now
+    )
     return per
 
 
@@ -40,15 +43,13 @@ def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
     """On a chain with no same-day expiry (CRWD, 9 days out), a contract that does not state its
     expiry must not create a same-day share (it was pooled into the 0DTE book)."""
     chain, spot = CRWD.chain, CRWD.spot
-    base = compute_terrain("CRWD", chain, spot, now=CRWD.now).zero_dte_gamma_share_pct
+    base = compute_terrain("CRWD", read_chain(chain), spot, now=CRWD.now).zero_dte_gamma_share_pct
     top = max(chain, key=lambda c: c.get("gamma") or 0.0)  # a contract that carries gamma
     orphan = {k: v for k, v in top.items() if k not in ("expirationDate", "daysToExpiration")}
     orphan["openInterest"] = 100_000
     assert base == 0.0
-    assert (
-        compute_terrain("CRWD", chain + [orphan], spot, now=CRWD.now).zero_dte_gamma_share_pct
-        == base
-    )
+    with_orphan = read_chain(chain + [orphan])
+    assert compute_terrain("CRWD", with_orphan, spot, now=CRWD.now).zero_dte_gamma_share_pct == base
 
 
 def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
@@ -107,6 +108,8 @@ def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
     from math_exposure_core import bucket_metric
 
     next_day = SPY_0DTE.now + timedelta(days=1)
-    per, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=next_day)
+    per, _ = compute_exposures_by_strike(
+        read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=next_day
+    )
     assert [bucket_metric(b, "net_vanna") for b in per.values()] == [None] * len(per)
     assert compute_net_vanna(per, SPY_0DTE.spot) is None

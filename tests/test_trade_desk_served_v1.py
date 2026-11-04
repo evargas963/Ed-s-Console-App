@@ -19,6 +19,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS
 from instrument_identity import ticker_storage_key
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
+from option_contract import read_chain
 from terrain_engine import WALL_BREACHED, WALL_CONTAINS, compute_terrain, price_relations
 from terrain_read import level_side
 
@@ -175,7 +176,7 @@ def _spy_close_at(msg):
     from tests.real_chains import SPY_CLOSE
 
     published = compute_terrain(
-        "SPY", [dict(c) for c in SPY_CLOSE.chain], SPY_CLOSE.spot, now=SPY_CLOSE.now
+        "SPY", read_chain(SPY_CLOSE.chain), SPY_CLOSE.spot, now=SPY_CLOSE.now
     ).to_dict()
     assert (published["put_wall"], published["call_wall"]) == (764.0, 765.0)
     price = msg["native"]["LAST_PRICE"]
@@ -290,7 +291,7 @@ def _priced(tk, chain, spot, ts_utc):
                 "spot_ts": None,
                 "spot_from_chain": False,
                 "basis": CAPTURE_BASIS,
-                "contracts": [dict(c) for c in chain],
+                "contracts": read_chain(chain),
             }
         ],
     )

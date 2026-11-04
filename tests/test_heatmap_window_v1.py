@@ -22,6 +22,7 @@ import pytest
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
+from option_contract import read_chain
 from terrain_engine import SCOPE_ROWS, strike_window
 from time_et import ET
 
@@ -59,7 +60,7 @@ def _published():
     _price(_SPOT)
     assert (
         server._publish_levels(
-            TK, copy.deepcopy(_CHAIN), _AT.timestamp(), chain_spot=(_SPOT, _AT.timestamp()), now=_AT
+            TK, read_chain(_CHAIN), _AT.timestamp(), chain_spot=(_SPOT, _AT.timestamp()), now=_AT
         )
         is not None
     )
@@ -152,7 +153,7 @@ def test_a_new_publication_serves_the_new_number():
     chain = copy.deepcopy(_CHAIN)
     next(c for c in chain if c["symbol"] == target["symbol"])["openInterest"] += 1000
     server._publish_levels(
-        TK, chain, _AT.timestamp() + 1, chain_spot=(_SPOT, _AT.timestamp()), now=_AT
+        TK, read_chain(chain), _AT.timestamp() + 1, chain_spot=(_SPOT, _AT.timestamp()), now=_AT
     )
     now = _heat(scope="all")
     assert oi(now) == oi(first) + 1000

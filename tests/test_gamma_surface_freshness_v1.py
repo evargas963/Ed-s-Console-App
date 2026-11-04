@@ -21,6 +21,7 @@ import live_market_plane as lmp
 import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
+from option_contract import read_chain
 from server import get_options_gamma_surface, ticker_storage_key
 from time_et import ET
 
@@ -66,7 +67,7 @@ def published():
     for tk in (_ON, _OFF):
         server._publish_levels(
             tk,
-            [dict(c) for c in _CRWD["chain"]],
+            read_chain(_CRWD["chain"]),
             _AT.timestamp(),
             chain_spot=(_CRWD["spot"], _AT.timestamp()),
             now=_AT,

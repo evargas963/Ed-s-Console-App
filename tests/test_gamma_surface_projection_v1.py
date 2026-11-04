@@ -20,6 +20,7 @@ from math_exposure_core import (
     strike_oi_legs,
     strike_volume_legs,
 )
+from option_contract import OptionContract, read_chain
 from server import project_gamma_surface
 from tests.real_chains import MRVL
 
@@ -35,15 +36,25 @@ def _exp_key(ct: dict) -> str:
 E1, E2 = sorted({_exp_key(ct) for ct in MRVL.chain})[:2]  # 2026-10-09, 2026-10-16
 
 
-def _chain() -> list[dict]:
+def _raw_chain() -> list[dict]:
+    """The two expiries' contracts as the sweep delivers them (an induced condition changes one
+    of these, then reads it)."""
     return [dict(ct) for ct in MRVL.chain if _exp_key(ct) in (E1, E2)]
 
 
-def _slice(chain: list[dict], exp: str) -> list[dict]:
-    return [ct for ct in chain if _exp_key(ct) == exp]
+def _raw_slice(exp: str) -> list[dict]:
+    return [ct for ct in _raw_chain() if _exp_key(ct) == exp]
 
 
-def _surface(chain: list[dict], spot: float) -> dict:
+def _chain() -> list[OptionContract]:
+    return read_chain(_raw_chain())
+
+
+def _slice(chain: list[OptionContract], exp: str) -> list[OptionContract]:
+    return [ct for ct in chain if ct.expiry == exp]
+
+
+def _surface(chain: list[OptionContract], spot: float) -> dict:
     """The grid as _publish_levels builds it: shaped from the chain's exposure_books."""
     return project_gamma_surface(chain, exposure_books(chain, spot=spot, now=NOW))
 
@@ -61,10 +72,10 @@ def test_fixture_preconditions_are_real_two_expiry_input():
     """Two distinct native expirations with OI-bearing rows on both."""
     chain = _chain()
     assert (E1, E2) == ("2026-10-09", "2026-10-16")
-    assert sum(1 for ct in _slice(chain, E1) if (ct.get("openInterest") or 0) > 0) > 0
-    assert sum(1 for ct in _slice(chain, E2) if (ct.get("openInterest") or 0) > 0) > 0
+    assert sum(1 for ct in _slice(chain, E1) if (ct.open_interest or 0) > 0) > 0
+    assert sum(1 for ct in _slice(chain, E2) if (ct.open_interest or 0) > 0) > 0
     # the native stamp is the ISO form production feeds the projection, not a bare date
-    assert "T" in str(chain[0]["expirationDate"])
+    assert "T" in str(chain[0].expiration)
 
 
 # A. EXACT CELL EQUALITY — a surface cell equals the canonical faucet on that expiry's slice.
@@ -138,9 +149,7 @@ def test_F_input_projection_coverage():
     # native DTE carried onto the column header, not inferred
     native_dte = {
         exp: next(
-            int(ct["daysToExpiration"])
-            for ct in _slice(chain, exp)
-            if ct.get("daysToExpiration") is not None
+            int(ct.days_to_expiry) for ct in _slice(chain, exp) if ct.days_to_expiry is not None
         )
         for exp in (E1, E2)
     }
@@ -153,10 +162,10 @@ def test_F_input_projection_coverage():
 #    rows are REAL rows with their native expirationDate broken (the only field under test).
 def test_G_malformed_expiry_excluded_not_reassigned():
     clean_chain = _chain()
-    probe = max(
-        _slice(clean_chain, E1), key=lambda ct: ct.get("openInterest") or 0
-    )  # the heaviest real row
-    chain = clean_chain + [dict(probe, expirationDate=None), dict(probe, expirationDate="bad")]
+    probe = max(_raw_slice(E1), key=lambda ct: ct.get("openInterest") or 0)  # the heaviest real row
+    chain = clean_chain + read_chain(
+        [dict(probe, expirationDate=None), dict(probe, expirationDate="bad")]
+    )
     surface = _surface(chain, SPOT)
     assert surface["contracts_excluded_malformed_expiry"] == 2
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
@@ -175,8 +184,8 @@ def test_H_spx_identity_unchanged():
     assert ticker_storage_key("$SPX") == "$SPX"
     # an SPXW-rooted contract projects without any symbol rewriting: a REAL vendor row re-rooted
     # to an SPXW symbol and strike, which is the only thing this identity check reads.
-    probe = max(_slice(_chain(), E1), key=lambda ct: ct.get("openInterest") or 0)
-    spxw = [dict(probe, symbol="SPXW  261009C07690000", strikePrice=7690)]
+    probe = max(_raw_slice(E1), key=lambda ct: ct.get("openInterest") or 0)
+    spxw = read_chain([dict(probe, symbol="SPXW  261009C07690000", strikePrice=7690)])
     surface = _surface(spxw, 7690.0)
     assert surface["expirations"] and surface["strikes"] == [7690.0]
 
@@ -201,13 +210,13 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
     # institutional-synthetic-ok: a single real CALL row, re-struck to an otherwise-unused
     # strike so no PUT row exists there -- the minimal input this identity check needs.
     """
-    chain = _chain()
-    probe = dict(max(_slice(chain, E1), key=lambda ct: ct.get("openInterest") or 0))
+    chain = _raw_chain()
+    probe = dict(max(_raw_slice(E1), key=lambda ct: ct.get("openInterest") or 0))
     lonely_strike = max(ct["strikePrice"] for ct in chain) + 1000.0
     probe["strikePrice"] = lonely_strike
     probe["symbol"] = "MRVL  261009C" + str(int(lonely_strike * 1000)).zfill(8)
     probe["putCall"] = "CALL"
-    surface = _surface([probe], SPOT)
+    surface = _surface(read_chain([probe]), SPOT)
     row = [r for r in surface["cells"] if r["strike"] == lonely_strike][0]
     assert row["contracts"][0]["call"] == probe["symbol"]
     assert row["contracts"][0]["put"] is None
@@ -216,10 +225,10 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
 def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_wrong_value():
     """A contract missing its own `symbol` field must never silently borrow a strike-mate's
     symbol or fall back to a stale cached value -- it must report None."""
-    probe = max(_slice(_chain(), E1), key=lambda ct: ct.get("openInterest") or 0)
+    probe = max(_raw_slice(E1), key=lambda ct: ct.get("openInterest") or 0)
     no_symbol = dict(probe)
     no_symbol.pop("symbol", None)
-    surface = _surface([no_symbol], SPOT)
+    surface = _surface(read_chain([no_symbol]), SPOT)
     k = float(probe["strikePrice"])
     row = [r for r in surface["cells"] if r["strike"] == k][0]
     side = "call" if probe["putCall"] == "CALL" else "put"
@@ -298,7 +307,7 @@ def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zer
     chain = _chain()
     surface = _surface(chain, SPOT)
     e1_col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
-    e1_strikes = {float(ct["strikePrice"]) for ct in _slice(chain, E1)}
+    e1_strikes = {ct.strike for ct in _slice(chain, E1)}
     e2_only_strikes = [k for k in surface["strikes"] if k not in e1_strikes]
     assert e2_only_strikes, (
         "the two real expiries must not share every strike, or this proves nothing"

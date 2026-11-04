@@ -16,6 +16,7 @@ import live_price_rows
 import server
 from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
+from option_contract import read_chain
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.feed_live_helper import clock_from
 from tests.real_chains import (
@@ -40,7 +41,7 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
         tk,
         captures=[
             {
-                "contracts": [dict(c) for c in SPY_CLOSE.chain],
+                "contracts": read_chain(SPY_CLOSE.chain),
                 "ts_utc": SPY_CLOSE.now.timestamp(),
                 "spot": SPY_CLOSE.spot,
                 "et_date": SPY_CLOSE.now.date().isoformat(),

@@ -17,6 +17,7 @@ import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
+from option_contract import read_chain
 from stream_spine import book_msg
 from tests.real_chains import SPY_0DTE
 
@@ -104,7 +105,7 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
             "SPY",
             captures=[
                 {
-                    "contracts": [dict(c) for c in SPY_0DTE.chain],
+                    "contracts": read_chain(SPY_0DTE.chain),
                     "ts_utc": at,
                     "spot": SPY_0DTE.spot,
                     "spot_ts": None,

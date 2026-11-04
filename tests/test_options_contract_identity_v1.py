@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import server
+from option_contract import read_chain
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -30,7 +31,7 @@ def test_every_contract_schwab_listed_for_a_ticker_is_that_tickers_and_no_others
     assert {c["symbol"][:6].strip() for c in _SPX["contracts"]} == {"SPX", "SPXW"}
     try:
         for tk, chain in _CHAINS.items():
-            server._publish_levels(tk, [dict(c) for c in chain], _VALUED.timestamp(), now=_VALUED)
+            server._publish_levels(tk, read_chain(chain), _VALUED.timestamp(), now=_VALUED)
         owners = {
             tk: {server._contract_ticker(c["symbol"]) for c in chain}
             for tk, chain in _CHAINS.items()

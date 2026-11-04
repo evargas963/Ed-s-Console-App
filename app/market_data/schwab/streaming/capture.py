@@ -72,8 +72,7 @@ from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
 from instrument_identity import ticker_storage_key
-from math_exposure_core import gamma_reported
-from numeric_contract import schwab_number
+from option_contract import OptionContract, read_chain
 from schwab_client import build_client_from_token, safe_get_quotes
 from stream_spine import (
     LATEST,
@@ -93,7 +92,6 @@ from stream_spine import (
 from time_et import (
     ET,
     ct_label,
-    option_close_product,
     option_market_open,
     options_closed_at,
     sessions_since,
@@ -261,37 +259,27 @@ def split_request(symbols: list[str], max_bytes: int = MAX_REQUEST_BYTES) -> lis
 # ---------------------------------------------------------------------------- the option rule
 
 
-def expiration_ts(ct: dict) -> float | None:
-    """A contract's expiration, Schwab's own expirationDate ("2026-09-18T20:00:00.000+00:00"), as
-    a time; None when Schwab sent none or not a date (rule 2)."""
-    try:
-        return datetime.fromisoformat(ct["expirationDate"]).timestamp()
-    except (KeyError, TypeError, ValueError) as e:
-        log.warning(
-            "option rule: %s has no expirationDate as a date (%s: %s)",
-            ct.get("symbol"),
-            type(e).__name__,
-            e,
-        )
-        return None
-
-
-def by_gamma(contracts: list[dict], price: float, now: float, product: str) -> tuple[str, ...]:
+def by_gamma(contracts: list[OptionContract], price: float, now: float) -> tuple[str, ...]:
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`: highest
-    Schwab gamma first, as the levels take it (math_exposure_core.gamma_reported: absent, -999, a
-    -999 volatility, or past twice the largest gamma possible at `price` is no gamma, ranked
-    last); of equal gammas the nearest expiration, then the strike nearest `price` (the lower of
-    two equally near), calls before puts. A contract has expired once now passes its
+    Schwab gamma first, as sent (one Schwab sent none of, or as -999, ranked last); of equal
+    gammas the nearest expiration, then the strike nearest `price` (the lower of two equally
+    near), calls before puts. A contract has expired once now passes its
     expirationDate and is left out (it stays in the records; it is never streamed); so is one
-    whose strike or expiration is not a number (rule 2)."""
+    whose strike or expiration is not a number, whose side is not CALL or PUT, or that has no
+    symbol to stream (rule 2)."""
     with_gamma, without = [], []
-    for ct in contracts:
-        strike, expires = schwab_number(ct.get("strikePrice")), expiration_ts(ct)
-        if strike is not None and expires is not None and expires > now:
-            gamma = schwab_number(ct.get("gamma"))
-            row = (expires, abs(strike - price), strike, ct["putCall"], ct["symbol"])
-            if gamma_reported(ct, price, product=product):
-                with_gamma.append((-gamma, *row))
+    for c in contracts:
+        strike, expires = c.strike, c.expires_at
+        if (
+            c.symbol
+            and strike is not None
+            and expires is not None
+            and c.side is not None
+            and expires > now
+        ):
+            row = (expires, abs(strike - price), strike, c.side, c.symbol)
+            if c.gamma is not None:
+                with_gamma.append((-c.gamma, *row))
             else:
                 without.append(row)
     return tuple(r[-1] for r in sorted(with_gamma)) + tuple(r[-1] for r in sorted(without))
@@ -303,16 +291,15 @@ STRIKES_SAVED = 5
 
 
 def strike_ladders(
-    contracts: list[dict],
+    contracts: list[OptionContract],
 ) -> list[tuple[float, list[float], dict[float, list[str]]]]:
     """A chain's expirations, soonest first: (expiration time, its listed strikes ascending, each
-    strike's contract symbols). A contract whose strike or expiration is not a number is left out
-    (rule 2)."""
+    strike's contract symbols). A contract whose strike or expiration is not a number, or that
+    has no symbol to stream, is left out (rule 2)."""
     by: dict[float, dict[float, list[str]]] = {}
-    for ct in contracts:
-        strike, expires = schwab_number(ct.get("strikePrice")), expiration_ts(ct)
-        if strike is not None and expires is not None:
-            by.setdefault(expires, {}).setdefault(strike, []).append(ct["symbol"])
+    for c in contracts:
+        if c.symbol and c.strike is not None and c.expires_at is not None:
+            by.setdefault(c.expires_at, {}).setdefault(c.strike, []).append(c.symbol)
     return [(expires, sorted(by_strike), by_strike) for expires, by_strike in sorted(by.items())]
 
 
@@ -609,9 +596,7 @@ class Daemon:
         and the pick redone; while its row has no price, the chain waits and the order stands."""
         price = live_price_rows.spot(ticker)
         if price is not None:
-            self._ranked[ticker] = by_gamma(
-                self._chains[ticker], price, now, option_close_product(ticker)
-            )
+            self._ranked[ticker] = by_gamma(self._chains[ticker], price, now)
             del self._chains[ticker]
             self.pick_options()
 
@@ -640,7 +625,7 @@ class Daemon:
         price. A failed fetch carries no contracts and changes nothing."""
         if ticker in self.watchlist and all("contracts" in part for part in record):
             now = self.clock()
-            self._chains[ticker] = [ct for part in record for ct in part["contracts"]]
+            self._chains[ticker] = read_chain(ct for part in record for ct in part["contracts"])
             self._ladders[ticker] = strike_ladders(self._chains[ticker])
             self._rank(ticker, now)
             self._place(ticker, now)

@@ -48,6 +48,7 @@ def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
     from pathlib import Path
 
     from math_levels import contract_inputs
+    from option_contract import read_chain
 
     fx = Path(__file__).parent / "fixtures"
     spx = json.loads((fx / "real_spx_chain_contracts_2026_09_28.json").read_text(encoding="utf-8"))[
@@ -66,6 +67,7 @@ def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
         if c.get("volatility")
     ][:4]
     assert am and pm and equity and all(c["settlementType"] == "P" for c in equity)
+    am, pm, equity = read_chain(am), read_chain(pm), read_chain(equity)
 
     thu_close = datetime(2026, 10, 15, 15, 30, tzinfo=ET)
     fri_open, fri_close = (
