@@ -122,15 +122,24 @@ def running(start: list[str]) -> list[psutil.Process]:
     """This checkout's processes that run `start` right after their program: those whose folder is
     ROOT, where its daemon's batch and its console run, so another checkout's daemon or console (a
     test's) is never taken for one, nor a process that only names them, as a search does (one whose
-    line or folder cannot be read is none)."""
-    return [
-        p
-        for p in psutil.process_iter(["cmdline", "cwd", "ppid"])
-        if p.info["cmdline"] is not None
-        and p.info["cmdline"][1 : len(start) + 1] == start
-        and p.info["cwd"] is not None
-        and Path(p.info["cwd"]).resolve() == ROOT
-    ]
+    line or folder cannot be read is none). The parent is read only for the processes kept: psutil
+    reads one on Windows from a snapshot of every process, one snapshot per process asked. One that
+    ends before its parent is read is logged and not kept."""
+    kept = []
+    for p in psutil.process_iter(["cmdline", "cwd"]):
+        if (
+            p.info["cmdline"] is not None
+            and p.info["cmdline"][1 : len(start) + 1] == start
+            and p.info["cwd"] is not None
+            and Path(p.info["cwd"]).resolve() == ROOT
+        ):
+            try:
+                p.info |= p.as_dict(["ppid"])
+            except psutil.NoSuchProcess as e:
+                log.info("%s ended while this stop read it: %s", " ".join(start), e)
+                continue
+            kept.append(p)
+    return kept
 
 
 def start_console(argv: list[str], env: dict) -> subprocess.Popen:
