@@ -271,13 +271,14 @@ def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
     contracts = [dict(c) for c in fixture["chain"]]
     del contracts[0]["symbol"]
     bus = MessageBus()
-    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+    now = fixture["ts_utc"]
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: now)
 
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(daemon.follow_market(stop))
         await asyncio.sleep(0)
-        for topic, msg in chain_messages("SPY", contracts, time.time(), None, None):
+        for topic, msg in chain_messages("SPY", contracts, now, None, None):
             bus.publish(topic, msg)
         for _ in range(100):
             if "SPY" in daemon._ladders or task.done():

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from numeric_contract import SCHWAB_NO_VALUE, schwab_count, schwab_number
@@ -125,9 +125,23 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     )
 
 
-def read_chain(contracts: Iterable[Mapping[str, Any]] | None) -> list[OptionContract]:
+def read_chain(contracts: Iterable[Mapping[str, Any]]) -> list[OptionContract]:
     """Each contract of a chain as the sweep delivers it, in order."""
-    return [read_contract(c) for c in contracts or ()]
+    return [read_contract(c) for c in contracts]
+
+
+def listed_expiries(answer: Mapping[str, Any], today: date) -> list[date]:
+    """The expiries of Schwab's expiration chain answer (/marketdata/v1/expirationchain) from
+    `today` on, ascending. The list still carries an expiry that has passed (a Saturday's list
+    holds Friday's), and a chain request whose fromDate has passed is refused with HTTP 400, so
+    those are left out."""
+    return sorted(
+        {
+            d
+            for e in answer["expirationList"]
+            if (d := date.fromisoformat(e["expirationDate"][:10])) >= today
+        }
+    )
 
 
 def chain_row(c: OptionContract, gamma_shown: bool) -> dict[str, Any]:

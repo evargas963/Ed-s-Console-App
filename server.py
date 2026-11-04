@@ -1452,12 +1452,15 @@ def _previous_counts(memory, stored, price, product):
     """The last reported contract per symbol: each count above zero and the greeks of its newest
     quote that reported them (_carried). `memory` is newer than `stored`."""
     by_sym: dict[str, OptionContract] = {}
-    for c in [*(stored or ()), *(memory or ())]:
-        if c.symbol:
-            by_sym[c.symbol] = _carried(
-                c, by_sym.get(c.symbol), price, product, lambda count: not _positive(count)
-            )
-    return list(by_sym.values()) or None
+    for part in (stored, memory):
+        if part is None:  # no capture stored before it, or nothing published yet
+            continue
+        for c in part:
+            if c.symbol:
+                by_sym[c.symbol] = _carried(
+                    c, by_sym.get(c.symbol), price, product, lambda count: not _positive(count)
+                )
+    return list(by_sym.values())
 
 
 def _publish_levels(

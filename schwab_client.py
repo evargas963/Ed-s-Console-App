@@ -26,6 +26,7 @@ from schwab.client import Client
 from schwab.debug import register_redactions
 
 from config import schwab_live_blocked_for
+from option_contract import listed_expiries
 from time_et import ct_clock
 
 log = logging.getLogger(__name__)
@@ -614,21 +615,12 @@ def safe_get_chain(
 
 def option_expiries(client, ticker: str, today: date):
     """Schwab's expiration chain (/marketdata/v1/expirationchain) for `ticker`: (its expiries
-    from `today` on, ascending, its response). The list still carries an expiry that has passed
-    (a Saturday's list holds Friday's), and a chain request whose fromDate has passed is refused
-    with HTTP 400, so those are left out. The expiries are None when Schwab does not answer 200."""
+    from `today` on, option_contract.listed_expiries, its response). The expiries are None when
+    Schwab does not answer 200."""
     resp = client.get_option_expiration_chain(ticker)
     if resp.status_code != 200:
         return None, resp
-    return sorted(
-        {
-            d
-            for d in (
-                date.fromisoformat(e["expirationDate"][:10]) for e in resp.json()["expirationList"]
-            )  # external-key-ok: Schwab expiration chain response
-            if d >= today
-        }
-    ), resp
+    return listed_expiries(resp.json(), today), resp
 
 
 def safe_get_quotes(client, symbols: "list[str]"):
