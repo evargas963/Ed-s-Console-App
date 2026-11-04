@@ -586,6 +586,7 @@ def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_p
     swept.schwab.refuse_chain = {"SPY"}
     try:
         assert swept.until(1) == ["SPY"]
+        swept.idle()  # and once it lands, nothing more
     finally:
         swept.close()
     assert [q["symbol"] for q in swept.schwab.asked("/marketdata/v1/chains")] == ["SPY", "SPY"]
@@ -668,6 +669,7 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
         swept.until(3)  # delivered again and again at 16:10
         closed = swept.move("2026-10-07 16:20")
         swept.until(len(swept.chains) + 1)
+        swept.idle()  # its close values, then not
     finally:
         swept.close()
     before_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[:closed] if p == chains]
