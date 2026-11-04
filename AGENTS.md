@@ -153,6 +153,14 @@ then the rule binds with no machine check.
 
 ## Before writing code
 
+- The operator's three rules (2026-11-03): this is a simple wiring job; we use Schwab's data as
+  Schwab sends it; this is a financial app, and a question is answered by what a bank would do.
+  They apply to all code in the repository and to every answer, proposal and change, each
+  answering: which Schwab field or registered derived value, the simplest direct wire, and what a
+  bank would do. Enforced by: `tools/wiring_rules.py`,
+  which puts them before the agent on every message in Claude Code
+  (`tests/test_wiring_rules_v1.py`); that they were applied — rule 14's review, no machine check,
+  ENF-12.
 - Trace each value it touches: its source, its one producer, its validity rule and time, its live
   and stored consumers, and what each shows when it is missing. A producer exists: call it. None
   exists: write it once, in its part. Enforced by: no machine check — ENF-08.
