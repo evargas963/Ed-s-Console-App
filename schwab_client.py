@@ -503,20 +503,18 @@ def run_login_flow(
 
         if exc_holder:
             return False, f"OAuth flow failed: {exc_holder[0]}"
-
-        if not os.path.exists(token_path):
-            raise RuntimeError(
-                f"OAuth flow completed but token file was not written: {token_path}. "
-                "The browser may have redirected before the callback was received, "
-                "or there was a silent write failure. Try: python reauth_schwab.py --manual"
-            )
-
-        return True, f"Token created: {token_path}"
     except RuntimeError:
         raise
     except Exception as e:
         log.warning("OAuth login flow failed", exc_info=True)
         return False, f"OAuth flow failed: {e}"
+    if not os.path.exists(token_path):
+        raise RuntimeError(
+            f"OAuth flow completed but token file was not written: {token_path}. "
+            "The browser may have redirected before the callback was received, "
+            "or there was a silent write failure. Try: python reauth_schwab.py --manual"
+        )
+    return True, f"Token created: {token_path}"
 
 
 def run_manual_flow(
@@ -535,16 +533,14 @@ def run_manual_flow(
             token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
             enforce_enums=False,
         )
-        if not os.path.exists(token_path):
-            raise RuntimeError(
-                f"Manual flow completed but token file was not written: {token_path}"
-            )
-        return True, f"Token created: {token_path}"
     except RuntimeError:
         raise
     except Exception as e:
         log.warning("OAuth manual flow failed", exc_info=True)
         return False, f"OAuth flow failed: {e}"
+    if not os.path.exists(token_path):
+        raise RuntimeError(f"Manual flow completed but token file was not written: {token_path}")
+    return True, f"Token created: {token_path}"
 
 
 def complete_oauth_from_redirect_url(

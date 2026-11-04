@@ -935,13 +935,16 @@ class _Spill:
         whole records."""
         data = len(record).to_bytes(4, "big") + record
         try:
-            if self.out.write(data) != len(data):
-                raise OSError(f"short write to {self.path}")
+            self._write_whole(data)
         except OSError as e:
             self.out.truncate(self.size)  # no partial record stays behind the whole ones
             return e
         self.size += len(data)  # its message is counted by the writer (_spilled)
         return None
+
+    def _write_whole(self, data: bytes) -> None:
+        if self.out.write(data) != len(data):
+            raise OSError(f"short write to {self.path}")
 
     def read(self, n: int) -> list:
         """Up to `n` records from `read_at`: (message, end offset) each. A record that does not
