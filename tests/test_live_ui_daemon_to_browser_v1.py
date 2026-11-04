@@ -121,6 +121,7 @@ async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
     raise AssertionError(f"no matching {sym} row within {timeout}s")
 
 
+@pytest.mark.alone
 def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
     """In regular hours: the server's clock runs from _RTH."""
     clock = _clock_from(_RTH)
@@ -164,6 +165,7 @@ def test_an_unsubscribed_symbol_is_never_sent():
     asyncio.run(_run(body))
 
 
+@pytest.mark.alone
 def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
     async def body(bus, ws, feed, stats):
         bus.publish("quote.AAPL", _trade("AAPL", 230.5, time.time()))
