@@ -6,13 +6,12 @@ from the chain and position structure.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 
 from numeric_contract import float_finite_or_none
 from option_contract import OptionContract
-from time_et import EQUITY_OPTIONS, MIN_TIME_TO_EXPIRY_YEARS, time_to_expiry_years
+from time_et import time_to_expiry_years
 
 
 def schwab_iv_to_sigma(iv: float | None) -> float | None:
@@ -32,41 +31,6 @@ def book_net_gex(exposures: dict) -> float | None:
     strike carried a valid gamma."""
     vals = [v for b in exposures.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None]
     return sum(vals) if vals else None
-
-
-def gamma_reported(
-    c: OptionContract, price: float | None, *, product: str = EQUITY_OPTIONS
-) -> bool:
-    """True when the contract's gamma is a value (option_contract: sent, not -999, and its
-    volatility not -999), and not more than twice the largest gamma any option can have at its
-    own volatility, `price` and time left (largest_gamma). The one test of a gamma; unknown
-    inputs leave it as sent."""
-    if c.gamma is None:
-        return False
-    largest = largest_gamma(c, price, product=product)
-    return largest is None or c.gamma <= 2.0 * largest
-
-
-def largest_gamma(
-    c: OptionContract, price: float | None, *, product: str = EQUITY_OPTIONS
-) -> float | None:
-    """The largest gamma any option can have at the contract's own volatility, `price` and the time
-    left when Schwab computed its gamma (greeksTime.gamma): the at-the-money peak
-    1 / (S * sigma * sqrt(2 * pi * T)). None when one of them is not known, and in the last ten
-    minutes, where time_to_expiry_years gives its floor instead of the time left."""
-    sigma = schwab_iv_to_sigma(c.volatility)
-    stamp = c.gamma_time
-    if price is None or price <= 0 or sigma is None or stamp is None or stamp <= 0:
-        return None
-    t = time_to_expiry_years(
-        c.expiration,
-        datetime.fromtimestamp(stamp / 1000.0, tz=UTC),
-        settlement_type=c.settlement,
-        product=product,
-    )
-    if t is None or t <= MIN_TIME_TO_EXPIRY_YEARS:
-        return None
-    return 1.0 / (price * sigma * math.sqrt(2.0 * math.pi * t))
 
 
 #: Bucket fields priced from Schwab's gamma / delta / volatility -> the counts of contracts on the
@@ -237,7 +201,7 @@ def compute_exposures_by_strike(
 
         delta, gamma, iv = c.delta, c.gamma, c.volatility
         delta_ok = delta is not None
-        gamma_ok = gamma_reported(c, spot, product=product)
+        gamma_ok = gamma is not None
         if not delta_ok or not gamma_ok:
             missing += 1
         if oi > 0:  # open interest 0 adds a known 0 whatever its Greeks

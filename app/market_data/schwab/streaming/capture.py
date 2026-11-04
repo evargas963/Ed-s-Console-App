@@ -72,7 +72,6 @@ from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
 from instrument_identity import ticker_storage_key
-from math_exposure_core import gamma_reported
 from option_contract import OptionContract, read_chain
 from schwab_client import build_client_from_token, safe_get_quotes
 from stream_spine import (
@@ -93,7 +92,6 @@ from stream_spine import (
 from time_et import (
     ET,
     ct_label,
-    option_close_product,
     option_market_open,
     options_closed_at,
     sessions_since,
@@ -261,14 +259,11 @@ def split_request(symbols: list[str], max_bytes: int = MAX_REQUEST_BYTES) -> lis
 # ---------------------------------------------------------------------------- the option rule
 
 
-def by_gamma(
-    contracts: list[OptionContract], price: float, now: float, product: str
-) -> tuple[str, ...]:
+def by_gamma(contracts: list[OptionContract], price: float, now: float) -> tuple[str, ...]:
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`: highest
-    Schwab gamma first, as the levels take it (math_exposure_core.gamma_reported: absent, -999, a
-    -999 volatility, or past twice the largest gamma possible at `price` is no gamma, ranked
-    last); of equal gammas the nearest expiration, then the strike nearest `price` (the lower of
-    two equally near), calls before puts. A contract has expired once now passes its
+    Schwab gamma first, as sent (one Schwab sent none of, or as -999, ranked last); of equal
+    gammas the nearest expiration, then the strike nearest `price` (the lower of two equally
+    near), calls before puts. A contract has expired once now passes its
     expirationDate and is left out (it stays in the records; it is never streamed); so is one
     whose strike or expiration is not a number, whose side is not CALL or PUT, or that has no
     symbol to stream (rule 2)."""
@@ -283,7 +278,7 @@ def by_gamma(
             and expires > now
         ):
             row = (expires, abs(strike - price), strike, c.side, c.symbol)
-            if gamma_reported(c, price, product=product):
+            if c.gamma is not None:
                 with_gamma.append((-c.gamma, *row))
             else:
                 without.append(row)
@@ -601,9 +596,7 @@ class Daemon:
         and the pick redone; while its row has no price, the chain waits and the order stands."""
         price = live_price_rows.spot(ticker)
         if price is not None:
-            self._ranked[ticker] = by_gamma(
-                self._chains[ticker], price, now, option_close_product(ticker)
-            )
+            self._ranked[ticker] = by_gamma(self._chains[ticker], price, now)
             del self._chains[ticker]
             self.pick_options()
 

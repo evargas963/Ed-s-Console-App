@@ -810,8 +810,7 @@ def same_day_levels(
             delta = bs_delta(float(spot), _strike, t_years, sigma, call=sign > 0)
         if gamma is None or delta is None:
             gamma = delta = None
-        # gamma and delta here are ours, not Schwab's: nothing of Schwab's times them
-        ours = replace(c, gamma=gamma, delta=delta, gamma_time=None)
+        ours = replace(c, gamma=gamma, delta=delta)
         repriced.append(ours)
         if gamma is not None:
             parsed.append(row)

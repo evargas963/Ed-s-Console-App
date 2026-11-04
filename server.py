@@ -76,7 +76,6 @@ from liquidity_value_engine import (
 from math_exposure_core import (
     bucket_metric,
     compute_exposures_by_strike,
-    gamma_reported,
     merge_exposure_books,
     overlay_streamed_contract_fields,
     strike_oi_legs,
@@ -1397,8 +1396,8 @@ def _contract_ticker(sym: str) -> str | None:
         )
 
 
-#: a quote's values, carried together: its greeks with their volatility and Schwab's time
-_QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility", "gamma_time")
+#: a quote's values, carried together: its greeks with their volatility
+_QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 _QUOTE_COUNTS = ("open_interest", "volume")
 
 
@@ -1407,18 +1406,14 @@ def _positive(count: float | None) -> bool:
     return count is not None and count > 0
 
 
-def _carried(
-    newer: OptionContract, older: OptionContract | None, price, product, replaced
-) -> OptionContract:
-    """`newer`, with `older`'s greeks where `newer`'s gamma is not a value and `older`'s is
-    (gamma_reported at `price`), and each count of `older` above zero where `replaced` says
-    `newer`'s is to be replaced. `newer` itself when nothing is carried."""
+def _carried(newer: OptionContract, older: OptionContract | None, replaced) -> OptionContract:
+    """`newer`, with `older`'s greeks where Schwab sent `newer` no gamma and `older` one, and
+    each count of `older` above zero where `replaced` says `newer`'s is to be replaced. `newer`
+    itself when nothing is carried."""
     if older is None:
         return newer
     taken = {}
-    if not gamma_reported(newer, price, product=product) and gamma_reported(
-        older, price, product=product
-    ):
+    if newer.gamma is None and older.gamma is not None:
         taken.update({f: getattr(older, f) for f in _QUOTE_GREEKS})
     for f in _QUOTE_COUNTS:
         if _positive(getattr(older, f)) and replaced(getattr(newer, f)):
@@ -1426,29 +1421,26 @@ def _carried(
     return replace(newer, **taken) if taken else newer
 
 
-def _keep_last_reported(chain, previous, at, product, price):
+def _keep_last_reported(chain, previous, at, product):
     """Outside that ticker's option window, a quote that does not report a greek leaves the
     greek the last quote reported, and a count of zero leaves the last count above zero.
     During the window the quote stands, and Schwab's no-value code does not keep an older
-    greek. A gamma is reported by gamma_reported at `price`."""
+    greek."""
     if option_market_open(at, product) is not False or not previous:
         return chain
     prior = {c.symbol: c for c in previous if c.symbol}
-    return [
-        _carried(c, prior.get(c.symbol), price, product, lambda count: count == 0) for c in chain
-    ]
+    return [_carried(c, prior.get(c.symbol), lambda count: count == 0) for c in chain]
 
 
-def _previous_counts(memory, stored, price, product):
+def _previous_counts(memory, stored):
     """The last reported contract per symbol: each count above zero and the greeks of its newest
-    quote that reported them (_carried). `memory` is newer than `stored`."""
+    quote that reported them (_carried), over the stored capture and the last published chain,
+    whichever exist. `memory` is newer than `stored`."""
     by_sym: dict[str, OptionContract] = {}
-    for c in [*(stored or ()), *(memory or ())]:
+    for c in [c for chain in (stored, memory) if chain is not None for c in chain]:
         if c.symbol:
-            by_sym[c.symbol] = _carried(
-                c, by_sym.get(c.symbol), price, product, lambda count: not _positive(count)
-            )
-    return list(by_sym.values()) or None
+            by_sym[c.symbol] = _carried(c, by_sym.get(c.symbol), lambda count: not _positive(count))
+    return list(by_sym.values())
 
 
 def _publish_levels(
@@ -1510,13 +1502,8 @@ def _publish_levels(
             rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=begun_ts)
             payload["_count_capture"] = rows[0].get("contracts") if rows else ()
             payload["_count_capture_ts"] = newest
-        published = payload.get("spot")
         chain = _keep_last_reported(
-            chain,
-            _previous_counts(memory, payload.get("_count_capture"), published, product),
-            begun,
-            product,
-            published,
+            chain, _previous_counts(memory, payload.get("_count_capture")), begun, product
         )
     # the chain's spot as published: (price, source, time), kept with the chain for its reprices
     if capture is not None and capture["spot_from_chain"]:
@@ -1552,7 +1539,7 @@ def _publish_levels(
     # the chain's. The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
     if option_market_open(at, product) is False:
-        priced = _keep_last_reported(priced, chain, at, product, spot)
+        priced = _keep_last_reported(priced, chain, at, product)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
@@ -3441,11 +3428,8 @@ def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)
     )
     at = now_et()
     product = option_close_product(t)
-    priced_at = held.get("spot")
-    response_contracts = _keep_last_reported(response_contracts, contracts, at, product, priced_at)
-    shown = [
-        chain_row(c, gamma_reported(c, priced_at, product=product)) for c in response_contracts
-    ]
+    response_contracts = _keep_last_reported(response_contracts, contracts, at, product)
+    shown = [chain_row(c) for c in response_contracts]
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):

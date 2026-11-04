@@ -1,7 +1,7 @@
 """One option contract of a Schwab chain, read once (AGENTS.md rules 2, 3 and 12).
 
 `read_contract` is the one reader of a chain contract's fields (Schwab's /chains contract, with
-the sweep's quote Greeks and `greeksTime`, schwab_client.flatten_chain_contracts and
+the sweep's quote Greeks, schwab_client.flatten_chain_contracts and
 calibration.complete_chain_capture.ChainSweep). Every calculator, the console's carry rules, the
 gamma surface and /api/chain take the record; none reads the contract's fields again.
 `chain_row` is the record as the chain screens show it, under Schwab's own field names.
@@ -34,7 +34,6 @@ READ = frozenset(
         "totalVolume",
         "multiplier",
         "volatility",
-        "greeksTime",
         "nonStandard",
         *GREEKS,
     }
@@ -69,8 +68,6 @@ class OptionContract:
     theta: float | None
     vega: float | None
     rho: float | None
-    #: Schwab's time of the gamma (ms), greeksTime.gamma
-    gamma_time: float | None
     #: Schwab's nonStandard flag: an adjusted deliverable
     non_standard: bool
     #: every other field, each number by rule 2, for the screen only
@@ -108,7 +105,6 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     vol_sent = raw.get("volatility")
     void = vol_sent is not None and vol_sent == SCHWAB_NO_VALUE
     multiplier = schwab_number(raw.get("multiplier"))
-    times = raw.get("greeksTime")
     return OptionContract(
         symbol=raw.get("symbol"),
         side=side if side in ("CALL", "PUT") else None,
@@ -123,7 +119,6 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
         volatility=schwab_number(vol_sent),
         **{g: _greek(raw, g, void) for g in GREEKS},
-        gamma_time=schwab_number(times.get("gamma")) if isinstance(times, dict) else None,
         non_standard=raw.get("nonStandard") is True,
         listing={k: _shown(v) for k, v in raw.items() if k not in READ},
         sent=frozenset(raw),
@@ -149,11 +144,9 @@ def listed_expiries(answer: Mapping[str, Any], today: date) -> list[date]:
     )
 
 
-def chain_row(c: OptionContract, gamma_shown: bool) -> dict[str, Any]:
+def chain_row(c: OptionContract) -> dict[str, Any]:
     """The contract as the chain screens show it, under Schwab's field names: each field Schwab
-    sent, and each value the record holds (a streamed count or a carried Greek), and no other;
-    the gamma only when it is a value at the price the chain was priced at (`gamma_shown`,
-    math_exposure_core.gamma_reported)."""
+    sent, and each value the record holds (a streamed count or a carried Greek), and no other."""
     read = {
         "symbol": c.symbol,
         "putCall": c.side,
@@ -166,7 +159,6 @@ def chain_row(c: OptionContract, gamma_shown: bool) -> dict[str, Any]:
         "multiplier": c.multiplier,
         "volatility": c.volatility,
         "nonStandard": c.non_standard,
-        "gamma": c.gamma if gamma_shown else None,
-        **{g: getattr(c, g) for g in GREEKS if g != "gamma"},
+        **{g: getattr(c, g) for g in GREEKS},
     }
     return {**c.listing, **{k: v for k, v in read.items() if k in c.sent or v is not None}}

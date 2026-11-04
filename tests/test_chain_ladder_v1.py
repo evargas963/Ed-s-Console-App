@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from math_exposure_core import gamma_reported
 from option_contract import chain_row, read_chain
 from terrain_engine import chain_ladder as _chain_ladder
 
@@ -20,7 +19,7 @@ FX = json.loads(
 def chain_ladder(raw, spot):
     """The ladder /api/chain serves for the raw contracts: each read once, shown by chain_row."""
     contracts = read_chain(raw)
-    shown = [chain_row(c, gamma_reported(c, spot)) for c in contracts]
+    shown = [chain_row(c) for c in contracts]
     return _chain_ladder(contracts, spot, shown)
 
 

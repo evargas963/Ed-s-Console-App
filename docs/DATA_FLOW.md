@@ -307,10 +307,8 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK. What is left of
   Schwab's limits (LEVELONE_OPTIONS 3,000, OPTIONS_BOOK 100, measured on the daemon's own
   connection 2026-10-07) is split evenly across the watchlist tickers, and each ticker's share
-  on each service is its contracts with the highest gamma, the gamma the levels take
-  (`math_exposure_core.gamma_reported`: absent, -999, a -999 volatility, or more than twice the
-  largest gamma possible at its own volatility, the price and the time left is no gamma, ranked
-  last); of equal gammas the nearest expiration, then the strike nearest the price, calls before
+  on each service is its contracts with the highest gamma, Schwab's as sent, the gamma the levels
+  take (none sent, -999, or a -999 volatility is no gamma, ranked last); of equal gammas the nearest expiration, then the strike nearest the price, calls before
   puts. A contract has expired once now passes Schwab's expirationDate: it stays in the records
   and is never streamed (Schwab still lists an expired Friday on a weekend); one that expires
   between chains streams until the ticker's next chain (one is asked after each option close). Each

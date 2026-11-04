@@ -1,9 +1,7 @@
 """Schwab's Greeks are used as Schwab sends them (option_contract.read_contract).
 
 Not used as a number: Schwab's -999, its code for "no value" (on the Greek or on the contract's
-volatility), and a gamma past twice the largest possible (gamma_reported,
-tests/test_data_path_impossible_gamma_v1.py):
-that contract adds nothing and is counted in greeks_missing. A strike
+volatility): that contract adds nothing and is counted in greeks_missing. A strike
 where no contract carried a reported Greek has no value, never its 0.0 initialiser.
 """
 
