@@ -58,7 +58,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
         expect(cut, width + '×' + height + ' ' + JSON.stringify(cut)).toEqual([]);
       }
     }
-    // every line the card can add, at once, shows on it
+    // the crossed and not-live pills, the auction line, the dedup note and the not-live words, at once, show on it
     await page.setViewportSize({ width: 1920, height: 950 });
     await openDesk(page, READOUT_EVERY_LINE);
     const all = READOUT_EVERY_LINE.readout, every = all.venues.COMPOSITE;

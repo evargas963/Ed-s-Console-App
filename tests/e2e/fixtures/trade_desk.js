@@ -36,7 +36,8 @@ const READOUT_OFFLINE = require(path.join(__dirname, 'liquidity_readout_offline.
 const READOUT_NO_BOOK = require(path.join(__dirname, 'liquidity_readout_no_book.json'));
 // (the books when the composite was first crossed, read inside the closing auction window)
 const READOUT_AUCTION = require(path.join(__dirname, 'liquidity_readout_close_auction.json'));
-// (INDUCED: those books with NASDAQ_BOOK's NSDQ quote times taken out, the feed down: every line at once)
+// (INDUCED: those books with NASDAQ_BOOK's NSDQ quote times taken out, the feed down: crossed,
+// BOOK OFFLINE, the auction line, the not-live words and the dedup note at once)
 const READOUT_EVERY_LINE = require(path.join(__dirname, 'liquidity_readout_every_line.json'));
 const LIVE_COMP = READOUT_LIVE.readout.venues.COMPOSITE;
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', readout: READOUT_LIVE.readout, top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },

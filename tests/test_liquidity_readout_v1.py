@@ -998,7 +998,7 @@ _E2E_FILES = {
     # closing auction window: the number stands, crossed, with the auction line
     "liquidity_readout_close_auction.json": {"now": _CLOSE_AUCTION, "rows": _CROSSED},
     # INDUCED: those crossed books with NASDAQ_BOOK's NSDQ rows sent without their quote time,
-    # read inside the closing auction after the feed went down: every line the card can add at
+    # read inside the closing auction after the feed went down: five of the card's added lines at
     # once (crossed, BOOK OFFLINE, the auction line, the not-live words, the dedup note)
     "liquidity_readout_every_line.json": {
         "now": _CLOSE_AUCTION,
