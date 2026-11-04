@@ -139,7 +139,11 @@ def tree_leaks(root: Path = REPO, rev: str = "") -> list[str]:
     listing = ("ls-tree", "-r", "-z", "--name-only", rev) if rev else ("ls-files", "-z")
     names = [n for n in _git(root, *listing).split(b"\0") if n]
     out = _git(
-        root, "cat-file", "--batch", given=b"".join(rev.encode() + b":" + n + b"\n" for n in names)
+        root,
+        "cat-file",
+        "--batch",
+        "-z",
+        given=b"".join(rev.encode() + b":" + n + b"\0" for n in names),
     )
     hits: list[str] = []
     at = 0

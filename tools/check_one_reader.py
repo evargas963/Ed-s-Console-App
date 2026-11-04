@@ -152,7 +152,8 @@ def violations(root: Path, base: str) -> list[str]:
     fields = _field_list(root, fork) | _field_list(root, "HEAD")
     before, after = readers(root, fork, fields), readers(root, "HEAD", fields)
     was, now = second_readers(before), second_readers(after)
-    # the count can rise only by a module added to a field's readers, which is refused below
+    # one field list on both sides, so the count rises only by a module joining a field's readers,
+    # which is refused below
     print(f"second readers of Schwab fields, repo wide: {was} -> {now}")
     out = []
     for name in sorted(after):

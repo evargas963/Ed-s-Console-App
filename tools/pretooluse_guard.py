@@ -1,23 +1,12 @@
 """Where an edit target lies: `checkout_path` (inside the production checkout) is the one place a
-guard places a path, and `production_path` keeps the app code among those; both read by
+guard places a path, and `production_path` keeps the files among those, every one of them (the
+production checkout stays `main == origin/main`, AGENTS.md Authority); both read by
 process_lock_guard (the production-checkout rails). A library, not a hook."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-
-#: Production surfaces across the whole continuum, not just backend.
-PRODUCTION_SUFFIXES = (".py", ".html", ".js", ".css", ".sql", ".ts", ".jsx", ".tsx", ".bat")
-#: Not part of the product surface.
-NOT_PRODUCT_PREFIXES = (
-    "tests/",
-    "governance/",
-    "docs/",
-    "reports/",
-    ".claude/",
-    ".cursor/",
-    "scratchpad/",
-)
 
 
 def checkout_path(target: str, base: Path, primary: Path) -> Path | None:
@@ -30,11 +19,10 @@ def checkout_path(target: str, base: Path, primary: Path) -> Path | None:
 
 
 def production_path(target: str, base: Path, primary: Path) -> Path | None:
-    """`checkout_path`, kept only when the file is app code."""
+    """`checkout_path`, kept when it names a file: any file of the checkout, never the checkout
+    itself or a device Windows reserves (`NUL`), which no write lands in."""
     resolved = checkout_path(target, base, primary)
-    if resolved is None:
+    if resolved is None or resolved == primary.resolve():
         return None
-    rel = resolved.relative_to(primary.resolve()).as_posix()
-    if rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES):
-        return resolved
-    return None
+    device = "\0" not in str(resolved) and os.path.isreserved(resolved)  # NUL, CON: no file
+    return None if device else resolved

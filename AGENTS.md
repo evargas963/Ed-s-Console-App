@@ -154,19 +154,25 @@ then the rule binds with no machine check.
   test, hook, lock, rule and fix covers every file of the repository, old code and new alike, with
   no exception list, no skipped path or line, and no "the change only" mode; a finding in old code
   is counted and fixed, never let stand because it is old. At 0 findings a rule fails the required
-  job outright, and above 0 it is a count that may only fall (Locks). A conflict with this rule is
-  reported to the operator at once. Enforced by: `ruff check .` and `ruff format --check .` over
-  the whole repository at commit and in `hardening` (in force); `tools/check_locks.py` (locks);
-  `tools/check_end_to_end.py` counts every patch shape of all product code on the base and the
-  head and refuses a rise no added line explains
-  (`tests/test_check_end_to_end_v1.py::test_a_patch_no_added_line_carries_is_refused_by_the_whole_repositorys_count`);
-  `tools/check_one_reader.py` prints the whole repository's second readers on every run;
-  `tools/check_credential_leak.py` reads every tracked file, no path or line skipped
-  (`tests/test_credential_leak_v1.py`) (in force). `check_eol_style_invariant`, `check_fails_before`
-  and `check_integrity` judge what a change does (a file's line endings kept, a new test failing on
-  the old code, the review record), so each reads every file the change touches; the one exception
-  left, `capture_main`'s import (rule 13), is the operator's to keep or remove. Each tool SHAPE adds
-  (import-linter, ESLint, pyright) runs over the whole repository the same way (steps 1d to 6).
+  job outright, and above 0 it is a count (Locks). A conflict with this rule is reported to the
+  operator at once. Enforced by: `ruff check .` and `ruff format --check .` over the whole
+  repository at commit and in `hardening` (in force); `tools/check_locks.py`, every tracked file
+  (locks); `tools/check_end_to_end.py`, every file's patch shapes counted on the base and the head,
+  and in every file whose code a change touches, tests and tools included, a shape refused on an
+  added line or on an unchanged line that did not hold it before (`tests/test_check_end_to_end_v1.py`,
+  locks); `tools/check_one_reader.py`, the whole repository's second readers printed on every run
+  and a new one refused (in force); `tools/check_credential_leak.py`, every tracked file, no path or
+  line skipped (`tests/test_credential_leak_v1.py`, in force); the production-checkout rail, every
+  file of that checkout (`tools/process_lock_guard.py`, `tests/test_hook_chain_v1.py`, in force).
+  `check_eol_style_invariant`, `check_fails_before` and `check_integrity` judge a change itself (a
+  file's line endings kept, a new test failing on the old code, the review record), not what files
+  hold, and read every file of any kind a change touches. Each tool SHAPE adds (import-linter,
+  ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Open with the
+  operator, 2026-11-04, each a narrowing his own earlier decision made: `capture_main`'s import
+  (rule 13); the counts `check_locks.FREE` lets rise (size, work items, docstring style); the one
+  module rule of `check_one_reader` judging product modules only (tests read Schwab's fields from
+  captured data: 151 second readers counted over every file, 12 over product code); the vendored
+  chart library's one patch shape, which this repository cannot fix at its source.
 
 ## Before writing code
 

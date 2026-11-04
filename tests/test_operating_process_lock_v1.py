@@ -28,11 +28,9 @@ def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
     # a session that IS the production primary editing its OWN app code → BLOCKED (invariant #4)
     bad = PLG.production_checkout_edit_violations({"file_path": str(primary / "db.py")}, primary)
     assert any("PROD_CHECKOUT_EDIT" in b for b in bad), bad
-    # ...but a non-app file (docs/governance) in the primary is NOT gated
-    assert (
-        PLG.production_checkout_edit_violations({"file_path": str(primary / "notes.md")}, primary)
-        == []
-    )
+    # ...and so is a doc in the primary: every file of it is gated (everything is repo wide)
+    bad = PLG.production_checkout_edit_violations({"file_path": str(primary / "notes.md")}, primary)
+    assert any("PROD_CHECKOUT_EDIT" in b for b in bad), bad
 
 
 def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
@@ -177,15 +175,21 @@ def test_rc234_pipe_ok_escape_allows():
 
 
 def test_an_edit_target_is_placed_once_whatever_its_spelling(tmp_path):
-    """The production checkout's app code is refused whether the target is spelled absolute or
-    relative to the checkout; tests/, docs/ and scratch files there are not app code; a file in
+    """A file of the production checkout is refused whether the target is spelled absolute or
+    relative to the checkout, tests/, docs/ and scratch files as much as app code; a file in
     another checkout is not the production checkout's."""
     primary, wt = _linked_worktree_layout(tmp_path)
-    for target in (str(primary / "db.py"), "db.py", "tools/x.py"):
+    for target in (
+        str(primary / "db.py"),
+        "db.py",
+        "tools/x.py",
+        "tests/test_x.py",
+        "docs/x.py",
+        "scratchpad/x.py",
+    ):
         bad = PLG.production_checkout_edit_violations({"file_path": target}, primary)
         assert any("PROD_CHECKOUT_EDIT" in b for b in bad), (target, bad)
-    for target in ("tests/test_x.py", "docs/x.py", "scratchpad/x.py", str(wt / "own.py")):
-        assert PLG.production_checkout_edit_violations({"file_path": target}, primary) == [], target
+    assert PLG.production_checkout_edit_violations({"file_path": str(wt / "own.py")}, primary) == []
 
 
 def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():

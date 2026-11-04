@@ -8,7 +8,14 @@ the standard tools' own (ruff's safe fixes with the PR's committed pyproject.tom
 tool_fixed), is not a change of product code. An .html page or a .bat file is always one, and so
 is removing code nothing calls, a deleted file included.
 
-The product lines a PR adds carry no patch shape:
+The whole repository is judged (operator 2026-11-04: everything is repo wide): every file's shapes
+are counted on the base and the head and printed, and in every file whose code the PR changes
+(tests and tools as much as product code), a shape is refused on a line the PR adds, or on an
+unchanged line that did not hold it before (an old except whose log line the PR removes), matched
+by what the line says, so a shape pushed down the file is not new and one fixed elsewhere does
+not pay for one brought in.
+
+The lines a PR adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
      assignment of None or a literal, or a call with no re-raise. An except that logs the error
@@ -53,6 +60,7 @@ import subprocess
 import sys
 import tempfile
 import tokenize
+from collections import Counter
 from pathlib import Path
 
 #: the product files whose added lines are read for patch shapes
@@ -582,46 +590,45 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
     return sorted(set(found))
 
 
-def shapes_in(root: Path, rev: str) -> list[str]:
-    """Every patch shape in every product file at `rev`, each line of each file judged."""
-    out = []
-    for f in _git(root, "ls-tree", "-r", "-z", "--name-only", rev).split("\0"):
-        if not (f.endswith(SHAPED_SUFFIXES) and is_product(f)):
-            continue
-        source = _git(root, "show", f"{rev}:{f}", errors="replace")
-        every = set(range(1, source.count("\n") + 2))
-        found = python_patches(source, every) if f.endswith(".py") else js_patches(f, source, every)
-        out.extend(f"{f}:{line}: {what}" for line, what in found)
-    return out
+def shapes(path: str, source: str) -> list[tuple[int, str, str]]:
+    """Every patch shape in `source`, each line judged: (line, what, that line's text)."""
+    every = set(range(1, source.count("\n") + 2))
+    found = (
+        python_patches(source, every) if path.endswith(".py") else js_patches(path, source, every)
+    )
+    text = source.split("\n")
+    return [(line, what, text[line - 1].strip()) for line, what in found]
 
 
-def repo_wide(root: Path, base: str) -> tuple[list[str], list[str]]:
-    """The patch shapes of the whole repository at the merge base and at the head."""
-    fork = _git(root, "merge-base", base, "HEAD").strip()
-    return shapes_in(root, fork), shapes_in(root, "HEAD")
+def shapes_at(root: Path, rev: str) -> int:
+    """How many patch shapes every file of the repository holds at `rev`."""
+    return sum(
+        len(shapes(f, _git(root, "show", f"{rev}:{f}", errors="replace")))
+        for f in _git(root, "ls-tree", "-r", "-z", "--name-only", rev).split("\0")
+        if f.endswith(SHAPED_SUFFIXES)
+    )
 
 
 def violations(root: Path, base: str) -> list[str]:
-    """Each patch shape a line the PR adds carries, and the whole repository's count of them when
-    the PR raises it (printed on every run: the count falls to 0, as a lock's does)."""
-    before, after = repo_wide(root, base)
-    print(f"patch shapes in product code, repo wide: {len(before)} -> {len(after)}")
+    """Each patch shape the PR brings into any file of the repository: on a line it adds, or one
+    no added line carries (an old except whose log line it removes), matched by what the line says
+    so a shape moved down the file is not new and one removed elsewhere does not pay for it."""
+    fork = _git(root, "merge-base", base, "HEAD").strip()
+    print(f"patch shapes, repo wide: {shapes_at(root, fork)} -> {shapes_at(root, 'HEAD')}")
     out = []
     added = pr_added_lines(root, base)
-    changed_code = sorted(
-        f
-        for f in pr_files(root, base, "AMT")
-        if f.endswith(SHAPED_SUFFIXES) and behavior_change(root, base, f)
-    )
-    for f in changed_code:
-        source = pr_source(root, f)
-        lines = added.get(f, set())
-        found = python_patches(source, lines) if f.endswith(".py") else js_patches(f, source, lines)
-        out.extend(f"{f}:{line}: {what}" for line, what in found)
-    if len(after) > len(before) and not out:  # a shape no added line carries (a log removed)
-        out = sorted(set(after) - set(before)) or [
-            f"patch shapes in product code, repo wide, rose: {len(before)} -> {len(after)}"
-        ]
+    new_files = set(pr_files(root, base, "A"))
+    for f in pr_files(root, base, "AMT"):
+        if not f.endswith(SHAPED_SUFFIXES) or code_identical(root, base, f):
+            continue
+        old_text = "" if f in new_files else _git(root, "show", f"{fork}:{f}", errors="replace")
+        was = shapes(f, old_text) if old_text else []
+        old = Counter((what, text) for _, what, text in was)
+        for line, what, text in shapes(f, pr_source(root, f)):
+            if line not in added.get(f, set()) and old[(what, text)]:
+                old[(what, text)] -= 1  # an unchanged line that held this shape already
+            else:
+                out.append(f"{f}:{line}: {what}")
     return out
 
 

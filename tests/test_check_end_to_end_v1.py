@@ -81,6 +81,46 @@ def test_a_patch_no_added_line_carries_is_refused_by_the_whole_repositorys_count
     assert cee.violations(root, "main") == ["server.py:6: an except that swallows the error"]
 
 
+def test_a_shape_removed_elsewhere_does_not_pay_for_one_brought_in(tmp_path):
+    """The same swallowing except, in a PR that also fixes an old `or 0` in another file: the
+    repository's total holds, and the new shape is still refused at its line."""
+    old = (
+        "import logging\n"
+        "log = logging.getLogger()\n"
+        "def spot(row):\n"
+        "    try:\n"
+        "        return row['last']\n"
+        "    except KeyError as e:\n"
+        "        log.warning('no last: %s', e)\n"
+        "        return None\n"
+    )
+    root = _repo(
+        tmp_path, {**BASE, "server.py": old, "app/size.py": "def n(a):\n    return a or 0\n"}
+    )
+    _commit(
+        root,
+        {
+            "server.py": old.replace("        log.warning('no last: %s', e)\n", ""),
+            "app/size.py": "def n(a):\n    return a\n",
+        },
+    )
+    assert cee.violations(root, "main") == ["server.py:6: an except that swallows the error"]
+
+
+def test_a_shape_moved_down_by_new_lines_above_it_is_not_new(tmp_path):
+    """An old `or 0` pushed down a line by an added import is the same shape, not a new one."""
+    root = _repo(tmp_path, {**BASE, "app/size.py": "def n(a):\n    return a or 0\n"})
+    _commit(root, {"app/size.py": "import math\n\n\ndef n(a):\n    return a or 0\n"})
+    assert cee.violations(root, "main") == []
+
+
+def test_a_comment_in_a_page_script_is_not_a_shape_brought_in(tmp_path):
+    """A comment changes no code: the file's code is as it was, so nothing in it is judged."""
+    root = _repo(tmp_path, BASE)
+    _commit(root, {"static/js/page.js": "// v || 0 was here\nfunction draw(v) { return v; }\n"})
+    assert cee.violations(root, "main") == []
+
+
 def test_a_patch_is_refused_with_each_violation_named(tmp_path):
     root = _repo(tmp_path, BASE)
     _commit(
