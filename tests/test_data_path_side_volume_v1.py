@@ -13,6 +13,7 @@ from math_exposure_core import (
     net_gex_dollars_at_strike,
     strike_total_volume,
 )
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import NFLX, SPY_0DTE
 
@@ -46,7 +47,7 @@ def test_volume_below_and_above_spot_keeps_every_digit():
 
 def _published(tk: str, chain: list, spot: float, now) -> dict:
     """The strikes route's answer on `chain` as the levels producer publishes it, at `spot`."""
-    snap = compute_terrain(tk, chain, spot, now=now)
+    snap = compute_terrain(tk, read_chain(chain), spot, now=now)
     with srv._terrain_cache_lock:
         srv._terrain_cache[tk] = {
             "_per_strike": snap.per_strike,
@@ -70,7 +71,7 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
 def test_a_strike_of_gex_not_known_leaves_its_side_gex_unknown_and_its_volume_in():
     """NFLX's whole book: Schwab's -999 on strikes below the price leaves their GEX not known, so
     GEX below has no total, and their volume, which Schwab sent, stays in the volume below."""
-    book = compute_exposures_by_strike(NFLX.chain, spot=NFLX.spot, now=NFLX.now)[0]
+    book = compute_exposures_by_strike(read_chain(NFLX.chain), spot=NFLX.spot, now=NFLX.now)[0]
     below = {k: b for k, b in book.items() if k < NFLX.spot}
     assert any(net_gex_dollars_at_strike(b) is None for b in below.values())
     sums = _published(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now)["today_side_sums"]

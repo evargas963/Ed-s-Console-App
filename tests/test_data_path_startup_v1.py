@@ -238,8 +238,33 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
 
 
 def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
+    """Induced condition: SPY's same-day chain captured 2026-09-22 with one contract replaced by
+    text, not a contract, so reading the chain raises. follow_market ends on that error."""
+    fixture = json.loads(
+        (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
+    )
+    contracts = [dict(c) for c in fixture["chain"]]
+    contracts[0] = "not a contract"
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.follow_market(stop))
+        await asyncio.sleep(0)
+        for topic, msg in chain_messages("SPY", contracts, time.time(), None, None):
+            bus.publish(topic, msg)
+        await asyncio.wait_for(task, timeout=10)
+
+    with pytest.raises(AttributeError, match="get"):
+        asyncio.run(go())
+
+
+def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
     """Induced condition: SPY's same-day chain captured 2026-09-22 with one contract's symbol taken
-    out, so the option rule's strike ladders raise. follow_market ends on that error."""
+    out, on the daemon's bus. The strike ladders the daemon records from hold every other contract
+    and no blank symbol (rule 2: no symbol is no contract to stream or record), and
+    follow_market keeps running."""
     fixture = json.loads(
         (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
     )
@@ -254,21 +279,34 @@ def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
         await asyncio.sleep(0)
         for topic, msg in chain_messages("SPY", contracts, time.time(), None, None):
             bus.publish(topic, msg)
+        for _ in range(100):
+            if "SPY" in daemon._ladders or task.done():
+                break
+            await asyncio.sleep(0.05)
+        running = not task.done()
+        stop.set()
         await asyncio.wait_for(task, timeout=10)
+        return running
 
-    with pytest.raises(KeyError, match="symbol"):
-        asyncio.run(go())
+    assert asyncio.run(go())
+    held = [
+        s for _exp, _strikes, by in daemon._ladders["SPY"] for syms in by.values() for s in syms
+    ]
+    assert None not in held
+    assert len(held) == len(contracts) - 1
 
 
-def test_an_option_rule_error_on_a_price_ends_the_market_follower(tmp_path):
+def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price(tmp_path):
     """Induced condition: SPY's same-day chain captured 2026-09-22 16:46 UTC, at that time, with one
-    contract's putCall taken out, arriving before SPY has a price, so the option rule fails only
-    when SPY's price comes. follow_market ends on that error, instead of the plane swallowing it."""
+    contract's putCall taken out, arriving before SPY has a price. When SPY's price comes the option
+    rule orders the chain without it (rule 2: no side is no contract to stream), and
+    follow_market keeps running."""
     fixture = json.loads(
         (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
     )
     contracts = [dict(c) for c in fixture["chain"]]
     del contracts[0]["putCall"]
+    no_side = contracts[0]["symbol"]
     bus = MessageBus()
     now = fixture["ts_utc"]
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: now)
@@ -290,12 +328,20 @@ def test_an_option_rule_error_on_a_price_ends_the_market_follower(tmp_path):
                 native={"key": "SPY", "LAST_PRICE": fixture["spot"]},
             ),
         )
+        for _ in range(100):
+            if "SPY" in daemon._ranked:
+                break
+            await asyncio.sleep(0.05)
+        running = not task.done()
+        stop.set()
         await asyncio.wait_for(task, timeout=10)
+        return running
 
     lmp._by_ticker.pop("SPY", None)
     try:
-        with pytest.raises(KeyError, match="putCall"):
-            asyncio.run(go())
+        assert asyncio.run(go())
+        assert no_side not in daemon._ranked["SPY"]
+        assert len(daemon._ranked["SPY"]) == len(contracts) - 1
     finally:
         lmp._by_ticker.pop("SPY", None)  # the plane row its price wrote
         lmp._fields_by_ticker.pop("SPY", None)

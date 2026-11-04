@@ -11,13 +11,14 @@ from pathlib import Path
 import server
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import NFLX, SPY_0DTE
 from time_et import ET, INDEX_OPTIONS
 
 
 def test_a_contract_schwab_sent_no_volatility_leaves_its_side_and_net_unknown():
-    snap = compute_terrain(NFLX.ticker, NFLX.chain, NFLX.spot, now=NFLX.now)
+    snap = compute_terrain(NFLX.ticker, read_chain(NFLX.chain), NFLX.spot, now=NFLX.now)
     bucket = snap.charm_by_strike[3.0]
     assert bucket["call_charm"] is None
     assert bucket["net_charm"] is None
@@ -26,7 +27,7 @@ def test_a_contract_schwab_sent_no_volatility_leaves_its_side_and_net_unknown():
 
 def test_an_expired_contract_with_no_volatility_has_no_charm_left():
     after_all = datetime(2028, 2, 1, 12, 0, tzinfo=ET)
-    assert compute_charm_by_strike(NFLX.chain, NFLX.spot, now=after_all) == {}
+    assert compute_charm_by_strike(read_chain(NFLX.chain), NFLX.spot, now=after_all) == {}
 
 
 def test_a_live_contract_with_no_time_to_expiry_leaves_its_side_unknown():
@@ -38,7 +39,9 @@ def test_a_live_contract_with_no_time_to_expiry_leaves_its_side_unknown():
         ).read_text(encoding="utf-8")
     )
     now = datetime(2027, 1, 4, 12, 0, tzinfo=ET)
-    book = compute_charm_by_strike(fx["chain"], fx["spot"], now=now, product=INDEX_OPTIONS)
+    book = compute_charm_by_strike(
+        read_chain(fx["chain"]), fx["spot"], now=now, product=INDEX_OPTIONS
+    )
     assert book and all(b["net_charm"] is None for b in book.values())
 
 
@@ -51,7 +54,8 @@ def test_a_contract_past_its_date_with_no_session_held_has_settled():
         ).read_text(encoding="utf-8")
     )
     now = datetime(2028, 2, 1, 12, 0, tzinfo=ET)
-    assert compute_charm_by_strike(fx["chain"], fx["spot"], now=now, product=INDEX_OPTIONS) == {}
+    chain = read_chain(fx["chain"])
+    assert compute_charm_by_strike(chain, fx["spot"], now=now, product=INDEX_OPTIONS) == {}
 
 
 def test_a_reported_multiplier_of_0_is_0_and_a_missing_one_is_not_known():
@@ -64,8 +68,10 @@ def test_a_reported_multiplier_of_0_is_0_and_a_missing_one_is_not_known():
         and c["expirationDate"].startswith("2027-12-17")
     )
     book = [c for c in NFLX.chain if c["strikePrice"] == 5.0 and c is not call]
-    zero = compute_charm_by_strike([*book, dict(call, multiplier=0)], NFLX.spot, now=NFLX.now)
-    gone = compute_charm_by_strike([*book, dict(call, multiplier=None)], NFLX.spot, now=NFLX.now)
+    zero_chain = read_chain([*book, dict(call, multiplier=0)])
+    gone_chain = read_chain([*book, dict(call, multiplier=None)])
+    zero = compute_charm_by_strike(zero_chain, NFLX.spot, now=NFLX.now)
+    gone = compute_charm_by_strike(gone_chain, NFLX.spot, now=NFLX.now)
     assert zero[5.0]["call_charm"] is not None
     assert gone[5.0]["call_charm"] is None
 
@@ -78,7 +84,7 @@ def test_a_contract_with_no_readable_date_leaves_its_side_unknown_in_the_terrain
         if c["strikePrice"] == 5.0 and c["putCall"] == "CALL" and c["openInterest"] > 0
     )
     chain = [*NFLX.chain, {k: v for k, v in call.items() if k != "expirationDate"}]
-    snap = compute_terrain(NFLX.ticker, chain, NFLX.spot, now=NFLX.now)
+    snap = compute_terrain(NFLX.ticker, read_chain(chain), NFLX.spot, now=NFLX.now)
     assert snap.charm_by_strike[5.0]["call_charm"] is None
 
 
@@ -90,12 +96,12 @@ def test_a_forces_side_with_a_strike_not_known_has_no_total():
         {
             "et_date": day.date().isoformat(),
             "spot": NFLX.spot,
-            "contracts": NFLX.chain,
+            "contracts": read_chain(NFLX.chain),
             "ts_utc": day.timestamp(),
         }
         for day in (NFLX.now, prior)
     ]
-    snap = compute_terrain(NFLX.ticker, NFLX.chain, NFLX.spot, now=NFLX.now)
+    snap = compute_terrain(NFLX.ticker, read_chain(NFLX.chain), NFLX.spot, now=NFLX.now)
     assert snap.charm_by_strike[3.0]["net_charm"] is None
     assert any(b["net_charm"] is not None for k, b in snap.charm_by_strike.items() if k < NFLX.spot)
     forces = server._forces_from_captures(NFLX.ticker, caps, snap.charm_by_strike)
@@ -112,12 +118,14 @@ def test_a_forces_side_with_no_strike_at_all_has_no_total():
         {
             "et_date": day.date().isoformat(),
             "spot": spot,
-            "contracts": SPY_0DTE.chain,
+            "contracts": read_chain(SPY_0DTE.chain),
             "ts_utc": day.timestamp(),
         }
         for day in (SPY_0DTE.now, prior)
     ]
-    charm = compute_charm_by_strike(SPY_0DTE.chain, spot, now=SPY_0DTE.now, product=INDEX_OPTIONS)
+    charm = compute_charm_by_strike(
+        read_chain(SPY_0DTE.chain), spot, now=SPY_0DTE.now, product=INDEX_OPTIONS
+    )
     forces = server._forces_from_captures("SPY", caps, charm)
     assert forces["available"] is True
     assert forces["charm_above"] is None
@@ -134,12 +142,12 @@ def test_a_forces_dex_side_with_a_strike_not_known_has_no_total():
         {
             "et_date": day.date().isoformat(),
             "spot": NFLX.spot,
-            "contracts": NFLX.chain,
+            "contracts": read_chain(NFLX.chain),
             "ts_utc": day.timestamp(),
         }
         for day in (NFLX.now, prior)
     ]
-    book = compute_exposures_by_strike(NFLX.chain, spot=NFLX.spot, now=NFLX.now)[0]
+    book = compute_exposures_by_strike(read_chain(NFLX.chain), spot=NFLX.spot, now=NFLX.now)[0]
     assert any(
         bucket_metric(b, "net_dex_dollars") is None for k, b in book.items() if k < NFLX.spot
     )
@@ -158,7 +166,7 @@ def test_a_forces_oi_side_with_a_strike_not_known_has_no_total():
         {
             "et_date": day.date().isoformat(),
             "spot": NFLX.spot,
-            "contracts": chain,
+            "contracts": read_chain(chain),
             "ts_utc": day.timestamp(),
         }
         for day, chain in ((NFLX.now, NFLX.chain), (prior, older))
@@ -192,7 +200,8 @@ def test_a_strike_that_left_the_chain_counts_for_what_it_held():
             if in_side(c["strikePrice"])
         )
 
-    forces = server._forces_from_captures(fx["ticker"], [newer, older])
+    caps = [{**cap, "contracts": read_chain(cap["contracts"])} for cap in (newer, older)]
+    forces = server._forces_from_captures(fx["ticker"], caps)
     assert forces["doi_below"] == change(lambda k: k < spot)
     assert forces["doi_above"] == change(lambda k: k > spot)
     assert not {"newer_et_date", "bucket_spot"} & set(forces)  # served to no reader

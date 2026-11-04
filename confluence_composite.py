@@ -16,7 +16,8 @@ from math_exposure_core import (
     strike_total_volume,
     strike_volume_legs,
 )
-from numeric_contract import price_text, schwab_count, schwab_number
+from numeric_contract import price_text, schwab_number
+from option_contract import OptionContract
 
 ABSENT = ("DGEXM", "FLOWM")
 THIN_BOOK = 10
@@ -250,28 +251,23 @@ def magnitudes(
     return out
 
 
-def iv_by_strike(contracts: list) -> dict[float, float | None]:
+def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
     """(open interest + volume)-weighted Schwab volatility, in vol points."""
     grouped: dict[float, list] = {}
-    for ct in contracts:
-        if not isinstance(ct, dict):
-            continue
-        strike = schwab_number(ct.get("strikePrice"))
-        if strike is None:
-            continue
-        grouped.setdefault(float(strike), []).append(ct)
+    for c in contracts:
+        if c.strike is not None:
+            grouped.setdefault(float(c.strike), []).append(c)
     out: dict[float, float | None] = {}
     for strike, rows in grouped.items():
         weighted = 0.0
         weight = 0.0
         plain: list[float] = []
-        for ct in rows:
-            iv = schwab_number(ct.get("volatility"))
+        for c in rows:
+            iv = c.volatility
             if iv is None:
                 continue
             plain.append(iv)
-            oi = schwab_count(ct.get("openInterest"))
-            vol = schwab_count(ct.get("totalVolume"))
+            oi, vol = c.open_interest, c.volume
             if oi is None or vol is None:
                 continue
             w = float(oi) + float(vol)

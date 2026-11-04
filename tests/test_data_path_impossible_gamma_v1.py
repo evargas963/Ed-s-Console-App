@@ -21,6 +21,7 @@ import pytest
 import server
 from app.market_data.schwab.streaming.capture import by_gamma
 from math_exposure_core import gamma_reported, largest_gamma
+from option_contract import read_chain, read_contract
 from tests.real_chains import NFLX
 from time_et import ET, option_close_product, record_markets
 
@@ -51,39 +52,42 @@ def _contract(cap, symbol):
 
 
 def test_a_gamma_past_twice_the_largest_possible_is_not_a_value_and_real_ones_are():
-    bad = _contract(NVDA, BAD)
-    assert bad["gamma"] > 2 * largest_gamma(bad, NVDA["spot"])
+    bad = read_contract(_contract(NVDA, BAD))
+    assert bad.gamma > 2 * largest_gamma(bad, NVDA["spot"])
     assert not gamma_reported(bad, NVDA["spot"])
     product = option_close_product("IWM")
-    for k in IWM["contracts"]:  # 13 minutes before IWM's 16:15 ET close
+    for k in read_chain(IWM["contracts"]):  # 13 minutes before IWM's 16:15 ET close
         largest = largest_gamma(k, IWM["spot"], product=product)
-        assert largest is not None and 1.7 < k["gamma"] <= 2 * largest
+        assert largest is not None and 1.7 < k.gamma <= 2 * largest
         assert gamma_reported(k, IWM["spot"], product=product)
-    for k in IWM_CLOSE["contracts"]:  # stamped at the close: no time left to judge it by
-        assert k["gamma"] > 2.5 and largest_gamma(k, IWM_CLOSE["spot"], product=product) is None
+    for k in read_chain(IWM_CLOSE["contracts"]):  # stamped at the close: no time left to judge it
+        assert k.gamma > 2.5 and largest_gamma(k, IWM_CLOSE["spot"], product=product) is None
         assert gamma_reported(k, IWM_CLOSE["spot"], product=product)
-    unstamped = {key: v for key, v in bad.items() if key != "greeksTime"}
+    unstamped = read_contract(
+        {key: v for key, v in _contract(NVDA, BAD).items() if key != "greeksTime"}
+    )
     assert largest_gamma(unstamped, NVDA["spot"]) is None and largest_gamma(bad, None) is None
 
 
 def test_the_option_rule_ranks_the_impossible_gamma_last():
-    ranked = by_gamma(NVDA["contracts"], NVDA["spot"], NVDA["ts_utc"], option_close_product("NVDA"))
-    valid = [k for k in NVDA["contracts"] if gamma_reported(k, NVDA["spot"])]
+    chain = read_chain(NVDA["contracts"])
+    ranked = by_gamma(chain, NVDA["spot"], NVDA["ts_utc"], option_close_product("NVDA"))
+    valid = [k for k in chain if gamma_reported(k, NVDA["spot"])]
     assert ranked.index(BAD) >= len(valid)
-    assert max(valid, key=lambda k: k["gamma"])["symbol"] == ranked[0] != BAD
+    assert max(valid, key=lambda k: k.gamma).symbol == ranked[0] != BAD
 
 
 def test_after_the_close_an_impossible_gamma_keeps_the_last_one_reported():
     after_close = datetime(2026, 10, 22, 18, 0, tzinfo=ET)
     (kept,) = server._keep_last_reported(
-        [_contract(NVDA, BAD)],
-        NVDA_BEFORE["contracts"],
+        [read_contract(_contract(NVDA, BAD))],
+        read_chain(NVDA_BEFORE["contracts"]),
         after_close,
         option_close_product("NVDA"),
         NVDA["spot"],
     )
-    assert (kept["gamma"], kept["delta"]) == (0.0, 1.0)
-    assert kept["greeksTime"] == NVDA_BEFORE["contracts"][0]["greeksTime"]
+    assert (kept.gamma, kept.delta) == (0.0, 1.0)
+    assert kept.gamma_time == NVDA_BEFORE["contracts"][0]["greeksTime"]["gamma"]
 
 
 @pytest.fixture
@@ -93,7 +97,7 @@ def published():
         "NVDA",
         captures=[
             {
-                "contracts": [dict(c) for c in NVDA["contracts"]],
+                "contracts": read_chain(NVDA["contracts"]),
                 "ts_utc": NVDA["ts_utc"],
                 "spot": NVDA["spot"],
                 "et_date": at.date().isoformat(),
@@ -137,7 +141,7 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
         tk,
         captures=[
             {
-                "contracts": [dict(c) for c in NFLX.chain],
+                "contracts": read_chain(NFLX.chain),
                 "ts_utc": NFLX.now.timestamp(),
                 "spot": NFLX.spot,
                 "et_date": NFLX.now.date().isoformat(),

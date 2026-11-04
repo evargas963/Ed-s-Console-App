@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
+from option_contract import read_chain
 from time_et import ET
 
 #: the valuation instant (an input; these contracts carry no expiry, so no time to expiry)
@@ -35,7 +36,7 @@ def _contract(**overrides):
 
 
 def test_exposures_use_schwab_multiplier_without_defaulting_to_100():
-    exposures, diag = compute_exposures_by_strike([_contract()], spot=500.0, now=NOW)
+    exposures, diag = compute_exposures_by_strike(read_chain([_contract()]), spot=500.0, now=NOW)
 
     bucket = exposures[500.0]
     assert diag.contracts_used == 1
@@ -49,7 +50,7 @@ def test_a_missing_multiplier_leaves_the_exposure_unknown_and_keeps_the_open_int
     ct = _contract()
     ct.pop("multiplier")
 
-    exposures, diag = compute_exposures_by_strike([ct], spot=500.0, now=NOW)
+    exposures, diag = compute_exposures_by_strike(read_chain([ct]), spot=500.0, now=NOW)
 
     bucket = exposures[500.0]
     assert diag.contracts_used == 0
@@ -63,7 +64,7 @@ def test_exposures_preserve_missing_total_volume_instead_of_silent_zero():
     ct = _contract()
     ct.pop("totalVolume")
 
-    exposures, diag = compute_exposures_by_strike([ct], spot=500.0, now=NOW)
+    exposures, diag = compute_exposures_by_strike(read_chain([ct]), spot=500.0, now=NOW)
 
     assert diag.contracts_used == 1
     assert exposures[500.0]["call_volume"] is None
@@ -73,7 +74,7 @@ def test_exposures_preserve_missing_open_interest_instead_of_silent_zero():
     ct = _contract()
     ct.pop("openInterest")
 
-    exposures, diag = compute_exposures_by_strike([ct], spot=500.0, now=NOW)
+    exposures, diag = compute_exposures_by_strike(read_chain([ct]), spot=500.0, now=NOW)
 
     assert diag.contracts_used == 0
     assert exposures[500.0]["oi_unreported"] == 1

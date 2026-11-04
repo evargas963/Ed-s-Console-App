@@ -467,7 +467,13 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   D4); the delivered chain stands, and the window's next chain, if any, tries again. The sweep
   (`ChainSweep.fetch_chain`, `send_quotes`) is the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
-  the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,
+  the captures) reads the Greeks it sets. Each contract's fields are read once, by
+  `option_contract.read_contract` (rule 2 for each: -999, text and NaN are no value; a -999
+  volatility leaves the contract's Greeks no value), where the chain arrives: the console's
+  `_on_chain`, the stored-capture loader `last_capture_per_day`, and the daemon's option rule
+  (`Daemon._took_chain`); every calculator, the carry rules, the gamma surface and /api/chain
+  (`option_contract.chain_row`) take the record. Enforced by: `tests/test_canonical_gex_input_validity_v1.py`,
+  `tools/check_one_reader.py`. The Greeks (gamma, delta, theta, vega, rho,
   volatility) are the quote's, every contract, every ticker. The chain sends them rounded, which
   Schwab cannot change (Schwab Trader API Support, 2026-10-06), and the sweep does not keep
   them (measured 2026-10-01, SPY 261120C00875000: chain gamma 0.0, quote gamma 0.00037225; on

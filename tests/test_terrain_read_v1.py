@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from math_levels import GAMMA_FLIP_NARROW, GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
 from numeric_contract import price_text
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from terrain_read import (
     POSTURE_FADE,
@@ -81,7 +82,7 @@ def test_a_missing_wall_reads_as_a_dash_and_a_known_one_as_its_price():
     """CRWD's chain captured 2026-10-07 (tests/real_chains.py), valued at its capture: its flip, put
     wall and gamma at spot as the levels producer computed them. Induced: the call wall withheld.
     The box line shows the put wall at two decimals and the missing call wall as "-", no word."""
-    snap = compute_terrain(CRWD.ticker, [dict(c) for c in CRWD.chain], CRWD.spot, now=CRWD.now)
+    snap = compute_terrain(CRWD.ticker, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
     r = build_terrain_read(
         spot=CRWD.spot,
         flip=snap.gamma_flip,
@@ -106,7 +107,7 @@ def test_the_regime_is_read_by_one_rule_for_every_instrument():
     got = {}
     for real in (SPY_0DTE, CRWD):
         tk = real.ticker
-        snap = compute_terrain(tk, [dict(c) for c in real.chain], real.spot, now=real.now)
+        snap = compute_terrain(tk, read_chain(real.chain), real.spot, now=real.now)
         g = snap.flip_diag.get("gamma_at_spot")
         got[tk] = (snap.confidence, snap.regime)
         if snap.confidence in (GAMMA_FLIP_NARROW, GAMMA_FLIP_UNAVAILABLE) or not g:

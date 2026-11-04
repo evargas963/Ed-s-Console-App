@@ -17,6 +17,7 @@ from datetime import datetime
 from math_exposure_core import (
     compute_exposures_by_strike,
 )
+from option_contract import read_chain
 from time_et import ET
 
 SPOT = 500.0
@@ -39,7 +40,7 @@ def _c(strike, typ, *, delta, gamma, oi=1000):
 
 
 def _book(contracts, spot=SPOT):
-    ex, _ = compute_exposures_by_strike(contracts, spot=spot, now=NOW)
+    ex, _ = compute_exposures_by_strike(read_chain(contracts), spot=spot, now=NOW)
     return ex, sorted(ex)
 
 
@@ -99,7 +100,7 @@ def test_terrain_max_pain_uses_only_the_front_expiry():
     ]
     # a later expiry with a very different distribution that would drag a POOLED max pain
     later = [c(520.0, "CALL", 90000, 30), c(530.0, "PUT", 90000, 30)]
-    snap = compute_terrain("SPY", front + later, SPOT, now=NOW)
+    snap = compute_terrain("SPY", read_chain(front + later), SPOT, now=NOW)
     ex_front, _ = _book(front)
     assert snap.max_pain_dte == 0
     assert snap.max_pain == compute_max_pain(ex_front) == 500.0

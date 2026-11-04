@@ -5,7 +5,7 @@ Volatility-derived transforms: the 25-delta risk reversal and the average true r
 
 from __future__ import annotations
 
-from numeric_contract import schwab_number
+from option_contract import OptionContract
 
 # ── 25-delta risk reversal (skew steepness) ──────────────────────────────────
 
@@ -14,7 +14,7 @@ from numeric_contract import schwab_number
 RR25_DELTA_TOL = 0.10
 
 
-def compute_25d_risk_reversal(contracts: list[dict]) -> dict | None:
+def compute_25d_risk_reversal(contracts: list[OptionContract]) -> dict | None:
     """IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out, in vol points
     (the fixed ~30-day tenor the published risk reversal uses -- SpotGamma; the front expiry is
     often a same-day one, whose skew is hours wide).
@@ -30,18 +30,11 @@ def compute_25d_risk_reversal(contracts: list[dict]) -> dict | None:
     if not contracts:
         return None
     usable: list[tuple[int, str, float, float]] = []  # (dte, side, delta, iv)
-    for ct in contracts:
-        if not isinstance(ct, dict):
+    for c in contracts:
+        dte, delta, iv = c.days_to_expiry, c.delta, c.volatility
+        if dte is None or delta is None or iv is None or c.side is None:
             continue
-        dte = schwab_number(ct.get("daysToExpiration"))
-        delta = schwab_number(ct.get("delta"))
-        iv = schwab_number(ct.get("volatility"))
-        side = (ct.get("putCall") or "").upper().strip()
-        if dte is None or delta is None or iv is None:
-            continue
-        if side not in ("CALL", "PUT"):
-            continue
-        usable.append((int(dte), side, delta, iv))
+        usable.append((int(dte), c.side, delta, iv))
     if not usable:
         return None
     front_dte = min(

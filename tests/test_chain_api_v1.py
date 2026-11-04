@@ -23,6 +23,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server as srv
+from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
 from stream_spine import options_quote_msg
 from time_et import ET
@@ -67,7 +68,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
             ),
         )
     srv._publish_levels(
-        tk, [dict(c) for c in contracts], fetched_ts, chain_spot=(price, fetched_ts), now=_AT
+        tk, read_chain(contracts), fetched_ts, chain_spot=(price, fetched_ts), now=_AT
     )
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": held})
 

@@ -8,6 +8,7 @@ NFLX): on 2027-12-17 and 2028-01-21, 8 contracts with open interest whose Greeks
 
 from __future__ import annotations
 
+from option_contract import read_chain
 from tests.gamma_render_helper import drawn
 from tests.real_chains import NFLX
 
@@ -16,7 +17,7 @@ def test_the_page_draws_every_cell_with_no_value_as_a_dash(tmp_path):
     """Schwab's chain published by the levels producer, served by the heatmap's answer and drawn
     by the page: every cell with no value draws "-", those with open interest whose Greeks Schwab
     sent as -999 as the strikes no contract is listed at. Nothing says why a value is missing."""
-    surface, text = drawn(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now, tmp_path)
+    surface, text = drawn(NFLX.ticker, read_chain(NFLX.chain), NFLX.spot, NFLX.now, tmp_path)
     exps = [e["expiry"] for e in surface["expirations"]]
     listed = {(float(c["strikePrice"]), c["expirationDate"][:10]) for c in NFLX.chain}
     no_greek = {

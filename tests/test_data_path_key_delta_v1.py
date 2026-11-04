@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from math_exposure_core import bucket_metric_abs, compute_exposures_by_strike
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, TSLA
 
@@ -16,13 +17,16 @@ from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, TSLA
 def test_a_strike_with_one_sides_delta_not_known_is_not_the_key_delta_strike(held):
     """Induced test condition: Schwab's no-value code on the delta of the smaller side at the
     chain's key strike, its gamma and volatility as sent. No captured chain holds that alone."""
-    key = compute_terrain(held.ticker, held.chain, held.spot, now=held.now).key_delta_strike
-    book, _ = compute_exposures_by_strike(held.chain, spot=held.spot, now=held.now)
+    records = read_chain(held.chain)
+    key = compute_terrain(held.ticker, records, held.spot, now=held.now).key_delta_strike
+    book, _ = compute_exposures_by_strike(records, spot=held.spot, now=held.now)
     calls = bucket_metric_abs(book[key], "call_dex_dollars")
     side = "CALL" if calls < bucket_metric_abs(book[key], "put_dex_dollars") else "PUT"
     chain = [
         dict(c, delta=-999.0) if c["strikePrice"] == key and c["putCall"] == side else c
         for c in held.chain
     ]
-    after = compute_terrain(held.ticker, chain, held.spot, now=held.now).key_delta_strike
+    after = compute_terrain(
+        held.ticker, read_chain(chain), held.spot, now=held.now
+    ).key_delta_strike
     assert after is not None and after != key

@@ -26,6 +26,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import live_price_rows
 import server
+from option_contract import read_chain
 from stream_spine import options_quote_msg
 from time_et import ET
 
@@ -98,7 +99,7 @@ def _states_when_the_status_was_sent(offset: float) -> list[str]:
     at = datetime.fromtimestamp(_AT, ET)
     server._publish_levels(
         TK,
-        [dict(c) for c in _CAPTURE["chain"]],
+        read_chain(_CAPTURE["chain"]),
         _CAPTURE["capture_ts_utc"],
         chain_spot=(row["spot"], row["trade_ts"]),
         now=at,
@@ -121,7 +122,7 @@ def test_the_heatmap_names_its_producer_and_serves_no_method_text():
     at = datetime.fromtimestamp(_AT, ET)
     server._publish_levels(
         TK,
-        [dict(c) for c in _CAPTURE["chain"]],
+        read_chain(_CAPTURE["chain"]),
         _CAPTURE["capture_ts_utc"],
         chain_spot=(row["spot"], row["trade_ts"]),
         now=at,
@@ -151,7 +152,7 @@ def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
     at = datetime.fromtimestamp(_AT, ET)
     server._publish_levels(
         TK,
-        [dict(c) for c in _CAPTURE["chain"]],
+        read_chain(_CAPTURE["chain"]),
         _CAPTURE["capture_ts_utc"],
         chain_spot=(row["spot"], row["trade_ts"]),
         now=at,
@@ -220,7 +221,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
     at = datetime.fromtimestamp(_AT, ET)
     server._publish_levels(
         TK,
-        [dict(c) for c in _CAPTURE["chain"]],
+        read_chain(_CAPTURE["chain"]),
         _CAPTURE["capture_ts_utc"],
         chain_spot=(row["spot"], row["trade_ts"]),
         now=at,

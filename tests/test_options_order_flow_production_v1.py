@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from option_contract import read_chain
 from time_et import ET
 
 _HISTORY = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
@@ -113,7 +114,7 @@ def build_side_e2e_fixture_response() -> dict:
         "SPY",
         captures=[
             {
-                "contracts": close["chain"],
+                "contracts": read_chain(close["chain"]),
                 "ts_utc": close["ts_utc"],
                 "spot": close["spot"],
                 "spot_ts": None,

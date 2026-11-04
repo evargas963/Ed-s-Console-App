@@ -28,6 +28,7 @@ from confluence_composite import (
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
+from option_contract import read_chain
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
@@ -88,9 +89,7 @@ def _forget(tk: str) -> None:
 
 def _published(held) -> dict:
     """The levels the producer publishes for `held`'s chain at its own price and capture."""
-    return compute_terrain(
-        held.ticker, [dict(c) for c in held.chain], held.spot, now=held.now
-    ).to_dict()
+    return compute_terrain(held.ticker, read_chain(held.chain), held.spot, now=held.now).to_dict()
 
 
 def _store(tk: str, cache: dict) -> None:
@@ -117,7 +116,7 @@ def _nflx_far_book() -> tuple[dict, dict]:
             "NFLX",
             captures=[
                 {
-                    "contracts": [dict(c) for c in NFLX.chain],
+                    "contracts": read_chain(NFLX.chain),
                     "ts_utc": NFLX.now.timestamp(),
                     "spot": NFLX.spot,
                     "et_date": NFLX.now.date().isoformat(),
@@ -193,7 +192,7 @@ def test_an_am_settled_expiry_past_the_year_is_scored():
             tk,
             captures=[
                 {
-                    "contracts": [dict(c) for c in fx["chain"]],
+                    "contracts": read_chain(fx["chain"]),
                     "ts_utc": fx["ts_utc"],
                     "spot": fx["spot"],
                     "et_date": at.date().isoformat(),
@@ -243,7 +242,7 @@ def _publish_close(tk: str = "SPY") -> dict:
         tk,
         captures=[
             {
-                "contracts": [dict(c) for c in SPY_CLOSE.chain],
+                "contracts": read_chain(SPY_CLOSE.chain),
                 "ts_utc": SPY_CLOSE.now.timestamp(),
                 "spot": SPY_CLOSE.spot,
                 "et_date": SPY_CLOSE.now.date().isoformat(),
@@ -301,7 +300,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     )
     strike = zero_oi[0]
     inside = datetime(2026, 10, 22, 15, 0, tzinfo=ET)  # before the close: charm has time
-    legs = [dict(c) for c in SPY_CLOSE.chain if c["strikePrice"] == strike]
+    legs = read_chain([c for c in SPY_CLOSE.chain if c["strikePrice"] == strike])
     assert strike not in compute_charm_by_strike(legs, SPY_CLOSE.spot, now=inside)
     try:
         live = _publish_close()
@@ -337,7 +336,7 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
             "SPY",
             captures=[
                 {
-                    "contracts": [dict(c) for c in fx["contracts"]],
+                    "contracts": read_chain(fx["contracts"]),
                     "ts_utc": fx["chain_as_of_ts_utc"],
                     "spot": fx["priced_at_spot"],
                     "et_date": at.date().isoformat(),
@@ -381,7 +380,7 @@ def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
             tk,
             captures=[
                 {
-                    "contracts": [dict(c) for c in fx["chain"]],
+                    "contracts": read_chain(fx["chain"]),
                     "ts_utc": fx["ts_utc"],
                     "spot": fx["spot"],
                     "et_date": at.date().isoformat(),
@@ -467,10 +466,11 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     ET): no listed strike is at or above the price, so no row carries the spot line, and the price
     is still shown."""
     held, price = SPY_0DTE, _SPY_PRINT_ABOVE["native"]["LAST_PRICE"]
+    chain = read_chain(held.chain)
     book, _diag = compute_exposures_by_strike(
-        held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
+        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
     )
-    matrix = build_matrix(book, {}, iv_by_strike(held.chain), held.spot, 0.0)
+    matrix = build_matrix(book, {}, iv_by_strike(chain), held.spot, 0.0)
     rows = window_rows(matrix, _around(sorted(matrix["ranked"]), price))
     assert price > max(matrix["strikes"])
     assert under_strike(price, matrix["strikes"]) is None
@@ -492,7 +492,7 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
             tk,
             captures=[
                 {
-                    "contracts": [dict(c) for c in MRVL.chain],
+                    "contracts": read_chain(MRVL.chain),
                     "ts_utc": MRVL.now.timestamp(),
                     "spot": MRVL.spot,
                     "et_date": MRVL.now.date().isoformat(),
@@ -519,14 +519,15 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
     stored with the book, it is the charm on the matrix (thousands, two decimals, signed)."""
 
     held = SPY_0DTE
+    chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     book, _diag = compute_exposures_by_strike(
-        held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
+        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
     )
     earlier = compute_charm_by_strike(
-        held.chain, held.spot, now=held.now - timedelta(hours=1), product=INDEX_OPTIONS
+        chain, held.spot, now=held.now - timedelta(hours=1), product=INDEX_OPTIONS
     )
-    at_capture = compute_charm_by_strike(held.chain, held.spot, now=held.now, product=INDEX_OPTIONS)
+    at_capture = compute_charm_by_strike(chain, held.spot, now=held.now, product=INDEX_OPTIONS)
     strike = min(book, key=lambda s: abs(s - held.spot))
     _store(
         "SPY",
@@ -536,7 +537,7 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
             "_valued_ts_utc": held.now.timestamp(),
             "expiry_dte": {expiry: 0},
             "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": held.chain,
+            "_priced_chain": chain,
             "_charm_by_expiry": {expiry: earlier},
         },
     )
@@ -555,12 +556,13 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
     would build; it is the volatility on the matrix (one decimal)."""
 
     held = SPY_0DTE
+    chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     book, _diag = compute_exposures_by_strike(
-        held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
+        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
     )
-    puts = iv_by_strike(SPY_CLOSE.chain)
-    whole = iv_by_strike(held.chain)
+    puts = iv_by_strike(read_chain(SPY_CLOSE.chain))
+    whole = iv_by_strike(chain)
     _store(
         "SPY",
         _published(held)
@@ -569,7 +571,7 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
             "_valued_ts_utc": held.now.timestamp(),
             "expiry_dte": {expiry: 0},
             "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": held.chain,
+            "_priced_chain": chain,
             "_iv_by_expiry": {expiry: puts},
         },
     )
@@ -592,9 +594,10 @@ def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
     SPY's 2026-10-07 chain, is not a ranking that chain could produce; the request returns it."""
 
     held = SPY_0DTE
+    chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     book, _diag = compute_exposures_by_strike(
-        held.chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
+        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
     )
     try:
         other = _publish_close()["_matrix_by_expiry"]["2026-10-22"]
@@ -603,7 +606,7 @@ def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
             "_valued_ts_utc": held.now.timestamp(),
             "expiry_dte": {expiry: 0},
             "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": held.chain,
+            "_priced_chain": chain,
             "_matrix_by_expiry": {expiry: other},
         }
         body = server.confluence_payload("SPY", expiry, held.now)
@@ -636,18 +639,17 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     valued = valuation_instant(at, INDEX_OPTIONS)
+    chain = read_chain(held.chain)
     at_close, _diag = compute_exposures_by_strike(
-        held.chain, spot=held.spot, now=valued, product=INDEX_OPTIONS
+        chain, spot=held.spot, now=valued, product=INDEX_OPTIONS
     )
-    after, _diag = compute_exposures_by_strike(
-        held.chain, spot=held.spot, now=at, product=INDEX_OPTIONS
-    )
+    after, _diag = compute_exposures_by_strike(chain, spot=held.spot, now=at, product=INDEX_OPTIONS)
     strike = min(at_close, key=lambda s: abs(s - held.spot))
     assert bucket_metric(at_close[strike], "net_vanna") is not None
     assert bucket_metric(after[strike], "net_vanna") is None
-    iv = iv_by_strike(held.chain)
-    charm_close = compute_charm_by_strike(held.chain, held.spot, now=valued, product=INDEX_OPTIONS)
-    charm_late = compute_charm_by_strike(held.chain, held.spot, now=at, product=INDEX_OPTIONS)
+    iv = iv_by_strike(chain)
+    charm_close = compute_charm_by_strike(chain, held.spot, now=valued, product=INDEX_OPTIONS)
+    charm_late = compute_charm_by_strike(chain, held.spot, now=at, product=INDEX_OPTIONS)
     close = build_matrix(at_close, charm_close, iv, held.spot, 0.0)
     late = build_matrix(after, charm_late, iv, held.spot, 0.0)
     close_rows = window_rows(close, _around(sorted(close["ranked"]), held.spot))
@@ -666,10 +668,9 @@ def test_spy_keeps_vanna_until_the_index_close():
 
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
-    book, _diag = compute_exposures_by_strike(
-        held.chain, spot=held.spot, now=at, product=INDEX_OPTIONS
-    )
-    equity, _diag = compute_exposures_by_strike(held.chain, spot=held.spot, now=at)
+    chain = read_chain(held.chain)
+    book, _diag = compute_exposures_by_strike(chain, spot=held.spot, now=at, product=INDEX_OPTIONS)
+    equity, _diag = compute_exposures_by_strike(chain, spot=held.spot, now=at)
     strike = min(book, key=lambda s: abs(s - held.spot))
     assert bucket_metric(book[strike], "net_vanna") is not None
     assert bucket_metric(equity[strike], "net_vanna") is None
@@ -685,7 +686,9 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
-        snap = server._publish_levels(tk, held.chain, at.timestamp(), chain_spot=spot, now=at)
+        snap = server._publish_levels(
+            tk, read_chain(held.chain), at.timestamp(), chain_spot=spot, now=at
+        )
         body = server.confluence_payload(tk, expiry, at)
     finally:
         _forget(tk)
@@ -694,7 +697,9 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     assert _window_has(body["rows"], "vanna_text")
     assert _window_has(body["rows"], "charm_text")
     assert _window_has(body["rows"], "score")
-    blend = iv_by_strike([ct for ct in held.chain if str(ct.get("expirationDate"))[:10] == expiry])
+    blend = iv_by_strike(
+        read_chain([ct for ct in held.chain if str(ct.get("expirationDate"))[:10] == expiry])
+    )
     shown = next(r for r in body["rows"] if blend.get(r["strike"]) is not None)
     assert shown["iv_text"] == f"{blend[shown['strike']]:.1f}"
 
@@ -709,7 +714,9 @@ def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
-        snap = server._publish_levels(tk, held.chain, at.timestamp(), chain_spot=spot, now=at)
+        snap = server._publish_levels(
+            tk, read_chain(held.chain), at.timestamp(), chain_spot=spot, now=at
+        )
         body = server.confluence_payload(tk, expiry, at)
         again = server.confluence_payload(tk, expiry, at)
     finally:
@@ -746,14 +753,18 @@ def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, [dict(c) for c in held.chain], after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(held.chain), after.timestamp(), chain_spot=spot, now=after
         )
         first = server.confluence_payload(tk, expiry, after)
         near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
         kept = (near["net_gex_text"], near["vanna_text"], near["charm_text"], near["score_text"])
         assert None not in kept
         server._publish_levels(
-            tk, _no_value_quote(held.chain), after.timestamp(), chain_spot=spot, now=after
+            tk,
+            read_chain(_no_value_quote(held.chain)),
+            after.timestamp(),
+            chain_spot=spot,
+            now=after,
         )
         second = server.confluence_payload(tk, expiry, after)
         again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
@@ -778,10 +789,14 @@ def test_during_the_session_a_no_value_quote_does_not_keep_the_old_greek():
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, [dict(c) for c in held.chain], session.timestamp(), chain_spot=spot, now=session
+            tk, read_chain(held.chain), session.timestamp(), chain_spot=spot, now=session
         )
         server._publish_levels(
-            tk, _no_value_quote(held.chain), later.timestamp(), chain_spot=spot, now=later
+            tk,
+            read_chain(_no_value_quote(held.chain)),
+            later.timestamp(),
+            chain_spot=spot,
+            now=later,
         )
         body = server.confluence_payload(tk, expiry, later)
         near = min(body["rows"], key=lambda row: abs(row["strike"] - held.spot))
@@ -812,14 +827,14 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, [dict(c) for c in held.chain], after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(held.chain), after.timestamp(), chain_spot=spot, now=after
         )
         first = server.confluence_payload(tk, expiry, after)
         near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
         kept = (near["oi_text"], near["volume_text"], near["score_text"], near["vanna_text"])
         assert None not in kept
         server._publish_levels(
-            tk, _zero_counts(held.chain), after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(_zero_counts(held.chain)), after.timestamp(), chain_spot=spot, now=after
         )
         second = server.confluence_payload(tk, expiry, after)
         again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
@@ -843,9 +858,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
     fresh = [dict(c) for c in held.chain]
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
-        server._publish_levels(
-            tk, [dict(c) for c in fresh], now.timestamp(), chain_spot=spot, now=now
-        )
+        server._publish_levels(tk, read_chain(fresh), now.timestamp(), chain_spot=spot, now=now)
         first = server.confluence_payload(tk, expiry, now)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
         kept = (shown["oi_text"], shown["volume_text"], shown["pc_vol_text"])
@@ -864,7 +877,9 @@ def _first_chain_keeps_the_capture(now, capture_at):
                 completeness_basis=CAPTURE_BASIS,
                 ts_utc=capture_at.timestamp(),
             )
-        server._publish_levels(tk, _zero_counts(fresh), now.timestamp(), chain_spot=spot, now=now)
+        server._publish_levels(
+            tk, read_chain(_zero_counts(fresh)), now.timestamp(), chain_spot=spot, now=now
+        )
         second = server.confluence_payload(tk, expiry, now)
         again = next(row for row in second["rows"] if row["strike"] == shown["strike"])
         assert (again["oi_text"], again["volume_text"], again["pc_vol_text"]) == kept
@@ -910,12 +925,16 @@ def test_a_no_value_count_after_the_close_is_not_the_last_count():
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, [dict(c) for c in held.chain], after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(held.chain), after.timestamp(), chain_spot=spot, now=after
         )
         first = server.confluence_payload(tk, expiry, after)
         assert any(row["pc_vol_text"] is not None for row in first["rows"])
         server._publish_levels(
-            tk, _no_value_counts(held.chain), after.timestamp(), chain_spot=spot, now=after
+            tk,
+            read_chain(_no_value_counts(held.chain)),
+            after.timestamp(),
+            chain_spot=spot,
+            now=after,
         )
         second = server.confluence_payload(tk, expiry, after)
         assert all(row["pc_vol_text"] is None for row in second["rows"])
@@ -934,12 +953,12 @@ def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, [dict(c) for c in held.chain], inside.timestamp(), chain_spot=spot, now=inside
+            tk, read_chain(held.chain), inside.timestamp(), chain_spot=spot, now=inside
         )
         first = server.confluence_payload(tk, expiry, inside)
         assert any(row["pc_vol_text"] is not None for row in first["rows"])
         server._publish_levels(
-            tk, _zero_counts(held.chain), inside.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(_zero_counts(held.chain)), inside.timestamp(), chain_spot=spot, now=after
         )
         second = server.confluence_payload(tk, expiry, after)
         assert all(row["pc_vol_text"] is None for row in second["rows"])
@@ -971,7 +990,7 @@ def test_a_chain_past_its_close_stored_first_keeps_the_capture_before_it():
                 ts_utc=when.timestamp(),
             )
         server._publish_levels(
-            tk, _zero_counts(fresh), after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(_zero_counts(fresh)), after.timestamp(), chain_spot=spot, now=after
         )
         served = server.confluence_payload(tk, expiry, after)
         assert any(row["pc_vol_text"] is not None for row in served["rows"])
@@ -991,7 +1010,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, [dict(c) for c in fresh], before.timestamp(), chain_spot=spot, now=before
+            tk, read_chain(fresh), before.timestamp(), chain_spot=spot, now=before
         )
         first = server.confluence_payload(tk, expiry, before)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
@@ -1013,7 +1032,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
             )
         closed = datetime(2026, 10, 4, 12, 0, tzinfo=ET)
         server._publish_levels(
-            tk, _zero_counts(fresh), closed.timestamp(), chain_spot=spot, now=closed
+            tk, read_chain(_zero_counts(fresh)), closed.timestamp(), chain_spot=spot, now=closed
         )
         held_closed = server.confluence_payload(tk, expiry, closed)
         assert (
@@ -1023,7 +1042,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
             == kept
         )
         server._publish_levels(
-            tk, _zero_counts(fresh), before.timestamp(), chain_spot=spot, now=before
+            tk, read_chain(_zero_counts(fresh)), before.timestamp(), chain_spot=spot, now=before
         )
         second = server.confluence_payload(tk, expiry, before)
         again = next(row for row in second["rows"] if row["strike"] == shown["strike"])
@@ -1061,7 +1080,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
             tk,
             captures=[
                 {
-                    "contracts": [dict(c) for c in held["chain"]],
+                    "contracts": read_chain(held["chain"]),
                     "ts_utc": held["ts_utc"],
                     "spot": held["spot"],
                     "basis": CAPTURE_BASIS,
@@ -1074,11 +1093,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
         )
         book = server.terrain_cache_get(tk, after.timestamp())
         overlaid = book["_gamma_surface"]["stream_overlay_contracts"]
-        kept = {
-            ct["symbol"]: ct["totalVolume"]
-            for ct in book["_priced_chain"]
-            if ct.get("symbol") in traded
-        }
+        kept = {ct.symbol: ct.volume for ct in book["_priced_chain"] if ct.symbol in traded}
     finally:
         ofls.clear_all_live_state()
         _forget(tk)
@@ -1108,12 +1123,12 @@ def test_a_missing_count_after_the_close_is_not_the_last_count():
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, [dict(c) for c in held.chain], after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(held.chain), after.timestamp(), chain_spot=spot, now=after
         )
         first = server.confluence_payload(tk, expiry, after)
         assert any(row["pc_vol_text"] is not None for row in first["rows"])
         server._publish_levels(
-            tk, _drop_counts(held.chain), after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(_drop_counts(held.chain)), after.timestamp(), chain_spot=spot, now=after
         )
         second = server.confluence_payload(tk, expiry, after)
         assert all(row["pc_vol_text"] is None for row in second["rows"])
@@ -1145,7 +1160,7 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
                 ts_utc=datetime(2026, 10, 7, 16, 15, tzinfo=ET).timestamp(),
             )
         server._publish_levels(
-            tk, _zero_counts(fresh), unknown.timestamp(), chain_spot=spot, now=unknown
+            tk, read_chain(_zero_counts(fresh)), unknown.timestamp(), chain_spot=spot, now=unknown
         )
         body = server.confluence_payload(tk, expiry, unknown)
         assert body["rows"]
@@ -1187,20 +1202,20 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
         spot = _chain_spot(tk, _SPY_TWO_CLOSES["quote_at_older"])
         store(older)
         server._publish_levels(
-            tk, _zero_counts(fresh), before.timestamp(), chain_spot=spot, now=before
+            tk, read_chain(_zero_counts(fresh)), before.timestamp(), chain_spot=spot, now=before
         )
         store(newer)
         server._publish_levels(
-            tk, _zero_counts(fresh), session.timestamp(), chain_spot=spot, now=session
+            tk, read_chain(_zero_counts(fresh)), session.timestamp(), chain_spot=spot, now=session
         )
         server._publish_levels(
-            tk, _zero_counts(fresh), after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(_zero_counts(fresh)), after.timestamp(), chain_spot=spot, now=after
         )
         book = server.terrain_cache_get(tk, after.timestamp())
-        kept = next(ct for ct in book["_priced_chain"] if ct.get("symbol") == target["symbol"])
+        kept = next(ct for ct in book["_priced_chain"] if ct.symbol == target["symbol"])
     finally:
         _forget(tk)
-    assert kept["totalVolume"] == later[target["symbol"]] != target["totalVolume"]
+    assert kept.volume == later[target["symbol"]] != target["totalVolume"]
 
 
 def test_during_the_session_a_zero_count_replaces_the_old_count():
@@ -1214,10 +1229,10 @@ def test_during_the_session_a_zero_count_replaces_the_old_count():
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, [dict(c) for c in held.chain], session.timestamp(), chain_spot=spot, now=session
+            tk, read_chain(held.chain), session.timestamp(), chain_spot=spot, now=session
         )
         server._publish_levels(
-            tk, _zero_counts(held.chain), later.timestamp(), chain_spot=spot, now=later
+            tk, read_chain(_zero_counts(held.chain)), later.timestamp(), chain_spot=spot, now=later
         )
         body = server.confluence_payload(tk, expiry, later)
         near = min(body["rows"], key=lambda row: abs(row["strike"] - held.spot))
@@ -1241,7 +1256,7 @@ def test_an_after_hours_print_keeps_the_close_book():
             tk,
             captures=[
                 {
-                    "contracts": [dict(c) for c in held.chain],
+                    "contracts": read_chain(held.chain),
                     "ts_utc": held.now.timestamp(),
                     "spot": held.spot,
                     "et_date": held.now.date().isoformat(),
@@ -1277,19 +1292,20 @@ def test_a_close_capture_keeps_its_charm_in_the_forces():
     The forces charm sums include it."""
 
     held = SPY_0DTE
+    chain = read_chain(held.chain)
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
     caps = [
         {
             "et_date": "2026-10-07",
             "spot": held.spot,
-            "contracts": held.chain,
+            "contracts": chain,
             "ts_utc": after.timestamp(),
         },
         {
             "et_date": "2026-10-06",
             "spot": held.spot,
-            "contracts": held.chain,
+            "contracts": chain,
             "ts_utc": prior.timestamp(),
         },
     ]
@@ -1307,18 +1323,19 @@ def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
     valued = valuation_instant(after, INDEX_OPTIONS)
-    snap = compute_terrain("SPY", held.chain, held.spot, now=valued)
+    chain = read_chain(held.chain)
+    snap = compute_terrain("SPY", chain, held.spot, now=valued)
     caps = [
         {
             "et_date": "2026-10-07",
             "spot": held.spot,
-            "contracts": held.chain,
+            "contracts": chain,
             "ts_utc": after.timestamp(),
         },
         {
             "et_date": "2026-10-06",
             "spot": held.spot,
-            "contracts": held.chain,
+            "contracts": chain,
             "ts_utc": prior.timestamp(),
         },
     ]
@@ -1326,7 +1343,7 @@ def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
     from_book = server._forces_from_captures("SPY", caps, snap.charm_by_strike)
     assert from_book["charm_below"] == fresh["charm_below"]
     assert from_book["charm_above"] == fresh["charm_above"]
-    midday = compute_charm_by_strike(held.chain, held.spot, now=held.now, product=INDEX_OPTIONS)
+    midday = compute_charm_by_strike(chain, held.spot, now=held.now, product=INDEX_OPTIONS)
     read = server._forces_from_captures("SPY", caps, midday)
     below = sum(v["net_charm"] for k, v in midday.items() if k < held.spot)
     above = sum(v["net_charm"] for k, v in midday.items() if k > held.spot)
@@ -1366,7 +1383,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
             tk,
             captures=[
                 {
-                    "contracts": CRWD.chain,
+                    "contracts": read_chain(CRWD.chain),
                     "ts_utc": at.timestamp(),
                     "spot": CRWD.spot,
                     "et_date": at.date().isoformat(),

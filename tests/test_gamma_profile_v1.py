@@ -25,6 +25,7 @@ from math_levels import (
     gamma_at_price,
     gamma_flip_from_profile,
 )
+from option_contract import OptionContract, read_chain, read_contract
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
 #: own capture time (a live 0DTE, ~3.5 h to Schwab's 16:00 EQO close)
@@ -33,8 +34,8 @@ _DATA = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
 NOW = datetime.fromtimestamp(_DATA["ts_utc"], time_et.ET)
 
 
-def _load_real_chain() -> tuple[list, float]:
-    return _DATA["chain"], float(_DATA["spot"])
+def _load_real_chain() -> tuple[list[OptionContract], float]:
+    return read_chain(_DATA["chain"]), float(_DATA["spot"])
 
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
@@ -50,7 +51,7 @@ def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
 def test_profile_uses_dealer_sign_convention() -> None:
     """Calls add, puts subtract: an all-call book must be positive at every price."""
     chain, spot = _load_real_chain()
-    calls = [c for c in chain if str(c.get("putCall", "")).upper().startswith("C")]
+    calls = [c for c in chain if c.side == "CALL"]
     assert calls, "fixture must contain calls"
     prof = compute_gamma_profile(calls, spot, now=NOW)
     assert prof and all(v >= 0 for _, v in prof)
@@ -73,7 +74,11 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
 
 
 def test_flip_v2_fails_closed_without_inputs() -> None:
-    for contracts, spot in (([], 100.0), (None, 100.0), ([{"strikePrice": 100}], 0.0)):
+    for contracts, spot in (
+        ([], 100.0),
+        (None, 100.0),
+        ([read_contract({"strikePrice": 100})], 0.0),
+    ):
         flip, confidence, _diag = compute_gamma_flip_v2(contracts, spot, profile=[])
         assert flip is None and confidence == GAMMA_FLIP_UNAVAILABLE
 
@@ -254,7 +259,9 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
     from math_volatility import compute_25d_risk_reversal
 
     def ct(side, delta, iv, dte):
-        return {"putCall": side, "delta": delta, "volatility": iv, "daysToExpiration": dte}
+        return read_contract(
+            {"putCall": side, "delta": delta, "volatility": iv, "daysToExpiration": dte}
+        )
 
     chain = [
         # the ~30-day expiry (28d): usable 25Δ wings — RR = 17.0 − 21.5 = −4.5
@@ -280,7 +287,10 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
     # one-sided chain, empty chain, missing greeks -> fail closed
     assert compute_25d_risk_reversal([ct("CALL", 0.25, 17.0, 28)]) is None
     assert compute_25d_risk_reversal([]) is None
-    assert compute_25d_risk_reversal([{"putCall": "CALL", "daysToExpiration": 1}]) is None
+    assert (
+        compute_25d_risk_reversal([read_contract({"putCall": "CALL", "daysToExpiration": 1})])
+        is None
+    )
 
 
 def test_the_flip_counts_the_contracts_it_could_not_price():
@@ -299,7 +309,8 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     )
     spx = json.loads((fx / "real_spx_chain_2026_10_07_2027_12_17.json").read_text(encoding="utf-8"))
     now = datetime.fromtimestamp(nflx["ts_utc"], time_et.ET)
-    priced, unpriced = contract_inputs(nflx["chain"], now)
+    nflx_chain = read_chain(nflx["chain"])
+    priced, unpriced = contract_inputs(nflx_chain, now)
     assert (len(priced), unpriced) == (685, {"no_volatility": 8})
     far = next(ct for ct in nflx["chain"] if ct["expirationDate"].startswith("2028-01-21"))
     assert (
@@ -309,7 +320,7 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
         == (datetime.fromisoformat(far["expirationDate"]).timestamp() - now.timestamp())
         / time_et.YEAR_SECONDS
     )
-    snap = compute_terrain("NFLX", nflx["chain"], nflx["spot"], now=now)
+    snap = compute_terrain("NFLX", nflx_chain, nflx["spot"], now=now)
     assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8}
     at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)
-    assert contract_inputs(spx["chain"], at)[1] == {}
+    assert contract_inputs(read_chain(spx["chain"]), at)[1] == {}

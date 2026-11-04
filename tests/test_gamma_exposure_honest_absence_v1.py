@@ -10,6 +10,7 @@ import time
 
 import server
 from math_exposure_core import compute_exposures_by_strike, exposure_books
+from option_contract import read_chain
 from server import project_gamma_surface
 from terrain_engine import _per_strike_rows, compute_terrain
 from tests.real_chains import CRWD
@@ -66,13 +67,14 @@ def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
     for c in chain:
         if c["strikePrice"] == gone_k:
             del c["openInterest"]
-    surface = project_gamma_surface(chain, exposure_books(chain, spot=CRWD.spot, now=CRWD.now))
+    records = read_chain(chain)
+    surface = project_gamma_surface(records, exposure_books(records, spot=CRWD.spot, now=CRWD.now))
     cell = {r["strike"]: r for r in surface["cells"]}
     assert all(v == 0 for v in cell[zero_k]["gex"] if v is not None) and cell[zero_k]["gex"] != [
         None
     ]
     assert cell[gone_k]["gex"] == [None]
-    exposures, _ = compute_exposures_by_strike(chain, spot=CRWD.spot, now=CRWD.now)
+    exposures, _ = compute_exposures_by_strike(records, spot=CRWD.spot, now=CRWD.now)
     assert exposures[zero_k]["net_gex_1pct"] == 0 and exposures[gone_k]["oi_unreported"] > 0
     rows = {r[0]: r[1] for r in _per_strike_rows(exposures)}
     assert rows[zero_k] == 0 and rows[gone_k] is None
@@ -86,7 +88,7 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes():
     for c in chain:
         del c["openInterest"]
     tk = server.ticker_storage_key("ZZTESTNOOI")
-    snap = compute_terrain(tk, chain, CRWD.spot, now=CRWD.now)
+    snap = compute_terrain(tk, read_chain(chain), CRWD.spot, now=CRWD.now)
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {
             "ticker": tk,
@@ -112,6 +114,6 @@ def test_real_oi_that_nets_to_exactly_zero_terrain_row_is_zero_not_dropped():
         _ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
         _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5),
     ]
-    exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, now=CRWD.now)
+    exposures, _diag = compute_exposures_by_strike(read_chain(chain), spot=SPOT, now=CRWD.now)
     rows = _per_strike_rows(exposures)
     assert len(rows) == 1 and rows[0][0] == 100.0 and rows[0][1] == 0.0

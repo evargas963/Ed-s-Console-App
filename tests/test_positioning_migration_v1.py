@@ -13,6 +13,7 @@ import pytest
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
+from option_contract import read_chain
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
 from tests.capture_store import store_capture
 
@@ -29,7 +30,7 @@ def two_days():
     for day in _FX["days"]:
         snap = compute_terrain(
             "PCG",
-            day["contracts"],
+            read_chain(day["contracts"]),
             day["spot"],
             now=datetime.fromtimestamp(day["ts_utc"], time_et.ET),
         )

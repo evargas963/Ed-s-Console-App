@@ -14,6 +14,7 @@ fixture tuned by the same hand that writes the assertion proves only that the ha
 
 from __future__ import annotations
 
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import SPY_0DTE
 
@@ -31,7 +32,7 @@ def _expected_volume_by_strike() -> dict[float, int]:
 
 def test_live_chain_volume_reaches_the_per_strike_rows():
     """The volume ON THE VENDOR CHAIN is the volume IN THE ROWS — call + put summed per strike."""
-    snap = compute_terrain(TICKER, CHAIN, SPOT, now=NOW)
+    snap = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW)
     assert snap.per_strike, "terrain produced no per-strike rows; the panel would have no source"
     expected = _expected_volume_by_strike()
     got = {r[0]: r[2] for r in snap.per_strike["all"]}
@@ -42,7 +43,7 @@ def test_live_chain_volume_reaches_the_per_strike_rows():
 def test_rows_are_the_shape_the_panel_renders():
     """The per-strike rows are the producer's own, in the shape the panel renders: never rebuilt
     from these numbers into contracts and run through the exposure engine again."""
-    ps = compute_terrain(TICKER, CHAIN, SPOT, now=NOW).per_strike
+    ps = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW).per_strike
     # the three GEX scopes, and the Chart view's DEX and OI rows
     assert set(ps) == {"all", "near", "far", "dex", "oi"}, (
         "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "

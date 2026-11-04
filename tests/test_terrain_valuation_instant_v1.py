@@ -13,14 +13,15 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta
 
+from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import TSLA
 
 
 def _real_chain():
-    chain = TSLA.chain
-    expiry = datetime.fromisoformat(chain[0]["expirationDate"].replace("Z", "+00:00"))
-    strikes = sorted(float(c["strikePrice"]) for c in chain)
+    chain = read_chain(TSLA.chain)
+    expiry = datetime.fromisoformat(chain[0].expiration.replace("Z", "+00:00"))
+    strikes = sorted(c.strike for c in chain)
     return chain, expiry, strikes[len(strikes) // 2]
 
 

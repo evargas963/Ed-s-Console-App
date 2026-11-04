@@ -14,7 +14,7 @@ from math_exposure_core import (
     key_level_strikes_with_oi,
     strike_oi_legs,
 )
-from numeric_contract import schwab_count, schwab_number
+from option_contract import OptionContract
 from time_et import time_to_expiry_years
 
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
@@ -108,7 +108,7 @@ def bs_charm(
 
 
 def compute_charm_by_strike(
-    contracts: list[dict],
+    contracts: list[OptionContract],
     spot: float,
     *,
     now: datetime,
@@ -132,12 +132,12 @@ def compute_charm_by_strike(
     out: dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
         return out
-    for ct in contracts:
-        row = _contract_inputs(ct, now, t_years=t_years, product=product)
-        strike = schwab_number(ct.get("strikePrice"))
-        side = f"{str(ct.get('putCall')).lower()}_charm"
-        if row in ("zero_open_interest", "settled") or strike is None or side not in _CHARM_SIDES:
+    for c in contracts:
+        row = _contract_inputs(c, now, t_years=t_years, product=product)
+        strike = c.strike
+        if row in ("zero_open_interest", "settled") or strike is None or c.side is None:
             continue
+        side = f"{c.side.lower()}_charm"
         exposure = None
         if isinstance(row, tuple):
             _, oi, mult, years, sigma, _ = row
@@ -195,14 +195,14 @@ _CHARM_SIDES = ("call_charm", "put_charm")
 
 
 def contract_inputs(
-    contracts: list[dict], now: datetime, product: str = "EQO"
+    contracts: list[OptionContract], now: datetime, product: str = "EQO"
 ) -> tuple[list, dict]:
     """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
     for the gamma profile (compute_terrain); `unpriced` counts the
     contracts with open interest the profile could not price, by reason."""
     priced, unpriced = [], {}
-    for ct in contracts:
-        r = _contract_inputs(ct, now=now, product=product) if isinstance(ct, dict) else "invalid"
+    for c in contracts:
+        r = _contract_inputs(c, now=now, product=product)
         if isinstance(r, tuple):
             priced.append(r)
         elif r != "zero_open_interest":
@@ -211,7 +211,7 @@ def contract_inputs(
 
 
 def _contract_inputs(
-    ct: dict,
+    c: OptionContract,
     now: datetime,
     *,
     t_years: float | None = None,
@@ -228,34 +228,25 @@ def _contract_inputs(
     """
     from math_exposure_core import schwab_iv_to_sigma
 
-    strike = schwab_number(ct.get("strikePrice"))
-    oi = schwab_count(ct.get("openInterest"))
-    mult = schwab_number(ct.get("multiplier"))
-    side = str(ct.get("putCall") or "").upper()
+    strike, oi, mult = c.strike, c.open_interest, c.multiplier
     if oi == 0:
         return "zero_open_interest"
     if t_years is None:
         t_years = time_to_expiry_years(
-            ct.get("expirationDate"),
-            now=now,
-            settlement_type=ct.get("settlementType"),
-            product=product,
+            c.expiration, now=now, settlement_type=c.settlement, product=product
         )
     if t_years == 0:
         return "settled"
     if oi is None:
         return "no_open_interest"
-    if strike is None or strike <= 0 or mult is None or mult < 0 or side not in ("CALL", "PUT"):
+    if strike is None or strike <= 0 or mult is None or c.side is None:
         return "invalid"
-    # schwab_iv_to_sigma already rejects None/non-positive, so no separate iv guard.
-    sigma = schwab_iv_to_sigma(
-        schwab_number(ct.get("volatility"))
-    )  # single source: math_exposure_core
-    if sigma is None or sigma <= 0:
+    sigma = schwab_iv_to_sigma(c.volatility)
+    if sigma is None:
         return "no_volatility"
     if t_years is None:
         return "no_expiry"
-    return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
+    return strike, oi, mult, t_years, sigma, (1 if c.side == "CALL" else -1)
 
 
 #: The gamma profile's candidate prices: spot +/- 15%, in 240 equal steps.
@@ -264,7 +255,7 @@ GAMMA_PROFILE_STEPS = 240
 
 
 def compute_gamma_profile(
-    contracts: list[dict], spot: float, *, now: datetime, parsed: list | None = None
+    contracts: list[OptionContract], spot: float, *, now: datetime, parsed: list | None = None
 ) -> list[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
@@ -622,7 +613,7 @@ def gamma_at_price(profile: list[tuple[float, float]], price: float) -> float | 
 
 
 def compute_gamma_flip_v2(
-    contracts: list[dict], spot: float, *, profile: list[tuple[float, float]]
+    contracts: list[OptionContract], spot: float, *, profile: list[tuple[float, float]]
 ) -> tuple[float | None, str, dict]:
     """Canonical gamma flip (profile zero-crossing) plus a CHAIN-COVERAGE verdict.
 
@@ -645,11 +636,7 @@ def compute_gamma_flip_v2(
     """
     if not contracts or not spot or spot <= 0:
         return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
-    strikes = [
-        k
-        for k in (schwab_number(c.get("strikePrice")) for c in contracts if isinstance(c, dict))
-        if k is not None
-    ]
+    strikes = [c.strike for c in contracts if c.strike is not None]
     if not strikes:
         return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_strikes"}
     lo, hi = min(strikes), max(strikes)

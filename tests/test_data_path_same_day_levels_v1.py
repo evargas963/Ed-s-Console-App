@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 
+from option_contract import read_chain
 from terrain_engine import SAME_DAY_LEVELS, compute_terrain
 from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, TSLA
 from time_et import EQUITY_OPTIONS, ET, INDEX_OPTIONS, option_close_product, time_to_expiry_years
@@ -29,14 +30,14 @@ def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
     """SPY 2026-10-07 12:32 ET expires that day. MRVL, CRWD and TSLA that morning do not.
     Each still gets a same-day pin. There is no second listed-expiry pin beside it."""
     for book in (SPY_0DTE, MRVL, CRWD, TSLA):
-        snap = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).to_dict()
-        same = snap["same_day"]
+        snap = compute_terrain(book.ticker, read_chain(book.chain), book.spot, now=book.now)
+        same = snap.to_dict()["same_day"]
         assert set(same) == {name for name, _label in SAME_DAY_LEVELS}
         assert same["absolute_gamma_strike"] is not None, book.ticker
         assert same["call_wall"] is not None, book.ticker
         assert same["put_wall"] is not None, book.ticker
 
-    mrvl = compute_terrain(MRVL.ticker, MRVL.chain, MRVL.spot, now=MRVL.now).to_dict()
+    mrvl = compute_terrain(MRVL.ticker, read_chain(MRVL.chain), MRVL.spot, now=MRVL.now).to_dict()
     assert "zero_dte_abs_gamma_strike" not in mrvl
     assert mrvl["same_day"]["absolute_gamma_strike"] != mrvl["absolute_gamma_strike"]
 
@@ -56,7 +57,9 @@ def test_a_same_day_expiry_reads_the_charm_map_already_priced():
 
     terrain_engine.compute_charm_by_strike = counting
     try:
-        snap = terrain_engine.compute_terrain(held.ticker, held.chain, held.spot, now=held.now)
+        snap = terrain_engine.compute_terrain(
+            held.ticker, read_chain(held.chain), held.spot, now=held.now
+        )
     finally:
         terrain_engine.compute_charm_by_strike = real
     assert calls["n"] == len(snap.charm_by_expiry)
@@ -67,7 +70,7 @@ def test_a_same_day_expiry_reads_the_charm_map_already_priced():
 def test_a_later_front_expiry_keeps_its_charm_at_todays_close():
     """TSLA on 2026-10-07 expires 2026-10-09. The rail charm is that front expiry at today's
     close. It is not the charm of the Friday settlement."""
-    snap = compute_terrain(TSLA.ticker, TSLA.chain, TSLA.spot, now=TSLA.now)
+    snap = compute_terrain(TSLA.ticker, read_chain(TSLA.chain), TSLA.spot, now=TSLA.now)
     assert snap.same_day["call_charm_wall"] == 372.5
     assert snap.same_day["put_charm_wall"] == 380.0
     assert snap.call_charm_wall == 390.0
@@ -80,7 +83,7 @@ def test_a_later_front_expiry_keeps_its_charm_at_todays_close():
 def test_gamma_rebuilt_to_todays_close_is_not_refused_at_the_listed_expiry(book, pin):
     """A front expiry later than today: gamma rebuilt to today's close is largest at the price,
     above any gamma the contract can have at its listed expiry. The strike there stays a level."""
-    same = compute_terrain(book.ticker, book.chain, book.spot, now=book.now).same_day
+    same = compute_terrain(book.ticker, read_chain(book.chain), book.spot, now=book.now).same_day
     assert same["absolute_gamma_strike"] == pin
 
 
@@ -97,11 +100,13 @@ def _with_a_call_at(strike: float, book=SPY_0DTE) -> dict:
     absent = dict(seed)
     absent["volatility"] = None
     chain.append(absent)
-    return compute_terrain(book.ticker, chain, book.spot, now=book.now).to_dict()["same_day"]
+    snap = compute_terrain(book.ticker, read_chain(chain), book.spot, now=book.now)
+    return snap.to_dict()["same_day"]
 
 
 def _same_day(name: str, book=SPY_0DTE) -> float:
-    return compute_terrain(book.ticker, book.chain, book.spot, now=book.now).same_day[name]
+    snap = compute_terrain(book.ticker, read_chain(book.chain), book.spot, now=book.now)
+    return snap.same_day[name]
 
 
 def test_a_contract_with_no_rebuilt_gamma_leaves_its_side_and_the_strike_total_unknown():

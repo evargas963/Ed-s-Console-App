@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from option_contract import read_chain
 from tests.real_chains import SPY_0DTE
 
 REPO = Path(__file__).resolve().parent.parent
@@ -103,7 +104,7 @@ _SINGLE_SURFACE_FULL_BOOK = {"hvp", "lvp", "gsf", "grc"}
 
 
 def _fixture_book():
-    return SPY_0DTE.chain, SPY_0DTE.spot
+    return read_chain(SPY_0DTE.chain), SPY_0DTE.spot
 
 
 def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():

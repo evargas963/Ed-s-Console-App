@@ -9,13 +9,16 @@ from math_exposure_core import (
     pick_pin_and_strength,
     pick_volatility_point_strikes,
 )
+from option_contract import read_chain
 from tests.real_chains import SPY_0DTE
+
+_SPY = read_chain(SPY_0DTE.chain)
 
 
 def _dollarized_exposures():
     # Real captured SPY 0DTE chain (tests/real_chains.py, 2026-10-07 12:32 ET), valued at its
     # capture — level invariants must hold on real data.
-    exposures, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
+    exposures, _ = compute_exposures_by_strike(_SPY, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
     return exposures, SPY_0DTE.spot
 
 
@@ -80,7 +83,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     levels agreeing with their pickers — the UI renders these fields directly."""
     from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain, price_relations
 
-    snap = compute_terrain("SPY", SPY_0DTE.chain, SPY_0DTE.spot, now=SPY_0DTE.now)
+    snap = compute_terrain("SPY", _SPY, SPY_0DTE.spot, now=SPY_0DTE.now)
     d = (
         snap.to_dict() | price_relations(snap.to_dict(), SPY_0DTE.spot).to_dict()
     )  # as /api/terrain serves it
@@ -100,7 +103,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
     assert d["net_gex_at_spot"] is not None, "the chain must price (valued at its capture)"
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
-    exposures, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
+    exposures, _ = compute_exposures_by_strike(_SPY, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
     assert d["key_delta_strike"] == pick_key_delta_strike(exposures)
     assert (d["hvp"], d["lvp"]) == pick_volatility_point_strikes(exposures)
 

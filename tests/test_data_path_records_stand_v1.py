@@ -20,7 +20,7 @@ from calibration.complete_chain_capture import (
 )
 from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
-from tests.schwab_rest_standin import LocalSchwab
+from tests.schwab_rest_standin import SPY, LocalSchwab
 
 _IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
 
@@ -46,7 +46,10 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
         schwab.close()
     (stored,) = last_capture_per_day(db, "SPY", 1)
     assert stored["ts_utc"] == _IN_WINDOW and stored["contracts"]
-    expiry = stored["contracts"][0]["expirationDate"][:10]
+    first = stored["contracts"][0]
+    expiry = first.expiry
+    # the stored records are read; the second write is that contract as Schwab's chain sent it
+    (sent,) = [c for c in SPY["chain"] if c["symbol"] == first.symbol]
 
     refused = None
     try:
@@ -54,7 +57,7 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
             db,
             ticker="SPY",
             expiry=expiry,
-            contracts=stored["contracts"][:1],
+            contracts=[sent],
             spot=stored["spot"],
             completeness_basis=CAPTURE_BASIS,
             ts_utc=_IN_WINDOW,

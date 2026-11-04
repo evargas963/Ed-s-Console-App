@@ -30,6 +30,7 @@ import live_price_rows
 import server
 from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
+from option_contract import read_chain
 from stream_spine import options_quote_msg
 from tests.feed_live_helper import mark_feed_live
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
@@ -69,7 +70,7 @@ def _publish(fetched_ts: float):
         TK,
         captures=[
             {
-                "contracts": [dict(c) for c in _CONTRACTS],
+                "contracts": read_chain(_CONTRACTS),
                 "ts_utc": fetched_ts,
                 "spot": PUBLISHED,
                 "et_date": _AT.date().isoformat(),
@@ -215,7 +216,7 @@ def test_the_spot_row_is_served(route):
         "SPY",
         captures=[
             {
-                "contracts": [dict(c) for c in SPY_CLOSE.chain],
+                "contracts": read_chain(SPY_CLOSE.chain),
                 "ts_utc": SPY_CLOSE.now.timestamp(),
                 "spot": SPY_CLOSE.spot,
                 "et_date": SPY_CLOSE.now.date().isoformat(),
@@ -308,7 +309,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     )
     ofs._price_rows["$SPX"] = {"ticker": "$SPX", "spot": fx["spot"], "trade_ts": fx["ts_utc"]}
     try:
-        server._publish_levels("$SPX", [dict(c) for c in fx["contracts"]], fx["ts_utc"], now=at)
+        server._publish_levels("$SPX", read_chain(fx["contracts"]), fx["ts_utc"], now=at)
         body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
     finally:
         with server._terrain_cache_lock:

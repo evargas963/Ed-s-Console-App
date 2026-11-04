@@ -6,6 +6,7 @@ import json
 
 import server as srv
 from app.options.order_flow import streaming as ofs
+from option_contract import read_chain
 
 
 def test_the_chain_spot_carries_schwabs_trade_time():
@@ -19,9 +20,16 @@ def test_the_chain_spot_carries_schwabs_trade_time():
             "ticker": tk,
             "spot": 600.0,
             "expiries": [exp],
-            "_chain": [
-                {"symbol": symbol, "putCall": "CALL", "strikePrice": 601.0, "expirationDate": exp}
-            ],
+            "_chain": read_chain(
+                [
+                    {
+                        "symbol": symbol,
+                        "putCall": "CALL",
+                        "strikePrice": 601.0,
+                        "expirationDate": exp,
+                    }
+                ]
+            ),
             "_contract_symbols": frozenset([symbol]),
             "_chain_fetched_ts": 1.0,
         }
