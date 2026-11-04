@@ -37,7 +37,7 @@ from stream_spine import book_msg
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import publish_daemon_rows
 from tests.test_order_flow_book_payload_v1 import _same
-from time_et import age_text, auction, record_markets
+from time_et import age_text, auction, ct_label, record_markets
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _E2E = Path(__file__).resolve().parent / "e2e" / "fixtures"
@@ -127,11 +127,11 @@ def test_the_weighted_headline_and_the_flat_views_of_schwabs_nyse_book():
     wa = sum(w * a for w, a in zip(e.OF_LEVEL_WEIGHTS, asks, strict=True))
     assert nyse["weighted"]["pct"] == pytest.approx((wb - wa) / (wb + wa) * 100)
     assert (nyse["weighted"]["bid_total"], nyse["weighted"]["ask_total"]) == (800, 2160)
-    assert nyse["weighted"]["flat_pct"] == pytest.approx((800 - 2160) / 2960 * 100)
+    assert nyse["weighted"]["imbalance"] * 100 == pytest.approx((800 - 2160) / 2960 * 100)
     for view, (b, a) in {"1": (160, 200), "3": (400, 2080), "5": (800, 2160)}.items():
         v = nyse[view]
         assert (v["bid_total"], v["ask_total"]) == (b, a)
-        assert v["pct"] == v["flat_pct"] == pytest.approx((b - a) / (b + a) * 100)
+        assert v["pct"] == v["imbalance"] * 100 == pytest.approx((b - a) / (b + a) * 100)
         assert (v["difference"], v["total_depth"]) == (abs(b - a), b + a)
 
 
@@ -140,7 +140,7 @@ def test_the_weighted_headline_is_not_the_flat_top_five():
     to the offers (-5.5%); the weighted headline follows the touch, and says the two disagree."""
     nq = _pair_readout()["NASDAQ_BOOK"]["views"]
     assert nq["1"]["pct"] > 0 > nq["5"]["pct"]
-    assert nq["weighted"]["pct"] > 0 > nq["weighted"]["flat_pct"]
+    assert nq["weighted"]["pct"] > 0 > nq["weighted"]["imbalance"]
     card = e.readout_card(
         _pair_readout(),
         [(1.0, _pair_readout())],
@@ -808,7 +808,7 @@ def test_the_route_serves_the_readout_of_both_books_and_the_composite_live():
     expected = e.readout_card(readout, points, {v: _END for v in readout})
     for v in (*e.BOOK_VENUES, e.COMPOSITE):
         got = rd["venues"][v]
-        assert (got["live"], got["feed_label"], got["not_live_text"]) == (True, "LIVE", None)
+        assert (got["live"], got["feed_label"]) == (True, "LIVE")
         assert got["views"] == expected["venues"][v]["views"], v
     assert rd["disagree"] == expected["disagree"]
     assert (rd["auction"], rd["auction_text"]) == ("NONE", None)
@@ -832,13 +832,13 @@ def test_a_book_that_stops_keeps_its_last_numbers_marked_not_live():
         assert (got["live"], got["feed_label"]) == (False, "OFFLINE"), v
         age = age_text(_END - got["book_time_ms"] / 1000.0)
         assert got["book_age_text"] == age
-        assert got["not_live_text"] == (
-            f"Book from {got['book_time_ct']}, {age} old, not live — these are the last numbers,"
-            " not current"
-        )
+        assert got["book_time_ct"] == ct_label(got["book_time_ms"] / 1000.0)
         assert got["views"]["weighted"]["pct"] is not None
         assert got["views"]["weighted"]["bid_total"] is not None
         assert got["source_text"].endswith(f"book {got['book_time_ct']} · {age} old · not live")
+        # said once, on the source line, as every other card says it
+        words = [t for k, t in got.items() if k.endswith("_text") and isinstance(t, str)]
+        assert sum("not live" in t.lower() for t in words) == 1, words
 
 
 def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
@@ -848,8 +848,8 @@ def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
     got = _served(
         e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
     )
-    assert got["NYSE_BOOK"]["not_live_text"] == (
-        "Not live, no book time sent — these are the last numbers, not current"
+    assert got["NYSE_BOOK"]["source_text"].startswith(
+        "Schwab NYSE_BOOK · not live, no book time sent"
     )
     assert got[e.COMPOSITE]["source_text"].startswith(
         "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · not live, no"

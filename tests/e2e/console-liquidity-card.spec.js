@@ -58,11 +58,11 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
         expect(cut, width + '×' + height + ' ' + JSON.stringify(cut)).toEqual([]);
       }
     }
-    // the crossed and not-live pills, the auction line, the dedup note and the not-live words, at once, show on it
+    // the crossed and not-live pills, the auction line, the dedup note and the book's time, at once, show on it
     await page.setViewportSize({ width: 1920, height: 950 });
     await openDesk(page, READOUT_EVERY_LINE);
     const all = READOUT_EVERY_LINE.readout, every = all.venues.COMPOSITE;
-    for (const t of ['BOOK CROSSED', 'BOOK ' + every.feed_label, all.auction_text, every.dedup_partial_text, every.not_live_text]) {
+    for (const t of ['BOOK CROSSED', 'BOOK ' + every.feed_label, all.auction_text, every.dedup_partial_text, 'Book ' + every.book_time_ct]) {
       await expect(card(page).locator('.liq-body')).toContainText(t);
     }
     await openDesk(page, READOUT_LIVE);
@@ -158,13 +158,13 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     expect(reads[0]).toContain('venue=NYSE_BOOK');
   });
 
-  test('a book that stopped keeps its last numbers greyed, with its time and the card\'s not-live words', async ({ page }) => {
+  test('a book that stopped keeps its last numbers greyed, with its time, its age and not live on the source line', async ({ page }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_OFFLINE);
     const c = READOUT_OFFLINE.readout.venues.COMPOSITE;
     await expect(card(page).locator('.liq-body')).toHaveClass(/stale/);
     await expect(card(page).locator('.liq-body')).toContainText('BOOK OFFLINE');
-    await expect(card(page).locator('.liq-body')).toContainText(c.not_live_text);
+    await expect(card(page).locator('.liq-body')).toContainText('NYSE + Nasdaq only — not the whole market · Book ' + c.book_time_ct);
     await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · book ' + c.book_time_ct + ' · ' + c.book_age_text + ' old · not live');
     await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
     expect(errs).toEqual([]);
@@ -178,6 +178,16 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('.tdm-src')).toContainText('no book for this symbol right now');
     await expect(card(page).locator('.liq-body')).not.toContainText('%');
     expect(errs).toEqual([]);
+  });
+
+  test('a failed read says so on the source line, naming no book the server did not name', async ({ page }) => {
+    await intercept(page);
+    await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({ status: 500, body: '' }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(card(page).locator('.liq-body')).toContainText('UNAVAILABLE');
+    await expect(card(page).locator('.tdm-src')).toHaveText('microstructure request failed');
   });
 
   test('inside the closing auction the number stands and the auction line is added', async ({ page }) => {
