@@ -137,7 +137,7 @@
 .tdm-card{padding:9px 14px;display:flex;flex-direction:column;gap:4px;min-height:0;overflow:hidden}
 .tdm-card>*{flex:none}
 .tdm-card-h{display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap}
-.tdm-card-h .t{font-size:19px;white-space:nowrap}
+.tdm-card-h .t{font-size:19px;min-width:0}
 .tdm-card-h .bookvenue{display:inline-flex;gap:3px}
 .tdm-open{margin-left:auto;font:600 11.5px var(--ed-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-2);
   border:1px solid var(--ed-edge-strong);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap}
@@ -200,6 +200,8 @@
 .liq-pill.plain{border-color:var(--ed-edge-strong);color:var(--ed-ink-2)}
 .liq-gr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .liq-gr>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.liq-gr .liq-lbl{flex-wrap:wrap;white-space:normal}
+.liq-gr .liq-pill{white-space:normal}
 .liq-strip,.liq-gauge{position:relative;height:14px}
 .liq-strip::before{content:"";position:absolute;left:0;right:0;top:6px;height:2px;background:var(--ed-edge-strong)}
 .liq-strip::after,.liq-gauge::after{content:"";position:absolute;left:50%;top:1px;width:2px;height:12px;background:var(--ed-ink-3)}
