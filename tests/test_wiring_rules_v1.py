@@ -27,9 +27,9 @@ def test_every_message_carries_the_three_rules_and_the_three_questions():
     assert out["hookEventName"] == "UserPromptSubmit"
     said = out["additionalContext"]
     assert "simple wiring job" in said
-    # product code is the repo's one definition, not a hand list of paths
-    assert "every file tools/check_end_to_end.is_product counts" in said
-    assert "app/," not in said
+    # all code, and every answer, proposal and change: never a list of folders or only edits
+    assert "all code in the repository and to every answer, proposal and change" in said
+    assert "app/" not in said and "product" not in said and "edit" not in said
     assert "as Schwab sends it" in said
     assert "what a bank would do" in said
     assert "Which Schwab field, or which registered derived value?" in said
