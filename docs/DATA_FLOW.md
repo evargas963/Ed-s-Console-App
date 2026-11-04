@@ -257,17 +257,16 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   under its service and served for the `venue` the screen's venue switch names, never combined,
   but in the Desk Liquidity card's order-imbalance readout (operator 2026-11-03, step 1 of 3):
   `/api/order-flow/microstructure` serves `readout` whatever the venue, both books and their
-  composite (`engine.book_readout`, the operator's spec v2 of 2026-11-03: every quote of both
-  books, one per contributor, codes matched without regard to case; NSDQ, in both books, counted
-  once from NYSE_BOOK by convention, the two books' sizes for it differing in 82.5% of strict
-  pairs on 2026-11-02 with no way in the data to say which is right; the shares summed at each
-  distinct price; the same composite with NSDQ from NASDAQ_BOOK served beside it; no number
-  while only one book is held, while either lacks bids or asks (Schwab sends empty books after
-  the close), or while a code other than NSDQ is in both, which SPY's and IWM's
-  books of 2026-11-02 never had; a level with no per-exchange rows taken whole and the dedup
-  marked partial), read over at most one value a second per ticker that the console's intake
+  composite (`engine.book_readout`, the operator's decision of 2026-11-04, "the most recent
+  balance is the most accurate balance": every quote of the books Schwab sends for the ticker,
+  one per contributor, codes matched without regard to case; a contributor in both books (NSDQ,
+  for SPY and IWM, the only tickers NYSE_BOOK carries) from the copy with the newer quote time,
+  Schwab's market-maker field 2, which schwab-py names SEQUENCE; with one book held, that book;
+  the shares summed at each distinct price; a level with no per-exchange rows, or a row without
+  its quote time, taken whole and the dedup marked partial), read over at most one value a second per ticker that the console's intake
   records as each book arrives, the newest in that second (`history.LEAN`, 308 s), and judged
-  live per book by the one live rule, the composite only while both are; a venue not live is read
+  live per book by the one live rule, the composite only while every book it is built from is; a
+  venue not live is read
   to the reading its readout has stood from (a stopped book from its last arrival; a composite
   with one book still running moves with it), with its book's time and age. The exchange auction
   windows are the 5 minutes before and the 10 minutes before the end of Schwab's regular window

@@ -153,19 +153,27 @@ def test_the_weighted_headline_is_not_the_flat_top_five():
     assert card["venues"]["NYSE_BOOK"]["views"]["weighted"]["divergence"] is None
 
 
-# ── the composite: NSDQ once, from NYSE_BOOK ─────────────────────────────────────────────────
+# ── the composite: each exchange once, its newest quote ──────────────────────────────────────
 
 
-def _merged(books: dict, nsdq_from: str) -> dict:
+def _merged(books: dict) -> dict:
     """The composite recomputed from the books as Schwab sent them, with no engine code: each
-    side's quotes of both books, NSDQ's only from `nsdq_from`, summed at each price, best first."""
+    side's quotes, every code once (any case), from the book whose copy carries the newer quote
+    time (SEQUENCE; an equal time keeps NYSE_BOOK's), summed at each price, best first."""
     out = {}
     for side, pk, sk in (("BIDS", "BID_PRICE", "BID_VOLUME"), ("ASKS", "ASK_PRICE", "ASK_VOLUME")):
+        newest: dict = {}
+        for venue in ("NYSE_BOOK", "NASDAQ_BOOK"):
+            for lv in books.get(venue, {}).get(side, []):
+                for x in lv[side]:
+                    code = x["EXCHANGE"].upper()
+                    if code not in newest or x["SEQUENCE"] > newest[code][0]:
+                        newest[code] = (x["SEQUENCE"], venue)
         at: dict = {}
         for venue, book in books.items():
-            for lv in book[side]:
+            for lv in book.get(side, []):
                 for x in lv[side]:
-                    if x["EXCHANGE"].upper() != "NSDQ" or venue == nsdq_from:
+                    if newest[x["EXCHANGE"].upper()][1] == venue:
                         at[lv[pk]] = at.get(lv[pk], 0) + x[sk]
         out[side] = sorted(at.items(), reverse=side == "BIDS")
     return out
@@ -197,31 +205,49 @@ _COMPOSITE_BOOKS = {
 
 
 @pytest.mark.parametrize("name", sorted(_COMPOSITE_BOOKS))
-def test_the_composite_is_every_quote_once_with_nsdq_from_nyse_book(name):
-    """Schwab's books, each composite recomputed from them as sent: NSDQ from NYSE_BOOK, whatever
-    its quote time or BOOK_TIME (never the newer book's), every market maker of NASDAQ_BOOK, the
-    shares summed at each distinct price; and the other value with NSDQ's whole row from
-    NASDAQ_BOOK."""
+def test_the_composite_is_every_quote_once_its_newest_copy(name):
+    """Schwab's books, each composite recomputed from them as sent: every exchange and market
+    maker once, NSDQ (in both books) from the book whose copy carries the newer quote time, the
+    shares summed at each distinct price."""
     books = _COMPOSITE_BOOKS[name]
     comp = e.book_readout(books)["COMPOSITE"]
-    mine, other = _merged(books, "NYSE_BOOK"), _merged(books, "NASDAQ_BOOK")
     for view in e.READOUT_VIEWS:
-        bt, at, pct = _expected(mine, view)
+        bt, at, pct = _expected(_merged(books), view)
         v = comp["views"][view]
         assert (v["bid_total"], v["ask_total"]) == (bt, at), view
         assert v["pct"] == pytest.approx(pct), view
-        assert v["nsdq_other_pct"] == pytest.approx(_expected(other, view)[2]), view
     assert comp["dedup_partial"] is False
+    assert comp["books"] == ["NYSE_BOOK", "NASDAQ_BOOK"]
     times = [b["BOOK_TIME"] for b in books.values()]
     assert comp["book_time_ms"] == min(times)  # the older book's
 
 
-def test_the_composite_never_sums_the_books_level_totals():
-    """Schwab's pair: at 767.42 NYSE_BOOK's level holds IEXG, NYSE and EDGX (320) and NASDAQ_BOOK's
-    holds NSDQ 70. The composite's best three asks are 200 + 320 + 1560 = 2080, never 2150 (the
-    two books' TOTAL_VOLUMEs summed) and never an average of NSDQ's two sizes."""
+def test_the_newer_nsdq_quote_counts_and_the_older_copy_does_not():
+    """Schwab's pair of 2026-09-25 10:30 ET: NSDQ in NYSE_BOOK at 767.39 x 80 bid and 767.41 x 120
+    ask; in NASDAQ_BOOK, quoted later on both sides, at 767.41 x 100 bid and 767.42 x 70 ask.
+    NASDAQ_BOOK's copy counts: the best bid is Nasdaq's 767.41, which meets the other exchanges'
+    767.41 ask (the composite is locked), and the top five hold 780 bid and 2110 ask shares
+    (NYSE_BOOK's older copy would give a 767.39 best bid, 800 and 2160)."""
+    nyse, nq = (_PAIR[v]["content"] for v in ("NYSE_BOOK", "NASDAQ_BOOK"))
+    for side in ("BIDS", "ASKS"):
+        seq = {
+            v: {x["SEQUENCE"] for lv in b[side] for x in lv[side] if x["EXCHANGE"] == "NSDQ"}
+            for v, b in (("NYSE_BOOK", nyse), ("NASDAQ_BOOK", nq))
+        }
+        assert min(seq["NASDAQ_BOOK"]) > max(seq["NYSE_BOOK"]), side
     comp = _pair_readout()["COMPOSITE"]
-    assert comp["views"]["3"]["ask_total"] == 200 + 320 + 1560
+    assert (comp["views"]["5"]["bid_total"], comp["views"]["5"]["ask_total"]) == (780, 2110)
+    assert comp["views"]["1"]["bid_total"] == 100  # Nasdaq's own 767.41 bid
+    assert comp["touch_state"] == "LOCKED"
+
+
+def test_the_composite_never_sums_the_books_level_totals():
+    """Schwab's pair: the composite's best three asks are each contributor's newest quote once,
+    never the two books' TOTAL_VOLUMEs summed at those prices (2150) and never an average of
+    NSDQ's two sizes."""
+    comp = _pair_readout()["COMPOSITE"]
+    bt, at, _pct = _expected(_merged({v: b["content"] for v, b in _PAIR.items()}), "3")
+    assert (comp["views"]["3"]["bid_total"], comp["views"]["3"]["ask_total"]) == (bt, at)
     assert (
         sum(
             lv["TOTAL_VOLUME"]
@@ -231,9 +257,7 @@ def test_the_composite_never_sums_the_books_level_totals():
         )
         == 2080 + 70
     )
-    # the newer book's NSDQ would give 780 bid and 2110 ask at five: the other value, not this one
-    assert (comp["views"]["5"]["bid_total"], comp["views"]["5"]["ask_total"]) == (800, 2160)
-    assert comp["touch_state"] is None
+    assert comp["views"]["3"]["ask_total"] == 80 + 390 + 1560 != 2080 + 70
 
 
 def _rows_without(book: dict, key: str, code: str) -> dict:
@@ -248,23 +272,30 @@ def _rows_without(book: dict, key: str, code: str) -> dict:
     return out
 
 
-def test_nasdaq_books_nsdq_is_left_out_however_spelled_and_needs_no_quote_time():
+def test_nsdq_is_one_contributor_however_spelled():
     """INDUCED: Schwab's NASDAQ_BOOK of the pair with NSDQ spelled in lower case (Schwab spells
-    other exchanges so there, tests/fixtures/real_tsla_book_rows.json), and with its quote time
-    (SEQUENCE) removed: the composite is the same, its dedup whole."""
+    other exchanges so there, tests/fixtures/real_tsla_book_rows.json): the composite is the same,
+    its dedup whole."""
     want = _pair_readout()["COMPOSITE"]["views"]
-    for nq in (
-        _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "nothing", "nsdq"),
-        _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "SEQUENCE", "NSDQ"),
-    ):
-        comp = e.book_readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
-        assert comp["COMPOSITE"]["dedup_partial"] is False
-        for view in e.READOUT_VIEWS:
-            got = comp["COMPOSITE"]["views"][view]
-            assert (got["bid_total"], got["ask_total"]) == (
-                want[view]["bid_total"],
-                want[view]["ask_total"],
-            )
+    nq = _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "nothing", "nsdq")
+    comp = e.book_readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
+    assert comp["COMPOSITE"]["dedup_partial"] is False
+    for view in e.READOUT_VIEWS:
+        got = comp["COMPOSITE"]["views"][view]
+        assert (got["bid_total"], got["ask_total"]) == (
+            want[view]["bid_total"],
+            want[view]["ask_total"],
+        )
+
+
+def test_a_row_without_its_quote_time_leaves_its_level_taken_whole():
+    """INDUCED: Schwab's pair with NASDAQ_BOOK's NSDQ rows sent without their quote time: which
+    copy is newer cannot be told, so each of those levels counts its TOTAL_VOLUME whole and the
+    composite says its dedup is partial."""
+    nq = _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "SEQUENCE", "NSDQ")
+    comp = e.book_readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
+    assert comp["COMPOSITE"]["dedup_partial"] is True
+    assert comp["NASDAQ_BOOK"] == _pair_readout()["NASDAQ_BOOK"]
 
 
 def _served(readout: dict) -> dict:
@@ -284,16 +315,16 @@ def test_a_level_without_per_exchange_rows_is_taken_whole_and_the_dedup_marked_p
     del nyse["BIDS"][1]["BIDS"]  # 767.38: BATX 80 + NYSE 40, TOTAL_VOLUME 120
     comp = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
     assert comp["COMPOSITE"]["dedup_partial"] is True
-    assert comp["COMPOSITE"]["views"]["5"]["bid_total"] == 800
+    assert comp["COMPOSITE"]["views"]["5"]["bid_total"] == 780  # 120 whole, as its rows summed
 
 
-def test_an_exchange_code_other_than_nsdq_in_both_books_leaves_the_composite_without_a_number():
+def test_any_code_in_both_books_counts_once():
     """Schwab has spelled exchanges in lower case in NASDAQ_BOOK (TSLA's arcx, edgx and batx on
     2026-09-25, tests/fixtures/real_tsla_book_rows.json) where NYSE_BOOK spells them ARCX, EDGX,
-    BATX. INDUCED: that real book, and the same book a millisecond older with its codes in upper
-    case, as NYSE_BOOK spells them (no captured pair of the two spellings is held: SPY's and IWM's
-    books of 2026-11-02 share NSDQ only). Matched without regard to case, ARCX and the others are
-    in both books: which copy counts is not decided, so the composite has words, not a number."""
+    BATX. INDUCED: that real book, and the same book with its codes in upper case, as NYSE_BOOK
+    spells them (no captured pair of the two spellings is held: SPY's and IWM's books of
+    2026-11-02 share NSDQ only). Matched without regard to case, every code is in both books with
+    the same quote time: each counts once, so the composite is the one book, never doubled."""
     tsla = json.loads((_FX / "real_tsla_book_rows.json").read_text(encoding="utf-8"))["rows"]
     lower = {
         x["EXCHANGE"]
@@ -310,65 +341,50 @@ def test_an_exchange_code_other_than_nsdq_in_both_books_leaves_the_composite_wit
         for lv in as_nyse[side]:
             for x in lv[side]:
                 x["EXCHANGE"] = x["EXCHANGE"].upper()
-    comp = e.book_readout({"NYSE_BOOK": as_nyse, "NASDAQ_BOOK": newer})["COMPOSITE"]
-    assert comp["status"] == "shared_code" and "views" not in comp
-    assert {"ARCX", "EDGX", "BATX"} <= set(comp["shared"]) and "NSDQ" not in comp["shared"]
-    got = _served(e.book_readout({"NYSE_BOOK": as_nyse, "NASDAQ_BOOK": newer}))[e.COMPOSITE]
-    assert got["no_number_head"] == "NO COMPOSITE"
-    assert got["no_number_text"].endswith(
-        "quote in both books: which copy counts is not decided, so the composite has no number"
-    )
+    r = e.book_readout({"NYSE_BOOK": as_nyse, "NASDAQ_BOOK": newer})
+    alone = e.book_readout({"NYSE_BOOK": None, "NASDAQ_BOOK": newer})
+    assert r["COMPOSITE"]["status"] == "ok"
+    for view in e.READOUT_VIEWS:
+        got, one = r["COMPOSITE"]["views"][view], alone["COMPOSITE"]["views"][view]
+        assert (got["bid_total"], got["ask_total"]) == (one["bid_total"], one["ask_total"]), view
 
 
-def test_the_composite_needs_both_books():
-    """Schwab's NASDAQ_BOOK alone: the composite has words, not a number."""
+def test_with_one_book_the_composite_is_that_book():
+    """Schwab's NASDAQ_BOOK alone, as for a Nasdaq-listed ticker Schwab sends no NYSE_BOOK for:
+    the composite is NASDAQ_BOOK's numbers, its source names that book."""
     r = e.book_readout({"NYSE_BOOK": None, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
-    assert r["COMPOSITE"] == {"status": "one_book", "book_time_ms": None, "books": ["NASDAQ_BOOK"]}
+    assert r["COMPOSITE"]["books"] == ["NASDAQ_BOOK"]
+    for view in e.READOUT_VIEWS:
+        comp, nq = r["COMPOSITE"]["views"][view], r["NASDAQ_BOOK"]["views"][view]
+        assert (comp["bid_total"], comp["ask_total"], comp["pct"]) == (
+            nq["bid_total"],
+            nq["ask_total"],
+            nq["pct"],
+        ), view
     got = _served(r)
-    assert (got[e.COMPOSITE]["no_number_head"], got[e.COMPOSITE]["no_number_text"]) == (
-        "NO COMPOSITE",
-        "Composite needs both books — only NASDAQ_BOOK is captured for this symbol right now",
-    )
     assert got["NYSE_BOOK"]["no_number_head"] == "NO BOOK"
-    assert r["NASDAQ_BOOK"]["status"] == "ok"
-    assert all(
-        v["pct"] is None and v["sentence"] is None for v in got[e.COMPOSITE]["views"].values()
+    assert got[e.COMPOSITE]["no_number_text"] is None
+    assert got[e.COMPOSITE]["source_text"].startswith(
+        "Schwab NASDAQ_BOOK · composite, newest quote of each exchange"
     )
 
 
-def test_the_composite_needs_each_book_with_bids_and_asks():
+def test_a_book_with_no_levels_adds_nothing_to_the_composite():
     """INDUCED: Schwab's pair with NASDAQ_BOOK as Schwab sends a book after the close (no levels,
-    tests/test_order_flow_served_v1.py), and with NYSE_BOOK's asks so: the composite is never
-    the other book alone."""
+    tests/test_order_flow_served_v1.py): the composite is NYSE_BOOK's quotes alone. With NYSE_BOOK's
+    asks so, the composite's asks are NASDAQ_BOOK's and its bids both books'."""
     nyse, nq = _PAIR["NYSE_BOOK"]["content"], _PAIR["NASDAQ_BOOK"]["content"]
-    empty = {**nq, "BIDS": [], "ASKS": []}
-    no_asks = {**nyse, "ASKS": []}
-    for books, words in (
-        ({"NYSE_BOOK": nyse, "NASDAQ_BOOK": empty}, "NASDAQ_BOOK's book has no levels"),
-        ({"NYSE_BOOK": no_asks, "NASDAQ_BOOK": nq}, "NYSE_BOOK's book has one side only"),
-    ):
-        r = e.book_readout(books)
-        assert r[e.COMPOSITE]["status"] == "incomplete" and "views" not in r[e.COMPOSITE]
-        got = _served(r)[e.COMPOSITE]
-        assert got["no_number_head"] == "NO COMPOSITE"
-        assert got["no_number_text"] == (
-            f"Composite needs both books, each with bids and asks — {words} right now"
-        )
-        assert all(v["pct"] is None for v in got["views"].values())
-
-
-def test_nsdq_sizes_disagree_when_the_two_nsdq_composites_read_different_zones():
-    """Schwab's pair: at the touch, NSDQ from NYSE_BOOK reads 160 bid / 200 ask (-11%, OFFER
-    HEAVY), from NASDAQ_BOOK 100 / 80 (+11%, BID HEAVY): the flag shows, with both percentages.
-    Over the top five both read OFFER HEAVY (-46%): no flag."""
-    card = e.readout_card(
-        _pair_readout(), [(1.0, _pair_readout())], dict.fromkeys(_pair_readout(), 1.0)
-    )
-    comp = card["venues"]["COMPOSITE"]["views"]
-    assert comp["1"]["nsdq_disagree"] is True
-    assert comp["1"]["nsdq_text"] == "NSDQ from NYSE_BOOK: -11% · NSDQ from NASDAQ_BOOK: +11%"
-    assert comp["5"]["nsdq_disagree"] is False
-    assert card["venues"]["NYSE_BOOK"]["views"]["1"]["nsdq_disagree"] is False
+    r = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": {**nq, "BIDS": [], "ASKS": []}})
+    for view in e.READOUT_VIEWS:
+        comp, one = r[e.COMPOSITE]["views"][view], r["NYSE_BOOK"]["views"][view]
+        assert (comp["bid_total"], comp["ask_total"]) == (one["bid_total"], one["ask_total"])
+    books = {"NYSE_BOOK": {**nyse, "ASKS": []}, "NASDAQ_BOOK": nq}
+    r = e.book_readout(books)
+    assert r[e.COMPOSITE]["status"] == "ok"
+    for view in e.READOUT_VIEWS:
+        bt, at, _pct = _expected(_merged(books), view)
+        got = r[e.COMPOSITE]["views"][view]
+        assert (got["bid_total"], got["ask_total"]) == (bt, at), view
 
 
 def test_crossed_withholds_the_sentence_and_locked_keeps_it():
@@ -512,7 +528,7 @@ def test_the_sentence_four_cases_from_the_flat_shares():
     """Schwab's own books, each held ten seconds: NYSE_BOOK's touch at 10:00:08 ET on 2026-11-02
     (80 bid, 80 ask), its weighted view then (+1.5%, 240 shares apart), NYSE_BOOK's touch on
     2026-09-25 (160 bid, 200 ask), NASDAQ_BOOK's then (100 bid, 70 ask) and the composite's top
-    five then (800 bid, 2,160 ask)."""
+    five then (780 bid, 2,110 ask)."""
     rows, pair = _replayed()[1], _pair_readout()
     assert _steady(rows[16][1], "NYSE_BOOK", "1")["sentence"] == (
         "Balanced — no shares needed to balance."
@@ -522,7 +538,7 @@ def test_the_sentence_four_cases_from_the_flat_shares():
     )
     assert _steady(pair, "NYSE_BOOK", "1")["sentence"] == "To balance, market makers buy 40 shares."
     assert _steady(pair, e.COMPOSITE, "5")["sentence"] == (
-        "To balance, market makers buy 1,360 shares."
+        "To balance, market makers buy 1,330 shares."
     )
     assert _steady(pair, "NASDAQ_BOOK", "1")["sentence"] == (
         "To balance, market makers sell 30 shares."
@@ -754,7 +770,7 @@ def test_the_route_serves_the_readout_of_both_books_and_the_composite_live():
     assert [rd["venues"][v]["source_text"] for v in (*e.BOOK_VENUES, e.COMPOSITE)] == [
         "Schwab NYSE_BOOK · live book",
         "Schwab NASDAQ_BOOK · live book",
-        "Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK",
+        "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange",
     ]
     assert rd["detail"] == e.READOUT_DETAIL
     # the readout served is the one the intake computed on the newest book, not a second one
@@ -791,7 +807,7 @@ def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
         "Not live, no book time sent — these are the last numbers, not current"
     )
     assert got[e.COMPOSITE]["source_text"].startswith(
-        "Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK · not live, no"
+        "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · not live, no"
         " book time sent"
     )
 

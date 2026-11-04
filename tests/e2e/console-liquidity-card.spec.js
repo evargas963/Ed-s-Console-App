@@ -28,7 +28,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('[data-liqvenue="COMPOSITE"]')).toHaveClass(/on/);
     await expect(card(page).locator('[data-liqview="weighted"]')).toHaveClass(/on/);
     await expect(card(page).locator('.liq-depth')).toContainText('price levels per side, not timeframes');
-    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK');
+    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange');
     // the whole source line shows, wrapped, never cut off
     expect(await card(page).locator('.tdm-src').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const text = await card(page).locator('.liq-body').innerText();
@@ -106,7 +106,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('.liq-body')).toHaveClass(/stale/);
     await expect(card(page).locator('.liq-body')).toContainText('BOOK OFFLINE');
     await expect(card(page).locator('.liq-body')).toContainText(c.not_live_text);
-    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK · book ' + c.book_time_ct + ' · ' + c.book_age_text + ' old · not live');
+    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · book ' + c.book_time_ct + ' · ' + c.book_age_text + ' old · not live');
     await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
     expect(errs).toEqual([]);
   });
@@ -154,7 +154,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('.liq-hl')).toBeVisible();
     await card(page).locator('.liq-hl').click();
     const panel = card(page).locator('.liq-detail');
-    for (const t of [d.weights, d.zones, d.nsdq, LIVE_COMP.views.weighted.nsdq_text, d.construction, d.spans, d.books]) {
+    for (const t of [d.weights, d.zones, d.construction, d.spans, d.books]) {
       await expect(panel).toContainText(t);
     }
     await panel.locator('[data-liqclose]').click();

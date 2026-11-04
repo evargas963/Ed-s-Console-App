@@ -482,10 +482,10 @@
       ' · Nasdaq ' + s('NASDAQ_BOOK', 'bid') + ' / ' + s('NASDAQ_BOOK', 'ask');
   }
   // the detail panel over the card, opened from the headline
-  function liqDetail(rd, v, key) {
+  function liqDetail(rd, key) {
     var d = rd.detail, p = function (t) { return t == null ? '' : '<p>' + esc(t) + '</p>'; };
     return '<div class="liq-detail liq-keep"><div class="liq-lbl"><span>DETAIL</span><button type="button" class="scbtn" data-liqclose>Close</button></div>' +
-      p(d.weights) + p(d.zones) + (key === 'COMPOSITE' ? p(d.nsdq) + p(v.nsdq_text) + p(d.construction) : '') +
+      p(d.weights) + p(d.zones) + (key === 'COMPOSITE' ? p(d.construction) : '') +
       p(d.spans) + p(liqSpans(rd, S.liqView)) + p(d.books) + '</div>';
   }
   function paintLiq() {
@@ -526,8 +526,7 @@
         '<div class="liq-line">Difference: ' + esc(v.difference_text || '-') + ' shares · Total depth: ' + esc(v.total_text || '-') + ' shares</div>' +
         (r.levels_text ? '<div class="liq-small">' + esc(r.levels_text) + '</div>' : '') +
         (r.dedup_partial_text ? '<div class="liq-small">' + esc(r.dedup_partial_text) + '</div>' : '') +
-        '<div class="liq-sent">' + esc(v.sentence || '-') + '</div>' +
-        (v.nsdq_disagree ? '<div><span class="liq-pill">NSDQ SIZES DISAGREE</span></div>' : '');
+        '<div class="liq-sent">' + esc(v.sentence || '-') + '</div>';
     }
     h += (rd.auction_text ? '<div class="liq-flag liq-keep">' + esc(rd.auction_text) + '</div>' : '') +
       '<div class="liq-lbl"><span>VENUES</span>' + (rd.disagree[view] ? '<span class="liq-pill">VENUES DISAGREE</span>' : '') + '</div>' +
@@ -545,7 +544,7 @@
       (v.flips_word ? '<div class="liq-lean"><span class="liq-pill">' + esc(v.flips_word) + ' · ' + v.flips_2m + ' flips in 2 min</span></div>' : '') +
       (r.not_live_text ? '<div class="liq-small liq-keep">' + esc(r.not_live_text) + '</div>' : '') +
       '<div class="liq-small">NYSE + Nasdaq only — not the whole market · Book ' + esc(r.book_time_ct || '-') + '</div>' +
-      (S.liqDetail ? liqDetail(rd, v, key) : '');
+      (S.liqDetail ? liqDetail(rd, key) : '');
     body.innerHTML = h;
   }
   // paints at most once a second; the reads stay on the pushes

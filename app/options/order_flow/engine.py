@@ -61,13 +61,14 @@ def _iter_content(data: dict) -> list:
     return []
 
 
-Exchanges = tuple[tuple[str, float], ...]
+Exchanges = tuple[tuple[str, float, float], ...]
 
 
 def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
     """A level's own rows, one per exchange or market maker, as sent: (EXCHANGE, BID_VOLUME or
-    ASK_VOLUME; docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers). None when the level
-    carries none, or a row lacks its code or size."""
+    ASK_VOLUME, its quote time; docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers: field 2,
+    "Quote time in milliseconds", which schwab-py names SEQUENCE). None when the level carries
+    none, or a row lacks its code, size or quote time."""
     if not isinstance(rows, list) or not rows:
         return None
     out = []
@@ -75,9 +76,10 @@ def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
         if not isinstance(row, dict):
             return None
         code, size = row.get("EXCHANGE"), schwab_count(row.get(size_key))
-        if not isinstance(code, str) or not code or size is None:
+        quoted = schwab_number(row.get("SEQUENCE"))
+        if not isinstance(code, str) or not code or size is None or quoted is None:
             return None
-        out.append((code, size))
+        out.append((code, size, quoted))
     return tuple(out)
 
 
@@ -522,10 +524,6 @@ def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None
 #: the two Schwab equity books, and their deduped union
 BOOK_VENUES: tuple[str, ...] = ("NYSE_BOOK", "NASDAQ_BOOK")
 COMPOSITE = "COMPOSITE"
-#: Nasdaq's own quote, in both books: the composite counts it once, from NSDQ_FROM, by convention
-#: (the two books' sizes for it differ and the data cannot say which is right)
-NSDQ = "NSDQ"
-NSDQ_FROM = "NYSE_BOOK"
 #: the card's views: the weighted top-5 headline, then the flat depths
 READOUT_VIEWS: tuple[str, ...] = ("weighted", "1", "3", "5")
 #: level k (1 = the touch) weighs exp(-OF_LEVEL_DECAY * (k - 1)), the top five normalized to sum
@@ -573,13 +571,11 @@ READOUT_DETAIL = {
     f" {OF_SMOOTH_SEC} seconds; a zone changes after {OF_ZONE_DWELL_SEC} seconds across its line;"
     " a flip is a change of side, bid to offer or back, held that long; "
     f"{OF_CHOPPY_FLIPS} or more flips in 2 minutes read CHOPPY.",
-    "nsdq": "NSDQ is counted once, from NYSE_BOOK, by convention. The two books disagree on NSDQ's"
-    " size in 82.5% of strict pairs (Nov 2 session), and the data cannot say which size is"
-    " right. The composite headline is a conventional number, not a verified one.",
-    "construction": "Composite: every exchange's and market maker's quote from both books, codes"
-    " matched without regard to case, one per contributor by side, price and code; NSDQ once,"
-    " from NYSE_BOOK; then the best five distinct prices per side. Never the two books' level"
-    " totals summed, never NSDQ's two sizes averaged, never the newer book's copy kept.",
+    "construction": "Composite: every exchange's and market maker's quote from the books Schwab"
+    " sends for this symbol, one per contributor by side; where a contributor quotes in both"
+    " books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent;"
+    " then the shares summed at each distinct price and the best five prices per side. With one"
+    " book, the composite is that book. Never the two books' level totals summed.",
     "spans": "Top 5 covers different price ranges on the two venues — the percentages are over"
     " different prices, so compare directions, not magnitudes. The touch is the only"
     " like-for-like comparison across venues.",
@@ -593,22 +589,19 @@ _TOUCH_FLAG = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 Levels = list[tuple[float, float]]
 
 
-def _codes(item: dict) -> set[str]:
-    """The codes, upper-cased, of every exchange and market maker quoting in a book."""
-    return {
-        code.upper()
-        for side in ("BIDS", "ASKS")
-        for _price, _total, rows in _side_levels(item, side)
-        if rows is not None
-        for code, _size in rows
-    }
-
-
-def _composite_side(books: dict[str, dict], side: str, nsdq_from: str) -> tuple[Levels, bool]:
-    """One side of the composite of both books: every quote of both, one per contributor, NSDQ's
-    only from the book `nsdq_from`, the shares summed at each distinct price, best first. A level
-    that carries no per-exchange rows counts its TOTAL_VOLUME whole, and the second value says one
-    did (the dedup partial)."""
+def _composite_side(books: dict[str, dict], side: str) -> tuple[Levels, bool]:
+    """One side of the composite of the books held: every quote, one per contributor (its code,
+    matched without regard to case), from the book whose copy has the newer quote time (on an equal
+    time, the first in BOOK_VENUES order), the shares summed at each distinct price, best first. A
+    level that carries no per-exchange rows counts its TOTAL_VOLUME whole, and the second value
+    says one did (the dedup partial)."""
+    newest: dict[str, tuple[float, str]] = {}
+    for venue, item in books.items():
+        for _price, _total, rows in _side_levels(item, side):
+            for code, _size, quoted in rows or ():
+                key = code.upper()
+                if key not in newest or quoted > newest[key][0]:
+                    newest[key] = (quoted, venue)
     sizes: dict[float, float] = {}
     partial = False
     for venue, item in books.items():
@@ -617,8 +610,8 @@ def _composite_side(books: dict[str, dict], side: str, nsdq_from: str) -> tuple[
                 partial = True
                 sizes[price] = sizes.get(price, 0.0) + total
                 continue
-            for code, size in rows:
-                if code.upper() != NSDQ or venue == nsdq_from:
+            for code, size, _quoted in rows:
+                if newest[code.upper()][1] == venue:
                     sizes[price] = sizes.get(price, 0.0) + size
     return sorted(sizes.items(), reverse=side == "BIDS"), partial
 
@@ -693,11 +686,9 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
 
 def book_readout(books: dict[str, dict | None]) -> dict[str, dict]:
     """The imbalance readout of each Schwab book and of their composite, from each venue's newest
-    book (`state.newest_book`, every venue of BOOK_VENUES; None: no book). The composite needs
-    both books (status one_book: `books` names the one held), each with bids and asks (status
-    incomplete: `short` names each book that has not, by its own status), and no code but NSDQ
-    in both (status shared_code: `shared` names them); its time is its older book's, and each
-    view carries the percentage with NSDQ taken from the other book instead (nsdq_other_pct)."""
+    book (`state.newest_book`, every venue of BOOK_VENUES; None: no book). The composite is of the
+    books held (`books` names them): with one, that book; with none, no_book. Its time is its
+    older book's."""
     out: dict[str, dict] = {}
     held: dict[str, dict] = {}
     for v in BOOK_VENUES:
@@ -709,32 +700,14 @@ def book_readout(books: dict[str, dict | None]) -> dict[str, dict]:
         bids = _sorted_valid_levels(book_side(item, "BIDS"), descending=True)
         asks = _sorted_valid_levels(book_side(item, "ASKS"), descending=False)
         out[v] = _readout(bids, asks, schwab_number(item.get("BOOK_TIME")))
-    shared = sorted(set.intersection(*map(_codes, held.values())) - {NSDQ}) if held else []
-    short = {v: out[v]["status"] for v in held if out[v]["status"] != "ok"}
-    if len(held) < len(BOOK_VENUES):
-        out[COMPOSITE] = {
-            "status": "one_book" if held else "no_book",
-            "book_time_ms": None,
-            "books": list(held),
-        }
-    elif short:
-        out[COMPOSITE] = {"status": "incomplete", "book_time_ms": None, "short": short}
-    elif shared:
-        out[COMPOSITE] = {"status": "shared_code", "book_time_ms": None, "shared": shared}
-    else:
-        times = [schwab_number(i.get("BOOK_TIME")) for i in held.values()]
-        time = None if None in times else min(times)
-        (bids, bid_partial), (asks, ask_partial) = (
-            _composite_side(held, s, NSDQ_FROM) for s in ("BIDS", "ASKS")
-        )
-        other = next(v for v in BOOK_VENUES if v != NSDQ_FROM)
-        alt = _readout(*(_composite_side(held, s, other)[0] for s in ("BIDS", "ASKS")), time)[
-            "views"
-        ]
-        out[COMPOSITE] = _readout(bids, asks, time)
-        for view, vals in out[COMPOSITE]["views"].items():
-            vals["nsdq_other_pct"] = alt[view]["pct"]
-        out[COMPOSITE]["dedup_partial"] = bid_partial or ask_partial
+    if not held:
+        out[COMPOSITE] = {"status": "no_book", "book_time_ms": None, "books": []}
+        return out
+    times = [schwab_number(i.get("BOOK_TIME")) for i in held.values()]
+    (bids, bid_partial), (asks, ask_partial) = (_composite_side(held, s) for s in ("BIDS", "ASKS"))
+    out[COMPOSITE] = _readout(bids, asks, None if None in times else min(times))
+    out[COMPOSITE]["books"] = list(held)
+    out[COMPOSITE]["dedup_partial"] = bid_partial or ask_partial
     return out
 
 
@@ -855,24 +828,14 @@ def _opposite(a: float | None, b: float | None) -> bool:
     return a is not None and b is not None and a * b < 0
 
 
-def _nsdq_text(pct: float | None, other: float | None) -> str | None:
-    """Both NSDQ percentages of the composite, for the detail panel."""
-    if pct is None or other is None:
-        return None
-    return (
-        f"NSDQ from {NSDQ_FROM}: {percent_text(pct)} · NSDQ from"
-        f" {next(v for v in BOOK_VENUES if v != NSDQ_FROM)}: {percent_text(other)}"
-    )
-
-
 def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], ends: dict) -> dict:
     """The Liquidity card's values, every venue and view: the headline (the smoothed percentage at
     the venue's end second: now while its book is live, else its last value's), its live value,
     zone and side word held OF_ZONE_DWELL_SEC, the seconds the zone has held (held_open: at
     least that long, the zone standing since the first value known), the flat totals, the
     sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
-    in two minutes, the 2m and 5m lean series, and for the composite both NSDQ percentages and
-    whether their zones differ. `readout`: the newest; `points`: the readouts kept, (receive time,
+    in two minutes, and the 2m and 5m lean series. `readout`: the newest; `points`: the readouts
+    kept, (receive time,
     readout) oldest first; `ends`: venue -> its end time, None with no value."""
     venues: dict[str, dict] = {}
     for v, r in readout.items():
@@ -891,7 +854,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
             known_from = next((first + k for k, s in enumerate(sm) if s is not None), None)
             flips = _flips(shown, first, last)
             bid, ask = snap.get("bid_total"), snap.get("ask_total")
-            live, other = snap.get("pct"), snap.get("nsdq_other_pct")
+            live = snap.get("pct")
             held = None if since is None else last - since
             views[view] = {
                 **{
@@ -923,11 +886,6 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                 "total_text": shares_text(snap.get("total_depth")),
                 "span_bid_text": price_text(snap.get("span_bid")),
                 "span_ask_text": price_text(snap.get("span_ask")),
-                "nsdq_other_pct": other,
-                "nsdq_text": _nsdq_text(live, other),
-                "nsdq_disagree": live is not None
-                and other is not None
-                and _zone(live) != _zone(other),
                 "lean": {
                     name: {
                         "seconds": window,
@@ -949,8 +907,6 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                     "touch_state",
                     "one_sided_text",
                     "books",
-                    "short",
-                    "shared",
                     "dedup_partial",
                 )
             },

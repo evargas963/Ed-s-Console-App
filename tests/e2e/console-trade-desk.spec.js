@@ -210,10 +210,12 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'
   await expect(page.locator('#tdmCardLiq .liq-bar-h').first()).toHaveText('Bids800');
   await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + CLOSED_BOOK.book_time_ct + ' · NOT LIVE');
   await expect(page.locator('#tdmTrust')).not.toContainText('STALE');
-  // the composite needs both books: words, no number
+  // with one book held, the composite is that book: its numbers, named on the source line
+  const comp = CLOSED_BOOK.readout.venues.COMPOSITE;
   await page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]').click();
-  await expect(page.locator('#tdmCardLiq .liq-body')).toHaveText('NO COMPOSITE' + CLOSED_BOOK.readout.venues.COMPOSITE.no_number_text);
-  await expect(page.locator('#tdmCardLiq .liq-pct')).toHaveCount(0);
+  await expect(page.locator('#tdmCardLiq .liq-pct')).toHaveText(comp.views.weighted.pct_text);
+  await expect(page.locator('#tdmCardLiq .liq-body')).toContainText('2,160');
+  await expect(page.locator('#tdmCardLiq .tdm-src')).toContainText('Schwab NYSE_BOOK · composite, newest quote of each exchange');
   expect(errs).toEqual([]);
 });
 

@@ -3223,17 +3223,14 @@ _AUCTION_TEXT = {
 
 #: the readout before any book has arrived: every venue no_book
 _NO_BOOKS = book_readout(dict.fromkeys(BOOK_VENUES))
-#: the card's source line: whose book, and the words of a live single book
-_SOURCE = {
-    "NYSE_BOOK": "Schwab NYSE_BOOK",
-    "NASDAQ_BOOK": "Schwab NASDAQ_BOOK",
-    COMPOSITE: "Schwab NYSE_BOOK + NASDAQ_BOOK · deduped composite · NSDQ from NYSE_BOOK",
-}
 _LIVE_BOOK = "live book"
 
 
-#: what a held book that is not whole lacks, as the composite's words say it
-_SHORT = {"empty": "no levels", "one_sided": "one side only"}
+def _source(venue: str, r: dict) -> str:
+    """Whose book: Schwab's book of `venue`, or for the composite the books it is built from."""
+    if venue != COMPOSITE:
+        return f"Schwab {venue}"
+    return f"Schwab {' + '.join(r['books']) or 'books'} · composite, newest quote of each exchange"
 
 
 def _no_number(r: dict) -> tuple[str, str, str] | None:
@@ -3248,35 +3245,13 @@ def _no_number(r: dict) -> tuple[str, str, str] | None:
             "The book Schwab sent has no levels",
             "NO LEVELS",
         )
-    if status == "one_book":
-        return (
-            f"only {r['books'][0]} is captured",
-            "Composite needs both books — only"
-            f" {r['books'][0]} is captured for this symbol right now",
-            "NO COMPOSITE",
-        )
-    if status == "incomplete":
-        lacks = "; ".join(f"{v}'s book has {_SHORT[s]}" for v, s in r["short"].items())
-        return (
-            lacks,
-            f"Composite needs both books, each with bids and asks — {lacks} right now",
-            "NO COMPOSITE",
-        )
-    if status == "shared_code":
-        codes = ", ".join(r["shared"])
-        return (
-            f"{codes} quote in both books",
-            f"{codes} quote in both books: which copy counts is not decided, so the composite"
-            " has no number",
-            "NO COMPOSITE",
-        )
     return None
 
 
 def _source_text(venue: str, r: dict, window: str | None) -> str:
     """The card's source line for `venue`: Schwab's book, then why it has no number, or live, or
     its time and not live; and, when today's auction windows are not known, that."""
-    parts = [_SOURCE[venue]]
+    parts = [_source(venue, r)]
     why = _no_number(r)
     if why is not None:
         parts.append(why[0])
@@ -3322,15 +3297,16 @@ def liquidity_readout(t: str, now: float) -> dict:
     readout of both Schwab books and their deduped composite the console's intake computed
     (engine.book_readout, kept in history.LEAN), read over the readouts kept
     (engine.readout_card). Each book is judged by the one live rule on its own service, the
-    composite live only while both are; a venue that is not live keeps its last values, read to
-    the reading its readout has stood from (`_stood_from`), with its book's time and age. With
-    the exchange auction
+    composite live only while every book it is built from is; a venue that is not live keeps its
+    last values, read to the reading its readout has stood from (`_stood_from`), with its book's
+    time and age. With the exchange auction
     window of today's session as Schwab sent it (time_et.auction; None while Schwab's answer for
     today is not held), and every word the card shows."""
     points = LEAN.points(t)
     readout = points[-1][1] if points else _NO_BOOKS
     labels = {v: price_state(t, now, v)[0] for v in BOOK_VENUES}
-    labels[COMPOSITE] = next((labels[v] for v in BOOK_VENUES if labels[v] != lmp.LIVE), lmp.LIVE)
+    built = readout[COMPOSITE]["books"] or BOOK_VENUES
+    labels[COMPOSITE] = next((labels[v] for v in built if labels[v] != lmp.LIVE), lmp.LIVE)
     ends = {v: now if labels[v] == lmp.LIVE else _stood_from(points, v) for v in readout if points}
     card = readout_card(readout, points, ends)
     window = auction(datetime.fromtimestamp(now, ET))
