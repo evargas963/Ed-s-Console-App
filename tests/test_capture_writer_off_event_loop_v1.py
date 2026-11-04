@@ -13,6 +13,8 @@ import asyncio
 import sqlite3
 import time
 
+import pytest
+
 import stream_spine
 from stream_spine import LOG, CaptureWriter, MessageBus, quote_msg
 
@@ -39,6 +41,7 @@ def _quote(i: int) -> dict:
     return quote_msg(symbol="SPY", bid=1.0, ask=1.1, last=1.05, ts_recv=1000.0 + i, src="schwab_l1")
 
 
+@pytest.mark.alone
 def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path, monkeypatch):
     real_connect = sqlite3.connect
     main_thread = __import__("threading").get_ident()

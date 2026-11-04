@@ -121,6 +121,7 @@ async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
     raise AssertionError(f"no matching {sym} row within {timeout}s")
 
 
+@pytest.mark.alone
 def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
     """In regular hours: the server's clock runs from _RTH."""
     clock = _clock_from(_RTH)
@@ -146,6 +147,7 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
     asyncio.run(_run(body, feed=_Feed(clock=clock)))
 
 
+@pytest.mark.alone
 def test_an_unsubscribed_symbol_is_never_sent():
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
@@ -164,6 +166,7 @@ def test_an_unsubscribed_symbol_is_never_sent():
     asyncio.run(_run(body))
 
 
+@pytest.mark.alone
 def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
     async def body(bus, ws, feed, stats):
         bus.publish("quote.AAPL", _trade("AAPL", 230.5, time.time()))
@@ -221,6 +224,7 @@ def _clock_from(start: float):
     return lambda: start + time.monotonic() - began
 
 
+@pytest.mark.alone
 @pytest.mark.parametrize("start", [_RTH, _CLOSED], ids=["rth", "closed"])
 def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
