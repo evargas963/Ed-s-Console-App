@@ -35,6 +35,7 @@ def test_write_skips_missing_completeness_basis_fail_closed(tmp_path):
         contracts=_TSLA_CONTRACTS,
         spot=350.0,
         completeness_basis="",
+        ts_utc=1000.0,
     )
     assert result["status"] == "skipped"
     assert result["reason"] == "no_completeness_basis"

@@ -31,6 +31,7 @@ import pytest
 
 import launch
 import live_market_plane as lmp
+import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
@@ -72,7 +73,7 @@ def _beat(daemon: capture.Daemon) -> dict:
     console records it (live_market_plane.daemon_status); the console's record is cleared after."""
     beat = LiveUiServer(daemon.status, {}).beat()
     try:
-        assert lmp.daemon_status(time.time())["writer"] == beat["writer"]
+        assert lmp.daemon_status(time_et.now())["writer"] == beat["writer"]
     finally:
         lmp.record_feed_down()
     return beat
@@ -85,8 +86,8 @@ def _publish_options(bus, health, events) -> None:
 
 
 async def _until(pred, limit: float = 10.0) -> None:
-    deadline = time.monotonic() + limit
-    while not pred() and time.monotonic() < deadline:
+    deadline = time_et.elapsed() + limit
+    while not pred() and time_et.elapsed() < deadline:
         await asyncio.sleep(0.05)
 
 
@@ -164,11 +165,11 @@ def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches
         task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
         bus.publish(f"optquote.{_CONTRACT}", bad)
-        deadline = time.monotonic() + 10  # every message taken: the rows and the refused one
+        deadline = time_et.elapsed() + 10  # every message taken: the rows and the refused one
         while (
             daemon.writer.status()["rows_written"] < len(_EVENTS)
             or not daemon.writer.status()["failures"]
-        ) and time.monotonic() < deadline:
+        ) and time_et.elapsed() < deadline:
             await asyncio.sleep(0.02)
         beat = _beat(daemon)
         stop.set()
@@ -287,10 +288,10 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
         await asyncio.sleep(1.5)
-        during = daemon.status(time.time()).get("writer")
+        during = daemon.status(time_et.now()).get("writer")
         writable()
         await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
-        after = daemon.status(time.time()).get("writer")
+        after = daemon.status(time_et.now()).get("writer")
         stop.set()
         await task
         return during, after
@@ -979,11 +980,11 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
     writer = CaptureWriter(
         db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
     )
-    probe = time.perf_counter()
+    probe = time_et.elapsed()
     for n in range(300):
         (tmp_path / f"probe.{n}").write_bytes(b"taken")
-    begin = int(time.time() * 1000) + max(
-        8000, int((time.perf_counter() - probe) * 1000 * 4500 / 300 * 2)
+    begin = int(time_et.now() * 1000) + max(
+        8000, int((time_et.elapsed() - probe) * 1000 * 4500 / 300 * 2)
     )
     taken = [
         db.with_name(f"stream_capture.{ms}{n}.spill")
@@ -992,8 +993,8 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
     ]
     for path in taken:
         path.write_bytes(b"taken")
-    assert time.time() * 1000 < begin, "the names were not all taken before the quotes arrive"
-    time.sleep(begin / 1000 - time.time())
+    assert time_et.now() * 1000 < begin, "the names were not all taken before the quotes arrive"
+    time.sleep(begin / 1000 - time_et.now())
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
 

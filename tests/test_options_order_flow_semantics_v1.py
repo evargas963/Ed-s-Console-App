@@ -13,11 +13,11 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
-import time
 from pathlib import Path
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
+import time_et
 from app.market_data.schwab.streaming import live_push
 from app.options.order_flow import streaming as ofs
 from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
@@ -88,8 +88,8 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
         try:
             for m in rows:
                 bus.publish(*_message(m))
-            deadline = time.monotonic() + 30
-            while any(top(s) != t for s, t in want.items()) and time.monotonic() < deadline:
+            deadline = time_et.elapsed() + 30
+            while any(top(s) != t for s, t in want.items()) and time_et.elapsed() < deadline:
                 await asyncio.sleep(0.05)
         finally:  # a failure still closes the socket: cancelling over an open one can hang
             await ws.close()
@@ -117,7 +117,7 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
     try:
         lmp.record_feed_heartbeat(
             {
-                "ts": time.time(),
+                "ts": time_et.now(),
                 "schwab_socket_open": True,
                 "held": {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []},
             }
@@ -126,7 +126,7 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
         held = ofls.option_top(sym)
         lmp.record_feed_heartbeat(
             {
-                "ts": time.time(),
+                "ts": time_et.now(),
                 "schwab_socket_open": True,
                 "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []},
             }
@@ -138,6 +138,6 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
     assert held["bid"] == m["item"]["BID_PRICE"]
     assert released["bid"] == m["item"]["BID_PRICE"]
     assert (
-        ofs.get_option_contract_streaming_diagnostics(sym, time.time())["subscription_state"]
+        ofs.get_option_contract_streaming_diagnostics(sym, time_et.now())["subscription_state"]
         == ofs.NOT_STREAMED
     )

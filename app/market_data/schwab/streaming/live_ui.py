@@ -35,10 +35,10 @@ import asyncio
 import json
 import logging
 import os
-import time
 
 import live_market_plane as lmp
 import live_price_rows
+import time_et
 from instrument_identity import display_symbol, ticker_storage_key
 
 log = logging.getLogger(__name__)
@@ -68,7 +68,11 @@ class _Client:
 
 class LiveUiServer:
     def __init__(
-        self, heartbeat_fn, stats: dict, record_heartbeat=lmp.record_feed_heartbeat, clock=time.time
+        self,
+        heartbeat_fn,
+        stats: dict,
+        record_heartbeat=lmp.record_feed_heartbeat,
+        clock=time_et.now,
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
         self.clock = clock  # the time each row is finished at, and each beat
@@ -106,11 +110,11 @@ class LiveUiServer:
     # -- browser side -----------------------------------------------------------------
 
     async def _send(self, c: _Client, payload: dict) -> None:
-        t0 = time.perf_counter()
+        t0 = time_et.elapsed()
         await c.ws.send(json.dumps(payload, separators=(",", ":"), default=str))
         self.stats["frames_sent"] += 1
         self.stats["rows_sent"] += len(payload.get("rows") or ())
-        self.stats["last_send_ms"] = (time.perf_counter() - t0) * 1000.0
+        self.stats["last_send_ms"] = (time_et.elapsed() - t0) * 1000.0
 
     async def _pump(self, c: _Client) -> None:
         while True:
@@ -212,7 +216,7 @@ async def serve_live_ui(
     port: int = LIVE_UI_PORT,
     stats: dict | None = None,
     record_heartbeat=lmp.record_feed_heartbeat,
-    clock=time.time,
+    clock=time_et.now,
 ) -> None:
     """Run until `stop` is set. Each beat is recorded with `record_heartbeat` (the daemon's own
     plane)."""

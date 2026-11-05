@@ -8,6 +8,7 @@ from datetime import datetime as _dt
 
 import push_changes
 import server as srv
+import time_et
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
 from tests.feed_live_helper import daemon_bars, stream_daemon_bars
@@ -138,7 +139,6 @@ def test_strikes_payload_carries_server_side_sums():
     payload's own spot — the one aggregator. Stand-ins: ZZSUMS's published rows in the console's
     cache, its price row at 100 with the feed live; no capture of it is stored (no prior day)."""
     import json
-    import time
 
     import live_market_plane as lmp
     import server as srv
@@ -152,7 +152,7 @@ def test_strikes_payload_carries_server_side_sums():
             "computed_ts_utc": 1.0,
         }
     lmp.record_feed_heartbeat(
-        {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
     ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
     try:

@@ -13,6 +13,8 @@ import threading
 import time
 from pathlib import Path
 
+import time_et
+
 REPO = Path(__file__).resolve().parent.parent
 
 
@@ -42,9 +44,9 @@ def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
     threading.Thread(target=lambda: lines.extend(console.stdout), daemon=True).start()
     waited = "waiting for the capture daemon's heartbeat (it says what the watchlist is) ("
     try:
-        end = time.monotonic() + 120
+        end = time_et.elapsed() + 120
         while sum(waited in ln for ln in list(lines)) < 2:
-            assert console.poll() is None and time.monotonic() < end, "".join(lines)
+            assert console.poll() is None and time_et.elapsed() < end, "".join(lines)
             time.sleep(0.25)
     finally:
         console.kill()

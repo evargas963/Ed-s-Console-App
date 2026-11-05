@@ -19,7 +19,6 @@ import json
 import logging
 import sqlite3
 import threading
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -29,6 +28,7 @@ from typing import Any
 
 from schwab.client import Client
 
+import time_et
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from live_price_rows import price_row
@@ -108,7 +108,7 @@ def persist_complete_chain_capture(
     contracts: list[Any],
     spot: float | None,
     completeness_basis: str,
-    ts_utc: float | None = None,
+    ts_utc: float,
     source: str = "schwab_chain_strike_range_all",
     chain_spot: float | None = None,
     chain_spot_ts: float | None = None,
@@ -137,7 +137,7 @@ def persist_complete_chain_capture(
     if not clean:
         return {"status": "skipped", "reason": "no_contracts", "ticker": tk, "expiry": exp}
 
-    ts = float(ts_utc if ts_utc is not None else time.time())
+    ts = float(ts_utc)
     conn.execute(
         "INSERT INTO complete_chain_captures "
         "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source, "
@@ -354,7 +354,7 @@ class ChainSweep:
         db_path: Path | str,
         watchlist: list[str],
         publish: callable,
-        clock: callable = time.time,
+        clock: callable = time_et.now,
         *,
         failures: CaptureWriter,
         streamed: callable,

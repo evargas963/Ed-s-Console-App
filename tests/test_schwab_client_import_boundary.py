@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import time_et
+
 REPO = Path(__file__).resolve().parent.parent
 
 
@@ -106,7 +108,6 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
     import json as _json
     import socket
     import threading
-    import time as _time
 
     proxy = socket.socket()
     proxy.bind(("127.0.0.1", 0))
@@ -128,13 +129,13 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
     (tmp_path / "schwab_token.json").write_text(
         _json.dumps(
             {
-                "creation_timestamp": int(_time.time()),
+                "creation_timestamp": int(time_et.now()),
                 "token": {
                     "access_token": "a",
                     "refresh_token": "r",
                     "token_type": "Bearer",
                     "expires_in": 1800,
-                    "expires_at": int(_time.time() + 3600),
+                    "expires_at": int(time_et.now() + 3600),
                 },
             }
         )

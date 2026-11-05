@@ -13,7 +13,6 @@ capture carries none: 330.0) and each streamed value.
 from __future__ import annotations
 
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +22,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server as srv
+import time_et
 from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
 from stream_spine import options_quote_msg
@@ -70,7 +70,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     srv._publish_levels(
         tk, read_chain(contracts), fetched_ts, chain_spot=(price, fetched_ts), now=_AT
     )
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": held})
+    lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": held})
 
 
 def _get(**kw):

@@ -21,11 +21,11 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
-import time
 
 import pytest
 
 import live_market_plane as lmp
+import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 
@@ -71,7 +71,7 @@ def _trade(sym: str, last: float, ts: float, **extra) -> dict:
 
 
 class _Feed:
-    def __init__(self, held=("SPY", "AAPL"), clock=time.time):
+    def __init__(self, held=("SPY", "AAPL"), clock=time_et.now):
         self.open = True
         self.held = list(held)
         self.clock = clock
@@ -99,8 +99,8 @@ async def _run(body, feed=None):
         )
     )
     follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
-    end = time.monotonic() + 5
-    while not stats.get("listening") and time.monotonic() < end:
+    end = time_et.elapsed() + 5
+    while not stats.get("listening") and time_et.elapsed() < end:
         await asyncio.sleep(0.01)
     assert stats.get("listening")
     try:
@@ -112,9 +112,9 @@ async def _run(body, feed=None):
 
 
 async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        msg = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time.monotonic())))
+    end = time_et.elapsed() + timeout
+    while time_et.elapsed() < end:
+        msg = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time_et.elapsed())))
         for r in msg.get("rows") or []:
             if r["ticker"] == sym and pred(r):
                 return msg, r
@@ -137,11 +137,11 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         assert 0 <= row["trade_age_sec"] < 2
         assert "forming_1m" not in row
         # the next trade moves it, pushed on its own (not on the beat)
-        t0 = time.monotonic()
+        t0 = time_et.elapsed()
         bus.publish("quote.SPY", _trade("SPY", 583.90, clock()))
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.90)
         assert msg["type"] == "quotes"
-        assert time.monotonic() - t0 < 0.15, "a change must go out immediately, not on the beat"
+        assert time_et.elapsed() - t0 < 0.15, "a change must go out immediately, not on the beat"
 
     asyncio.run(_run(body, feed=_Feed(clock=clock)))
 
@@ -149,11 +149,11 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
 def test_an_unsubscribed_symbol_is_never_sent():
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-        bus.publish("quote.AAPL", _trade("AAPL", 230.0, time.time()))
-        bus.publish("quote.SPY", _trade("SPY", 583.0, time.time()))
+        bus.publish("quote.AAPL", _trade("AAPL", 230.0, time_et.now()))
+        bus.publish("quote.SPY", _trade("SPY", 583.0, time_et.now()))
         frames = []
-        end = time.monotonic() + 1.5 * live_ui.HEARTBEAT_SEC  # the rows, and a beat's rows
-        while (left := end - time.monotonic()) > 0:
+        end = time_et.elapsed() + 1.5 * live_ui.HEARTBEAT_SEC  # the rows, and a beat's rows
+        while (left := end - time_et.elapsed()) > 0:
             try:
                 frames.append(json.loads(await asyncio.wait_for(ws.recv(), left)))
             except TimeoutError:
@@ -166,7 +166,7 @@ def test_an_unsubscribed_symbol_is_never_sent():
 
 def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
     async def body(bus, ws, feed, stats):
-        bus.publish("quote.AAPL", _trade("AAPL", 230.5, time.time()))
+        bus.publish("quote.AAPL", _trade("AAPL", 230.5, time_et.now()))
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
         msg, row = await _next_row(ws, "AAPL", lambda r: r["spot"] == 230.5, timeout=0.15)
@@ -217,8 +217,8 @@ _RTH, _CLOSED = 1790780400.0, 1790820000.0
 
 def _clock_from(start: float):
     """A clock running from `start` (the session the test is in); time still passes."""
-    began = time.monotonic()
-    return lambda: start + time.monotonic() - began
+    began = time_et.elapsed()
+    return lambda: start + time_et.elapsed() - began
 
 
 @pytest.mark.parametrize("start", [_RTH, _CLOSED], ids=["rth", "closed"])
@@ -267,7 +267,7 @@ def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
         await _next_row(ws, "SPY")  # the (empty) snapshot
         for i in range(500):
-            now = time.time()
+            now = time_et.now()
             bus.publish("quote.SPY", _trade("SPY", 500 + i / 100, now))
             bus.publish("quote.AAPL", _trade("AAPL", 200 + i / 100, now))
         _, spy = await _next_row(ws, "SPY", lambda r: r["spot"] == pytest.approx(504.99))
@@ -283,6 +283,6 @@ def test_shutdown_is_not_held_up_by_a_connected_browser():
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         await _next_row(ws, "SPY")
 
-    t0 = time.monotonic()
+    t0 = time_et.elapsed()
     asyncio.run(_run(body))
-    assert time.monotonic() - t0 < 5
+    assert time_et.elapsed() - t0 < 5

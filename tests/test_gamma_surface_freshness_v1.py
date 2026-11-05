@@ -10,7 +10,6 @@ under tickers that are and are not on the watchlist.
 """
 
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +19,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
+import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from server import get_options_gamma_surface, ticker_storage_key
@@ -72,7 +72,7 @@ def published():
             chain_spot=(_CRWD["spot"], _AT.timestamp()),
             now=_AT,
         )
-    _daemon(_CRWD["spot"], time.time(), _ON, _OFF)  # live now, as the routes read it
+    _daemon(_CRWD["spot"], time_et.now(), _ON, _OFF)  # live now, as the routes read it
     yield
     with server._terrain_cache_lock:
         for tk in (_ON, _OFF):
@@ -97,7 +97,7 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
 
 
 def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
-    live = server.terrain_cache_get(_ON, time.time())  # the one authority
+    live = server.terrain_cache_get(_ON, time_et.now())  # the one authority
     d = _call(_ON)
     assert (d["levels_state"], d["levels_stale_reason"]) == (
         live["levels_state"],

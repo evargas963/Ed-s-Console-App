@@ -600,7 +600,9 @@
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
-    _priceSubTs = Date.now();
+    // just asked for this ticker: WAITING (not OFFLINE) until PRICE_SILENCE_MS passes with no row
+    _priceConnecting = true; clearTimeout(_priceConnectTimer);
+    _priceConnectTimer = setTimeout(function () { _priceConnecting = false; }, PRICE_SILENCE_MS);
     _quoteShown = false;                 // the last ticker's price is not this one's
     subscribePrices();                   // the daemon answers with this ticker's row at once
     markHeaderPushDown();                // WAITING until that row lands (milliseconds)
@@ -760,7 +762,11 @@
   }
   // ---- the price socket (daemon -> browser) ----
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
-  var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
+  // the page reads no clock: a row arriving starts a PRICE_SILENCE_MS timer, and the push is
+  // silent once it runs out with no newer row (_priceFresh); a ticker change is WAITING until one
+  // runs out the same way (_priceConnecting). Its time of day is the program's (_serverNow).
+  var _priceWs = null, _priceUp = false, _priceFresh = false, _priceSilence = null, _priceRetry = 0;
+  var _priceConnecting = false, _priceConnectTimer = null, _serverNow = null;
   var _quoteShown = false;
   // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
   // age is served and the page computes none
@@ -803,15 +809,19 @@
     if (typeof WebSocket === 'undefined' || !url) return;
     var ws;
     try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
-    _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
+    _priceWs = ws;   // (_priceConnecting is set by a ticker change only: a reconnect during an
                      //  outage keeps reading OFFLINE, not WAITING)
     ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
-      if (msg && msg.type === 'feed') paintRecord(msg.feed && msg.feed.writer);
+      if (msg && msg.type === 'feed') {
+        paintRecord(msg.feed && msg.feed.writer);
+        if (msg.feed && typeof msg.feed.ts === 'number') { _serverNow = msg.feed.ts; tickClock(); }
+      }
       if (!msg || !Array.isArray(msg.rows)) return;
-      _priceUp = true; _lastPriceTs = Date.now();
+      _priceUp = true; _priceFresh = true; clearTimeout(_priceSilence);
+      _priceSilence = setTimeout(function () { _priceFresh = false; checkPriceSilence(); }, PRICE_SILENCE_MS);
       msg.rows.forEach(ingestPriceRow);
     };
     ws.onclose = function () {
@@ -866,7 +876,7 @@
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
   }
-  function pricePushHealthy() { return _priceUp && (Date.now() - _lastPriceTs <= PRICE_SILENCE_MS); }
+  function pricePushHealthy() { return _priceUp && _priceFresh; }
   // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
   function checkPriceSilence() {
     if (!state.ticker || pricePushHealthy()) return;
@@ -911,7 +921,7 @@
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its
     // last trade time and no age: the last served age is not the age now.
-    var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
+    var connecting = _priceConnecting;
     var label = connecting ? 'WAITING' : 'OFFLINE';
     var age = connecting ? 'no push yet' : 'live push down';
     emit('ed:price_push_down', { label: label });   // every surface of this price says so (the desk map)
@@ -921,9 +931,10 @@
     paintRecord(null);
   }
 
-  // ================= CT clock =================
+  // ================= CT clock: the program's, from its heartbeat; none until the first =========
   function tickClock() {
-    var now = new Date();
+    if (_serverNow == null) return;
+    var now = new Date(_serverNow * 1000);
     var t = now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
     var dt = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: '2-digit', timeZone: 'America/Chicago' });
     var c = document.getElementById('hClock'), cd = document.getElementById('hClockDate');
@@ -1016,7 +1027,6 @@
     // initial ticker + header
     if (state.ticker) setTicker(state.ticker); else paintNoTicker();
     _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
-    tickClock(); setInterval(tickClock, 1000);
     openPriceSocket();                   // prices: daemon -> browser, one socket for the page
     setInterval(checkPriceSilence, 1000);
   }
@@ -1039,6 +1049,7 @@
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
+    now: function () { return _serverNow; },   // the program's time (s), from its heartbeat; null before the first
     setScope: setScope, getScope: function () { return state.scope; },
     windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText, placeholder: placeholder,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },

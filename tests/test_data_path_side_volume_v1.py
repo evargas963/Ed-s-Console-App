@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-import time
 
 import live_market_plane as lmp
 import server as srv
+import time_et
 from app.options.order_flow import streaming as ofs
 from math_exposure_core import (
     compute_exposures_by_strike,
@@ -29,7 +29,7 @@ def test_volume_below_and_above_spot_keeps_every_digit():
             "computed_ts_utc": 1.0,
         }
     lmp.record_feed_heartbeat(
-        {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
     ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
     try:
@@ -55,7 +55,7 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
             "computed_ts_utc": 1.0,
         }
     lmp.record_feed_heartbeat(
-        {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
     ofs._price_rows[tk] = {"ticker": tk, "spot": spot, "trade_ts": 1.0}
     try:
