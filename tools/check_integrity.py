@@ -124,7 +124,10 @@ def js_assertions(source: str) -> dict[str, set[str]]:
     return found
 
 
-def _assertions(root: Path, rev: str, names: list[str]) -> dict[str, set[str]]:
+def _assertions(
+    root: Path, rev: str, names: list[str], where: dict[str, str] | None = None
+) -> dict[str, set[str]]:
+    """{test: its assertions} over `names` at `rev`; `where`, when given, gets each test's file."""
     found: dict[str, set[str]] = {}
     for name in names:
         source = _at(root, rev, name)
@@ -137,6 +140,8 @@ def _assertions(root: Path, rev: str, names: list[str]) -> dict[str, set[str]]:
             raise ToolError(f"{rev}:{name}", e) from e
         for test, held in read.items():
             found.setdefault(test, set()).update(held)
+            if where is not None:
+                where[test] = name
     return found
 
 
@@ -160,20 +165,27 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
 
 def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
     """Each assertion a surviving test lost on net. A test is known by what it asserts, not only by
-    its name: a test gone under its old name is the new test that holds the most of its
-    assertions, judged like one that kept its name. A test with no such match was deleted, the
-    review's to judge. An assertion of a function the change deleted goes with it."""
+    its name: a test gone under its old name is the one new test that is it renamed, judged like
+    one that kept its name. A test with no such match was deleted, the review's to judge. An
+    assertion of a function the change deleted goes with it."""
     tests = [f for f in files if PYTHON_TESTS.match(f) or JS_TESTS.match(f)]
     product = [f for f in files if f.endswith(".py") and not f.startswith("tests/")]
     deleted = _definitions(root, base, product) - _definitions(root, "HEAD", product)
-    before = _assertions(root, base, tests)
-    after = _assertions(root, "HEAD", tests)
+    was_in: dict[str, str] = {}
+    now_in: dict[str, str] = {}
+    before = _assertions(root, base, tests, was_in)
+    after = _assertions(root, "HEAD", tests, now_in)
     new = sorted(after.keys() - before.keys())
     pairs = [(test, test) for test in sorted(before.keys() & after.keys())]
     for test in sorted(before.keys() - after.keys()):
-        # the one new test holding more than half of its assertions is the test renamed; one
-        # shared line (`r.returncode == 0`) does not make another test the same test
-        same = [n for n in new if 2 * len(before[test] & after[n]) > len(before[test])]
+        # renamed: a new test in its own file sharing an assertion, or one in another file holding
+        # more than half of them; one common line (`r.returncode == 0`) elsewhere is not the test
+        same = [
+            n
+            for n in new
+            if before[test] & after[n]
+            and (now_in[n] == was_in[test] or 2 * len(before[test] & after[n]) > len(before[test]))
+        ]
         if len(same) == 1:
             pairs.append((test, same[0]))
     out = []
