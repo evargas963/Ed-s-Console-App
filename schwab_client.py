@@ -226,6 +226,25 @@ class OneRefreshSession(OAuth2Client):
                         log.error("%s", self._refusal_text())
             raise SignInRefused(self._refusal_text()) from self._refused
 
+    def request(self, method, url, withhold_token=False, **kwargs):
+        """Send the request; Schwab's answer is the access token's truth (RFC 6750 §3.1).
+
+        A 401 whose challenge names `invalid_token` means Schwab no longer accepts the token this
+        request carried, whatever its `expires_at` says (measured 2026-11-05: a refresh read 37
+        minutes late was stamped valid for 30 more, and 1,030 requests were refused before it was
+        due): that token is taken as expired, so it is refreshed once, one request at a time
+        (ensure_active_token), and the request is sent once more with the new one.
+        """
+        sent = self.token
+        response = super().request(method, url, withhold_token=withhold_token, **kwargs)
+        challenge = response.headers.get("www-authenticate")
+        if response.status_code != 401 or challenge is None or "invalid_token" not in challenge:
+            return response
+        with self._refresh_lock:
+            if self.token is sent:
+                self.token["expires_at"] = 0
+        return super().request(method, url, withhold_token=withhold_token, **kwargs)
+
     def refusal(self) -> "str | None":
         """Why this session holds no sign-in Schwab accepts, with what to run, else None; while
         refused, a new one saved to the token file is taken first."""

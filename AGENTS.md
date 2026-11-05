@@ -208,6 +208,14 @@ then the rule binds with no machine check.
 
 ## Before writing code
 
+- Every change, in any file of the repository (product code, the page, scripts, tools, tests),
+  lists how it can fail in real use and carries a test that forces each one: anything that can
+  block, stall, crash, restart halfway, arrive late, arrive twice or not arrive, and a screen
+  that is slow. The failure is traced end to end, every link of it repaired at its source, never
+  only the one that showed first (operator 2026-11-05, after a click in the daemon's window froze
+  it and a token refresh caught in the freeze was refused for 25 minutes: "shouldn't this apply
+  repo wide? ... why just the daemon? why not repo wide?"; "always end to end repairs").
+  Enforced by: the builder's audit (rule 14), no machine check.
 - The operator's three rules (2026-11-03): this is a simple wiring job; we use Schwab's data as
   Schwab sends it; this is a financial app, and a question is answered by what a bank would do.
   They apply to all code in the repository and to every answer, proposal and change, each

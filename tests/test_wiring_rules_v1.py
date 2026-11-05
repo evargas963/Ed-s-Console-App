@@ -35,3 +35,7 @@ def test_every_message_carries_the_three_rules_and_the_three_questions():
     assert "Which Schwab field, or which registered derived value?" in said
     assert "What is the simplest direct wire?" in said
     assert "What would a bank do?" in said
+    # operator 2026-11-05: "everything we do is repo wide"; "always end to end repairs"
+    assert "Everything is repo wide" in said and "every ticker" in said
+    assert "Every repair is end to end" in said and "never a patch" in said
+    assert "Is it repo wide? Is every link repaired at its source?" in said
