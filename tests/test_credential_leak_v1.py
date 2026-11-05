@@ -71,7 +71,7 @@ def test_a_secret_after_an_added_line_starting_plus_plus_is_refused(tmp_path):
 def test_a_secret_in_a_file_git_quotes_after_another_file_is_refused(tmp_path):
     """git quotes a name holding a non-ASCII character; that header starts a new file, so the
     clean file before it does not carry over."""
-    root = _staged(tmp_path, {"tools/check_credential_leak.py": "x = 1\n", "tools/é.py": SECRET})
+    root = _staged(tmp_path, {"tools/a.py": "x = 1\n", "tools/é.py": SECRET})
     assert _labels(root) == [["tools/é.py", "bearer_token"]]
 
 

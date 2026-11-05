@@ -49,7 +49,7 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 
 class DiffUnreadable(RuntimeError):
-    """git could not produce the diff. An unread diff is not an empty diff."""
+    """git could not produce the diff or the tracked files. What was not read is not clean."""
 
 
 def _added_text(root: Path, base: str | None = None) -> str:
@@ -155,8 +155,9 @@ def tree_leaks(root: Path = REPO, rev: str = "") -> list[str]:
         size = int(head.rsplit(" ", 1)[1])
         text = out[end + 1 : end + 1 + size].decode("utf-8", errors="replace")
         at = end + 1 + size + 1
-        for line in text.split("\n"):
-            hits.extend(_leaks(name.decode("utf-8", errors="replace"), line))
+        if any(pat.search(text) for _, pat in SECRET_PATTERNS):  # most files hold none
+            for line in text.split("\n"):
+                hits.extend(_leaks(name.decode("utf-8", errors="replace"), line))
     return hits
 
 
@@ -165,7 +166,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base", help="read every commit of a pull request against this base (CI)")
     base = ap.parse_args(argv).base
     try:
-        hits = tree_leaks(rev="HEAD" if base else "") + find_credential_leaks(base=base)
+        # at commit the index holds every line the staged diff adds; with --base, the history
+        # also holds lines a later commit removed again
+        hits = tree_leaks(rev="HEAD" if base else "")
+        if base:
+            hits = list(dict.fromkeys(hits + find_credential_leaks(base=base)))
     except DiffUnreadable as e:
         # Fail CLOSED: "clean" for a diff nobody read is the one outcome a secrets gate must
         # never produce.

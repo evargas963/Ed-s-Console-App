@@ -144,17 +144,19 @@ def _field_list(root: Path, rev: str) -> set[str]:
 
 def second_readers(found: dict[str, set[str]]) -> int:
     """Each module reading a Schwab field beyond its one reader, over the whole repository."""
-    return sum(len(mods) - 1 for mods in found.values() if mods)
+    return sum(len(mods) - 1 for mods in found.values())
 
 
 def violations(root: Path, base: str) -> list[str]:
     fork = _git(root, "merge-base", base, "HEAD").strip()
     fields = _field_list(root, fork) | _field_list(root, "HEAD")
     before, after = readers(root, fork, fields), readers(root, "HEAD", fields)
-    was, now = second_readers(before), second_readers(after)
     # one field list on both sides, so the count rises only by a module joining a field's readers,
     # which is refused below
-    print(f"second readers of Schwab fields, repo wide: {was} -> {now}")
+    print(
+        "second readers of Schwab fields, repo wide: "
+        f"{second_readers(before)} -> {second_readers(after)}"
+    )
     out = []
     for name in sorted(after):
         was = before.get(name, set())

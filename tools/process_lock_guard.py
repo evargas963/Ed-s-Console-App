@@ -28,7 +28,7 @@ from pathlib import Path
 
 import tools.operating_process_lock as OPL
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # the ONE roster of each class
-from tools.pretooluse_guard import checkout_path, production_path
+from tools.pretooluse_guard import live_file
 from tools.shell_parse import (  # the ONE shell reader
     Statement,
     _join_dir,
@@ -217,22 +217,16 @@ def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> 
     """An Edit or Write whose target belongs to the production checkout, the live one. From a
     linked worktree: any file inside the production checkout that is not under this worktree's
     own root (a worktree nested at `<primary>/.claude/worktrees/<name>` owns its files). From the
-    production checkout itself: any of its files (`production_path`). The topology is file logic
+    production checkout itself: any of its files (`live_file`). The topology is file logic
     only (`_primary_worktree_root`); a target that cannot be placed raises, and hook_chain refuses
     the event."""
-    linked_to = _primary_worktree_root(repo)
-    primary = linked_to or repo
+    primary = _primary_worktree_root(repo) or repo
     out: list[str] = []
     for key in _EDIT_TARGET_KEYS:
         raw = tool_input.get(key)
         if not raw or not isinstance(raw, str):
             continue
-        if linked_to is None:
-            resolved = production_path(raw, repo, primary)
-        else:
-            resolved = checkout_path(raw, repo, primary)
-            if resolved is not None and resolved.is_relative_to(repo.resolve()):
-                resolved = None
+        resolved = live_file(raw, repo, primary, repo)
         if resolved is not None:
             out.append(
                 f"PROD_CHECKOUT_EDIT: {resolved} belongs to the PRODUCTION checkout {primary}, the "
@@ -337,14 +331,11 @@ def production_checkout_shell_app_write_violations(statements: list[Statement]) 
     to a file INSIDE the production primary — whichever session runs it. Dev-worktree paths,
     a worktree nested inside the primary included, are its own and stay free. Not
     subject-disableable."""
-    linked_to = _primary_worktree_root(REPO)
-    primary = linked_to or REPO
+    primary = _primary_worktree_root(REPO) or REPO
     out: list[str] = []
     for st in statements:  # each destination against its statement's cwd
         for dest in _shell_write_dest_paths(st):
-            resolved = production_path(_join_dir(st.cwd or str(primary), dest), primary, primary)
-            if linked_to is not None and resolved is not None:
-                resolved = None if resolved.is_relative_to(REPO.resolve()) else resolved
+            resolved = live_file(_join_dir(st.cwd or str(primary), dest), primary, primary, REPO)
             if resolved is not None:
                 out.append(
                     f"PROD_CHECKOUT_EDIT (shell): a shell command "

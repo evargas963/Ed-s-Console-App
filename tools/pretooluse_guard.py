@@ -1,7 +1,7 @@
-"""Where an edit target lies: `checkout_path` (inside the production checkout) is the one place a
-guard places a path, and `production_path` keeps the files among those, every one of them (the
-production checkout stays `main == origin/main`, AGENTS.md Authority); both read by
-process_lock_guard (the production-checkout rails). A library, not a hook."""
+"""Where an edit target lies: `live_file`, read by both of process_lock_guard's production-checkout
+rails, places it in the production checkout (`checkout_path`), keeps every file there
+(`production_path`: the checkout stays `main == origin/main`, AGENTS.md Authority) and leaves a
+worktree of its own its own files. A library, not a hook."""
 
 from __future__ import annotations
 
@@ -27,3 +27,13 @@ def production_path(target: str, base: Path, primary: Path) -> Path | None:
     # NUL, CON: Windows devices, no file (os.path.isreserved exists only where Windows runs)
     device = os.name == "nt" and "\0" not in str(resolved) and os.path.isreserved(resolved)
     return None if device else resolved
+
+
+def live_file(target: str, base: Path, primary: Path, own: Path) -> Path | None:
+    """`production_path`, but never a file under `own`, the checkout asking, when that is a
+    worktree of its own (a worktree nested at `<primary>/.claude/worktrees/<name>` owns its
+    files). Both production-checkout rails, the Edit rail and the shell rail, place a target
+    with this."""
+    resolved = production_path(target, base, primary)
+    ours = own.resolve() != primary.resolve() and resolved is not None
+    return None if ours and resolved.is_relative_to(own.resolve()) else resolved

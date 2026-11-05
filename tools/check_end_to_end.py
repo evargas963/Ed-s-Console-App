@@ -8,14 +8,14 @@ the standard tools' own (ruff's safe fixes with the PR's committed pyproject.tom
 tool_fixed), is not a change of product code. An .html page or a .bat file is always one, and so
 is removing code nothing calls, a deleted file included.
 
-The whole repository is judged (operator 2026-11-04: everything is repo wide): every file's shapes
-are counted on the base and the head and printed, and in every file whose code the PR changes
-(tests and tools as much as product code), a shape is refused on a line the PR adds, or on an
-unchanged line that did not hold it before (an old except whose log line the PR removes), matched
-by what the line says, so a shape pushed down the file is not new and one fixed elsewhere does
-not pay for one brought in.
+The whole repository is judged (operator 2026-11-04: everything is repo wide): the shapes of every
+.py, .js, .mjs and .html file are counted on the base and the head and printed, and in every such
+file whose code the PR changes (tests and tools as much as product code), a shape is refused when
+a line the PR adds touches it, or when it sits on a line the PR leaves as it was that did not hold
+it at its own place in the old file (an old except whose log line the PR removes), so a shape
+pushed down the file is not new and one fixed elsewhere does not pay for one brought in.
 
-The lines a PR adds carry no patch shape:
+The shapes:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
      assignment of None or a literal, or a call with no re-raise. An except that logs the error
@@ -55,6 +55,7 @@ from __future__ import annotations
 import argparse
 import ast
 import difflib
+import functools
 import io
 import re
 import subprocess
@@ -272,6 +273,7 @@ def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
     return found if run.returncode == 0 and len(found) == len(FIX_SAFETY) else None
 
 
+@functools.cache  # one answer per run: the PR's settings against the base's
 def tools_fix_is_safe(root: Path, base: str) -> bool:
     """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
     the base's Python: unsafe fixes not on, none forced safe, no import required of every file, no
@@ -605,13 +607,34 @@ def unchanged(old: str, new: str) -> dict[int, int]:
     return {b + k + 1: a + k + 1 for a, b, size in match.get_matching_blocks() for k in range(size)}
 
 
-def shapes_at(root: Path, rev: str) -> int:
-    """How many patch shapes every file of the repository holds at `rev`."""
-    return sum(
-        len(shapes(f, _git(root, "show", f"{rev}:{f}", errors="replace")))
-        for f in _git(root, "ls-tree", "-r", "-z", "--name-only", rev).split("\0")
-        if f.endswith(SHAPED_SUFFIXES)
-    )
+def files_at(root: Path, rev: str) -> dict[str, tuple[str, str]]:
+    """{path: (blob id, text)} of every file SHAPED_SUFFIXES names at `rev`, in one git read."""
+    listed = [
+        (entry.split("\t", 1)[1], entry.split()[2])
+        for entry in _git(root, "ls-tree", "-r", "-z", rev).split("\0")
+        if entry and entry.split()[1] == "blob"
+    ]
+    listed = [(path, blob) for path, blob in listed if path.endswith(SHAPED_SUFFIXES)]
+    try:
+        out = subprocess.run(
+            ["git", "cat-file", "--batch"],
+            cwd=root,
+            input="".join(f"{blob}\n" for _, blob in listed).encode(),
+            capture_output=True,
+            check=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        raise ToolError(str(e)) from e
+    found, at = {}, 0
+    for path, blob in listed:
+        end = out.index(b"\n", at)
+        size = int(out[at:end].rsplit(b" ", 1)[1])
+        try:  # a file that is not UTF-8 is code this check cannot read: the check fails, exit 2
+            found[path] = (blob, out[end + 1 : end + 1 + size].decode("utf-8"))
+        except UnicodeDecodeError as e:
+            raise ToolError(f"{rev}:{path} could not be read: {e}") from e
+        at = end + 1 + size + 1
+    return found
 
 
 def violations(root: Path, base: str) -> list[str]:
@@ -619,21 +642,29 @@ def violations(root: Path, base: str) -> list[str]:
     or one on a line it leaves as it was that did not hold that shape before (an old except whose
     log line it removes), each unchanged line matched to its own place in the old file."""
     fork = _git(root, "merge-base", base, "HEAD").strip()
-    print(f"patch shapes, repo wide: {shapes_at(root, fork)} -> {shapes_at(root, 'HEAD')}")
+    was, now = files_at(root, fork), files_at(root, "HEAD")
+    parsed: dict[str, list[tuple[int, str]]] = {}  # by blob: a file the PR leaves is read once
+
+    def shapes_of(path: str, held: dict[str, tuple[str, str]]) -> list[tuple[int, str]]:
+        blob, text = held.get(path, ("", ""))
+        if blob not in parsed:
+            parsed[blob] = shapes(path, text) if text else []
+        return parsed[blob]
+
+    count = sum(len(shapes_of(f, was)) for f in was), sum(len(shapes_of(f, now)) for f in now)
+    print(f"patch shapes, repo wide: {count[0]} -> {count[1]}")
     out: set[tuple[str, int, str]] = set()
     added = pr_added_lines(root, base)
-    new_files = set(pr_files(root, base, "A"))
     for f in pr_files(root, base, "AMT"):
-        if not f.endswith(SHAPED_SUFFIXES) or code_identical(root, base, f):
+        if f not in now or code_identical(root, base, f):
             continue
-        source = pr_source(root, f)
+        source = now[f][1]
         out.update((f, line, what) for line, what in shapes(f, source, added.get(f, set())))
-        old = "" if f in new_files else _git(root, "show", f"{fork}:{f}", errors="replace")
-        held = set(shapes(f, old))
-        kept = unchanged(old, source)
+        held = set(shapes_of(f, was))
+        kept = unchanged(was.get(f, ("", ""))[1], source)
         out.update(
             (f, line, what)
-            for line, what in shapes(f, source)
+            for line, what in shapes_of(f, now)
             if line in kept and (kept[line], what) not in held
         )
     return [f"{f}:{line}: {what}" for f, line, what in sorted(out)]

@@ -219,7 +219,7 @@ def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
     }
     assert any(f.parent.name == "calibration" for f in files)  # the daemon's chain sweep
     missed = sorted(
-        str(f.relative_to(ROOT)) for f in files if PLG.production_path(str(f), ROOT, ROOT) is None
+        str(f.relative_to(ROOT)) for f in files if PLG.live_file(str(f), ROOT, ROOT, ROOT) is None
     )
     assert missed == [], missed
 
@@ -253,7 +253,7 @@ def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
 
 
 def test_a_shell_write_to_a_production_file_is_refused_and_devices_are_not():
-    """The shell rail places each write destination with `production_path`, against this
+    """The shell rail places each write destination with `live_file`, against this
     repository's own production checkout: a redirect into static/ or docs/ is refused; a device
     (`/dev/null`, and `NUL` where Windows makes it one) or an empty name is no file there, and
     placing it does not raise."""
