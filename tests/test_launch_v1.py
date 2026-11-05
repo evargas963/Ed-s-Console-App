@@ -200,5 +200,6 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         assert launch.running(launch.DAEMON_START, home) == []
     finally:
         for p in psutil.process_iter(["cmdline"]):
-            if str(home) in " ".join(p.info["cmdline"] or []):
+            cmd = p.info["cmdline"]  # None: a process whose command line Windows does not show
+            if cmd is not None and str(home) in " ".join(cmd):
                 p.kill()

@@ -133,3 +133,5 @@ def test_the_console_holds_the_answers_before_its_loops_and_its_feed(tmp_path, s
     text = run_until(env, lambda t: waited in t and fed in t)
     at = text.index(f"Recorded market answers held: {held}")
     assert at < text.index(waited) and at < text.index(fed)
+    assert text.count("Recorded market answers held:") == 1, "the answers are loaded once"
+    assert "no capture daemon runs in this program" not in text, "the console found its daemon"

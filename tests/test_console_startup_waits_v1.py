@@ -76,7 +76,9 @@ def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
     loop starts: the console says what it needed and that it had it, in well under a second."""
     env, _pages = program_env(tmp_path)
     over = "done waiting for the capture daemon's heartbeat (it says what the watchlist is) after"
-    text = run_until(env, lambda t: over in t)
+    fed = "Live-plane feed started (source=the capture daemon's bus, this program)"
+    text = run_until(env, lambda t: over in t and fed in t)
     assert "stored bars" not in text, "nothing is loaded from a database at the start"
     after = float(re.search(re.escape(over) + r" ([\d.]+) s", text).group(1))
     assert after < 1.0, text
+    assert "no capture daemon runs in this program" not in text, "the console found its daemon"
