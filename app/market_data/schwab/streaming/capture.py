@@ -51,7 +51,9 @@ import ctypes
 import enum
 import json
 import logging
+import logging.handlers
 import os
+import queue
 import sqlite3
 import sys
 import threading
@@ -1088,20 +1090,24 @@ def _no_selection_pause() -> None:
 def _start_log() -> None:
     """Send every line, with its time to the millisecond, to the day's log file and the window.
 
-    The file is runtime_layout.daemon_log_path under <runtime>/logs; the window is the error
-    output (the daemon runs under `python` in it), which a selection never pauses
-    (_no_selection_pause). From here an error reaches both through the handlers (main logs one
-    that ends the daemon).
+    The file is runtime_layout.daemon_log_path under <runtime>/logs, written as the line is
+    logged. The window is the error output (the daemon runs under `python` in it), written by a
+    thread of its own from a queue (logging.handlers.QueueListener), so a window that holds its
+    writes (a selection, a slow console) never stops the daemon: no line waits on it. A selection
+    is not started by a click there either (_no_selection_pause). From here an error reaches
+    both (main logs one that ends the daemon).
     """
     _no_selection_pause()
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
+    window = queue.SimpleQueue()
     logging.basicConfig(
         level=logging.INFO,
-        handlers=[DailyLog(folder), logging.StreamHandler()],
+        handlers=[DailyLog(folder), logging.handlers.QueueHandler(window)],
         format="%(asctime)s.%(msecs)03d %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    logging.handlers.QueueListener(window, logging.StreamHandler()).start()
     logging.getLogger("httpx").setLevel(logging.WARNING)  # each request's line is log_request's
 
 

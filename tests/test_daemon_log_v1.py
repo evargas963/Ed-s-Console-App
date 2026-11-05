@@ -116,3 +116,42 @@ def test_the_daemons_log_has_every_line_with_its_wall_time(tmp_path):
     text = log.read_text(encoding="utf-8")
     assert "schwab: connection ended (socket closed)" in text
     datetime.strptime(text[:23], "%Y-%m-%d %H:%M:%S.%f")
+
+
+def test_a_window_that_holds_its_writes_never_stops_the_daemon(tmp_path):
+    """Measured 2026-11-05 05:17 to 07:07 CT: text selected in the daemon's window held every
+    write to it, and the daemon stopped inside its next log line (its event loop and its chain
+    thread, a token refresh with them). Here the window holds every write for good: each line is
+    logged at once and reaches the day's file. STAND-IN: the window, an error output whose
+    write never returns."""
+    script = (
+        "import os, sys, threading, time\n"
+        "class Held:\n"
+        "    def write(self, text):\n"
+        "        threading.Event().wait()\n"
+        "    def flush(self):\n"
+        "        pass\n"
+        "from app.market_data.schwab.streaming import capture\n"
+        "sys.stderr = Held()\n"
+        "capture._start_log()\n"
+        "started = time.monotonic()\n"
+        "for n in range(3):\n"
+        "    capture.log.warning('line %d', n)\n"
+        "print(time.monotonic() - started, flush=True)\n"
+        "os._exit(0)\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert float(done.stdout) < 1.0, "a log line waited on the window"
+    (log,) = (tmp_path / "logs").glob("stream_capture.*.log")
+    assert [line[24:] for line in log.read_text(encoding="utf-8").splitlines()] == [
+        "line 0",
+        "line 1",
+        "line 2",
+    ]

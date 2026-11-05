@@ -118,6 +118,28 @@ def _work(sweep, schwab_client, turns: int) -> bool:
     return stop.is_set() and not worker.is_alive()
 
 
+def test_a_token_schwab_calls_invalid_is_refreshed_once_whatever_its_expiry_says(tmp_path):
+    """Measured 2026-11-05 07:07 to 07:32 CT: a token whose expires_at said 30 more minutes, and
+    Schwab answering every request 401 invalid_token. Schwab's answer decides: the token is
+    refreshed once, the refused request is answered with the new one, and the next request
+    carries it."""
+    schwab = LocalSchwab()
+    schwab.expired = {"a"}
+    try:
+        client = schwab.client(tmp_path)  # its expires_at an hour away
+        first = client.get_option_expiration_chain("SPY")
+        second = client.get_option_expiration_chain("SPY")
+    finally:
+        schwab.close()
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert _posts(schwab) == 1
+    assert _asked(schwab) == [
+        (EXPIRATIONS, "Bearer a"),
+        (EXPIRATIONS, "Bearer new-access"),
+        (EXPIRATIONS, "Bearer new-access"),
+    ]
+
+
 def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(tmp_path):
     """The token in its refresh window and Schwab refusing it: the first request's refresh is
     refused (SignInRefused), and every kind of request the daemon sends after it, the stream's
