@@ -87,7 +87,7 @@ def _added_text(root: Path, base: str | None = None) -> str:
 
 
 def _git(root: Path, *args: str, given: bytes | None = None) -> bytes:
-    """git's output, RAISING when git failed: an unread file would scan clean."""
+    """Return git's output, RAISING when git failed: an unread file would scan clean."""
     p = subprocess.run(["git", *args], cwd=root, input=given, capture_output=True)
     if p.returncode != 0:
         raise DiffUnreadable(
@@ -134,8 +134,10 @@ def _leaks(path: str, line: str) -> list[str]:
 
 
 def tree_leaks(root: Path = REPO, rev: str = "") -> list[str]:
-    """Every secret or operator-home path on any line of any file `rev` tracks (the index when
-    `rev` is empty), RAISING when git could not read it."""
+    """Return every secret or operator-home path on any line of any file `rev` tracks.
+
+    The index when `rev` is empty; RAISING when git could not read it.
+    """
     listing = ("ls-tree", "-r", "-z", "--name-only", rev) if rev else ("ls-files", "-z")
     names = [n for n in _git(root, *listing).split(b"\0") if n]
     out = _git(

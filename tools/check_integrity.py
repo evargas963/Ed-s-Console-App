@@ -164,10 +164,13 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
 
 
 def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
-    """Each assertion a surviving test lost on net. A test is known by what it asserts, not only by
-    its name: a test gone under its old name is the one new test that is it renamed, judged like
-    one that kept its name. A test with no such match was deleted, the review's to judge. An
-    assertion of a function the change deleted goes with it."""
+    """Return each assertion a surviving test lost on net.
+
+    A test is known by what it asserts, not only by its name: a test gone under its old name is
+    the one new test that is it renamed, judged like one that kept its name. A test with no such
+    match was deleted, the review's to judge. An assertion of a function the change deleted goes
+    with it.
+    """
     tests = [f for f in files if PYTHON_TESTS.match(f) or JS_TESTS.match(f)]
     product = [f for f in files if f.endswith(".py") and not f.startswith("tests/")]
     deleted = _definitions(root, base, product) - _definitions(root, "HEAD", product)
@@ -235,8 +238,11 @@ def review_violations(body: str, head_sha: str, files: list[str]) -> list[str]:
 
 
 def duplicate_tests(root: Path) -> list[str]:
-    """Each Python test of the head that is another one again: the same code, arguments and
-    decorators once its name and docstring are set aside, over every test file."""
+    """Return each Python test of the head that is another one again.
+
+    The same code, arguments and decorators once its name and docstring are set aside, in a file
+    importing the same names, over every test file.
+    """
     seen: dict[str, list[str]] = {}
     for name in _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0"):
         if not PYTHON_TESTS.match(name):

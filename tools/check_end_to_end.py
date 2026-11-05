@@ -593,7 +593,7 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
 
 
 def shapes(path: str, source: str, lines: set[int] | None = None) -> list[tuple[int, str]]:
-    """The patch shapes in `source` that touch `lines` (every line when None): (line, what)."""
+    """Return the patch shapes in `source` that touch `lines` (every line when None)."""
     if lines is None:
         lines = set(range(1, source.count("\n") + 2))
     if path.endswith(".py"):
@@ -636,15 +636,18 @@ def files_at(root: Path, rev: str) -> dict[str, tuple[str, str]]:
 
 
 def violations(root: Path, base: str) -> list[str]:
-    """Each patch shape the PR brings into any file of the repository: one a line it adds touches,
-    or one on a line it leaves as it was that did not hold that shape before (an old except whose
-    log line it removes), each unchanged line matched to its own place in the old file."""
+    """Return each patch shape the PR brings into any file of the repository.
+
+    That is one a line it adds touches, or one on a line it leaves as it was that did not hold
+    that shape before (an old except whose log line it removes), each unchanged line matched to
+    its own place in the old file.
+    """
     fork = _git(root, "merge-base", base, "HEAD").strip()
     was, now = files_at(root, fork), files_at(root, "HEAD")
     parsed: dict[str, list[tuple[int, str]]] = {}  # by blob: a file the PR leaves is read once
 
     def shapes_of(path: str, held: dict[str, tuple[str, str]]) -> list[tuple[int, str]]:
-        """The shapes of `path` as `held` holds it; a file it does not hold has none."""
+        """Return the shapes of `path` as `held` holds it; a file it does not hold has none."""
         if path not in held:
             return []
         blob, text = held[path]

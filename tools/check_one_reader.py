@@ -122,9 +122,11 @@ def fields_read(src: str, fields: set[str]) -> set[str]:
 
 
 def readers(root: Path, rev: str, fields: set[str]) -> dict[str, set[str]]:
-    """field -> the modules at `rev` that read it raw: every Python file but the tests, which read
-    Schwab's captured answers themselves to check the code on its own terms (operator 2026-11-04:
-    "test should remain independent")."""
+    """Map each field to the modules at `rev` that read it raw.
+
+    Every Python file but the tests, which read Schwab's captured answers themselves to check the
+    code on its own terms (operator 2026-11-04: "test should remain independent").
+    """
     out: dict[str, set[str]] = {}
     for path in _git(root, "ls-tree", "-r", "--name-only", rev).splitlines():
         if not path.endswith(".py") or path.startswith("tests/"):

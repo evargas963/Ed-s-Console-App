@@ -102,8 +102,10 @@ def test_a_test_renamed_and_stripped_of_an_assertion_is_refused(repo):
 
 
 def test_a_test_deleted_beside_a_new_one_sharing_a_line_is_the_reviews(repo):
-    """One shared assertion does not make a new test the old one renamed: a deletion stays the
-    review's to judge."""
+    """One shared assertion does not make a new test the old one renamed.
+
+    A deletion stays the review's to judge.
+    """
     _write(repo, "tests/test_gone.py", "def test_gone():\n    assert 3 == 3\n    assert 4 == 4\n")
     _commit(repo)
     _git(repo, "branch", "-f", "main")

@@ -64,8 +64,11 @@ def _changed(root: Path) -> list[str]:
 
 
 def test_a_patch_no_added_line_carries_is_refused_by_the_whole_repositorys_count(tmp_path):
-    """The whole repository is judged, not only the lines a PR adds: an old except that logs and
-    carries on swallows the error once its log line is removed, and the PR adds no line."""
+    """The whole repository is judged, not only the lines a PR adds.
+
+    An old except that logs and carries on swallows the error once its log line is removed, and
+    the PR adds no line.
+    """
     old = (
         "import logging\n"
         "log = logging.getLogger()\n"
@@ -82,8 +85,10 @@ def test_a_patch_no_added_line_carries_is_refused_by_the_whole_repositorys_count
 
 
 def test_a_shape_removed_elsewhere_does_not_pay_for_one_brought_in(tmp_path):
-    """The same swallowing except, in a PR that also fixes an old `or 0` in another file: the
-    repository's total holds, and the new shape is still refused at its line."""
+    """The same swallowing except, in a PR that also fixes an old `or 0` in another file.
+
+    The repository's total holds, and the new shape is still refused at its line.
+    """
     old = (
         "import logging\n"
         "log = logging.getLogger()\n"
@@ -108,8 +113,10 @@ def test_a_shape_removed_elsewhere_does_not_pay_for_one_brought_in(tmp_path):
 
 
 def test_a_shape_fixed_in_one_function_does_not_pay_for_one_brought_into_another(tmp_path):
-    """Two excepts that read alike in one file: the PR gives the first a log line and takes the
-    second's away. The second's except line is unchanged and did not swallow before."""
+    """Two excepts that read alike in one file: the first gets a log line, the second loses it.
+
+    The second's except line is unchanged and did not swallow before.
+    """
     old = (
         "import logging\n"
         "log = logging.getLogger()\n"
@@ -135,8 +142,10 @@ def test_a_shape_fixed_in_one_function_does_not_pay_for_one_brought_into_another
 
 
 def test_a_shape_whose_inner_line_changes_is_judged_as_added(tmp_path):
-    """A `.get` default over three lines: the PR changes the key on the inner line, so the shape
-    is the PR's, even though its first line reads as it did."""
+    """A `.get` default over three lines whose inner line the PR changes is the PR's shape.
+
+    Its first line reads as it did.
+    """
     root = _repo(tmp_path, {**BASE, "app/x.py": 'v = q.get(\n    "lastPrice",\n    0,\n)\n'})
     _commit(root, {"app/x.py": 'v = q.get(\n    "mark",\n    0,\n)\n'})
     found = cee.violations(root, "main")
@@ -556,8 +565,11 @@ def test_a_fix_ruff_marks_unsafe_is_a_product_change_whatever_the_prs_config_ask
 
 
 def test_settings_that_take_an_unsafe_fix_are_refused_whatever_file_the_change_touches(tmp_path):
-    """No unsafe fix is taken, in any file (operator 2026-11-04): a change whose ruff settings turn
-    unsafe fixes on, or mark one safe, is refused though it touches only a test."""
+    """No unsafe fix is taken, in any file (operator 2026-11-04).
+
+    A change whose ruff settings turn unsafe fixes on, or mark one safe, is refused though it
+    touches only a test.
+    """
     for config in (
         RUFF_BASE + "unsafe-fixes = true\n",
         RUFF_BASE + '[tool.ruff.lint]\nselect = ["UP042"]\nextend-safe-fixes = ["UP042"]\n',

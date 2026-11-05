@@ -323,14 +323,16 @@ def _ps_write_dest_paths(st: Statement) -> list[str]:
 
 
 def production_checkout_shell_app_write_violations(statements: list[Statement]) -> list[str]:
-    """PREVENT a materially-equivalent SHELL edit to any file of the PRODUCTION checkout — the
-    Bash companion to production_checkout_edit_violations (Edit/Write) and to the universal
+    """PREVENT a materially-equivalent SHELL edit to any file of the PRODUCTION checkout.
+
+    The Bash companion to production_checkout_edit_violations (Edit/Write) and to the universal
     shell source-write bans (redirect/heredoc/-c payload in operator_law_guard). For EACH segment
     of a chained command (cwd tracked, so a leading `cd` cannot mislocate a later write), blocks
     a `>`/`>>` redirect or cp/mv/install/tee/sed -i/perl -i/truncate/dd whose destination resolves
     to a file INSIDE the production primary — whichever session runs it. Dev-worktree paths,
     a worktree nested inside the primary included, are its own and stay free. Not
-    subject-disableable."""
+    subject-disableable.
+    """
     primary = _primary_worktree_root(REPO) or REPO
     out: list[str] = []
     for st in statements:  # each destination against its statement's cwd

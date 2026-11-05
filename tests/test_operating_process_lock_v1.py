@@ -176,9 +176,11 @@ def test_rc234_pipe_ok_escape_allows():
 
 
 def test_an_edit_target_is_placed_once_whatever_its_spelling(tmp_path):
-    """A file of the production checkout is refused whether the target is spelled absolute or
-    relative to the checkout, tests/, docs/ and scratch files as much as app code; a file in
-    another checkout is not the production checkout's."""
+    """A file of the production checkout is refused however the target is spelled.
+
+    Absolute or relative to the checkout, tests/, docs/ and scratch files as much as app code; a
+    file in another checkout is not the production checkout's.
+    """
     primary, wt = _linked_worktree_layout(tmp_path)
     for target in (
         str(primary / "db.py"),
@@ -253,10 +255,12 @@ def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
 
 
 def test_a_shell_write_to_a_production_file_is_refused_and_devices_are_not():
-    """The shell rail places each write destination with `live_file`, against this
-    repository's own production checkout: a redirect into static/ or docs/ is refused; a device
+    """The shell rail places each write destination with `live_file`, in this repository's own.
+
+    A redirect into static/ or docs/ of the production checkout is refused; a device
     (`/dev/null`, and `NUL` where Windows makes it one) or an empty name is no file there, and
-    placing it does not raise."""
+    placing it does not raise.
+    """
     primary = PLG._primary_worktree_root(ROOT) or ROOT
     for cmd in ("echo x > static/x.js", "echo x > docs/x.md"):
         bad = PLG.production_checkout_shell_app_write_violations(PLG.read(cmd, str(primary)))

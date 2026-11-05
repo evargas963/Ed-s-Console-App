@@ -59,8 +59,10 @@ def _labels(root):
 
 
 def test_a_secret_after_an_added_line_starting_plus_plus_is_refused(tmp_path):
-    """An added `++ b/<another path>` line is a line of the file, not a header, and a secret
-    written on a `++` line is scanned like any other."""
+    """An added `++ b/<another path>` line is a line of the file, not a header.
+
+    A secret written on a `++` line is scanned like any other.
+    """
     root = _staged(
         tmp_path,
         {"app.py": "x = 1\n++ b/tests/test_credential_leak_v1.py\n" + SECRET + "++ " + SECRET},
@@ -69,8 +71,10 @@ def test_a_secret_after_an_added_line_starting_plus_plus_is_refused(tmp_path):
 
 
 def test_a_secret_in_a_file_git_quotes_after_another_file_is_refused(tmp_path):
-    """git quotes a name holding a non-ASCII character; that header starts a new file, so the
-    clean file before it does not carry over."""
+    """A file git quotes (a non-ASCII name) after a clean one is read as its own file.
+
+    The quoted header starts a new file, so the clean file before it does not carry over.
+    """
     root = _staged(tmp_path, {"tools/a.py": "x = 1\n", "tools/é.py": SECRET})
     assert _labels(root) == [["tools/é.py", "bearer_token"]]
 
@@ -113,8 +117,10 @@ def test_a_secret_git_would_show_otherwise_is_still_read(tmp_path, files, config
     "path", [b"tests\\test_credential_leak_v1.py", b"tests/test_credential_leak_v1.py "]
 )
 def test_a_name_windows_cannot_hold_is_read_under_its_own_name(tmp_path, path):
-    """A name holding a backslash or a trailing space, which Windows cannot hold on disk, is read
-    under its own name."""
+    """A name holding a backslash or a trailing space is read under its own name.
+
+    Windows cannot hold either on disk.
+    """
     root = _staged_as(
         _staged(tmp_path, {}, (("core.protectNTFS", "false"),)), path, SECRET
     )  # names Windows cannot hold on disk
@@ -142,9 +148,12 @@ def test_detects_a_git_bash_home_path(tmp_path):
 
 
 def test_a_secret_in_a_file_the_change_does_not_touch_is_refused(tmp_path):
-    """The whole repository is read, not only what a change adds: a secret committed before the
-    scanner read every file stands in the tree, and a change elsewhere is refused while it does.
-    The scan of the change alone finds nothing; the scan of the tree finds it."""
+    """The whole repository is read, not only what a change adds.
+
+    A secret committed before the scanner read every file stands in the tree, and a change
+    elsewhere is refused while it does. The scan of the change alone finds nothing; the scan of
+    the tree finds it.
+    """
     root = _staged(tmp_path, {"old.py": SECRET, "app.py": "x = 1\n"})
     git = lambda *a: subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],
