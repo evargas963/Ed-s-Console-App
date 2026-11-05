@@ -1,7 +1,6 @@
-"""overlay_streamed_contract_fields (math_exposure_core.py) merges a newer streamed gamma, delta,
-volatility, open interest or volume of a contract Schwab streams onto the chain contract: for
-each field the newest value Schwab sent wins, by receive time. Pure function: no network, no
-cache, no clock."""
+"""overlay_streamed_contract_fields (math_exposure_core.py) merges a contract's streamed values onto
+its chain contract: the six Greeks as one set when the stream holds all six, and a newer open
+interest or volume by receive time. Pure function: no network, no cache, no clock."""
 
 from __future__ import annotations
 
@@ -59,13 +58,18 @@ def test_a_contract_not_named_in_streamed_by_symbol_is_untouched():
     assert n == 0
 
 
+#: a streamed set of all six Greeks
+_SET = {"gamma": 0.05, "delta": 0.55, "theta": -0.1, "vega": 0.2, "rho": 0.03, "volatility": 25.0}
+
+
 def test_gamma_delta_open_interest_are_overlaid_for_the_matching_contract():
     contracts = [_contract("A", gamma=0.01, delta=0.40, openInterest=100)]
-    streamed = {"A": _newer(gamma=0.05, delta=0.55, open_interest=250)}
+    streamed = {"A": _newer(**_SET, open_interest=250)}
     out, n = overlay_streamed_contract_fields(contracts, streamed, CHAIN_RX)
     assert n == 1
     assert out[0].gamma == 0.05
     assert out[0].delta == 0.55
+    assert (out[0].theta, out[0].vega, out[0].rho, out[0].volatility) == (-0.1, 0.2, 0.03, 25.0)
     assert out[0].open_interest == 250
     assert out[0].strike == 580.0, "fields not in the overlay are preserved"
 
@@ -81,17 +85,20 @@ def test_the_input_contract_dict_is_never_mutated():
 
 
 def test_a_partial_streamed_entry_overlays_only_the_fields_it_carries():
-    """A streamed entry replaces only the fields it carries.
+    """A streamed entry replaces only what it carries, and the Greeks only as a whole set.
 
-    One with only gamma leaves the chain's delta, open interest and volume; one with only volume
-    leaves the chain's gamma.
+    One with only gamma, or with every Greek but a volatility Schwab sent as no value, leaves
+    the chain's Greeks, open interest and volume; one with only volume leaves the chain's gamma.
     """
     contracts = [_contract("A", gamma=0.01, delta=0.40, openInterest=100, totalVolume=7)]
     out, n = overlay_streamed_contract_fields(contracts, {"A": _newer(gamma=0.07)}, CHAIN_RX)
-    assert n == 1
-    assert out[0].gamma == 0.07
+    assert n == 0
+    assert out[0].gamma == 0.01
     assert out[0].delta == 0.40, "delta was not in the streamed entry: the chain's stands"
     assert (out[0].open_interest, out[0].volume) == (100, 7)
+    partial = {"A": _newer(**{**_SET, "volatility": None})}
+    out, n = overlay_streamed_contract_fields(contracts, partial, CHAIN_RX)
+    assert n == 0 and out[0] is contracts[0], "never some Greeks from each source"
     out, n = overlay_streamed_contract_fields(contracts, {"A": _newer(total_volume=900)}, CHAIN_RX)
     assert n == 1
     assert out[0].volume == 900
@@ -107,18 +114,19 @@ def test_only_the_matching_symbol_is_copied_others_stay_the_original_object():
     assert out[1] is contracts[1], "an unmatched contract must never be copied either"
 
 
-def test_a_streamed_value_from_before_the_chain_never_overrides_it():
-    """Per field the newest value Schwab sent wins.
+def test_a_streamed_count_from_before_the_chain_never_overrides_it():
+    """Open interest and volume: the newer of the chain's and the stream's wins.
 
-    A streamed gamma received after the chain applies; the open interest and volume received the
-    day before it do not, nor a gamma that old.
+    The open interest and volume received the day before the chain do not apply. The Greeks of a
+    contract Schwab streams are the stream's set whenever it holds all six, whatever its time.
     """
     day = 86_400.0
     contracts = [_contract("A", gamma=0.01, openInterest=100, totalVolume=7)]
     streamed = {
         "A": {
+            **_SET,
+            **{f"{g}_ts_recv": CHAIN_RX - day for g in _SET},
             "gamma": 0.03,
-            "gamma_ts_recv": CHAIN_RX + 5.0,
             "open_interest": 90,
             "open_interest_ts_recv": CHAIN_RX - day,
             "total_volume": 4_000,
@@ -128,14 +136,7 @@ def test_a_streamed_value_from_before_the_chain_never_overrides_it():
     out, n = overlay_streamed_contract_fields(contracts, streamed, CHAIN_RX)
     assert n == 1
     assert (out[0].gamma, out[0].open_interest, out[0].volume) == (0.03, 100, 7)
-    old = {
-        "A": {
-            "gamma": 0.99,
-            "gamma_ts_recv": CHAIN_RX - day,
-            "open_interest": 90,
-            "open_interest_ts_recv": CHAIN_RX - day,
-        }
-    }
+    old = {"A": {"open_interest": 90, "open_interest_ts_recv": CHAIN_RX - day}}
     out, n = overlay_streamed_contract_fields(contracts, old, CHAIN_RX)
     assert n == 0 and out[0] is contracts[0]
 

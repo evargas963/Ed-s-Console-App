@@ -23,7 +23,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
-from option_contract import read_chain
+from option_contract import GREEK_FIELDS, read_chain
 from stream_spine import options_quote_msg
 from tests.real_chains import CRWD
 from time_et import ET
@@ -50,8 +50,9 @@ def _clean():
 
 
 def _publish(held, ticked, *, at=_AT, socket_open=True):
-    """The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent a GAMMA for each of
-    `ticked` a second before `at`, CRWD's chain published at `at`; the route's coverage of every
+    """The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent the Greeks of each of
+    `ticked` a second before `at` (its captured values, its GAMMA 0.05), CRWD's chain published
+    at `at`; the route's coverage of every
     strike, and the published surface."""
     lmp.record_feed_heartbeat(
         {
@@ -61,12 +62,14 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
         }
     )
     ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT, "trade_ts": at.timestamp()}
+    by_symbol = {c.symbol: c for c in _CONTRACTS}
     for sym in ticked:
+        greeks = {g.upper(): getattr(by_symbol[sym], g) for g in GREEK_FIELDS}
         ofs._ingest_pushed(
             f"optquote.{sym}",
             options_quote_msg(
                 symbol=sym,
-                content={"key": sym, "GAMMA": 0.05},
+                content={"key": sym, **greeks, "GAMMA": 0.05},
                 src="schwab_options_l1",
                 ts_recv=at.timestamp() - 1,
             ),

@@ -23,7 +23,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server as srv
-from option_contract import read_chain
+from option_contract import GREEK_FIELDS, read_chain
 from schwab_client import flatten_chain_contracts
 from stream_spine import options_quote_msg
 from time_et import ET
@@ -125,9 +125,9 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
 
 
 def test_a_later_streamed_gamma_replaces_the_chains_and_an_older_volume_does_not():
-    """Each field takes the newer receive time: a gamma streamed after the chain replaces it (the
-    contract is Schwab's to push). A volume streamed before the chain keeps the chain's volume.
-    A field the stream never sent keeps the chain's."""
+    """A contract Schwab streams with all six Greeks takes the stream's set, its new gamma among
+    them. A volume streamed before the chain keeps the chain's volume. A field the stream never
+    sent keeps the chain's."""
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]
     volume, gamma = (target["totalVolume"] or 0) + 4321, (target["gamma"] or 0) + 0.05
@@ -138,7 +138,11 @@ def test_a_later_streamed_gamma_replaces_the_chains_and_an_older_volume_does_not
         330.0,
         [
             (target["symbol"], {"TOTAL_VOLUME": volume}, now - 8),
-            (target["symbol"], {"GAMMA": gamma}, now + 1),
+            (
+                target["symbol"],
+                {**{g.upper(): target[g] for g in GREEK_FIELDS}, "GAMMA": gamma},
+                now + 1,
+            ),
         ],
     )
     body = _get(ticker="TSLA")

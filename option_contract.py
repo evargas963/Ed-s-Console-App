@@ -84,20 +84,34 @@ def _greek(raw: Mapping, name: str, void: bool) -> float | None:
 
 
 def streamed_greeks(content: Mapping[str, Any]) -> dict[str, float | None]:
-    """Return the Greeks of a contract's LEVELONE_OPTIONS record, under the contract's names.
+    """Return the Greeks a contract's LEVELONE_OPTIONS record carries, under the contract's names.
 
     The one reader of those stream fields (the chain sweep, the console's order-flow state and
-    its history): each as Schwab sent it (schwab_number), None where this record has none. Its
-    keys are GREEK_FIELDS, each the stream field's name in lowercase.
+    its history). A field the record does not carry is left out (on Change delivery a message
+    carries only what changed); one it carries is as Schwab sent it (schwab_number), so Schwab's
+    -999 is None. The names are GREEK_FIELDS, each the stream field's name in lowercase.
     """
-    return {
-        "gamma": schwab_number(content.get("GAMMA")),
-        "delta": schwab_number(content.get("DELTA")),
-        "theta": schwab_number(content.get("THETA")),
-        "vega": schwab_number(content.get("VEGA")),
-        "rho": schwab_number(content.get("RHO")),
-        "volatility": schwab_number(content.get("VOLATILITY")),
+    sent = {
+        "gamma": content.get("GAMMA"),
+        "delta": content.get("DELTA"),
+        "theta": content.get("THETA"),
+        "vega": content.get("VEGA"),
+        "rho": content.get("RHO"),
+        "volatility": content.get("VOLATILITY"),
     }
+    return {name: schwab_number(value) for name, value in sent.items() if value is not None}
+
+
+def streamed_greek_set(greeks: Mapping[str, Any]) -> dict[str, float] | None:
+    """Return all six Greeks of `greeks` (a contract's streamed Greeks) when each is a value.
+
+    A contract Schwab streams takes its Greeks from the stream as one set, never some from the
+    stream and some from the quotes endpoint: None when any is missing or no value, and the
+    contract's Greeks are then the quote's (the chain sweep, the console's overlay).
+    """
+    if any(greeks.get(name) is None for name in GREEK_FIELDS):
+        return None
+    return {name: greeks[name] for name in GREEK_FIELDS}
 
 
 def _expires_at(raw: Any, symbol: Any) -> float | None:

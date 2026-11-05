@@ -1018,7 +1018,7 @@ def _next_gamma_surface_seq(tk: str) -> int:
 def _streamed_greeks_for_ticker(
     listed: frozenset, now: float, feed: lmp.FeedNow | None = None
 ) -> dict:
-    """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon's
+    """The newest streamed Greeks, OPEN_INTEREST and VOLUME of every contract the daemon's
     latest beat holds of the ticker's chain (`listed`, the symbols Schwab listed in it). A
     missing beat keeps that set. `feed` is one read of that heartbeat; omitted, this call reads
     it."""

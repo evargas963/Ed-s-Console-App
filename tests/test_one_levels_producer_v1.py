@@ -30,7 +30,7 @@ import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from math_exposure_core import bucket_metric, merge_exposure_books
-from option_contract import read_chain
+from option_contract import GREEK_FIELDS, read_chain
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
@@ -194,10 +194,17 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
 # ── streamed values: the newest Schwab sent wins, an older or a stopped one never does ──────────
 
 
+def _greek_set(sym: str, **sent) -> dict:
+    """A LEVELONE_OPTIONS message carrying all six Greeks of `sym`: its captured chain values,
+    each of `sent` in place of its own."""
+    ct = next(c for c in _CONTRACTS if c["symbol"] == sym)
+    return {**{g.upper(): ct[g] for g in GREEK_FIELDS}, **sent}
+
+
 def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows():
-    """A contract Schwab streams: a LEVELONE_OPTIONS gamma newer than the chain reprices it."""
+    """A contract Schwab streams: its LEVELONE_OPTIONS Greeks reprice it."""
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T)
+    _streamed(_A, _greek_set(_A, GAMMA=0.9), _T)
     _put_chain(fetched_ts=_T - 5.0)
     c = _cached()
     assert c["_gamma_surface"]["stream_overlay_contracts"] == 1
@@ -228,23 +235,29 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
-def test_a_streamed_value_applies_by_its_time():
-    """A streamed gamma reprices the levels when it was received after the chain.
+def test_a_contracts_streamed_greeks_apply_only_as_a_whole_set():
+    """A contract never carries some Greeks from the stream and some from the quotes endpoint.
 
-    It is then the newest Schwab sent; one received before the chain does not.
+    A streamed gamma alone, or a set whose volatility Schwab sent as -999, leaves the chain's
+    Greeks; once the stream holds a value for each of the six, they are the contract's.
     """
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
-    _put_chain(fetched_ts=_T - 120.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
-    _put_chain(fetched_ts=_T - 30.0)
+    _streamed(_A, {"GAMMA": 0.9}, _T)
+    _put_chain(fetched_ts=_T - 5.0)
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
+    _streamed(_A, _greek_set(_A, GAMMA=0.9, VOLATILITY=-999), _T + 1.0)
+    _put_chain(fetched_ts=_T - 5.0)
+    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert _cached()["_per_strike"] == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
+    _streamed(_A, _greek_set(_A, GAMMA=0.9), _T + 2.0)
+    _put_chain(fetched_ts=_T - 5.0)
+    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
 
 
 def test_every_streamed_contract_is_overlaid_not_only_the_one_that_ticked():
     _daemon(held=[_A, _B])
-    _streamed(_A, {"GAMMA": 0.9}, _T)
-    _streamed(_B, {"GAMMA": 0.8}, _T)
+    _streamed(_A, _greek_set(_A, GAMMA=0.9), _T)
+    _streamed(_B, _greek_set(_B, GAMMA=0.8), _T)
     _put_chain(fetched_ts=_T - 5.0)
     assert sorted(_cached()["_gamma_surface"]["stream_overlay_symbols"]) == sorted([_A, _B])
 

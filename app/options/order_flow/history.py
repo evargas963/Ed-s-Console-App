@@ -134,8 +134,8 @@ def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> 
         "premium": premium,
         "volume": schwab_count(item.get("TOTAL_VOLUME")),
         "oi": schwab_count(item.get("OPEN_INTEREST")),
-        "iv": greeks["volatility"],
-        "delta": greeks["delta"],
+        "iv": greeks.get("volatility"),
+        "delta": greeks.get("delta"),
         "multiplier": mult,
         "classification": classification,
     }

@@ -109,50 +109,24 @@ class OrderFlowState:
 
         # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store.)
 
-        # GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME: native Schwab LEVELONE_OPTIONS fields
-        # (confirmed in the installed SDK's field enum, schwab/streaming.py
-        # LevelOneOptionFields) that this state class never captured before -- every option L1
-        # tick discarded exactly the fields a live GEX recompute (and the per-strike volume
-        # column, which reads a contract's OWN totalVolume, not this symbol's ticker-level
-        # _stream_volume above) needs, keeping the heatmap and volume displays bound to the
-        # ~60s wide-chain REST cadence even for the one contract already streaming. Each field
-        # is merged independently (not as a group) and stamped with ITS OWN receive time: a
-        # quote tick that carries BID_PRICE/ASK_PRICE but not GAMMA this update must not blank
-        # out (or misdate) an OPEN_INTEREST value observed on an earlier tick -- the same
-        # explicit-presence discipline as chg_pct/volume above, extended per-field because
-        # these genuinely arrive independently of each other and of the last-trade fields
-        # below. `vf` is the SAME TOTAL_VOLUME/VOLUME value already resolved above -- stored a
-        # second time, per-field-stamped, so the overlay used by the exposure/per-strike faucet
-        # (which reads a contract's OWN totalVolume) can apply the SAME newer-than-REST
-        # precedence rule already used for gamma/delta/open_interest, instead of a bare
-        # ticker-level number with no freshness of its own.
-        # VOLATILITY too: the model's input must be as fresh as the gamma beside it
+        # The contract's own Greeks, open interest and volume, each with its own receive time: a
+        # message carries only the fields that changed (Change delivery), so each field is
+        # merged alone; a Greek Schwab sends as -999 is no value, and stands as None.
         greeks = streamed_greeks(content_item)
-        gamma, delta, iv = greeks["gamma"], greeks["delta"], greeks["volatility"]
         oi = schwab_count(content_item.get("OPEN_INTEREST"))
 
         def received(field: str) -> float:
             return ts_recv if field_received is None else field_received[field]
 
-        if (
-            gamma is not None
-            or delta is not None
-            or oi is not None
-            or vf is not None
-            or iv is not None
-        ):
+        if greeks or oi is not None or vf is not None:
             with self._lock:
                 g = self._stream_greeks.setdefault(sym, {})
-                if gamma is not None:
-                    g["gamma"], g["gamma_ts_recv"] = gamma, received("GAMMA")
-                if delta is not None:
-                    g["delta"], g["delta_ts_recv"] = delta, received("DELTA")
+                for name, value in greeks.items():
+                    g[name], g[f"{name}_ts_recv"] = value, received(name.upper())
                 if oi is not None:
                     g["open_interest"], g["open_interest_ts_recv"] = oi, received("OPEN_INTEREST")
                 if vf is not None:
                     g["total_volume"], g["total_volume_ts_recv"] = vf, received("TOTAL_VOLUME")
-                if iv is not None:
-                    g["volatility"], g["volatility_ts_recv"] = iv, received("VOLATILITY")
 
         trade_ms = content_item.get("TRADE_TIME_MILLIS")
         last_price = content_item.get("LAST_PRICE")
@@ -271,7 +245,7 @@ class OrderFlowState:
             return dict(t) if t else None
 
     def get_stream_greeks(self, symbol: str) -> dict | None:
-        """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME for one OPTION
+        """Return the latest streamed Greeks, OPEN_INTEREST and TOTAL_VOLUME for one OPTION
         contract symbol, each field paired with its own ``_ts_recv`` (the field's own
         last-update wall-clock receive time, not merely this call's time) -- a per-field
         freshness stamp is what lets a caller judge one field newer than a same-tick sibling

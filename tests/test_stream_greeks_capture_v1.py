@@ -111,8 +111,11 @@ def test_a_genuine_zero_open_interest_is_stored_not_dropped():
 
 def test_a_non_finite_gamma_is_rejected_not_stored():
     st = LiveOrderFlowState()
-    st.push_level_one("SPY   260116C00580000", {"GAMMA": float("nan")}, ts_recv=time.time())
-    assert st.get_stream_greeks("SPY   260116C00580000") is None
+    st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.01}, ts_recv=100.0)
+    st.push_level_one("SPY   260116C00580000", {"GAMMA": float("nan")}, ts_recv=105.0)
+    assert st.get_stream_greeks("SPY   260116C00580000")["gamma"] is None, (
+        "a gamma sent as no number is no value, never the last one kept"
+    )
 
 
 def test_each_field_carries_its_own_receive_timestamp():
