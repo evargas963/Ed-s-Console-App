@@ -159,6 +159,33 @@ def test_a_window_that_holds_its_writes_never_stops_the_daemon(tmp_path):
     ]
 
 
+def test_a_window_line_reaches_the_window_and_not_the_days_file(tmp_path):
+    """What Schwab streamed is recorded in stream_capture.db; the window's line of it is not
+    written a second time in the day's file, and every other line still is."""
+    script = (
+        "import logging\n"
+        "from app.market_data.schwab.streaming import capture\n"
+        "capture._start_log()\n"
+        "capture.WINDOW_ONLY.info('stream LEVELONE_EQUITIES: 1 messages')\n"
+        "capture.log.warning('schwab: connected')\n"
+        "logging.shutdown()\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    assert "stream LEVELONE_EQUITIES: 1 messages" in done.stderr
+    (log,) = (tmp_path / "logs").glob("stream_capture.*.log")
+    assert [line[24:] for line in log.read_text(encoding="utf-8").splitlines()] == [
+        "schwab: connected"
+    ]
+
+
 def test_the_window_shows_each_second_what_schwab_streamed(caplog):
     """Real LEVELONE and book messages Schwab sent (2026-10-05 14:00 CT) through the daemon's
     receive handler: the window's line per service gives the messages, the symbols they came

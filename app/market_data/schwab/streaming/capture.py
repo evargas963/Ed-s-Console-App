@@ -1095,15 +1095,18 @@ def _start_log() -> None:
     thread of its own from a queue (logging.handlers.QueueListener), so a window that holds its
     writes (a selection, a slow console) never stops the daemon: no line waits on it. A selection
     is not started by a click there either (_no_selection_pause). From here an error reaches
-    both (main logs one that ends the daemon).
+    both (main logs one that ends the daemon). WINDOW_ONLY's lines go to the window alone: what
+    Schwab streamed is recorded in stream_capture.db, not a second time in the file.
     """
     _no_selection_pause()
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
     window = queue.SimpleQueue()
+    day = DailyLog(folder)
+    day.addFilter(lambda record: record.name != WINDOW_ONLY.name)
     logging.basicConfig(
         level=logging.INFO,
-        handlers=[DailyLog(folder), logging.handlers.QueueHandler(window)],
+        handlers=[day, logging.handlers.QueueHandler(window)],
         format="%(asctime)s.%(msecs)03d %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
@@ -1148,6 +1151,9 @@ async def record_feed_status(
             pass
 
 
+#: the daemon's window alone (_start_log), never its log file
+WINDOW_ONLY = logging.getLogger("capture.window")
+
 #: each streamed bus topic kind -> the Schwab service it is (a book message names its own) and
 #: the key holding Schwab's item as sent
 STREAM_ITEM = {
@@ -1187,7 +1193,7 @@ async def show_stream(bus: MessageBus, stop: asyncio.Event, every: float = 1.0) 
                 entry[1].add(msg["symbol"])
                 entry[2] = (msg["symbol"], msg[item])
             for service, (n, symbols, (symbol, item)) in sorted(seen.items()):
-                log.info(
+                WINDOW_ONLY.info(
                     "stream %s: %d messages, %d symbols; newest %s %s",
                     service,
                     n,
