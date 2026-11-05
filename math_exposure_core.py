@@ -328,8 +328,8 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
 #: streamed-state key (app.options.order_flow.state, read by schwab_count) -> the record field it
-#: replaces. A newer streamed open interest or volume replaces the chain's. Gamma, delta, and
-#: volatility do not: those are the chain's, which the sweep took once for each contract.
+#: sets. Gamma, delta, and volatility are not here: the sweep took them once for each contract,
+#: the stream's for a contract it streams, else the quote's.
 _STREAMED_COUNT_FIELDS: tuple[tuple[str, str], ...] = (
     ("open_interest", "open_interest"),
     ("total_volume", "volume"),
@@ -337,44 +337,24 @@ _STREAMED_COUNT_FIELDS: tuple[tuple[str, str], ...] = (
 
 
 def overlay_streamed_contract_fields(
-    contracts: list[OptionContract],
-    streamed_by_symbol: dict[str, dict],
-    chain_received_ts: float | None,
+    contracts: list[OptionContract], streamed_by_symbol: dict[str, dict], held: set[str]
 ) -> tuple[list[OptionContract], int]:
-    """A contract's streamed open interest and volume onto the chain, matched by `symbol`.
-    Gamma, delta, and volatility stay the chain's: the sweep's, the stream's for a contract it
-    streams, else the quote's. For open interest and volume the receive times decide: a streamed
-    field (`<field>_ts_recv`) received after the chain (`chain_received_ts`) replaces the chain's;
-    one received before it does not. A chain with no receive time is replaced by every streamed
-    open interest and volume.
+    """The open interest and volume of each contract Schwab streams (`held`) as the stream sent
+    them (`streamed_by_symbol`, its streamed record), the chain's never: the pushed field is its
+    one producer (AGENTS.md rule 3), and one the stream has not sent is None. Every other
+    contract keeps the chain's.
 
-    Pure: a contract that gets a field is a new record, every other the same one. Returns
-    (new_contracts, overlaid_count).
+    Pure: a streamed contract is a new record, every other the same one. Returns
+    (new_contracts, streamed_count).
     """
-    if not contracts:
-        return [], 0
-    if not streamed_by_symbol:
-        return list(contracts), 0
     out: list[OptionContract] = []
-    overlaid = 0
     for c in contracts:
-        streamed = streamed_by_symbol.get(c.symbol) if c.symbol else None
-        newer = {
-            name: streamed[key]
-            for key, name in _STREAMED_COUNT_FIELDS
-            if streamed
-            and streamed.get(key) is not None
-            and (
-                chain_received_ts is None
-                or (
-                    streamed.get(f"{key}_ts_recv") is not None
-                    and streamed[f"{key}_ts_recv"] > chain_received_ts
-                )
-            )
-        }
-        overlaid += bool(newer)
-        out.append(replace(c, **newer) if newer else c)
-    return out, overlaid
+        if c.symbol not in held:
+            out.append(c)
+            continue
+        streamed = streamed_by_symbol.get(c.symbol, {})
+        out.append(replace(c, **{f: streamed.get(k) for k, f in _STREAMED_COUNT_FIELDS}))
+    return out, len(out) - sum(new is old for new, old in zip(out, contracts))
 
 
 def strike_total_oi(bucket: dict) -> float | None:

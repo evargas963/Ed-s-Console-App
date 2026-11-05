@@ -1533,9 +1533,9 @@ def _publish_levels(
     streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", at.timestamp())
     held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
-    # each field the newest Schwab sent: the last streamed value received after this chain, else
-    # the chain's. The cell stamp says whether that stream is live.
-    priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
+    # a streamed contract's open interest and volume are the stream's, every other the chain's.
+    # The cell stamp says whether that stream is live.
+    priced, n_live = overlay_streamed_contract_fields(chain, streamed, held)
     if option_market_open(at, product) is False:
         priced = _keep_last_reported(priced, chain, at, product)
     live_syms = _overlaid_symbols(chain, priced)
@@ -3420,9 +3420,13 @@ def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
-    # each field the newest Schwab sent (the levels' own rule, _publish_levels)
+    # the levels' own rule (_publish_levels): a streamed contract's counts are the stream's
+    feed = lmp.feed_now(now)
+    listed = held["_contract_symbols"]
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _streamed_greeks_for_ticker(held["_contract_symbols"], now), fetched_ts
+        contracts,
+        _streamed_greeks_for_ticker(listed, now, feed),
+        set(_held_option_symbols_for_ticker(listed, now, feed)),
     )
     at = now_et()
     product = option_close_product(t)
