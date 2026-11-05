@@ -1022,6 +1022,10 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
         (k["path"] for k in left),
         key=lambda p: tuple(int(part) for part in Path(p).name.split(".")[1:-1]),
     ), "memory's file is not named before the spill's"
+    assert [Path(k["path"]).name for k in left] == [
+        f"stream_capture.{begin + 1500}.0.spill",
+        f"stream_capture.{begin + 1500}.1.spill",
+    ], "the writer's files are not at the first millisecond no name was taken in"
 
 
 def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_start(tmp_path):
