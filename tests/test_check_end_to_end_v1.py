@@ -63,6 +63,109 @@ def _changed(root: Path) -> list[str]:
     )
 
 
+def test_a_patch_no_added_line_carries_is_refused_by_the_whole_repositorys_count(tmp_path):
+    """The whole repository is judged, not only the lines a PR adds.
+
+    An old except that logs and carries on swallows the error once its log line is removed, and
+    the PR adds no line.
+    """
+    old = (
+        "import logging\n"
+        "log = logging.getLogger()\n"
+        "def spot(row):\n"
+        "    try:\n"
+        "        return row['last']\n"
+        "    except KeyError as e:\n"
+        "        log.warning('no last: %s', e)\n"
+        "        return None\n"
+    )
+    root = _repo(tmp_path, {**BASE, "server.py": old})
+    _commit(root, {"server.py": old.replace("        log.warning('no last: %s', e)\n", "")})
+    assert cee.violations(root, "main") == ["server.py:6: an except that swallows the error"]
+
+
+def test_a_shape_removed_elsewhere_does_not_pay_for_one_brought_in(tmp_path):
+    """The same swallowing except, in a PR that also fixes an old `or 0` in another file.
+
+    The repository's total holds, and the new shape is still refused at its line.
+    """
+    old = (
+        "import logging\n"
+        "log = logging.getLogger()\n"
+        "def spot(row):\n"
+        "    try:\n"
+        "        return row['last']\n"
+        "    except KeyError as e:\n"
+        "        log.warning('no last: %s', e)\n"
+        "        return None\n"
+    )
+    root = _repo(
+        tmp_path, {**BASE, "server.py": old, "app/size.py": "def n(a):\n    return a or 0\n"}
+    )
+    _commit(
+        root,
+        {
+            "server.py": old.replace("        log.warning('no last: %s', e)\n", ""),
+            "app/size.py": "def n(a):\n    return a\n",
+        },
+    )
+    assert cee.violations(root, "main") == ["server.py:6: an except that swallows the error"]
+
+
+def test_a_shape_fixed_in_one_function_does_not_pay_for_one_brought_into_another(tmp_path):
+    """Two excepts that read alike in one file: the first gets a log line, the second loses it.
+
+    The second's except line is unchanged and did not swallow before.
+    """
+    old = (
+        "import logging\n"
+        "log = logging.getLogger()\n"
+        "def a(r):\n"
+        "    try:\n"
+        "        return r['x']\n"
+        "    except KeyError:\n"
+        "        return None\n"
+        "def b(r):\n"
+        "    try:\n"
+        "        return r['y']\n"
+        "    except KeyError:\n"
+        "        log.warning('no y')\n"
+        "        return None\n"
+    )
+    new = old.replace(
+        "    except KeyError:\n        return None\ndef b",
+        "    except KeyError:\n        log.warning('no x')\n        return None\ndef b",
+    ).replace("        log.warning('no y')\n", "")
+    root = _repo(tmp_path, {**BASE, "server.py": old})
+    _commit(root, {"server.py": new})
+    assert cee.violations(root, "main") == ["server.py:12: an except that swallows the error"]
+
+
+def test_a_shape_whose_inner_line_changes_is_judged_as_added(tmp_path):
+    """A `.get` default over three lines whose inner line the PR changes is the PR's shape.
+
+    Its first line reads as it did.
+    """
+    root = _repo(tmp_path, {**BASE, "app/x.py": 'v = q.get(\n    "lastPrice",\n    0,\n)\n'})
+    _commit(root, {"app/x.py": 'v = q.get(\n    "mark",\n    0,\n)\n'})
+    found = cee.violations(root, "main")
+    assert len(found) == 1 and found[0].startswith("app/x.py:1: "), found
+
+
+def test_a_shape_moved_down_by_new_lines_above_it_is_not_new(tmp_path):
+    """An old `or 0` pushed down a line by an added import is the same shape, not a new one."""
+    root = _repo(tmp_path, {**BASE, "app/size.py": "def n(a):\n    return a or 0\n"})
+    _commit(root, {"app/size.py": "import math\n\n\ndef n(a):\n    return a or 0\n"})
+    assert cee.violations(root, "main") == []
+
+
+def test_a_comment_in_a_page_script_is_not_a_shape_brought_in(tmp_path):
+    """A comment changes no code: the file's code is as it was, so nothing in it is judged."""
+    root = _repo(tmp_path, BASE)
+    _commit(root, {"static/js/page.js": "// v || 0 was here\nfunction draw(v) { return v; }\n"})
+    assert cee.violations(root, "main") == []
+
+
 def test_a_patch_is_refused_with_each_violation_named(tmp_path):
     root = _repo(tmp_path, BASE)
     _commit(
@@ -459,6 +562,26 @@ def test_a_fix_ruff_marks_unsafe_is_a_product_change_whatever_the_prs_config_ask
         root = _repo(where, {**TOOLS_BASE, "server.py": STR_ENUM})
         _commit(root, {"pyproject.toml": config, "server.py": rewritten})
         assert _changed(root) == ["server.py"], config
+
+
+def test_settings_that_take_an_unsafe_fix_are_refused_whatever_file_the_change_touches(tmp_path):
+    """No unsafe fix is taken, in any file (operator 2026-11-04).
+
+    A change whose ruff settings turn unsafe fixes on, or mark one safe, is refused though it
+    touches only a test.
+    """
+    for config in (
+        RUFF_BASE + "unsafe-fixes = true\n",
+        RUFF_BASE + '[tool.ruff.lint]\nselect = ["UP042"]\nextend-safe-fixes = ["UP042"]\n',
+    ):
+        (where := tmp_path / str(len(config))).mkdir()
+        root = _repo(where, TOOLS_BASE)
+        _commit(root, {"pyproject.toml": config, TEST: "def test_x():\n    assert True\n"})
+        assert any("take an unsafe fix" in v for v in cee.violations(root, "main")), config
+    (where := tmp_path / "nested").mkdir()
+    root = _repo(where, TOOLS_BASE)
+    _commit(root, {"tests/ruff.toml": "unsafe-fixes = true\n"})
+    assert any(v.startswith("tests/ruff.toml: ") for v in cee.violations(root, "main"))
 
 
 def test_a_fix_made_for_another_python_than_the_bases_is_a_product_change(tmp_path):

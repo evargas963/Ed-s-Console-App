@@ -24,8 +24,8 @@ def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path)
 
     state = build_client_from_token(
         str(tmp_path / "missing_token.json"),
-        api_key="fake-key-not-ci-placeholder",
-        app_secret="fake-secret-not-ci-placeholder",
+        api_key="not-a-key",
+        app_secret="not-secret",
     )
     assert state.ok is False
     assert state.client is None

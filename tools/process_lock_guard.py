@@ -1,7 +1,7 @@
 """PreToolUse guard for the two things git cannot refuse by itself.
 
   * LIVE-CHECKOUT PROTECTION: the production primary (`EdWebConsole`, `.git` a directory)
-    is `main == origin/main` and never edited in place. An Edit/Write of app code inside it,
+    is `main == origin/main` and never edited in place. An Edit/Write of any file inside it,
     a shell write (`cp`/`sed -i`/`tee`/redirect) into it, a linked worktree reaching into it,
     and any git verb that moves it off main are refused at the moment of the command.
   * MAIN REF: main is the branch the production checkout runs, and every checkout of the
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import tools.operating_process_lock as OPL
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # the ONE roster of each class
-from tools.pretooluse_guard import checkout_path, production_path
+from tools.pretooluse_guard import live_file
 from tools.shell_parse import (  # the ONE shell reader
     Statement,
     _join_dir,
@@ -217,22 +217,16 @@ def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> 
     """An Edit or Write whose target belongs to the production checkout, the live one. From a
     linked worktree: any file inside the production checkout that is not under this worktree's
     own root (a worktree nested at `<primary>/.claude/worktrees/<name>` owns its files). From the
-    production checkout itself: its app code (`production_path`). The topology is file logic
+    production checkout itself: any of its files (`live_file`). The topology is file logic
     only (`_primary_worktree_root`); a target that cannot be placed raises, and hook_chain refuses
     the event."""
-    linked_to = _primary_worktree_root(repo)
-    primary = linked_to or repo
+    primary = _primary_worktree_root(repo) or repo
     out: list[str] = []
     for key in _EDIT_TARGET_KEYS:
         raw = tool_input.get(key)
         if not raw or not isinstance(raw, str):
             continue
-        if linked_to is None:
-            resolved = production_path(raw, repo, primary)
-        else:
-            resolved = checkout_path(raw, repo, primary)
-            if resolved is not None and resolved.is_relative_to(repo.resolve()):
-                resolved = None
+        resolved = live_file(raw, repo, primary, repo)
         if resolved is not None:
             out.append(
                 f"PROD_CHECKOUT_EDIT: {resolved} belongs to the PRODUCTION checkout {primary}, the "
@@ -245,8 +239,8 @@ def _shell_write_dest_paths(st: Statement) -> list[str]:
     """Destination file operand(s) a shell statement WRITES: a `>` / `>>` redirect on ANY command
     (e.g. `printf x > static/index.html`, `echo x > static/app.js`), PLUS the material
     file-mutating verbs cp/mv/install/rsync/ln/tee/sed -i/perl -i/truncate/dd of=. The caller
-    filters to app code inside the production primary, so a non-app operand (a sed script, a
-    redirect to a .log) is harmlessly ignored."""
+    keeps those inside the production primary; an in-place edit there is refused whichever of its
+    operands (a sed script among them) names the file."""
     dests: list[str] = st.writes
     verb = st.program
     if not verb:
@@ -329,24 +323,25 @@ def _ps_write_dest_paths(st: Statement) -> list[str]:
 
 
 def production_checkout_shell_app_write_violations(statements: list[Statement]) -> list[str]:
-    """PREVENT a materially-equivalent SHELL edit to app code in the PRODUCTION checkout — the
-    Bash companion to production_checkout_edit_violations (Edit/Write) and to the universal
+    """PREVENT a materially-equivalent SHELL edit to any file of the PRODUCTION checkout.
+
+    The Bash companion to production_checkout_edit_violations (Edit/Write) and to the universal
     shell source-write bans (redirect/heredoc/-c payload in operator_law_guard). For EACH segment
     of a chained command (cwd tracked, so a leading `cd` cannot mislocate a later write), blocks
     a `>`/`>>` redirect or cp/mv/install/tee/sed -i/perl -i/truncate/dd whose destination resolves
-    to a production app file (server.py, *.py, static/*.html|*.js, ...) INSIDE the production
-    primary — whichever session runs it. This closes the redirect-to-static gap the universal
-    .py-only redirect ban misses. Dev-worktree paths resolve outside and stay free. Not
-    subject-disableable."""
+    to a file INSIDE the production primary — whichever session runs it. Dev-worktree paths,
+    a worktree nested inside the primary included, are its own and stay free. Not
+    subject-disableable.
+    """
     primary = _primary_worktree_root(REPO) or REPO
     out: list[str] = []
     for st in statements:  # each destination against its statement's cwd
         for dest in _shell_write_dest_paths(st):
-            resolved = production_path(_join_dir(st.cwd or str(primary), dest), primary, primary)
+            resolved = live_file(_join_dir(st.cwd or str(primary), dest), primary, primary, REPO)
             if resolved is not None:
                 out.append(
                     f"PROD_CHECKOUT_EDIT (shell): a shell command "
-                    f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
+                    f"writes {resolved} — a file of the PRODUCTION checkout {primary}. "
                     f"Development does not modify the live checkout by ANY means; make the change "
                     f"in the separate dev worktree and land via PR. "
                     f"See AGENTS.md."
@@ -372,7 +367,7 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # first.
         out.extend(prod_checkout_git_move_violations(statements))
         out.extend(main_ref_write_violations(statements))
-        # Live-checkout invariant #4: a materially-equivalent SHELL write to production app code
+        # Live-checkout invariant #4: a materially-equivalent SHELL write to a production file
         # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
         out.extend(production_checkout_shell_app_write_violations(statements))
     return out

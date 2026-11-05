@@ -39,7 +39,7 @@ def repo(tmp_path):
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
     _write(root, "tests/test_a.py", SURVIVES)
-    _write(root, "tests/test_gone.py", SURVIVES.replace("test_x", "test_gone"))
+    _write(root, "tests/test_gone.py", "def test_gone():\n    assert 3 == 3\n")
     _write(root, "tests/e2e/page.spec.js", SPEC)
     _write(root, "product.py", "VALUE = 1\n")
     _write(root, "AGENTS.md", "# rules\n")
@@ -93,6 +93,58 @@ def test_a_test_moved_to_another_file_with_its_assertions_passes(repo):
     (repo / "tests/test_a.py").unlink()
     _write(repo, "tests/test_b.py", SURVIVES)
     assert _found(repo) == []
+
+
+def test_a_test_deleted_beside_a_new_one_sharing_a_line_is_the_reviews(repo):
+    """One shared assertion does not make a new test the old one renamed.
+
+    A deletion stays the review's to judge.
+    """
+    _write(repo, "tests/test_gone.py", "def test_gone():\n    assert 3 == 3\n    assert 4 == 4\n")
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    (repo / "tests/test_gone.py").unlink()
+    _write(repo, "tests/test_new.py", "def test_new():\n    assert 3 == 3\n")
+    assert _found(repo) == []
+
+
+def test_the_same_test_body_calling_different_code_is_no_duplicate(repo):
+    body = "def test_help():\n    assert main(['--help']) == 0\n"
+    _write(repo, "tests/test_p.py", "from tools.a import main\n\n\n" + body)
+    _write(repo, "tests/test_q.py", "from tools.b import main\n\n\n" + body)
+    assert _found(repo) == []
+
+
+def test_the_same_test_body_on_different_data_is_no_duplicate(repo):
+    body = "def test_rows():\n    assert len(DATA) > 0\n"
+    _write(repo, "tests/test_p.py", "DATA = load('a.json')\n\n\n" + body)
+    _write(repo, "tests/test_q.py", "DATA = load('b.json')\n\n\n" + body)
+    fixture = "@pytest.fixture\ndef rows():\n    return load('{}')\n\n\n"
+    test = "def test_some(rows):\n    assert rows\n"
+    _write(repo, "tests/test_r.py", fixture.format("a.json") + test)
+    _write(repo, "tests/test_s.py", fixture.format("b.json") + test)
+    assert _found(repo) == []
+
+
+def test_two_files_alike_but_for_their_docstring_are_duplicates(repo):
+    body = "def test_rows():\n    assert len(DATA) > 0\n"
+    _write(repo, "tests/test_p.py", '"""One."""\nDATA = load("a.json")\n\n\n' + body)
+    _write(repo, "tests/test_q.py", '"""Two."""\nDATA = load("a.json")\n\n\n' + body)
+    assert _found(repo) == [
+        "a test duplicated: tests/test_p.py::test_rows, tests/test_q.py::test_rows"
+    ]
+
+
+def test_a_test_renamed_with_its_assertions_passes(repo):
+    _write(repo, "tests/test_a.py", SURVIVES.replace("test_x", "test_y"))
+    assert _found(repo) == []
+
+
+def test_a_test_that_is_another_test_again_is_refused(repo):
+    _write(repo, "tests/test_b.py", SURVIVES.replace("test_x", "test_again"))
+    assert _found(repo) == [
+        "a test duplicated: tests/test_a.py::test_x, tests/test_b.py::test_again"
+    ]
 
 
 def test_a_test_rewritten_with_its_assertions_restated_passes(repo):

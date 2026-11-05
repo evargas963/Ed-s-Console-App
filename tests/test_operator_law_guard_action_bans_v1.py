@@ -90,6 +90,25 @@ def test_the_locks_settings_are_the_operators():
         assert not any(refused in b for b in bash_violations(cmd)), cmd
 
 
+def test_ruffs_unsafe_fixes_are_refused_in_any_command():
+    """No unsafe fix is taken, in any file: the flag is refused however ruff is run."""
+    for cmd in (
+        "ruff check --fix --unsafe-fixes .",
+        ".venv/Scripts/python.exe -m ruff check --unsafe-fixes --fix tests",
+        "cd tools && ruff check --fix --unsafe-fixes=true x.py",
+        'ruff check --fix --config "unsafe-fixes = true" .',
+        "python -m ruff check --fix --config \"lint.extend-safe-fixes = ['UP042']\" .",
+    ):
+        assert any("unsafe fixes" in b for b in bash_violations(cmd)), cmd
+    for cmd in (
+        "ruff check --fix .",
+        "ruff check --no-unsafe-fixes --fix .",
+        "ruff format .",
+        "rg -n unsafe-fixes AGENTS.md",
+    ):
+        assert not any("unsafe fixes" in b for b in bash_violations(cmd)), cmd
+
+
 def test_lock_disable_routes_are_git_and_precommits_own():
     """The lock-disable ban refuses the routes that bypass the pre-commit checks: git's
     (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall)."""

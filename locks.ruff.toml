@@ -21,7 +21,7 @@ select = [
     "S110", "S112", # an error passed over in silence
     "SIM107", "SIM113", "SIM114", "SIM116", "SIM117", "SIM118", "SIM208", "SIM300", "SIM905",
     "SIM910", "SIM911", # needless complexity
-    "T20", # print in product code
+    "T20", # print
     "TID251", # the banned names below
     "TRY", # an except that hides what failed
 ]
@@ -59,6 +59,4 @@ max-complexity = 10
 "runpy".msg = "No code runs from a data file."
 
 [lint.per-file-ignores]
-"tests/**" = ["ARG", "T20"]
-"tools/**" = ["T20"]
 "app/market_data/schwab/streaming/capture_main.py" = ["PLC0415"] # the operator's one import

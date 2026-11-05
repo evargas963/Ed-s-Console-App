@@ -26,7 +26,7 @@ jobs:
       - name: ruff format (the one Python formatter)
         run: python -P -m ruff format --check .
       - name: compileall
-        run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
+        run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__)[\\/])' .
       - name: one module reads each Schwab field (AGENTS.md rule 3, ENF-23)
         if: github.event_name == 'pull_request'
         env:

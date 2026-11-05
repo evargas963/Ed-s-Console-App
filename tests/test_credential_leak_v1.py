@@ -4,9 +4,14 @@ import subprocess
 
 import pytest
 
-from tools.check_credential_leak import DiffUnreadable, find_credential_leaks
+from tools.check_credential_leak import DiffUnreadable, find_credential_leaks, tree_leaks
 
-SECRET = "Authorization: Bearer supersecrettokenvalue99\n"
+#: the payloads are put together when the test runs: the scanner reads this file too, with no path
+#: or line skipped, so no secret-shaped text is written in it
+BEARER = "Bear" + "er"
+USERS = "Us" + "ers"
+SECRET = f"Authorization: {BEARER} supersecrettokenvalue99\n"
+HOME = f"path = 'C:/{USERS}/someone/secret.json'\n"
 
 
 def _staged(root, files, config=()):
@@ -54,8 +59,10 @@ def _labels(root):
 
 
 def test_a_secret_after_an_added_line_starting_plus_plus_is_refused(tmp_path):
-    """An added `++ b/<skipped path>` line is a line of the file, not a header, and a secret
-    written on a `++` line is scanned like any other."""
+    """An added `++ b/<another path>` line is a line of the file, not a header.
+
+    A secret written on a `++` line is scanned like any other.
+    """
     root = _staged(
         tmp_path,
         {"app.py": "x = 1\n++ b/tests/test_credential_leak_v1.py\n" + SECRET + "++ " + SECRET},
@@ -63,10 +70,12 @@ def test_a_secret_after_an_added_line_starting_plus_plus_is_refused(tmp_path):
     assert _labels(root) == [["app.py", "bearer_token"]] * 2
 
 
-def test_a_secret_in_a_file_git_quotes_after_a_skipped_file_is_refused(tmp_path):
-    """git quotes a name holding a non-ASCII character; that header starts a new file, so the
-    skipped file before it does not carry over."""
-    root = _staged(tmp_path, {"tools/check_credential_leak.py": "x = 1\n", "tools/é.py": SECRET})
+def test_a_secret_in_a_file_git_quotes_after_another_file_is_refused(tmp_path):
+    """A file git quotes (a non-ASCII name) after a clean one is read as its own file.
+
+    The quoted header starts a new file, so the clean file before it does not carry over.
+    """
+    root = _staged(tmp_path, {"tools/a.py": "x = 1\n", "tools/é.py": SECRET})
     assert _labels(root) == [["tools/é.py", "bearer_token"]]
 
 
@@ -107,8 +116,11 @@ def test_a_secret_git_would_show_otherwise_is_still_read(tmp_path, files, config
 @pytest.mark.parametrize(
     "path", [b"tests\\test_credential_leak_v1.py", b"tests/test_credential_leak_v1.py "]
 )
-def test_only_the_skipped_path_itself_is_skipped(tmp_path, path):
-    """A name that differs from a skip entry by a backslash or a trailing space is another file."""
+def test_a_name_windows_cannot_hold_is_read_under_its_own_name(tmp_path, path):
+    """A name holding a backslash or a trailing space is read under its own name.
+
+    Windows cannot hold either on disk.
+    """
     root = _staged_as(
         _staged(tmp_path, {}, (("core.protectNTFS", "false"),)), path, SECRET
     )  # names Windows cannot hold on disk
@@ -124,36 +136,53 @@ def test_a_file_name_that_is_not_utf8_is_not_a_clean_diff(tmp_path):
 
 
 def test_detects_bearer_and_home_path(tmp_path):
-    # Payloads live under a non-skipped path so the detector can fire.
-    hits = find_credential_leaks(
-        _staged(tmp_path, {"evil.py": SECRET + "path = 'C:/Users/someone/secret.json'\n"})
-    )
+    hits = find_credential_leaks(_staged(tmp_path, {"evil.py": SECRET + HOME}))
     assert any("bearer_token" in h for h in hits)
     assert any("windows_user_home" in h for h in hits)
 
 
 def test_detects_a_git_bash_home_path(tmp_path):
     """Git Bash spells the Windows home `/c/Users/<name>/`; it is an operator-home path too."""
-    root = _staged(
-        tmp_path, {"tests/test_x.py": 'cmd = "cd /c/Users/someone/Documents/repo && ls"\n'}
-    )
+    root = _staged(tmp_path, {"tests/test_x.py": f'cmd = "cd /c/{USERS}/someone/Documents"\n'})
     assert any("git_bash_user_home" in h for h in find_credential_leaks(root))
 
 
-def test_fixture_marker_suppresses(tmp_path):
-    root = _staged(
-        tmp_path, {"tests/test_x.py": "Bearer supersecrettokenvalue99  # credential-leak-ok\n"}
+def test_a_secret_in_a_file_the_change_does_not_touch_is_refused(tmp_path):
+    """The whole repository is read, not only what a change adds.
+
+    A secret committed before the scanner read every file stands in the tree, and a change
+    elsewhere is refused while it does. The scan of the change alone finds nothing; the scan of
+    the tree finds it.
+    """
+    root = _staged(tmp_path, {"old.py": SECRET, "app.py": "x = 1\n"})
+    git = lambda *a: subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],
+        cwd=root,
+        check=True,
+        capture_output=True,
     )
-    assert find_credential_leaks(root) == []
+    git("commit", "-q", "-m", "base")
+    git("branch", "base")
+    (root / "app.py").write_text("x = 2\n", encoding="utf-8")
+    git("commit", "-q", "-am", "a change elsewhere")
+    assert find_credential_leaks(root, base="base") == []
+    assert [h.split(": ")[:2] for h in tree_leaks(root, "HEAD")] == [["old.py", "bearer_token"]]
+    assert [h.split(": ")[:2] for h in tree_leaks(root)] == [["old.py", "bearer_token"]]
 
 
-def test_scanner_own_suite_path_is_skipped(tmp_path):
-    """Staging this test file must not trip the firewall on its own fixtures."""
+def test_no_line_or_path_is_skipped(tmp_path):
+    """A marker on the line and the scanner's own suite's path hide nothing."""
     root = _staged(
         tmp_path,
-        {"tests/test_credential_leak_v1.py": SECRET + "path = 'C:/Users/someone/secret.json'\n"},
+        {
+            "tests/test_credential_leak_v1.py": SECRET,
+            "x.py": SECRET[:-1] + "  # credential-leak-ok\n",
+        },
     )
-    assert find_credential_leaks(root) == []
+    assert sorted(h.split(": ")[0] for h in find_credential_leaks(root)) == [
+        "tests/test_credential_leak_v1.py",
+        "x.py",
+    ]
 
 
 def test_clean_addition_passes(tmp_path):

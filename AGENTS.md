@@ -89,9 +89,9 @@ his "you are in control and control the language", his to reverse.
 `tools/check_locks.py`, which counts on the base and on the head under the base's rules: lines and bytes of everything that is not data (product code, tests, check tools),
 open work items, patching lines in tests, format suppressions, and every finding of
 `locks.ruff.toml` with each `noqa` ignored. A count at 0 is an absolute ban. Above 0, size may rise
-and is reported (`check_locks.FREE`: lines, bytes, work items, a test's database, docstring style),
-so routine work does not wait on the operator (agent's decision 2026-11-01, on his "i don't want
-anything to slow down"; his to reverse); that a change deletes what it replaces — no machine check,
+and is reported (`check_locks.FREE`: lines, bytes, work items; operator 2026-11-04: "i am not
+going to set some arbitrary number"); a test's database and docstring style are one-way counts
+like every other finding (operator 2026-11-04, F4); that a change deletes what it replaces — no machine check,
 ENF-12. No number is kept by hand (`tests/test_check_locks_v1.py`). A banned name (`sqlite3`, the clock, `websockets`, `http.client`, `urllib.request`) counts
 per product file, so no module that does not hold one may start. The same job runs import-linter on
 `locks.imports.toml`, the base's: no import statement outside the modules it names takes `schwab`,
@@ -117,7 +117,7 @@ then the rule binds with no machine check.
 
 | # | Rule | Enforced by |
 |---|---|---|
-| 1 | **Simple.** Fewest files, functions and hops that do the job. No prose in code: history, incidents and dates go in the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or check around it; if that takes a restructure, the restructure is the fix. Every fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed. A change deletes what it replaces, in the same PR; a register, audit, report or check lives only while it has a job, and once answered, it is deleted. | `tools/check_fails_before.py` in `pytest-windows` and `tools/check_end_to_end.py` in `locks`, on a pull request's change, which also refuses a description without `Schwab → screen:`, `Deleted:` and `End-to-end test:` (in force); that a defect is fixed at its source — rule 14's review, the only layer that can refuse a guard, no machine check, ENF-12; one construct `check_end_to_end` allows, the running total `d[k] = d.get(k, 0) + x` (operator's spec v2 of 2026-11-03, an open amendment for this construct only, #724: the sum of nothing is 0, a real value; a base plus a change has the same shape, and rule 14's review refuses it); ruff `S110` (a catch-all `except` passed in silence) and `BLE` (a catch-all `except` that neither records its traceback nor re-raises) over the whole repository (in force); ruff `C90` complexity cap and `TRY`, as one-way counts (locks), to 0 in step 1b; `check_end_to_end` is deleted in step 7 only once a standard tool refuses every shape its docstring lists (swallowing excepts, missing values replaced or repaired, the page's patch shapes) and everything `check_fails_before` imports from it has moved — the shapes left — SHAPE step 7 |
+| 1 | **Simple.** Fewest files, functions and hops that do the job. No prose in code: history, incidents and dates go in the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or check around it; if that takes a restructure, the restructure is the fix. Every fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed. A change deletes what it replaces, in the same PR; a register, audit, report or check lives only while it has a job, and once answered, it is deleted. | `tools/check_fails_before.py` in `pytest-windows` and `tools/check_end_to_end.py` in `locks`, over the whole repository (every patch shape of product code counted on the base and the head) and on each line a change adds, which also refuses a description without `Schwab → screen:`, `Deleted:` and `End-to-end test:` (in force); that a defect is fixed at its source — rule 14's review, the only layer that can refuse a guard, no machine check, ENF-12; one construct `check_end_to_end` allows, the running total `d[k] = d.get(k, 0) + x` (operator's spec v2 of 2026-11-03, an open amendment for this construct only, #724: the sum of nothing is 0, a real value; a base plus a change has the same shape, and rule 14's review refuses it); ruff `S110` (a catch-all `except` passed in silence) and `BLE` (a catch-all `except` that neither records its traceback nor re-raises) over the whole repository (in force); ruff `C90` complexity cap and `TRY`, as one-way counts (locks), to 0 in step 1b; `check_end_to_end` is deleted in step 7 only once a standard tool refuses every shape its docstring lists (swallowing excepts, missing values replaced or repaired, the page's patch shapes) and everything `check_fails_before` imports from it has moved — the shapes left — SHAPE step 7 |
 | 2 | **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's own field definition excludes (a negative volume or size). Everything else is taken as sent, a gamma included whatever its size (operator 2026-11-04: "we take what schwab gives and we wire it up. plain and simple", replacing his 2026-10-23 bound on gamma); a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, `docs/schwab/schwab_market_data_api_spec.pdf` (with `docs/schwab/schwab_market_data_parameters_chains_quotes.txt` for the expanded /chains and /quotes parameters) and `docs/schwab/schwab_streamer_api.pdf`, cited by section; a limit not stated there or in Schwab's own reply is our defect until shown otherwise. | `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`, `tests/test_gamma_as_sent_v1.py` (in force) |
 | 3 | **One producer.** Each value served, stored or shown has one producer; consumers carry its result and never select, compute, repair or relabel it. A second authority for the same value is banned whatever it is called: helper, parser, resolver or cache. One module reads each Schwab field. | `tools/check_one_reader.py` in `hardening` refuses a pull request that adds a second reader (in force); the fields already read by more than one module (`python -m tools.check_one_reader --list`) — ENF-23; import-linter layers, from SHAPE step 1e |
 | 4 | **The page draws; it computes nothing.** Every number, total, choice, comparison and date it shows is served. It gets data only from the one push. | ESLint: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport module (step 4); `Math.*`, `.sort(`, `.reduce(` and date arithmetic banned outside the drawing module (step 5) |
@@ -129,7 +129,7 @@ then the rule binds with no machine check.
 | 10 | **Only Feed talks to Schwab.** | import-linter on `locks.imports.toml` for Schwab's clients (locks); `locks.ruff.toml` banned names, per product file, for `http.client`, `urllib.request` and `websockets` (locks); a call made through Feed's own `schwab_client` from outside Feed — SHAPE step 1e |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | `locks.ruff.toml` banned clock names, per product file (locks); import-linter forbidden imports (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top; the one exception to stay is `capture_main`'s import of the daemon inside `main()`, after it opens the early error log (operator 2026-10-30: "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `TRY`, `C90` and `PLC0415` as one-way counts and `D` (pep257, no docstring required) as a reported one (locks), to 0 in steps 1b and 1c |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top, with no exception: `capture_main`'s import of the daemon inside `main()`, after it opens the early error log, goes too (operator 2026-11-04: "this needs to be fixed", replacing his 2026-10-30 "Allow the one import"; LINTERS, its exemption in `locks.ruff.toml` until then). The imports still inside other functions go, and ruff `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `TRY`, `C90` and `PLC0415` as one-way counts and `D` (pep257, no docstring required) as a reported one (locks), to 0 in steps 1b and 1c |
 | 14 | **Independent review** (operator 2026-11-02). A session that did not write the change, given only this file, the parts of `docs/DATA_FLOW.md` the change touches, the diff and the commit series one commit at a time (a dodge is in the series, not in the net diff), records in the description's `## Review`: `Commit:` the head, `Verdict:` PASS or FAIL, and `Evidence:`. It judges (a) patch-ness: does the change move a value onto the one wire and delete what it replaces, or add to the old path? Product code that grows, a new helper, label, gate or branch beside the old path, and a deleted function back under a new name, even with a narrower job, are patches, FAIL however good the stated reason and however green the tests; (b) dodges: commit by commit, a construct a check refused and then reshaped into a passing form with the same meaning is evasion, FAIL unless the rule or check was openly amended by the operator; (c) deleted or renamed tests: coverage dropped for live code is FAIL. A verdict judges the change, so the deployed-screen tier its deploy proves does not hold it open. Every push renews the record. | `tools/check_integrity.py` in `locks`: on a change to what governs changes, no record is refused; on any change, a record of another commit, a Verdict other than PASS, or no Evidence is refused (locks); a change outside that list needs no record from a machine, so the record is required of those by this rule alone; that the reviewer did not write the change, a description edited after review, and the judgments themselves — no machine check, ENF-12 |
 | 15 | **Tests are not taken from.** An assertion of a surviving test is not lost, a test is not skipped and deferred-work markers are not added, with no opt-out of any kind. A deleted test is judged by rule 14(c). | `tools/check_integrity.py` in `locks`, a net loss per test by its name (locks); a test renamed or disabled with its assertions in place, an assertion replaced by a weaker one, one calling a function of that name the change deleted, a skip the markers do not spell, and assertions outside a test function or a Playwright spec — rule 14's review, no machine check, ENF-12 |
 | 16 | **An agent never changes repository settings** (operator 2026-11-02): branch protection, rulesets and required checks are the operator's, applied in GitHub. | `tools/operator_law_guard.py`: `gh` by a list, `gh api` only reads (`tests/test_operator_law_guard_action_bans_v1.py`) |
@@ -147,17 +147,61 @@ then the rule binds with no machine check.
   tools' own, and none at all when ruff's own resolved settings for the committed `pyproject.toml`
   (extended files included) turn unsafe fixes on, force a fix safe, require an import of every file,
   or target another Python than the base's, so an unsafe rewrite of a product file is a product
-  change that needs its failing test (`tests/test_check_end_to_end_v1.py`); the rest of this bullet (a found defect fixed, those
-  settings themselves, an unsafe rewrite outside product code) — no machine check, ENF-12.
-- A check runs over the whole repository wherever it can, never with an exception list: at 0
-  findings a rule fails the required job outright, and above 0 it is a count (Locks).
-  Enforced by: `ruff check .` and `ruff format --check .` over the whole repository at commit and in
-  `hardening` (in force), and `tools/check_locks.py` (locks); each tool SHAPE adds (import-linter,
-  ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Today's hand-built
-  checks judge a pull request's change only (`check_end_to_end`, `check_integrity`,
-  `check_one_reader`, `check_credential_leak`, `check_eol_style_invariant`, `check_fails_before`,
-  each with `--base`);
-  step 7 deletes or replaces them.
+  change that needs its failing test; it refuses a change whose committed settings, in any
+  `pyproject.toml`, `ruff.toml` or `.ruff.toml` the repository tracks, turn unsafe fixes on or
+  force one safe, whatever file the change touches, and the agent's hook refuses a ruff run that
+  asks for one (`--unsafe-fixes`, or an inline `--config` setting of `unsafe-fixes` or
+  `extend-safe-fixes`), so neither the repository's settings nor a ruff command line takes one, in
+  any file (operator 2026-11-04:
+  "consistent with everything repo wide"; `tests/test_check_end_to_end_v1.py`,
+  `tests/test_operator_law_guard_action_bans_v1.py`); the rest of this bullet (a found defect
+  fixed, the same rewrite typed by hand outside product code, settings ruff reads from a file the
+  repository does not track) — no machine check, ENF-12.
+- **Everything is repo wide** (operator 2026-11-04: "everything that we do, every test, every
+  governance, lock, hook, enforcement is repo wide"; "you must not narrow anything"). Every check,
+  test, hook, lock, rule and fix covers every file of the repository, old code and new alike, with
+  no exception list, no skipped path or line, and no "the change only" mode; a finding in old code
+  is counted and fixed, never let stand because it is old. At 0 findings a rule fails the required
+  job outright, and above 0 it is a count (Locks). A conflict with this rule is reported to the
+  operator at once. Enforced by: `ruff check .` and `ruff format --check .` over the whole
+  repository at commit and in `hardening` (in force); `tools/check_locks.py`, every tracked file
+  (locks); `tools/check_end_to_end.py`, every file's patch shapes counted on the base and the head,
+  and in every file whose code a change touches, tests and tools included, a shape refused on an
+  added line or on an unchanged line that did not hold it before (`tests/test_check_end_to_end_v1.py`,
+  locks); `tools/check_one_reader.py`, the whole repository's second readers printed on every run
+  and a new one refused (in force); `tools/check_credential_leak.py`, every tracked file, no path or
+  line skipped (`tests/test_credential_leak_v1.py`, in force); the production-checkout rail, every
+  file of that checkout (`tools/process_lock_guard.py`, `tests/test_hook_chain_v1.py`, in force).
+  `check_eol_style_invariant`, `check_fails_before` and `check_integrity` judge a change itself (a
+  file's line endings kept, a new test failing on the old code, the review record), not what files
+  hold, and read every file of any kind a change touches. Each tool SHAPE adds (import-linter,
+  ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). The operator's
+  decisions of 2026-11-04 on what that rule found:
+  - Tests stay independent ("test should remain independent"): a test runs real captured Schwab
+    data through the real code and checks it against values worked out outside that code, so the
+    tests read Schwab's captured answers themselves; every other file has one reader per field
+    (`check_one_reader`, `tests/test_check_one_reader_v1.py`). The captured data each test uses is
+    representative of what it tests and free of flaws such as two snapshots 30 minutes apart read
+    as consecutive values ("the data set must be extremely well representative of the test";
+    TEST-CLEANUP, no machine check, ENF-12).
+  - Size is not a rule ("i am not going to set some arbitrary number"): lines, bytes and work
+    items are reported and never judged (`check_locks.FREE`); simple code is held by the checks of
+    correctness (one producer, no patch shapes, no dead code, the complexity cap, the reviewers)
+    and by `/simplify` on every change ("you must always /simplify", no machine check, ENF-12).
+  - A test is known by what it asserts, not by its name ("why compare only the name, why not the
+    entire code"): a test renamed with an assertion dropped is a lost assertion. A machine cannot
+    tell that from a test deleted beside a new one, so it is rule 14(c)'s review (no machine
+    check, ENF-12; the machine pairing tried in this PR was withdrawn for that reason, the
+    operator told 2026-11-04). No test duplicates another (`tools/check_integrity.py`,
+    `tests/test_check_integrity_v1.py`); a change updates every test it affects in the same PR.
+  - `capture_main`'s import goes (rule 13, LINTERS); how a crash while the daemon loads stays
+    recorded once it moves is open with the operator.
+  - The vendored chart library's one patch shape is left as it is: this repository cannot fix it
+    at its source.
+  - Every language the repository holds gets its standard checker, run over the whole repository
+    (Python: ruff; JavaScript, HTML, CSS, JSON, YAML, Markdown: ESLint, html-validate, Stylelint
+    and Prettier; workflows: actionlint; TOML: taplo; Markdown: markdownlint): LINTERS, next after
+    this change.
 
 ## Before writing code
 

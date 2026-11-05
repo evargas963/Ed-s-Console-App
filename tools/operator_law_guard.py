@@ -186,6 +186,22 @@ def _disables_a_lock(st: Statement) -> bool:
     )
 
 
+def _takes_an_unsafe_fix(st: Statement) -> bool:
+    """Whether a ruff run asks for an unsafe fix.
+
+    The flag, or an inline `--config` setting that turns unsafe fixes on or marks one safe
+    (`unsafe-fixes`, `extend-safe-fixes`).
+    """
+    if not any(Path(w).name.lower().removesuffix(".exe") == "ruff" for w in st.words):
+        return False
+    return any(
+        w == "--unsafe-fixes"
+        or w.startswith("--unsafe-fixes=")
+        or (w != "--no-unsafe-fixes" and ("unsafe-fixes" in w or "safe-fixes" in w))
+        for w in st.words
+    )
+
+
 #: all of `gh` the agent may run, group by group; `gh api` only reads (_GH_API_READS)
 _GH_ALLOWED = {
     "issue": {"list", "view"},
@@ -299,6 +315,11 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
         )
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+    if any(_takes_an_unsafe_fix(st) for st in statements):
+        out.append(
+            "ACTION BLOCKED: ruff's unsafe fixes change what code does; none is taken, in any "
+            'file (AGENTS.md "Fix what you find").'
+        )
     if any(_gh_refused(st) for st in statements):
         out.append(
             "ACTION BLOCKED: this `gh` is outside what the agent may run. Write every word out, "

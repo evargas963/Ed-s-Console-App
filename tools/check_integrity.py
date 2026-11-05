@@ -7,7 +7,11 @@ Test integrity, every pull request:
      its title in a Playwright spec, across every changed test file, so a moved test is the same
      test and a rewritten one may restate its assertions. An assertion gone with its test, or
      with a function it calls that this change deleted, is the review's to judge, as is a test
-     renamed or disabled with its assertions kept;
+     renamed or disabled with its assertions kept: a test renamed and one deleted beside a new
+     one read the same to a machine;
+   - no test is another test again: the same code, arguments and decorators, in a file whose
+     other top-level code (its imports, constants, fixtures and helpers; its docstring aside) is
+     the same (every test file at the head);
    - no line added to code skips a test or leaves a deferred-work marker.
 
 Review record, in the description's `## Review` section (`Commit:` the head, `Verdict:` PASS or
@@ -82,23 +86,29 @@ def _at(root: Path, rev: str, path: str) -> str | None:
     return _git(root, "show", f"{rev}:{path}") if held else None
 
 
-def python_assertions(source: str) -> dict[str, set[str]]:
-    """{test name: its assertions, as the syntax tree reads them}."""
-    found: dict[str, set[str]] = {}
+def _test_functions(source: str):
+    """Each test function of a Python test file, as its syntax tree reads it."""
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
             "test"
         ):
-            held = found.setdefault(node.name, set())
-            for inner in ast.walk(node):
-                if isinstance(inner, ast.Assert):
-                    held.add(ast.unparse(inner.test))
-                elif (
-                    isinstance(inner, ast.Call)
-                    and isinstance(inner.func, ast.Attribute)
-                    and inner.func.attr.startswith("assert")
-                ):
-                    held.add(ast.unparse(inner))
+            yield node
+
+
+def python_assertions(source: str) -> dict[str, set[str]]:
+    """{test name: its assertions, as the syntax tree reads them}."""
+    found: dict[str, set[str]] = {}
+    for node in _test_functions(source):
+        held = found.setdefault(node.name, set())
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Assert):
+                held.add(ast.unparse(inner.test))
+            elif (
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr.startswith("assert")
+            ):
+                held.add(ast.unparse(inner))
     return found
 
 
@@ -201,10 +211,41 @@ def review_violations(body: str, head_sha: str, files: list[str]) -> list[str]:
     return out
 
 
+def duplicate_tests(root: Path) -> list[str]:
+    """Return each Python test of the head that is another one again.
+
+    The same code, arguments and decorators once its name and docstring are set aside, in a file
+    importing the same names, over every test file.
+    """
+    seen: dict[str, list[str]] = {}
+    for name in _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0"):
+        if not PYTHON_TESTS.match(name):
+            continue
+        source = _git(root, "show", f"HEAD:{name}")
+        # the same body tests different code or data when the file's other top-level code differs:
+        # its imports, constants, fixtures and helpers; not its tests, not its docstring
+        tree = ast.parse(source)
+        top = tree.body[1:] if ast.get_docstring(tree) else tree.body
+        imports = "".join(
+            ast.dump(n)
+            for n in top
+            if not (
+                isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test")
+            )
+        )
+        for node in _test_functions(source):
+            body = node.body[1:] if ast.get_docstring(node) else node.body
+            key = imports + ast.dump(ast.Module(body=body, type_ignores=[]))
+            key += "".join(ast.dump(part) for part in (node.args, *node.decorator_list))
+            seen.setdefault(key, []).append(f"{name}::{node.name}")
+    return [f"a test duplicated: {', '.join(same)}" for same in seen.values() if len(same) > 1]
+
+
 def violations(root: Path, base: str, body: str, head_sha: str) -> list[str]:
     files = changed(root, base)
     return [
         *lost_assertions(root, base, files),
+        *duplicate_tests(root),
         *added_markers(root, base),
         *review_violations(body, head_sha, files),
     ]
@@ -219,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         body = Path(a.body_file).read_text(encoding="utf-8")
         found = violations(Path.cwd(), a.base, body, a.head_sha)
-    except (ToolError, OSError) as e:
+    except (ToolError, OSError, SyntaxError) as e:  # a test file that does not parse: exit 2
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
     sys.stdout.reconfigure(encoding="utf-8")

@@ -8,7 +8,14 @@ the standard tools' own (ruff's safe fixes with the PR's committed pyproject.tom
 tool_fixed), is not a change of product code. An .html page or a .bat file is always one, and so
 is removing code nothing calls, a deleted file included.
 
-The product lines a PR adds carry no patch shape:
+The whole repository is judged (operator 2026-11-04: everything is repo wide): the shapes of every
+.py, .js, .mjs and .html file are counted on the base and the head and printed, and in every such
+file whose code the PR changes (tests and tools as much as product code), a shape is refused when
+a line the PR adds touches it, or when it sits on a line the PR leaves as it was that did not hold
+it at its own place in the old file (an old except whose log line the PR removes), so a shape
+pushed down the file is not new and one fixed elsewhere does not pay for one brought in.
+
+The shapes:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
      assignment of None or a literal, or a call with no re-raise. An except that logs the error
@@ -47,6 +54,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import difflib
+import functools
 import io
 import re
 import subprocess
@@ -55,7 +64,7 @@ import tempfile
 import tokenize
 from pathlib import Path
 
-#: the product files whose added lines are read for patch shapes
+#: the files whose patch shapes are counted and judged
 SHAPED_SUFFIXES = (".py", ".js", ".mjs", ".html")
 PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
@@ -86,7 +95,7 @@ def _git(root: Path, *args: str, errors: str = "strict") -> str:
             ["git", *args], cwd=root, capture_output=True, check=True
         ).stdout.decode("utf-8", errors)
     except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError) as e:
-        raise ToolError(f"git {' '.join(args)} failed: {e}") from e
+        raise ToolError(f"git {' '.join(args)} failed, or its output could not be read: {e}") from e
 
 
 def pr_files(root: Path, base: str, kinds: str) -> list[str]:
@@ -264,6 +273,16 @@ def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
     return found if run.returncode == 0 and len(found) == len(FIX_SAFETY) else None
 
 
+def takes_unsafe(safety: dict[str, str]) -> bool:
+    """Whether ruff's resolved settings turn unsafe fixes on or force a fix safe."""
+    return safety["unsafe_fixes"] == "enabled" or safety["linter.safety_table.forced_safe"] != "[]"
+
+
+#: the files ruff takes its settings from, in any folder (ruff's own configuration discovery)
+RUFF_CONFIGS = ("pyproject.toml", "ruff.toml", ".ruff.toml")
+
+
+@functools.cache  # one answer per run: the PR's settings against the base's
 def tools_fix_is_safe(root: Path, base: str) -> bool:
     """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
     the base's Python: unsafe fixes not on, none forced safe, no import required of every file, no
@@ -280,8 +299,7 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
     if was is None or now is None:
         return False
     return (
-        now["unsafe_fixes"] != "enabled"
-        and now["linter.safety_table.forced_safe"] == "[]"
+        not takes_unsafe(now)
         and now["linter.isort.required_imports"] == "[]"  # a fix that adds code, not tidies it
         and all(now[k] == "{}" for k in FIX_SAFETY if "per_file" in k)  # a map prints on many lines
         and all(now[k] == was[k] for k in FIX_SAFETY if "unresolved_target" in k)
@@ -582,20 +600,96 @@ def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]
     return sorted(set(found))
 
 
+def shapes(path: str, source: str, lines: set[int] | None = None) -> list[tuple[int, str]]:
+    """Return the patch shapes in `source` that touch `lines` (every line when None)."""
+    if lines is None:
+        lines = set(range(1, source.count("\n") + 2))
+    if path.endswith(".py"):
+        return python_patches(source, lines)
+    return js_patches(path, source, lines)
+
+
+def unchanged(old: str, new: str) -> dict[int, int]:
+    """{line in `new`: its line in `old`} for each line the change leaves as it was."""
+    match = difflib.SequenceMatcher(None, old.split("\n"), new.split("\n"), autojunk=False)
+    return {b + k + 1: a + k + 1 for a, b, size in match.get_matching_blocks() for k in range(size)}
+
+
+def files_at(root: Path, rev: str) -> dict[str, tuple[str, str]]:
+    """{path: (blob id, text)} of every file SHAPED_SUFFIXES names at `rev`, in one git read."""
+    listed = [
+        (entry.split("\t", 1)[1], entry.split()[2])
+        for entry in _git(root, "ls-tree", "-r", "-z", rev).split("\0")
+        if entry and entry.split()[1] == "blob"
+    ]
+    listed = [(path, blob) for path, blob in listed if path.endswith(SHAPED_SUFFIXES)]
+    try:
+        out = subprocess.run(
+            ["git", "cat-file", "--batch"],
+            cwd=root,
+            input="".join(f"{blob}\n" for _, blob in listed).encode(),
+            capture_output=True,
+            check=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        raise ToolError(str(e)) from e
+    found, at = {}, 0
+    for path, blob in listed:
+        end = out.index(b"\n", at)
+        size = int(out[at:end].rsplit(b" ", 1)[1])
+        # a file that is not UTF-8 is code this check cannot read: main fails the check, exit 2
+        found[path] = (blob, out[end + 1 : end + 1 + size].decode("utf-8"))
+        at = end + 1 + size + 1
+    return found
+
+
 def violations(root: Path, base: str) -> list[str]:
+    """Return each patch shape the PR brings into any file of the repository.
+
+    That is one a line it adds touches, or one on a line it leaves as it was that did not hold
+    that shape before (an old except whose log line it removes), each unchanged line matched to
+    its own place in the old file.
+    """
+    fork = _git(root, "merge-base", base, "HEAD").strip()
+    was, now = files_at(root, fork), files_at(root, "HEAD")
+    parsed: dict[str, list[tuple[int, str]]] = {}  # by blob: a file the PR leaves is read once
+
+    def shapes_of(path: str, held: dict[str, tuple[str, str]]) -> list[tuple[int, str]]:
+        """Return the shapes of `path` as `held` holds it; a file it does not hold has none."""
+        if path not in held:
+            return []
+        blob, text = held[path]
+        if blob not in parsed:
+            parsed[blob] = shapes(path, text)
+        return parsed[blob]
+
+    count = sum(len(shapes_of(f, was)) for f in was), sum(len(shapes_of(f, now)) for f in now)
+    print(f"patch shapes, repo wide: {count[0]} -> {count[1]}")
+    out: set[tuple[str, int, str]] = set()
     added = pr_added_lines(root, base)
-    changed_code = sorted(
-        f
-        for f in pr_files(root, base, "AMT")
-        if f.endswith(SHAPED_SUFFIXES) and behavior_change(root, base, f)
-    )
-    out = []
-    for f in changed_code:
-        source = pr_source(root, f)
-        lines = added.get(f, set())
-        found = python_patches(source, lines) if f.endswith(".py") else js_patches(f, source, lines)
-        out.extend(f"{f}:{line}: {what}" for line, what in found)
-    return out
+    for f in pr_files(root, base, "AMT"):
+        if f not in now or code_identical(root, base, f):
+            continue
+        source = now[f][1]
+        out.update((f, line, what) for line, what in shapes(f, source, added.get(f, set())))
+        held = set(shapes_of(f, was))
+        kept = unchanged(was[f][1], source) if f in was else {}  # a new file: every line added
+        out.update(
+            (f, line, what)
+            for line, what in shapes_of(f, now)
+            if line in kept and (kept[line], what) not in held
+        )
+    found = [f"{f}:{line}: {what}" for f, line, what in sorted(out)]
+    for config in _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0"):
+        if config.rsplit("/", 1)[-1] not in RUFF_CONFIGS:
+            continue
+        safety = fix_safety(root, root / config)
+        if safety is None or takes_unsafe(safety):
+            found.append(
+                f"{config}: ruff's settings take an unsafe fix, or ruff cannot read them; "
+                "no unsafe fix is taken, in any file"
+            )
+    return found
 
 
 def body_violations(body: str) -> list[str]:
@@ -619,7 +713,7 @@ def main(argv: list[str] | None = None) -> int:
         found = violations(Path.cwd(), a.base)
         if a.body_file:
             found += body_violations(a.body_file.read_text(encoding="utf-8"))
-    except (ToolError, OSError) as e:
+    except (ToolError, OSError, UnicodeDecodeError, ValueError) as e:  # ValueError: a blob missing
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
     sys.stdout.reconfigure(encoding="utf-8")  # a file name may hold any character

@@ -264,25 +264,26 @@ def test_4_a_malformed_payload_fails_safely_and_poisons_nothing(tmp_path):
     assert ok.returncode == 0 and ok.stderr == "", ok.stderr
 
 
-def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_blocks(tmp_path):
-    """The live-checkout rail reads git TOPOLOGY, never a path name: app code is free in a
-    linked worktree, refused in a primary checkout, refused from a linked worktree INTO the
-    primary; non-app paths (tests, governance, docs, scratch) pass everywhere; and a checkout
-    whose `.git` file is unreadable garbage is judged as a primary — it fails CLOSED."""
+def test_5_every_file_is_free_in_a_worktree_and_refused_in_the_production_checkout(tmp_path):
+    """The live-checkout rail reads git TOPOLOGY, never a path name.
+
+    Every file is free in a linked worktree, refused in a primary checkout, refused from a linked
+    worktree INTO the primary, tests, governance, docs and reports as much as app code (everything
+    is repo wide, operator 2026-11-04); a file outside every checkout passes; and a checkout whose
+    `.git` file is unreadable garbage is judged as a primary — it fails CLOSED.
+    """
     primary, linked = _primary_and_linked(tmp_path)
-    for target in (
-        ROOT / "tests" / "test_hook_chain_v1.py",
-        ROOT / "governance" / "root_cause_log.md",
-        ROOT / "docs" / "playwright.md",
-        tmp_path / "anything.py",
+    r = _chain(edit(tmp_path / "anything.py"))
+    assert r.returncode == 0, r.stderr
+    for rel in (
+        "server.py",
+        "tools/operator_law_guard.py",
+        "static/index.html",
+        "tests/test_x.py",
+        "governance/row.md",
+        "docs/note.md",
+        "reports/out.json",
     ):
-        r = _chain(edit(target))
-        assert r.returncode == 0, (target, r.stderr)
-    for root in (primary, linked):
-        for rel in ("tests/test_x.py", "governance/row.md", "docs/note.md", "reports/out.json"):
-            r = _chain(edit(root / rel), root=root)
-            assert r.returncode == 0, (root.name, rel, r.stderr)
-    for rel in ("server.py", "tools/operator_law_guard.py", "static/index.html"):
         free = _chain(edit(linked / rel), root=linked)
         assert free.returncode == 0, (rel, free.stderr)
         prod = _chain(edit(primary / rel), root=primary)
@@ -293,7 +294,7 @@ def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_
     (garbage / ".git").write_text("this is not a gitdir pointer\n", encoding="utf-8")
     r = _chain(edit(garbage / "server.py"), root=garbage)
     assert r.returncode == 2 and "PROD_CHECKOUT_EDIT" in r.stderr, r.stderr
-    assert _chain(edit(garbage / "tests" / "t.py"), root=garbage).returncode == 0
+    assert _chain(edit(garbage / "tests" / "t.py"), root=garbage).returncode == 2
 
 
 def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_the_primarys(
@@ -321,6 +322,10 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
             target,
             cross.stderr,
         )
+    own = _chain(bash("echo x > notes.md", cwd=nested), root=nested)
+    assert own.returncode == 0 and own.stderr == "", own.stderr
+    cross = _chain(bash(f'echo x > "{primary / "notes.md"}"', cwd=nested), root=nested)
+    assert cross.returncode == 2 and "PROD_CHECKOUT_EDIT" in cross.stderr, cross.stderr
 
 
 def test_6_a_dev_worktree_commits_freely_production_refuses_moves_and_masked_forms_block(

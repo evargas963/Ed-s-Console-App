@@ -49,6 +49,18 @@ def _pr(tmp_path: Path, files: dict[str, str | None]) -> Path:
     return root
 
 
+def test_a_tool_reading_a_schwab_field_another_module_reads_is_refused(tmp_path):
+    """One reader per field across all code, tools included.
+
+    Only the tests read Schwab's captured answers on their own, to check the code independently.
+    """
+    root = _pr(tmp_path, {"tools/inventory.py": 'def last(q):\n    return q["LAST_PRICE"]\n'})
+    assert cor.violations(root, "main") == [
+        "LAST_PRICE: read raw by 2 modules, 1 before (added tools/inventory.py); "
+        "one module reads a Schwab field"
+    ]
+
+
 def test_a_second_module_reading_a_schwab_field_raw_is_refused(tmp_path):
     root = _pr(
         tmp_path,

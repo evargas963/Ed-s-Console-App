@@ -9,7 +9,7 @@ list is read from the base and from the pull request, so removing a row does not
 A module reads a field raw when its code takes it out of a mapping by that name: `x["NAME"]`,
 `x.get("NAME")`, `x.pop("NAME")` or `"NAME" in x` / `not in x`, the name written as text or as a
 module-level constant holding it (`K = "LAST_PRICE"` ... `x.get(K)`). A write (`x["NAME"] = v`) is
-not a read. For each field, the product Python modules (`check_end_to_end.is_product`) that read it
+not a read. For each field, the Python modules of every folder but `tests/` that read it
 are found at the merge base and on the pull request, and the pull request is refused when a module
 that did not read the field at the merge base reads it and the field is then read by more than one
 module. Moving a field's one reader and bringing readers into one parser pass; renaming one of
@@ -38,8 +38,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-
-from tools.check_end_to_end import is_product
 
 FIELDS_CSV = "docs/schwab_fields.csv"
 #: Schwab's own spelling: an uppercase streamer field (one word or UPPER_SNAKE) or a camelCase
@@ -124,10 +122,14 @@ def fields_read(src: str, fields: set[str]) -> set[str]:
 
 
 def readers(root: Path, rev: str, fields: set[str]) -> dict[str, set[str]]:
-    """field -> the product modules at `rev` that read it raw."""
+    """Map each field to the modules at `rev` that read it raw.
+
+    Every Python file but the tests, which read Schwab's captured answers themselves to check the
+    code on its own terms (operator 2026-11-04: "test should remain independent").
+    """
     out: dict[str, set[str]] = {}
     for path in _git(root, "ls-tree", "-r", "--name-only", rev).splitlines():
-        if not (path.endswith(".py") and is_product(path)):
+        if not path.endswith(".py") or path.startswith("tests/"):
             continue
         try:
             names = fields_read(_git(root, "show", f"{rev}:{path}"), fields)
@@ -142,10 +144,21 @@ def _field_list(root: Path, rev: str) -> set[str]:
     return schwab_fields(_git(root, "show", f"{rev}:{FIELDS_CSV}"))
 
 
+def second_readers(found: dict[str, set[str]]) -> int:
+    """Each module reading a Schwab field beyond its one reader, over the whole repository."""
+    return sum(len(mods) - 1 for mods in found.values())
+
+
 def violations(root: Path, base: str) -> list[str]:
     fork = _git(root, "merge-base", base, "HEAD").strip()
     fields = _field_list(root, fork) | _field_list(root, "HEAD")
     before, after = readers(root, fork, fields), readers(root, "HEAD", fields)
+    # one field list on both sides, so the count rises only by a module joining a field's readers,
+    # which is refused below
+    print(
+        "second readers of Schwab fields, repo wide: "
+        f"{second_readers(before)} -> {second_readers(after)}"
+    )
     out = []
     for name in sorted(after):
         was = before.get(name, set())
@@ -166,9 +179,11 @@ def main(argv: list[str] | None = None) -> int:
     root = Path.cwd()
     try:
         if a.list:
-            for name, mods in sorted(readers(root, "HEAD", _field_list(root, "HEAD")).items()):
+            found = readers(root, "HEAD", _field_list(root, "HEAD"))
+            for name, mods in sorted(found.items()):
                 if len(mods) > 1:
                     print(f"{name}: {len(mods)} modules: {', '.join(sorted(mods))}")
+            print(f"second readers of Schwab fields, repo wide: {second_readers(found)}")
             return 0
         if not a.base:
             ap.error("--base or --list")
