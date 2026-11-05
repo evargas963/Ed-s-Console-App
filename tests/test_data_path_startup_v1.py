@@ -136,13 +136,14 @@ def test_the_daemon_its_batch_starts_has_its_window_as_error_output(tmp_path):
     }
     subprocess.Popen(launch.daemon_window(home / "start_capture_daemon.bat"), cwd=home, env=env)
     try:
-        end = time.monotonic() + 60
-        while not noted.exists() and time.monotonic() < end:
+        for _ in range(600):  # up to 60 s for the window to start the daemon
+            if noted.exists():
+                break
             time.sleep(0.1)
         assert noted.read_text(encoding="utf-8") == "True"
     finally:
         for p in psutil.process_iter(["cmdline"]):
-            if str(home) in " ".join(p.info["cmdline"] or []):
+            if p.info["cmdline"] and str(home) in " ".join(p.info["cmdline"]):
                 p.kill()
 
 
