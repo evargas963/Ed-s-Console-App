@@ -1074,7 +1074,7 @@ def stop_on_interrupt(stop: asyncio.Event, loop: asyncio.AbstractEventLoop) -> N
     `launch.py stop` asks for: everything held is written, then it exits EXIT_STOPPED and its
     window closes. A second press ends it at once (KeyboardInterrupt, main)."""
 
-    def interrupted(signum, _frame) -> None:
+    def interrupted(_signum, _frame) -> None:
         log.warning("Ctrl+C: stopping cleanly; press it again to end at once")
         for sig in INTERRUPTS:
             signal.signal(sig, signal.default_int_handler)

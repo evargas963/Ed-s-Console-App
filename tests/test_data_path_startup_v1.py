@@ -182,8 +182,8 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             timeout=30,
         )
         assert window_mode.returncode == 0, window_mode.stderr
-        # selecting text holds only the window (its writer thread), never the program
-        # (test_daemon_log_v1.test_a_window_that_holds_its_writes_never_stops_the_daemon)
+        # selecting text holds only the window, written by a thread of its own, never the program:
+        # the daemon log test of a window that holds its writes shows it
         assert int(window_mode.stdout) & QUICK_EDIT, "the operator can select text to read it"
         stopped = subprocess.run(
             [sys.executable, "launch.py", "stop"],

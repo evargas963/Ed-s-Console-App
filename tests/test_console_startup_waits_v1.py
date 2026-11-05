@@ -15,8 +15,6 @@ import threading
 import time
 from pathlib import Path
 
-import pytest
-
 import launch
 import time_et
 from app.market_data.schwab.streaming import capture
@@ -75,13 +73,13 @@ def run_until(env: dict, done) -> str:
     return "".join(lines)
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Ctrl+Break is a Windows console event")
 def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     """Ctrl+C or Ctrl+Break in the program's window asks for its one clean stop, as
     `launch.py stop` does: it says so, writes what it holds, and exits EXIT_STOPPED, which its
-    window does not restart. The real program in a process group of its own, sent Ctrl+Break
-    (Windows sends a console event to another program's group as Ctrl+Break, not Ctrl+C; both
-    take the same handler, capture.INTERRUPTS)."""
+    window does not restart. The real program in a process group of its own, sent Ctrl+Break on
+    Windows (Windows sends a console event to another program's group as Ctrl+Break, not
+    Ctrl+C; both take the same handler, capture.INTERRUPTS), Ctrl+C's SIGINT elsewhere."""
+    windows = sys.platform == "win32"
     env, pages = program_env(tmp_path)
     program = subprocess.Popen(
         [sys.executable, *launch.DAEMON_START],
@@ -91,7 +89,7 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
         encoding="utf-8",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
     )
     lines: list = []
     threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
@@ -101,7 +99,7 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
             assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
             time.sleep(0.25)
         assert launch.unhealthy_for(pages, 30) is None  # a page request, as the browser makes
-        os.kill(program.pid, signal.CTRL_BREAK_EVENT)
+        os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
         code = program.wait(90)
     finally:
         if program.poll() is None:
