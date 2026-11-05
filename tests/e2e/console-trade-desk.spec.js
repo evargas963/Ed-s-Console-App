@@ -801,11 +801,14 @@ test.describe('Trade Desk renders served values', () => {
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       await page.mouse.move(0, 0);
       // what the chart draws: every canvas's pixels and the chart's DOM (its labels and
-      // controls). A screenshot of the same drawing differs by a level in a few anti-aliased
-      // pixels under load, so the drawing itself is compared, not a capture of it.
+      // controls: each element, its attributes in name order, its text). A screenshot of the same
+      // drawing differs by a level in a few anti-aliased pixels under load, and the order the
+      // chart library writes a canvas's attributes in varies, so the drawing itself is compared.
       return page.evaluate(() => {
         const host = document.getElementById('tdmChart');
-        return { canvases: Array.from(host.querySelectorAll('canvas'), (c) => c.toDataURL()), dom: host.innerHTML };
+        const tree = (n) => n.nodeType === Node.TEXT_NODE ? n.textContent
+          : [n.nodeName, Array.from(n.attributes || [], (a) => [a.name, a.value]).sort(), Array.from(n.childNodes, tree)];
+        return { canvases: Array.from(host.querySelectorAll('canvas'), (c) => c.toDataURL()), dom: tree(host) };
       });
     }
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
