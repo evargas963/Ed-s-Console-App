@@ -864,6 +864,9 @@ class Daemon:
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
+        for svc in OPTION_LIMITS:  # an option contract's hold ends with its connection
+            for sym in self.held[svc]:
+                self.bus.forget(_current_key(svc, sym))
         self.asked = {k: frozenset() for k in SERVICES}
         self.held = {k: frozenset() for k in SERVICES}
         if s is not None:
@@ -1196,8 +1199,8 @@ async def run_chains(
 ) -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own thread, so the
     stream never waits on a chain; each chain part is published on the event loop, and the bus
-    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). Every contract's
-    Greeks are its quote's. A chain whose history write
+    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). The sweep reads
+    each option's LEVELONE_OPTIONS record from the bus for its Greeks. A chain whose history write
     fails is kept by `failures`, the daemon's writer (its failures ride the heartbeat). A sweep
     that ends on an error is logged with it (_worker_ended): its thread has no error output of
     its own to reach. It ends with the sweep."""

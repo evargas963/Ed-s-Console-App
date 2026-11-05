@@ -273,13 +273,13 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   for the date (`time_et.auction`); inside them the number stands and a line says the auction
   imbalance is a different number, not shown (continuous trading runs through them).
   The books streamed are every watchlist ticker's. For each option contract the daemon holds
-  (the option rule, below), each field the stream carries (gamma, delta, open interest, volume,
-  IV) is the newest value Schwab sent (`math_exposure_core.overlay_streamed_contract_fields`):
-  neither source carries a Schwab time for these fields, so the receive times decide -- a field
-  streamed after the chain was fetched replaces the chain's, one streamed before it (yesterday's
-  open interest under today's chain) does not (the feed's state labels the heatmap leg, it never
-  picks the value). Every other field is the chain's, its
-  Greeks from Schwab's quotes (Option chain, below). A book message is the book Schwab sent, a
+  (the option rule, below), each field has one producer, whichever arrived last: its volume is
+  the stream's (`math_exposure_core.overlay_streamed_contract_fields`; one the stream has not sent
+  shows "-"), its Greeks the stream's as the sweep took them (Option chain, below), and its open
+  interest the chain's, for every contract: the stream does not send it for every contract it
+  streams (measured 2026-11-05: none all day for 137 of 375 streamed, while the chain sent each
+  one's). The feed's state labels the heatmap leg; it never picks the value. A contract the
+  daemon does not hold takes every field from the chain, its Greeks from Schwab's quotes. A book message is the book Schwab sent, a
   side with no levels included (empty, never replaced by an older two-sided book); a side Schwab
   sent no level for at a price is absent in the book heatmap, never a 0 size. The book heatmap and
   the options tape serve from the console's memory (§3.3), never the database. Mid and microprice
@@ -472,17 +472,29 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   (`Daemon._took_chain`); every calculator, the carry rules, the gamma surface and /api/chain
   (`option_contract.chain_row`) take the record. Enforced by: `tests/test_canonical_gex_input_validity_v1.py`,
   `tools/check_one_reader.py`. The Greeks (gamma, delta, theta, vega, rho,
-  volatility) are the quote's, every contract, every ticker. The chain sends them rounded, which
-  Schwab cannot change (Schwab Trader API Support, 2026-10-06), and the sweep does not keep
-  them (measured 2026-10-01, SPY 261120C00875000: chain gamma 0.0, quote gamma 0.00037225; on
-  SPY's 2026-11-20 column 86 of 221 cells with open interest read $0 GEX on the chain's gamma).
-  Operator, 2026-10-01: "use what schwab gives us... no rounding, use the exact data that schwab
-  gives us everywhere". `/quotes` is the one service that carries those six fields for every
-  contract (`quotes.quote`, `docs/schwab_fields.csv`). The stream is not read for them, and a
-  later stream tick does not replace them. Every contract is asked for on `/quotes`,
-  comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API
-  Support 2026-10-06: not more than 300), and takes its quote's, as sent. Each contract carries
-  the time of its Greeks as Schwab sent it, `greeksTime` ({field: ms}: the quote's `quoteTime`).
+  volatility) are never the chain's: the chain sends them rounded, which Schwab cannot change
+  (Schwab Trader API Support, 2026-10-06; measured 2026-10-01, SPY 261120C00875000: chain gamma
+  0.0, quote gamma 0.00037225; on SPY's 2026-11-20 column 86 of 221 cells with open interest
+  read $0 GEX on the chain's gamma). Operator, 2026-10-01: "use what schwab gives us... no
+  rounding, use the exact data that schwab gives us everywhere". What Schwab pushes is taken
+  from the push and never asked for again; REST is asked only for what the stream does not send
+  (operator 2026-11-05; Schwab Streamer API §1.1 and §1.5: LEVELONE_OPTIONS is delivered on
+  Change). A contract whose LEVELONE_OPTIONS record on the daemon's bus
+  (`Daemon.option_record`) carries all six as values (`option_contract.streamed_greeks`, the one
+  reader of those stream fields) takes the stream's, each with its field's Schwab time, and is
+  not asked for on `/quotes`. A contract's Greeks are one set, never some from the stream and
+  some from `/quotes` (`option_contract.streamed_greek_set`), and they are the chain's: the
+  console's levels take them as the sweep set them, and no streamed tick replaces them between
+  chains (a live update without a second copy waits for SHAPE's one store). An option record
+  ends with its hold: the daemon forgets it when Schwab drops the contract or the connection
+  ends (`Daemon.disconnect`), so the next hold starts from what Schwab sends then. Every other
+  contract (the stream holds at most 3,000, Schwab Trader API Support 2026-10-12) is asked for
+  on `/quotes`, comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab
+  Trader API Support 2026-10-06: not more than 300), and takes its quote's, as sent. Each
+  contract carries the time of its Greeks as Schwab sent it, `greeksTime` ({field: ms}: the
+  stream field's time, or the quote's `quoteTime`). Enforced by:
+  `tests/test_data_path_rest_one_connection_v1.py` (a contract the stream holds is not asked
+  for on `/quotes`).
   Outside that ticker's option window — after it has ended, and before the next one opens —
   a quote that does not report a greek leaves the greek the last quote reported, and an open
   interest or volume of zero leaves the last count above zero. A missing count and Schwab's
@@ -635,7 +647,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   reads feed down within 3 s. The
   console keeps the daemon's last price rows through that silence and through a dropped
   connection; a newer row replaces one when the push returns. The contracts that beat last
-  named keep the quote's greeks on the levels; those cells are not live. The last
+  named keep their last streamed greeks on the levels; those cells are not live. The last
   watchlist stands through that silence; the page says the daemon is not reporting.
 - **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
   resets it, and the window it sums (its first and last print's Schwab trade time,
@@ -742,7 +754,7 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
    heartbeat keeps that last subscription, and the panel says OFFLINE; a held contract whose option
    market is closed says NOT LIVE (`streaming.get_option_contract_streaming_diagnostics`, the Flow
    badge). A missing
-   heartbeat keeps the quote's greeks on the levels; the cells are not live. A feed
+   heartbeat keeps the last streamed greeks on the levels; the cells are not live. A feed
    down while the market is closed keeps the last price and the book, and that panel says
    OFFLINE (`live_market_plane.outage`). A strike's session volume and open interest keep
    every digit Schwab sent (`terrain_engine._per_strike_rows`,

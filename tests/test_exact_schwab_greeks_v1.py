@@ -21,12 +21,11 @@ from datetime import datetime
 
 import pytest
 
-import schwab_client as sc
 import server
 import time_et
 from calibration.complete_chain_capture import ChainSweep
 from numeric_contract import schwab_count
-from option_contract import read_chain
+from option_contract import GREEK_FIELDS, read_chain
 from stream_spine import CaptureWriter
 from terrain_engine import compute_terrain
 from tests.schwab_rest_standin import SPY, SPY_QUOTES, LocalSchwab, delivered
@@ -98,12 +97,12 @@ def test_every_contract_carries_its_quotes_greeks_as_sent_and_none_of_the_chains
     contracts = fetched()
     assert len(contracts) == len(SPY["chain"]) == 442
     for ct in contracts:
-        for f in sc.GREEK_FIELDS:
+        for f in GREEK_FIELDS:
             assert ct[f] == _QUOTED[ct["symbol"]][f], (ct["symbol"], f)
     rounded = {
         (c["symbol"], f)
         for c in SPY["chain"]
-        for f in sc.GREEK_FIELDS
+        for f in GREEK_FIELDS
         if c[f] != _QUOTED[c["symbol"]][f]
     }
     assert len(rounded) > 1000, "the chain's rounding is what this replaces"
@@ -144,5 +143,5 @@ def test_a_contract_whose_quote_did_not_come_back_has_no_greek_never_the_chains(
     chain's rounded 0.0."""
     contracts = fetched(withheld={_CALL_875})
     call = next(c for c in contracts if c["symbol"] == _CALL_875)
-    assert all(call[f] is None for f in sc.GREEK_FIELDS)
+    assert all(call[f] is None for f in GREEK_FIELDS)
     assert _column(contracts)[875.0][0] is None

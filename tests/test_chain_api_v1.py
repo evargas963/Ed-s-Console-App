@@ -1,6 +1,6 @@
 """GET /api/chain: one expiry of the full chain the daemon delivered (strike_range=ALL), every
 Schwab field as sent. A newer streamed open interest or volume replaces the chain's. Gamma, delta,
-and volatility stay the quote the sweep stored.
+and volatility stay the chain's, as the sweep took them.
 
 Through the real code: the levels producer holds the chain (server._publish_levels), the daemon's
 status and pushed option messages reach the console (live_market_plane.record_feed_heartbeat,
@@ -125,9 +125,9 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
 
 
 def test_a_later_streamed_gamma_does_not_replace_the_quote():
-    """Open interest and volume take the newer receive time. Gamma stays the quote the sweep
-    stored: a gamma streamed after the chain does not replace it. A volume streamed before the
-    chain keeps the chain's volume. A field the stream never sent keeps the chain's."""
+    """A streamed contract's volume is the stream's, even one streamed before the chain. Gamma
+    stays the chain's, as the sweep took it: a gamma streamed after the chain does not replace
+    it. Open interest is the chain's."""
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]
     volume, gamma = (target["totalVolume"] or 0) + 4321, (target["gamma"] or 0) + 0.05
@@ -143,10 +143,10 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
     )
     body = _get(ticker="TSLA")
     overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["totalVolume"] == target["totalVolume"] and overlaid["gamma"] == target["gamma"]
+    assert overlaid["totalVolume"] == volume and overlaid["gamma"] == target["gamma"]
     assert overlaid["gamma"] != gamma
-    assert overlaid["openInterest"] == target["openInterest"]  # never streamed: the chain's
-    assert body["stream_overlay_contracts"] == 0
+    assert overlaid["openInterest"] == target["openInterest"]  # the chain's
+    assert body["stream_overlay_contracts"] == 1
 
 
 def test_the_route_answers_over_real_http():

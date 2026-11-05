@@ -86,7 +86,7 @@ from math_exposure_core import (
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from option_contract import OptionContract, chain_row, read_chain
+from option_contract import GREEK_FIELDS, OptionContract, chain_row, read_chain
 from runtime_layout import logs_dir as _runtime_logs_dir
 from terrain_atr import Atr, compute_atrs, roll_up
 from terrain_engine import (
@@ -1019,7 +1019,7 @@ def _next_gamma_surface_seq(tk: str) -> int:
 def _streamed_greeks_for_ticker(
     listed: frozenset, now: float, feed: lmp.FeedNow | None = None
 ) -> dict:
-    """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon's
+    """The newest streamed Greeks, OPEN_INTEREST and VOLUME of every contract the daemon's
     latest beat holds of the ticker's chain (`listed`, the symbols Schwab listed in it). A
     missing beat keeps that set. `feed` is one read of that heartbeat; omitted, this call reads
     it."""
@@ -1058,10 +1058,7 @@ def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
     MAX (not a single hardcoded field) is the contract's own last-observed instant."""
     if not greeks:
         return None
-    candidates = [
-        greeks.get(k)
-        for k in ("gamma_ts_recv", "open_interest_ts_recv", "delta_ts_recv", "total_volume_ts_recv")
-    ]
+    candidates = [greeks.get(k) for k in ("gamma_ts_recv", "delta_ts_recv", "total_volume_ts_recv")]
     candidates = [c for c in candidates if isinstance(c, (int, float))]
     return max(candidates) if candidates else None
 
@@ -1397,8 +1394,6 @@ def _contract_ticker(sym: str) -> str | None:
         )
 
 
-#: a quote's values, carried together: its greeks with their volatility
-_QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 _QUOTE_COUNTS = ("open_interest", "volume")
 
 
@@ -1415,7 +1410,7 @@ def _carried(newer: OptionContract, older: OptionContract | None, replaced) -> O
         return newer
     taken = {}
     if newer.gamma is None and older.gamma is not None:
-        taken.update({f: getattr(older, f) for f in _QUOTE_GREEKS})
+        taken.update({f: getattr(older, f) for f in GREEK_FIELDS})
     for f in _QUOTE_COUNTS:
         if _positive(getattr(older, f)) and replaced(getattr(newer, f)):
             taken[f] = getattr(older, f)
@@ -1536,9 +1531,9 @@ def _publish_levels(
     streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", at.timestamp())
     held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
-    # each field the newest Schwab sent: the last streamed value received after this chain, else
-    # the chain's. The cell stamp says whether that stream is live.
-    priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
+    # a streamed contract's open interest and volume are the stream's, every other the chain's.
+    # The cell stamp says whether that stream is live.
+    priced, n_live = overlay_streamed_contract_fields(chain, streamed, held)
     if option_market_open(at, product) is False:
         priced = _keep_last_reported(priced, chain, at, product)
     live_syms = _overlaid_symbols(chain, priced)
@@ -3423,9 +3418,13 @@ def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
-    # each field the newest Schwab sent (the levels' own rule, _publish_levels)
+    # the levels' own rule (_publish_levels): a streamed contract's counts are the stream's
+    feed = lmp.feed_now(now)
+    listed = held["_contract_symbols"]
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _streamed_greeks_for_ticker(held["_contract_symbols"], now), fetched_ts
+        contracts,
+        _streamed_greeks_for_ticker(listed, now, feed),
+        set(_held_option_symbols_for_ticker(listed, now, feed)),
     )
     at = now_et()
     product = option_close_product(t)

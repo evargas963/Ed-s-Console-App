@@ -1,7 +1,7 @@
 """One option contract of a Schwab chain, read once (AGENTS.md rules 2, 3 and 12).
 
 `read_contract` is the one reader of a chain contract's fields (Schwab's /chains contract, with
-the sweep's quote Greeks, schwab_client.flatten_chain_contracts and
+the sweep's Greeks: the stream's or the quote's, schwab_client.flatten_chain_contracts and
 calibration.complete_chain_capture.ChainSweep). Every calculator, the console's carry rules, the
 gamma surface and /api/chain take the record; none reads the contract's fields again.
 `chain_row` is the record as the chain screens show it, under Schwab's own field names.
@@ -19,8 +19,11 @@ from numeric_contract import SCHWAB_NO_VALUE, schwab_count, schwab_number
 
 log = logging.getLogger("option_contract")
 
-#: the Greeks the chain carries, each Schwab's quote value (complete_chain_capture.GREEK_FIELDS)
+#: the Greeks the chain carries, each Schwab's stream or quote value
 GREEKS = ("gamma", "delta", "theta", "vega", "rho")
+#: the contract fields Schwab's chain sends rounded, which it cannot change (Schwab Trader API
+#: Support, 2026-10-06, item 6), and its quotes and its LEVELONE_OPTIONS stream send as computed
+GREEK_FIELDS = (*GREEKS, "volatility")
 #: the fields read into the record; every other field is the listing, shown as sent
 READ = frozenset(
     {
@@ -78,6 +81,37 @@ class OptionContract:
 
 def _greek(raw: Mapping, name: str, void: bool) -> float | None:
     return None if void else schwab_number(raw.get(name))
+
+
+def streamed_greeks(content: Mapping[str, Any]) -> dict[str, float | None]:
+    """Return the Greeks a contract's LEVELONE_OPTIONS record carries, under the contract's names.
+
+    The one reader of those stream fields (the chain sweep, the console's order-flow state and
+    its history). A field the record does not carry is left out (on Change delivery a message
+    carries only what changed); one it carries is as Schwab sent it (schwab_number), so Schwab's
+    -999 is None. The names are GREEK_FIELDS, each the stream field's name in lowercase.
+    """
+    sent = {
+        "gamma": content.get("GAMMA"),
+        "delta": content.get("DELTA"),
+        "theta": content.get("THETA"),
+        "vega": content.get("VEGA"),
+        "rho": content.get("RHO"),
+        "volatility": content.get("VOLATILITY"),
+    }
+    return {name: schwab_number(value) for name, value in sent.items() if value is not None}
+
+
+def streamed_greek_set(greeks: Mapping[str, Any]) -> dict[str, float] | None:
+    """Return all six Greeks of `greeks` (a contract's streamed Greeks) when each is a value.
+
+    A contract Schwab streams takes its Greeks from the stream as one set, never some from the
+    stream and some from the quotes endpoint: None when any is missing or no value, and the
+    contract's Greeks are then the quote's (the chain sweep).
+    """
+    if any(greeks.get(name) is None for name in GREEK_FIELDS):
+        return None
+    return {name: greeks[name] for name in GREEK_FIELDS}
 
 
 def _expires_at(raw: Any, symbol: Any) -> float | None:

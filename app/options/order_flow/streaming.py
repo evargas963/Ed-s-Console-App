@@ -144,9 +144,9 @@ _feed_running = False
 #: by ticker_storage_key.
 _option_contract_last_update_ts: dict[str, float] = {}
 
-#: Called with the symbol of every streamed equity quote and every option quote carrying
-#: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME (server._on_stream_tick: reprices a viewed
-#: ticker). Runs on the event loop, so it must return at once.
+#: Called with the symbol of every streamed equity quote and every option quote carrying a
+#: _REPRICE_FIELDS value (server._on_stream_tick: reprices a viewed ticker). Runs on the event
+#: loop, so it must return at once.
 _on_tick_callback: Callable[[str], None] | None = None
 _on_feed_callback: Callable[[float], None] | None = None
 _tick_callback_failures = 0
@@ -247,8 +247,9 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
         log.info("STREAM_DIAG %s", phase)
 
 
-#: the option quote fields the levels are priced from: a message carrying one reprices
-_REPRICE_FIELDS = ("GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
+#: the option quote fields the levels are priced from: a message carrying one reprices (a
+#: streamed contract's volume; its Greeks are the sweep's, its open interest the chain's)
+_REPRICE_FIELDS = ("TOTAL_VOLUME",)
 
 
 def _ingest_pushed(topic: str, msg: Any) -> None:

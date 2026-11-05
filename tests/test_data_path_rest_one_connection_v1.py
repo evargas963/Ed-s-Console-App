@@ -3,7 +3,8 @@ Schwab's host (tests/schwab_rest_standin.py, on the real schwab-py client as the
 for each ticker's expiration chain, the market hours of each expiry date not yet answered that
 day, its chain one expiry at a time and its contracts' quotes, 300 symbols to a request across
 tickers, one request at a time. Each chain reaches the bus with Schwab's exact Greeks and their
-times: the quote's, every contract, including one the stream holds.
+times: the stream's for a contract the stream holds (Daemon.option_record), which is not asked for
+on /quotes, the quote's for every other.
 
 Real data: the stand-in's (SPY 2026-11-20 chain and quotes, TSLA 2026-10-09 chain) and the
 LEVELONE_OPTIONS events of SPY 260904C00772000
@@ -14,6 +15,7 @@ Schwab's frame time (no captured stream of a 2026-11-20 contract carries its Gre
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import threading
@@ -130,7 +132,7 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
         )
         for path, q, *_ in first
     ]
-    n_quoted = len(SPY["chain"]) + len(TSLA["chain"])  # every contract, HELD included
+    n_quoted = len(SPY["chain"]) + len(TSLA["chain"]) - 1  # every contract but HELD
     assert asked == [
         (EXPIRATIONS, "SPY", None),
         (MARKETS, "2026-11-20", None),
@@ -152,8 +154,10 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
                 "ALL",
             )
     quoted = [s for path, q, *_ in first if path == QUOTES for s in q["symbols"].split(",")]
-    every = sorted(ct["symbol"] for _e, cts, _s in CHAINS.values() for ct in cts)
-    assert sorted(quoted) == every, "every contract, asked for once"
+    unheld = sorted(
+        ct["symbol"] for _e, cts, _s in CHAINS.values() for ct in cts if ct["symbol"] != HELD
+    )
+    assert sorted(quoted) == unheld, "every contract the stream does not hold, asked for once"
     across = [q["symbols"].split(",") for path, q, *_ in first if path == QUOTES][1]
     assert {s.split()[0] for s in across} == {"SPY", "TSLA"}, "a request is filled across tickers"
     assert all(b[2] >= a[3] for a, b in zip(first, first[1:])), "one request at a time"
@@ -163,11 +167,15 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 
     spy, tsla = delivered(published, "SPY"), delivered(published, "TSLA")
     assert len(spy) == len(SPY["chain"]) and len(tsla) == len(TSLA["chain"])
+    record = daemon.option_record(HELD)[1]
+    assert {f: spy[HELD][f] for f in GREEKS} == {f: record["content"][f.upper()] for f in GREEKS}
+    assert spy[HELD]["greeksTime"] == {f: record["field_ts"][f.upper()][0] for f in GREEKS}
     rounded = {ct["symbol"]: ct["gamma"] for ct in SPY["chain"]}
     for sym, ct in spy.items():
-        quote = SPY_QUOTES[sym]["quote"]
-        assert {f: ct[f] for f in GREEKS} == {f: quote[f] for f in GREEKS}, sym
-        assert ct["greeksTime"] == dict.fromkeys(GREEKS, quote["quoteTime"]), sym
+        if sym != HELD:
+            quote = SPY_QUOTES[sym]["quote"]
+            assert {f: ct[f] for f in GREEKS} == {f: quote[f] for f in GREEKS}, sym
+            assert ct["greeksTime"] == dict.fromkeys(GREEKS, quote["quoteTime"]), sym
     assert any(rounded[s] != spy[s]["gamma"] for s in spy), (
         "the chain's rounded Greeks are not kept"
     )
@@ -299,6 +307,22 @@ def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a
     assert idle, "the close values stand: nothing more is asked for until the next session"
 
 
+def test_a_held_contracts_record_ends_with_its_connection(tmp_path):
+    """The connection ends and the next one holds HELD again: until Schwab sends HELD on the new
+    connection, the sweep has no stream record of it, so it is asked of the quotes endpoint
+    rather than priced on the ended connection's Greeks."""
+    schwab = LocalSchwab()
+    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    asyncio.run(daemon.disconnect())
+    daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})  # Schwab accepted it on the new one
+    assert daemon.option_record(HELD) is None
+    try:
+        assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
+    finally:
+        schwab.close()
+    assert HELD in [s for q in schwab.asked(QUOTES) for s in q["symbols"].split(",")]
+
+
 def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path):
     """The stream's connection ends (it holds nothing): HELD's record from that connection is
     still on the bus, and its Greeks are asked of the quotes endpoint, never taken from a feed
@@ -368,7 +392,7 @@ def test_contracts_schwab_names_invalid_get_no_greeks_and_every_ticker_in_the_re
     assert len(spy) == len(SPY["chain"]) + len(named)
     assert all(spy[s][f] is None and spy[s]["greeksTime"] is None for s in named for f in GREEKS)
     for sym, ct in spy.items():
-        if sym not in named:
+        if sym not in named and sym != HELD:
             assert {f: ct[f] for f in GREEKS} == {f: SPY_QUOTES[sym]["quote"][f] for f in GREEKS}, (
                 sym
             )
