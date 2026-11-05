@@ -107,7 +107,7 @@ def streamed_greek_set(greeks: Mapping[str, Any]) -> dict[str, float] | None:
 
     A contract Schwab streams takes its Greeks from the stream as one set, never some from the
     stream and some from the quotes endpoint: None when any is missing or no value, and the
-    contract's Greeks are then the quote's (the chain sweep, the console's overlay).
+    contract's Greeks are then the quote's (the chain sweep).
     """
     if any(greeks.get(name) is None for name in GREEK_FIELDS):
         return None

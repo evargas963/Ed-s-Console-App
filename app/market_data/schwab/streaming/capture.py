@@ -861,6 +861,9 @@ class Daemon:
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
+        for svc in OPTION_LIMITS:  # an option contract's hold ends with its connection
+            for sym in self.held[svc]:
+                self.bus.forget(_current_key(svc, sym))
         self.asked = {k: frozenset() for k in SERVICES}
         self.held = {k: frozenset() for k in SERVICES}
         if s is not None:

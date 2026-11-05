@@ -245,7 +245,7 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
 
 
 #: the option quote fields the levels are priced from: a message carrying one reprices
-_REPRICE_FIELDS = ("GAMMA", "DELTA", "VOLATILITY", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
+_REPRICE_FIELDS = ("GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
 
 
 def _ingest_pushed(topic: str, msg: Any) -> None:

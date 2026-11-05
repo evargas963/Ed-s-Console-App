@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 
 from numeric_contract import float_finite_or_none
-from option_contract import OptionContract, streamed_greek_set
+from option_contract import OptionContract
 from time_et import time_to_expiry_years
 
 
@@ -328,7 +328,8 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
 #: streamed-state key (app.options.order_flow.state, read by schwab_count) -> the record field it
-#: replaces. A newer streamed open interest or volume replaces the chain's.
+#: replaces. A newer streamed open interest or volume replaces the chain's. Gamma, delta, and
+#: volatility do not: those are the chain's, which the sweep took once for each contract.
 _STREAMED_COUNT_FIELDS: tuple[tuple[str, str], ...] = (
     ("open_interest", "open_interest"),
     ("total_volume", "volume"),
@@ -340,14 +341,12 @@ def overlay_streamed_contract_fields(
     streamed_by_symbol: dict[str, dict],
     chain_received_ts: float | None,
 ) -> tuple[list[OptionContract], int]:
-    """Lay each contract's streamed Greeks, open interest and volume onto it, by `symbol`.
-
-    The Greeks of a contract Schwab streams are the stream's, as one set (streamed_greek_set):
-    all six, whenever the stream holds a value for each, so a contract never carries some Greeks
-    from the stream and some from the quotes endpoint; while any is missing or no value, the
-    chain's set stands. For open interest and volume the receive times decide: a streamed field
-    (`<field>_ts_recv`) received after the chain (`chain_received_ts`) replaces the chain's; one
-    received before it does not. A chain with no receive time is replaced by every streamed one.
+    """A contract's streamed open interest and volume onto the chain, matched by `symbol`.
+    Gamma, delta, and volatility stay the chain's: the sweep's, the stream's for a contract it
+    streams, else the quote's. For open interest and volume the receive times decide: a streamed
+    field (`<field>_ts_recv`) received after the chain (`chain_received_ts`) replaces the chain's;
+    one received before it does not. A chain with no receive time is replaced by every streamed
+    open interest and volume.
 
     Pure: a contract that gets a field is a new record, every other the same one. Returns
     (new_contracts, overlaid_count).
@@ -360,24 +359,19 @@ def overlay_streamed_contract_fields(
     overlaid = 0
     for c in contracts:
         streamed = streamed_by_symbol.get(c.symbol) if c.symbol else None
-        newer = {}
-        if streamed and (greeks := streamed_greek_set(streamed)) is not None:
-            newer.update({name: v for name, v in greeks.items() if getattr(c, name) != v})
-        newer.update(
-            {
-                name: streamed[key]
-                for key, name in _STREAMED_COUNT_FIELDS
-                if streamed
-                and streamed.get(key) is not None
-                and (
-                    chain_received_ts is None
-                    or (
-                        streamed.get(f"{key}_ts_recv") is not None
-                        and streamed[f"{key}_ts_recv"] > chain_received_ts
-                    )
+        newer = {
+            name: streamed[key]
+            for key, name in _STREAMED_COUNT_FIELDS
+            if streamed
+            and streamed.get(key) is not None
+            and (
+                chain_received_ts is None
+                or (
+                    streamed.get(f"{key}_ts_recv") is not None
+                    and streamed[f"{key}_ts_recv"] > chain_received_ts
                 )
-            }
-        )
+            )
+        }
         overlaid += bool(newer)
         out.append(replace(c, **newer) if newer else c)
     return out, overlaid

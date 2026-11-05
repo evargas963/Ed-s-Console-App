@@ -15,6 +15,7 @@ Schwab's frame time (no captured stream of a 2026-11-20 contract carries its Gre
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import threading
@@ -303,6 +304,22 @@ def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a
         "chain for 2026-10-09 returned HTTP 502"
     ]
     assert idle, "the close values stand: nothing more is asked for until the next session"
+
+
+def test_a_held_contracts_record_ends_with_its_connection(tmp_path):
+    """The connection ends and the next one holds HELD again: until Schwab sends HELD on the new
+    connection, the sweep has no stream record of it, so it is asked of the quotes endpoint
+    rather than priced on the ended connection's Greeks."""
+    schwab = LocalSchwab()
+    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    asyncio.run(daemon.disconnect())
+    daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})  # Schwab accepted it on the new one
+    assert daemon.option_record(HELD) is None
+    try:
+        assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
+    finally:
+        schwab.close()
+    assert HELD in [s for q in schwab.asked(QUOTES) for s in q["symbols"].split(",")]
 
 
 def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path):

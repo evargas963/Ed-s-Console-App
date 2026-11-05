@@ -483,10 +483,11 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   (`Daemon.option_record`) carries all six as values (`option_contract.streamed_greeks`, the one
   reader of those stream fields) takes the stream's, each with its field's Schwab time, and is
   not asked for on `/quotes`. A contract's Greeks are one set, never some from the stream and
-  some from `/quotes` (`option_contract.streamed_greek_set`): on the levels
-  (`math_exposure_core.overlay_streamed_contract_fields`) a contract the stream holds takes the
-  stream's six whenever the console holds a value for each, and while any is missing or sent
-  as -999 (which clears it, `app.options.order_flow.state`) the chain's set stands. Every other
+  some from `/quotes` (`option_contract.streamed_greek_set`), and they are the chain's: the
+  console's levels take them as the sweep set them, and no streamed tick replaces them between
+  chains (a live update without a second copy waits for SHAPE's one store). An option record
+  ends with its hold: the daemon forgets it when Schwab drops the contract or the connection
+  ends (`Daemon.disconnect`), so the next hold starts from what Schwab sends then. Every other
   contract (the stream holds at most 3,000, Schwab Trader API Support 2026-10-12) is asked for
   on `/quotes`, comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab
   Trader API Support 2026-10-06: not more than 300), and takes its quote's, as sent. Each
