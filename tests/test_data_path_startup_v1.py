@@ -42,6 +42,18 @@ from tests.capture_store import store_capture
 from tests.real_chains import CRWD, MRVL, NFLX
 
 REPO = Path(__file__).resolve().parent.parent
+#: prints the input mode of the console window process `argv[1]` runs in, read from that window
+WINDOW_MODE = (
+    "import ctypes, sys\n"
+    "k = ctypes.windll.kernel32\n"
+    "k.CreateFileW.restype = ctypes.c_void_p\n"
+    "k.FreeConsole()\n"
+    "assert k.AttachConsole(int(sys.argv[1])), 'no window to attach to'\n"
+    "h = k.CreateFileW('CONIN$', 0xC0000000, 3, None, 3, 0, None)\n"
+    "m = ctypes.c_uint32()\n"
+    "assert k.GetConsoleMode(ctypes.c_void_p(h), ctypes.byref(m)), 'no console mode'\n"
+    "sys.stdout.write(str(m.value))\n"
+)
 
 
 async def _until(cond, limit: float = 10.0) -> None:
@@ -157,6 +169,16 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             if (notes / str(p.pid)).exists()
         ]
         assert noted == ["True"], noted
+        daemon = launch.running(launch.DAEMON_START, home)[0].pid
+        window_mode = subprocess.run(
+            [sys.executable, "-c", WINDOW_MODE, str(daemon)],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=30,
+        )
+        assert window_mode.returncode == 0, window_mode.stderr
+        assert int(window_mode.stdout) & capture.QUICK_EDIT == 0, "a click would pause the daemon"
         stopped = subprocess.run(
             [sys.executable, "launch.py", "stop"],
             cwd=home,
