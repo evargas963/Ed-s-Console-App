@@ -38,6 +38,7 @@ import psutil
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
+import time_et
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_PORT
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
 
@@ -215,9 +216,9 @@ def stop() -> int:
 def unhealthy_for(port: int, seconds: float) -> str | None:
     """None once the console on `port` answers /api/health with 200 within `seconds`; else the
     last answer it gave instead (an error status, a refused connection, a timeout)."""
-    deadline = time.monotonic() + seconds
+    deadline = time_et.elapsed() + seconds
     why = f"no answer in {seconds:.0f} s"
-    while (left := deadline - time.monotonic()) > 0:
+    while (left := deadline - time_et.elapsed()) > 0:
         try:
             with urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/api/health", timeout=min(left, 2.0)
@@ -227,7 +228,7 @@ def unhealthy_for(port: int, seconds: float) -> str | None:
                 why = f"HTTP {r.status}"
         except OSError as e:
             why = f"{type(e).__name__}: {e}"
-        time.sleep(min(0.25, max(deadline - time.monotonic(), 0)))
+        time.sleep(min(0.25, max(deadline - time_et.elapsed(), 0)))
     return why
 
 
@@ -266,11 +267,11 @@ def main() -> int:
     signal.signal(
         signal.SIGINT, signal.SIG_IGN
     )  # Ctrl+C is the console's: it stops, then this ends
-    started = time.monotonic()
+    started = time_et.elapsed()
     while console.poll() is None and unhealthy_for(CONSOLE_PORT, 1.0) is not None:
         pass
     if console.poll() is None:
-        print(f"Console: healthy {time.monotonic() - started:.1f} s after its start.")
+        print(f"Console: healthy {time_et.elapsed() - started:.1f} s after its start.")
         webbrowser.open(URL)
     return console.wait()
 

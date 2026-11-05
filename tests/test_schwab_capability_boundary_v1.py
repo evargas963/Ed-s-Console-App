@@ -19,12 +19,12 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import live_market_plane as lmp
 import schwab_client
 import server
+import time_et
 from app.market_data.schwab.streaming import capture
 from config import schwab_live_blocked_for
 from stream_spine import HealthRegistry, MessageBus
@@ -99,7 +99,7 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     assert payload["watchlist_tickers"] is None
 
     lmp.record_feed_heartbeat(
-        capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "$SPX"]).status(time.time())
+        capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "$SPX"]).status(time_et.now())
     )
     payload = server.health()
     assert payload["capabilities"] == {
@@ -108,7 +108,7 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
         "or its connection has just ended",
     }
 
-    now = time.time()
+    now = time_et.now()
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "watchlist": ["SPY", "$SPX"]})
     payload = server.health()
     assert payload["status"] == "ok"

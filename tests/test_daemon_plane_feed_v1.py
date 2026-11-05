@@ -10,11 +10,10 @@ tests/test_live_push_channel_v1.py.
 
 from __future__ import annotations
 
-import time
-
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import time_et
 from stream_spine import book_msg, quote_msg
 
 
@@ -62,7 +61,7 @@ def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, m
         "TRADE_TIME_MILLIS": 1000,
         "TOTAL_VOLUME": 5000,
     }
-    _push_l1("SPY", native, ts_recv=time.time())
+    _push_l1("SPY", native, ts_recv=time_et.now())
 
     top = ofls.get_content_for_symbol("SPY")
     assert any(item.get("LAST_PRICE") == 450.0 for item in top)
@@ -77,7 +76,7 @@ def test_book_message_lands_verbatim(tmp_path):
         "ASKS": [{"ASK_PRICE": 450.1, "ASK_SIZE": 200}],
         "BOOK_TIME": 555,
     }
-    _push_book("SPY", content, ts_recv=time.time())
+    _push_book("SPY", content, ts_recv=time_et.now())
 
     items = ofls.get_content_for_symbol("SPY")
     assert any(i.get("BIDS") == content["BIDS"] for i in items)
@@ -170,7 +169,7 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
     SPY's."""
     _reset(tmp_path)
     monkeypatch.setattr(lmp, "_by_ticker", {})
-    _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time.time())
+    _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time_et.now())
 
     assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
     assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))

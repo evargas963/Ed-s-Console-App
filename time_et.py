@@ -12,6 +12,7 @@ unknown. Past the year Schwab answers, a contract's expiry runs to its expiratio
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -43,9 +44,28 @@ def ct_clock(ts_utc: float) -> str:
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%H:%M:%S.%f")[:-3] + " CT"
 
 
+def now() -> float:
+    """Return now, in epoch seconds: the one reading of the computer's clock in the repository.
+
+    Every time of day the program uses (a value's age, whether it is live, a token's expiry, when
+    a chain is due) comes from here, read at an entry point and passed on as `now`; Schwab's own
+    times travel with its values as data (operator 2026-11-05: one clock, repo wide).
+    """
+    return time.time()
+
+
+def elapsed() -> float:
+    """Return the one stopwatch's reading, in seconds: for a span or a deadline on this machine.
+
+    It is the system's monotonic counter, which a change of the clock never moves; its reading
+    is not a time of day.
+    """
+    return time.monotonic()
+
+
 def now_et() -> datetime:
-    """Timezone-aware US/Eastern now."""
-    return datetime.now(ET)
+    """Timezone-aware US/Eastern now (now)."""
+    return datetime.fromtimestamp(now(), ET)
 
 
 def et_date_str_from_ts_utc(ts_utc: float) -> str:

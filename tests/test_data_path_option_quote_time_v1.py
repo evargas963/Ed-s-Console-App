@@ -6,11 +6,11 @@ tests/fixtures/real_spy_option_contract_type_2026_10_23.json, read from stream_c
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 import live_market_plane as lmp
 import server
+import time_et
 from app.options.order_flow import state as of_state
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.history import TAPE
@@ -37,7 +37,7 @@ def test_the_flow_panel_shows_the_side_schwab_sent_in_the_contracts_first_messag
                     symbol=sym, content=msgs[1]["item"], src="schwab", ts_recv=msgs[1]["ts_recv"]
                 ),
             )
-            before = server.options_microstructure(sym, time.time())["put_call"]
+            before = server.options_microstructure(sym, time_et.now())["put_call"]
             for m in msgs:
                 ofs._ingest_pushed(
                     f"optquote.{sym}",
@@ -45,7 +45,7 @@ def test_the_flow_panel_shows_the_side_schwab_sent_in_the_contracts_first_messag
                         symbol=sym, content=m["item"], src="schwab", ts_recv=m["ts_recv"]
                     ),
                 )
-            sides[sym] = (before, server.options_microstructure(sym, time.time())["put_call"])
+            sides[sym] = (before, server.options_microstructure(sym, time_et.now())["put_call"])
     finally:
         for sym in _SIDES:
             TAPE.forget(sym)
@@ -81,7 +81,7 @@ def test_a_down_feed_keeps_the_contracts_quote_time_and_book_time():
     )
     try:
         lmp.record_feed_down()
-        body = server.options_microstructure(_SYM, time.time())
+        body = server.options_microstructure(_SYM, time_et.now())
     finally:
         of_state._LIVE_STATE._top.pop(_SYM, None)
         of_state._LIVE_STATE._book.pop(_SYM, None)

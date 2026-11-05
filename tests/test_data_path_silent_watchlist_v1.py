@@ -3,16 +3,15 @@ live."""
 
 from __future__ import annotations
 
-import time
-
 import live_market_plane as lmp
 import server
+import time_et
 
 
 def test_a_missing_heartbeat_keeps_the_last_watchlist():
     """The daemon reported SPY and TSLA, then the heartbeat is gone: the watchlist route still
     serves those tickers and says the list is not live."""
-    now = time.time()
+    now = time_et.now()
     lmp.record_feed_down()
     with lmp._lock:
         lmp._feed["watchlist"] = None

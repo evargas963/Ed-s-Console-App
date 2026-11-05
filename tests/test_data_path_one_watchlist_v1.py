@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 import live_market_plane as lmp
 import push_changes
 import server
+import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
 from app.options.order_flow import streaming as ofs
@@ -46,9 +47,9 @@ EQUITY = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NA
 
 
 async def _until(cond, seconds: float = 15.0) -> None:
-    deadline = time.monotonic() + seconds
+    deadline = time_et.elapsed() + seconds
     while not cond():
-        assert time.monotonic() < deadline, "not reached in time"
+        assert time_et.elapsed() < deadline, "not reached in time"
         await asyncio.sleep(0.02)
 
 
@@ -265,7 +266,7 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
     answer = schwab.streamer.answer
     schwab.streamer.answer = lambda req: [] if req["service"] == "NYSE_BOOK" else answer(req)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
-    started = time.monotonic()
+    started = time_et.elapsed()
 
     async def go():
         await daemon.run_connection(schwab.client, asyncio.Event())
@@ -278,7 +279,7 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
             assert str(e) == f"no answer to NYSE_BOOK SUBS in {capture.REQUEST_TIMEOUT_SEC:.0f} s"
     finally:
         schwab.close()
-    assert time.monotonic() - started >= capture.REQUEST_TIMEOUT_SEC
+    assert time_et.elapsed() - started >= capture.REQUEST_TIMEOUT_SEC
     assert daemon.stream is None, "the broken session is logged out and dropped"
 
 
@@ -457,12 +458,12 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
     pages = [push_changes.subscribe(tk) for tk in (on, off)]
     with server._terrain_cache_lock:
         server._terrain_cache[off] = {
-            "computed_ts_utc": time.time(),
+            "computed_ts_utc": time_et.now(),
             "spot": 100.0,
         }  # levels, no surface
     try:
         lmp.record_feed_heartbeat(
-            {"ts": time.time(), "schwab_socket_open": True, "watchlist": [on]}
+            {"ts": time_et.now(), "schwab_socket_open": True, "watchlist": [on]}
         )
         d_on, d_off = (json.loads(server.get_options_gamma_surface(tk).body) for tk in (on, off))
         assert (d_on["warming"], d_on["reason"]) == (
@@ -473,13 +474,13 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             False,
             "no chain is fetched for this ticker: it is not on the watchlist",
         )
-        server._on_chain(on, None, time.time(), "full chain returned HTTP 400", None)
+        server._on_chain(on, None, time_et.now(), "full chain returned HTTP 400", None)
         assert json.loads(server.get_options_gamma_surface(on).body)["reason"] == (
             "no terrain snapshot has been computed yet — "
             "chain fetch failed (full chain returned HTTP 400)"
         )
         lmp.record_feed_heartbeat(
-            {"ts": time.time() - 100, "schwab_socket_open": True, "watchlist": [on]}
+            {"ts": time_et.now() - 100, "schwab_socket_open": True, "watchlist": [on]}
         )
         silent = json.loads(server.get_options_gamma_surface(off).body)
         assert silent["warming"] is False
@@ -487,8 +488,8 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             "the capture daemon is not reporting (no current heartbeat)"
         )
         assert "it is not on the watchlist" in silent["reason"]
-        assert "WATCHLIST UNKNOWN" not in server._status_line(time.time())
-        assert "daemon not reporting" in server._status_line(time.time())
+        assert "WATCHLIST UNKNOWN" not in server._status_line(time_et.now())
+        assert "daemon not reporting" in server._status_line(time_et.now())
     finally:
         for tk, page in zip((on, off), pages):
             push_changes.unsubscribe(tk, page)

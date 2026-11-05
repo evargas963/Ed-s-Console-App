@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -27,6 +26,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
+import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from math_exposure_core import bucket_metric, merge_exposure_books
 from option_contract import read_chain
@@ -345,7 +345,7 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     valued = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
     _daemon(at=valued.timestamp())  # live when the chain is published
     snap = server._publish_levels(TK, _RECORDS, _T, chain_spot=(_SPOT, _T), now=valued)
-    _daemon(at=time.time())  # live now, as the routes read it
+    _daemon(at=time_et.now())  # live now, as the routes read it
     charm = json.loads(server.get_charm_by_strike(TK, scope="all").body)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(

@@ -26,10 +26,10 @@ Public API: `start_order_flow_stream` / `stop_order_flow_stream`
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import queue
-import time
 from collections.abc import Callable
 from typing import Any
 
@@ -37,6 +37,7 @@ from websockets.asyncio.client import connect
 
 import live_market_plane as _lmp
 import push_changes
+import time_et
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 from app.options.order_flow import history as recent
@@ -93,6 +94,8 @@ PUSH_RECONNECT_SEC = 1.0
 _push_ws = None
 #: request id -> the future the daemon's watchlist record for it resolves (_ingest_pushed)
 _watchlist_answers: dict[int, asyncio.Future] = {}
+#: each watchlist request's id, unique in this process (an id, not a time)
+_request_ids = itertools.count(1)
 #: how long a watchlist request waits for the daemon's record (an add waits on Schwab's /quotes
 #: answer)
 WATCHLIST_ANSWER_SEC = 30.0
@@ -106,7 +109,7 @@ async def watchlist_request(action: str, ticker: str) -> dict:
     ws = _push_ws
     if ws is None:
         raise ConnectionError("the capture daemon's push connection is not open")
-    rid = time.time_ns()
+    rid = next(_request_ids)
     answer = asyncio.get_running_loop().create_future()
     _watchlist_answers[rid] = answer
     try:
@@ -351,7 +354,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                 warned = None
                 sent = None
                 while _feed_running:
-                    want = _rows_wanted(time.time())
+                    want = _rows_wanted(time_et.now())
                     if want != sent:
                         await ws.send(json.dumps({"op": "subscribe", "symbols": want}))
                         sent = want
@@ -359,12 +362,12 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
                         frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
                     except TimeoutError:
                         _lmp.record_feed_down()  # the daemon beats every second: silence
-                        _feed_changed(time.time())  # the last price row stays
+                        _feed_changed(time_et.now())  # the last price row stays
                         continue
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
                         _lmp.record_feed_heartbeat(msg.get("feed"))
-                        _feed_changed(time.time())
+                        _feed_changed(time_et.now())
                     for row in msg.get("rows") or []:
                         _price_rows[row["ticker"]] = row
                         if msg.get("type") == "quotes":
@@ -389,7 +392,7 @@ async def _rows_loop(ui_url: str, reconnect_sec: float) -> None:
             )
             warned = f"{type(e).__name__}: {e}"
         _lmp.record_feed_down()  # no daemon: the feed is down, the last price stays
-        _feed_changed(time.time())
+        _feed_changed(time_et.now())
         if _feed_running:
             await asyncio.sleep(reconnect_sec)
 
@@ -460,7 +463,7 @@ async def _feed_loop(push_url: str, ui_url: str, reconnect_sec: float) -> None:
         rows.cancel()
         await asyncio.gather(rows, return_exceptions=True)
         _lmp.record_feed_down()
-        _feed_changed(time.time())
+        _feed_changed(time_et.now())
         _log_stream("FEED_LOOP_STOP_DONE")
 
 

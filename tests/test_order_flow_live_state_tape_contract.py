@@ -4,10 +4,9 @@ missing, not coerce it to zero -- downstream order-flow consumers need to tell
 
 from __future__ import annotations
 
-import time
-
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as live_state
+import time_et
 
 
 def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
@@ -20,7 +19,7 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
             "LAST_PRICE": 500.0,
             "TRADE_TIME_MILLIS": 1_000,
         },
-        ts_recv=time.time(),
+        ts_recv=time_et.now(),
     )
 
     content = live_state.get_content_for_symbol(sym)
@@ -48,7 +47,7 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
             "LAST_SIZE": 10,
             "TRADE_TIME_MILLIS": 1_000,
         },
-        ts_recv=time.time(),
+        ts_recv=time_et.now(),
     )
     live_state.push_level_one(
         sym,
@@ -58,7 +57,7 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
             "LAST_SIZE": 12,
             "TRADE_TIME_MILLIS": 2_000,
         },
-        ts_recv=time.time(),
+        ts_recv=time_et.now(),
     )
 
     content = live_state.get_content_for_symbol(sym)
