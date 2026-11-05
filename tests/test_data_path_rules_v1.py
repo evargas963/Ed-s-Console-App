@@ -64,8 +64,10 @@ async def _console_reads(bus: MessageBus, sub, read_for: float) -> list[dict]:
                 break
             if not live_push.is_forwarded(topic, record):
                 continue
-            for msg in record if isinstance(record, list) else [record]:
-                got.append({"topic": topic, "msg": msg})
+            got.extend(
+                {"topic": topic, "msg": msg}
+                for msg in (record if isinstance(record, list) else [record])
+            )
         return got
     finally:
         bus.unsubscribe(sub)
