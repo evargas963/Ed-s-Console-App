@@ -340,7 +340,7 @@ def overlay_streamed_contract_fields(
     streamed_by_symbol: dict[str, dict],
     chain_received_ts: float | None,
 ) -> tuple[list[OptionContract], int]:
-    """A contract's streamed Greeks, open interest and volume onto the chain, matched by `symbol`.
+    """Lay each contract's streamed Greeks, open interest and volume onto it, by `symbol`.
 
     The Greeks of a contract Schwab streams are the stream's, as one set (streamed_greek_set):
     all six, whenever the stream holds a value for each, so a contract never carries some Greeks
