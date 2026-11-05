@@ -6,7 +6,7 @@ bound, default or substitute of ours sits in between, and only the math Schwab d
 computed (the derived register). Enforced by: rule 2's tests (a field as sent),
 `tools/check_one_reader.py` in `hardening` (one reader of each Schwab field) and
 `tools/check_end_to_end.py` in `locks` (no missing value filled in) (in force); a rule of ours
-added between Schwab and the screen — rule 14's review, no machine check, ENF-12.
+added between Schwab and the screen — the builder's audit (rule 14), no machine check.
 
 The app is a wire: Schwab → one program → the page. Every value has one producer. The shape below
 is the target (operator 2026-10-29); each rule names the standard tool that enforces it, and the
@@ -37,7 +37,7 @@ Check every request and every proposal:
 If anything fails, report what failed and why, and leave the failing part out. Claude proposes the smallest, simplest path that passes, using the repo. That proposal is checked against this gate before it goes to Ed for approval.
 4. For every problem, first answer why it happens, down to the code or data that causes it, with evidence. Only then the fix. Never offer a choice about limits, settings or tests until the cause is known.
 5. Every item labeled NOT VERIFIED gets verified, and every item labeled SEEN, NOT FIXED gets fixed at the source, before the work is reported done. An item that can't be closed comes to Ed as a decision, with its evidence and the reason.
-Enforced by (items 4 and 5): `.claude/skills/before-done/SKILL.md` step 7 and `.claude/skills/flaky-test-fix/SKILL.md`.
+Enforced by (items 4 and 5): the builder's audit (rule 14) and `.claude/skills/flaky-test-fix/SKILL.md`.
 
 ### Standard of care
 Hold EdWebConsole to how a financial institution handles systems with real money on the line. These are judgments to apply to every proposal, not things to build:
@@ -45,7 +45,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - Records stand: received data is never overwritten or deleted. A correction is a new, labeled entry. Data is deleted only by the keep rule Ed sets.
 - Unknowns surface: an unknown shows as unknown, never estimated or filled in.
 - Change control: no change reaches production without Ed's approval, and one approval covers the change.
-- Four eyes: whoever builds a change is not the only one who verifies it. Two read-only reviewers check every change: an architecture reviewer, against the First gate, and a correctness reviewer, that the change does what it claims, with evidence. While the repo is being brought under control, this applies to every change. Once Ed decides it is stable, it narrows to changes touching stored data, money values, or production.
+- Verification: the agent that builds a change verifies it end to end and answers for it, with the test suite in CI as the check (operator 2026-11-05: "you and you alone are responsible for auditing and fixing end to end"; reviewers are not used until it is shown they catch what needs to be caught).
 
 ### EdWebConsole requirements
 - Fix problems at the source, and remove what the fix replaces.
@@ -98,7 +98,7 @@ per product file, so no module that does not hold one may start. The same job ru
 `authlib` or `httpx`, and none anywhere takes `aiohttp` or `requests`, with no count
 (`tests/test_data_path_only_feed_v1.py`); a file Python can load that it may not read is a count at
 0, so absolute (`tools/check_locks.py`). The builtin `__import__("schwab")` and a module loaded from a zip
-on `sys.path` are seen by no tool: rule 14's review, no machine check, ENF-12.
+on `sys.path` are seen by no tool: the builder's audit (rule 14), no machine check.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
 a change cannot edit its judge. `locks` is a required check on `main`: a change it refuses cannot
 merge, and nothing approves past it. No step waits on the operator's click, and none is built again
@@ -117,7 +117,7 @@ then the rule binds with no machine check.
 
 | # | Rule | Enforced by |
 |---|---|---|
-| 1 | **Simple.** Fewest files, functions and hops that do the job. No prose in code: history, incidents and dates go in the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or check around it; if that takes a restructure, the restructure is the fix. Every fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed. A change deletes what it replaces, in the same PR; a register, audit, report or check lives only while it has a job, and once answered, it is deleted. | `tools/check_fails_before.py` in `pytest-windows` and `tools/check_end_to_end.py` in `locks`, over the whole repository (every patch shape of product code counted on the base and the head) and on each line a change adds, which also refuses a description without `Schwab → screen:`, `Deleted:` and `End-to-end test:` (in force); that a defect is fixed at its source — rule 14's review, the only layer that can refuse a guard, no machine check, ENF-12; one construct `check_end_to_end` allows, the running total `d[k] = d.get(k, 0) + x` (operator's spec v2 of 2026-11-03, an open amendment for this construct only, #724: the sum of nothing is 0, a real value; a base plus a change has the same shape, and rule 14's review refuses it); ruff `S110` (a catch-all `except` passed in silence) and `BLE` (a catch-all `except` that neither records its traceback nor re-raises) over the whole repository (in force); ruff `C90` complexity cap and `TRY`, as one-way counts (locks), to 0 in step 1b; `check_end_to_end` is deleted in step 7 only once a standard tool refuses every shape its docstring lists (swallowing excepts, missing values replaced or repaired, the page's patch shapes) and everything `check_fails_before` imports from it has moved — the shapes left — SHAPE step 7 |
+| 1 | **Simple.** Fewest files, functions and hops that do the job. No prose in code: history, incidents and dates go in the commit message. No patches: a defect is fixed where it is produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or check around it; if that takes a restructure, the restructure is the fix. Every fix is end to end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed. A change deletes what it replaces, in the same PR; a register, audit, report or check lives only while it has a job, and once answered, it is deleted. | `tools/check_end_to_end.py` in `locks`, over the whole repository (every patch shape of product code counted on the base and the head) and on each line a change adds (in force); that a defect is fixed at its source — the builder's own audit (rule 14), no machine check; one construct `check_end_to_end` allows, the running total `d[k] = d.get(k, 0) + x` (operator's spec v2 of 2026-11-03, #724: the sum of nothing is 0, a real value); ruff `S110` (a catch-all `except` passed in silence) and `BLE` (a catch-all `except` that neither records its traceback nor re-raises) over the whole repository (in force); ruff `C90` complexity cap and `TRY`, as one-way counts (locks), to 0 in step 1b; `check_end_to_end` is deleted in step 7 only once a standard tool refuses every shape its docstring lists (swallowing excepts, missing values replaced or repaired, the page's patch shapes) — the shapes left — SHAPE step 7 |
 | 2 | **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's own field definition excludes (a negative volume or size). Everything else is taken as sent, a gamma included whatever its size (operator 2026-11-04: "we take what schwab gives and we wire it up. plain and simple", replacing his 2026-10-23 bound on gamma); a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is settled by Schwab's own documentation, `docs/schwab/schwab_market_data_api_spec.pdf` (with `docs/schwab/schwab_market_data_parameters_chains_quotes.txt` for the expanded /chains and /quotes parameters) and `docs/schwab/schwab_streamer_api.pdf`, cited by section; a limit not stated there or in Schwab's own reply is our defect until shown otherwise. | `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`, `tests/test_gamma_as_sent_v1.py` (in force) |
 | 3 | **One producer.** Each value served, stored or shown has one producer; consumers carry its result and never select, compute, repair or relabel it. A second authority for the same value is banned whatever it is called: helper, parser, resolver or cache. One module reads each Schwab field. | `tools/check_one_reader.py` in `hardening` refuses a pull request that adds a second reader (in force); the fields already read by more than one module (`python -m tools.check_one_reader --list`) — ENF-23; import-linter layers, from SHAPE step 1e |
 | 4 | **The page draws; it computes nothing.** Every number, total, choice, comparison and date it shows is served. It gets data only from the one push. | ESLint: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport module (step 4); `Math.*`, `.sort(`, `.reduce(` and date arithmetic banned outside the drawing module (step 5) |
@@ -129,9 +129,9 @@ then the rule binds with no machine check.
 | 10 | **Only Feed talks to Schwab.** | import-linter on `locks.imports.toml` for Schwab's clients (locks); `locks.ruff.toml` banned names, per product file, for `http.client`, `urllib.request` and `websockets` (locks); a call made through Feed's own `schwab_client` from outside Feed — SHAPE step 1e |
 | 11 | **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global or network. Only an entry point (a route, a loop, a stream handler) reads the clock. | `locks.ruff.toml` banned clock names, per product file (locks); import-linter forbidden imports (step 2) |
 | 12 | **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose states are named constants. | pyright, strict on State, Calculators and Push (step 6) |
-| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top, with no exception: the daemon runs under `python` in its window, so an error while it loads shows there, and `capture_main` imports it at the top (operator 2026-11-04: "this needs to be fixed", "i would rather run capture main on python instead of pythonw", replacing his 2026-10-30 "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `TRY`, `C90` and `PLC0415` as one-way counts and `D` (pep257, no docstring required) as a reported one (locks), to 0 in steps 1b and 1c |
-| 14 | **Independent review** (operator 2026-11-02). A session that did not write the change, given only this file, the parts of `docs/DATA_FLOW.md` the change touches, the diff and the commit series one commit at a time (a dodge is in the series, not in the net diff), records in the description's `## Review`: `Commit:` the head, `Verdict:` PASS or FAIL, and `Evidence:`. It judges (a) patch-ness: does the change move a value onto the one wire and delete what it replaces, or add to the old path? Product code that grows, a new helper, label, gate or branch beside the old path, and a deleted function back under a new name, even with a narrower job, are patches, FAIL however good the stated reason and however green the tests; (b) dodges: commit by commit, a construct a check refused and then reshaped into a passing form with the same meaning is evasion, FAIL unless the rule or check was openly amended by the operator; (c) deleted or renamed tests: coverage dropped for live code is FAIL. A verdict judges the change, so the deployed-screen tier its deploy proves does not hold it open. Every push renews the record. | `tools/check_integrity.py` in `locks`: on a change to what governs changes, no record is refused; on any change, a record of another commit, a Verdict other than PASS, or no Evidence is refused (locks); a change outside that list needs no record from a machine, so the record is required of those by this rule alone; that the reviewer did not write the change, a description edited after review, and the judgments themselves — no machine check, ENF-12 |
-| 15 | **Tests are not taken from.** An assertion of a surviving test is not lost, a test is not skipped and deferred-work markers are not added, with no opt-out of any kind. A deleted test is judged by rule 14(c). | `tools/check_integrity.py` in `locks`, a net loss per test by its name (locks); a test renamed or disabled with its assertions in place, an assertion replaced by a weaker one, one calling a function of that name the change deleted, a skip the markers do not spell, and assertions outside a test function or a Playwright spec — rule 14's review, no machine check, ENF-12 |
+| 13 | **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top, with no exception: the daemon runs under `python` in its window, so an error while it loads shows there, and `capture_main` imports it at the top (operator 2026-11-04: "this needs to be fixed", "i would rather run capture main on python instead of pythonw", replacing his 2026-10-30 "Allow the one import"). The imports still inside other functions go, and ruff `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on the server (no machine check — ENF-11). | `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function, which a `with` would close); ruff `TRY`, `C90` and `PLC0415` as one-way counts (locks), to 0 in step 1b |
+| 14 | **The builder answers for the change** (operator 2026-11-05: "you and you alone are responsible for auditing and fixing end to end"; "we spend too much time on tests, reviews etc."; "i need this to be the right amount, not too much and not too little"). The agent that builds a change audits it end to end, Schwab to the screen: it moves a value onto the one wire and deletes what it replaces; product code that grows beside the old path, a new helper, label, gate or branch beside it, or a deleted function back under a new name, is a patch and is not merged; a construct a check refused is fixed, never reshaped to pass; coverage of live code is not dropped. Tests are written with the wiring, on real data. No reviewer verdict or review record is required. | the test suite in `pytest-full` and `pytest-windows` (in force); the audit itself — no machine check |
+| 15 | **Tests are not taken from.** An assertion of a surviving test is not lost, a test is not skipped and deferred-work markers are not added, with no opt-out of any kind. A deleted test goes with the code it tested. | `tools/check_integrity.py` in `locks`, a net loss per test by its name (locks); the rest — the builder's audit, no machine check |
 | 16 | **An agent never changes repository settings** (operator 2026-11-02): branch protection, rulesets and required checks are the operator's, applied in GitHub. | `tools/operator_law_guard.py`: `gh` by a list, `gh api` only reads (`tests/test_operator_law_guard_action_bans_v1.py`) |
 
 ## Fix what you find (operator 2026-10-29: "fix what you find anywhere, everywhere, repo wide")
@@ -172,8 +172,8 @@ then the rule binds with no machine check.
   and a new one refused (in force); `tools/check_credential_leak.py`, every tracked file, no path or
   line skipped (`tests/test_credential_leak_v1.py`, in force); the production-checkout rail, every
   file of that checkout (`tools/process_lock_guard.py`, `tests/test_hook_chain_v1.py`, in force).
-  `check_eol_style_invariant`, `check_fails_before` and `check_integrity` judge a change itself (a
-  file's line endings kept, a new test failing on the old code, the review record), not what files
+  `check_eol_style_invariant` and `check_integrity` judge a change itself (a file's line endings
+  kept, a test's assertions kept), not what files
   hold, and read every file of any kind a change touches. Each tool SHAPE adds (import-linter,
   ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). The operator's
   decisions of 2026-11-04 on what that rule found:
@@ -186,13 +186,12 @@ then the rule binds with no machine check.
     TEST-CLEANUP, no machine check, ENF-12).
   - Size is not a rule ("i am not going to set some arbitrary number"): lines, bytes and work
     items are reported and never judged (`check_locks.FREE`); simple code is held by the checks of
-    correctness (one producer, no patch shapes, no dead code, the complexity cap, the reviewers)
+    correctness (one producer, no patch shapes, no dead code, the complexity cap, the builder's audit)
     and by `/simplify` on every change ("you must always /simplify", no machine check, ENF-12).
   - A test is known by what it asserts, not by its name ("why compare only the name, why not the
     entire code"): a test renamed with an assertion dropped is a lost assertion. A machine cannot
-    tell that from a test deleted beside a new one, so it is rule 14(c)'s review (no machine
-    check, ENF-12; the machine pairing tried in this PR was withdrawn for that reason, the
-    operator told 2026-11-04). No test duplicates another (`tools/check_integrity.py`,
+    tell that from a test deleted beside a new one, so it is the builder's audit (rule 14, no
+    machine check). No test duplicates another (`tools/check_integrity.py`,
     `tests/test_check_integrity_v1.py`); a change updates every test it affects in the same PR.
   - `capture_main`'s import is at the top (rule 13): the daemon runs under `python` in its window,
     where an error while it loads shows ("i would rather run capture main on python instead of
@@ -215,8 +214,8 @@ then the rule binds with no machine check.
   answering: which Schwab field or registered derived value, the simplest direct wire, and what a
   bank would do. Enforced by: `tools/wiring_rules.py`,
   which puts them before the agent on every message in Claude Code
-  (`tests/test_wiring_rules_v1.py`); that they were applied — rule 14's review, no machine check,
-  ENF-12.
+  (`tests/test_wiring_rules_v1.py`); that they were applied — the builder's audit (rule 14), no
+  machine check.
 - Trace each value it touches: its source, its one producer, its validity rule and time, its live
   and stored consumers, and what each shows when it is missing. A producer exists: call it. None
   exists: write it once, in its part. Enforced by: no machine check — ENF-08.
@@ -225,20 +224,9 @@ then the rule binds with no machine check.
   Enforced by: no machine check — ENF-08.
 - A function that depends on the clock takes `now`; only an entry point (a route, a loop, a stream
   handler) reads the clock. Enforced by: ruff `TID251`, a one-way count per file (locks), to 0 in SHAPE step 2.
-- A new check is a test of behavior for a failure that happened, fails on the old code, and has no
-  exception list. Enforced by: `tools/check_fails_before.py` in `pytest-windows`
-  (`tests/test_check_fails_before_v1.py`).
-- A product change needs an end-to-end test that fails on the old code, except a change that only
-  removes whole undecorated functions or classes (operator 2026-10-28), or only fixes what ruff
-  rules the PR newly selects find, behaviour unchanged (operator 2026-10-30: a refactor a rule asks
-  for is proven by the full suite, as deletions are), or only removes a branch or guard inside a
-  function that no caller can reach, the PR showing the trace of every caller (operator
-  2026-10-30: "Yes, suite proves it"); for those the full suite and the browser tests are the
-  proof, and a real defect a rule finds still gets its failing test. Enforced by:
-  `tools/check_fails_before.py` (`deletes_only`, `rule_fixes_only`, `trims_only`: code only taken
-  away inside function bodies; `tests/test_check_fails_before_v1.py`); that a rule fix carries no
-  other change, that a real defect a rule finds gets its failing test, and that a removed branch
-  is one no caller reaches — the reviewers, no machine check, ENF-12.
+- A product change carries end-to-end tests of what it wires, on real captured data, written with
+  it (operator 2026-11-05: "we can wire the way it needs to be and then create the tests").
+  Enforced by: the builder's audit (rule 14), no machine check.
 - Edit source by hand, one edit at a time, never through a script; the exceptions are ENF-14's (a
   standard tool's own fix, `ruff format` and ruff's safe fixes; `unix2dos`/`dos2unix` for line
   endings). Enforced by: `tools/operator_law_guard.py` for
@@ -279,40 +267,24 @@ then the rule binds with no machine check.
 - Each decision the operator gives in chat is written into `ACTIVE_PROGRAM.md` or this file in the
   PR that acts on it. Enforced by: no machine check — ENF-12.
 
-## Review verdicts
+## Proof
 
-- **PASS**: every required condition proven. **FAIL**: any condition violated. **NOT_PROVEN**: any
-  condition without proof. A proof is CONFIRMED evidence on the final commit and names its tier
-  (unit, integration, browser, deployed app, live market); one tier never stands in for another, and
-  a check proves only the paths it covers. Never PASS with a FAIL or NOT_PROVEN open. NOT_PROVEN
-  judges a change; NOT VERIFIED labels a statement. `docs/PRACTICES.md` §H, the First gate's "the
-  prompt builder" and the Shared rules' "NOT_PROVEN" in their labels line stay as written.
-- The two reviewers (`.claude/agents/correctness-reviewer.md`; `.claude/agents/requirements-reviewer.md`,
-  the architecture reviewer, which starts with the First gate) check every change, because the
-  operator has not decided the repo is stable, and flag only correctness problems and breaks of the
-  stated requirements. `.claude/skills/before-done/SKILL.md` step 7 runs them.
-- Reviews converge (operator 2026-11-03: "this is unsustainable. audit and fix right away"). The
-  author backs every behaviour the description states with a command run before the first review.
-  A review after a fix, by the same two reviewers, judges the last round's findings and the diff
-  since the reviewed commit. A finding that reverses the last round goes to the operator. When the
-  second round leaves a FAIL or NOT_PROVEN open, every open finding goes to the operator in one
-  message, and stays open until he decides. Enforced by: `.claude/skills/before-done/SKILL.md`
-  step 7; that it was followed — no machine check, ENF-12.
+- A proof is CONFIRMED evidence on the final commit and names its tier (unit, integration,
+  browser, deployed app, live market); one tier never stands in for another, and a check proves
+  only the paths it covers. NOT VERIFIED labels a statement without proof.
 
 ## Authority
 
 - At each milestone (a commit, a failed check, a finding that changes the plan), report to the
   operator what changed, what was deleted, each proof and its tier, and what is NOT_PROVEN, then
   continue. Enforced by: no machine check — ENF-12.
-- A PR merges, without waiting on the operator, once CI is green on its final commit, current with
-  `main`, and both reviewers have no FAIL and no NOT_PROVEN open but the deployed-screen tier its
-  deploy proves; its deploy follows (operator 2026-10-29: "i don't
-  want for you to wait on my yes for merges, etc. you are allowed to continue until you finish").
-  No CODEOWNERS file. Enforced by: branch protection (green CI, current with `main`); the reviewers'
-  verdicts — no machine check, ENF-12.
+- A PR merges, without waiting on the operator, once CI is green on its final commit and current
+  with `main`; its deploy follows (operator 2026-10-29: "i don't want for you to wait on my yes for
+  merges, etc. you are allowed to continue until you finish"). No CODEOWNERS file. Enforced by:
+  branch protection (green CI, current with `main`).
 - Work continues until SHAPE is finished: a stop is refused while its row is IN PROGRESS, unless
   the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
-  to a change of request rates, limits or settings, CLAUDE.md item 5; a second review round that leaves a finding open, Review verdicts;
+  to a change of request rates, limits or settings, CLAUDE.md item 5;
   the next bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive
   data action,
   a product decision), said in a message that begins `WAITING ON OPERATOR:`. From the third
