@@ -8,6 +8,8 @@ daemon's start does.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 import subprocess
@@ -155,3 +157,65 @@ def test_a_window_that_holds_its_writes_never_stops_the_daemon(tmp_path):
         "line 1",
         "line 2",
     ]
+
+
+def test_a_window_line_reaches_the_window_and_not_the_days_file(tmp_path):
+    """What Schwab streamed is recorded in stream_capture.db; the window's line of it is not
+    written a second time in the day's file, and every other line still is."""
+    script = (
+        "import logging\n"
+        "from app.market_data.schwab.streaming import capture\n"
+        "capture._start_log()\n"
+        "capture.WINDOW_ONLY.info('stream LEVELONE_EQUITIES: 1 messages')\n"
+        "capture.log.warning('schwab: connected')\n"
+        "logging.shutdown()\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    assert "stream LEVELONE_EQUITIES: 1 messages" in done.stderr
+    (log,) = (tmp_path / "logs").glob("stream_capture.*.log")
+    assert [line[24:] for line in log.read_text(encoding="utf-8").splitlines()] == [
+        "schwab: connected"
+    ]
+
+
+def test_the_window_shows_each_second_what_schwab_streamed(caplog):
+    """Real LEVELONE and book messages Schwab sent (2026-10-05 14:00 CT) through the daemon's
+    receive handler: the window's line per service gives the messages, the symbols they came
+    for, and the newest message as Schwab sent it."""
+    mix = json.loads((REPO / "tests/fixtures/real_stream_mix_2026_10_05_1400ct.json").read_text())
+    messages = mix["messages"][:400]
+    bus, health = capture.MessageBus(), capture.HealthRegistry()
+
+    async def run():
+        stop = asyncio.Event()
+        window = asyncio.create_task(capture.show_stream(bus, stop, every=0.05))
+        await asyncio.sleep(0)
+        for m in messages:
+            frame = {"timestamp": m["schwab_ts"], "content": [m["item"]]}
+            capture._publisher(m["service"], bus, health)(frame)
+        await asyncio.sleep(0.2)
+        stop.set()
+        await window
+
+    with caplog.at_level(logging.INFO, logger="capture"):
+        asyncio.run(run())
+    shown = [r.getMessage() for r in caplog.records if r.getMessage().startswith("stream ")]
+    for service in {m["service"] for m in messages}:
+        sent = [m for m in messages if m["service"] == service]
+        newest = sent[-1]["item"]
+        assert (
+            shown.count(
+                f"stream {service}: {len(sent)} messages, "
+                f"{len({m['item']['key'].upper() for m in sent})} symbols; "
+                f"newest {newest['key'].upper()} {json.dumps(newest)}"
+            )
+            == 1
+        ), service
