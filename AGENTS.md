@@ -151,10 +151,12 @@ then the rule binds with no machine check.
   `pyproject.toml`, `ruff.toml` or `.ruff.toml` the repository tracks, turn unsafe fixes on or
   force one safe, whatever file the change touches, and the agent's hook refuses a ruff run that
   asks for one (`--unsafe-fixes`, or an inline `--config` setting of `unsafe-fixes` or
-  `extend-safe-fixes`), so no unsafe fix is taken in any file (operator 2026-11-04:
+  `extend-safe-fixes`), so neither the repository's settings nor a ruff command line takes one, in
+  any file (operator 2026-11-04:
   "consistent with everything repo wide"; `tests/test_check_end_to_end_v1.py`,
   `tests/test_operator_law_guard_action_bans_v1.py`); the rest of this bullet (a found defect
-  fixed, the same rewrite typed by hand outside product code) — no machine check, ENF-12.
+  fixed, the same rewrite typed by hand outside product code, settings ruff reads from a file the
+  repository does not track) — no machine check, ENF-12.
 - **Everything is repo wide** (operator 2026-11-04: "everything that we do, every test, every
   governance, lock, hook, enforcement is repo wide"; "you must not narrow anything"). Every check,
   test, hook, lock, rule and fix covers every file of the repository, old code and new alike, with
