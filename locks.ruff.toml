@@ -57,6 +57,3 @@ max-complexity = 10
 "importlib.machinery".msg = "No code runs from a data file."
 "importlib.util".msg = "No code runs from a data file."
 "runpy".msg = "No code runs from a data file."
-
-[lint.per-file-ignores]
-"app/market_data/schwab/streaming/capture_main.py" = ["PLC0415"] # the operator's one import

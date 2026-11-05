@@ -108,6 +108,47 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
 @pytest.mark.skipif(
     sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
 )
+def test_the_daemon_its_batch_starts_has_its_window_as_error_output(tmp_path):
+    """The real start_capture_daemon.bat in its own window, as launch.py opens it, no pipe given.
+
+    The daemon it starts has an error output, its window, so an error while it loads shows there
+    (operator 2026-11-04: "i would rather run capture main on python instead of pythonw"); under
+    pythonw it had none. Induced condition: a sitecustomize beside the daemon notes whether it has
+    one, then stops it loading.
+    """
+    home = tmp_path / "checkout"
+    home.mkdir()
+    shutil.copy(launch.ROOT / "start_capture_daemon.bat", home)
+    venv.create(home / ".venv")
+    noted = tmp_path / "error_output.txt"
+    probe = tmp_path / "site"
+    probe.mkdir()
+    (probe / "sitecustomize.py").write_text(
+        "import sys\n"
+        f"open({str(noted)!r}, 'w').write(str(sys.stderr is not None))\n"
+        "raise SystemExit(1)\n",
+        encoding="utf-8",
+    )
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
+        "ED_RUNTIME_ROOT": str(tmp_path),
+    }
+    subprocess.Popen(launch.daemon_window(home / "start_capture_daemon.bat"), cwd=home, env=env)
+    try:
+        end = time.monotonic() + 60
+        while not noted.exists() and time.monotonic() < end:
+            time.sleep(0.1)
+        assert noted.read_text(encoding="utf-8") == "True"
+    finally:
+        for p in psutil.process_iter(["cmdline"]):
+            if str(home) in " ".join(p.info["cmdline"] or []):
+                p.kill()
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
+)
 def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
     """The real start_capture_daemon.bat in a folder of its own, with launch.py and a virtual
     environment beside it, starts the real daemon in its window (no Schwab token, ports of its
@@ -155,7 +196,7 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             started = [
                 p.pid
                 for p in psutil.process_iter(["name", "cwd"])
-                if p.info["name"] == "pythonw.exe"
+                if p.info["name"] == "python.exe"
                 and p.info["cwd"]
                 and Path(p.info["cwd"]).resolve() == home.resolve()
             ]
@@ -669,9 +710,11 @@ def test_a_process_that_only_names_the_console_is_not_the_console():
             _end(p)
 
 
-def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):
-    """The daemon run with no error output (pythonw on Windows; elsewhere its fd 2 closed), with
-    schwab-py missing: the log file under its runtime root has why."""
+def test_a_module_that_fails_to_load_shows_its_reason_in_the_daemons_window(tmp_path):
+    """The daemon run as its window runs it (`python`), with schwab-py missing.
+
+    Its error output, the window, has why, and it exits 1, which the window restarts on.
+    """
     site = tmp_path / "site"
     site.mkdir()
     (site / "sitecustomize.py").write_text(
@@ -684,17 +727,16 @@ def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_pa
         encoding="utf-8",
     )
     env = {**os.environ, "PYTHONPATH": str(site), "ED_RUNTIME_ROOT": str(tmp_path)}
-    module = ["-m", "app.market_data.schwab.streaming.capture_main"]
-    if sys.platform == "win32":
-        cmd = [str(Path(sys.executable).with_name("pythonw.exe")), *module]
-    else:
-        cmd = ["sh", "-c", 'exec "$0" "$@" 2>&-', sys.executable, *module]
-    done = subprocess.run(cmd, cwd=REPO, env=env, timeout=120)  # no handle passed: pythonw has none
-    (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
-    log = path.read_text(encoding="utf-8")
+    done = subprocess.run(
+        [sys.executable, "-m", "app.market_data.schwab.streaming.capture_main"],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
     assert done.returncode == 1
-    assert "capture daemon loading (pid " in log
-    assert "ModuleNotFoundError: No module named 'schwab'" in log, log
+    assert "ModuleNotFoundError: No module named 'schwab'" in done.stderr, done.stderr
 
 
 def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(

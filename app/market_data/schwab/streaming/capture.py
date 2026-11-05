@@ -1059,15 +1059,13 @@ class DailyLog(logging.StreamHandler):
         super().close()
 
 
-def _start_log(early_errors=None) -> None:
-    """Every line, with its time to the millisecond, to the day's log file
-    (runtime_layout.daemon_log_path) under <runtime>/logs, and to the console if any. Under
-    pythonw the log file held as the error output since the daemon's start (capture_main,
-    `early_errors`) is closed first; from here an error reaches the log through the handler (main
-    logs one that ends the daemon)."""
-    if early_errors is not None:
-        early_errors.close()
-        sys.stderr = None
+def _start_log() -> None:
+    """Send every line, with its time to the millisecond, to the day's log file and the window.
+
+    The file is runtime_layout.daemon_log_path under <runtime>/logs; the window is the error
+    output, when the daemon has one. From here an error reaches both through the handlers (main
+    logs one that ends the daemon).
+    """
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
     handlers: list[logging.Handler] = [DailyLog(folder)]
@@ -1264,7 +1262,7 @@ async def run() -> int:
     return EXIT_STOPPED
 
 
-def main(early_errors=None) -> int:
+def main() -> int:
     if sys.argv[1:]:  # everything it needs comes from the console; no switch can move it
         print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
         return 2
@@ -1273,16 +1271,14 @@ def main(early_errors=None) -> int:
     if binding is not None:
         print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
         return 2
-    _start_log(early_errors)
+    _start_log()
     fd, lock = acquire_owner_lock()
     try:
         return asyncio.run(run())
     except KeyboardInterrupt:
         return 0
     except BaseException:
-        log.exception(
-            "capture daemon: ended by an error"
-        )  # under pythonw, the log is the only record
+        log.exception("capture daemon: ended by an error")
         raise
     finally:
         release_owner_lock(fd, lock)
