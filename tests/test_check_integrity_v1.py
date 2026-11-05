@@ -101,6 +101,24 @@ def test_a_test_renamed_and_stripped_of_an_assertion_is_refused(repo):
     assert _found(repo) == ["test_x: assertion lost: 2 == 2"]
 
 
+def test_a_test_deleted_beside_a_new_one_sharing_a_line_is_the_reviews(repo):
+    """One shared assertion does not make a new test the old one renamed: a deletion stays the
+    review's to judge."""
+    _write(repo, "tests/test_gone.py", "def test_gone():\n    assert 3 == 3\n    assert 4 == 4\n")
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    (repo / "tests/test_gone.py").unlink()
+    _write(repo, "tests/test_new.py", "def test_new():\n    assert 3 == 3\n")
+    assert _found(repo) == []
+
+
+def test_the_same_test_body_calling_different_code_is_no_duplicate(repo):
+    body = "def test_help():\n    assert main(['--help']) == 0\n"
+    _write(repo, "tests/test_p.py", "from tools.a import main\n\n\n" + body)
+    _write(repo, "tests/test_q.py", "from tools.b import main\n\n\n" + body)
+    assert _found(repo) == []
+
+
 def test_a_test_renamed_with_its_assertions_passes(repo):
     _write(repo, "tests/test_a.py", SURVIVES.replace("test_x", "test_y"))
     assert _found(repo) == []

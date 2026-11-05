@@ -692,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
         found = violations(Path.cwd(), a.base)
         if a.body_file:
             found += body_violations(a.body_file.read_text(encoding="utf-8"))
-    except (ToolError, OSError, UnicodeDecodeError) as e:
+    except (ToolError, OSError, UnicodeDecodeError, ValueError) as e:  # ValueError: a blob missing
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
     sys.stdout.reconfigure(encoding="utf-8")  # a file name may hold any character

@@ -177,9 +177,11 @@ def main(argv: list[str] | None = None) -> int:
     root = Path.cwd()
     try:
         if a.list:
-            for name, mods in sorted(readers(root, "HEAD", _field_list(root, "HEAD")).items()):
+            found = readers(root, "HEAD", _field_list(root, "HEAD"))
+            for name, mods in sorted(found.items()):
                 if len(mods) > 1:
                     print(f"{name}: {len(mods)} modules: {', '.join(sorted(mods))}")
+            print(f"second readers of Schwab fields, repo wide: {second_readers(found)}")
             return 0
         if not a.base:
             ap.error("--base or --list")

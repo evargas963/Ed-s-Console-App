@@ -5,9 +5,12 @@ Run from the base by `.github/workflows/locks.yml`; the head is read as data, no
 Test integrity, every pull request:
    - an assertion of a test that survives is not lost. A test is its function name in Python and
      its title in a Playwright spec, across every changed test file, so a moved test is the same
-     test and a rewritten one may restate its assertions. An assertion gone with its test, or
-     with a function it calls that this change deleted, is the review's to judge, as is a test
-     renamed or disabled with its assertions kept;
+     test and a rewritten one may restate its assertions; a test gone under its old name is the
+     one new test holding more than half of its assertions, the same test renamed. An assertion
+     gone with a test that has no such match, or with a function it calls that this change
+     deleted, is the review's to judge, as is a test disabled with its assertions kept;
+   - no test is another test again: the same code, arguments and decorators, in a file that
+     imports the same names (every test file at the head);
    - no line added to code skips a test or leaves a deferred-work marker.
 
 Review record, in the description's `## Review` section (`Commit:` the head, `Verdict:` PASS or
@@ -168,9 +171,11 @@ def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
     new = sorted(after.keys() - before.keys())
     pairs = [(test, test) for test in sorted(before.keys() & after.keys())]
     for test in sorted(before.keys() - after.keys()):
-        renamed = max(new, key=lambda n: len(before[test] & after[n]), default=None)
-        if renamed is not None and before[test] & after[renamed]:
-            pairs.append((test, renamed))
+        # the one new test holding more than half of its assertions is the test renamed; one
+        # shared line (`r.returncode == 0`) does not make another test the same test
+        same = [n for n in new if 2 * len(before[test] & after[n]) > len(before[test])]
+        if len(same) == 1:
+            pairs.append((test, same[0]))
     out = []
     for test, now in pairs:
         lost = [
@@ -224,11 +229,17 @@ def duplicate_tests(root: Path) -> list[str]:
     for name in _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0"):
         if not PYTHON_TESTS.match(name):
             continue
-        for node in _test_functions(_git(root, "show", f"HEAD:{name}")):
+        source = _git(root, "show", f"HEAD:{name}")
+        # the same body tests different code when the names it calls come from elsewhere
+        imports = "".join(
+            ast.dump(n)
+            for n in ast.parse(source).body
+            if isinstance(n, (ast.Import, ast.ImportFrom))
+        )
+        for node in _test_functions(source):
             body = node.body[1:] if ast.get_docstring(node) else node.body
-            key = ast.dump(ast.Module(body=body, type_ignores=[])) + "".join(
-                ast.dump(part) for part in (node.args, *node.decorator_list)
-            )
+            key = imports + ast.dump(ast.Module(body=body, type_ignores=[]))
+            key += "".join(ast.dump(part) for part in (node.args, *node.decorator_list))
             seen.setdefault(key, []).append(f"{name}::{node.name}")
     return [f"a test duplicated: {', '.join(same)}" for same in seen.values() if len(same) > 1]
 
@@ -252,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         body = Path(a.body_file).read_text(encoding="utf-8")
         found = violations(Path.cwd(), a.base, body, a.head_sha)
-    except (ToolError, OSError) as e:
+    except (ToolError, OSError, SyntaxError) as e:  # a test file that does not parse: exit 2
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
     sys.stdout.reconfigure(encoding="utf-8")
