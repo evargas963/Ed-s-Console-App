@@ -108,65 +108,36 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
 @pytest.mark.skipif(
     sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
 )
-def test_the_daemon_its_batch_starts_has_its_window_as_error_output(tmp_path):
-    """The real start_capture_daemon.bat in its own window, as launch.py opens it, no pipe given.
-
-    The daemon it starts has an error output, its window, so an error while it loads shows there
-    (operator 2026-11-04: "i would rather run capture main on python instead of pythonw"); under
-    pythonw it had none. Induced condition: a sitecustomize beside the daemon notes whether it has
-    one, then stops it loading.
-    """
-    home = tmp_path / "checkout"
-    home.mkdir()
-    shutil.copy(launch.ROOT / "start_capture_daemon.bat", home)
-    venv.create(home / ".venv")
-    noted = tmp_path / "error_output.txt"
-    probe = tmp_path / "site"
-    probe.mkdir()
-    (probe / "sitecustomize.py").write_text(
-        "import sys\n"
-        f"open({str(noted)!r}, 'w').write(str(sys.stderr is not None))\n"
-        "raise SystemExit(1)\n",
-        encoding="utf-8",
-    )
-    env = {
-        **os.environ,
-        "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
-        "ED_RUNTIME_ROOT": str(tmp_path),
-    }
-    subprocess.Popen(launch.daemon_window(home / "start_capture_daemon.bat"), cwd=home, env=env)
-    try:
-        for _ in range(600):  # up to 60 s for the window to start the daemon
-            if noted.exists():
-                break
-            time.sleep(0.1)
-        assert noted.read_text(encoding="utf-8") == "True"
-    finally:
-        for p in psutil.process_iter(["cmdline"]):
-            if p.info["cmdline"] and str(home) in " ".join(p.info["cmdline"]):
-                p.kill()
-
-
-@pytest.mark.skipif(
-    sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
-)
 def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
     """The real start_capture_daemon.bat in a folder of its own, with launch.py and a virtual
     environment beside it, starts the real daemon in its window (no Schwab token, ports of its
     own). The stop finds it by launch.DAEMON_START and ends it, exit 0, and the batch does not
-    restart it. A batch line apart from DAEMON_START would read "not running", leaving it up."""
+    restart it. A batch line apart from DAEMON_START would read "not running", leaving it up.
+    The daemon has an error output, its window, where an error while it loads shows (operator
+    2026-11-04: "i would rather run capture main on python instead of pythonw"; under pythonw it
+    had none): induced, a sitecustomize notes it for each process by its id."""
     home = tmp_path / "checkout"
     home.mkdir()
     for name in ("launch.py", "start_capture_daemon.bat"):
         shutil.copy(launch.ROOT / name, home)
     venv.create(home / ".venv")
+    notes = tmp_path / "error_output"
+    notes.mkdir()
+    probe = tmp_path / "site"
+    probe.mkdir()
+    (probe / "sitecustomize.py").write_text(
+        "import os, sys\n"
+        f"with open(os.path.join({str(notes)!r}, str(os.getpid())), 'w') as f:\n"
+        "    f.write(str(sys.stderr is not None))\n",
+        encoding="utf-8",
+    )
     with socket.socket() as push, socket.socket() as ui:
         push.bind(("127.0.0.1", 0))
         ui.bind(("127.0.0.1", 0))
         push_port, ui_port = push.getsockname()[1], ui.getsockname()[1]
     env = {
         **os.environ,
-        "PYTHONPATH": os.pathsep.join([str(launch.ROOT), *site.getsitepackages()]),
+        "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
         "ED_LIVE_UI_HOST": "127.0.0.1",
         "ED_LIVE_UI_PORT": str(ui_port),
@@ -180,6 +151,16 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
         while not launch.in_use(push_port):
             assert time.monotonic() < end, "the batch's daemon never served its port"
             time.sleep(0.1)
+        noted = [
+            (notes / str(p.pid)).read_text(encoding="utf-8")
+            for p in psutil.process_iter(["cmdline", "cwd"])
+            if p.info["cmdline"]
+            and p.info["cmdline"][1:3] == launch.DAEMON_START
+            and p.info["cwd"]
+            and Path(p.info["cwd"]).resolve() == home.resolve()
+            and (notes / str(p.pid)).exists()
+        ]
+        assert noted == ["True"], noted
         stopped = subprocess.run(
             [sys.executable, "launch.py", "stop"],
             cwd=home,
