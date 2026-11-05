@@ -38,7 +38,11 @@ The shapes:
    missing one filled in. A base plus a change has the same shape (`price[t] = price.get(t, 0)
    + move`, whose 0 is an unknown base); no check of shapes can tell it from a sum
    (the operator's spec v2 of 2026-11-03, an open amendment for this construct only; any other
-   default, key, mapping or use of that `.get` is still refused).
+   default, key, mapping or use of that `.get` is still refused). One port setting is allowed,
+   exactly `os.environ.get("<name>", "<digits>")` where the name is one of PORT_SETTINGS: the
+   program's own port, with its written default, which a test points elsewhere (the operator,
+   2026-11-05: "okay, got it. that is fine"; "it needs to be extremely narrow"); any other name,
+   mapping or default is still refused.
 
 Run from the base on every pull request (.github/workflows/locks.yml), so a change cannot edit it:
     python tools/check_end_to_end.py --base origin/main
@@ -510,13 +514,40 @@ def _running_totals(tree: ast.AST) -> set[int]:
     return out
 
 
+#: the program's port settings, each read with its written default (the operator, 2026-11-05)
+PORT_SETTINGS = frozenset({"ED_CONSOLE_PORT", "ED_LIVE_UI_PORT", "ED_LIVE_PUSH_PORT"})
+
+
+def _port_settings(tree: ast.AST) -> set[int]:
+    """The `.get` calls that read a port setting, exactly `os.environ.get("<name>", "<digits>")`
+    with the name one of PORT_SETTINGS."""
+    return {
+        id(n)
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "get"
+        and isinstance(n.func.value, ast.Attribute)
+        and n.func.value.attr == "environ"
+        and isinstance(n.func.value.value, ast.Name)
+        and n.func.value.value.id == "os"
+        and len(n.args) == 2
+        and not n.keywords
+        and isinstance(n.args[0], ast.Constant)
+        and n.args[0].value in PORT_SETTINGS
+        and isinstance(n.args[1], ast.Constant)
+        and isinstance(n.args[1].value, str)
+        and n.args[1].value.isdigit()
+    }
+
+
 def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
     """The patch shapes the PR adds to a Python file."""
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
         return [(e.lineno or 1, f"does not parse: {e.msg}")]
-    totals = _running_totals(tree)
+    totals = _running_totals(tree) | _port_settings(tree)
     found: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.ExceptHandler, ast.If, ast.With)):
