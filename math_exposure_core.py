@@ -344,8 +344,10 @@ def overlay_streamed_contract_fields(
     for c in contracts:
         if c.symbol not in held:
             out.append(c)
-            continue
-        out.append(replace(c, volume=streamed_by_symbol.get(c.symbol, {}).get("total_volume")))
+        elif c.symbol in streamed_by_symbol:
+            out.append(replace(c, volume=streamed_by_symbol[c.symbol].get("total_volume")))
+        else:
+            out.append(replace(c, volume=None))
     return out, len(out) - sum(new is old for new, old in zip(out, contracts))
 
 
