@@ -72,7 +72,7 @@ import runtime_layout
 import server
 import time_et
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
-from app.market_data.schwab.streaming.live_ui import CONSOLE_HOST, CONSOLE_PORT, serve_live_ui
+from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from app.options.order_flow import streaming as console_feed
 from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
@@ -1156,14 +1156,17 @@ async def record_feed_status(
 
 
 async def serve_console(daemon: Daemon, stop: asyncio.Event) -> None:
-    """The console's pages and routes (server.app) in this program until `stop`, reading the
-    daemon's one bus (console_feed.bind_daemon): one program, one copy of every value."""
+    """The console's pages and routes (server.app) in this program until `stop`, on every address
+    at the port ED_CONSOLE_PORT names (set where the program is started: start_ed_console.bat;
+    none set stops the start with its name), reading the daemon's one bus
+    (console_feed.bind_daemon): one program, one copy of every value."""
+    port = int(os.environ["ED_CONSOLE_PORT"])
     console_feed.bind_daemon(daemon)
     web = uvicorn.Server(
         uvicorn.Config(
             server.app,
-            host=CONSOLE_HOST,
-            port=CONSOLE_PORT,
+            host="0.0.0.0",
+            port=port,
             timeout_graceful_shutdown=10,
             log_config=None,
         )

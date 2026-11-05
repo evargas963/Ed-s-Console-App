@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import socket
 import subprocess
 import sys
@@ -34,12 +35,10 @@ from websockets.sync.client import connect
 
 import time_et
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import CONSOLE_PORT
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
 
 log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
-URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
 #: what the program runs right after Python (start_capture_daemon.bat's line)
 DAEMON_START = ["-m", "app.market_data.schwab.streaming.capture_main"]
 #: how long a clean stop waits for the program to end
@@ -178,7 +177,10 @@ START_WAIT_SEC = 180.0
 
 
 def main() -> int:
-    if in_use(DAEMON_PORT) or in_use(CONSOLE_PORT):
+    """Start the program unless it runs, wait for its pages on ED_CONSOLE_PORT (set by
+    start_ed_console.bat, inherited by the program's window), and open the browser at them."""
+    pages = int(os.environ["ED_CONSOLE_PORT"])
+    if in_use(DAEMON_PORT) or in_use(pages):
         print("Commit check: not run; Ed Console already runs from this checkout.")
     else:
         check, commit, why = bring_to_origin_main(ROOT)
@@ -190,12 +192,12 @@ def main() -> int:
         subprocess.Popen(daemon_window(ROOT / "start_capture_daemon.bat"), cwd=ROOT)
         print('Ed Console: started in its own window ("Ed Capture Daemon").')
     started = time_et.elapsed()
-    why = unhealthy_for(CONSOLE_PORT, START_WAIT_SEC)
+    why = unhealthy_for(pages, START_WAIT_SEC)
     if why is not None:
         print(f"Ed Console: its pages did not answer in {START_WAIT_SEC:.0f} s: {why}")
         return 1
     print(f"Ed Console: healthy {time_et.elapsed() - started:.1f} s after the start.")
-    webbrowser.open(URL)  # the default browser
+    webbrowser.open(f"http://127.0.0.1:{pages}/")  # the default browser
     return 0
 
 
