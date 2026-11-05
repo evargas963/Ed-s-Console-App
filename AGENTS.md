@@ -196,7 +196,10 @@ then the rule binds with no machine check.
     `tests/test_check_integrity_v1.py`); a change updates every test it affects in the same PR.
   - `capture_main`'s import is at the top (rule 13): the daemon runs under `python` in its window,
     where an error while it loads shows ("i would rather run capture main on python instead of
-    pythonw").
+    pythonw"), and its activity (Schwab's requests and answers) can be watched as it streams
+    (2026-11-05: "i'd like to see the data in the daemon. lets try it out"). Told that closing
+    that window ends the daemon without its clean stop (the rows held for the next write, 0.25 s
+    of them, or more while the database refuses writes, are lost), he chose the window; `python launch.py stop` stays the stop.
   - The vendored chart library's one patch shape is left as it is: this repository cannot fix it
     at its source.
   - Every language the repository holds gets its standard checker, run over the whole repository

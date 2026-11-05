@@ -17,7 +17,7 @@ if "%CODE%"=="3" (
     goto done
 )
 if "%CODE%"=="2" (
-    echo  This checkout may not run a live daemon here - see logs or run it in a terminal.
+    echo  This checkout may not run a live daemon here - the reason is printed above.
     goto done
 )
 if "%CODE%"=="5" (
