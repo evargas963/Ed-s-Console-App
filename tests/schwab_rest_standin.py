@@ -105,6 +105,14 @@ REFUSED = {
 }
 
 
+#: Schwab's challenge on a data request whose access token expired, as production's stream_capture
+#: log of 2026-11-05 07:09 CT records it (a 401 with an empty body)
+INVALID_TOKEN = (
+    'Bearer realm="null",error="invalid_token",'
+    'error_description="keymanagement.service.access_token_expired: Access Token expired"'
+)
+
+
 def chain_payload(ticker: str) -> dict:
     """The captured chain in Schwab's chain shape."""
     expiry, contracts, spot = CHAINS[ticker]
@@ -133,7 +141,9 @@ class LocalSchwab:
     chain answer, which the quotes answer names in Schwab's errors entry
     (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them; `stream_url`: the streamer
     the user preferences name (tests/schwab_stream_standin.LocalStreamer.url); `token`: the token
-    endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403); `edge`:
+    endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403);
+    `expired`: access tokens a data request carrying one is answered 401 for, with Schwab's
+    INVALID_TOKEN challenge; `edge`:
     while set, every data request is answered with EDGE_403. Each request is recorded as (path,
     query, started, answered, the client's port, its Authorization)."""
 
@@ -141,6 +151,7 @@ class LocalSchwab:
         self.stream_url = stream_url
         self.requests: list = []
         self.token = "refreshes"
+        self.expired: set[str] = set()
         self.edge = False
         self.quotes_status = 200
         self.quotes_body: bytes | None = None
@@ -159,6 +170,16 @@ class LocalSchwab:
                 query = {k: v[0] for k, v in parse_qs(url.query).items()}
                 if outer.edge:
                     return self._edge(url.path, query, started)
+                if self.headers.get("Authorization") in {f"Bearer {a}" for a in outer.expired}:
+                    return self._send(
+                        url.path,
+                        query,
+                        started,
+                        401,
+                        "application/json",
+                        b"",
+                        (("WWW-Authenticate", INVALID_TOKEN),),
+                    )
                 status, body = outer.answer(url.path, query)
                 self._send(
                     url.path,
