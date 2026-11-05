@@ -1171,12 +1171,8 @@ async def show_stream(bus: MessageBus, stop: asyncio.Event, every: float = 1.0) 
     watch what the stream carries."""
     sub = bus.subscribe("", policy=LOG)
     try:
-        while True:
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=every)
-                return
-            except TimeoutError:
-                pass
+        while not stop.is_set():
+            await asyncio.sleep(every)
             seen: dict[str, list] = {}
             while not sub.queue.empty():
                 topic, msg = sub.queue.get_nowait()
