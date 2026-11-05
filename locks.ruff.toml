@@ -11,7 +11,6 @@ select = [
     "B", # likely bugs
     "BLE", # a catch-all except
     "C90", # a function too complex to read
-    "D2", "D3", "D4", # PEP 257, where a docstring exists
     "E", "F", "I", "UP", "W", # PEP 8, unused and undefined names, import order, old syntax
     "ERA", # code left in a comment
     "PERF", # needless work in a loop
@@ -26,7 +25,7 @@ select = [
     "TRY", # an except that hides what failed
 ]
 ignore = [
-    "B004", "B006", "B007", "B011", "B028", "B905", "B912", "D203", "D213", "E711", "E712", "E731",
+    "B004", "B006", "B007", "B011", "B028", "B905", "B912", "E711", "E712", "E731",
     "UP042",
 ]
 

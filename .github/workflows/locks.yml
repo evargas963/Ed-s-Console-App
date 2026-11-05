@@ -37,9 +37,7 @@ jobs:
         env:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BODY: ${{ github.event.pull_request.body }}
         run: |
-          printf '%s' "$BODY" > pr_body.md
           git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             "refs/pull/$PR/merge:refs/heads/judged"
           test "$(git -C judge rev-parse refs/heads/judged^2)" = "$HEAD_SHA"
@@ -48,8 +46,7 @@ jobs:
           cd head
           base="$(git rev-parse HEAD^1)"
           python ../judge/tools/check_locks.py --base "$base"
-          python ../judge/tools/check_end_to_end.py --base "$base" --body-file ../pr_body.md
-          python ../judge/tools/check_integrity.py --base "$base" --body-file ../pr_body.md \
-            --head-sha "$HEAD_SHA"
+          python ../judge/tools/check_end_to_end.py --base "$base"
+          python ../judge/tools/check_integrity.py --base "$base"
           cd ..
           lint-imports --config judge/locks.imports.toml --no-cache

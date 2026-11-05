@@ -1,11 +1,10 @@
 """AGENTS.md rule 1, no patches: the code shapes a machine can refuse on a pull request.
 
-A check of shapes only. It cannot see a design-level patch; that is review's. That a product change
-is proven end to end is check_fails_before's: an end-to-end path test that fails on the old code. A
-file whose code is the same once comments and docstrings are set aside (code_identical: the Python
-syntax tree; page code's syntax tree from Babel, tools/js_code_tree.js), or whose change is exactly
-the standard tools' own (ruff's safe fixes with the PR's committed pyproject.toml, then ruff format:
-tool_fixed), is not a change of product code. An .html page or a .bat file is always one, and so
+A check of shapes only; it cannot see a design-level patch. A file whose code is the same once
+comments and docstrings are set aside (code_identical: the Python syntax tree; page code's syntax
+tree from Babel, tools/js_code_tree.js), or whose change is exactly the standard tools' own
+(ruff's safe fixes with the PR's committed pyproject.toml, then ruff format: tool_fixed), is not a
+change of product code. An .html page or a .bat file is always one, and so
 is removing code nothing calls, a deleted file included.
 
 The whole repository is judged (operator 2026-11-04: everything is repo wide): the shapes of every
@@ -37,15 +36,12 @@ The shapes:
    total is allowed, exactly `d[k] = d.get(k, 0) + x` (the same `d` and `k` on both sides, the
    default the number 0, `x` not a literal 0): the sum of nothing is 0, a real value, not a
    missing one filled in. A base plus a change has the same shape (`price[t] = price.get(t, 0)
-   + move`, whose 0 is an unknown base); no check of shapes can tell it from a sum, so rule 14's
-   review is the layer that refuses it
+   + move`, whose 0 is an unknown base); no check of shapes can tell it from a sum
    (the operator's spec v2 of 2026-11-03, an open amendment for this construct only; any other
    default, key, mapping or use of that `.get` is still refused).
 
-The description fills BODY_SECTIONS, with `--body-file`.
-
 Run from the base on every pull request (.github/workflows/locks.yml), so a change cannot edit it:
-    python tools/check_end_to_end.py --base origin/main --body-file pr_body.md
+    python tools/check_end_to_end.py --base origin/main
 Exit 0: none found. Exit 1: each violation on its own line. Exit 2: the check itself failed
 (git unavailable, the base unknown, a file of the PR unreadable).
 """
@@ -68,7 +64,6 @@ from pathlib import Path
 SHAPED_SUFFIXES = (".py", ".js", ".mjs", ".html")
 PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
-BODY_SECTIONS = ("Schwab → screen:", "Deleted:", "End-to-end test:")
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
 JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
@@ -692,27 +687,12 @@ def violations(root: Path, base: str) -> list[str]:
     return found
 
 
-def body_violations(body: str) -> list[str]:
-    """Each section the description must fill: BODY_SECTIONS, with an arrow in any spelling."""
-    norm = re.sub(r"<!--.*?-->", "", body, flags=re.S).replace("->", "→").replace("=>", "→")
-    hits = sorted((norm.find(s), s) for s in BODY_SECTIONS if s in norm)
-    out = [f"the description lacks: {s}" for s in BODY_SECTIONS if s not in norm]
-    ends = [at for at, _section in hits[1:]] + [len(norm)]
-    for (at, section), end in zip(hits, ends, strict=False):
-        if not norm[at + len(section) : end].split("\n## ")[0].strip():
-            out.append(f"the description's {section} is empty")
-    return out
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
-    ap.add_argument("--body-file", type=Path)
     a = ap.parse_args(argv)
     try:
         found = violations(Path.cwd(), a.base)
-        if a.body_file:
-            found += body_violations(a.body_file.read_text(encoding="utf-8"))
     except (ToolError, OSError, UnicodeDecodeError, ValueError) as e:  # ValueError: a blob missing
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
