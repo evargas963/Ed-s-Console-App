@@ -1057,10 +1057,7 @@ def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
     MAX (not a single hardcoded field) is the contract's own last-observed instant."""
     if not greeks:
         return None
-    candidates = [
-        greeks.get(k)
-        for k in ("gamma_ts_recv", "open_interest_ts_recv", "delta_ts_recv", "total_volume_ts_recv")
-    ]
+    candidates = [greeks.get(k) for k in ("gamma_ts_recv", "delta_ts_recv", "total_volume_ts_recv")]
     candidates = [c for c in candidates if isinstance(c, (int, float))]
     return max(candidates) if candidates else None
 

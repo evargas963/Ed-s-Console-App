@@ -109,22 +109,20 @@ class OrderFlowState:
 
         # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store.)
 
-        # The contract's own Greeks, open interest and volume, each with its own receive time: a
-        # message carries only the fields that changed (Change delivery), so each field is
-        # merged alone; a Greek Schwab sends as -999 is no value, and stands as None.
+        # The contract's own Greeks and volume, each with its own receive time: a message carries
+        # only the fields that changed (Change delivery), so each field is merged alone; a Greek
+        # Schwab sends as -999 is no value, and stands as None. Open interest is the chain's:
+        # the stream does not send it for every contract it streams.
         greeks = streamed_greeks(content_item)
-        oi = schwab_count(content_item.get("OPEN_INTEREST"))
 
         def received(field: str) -> float:
             return ts_recv if field_received is None else field_received[field]
 
-        if greeks or oi is not None or vf is not None:
+        if greeks or vf is not None:
             with self._lock:
                 g = self._stream_greeks.setdefault(sym, {})
                 for name, value in greeks.items():
                     g[name], g[f"{name}_ts_recv"] = value, received(name.upper())
-                if oi is not None:
-                    g["open_interest"], g["open_interest_ts_recv"] = oi, received("OPEN_INTEREST")
                 if vf is not None:
                     g["total_volume"], g["total_volume_ts_recv"] = vf, received("TOTAL_VOLUME")
 

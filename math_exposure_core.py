@@ -327,22 +327,15 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
 _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
-#: streamed-state key (app.options.order_flow.state, read by schwab_count) -> the record field it
-#: sets. Gamma, delta, and volatility are not here: the sweep took them once for each contract,
-#: the stream's for a contract it streams, else the quote's.
-_STREAMED_COUNT_FIELDS: tuple[tuple[str, str], ...] = (
-    ("open_interest", "open_interest"),
-    ("total_volume", "volume"),
-)
-
-
 def overlay_streamed_contract_fields(
     contracts: list[OptionContract], streamed_by_symbol: dict[str, dict], held: set[str]
 ) -> tuple[list[OptionContract], int]:
-    """The open interest and volume of each contract Schwab streams (`held`) as the stream sent
-    them (`streamed_by_symbol`, its streamed record), the chain's never: the pushed field is its
-    one producer (AGENTS.md rule 3), and one the stream has not sent is None. Every other
-    contract keeps the chain's.
+    """The volume of each contract Schwab streams (`held`) as the stream sent it
+    (`streamed_by_symbol`, its streamed record's `total_volume`), the chain's never: the pushed
+    field is its one producer (AGENTS.md rule 3), and one the stream has not sent is None. Every
+    other contract keeps the chain's. Open interest is the chain's for every contract (the stream
+    does not send it for every contract it streams), and gamma, delta and volatility are the
+    sweep's.
 
     Pure: a streamed contract is a new record, every other the same one. Returns
     (new_contracts, streamed_count).
@@ -352,8 +345,7 @@ def overlay_streamed_contract_fields(
         if c.symbol not in held:
             out.append(c)
             continue
-        streamed = streamed_by_symbol.get(c.symbol, {})
-        out.append(replace(c, **{f: streamed.get(k) for k, f in _STREAMED_COUNT_FIELDS}))
+        out.append(replace(c, volume=streamed_by_symbol.get(c.symbol, {}).get("total_volume")))
     return out, len(out) - sum(new is old for new, old in zip(out, contracts))
 
 
