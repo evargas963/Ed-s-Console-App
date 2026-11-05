@@ -90,7 +90,7 @@ his "you are in control and control the language", his to reverse.
 open work items, patching lines in tests, format suppressions, and every finding of
 `locks.ruff.toml` with each `noqa` ignored. A count at 0 is an absolute ban. Above 0, size may rise
 and is reported (`check_locks.FREE`: lines, bytes, work items; operator 2026-11-04: "i am not
-going to set some arbitrary number"); a test's database and docstring style are one-way counts
+going to set some arbitrary number"); a test's database is a one-way count
 like every other finding (operator 2026-11-04, F4); that a change deletes what it replaces — no machine check,
 ENF-12. No number is kept by hand (`tests/test_check_locks_v1.py`). A banned name (`sqlite3`, the clock, `websockets`, `http.client`, `urllib.request`) counts
 per product file, so no module that does not hold one may start. The same job runs import-linter on
