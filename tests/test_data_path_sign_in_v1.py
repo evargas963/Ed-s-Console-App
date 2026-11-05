@@ -19,7 +19,6 @@ import sqlite3
 import subprocess
 import sys
 import threading
-import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +28,7 @@ import pytest
 import live_market_plane as lmp
 import schwab_client as sc
 import server
+import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import CaptureWriter
 from calibration import complete_chain_capture as cch
@@ -64,7 +64,7 @@ def _every_request(client) -> list:
 def _new_sign_in(token_path, access: str) -> int:
     """A new sign-in saved to the token file by the writer of every sign-in python
     reauth_schwab.py saves (sc.write_token_file_atomically): its creation time."""
-    created = int(time.time()) + 1
+    created = int(time_et.now()) + 1
     sc.write_token_file_atomically(
         str(token_path),
         {
@@ -74,7 +74,7 @@ def _new_sign_in(token_path, access: str) -> int:
                 "refresh_token": "r2",
                 "token_type": "Bearer",
                 "expires_in": 1800,
-                "expires_at": int(time.time() + 3600),
+                "expires_at": int(time_et.now() + 3600),
             },
         },
     )
@@ -193,7 +193,7 @@ def test_a_new_sign_in_saved_while_signed_in_is_taken_when_the_refresh_is_due(tm
         created = _new_sign_in(token, "fresh")
         client.get_option_expiration_chain("SPY")
         client.session.token["expires_at"] = (
-            int(time.time()) + 100
+            int(time_et.now()) + 100
         )  # the old token now in its refresh window
         resp = client.get_option_expiration_chain("SPY")
     finally:
@@ -221,13 +221,13 @@ with sc.token_file_lock(path):
 sys.exit(3 if (now.st_mtime_ns, now.st_ino) != (seen.st_mtime_ns, seen.st_ino) else 0)
 """
 _FRESH = {
-    "creation_timestamp": int(time.time()) + 1,
+    "creation_timestamp": int(time_et.now()) + 1,
     "token": {
         "access_token": "fresh",
         "refresh_token": "r2",
         "token_type": "Bearer",
         "expires_in": 1800,
-        "expires_at": int(time.time() + 3600),
+        "expires_at": int(time_et.now() + 3600),
     },
 }
 

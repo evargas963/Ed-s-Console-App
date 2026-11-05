@@ -6,9 +6,8 @@ absent); a genuinely netted zero shows 0.
 
 from __future__ import annotations
 
-import time
-
 import server
+import time_et
 from math_exposure_core import compute_exposures_by_strike, exposure_books
 from option_contract import read_chain
 from server import project_gamma_surface
@@ -93,7 +92,7 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes():
         server._terrain_cache[tk] = {
             "ticker": tk,
             "spot": CRWD.spot,
-            "computed_ts_utc": time.time(),
+            "computed_ts_utc": time_et.now(),
             "_vanna_rows": server._vanna_rows(snap),
         }
     try:

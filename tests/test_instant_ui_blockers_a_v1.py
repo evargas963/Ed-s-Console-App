@@ -8,25 +8,26 @@
 
 from __future__ import annotations
 
+import time_et
+
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
 
 def _token_file(tmp_path):
     """A token file in schwab-py's shape (the stand-in for schwab_token.json), valid for an hour."""
     import json
-    import time
 
     tok = tmp_path / "schwab_token.json"
     tok.write_text(
         json.dumps(
             {
-                "creation_timestamp": int(time.time()),
+                "creation_timestamp": int(time_et.now()),
                 "token": {
                     "access_token": "a",
                     "refresh_token": "r",
                     "token_type": "Bearer",
                     "expires_in": 3600,
-                    "expires_at": int(time.time()) + 3600,
+                    "expires_at": int(time_et.now()) + 3600,
                 },
             }
         )

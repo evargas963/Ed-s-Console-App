@@ -594,7 +594,8 @@
         if (x > chart.timeScale().width()) return;                 // on the price axis
         var price = candles.coordinateToPrice(y), time = timeAtX(x);
         if (price == null || time == null) return;
-        S.drewAt = Date.now();                                     // this click is not a pin
+        // this click is not a pin: the chart's own click of it, within 400 ms, is passed over
+        S.justDrew = true; setTimeout(function () { S.justDrew = false; }, 400);
         if (S.tool === 'hline') { addHline(price, true); setTool('cursor'); return; }
         var pt = { time: time, price: price };
         if (!draw.preview) { draw.preview = { a: pt, b: pt }; draw.redraw(); return; }
@@ -603,7 +604,7 @@
       }, true);
     })();
     chart.subscribeClick(function (p) {
-      if (!p.point || S.tool !== 'cursor' || Date.now() - (S.drewAt || 0) < 400) return;
+      if (!p.point || S.tool !== 'cursor' || S.justDrew) return;
       // a click on a profile row selects it (the row's own gesture, e.g. a strike for every panel)
       var row = opts.onProfileClick ? profile.rowAt(p.point.x, p.point.y, chart.timeScale().width()) : null;
       if (row) { opts.onProfileClick(row); return; }

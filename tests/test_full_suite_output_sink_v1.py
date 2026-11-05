@@ -17,6 +17,8 @@ from pathlib import Path
 
 import psutil
 
+import time_et
+
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "scripts" / "run-pytest-full.mjs"
 NODE = shutil.which("node")
@@ -106,8 +108,8 @@ def test_stopping_the_runner_stops_what_it_started_and_one_already_ended_raises_
         "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); time.sleep(60)"
     )
     proc = subprocess.Popen([sys.executable, "-c", sleeper])
-    deadline = time.monotonic() + 30
-    while not psutil.Process(proc.pid).children(recursive=True) and time.monotonic() < deadline:
+    deadline = time_et.elapsed() + 30
+    while not psutil.Process(proc.pid).children(recursive=True) and time_et.elapsed() < deadline:
         time.sleep(0.1)
     started = psutil.Process(proc.pid).children(recursive=True)
     assert started, "the parent started no child"

@@ -31,6 +31,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import time_et
 from db_authority import canonical_stream_db_path
 from time_et import ct_label
 
@@ -173,7 +174,7 @@ WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
 
 
 def _now(ts_recv: float | None) -> float:
-    return ts_recv if ts_recv is not None else time.time()
+    return ts_recv if ts_recv is not None else time_et.now()
 
 
 #: Every Schwab message carries `schwab_ts`: the timestamp (ms) Schwab put on the frame that
@@ -489,7 +490,7 @@ class HealthRegistry:
         self._last: dict[str, float] = {}
 
     def beat(self, feed: str, ts: float | None = None) -> None:
-        self._last[feed] = ts if ts is not None else time.time()
+        self._last[feed] = ts if ts is not None else time_et.now()
 
     def last(self, feed: str) -> float | None:
         """When this feed last carried data (None: never, this connection)."""
@@ -968,7 +969,7 @@ class _Spill:
                     raw.decode("latin-1"),
                     f"{self.path.name}: the record at byte {at} "
                     f"does not decode, kept as its bytes (latin-1): {type(e).__name__}: {e}",
-                    time.time(),
+                    time_et.now(),
                 )
             at += 4 + length
             out.append((item, at))
@@ -982,7 +983,7 @@ class _Spill:
             raw.decode("latin-1"),
             f"{self.path.name}: the {len(raw)} bytes from byte "
             f"{at} make no whole record, kept as their bytes (latin-1)",
-            time.time(),
+            time_et.now(),
         )
 
     def committed(self, records: int, end: int) -> None:
@@ -1183,11 +1184,11 @@ class CaptureWriter:
             topic,
             reason,
         )
-        return self._keep(conn, KeptFailure(topic, msg, reason, time.time()))
+        return self._keep(conn, KeptFailure(topic, msg, reason, time_et.now()))
 
     def _log_once_a_minute(self, key: tuple, fmt: str, *args) -> None:
         """One log line per kind a minute, with how many came since the last line."""
-        minute = int(time.time() // 60)
+        minute = int(time_et.now() // 60)
         with self._lock:
             seen = self._logged.setdefault(key, [None, 0])
             if seen[0] == minute:
@@ -1325,7 +1326,7 @@ class CaptureWriter:
                 self.state, self.error, self.error_ts = (
                     WRITER_DEAD,
                     f"{type(e).__name__}: {e}",
-                    time.time(),
+                    time_et.now(),
                 )
                 # not recorded: the open batch, the round's messages not yet in it (the one that
                 # ended the thread first; a retry's round holds its batch and what was waiting),
@@ -1376,7 +1377,7 @@ class CaptureWriter:
         read-only file) keeps refusing after the database accepts them again."""
         conn = None
         try:
-            last_commit, stopping = time.monotonic(), False
+            last_commit, stopping = time_et.elapsed(), False
             while not (stopping and not self._waiting and not self._spills):
                 unread = (
                     bool(self._spills) and self._spills[0].read_at < self._spills[0].size
@@ -1385,7 +1386,7 @@ class CaptureWriter:
                     item = q.get(
                         timeout=0.001
                         if unread
-                        else max(self.batch_sec - (time.monotonic() - last_commit), 0.01)
+                        else max(self.batch_sec - (time_et.elapsed() - last_commit), 0.01)
                     )
                 except queue.Empty:
                     item = False
@@ -1416,10 +1417,10 @@ class CaptureWriter:
                         holding
                         or stopping
                         or len(self._batch) >= self.batch_rows
-                        or time.monotonic() - last_commit >= self.batch_sec
+                        or time_et.elapsed() - last_commit >= self.batch_sec
                     ):
                         conn.commit()
-                        last_commit = time.monotonic()
+                        last_commit = time_et.elapsed()
                         with self._lock:
                             self._committed(self._batch)
                             self._batch, self._waiting, self._waiting_bytes = [], [], 0
@@ -1460,7 +1461,7 @@ class CaptureWriter:
         with self._lock:  # rolled back: none of the round is stored
             self._batch, self._batch_spilled, self._stored = [], False, 0
             if self.state != WRITER_BLOCKED:
-                self.error_ts = time.time()
+                self.error_ts = time_et.now()
             self.state, self.error = WRITER_BLOCKED, reason
             if not holding:  # held now: in memory up to the cap, then spilled
                 self._waiting, self._waiting_bytes = [], 0
@@ -1505,7 +1506,7 @@ class CaptureWriter:
         none or the newest was found at start (read only). Raises the disk's refusal."""
         if self._spills and self._spills[-1].out is not None:
             return self._spills[-1]
-        spill = _Spill.new(self.db_path, int(time.time() * 1000), 1)
+        spill = _Spill.new(self.db_path, int(time_et.now() * 1000), 1)
         with self._lock:
             self._spills.append(spill)
         log.warning("stream writer: messages go to %s before the database", spill.path)
@@ -1637,7 +1638,7 @@ class CaptureWriter:
             self._round, self._stored = self._waiting, 0
             self._admitting, self._admitted = items, 0
         if items:
-            began = self.error_ts if self.error_ts is not None else time.time()
+            began = self.error_ts if self.error_ts is not None else time_et.now()
             try:
                 held = _Spill.new(self.db_path, int(began * 1000), 0)
             except OSError as e:

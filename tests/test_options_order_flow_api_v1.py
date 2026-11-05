@@ -10,12 +10,12 @@ messages). STAND-IN (named): the daemon's status, holding the contract or not.
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server
+import time_et
 from app.options.order_flow import streaming as ofs
 from option_contract import read_chain
 from stream_spine import book_msg
@@ -37,7 +37,7 @@ def _daemon_holds(*services: str, now: float | None = None) -> None:
     `services`."""
     lmp.record_feed_heartbeat(
         {
-            "ts": time.time() if now is None else now,
+            "ts": time_et.now() if now is None else now,
             "schwab_socket_open": True,
             "held": {svc: [CONTRACT] for svc in services},
         }

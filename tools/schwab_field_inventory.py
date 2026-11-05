@@ -26,6 +26,8 @@ import sys
 import time
 from pathlib import Path
 
+import time_et
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 log = logging.getLogger(__name__)
@@ -116,7 +118,8 @@ def rest_rows(
 ) -> tuple[dict[tuple[str, str], set[str]], dict[str, str], dict[str, object]]:
     """({(path, type): variants}, {path: endpoint}, {call: status}). Every endpoint, with every
     option it takes; the widest date range each accepts."""
-    now, today = dt.datetime.now(), dt.date.today()
+    now = dt.datetime.fromtimestamp(time_et.now())
+    today = now.date()
     P, M = c.Instrument.Projection, c.Movers
     hashes = [a["hashValue"] for a in c.get_account_numbers().json()]
     calls = [  # (endpoint, variant, call)
@@ -357,7 +360,7 @@ def main() -> int:
     if not state.ok:
         print(state.message)
         return 1
-    today = dt.date.today().isoformat()
+    today = dt.datetime.fromtimestamp(time_et.now()).date().isoformat()
     from app.market_data.schwab.streaming.capture import stored_watchlist, streaming_fields
 
     roster = [t for t in stored_watchlist(canonical_stream_db_path()) if not t.startswith("$")]

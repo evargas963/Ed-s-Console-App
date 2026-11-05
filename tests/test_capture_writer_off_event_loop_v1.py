@@ -14,6 +14,7 @@ import sqlite3
 import time
 
 import stream_spine
+import time_et
 from stream_spine import LOG, CaptureWriter, MessageBus, quote_msg
 
 
@@ -60,11 +61,11 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path, monkeypatch):
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
         gaps = []
-        last = time.monotonic()
+        last = time_et.elapsed()
         for i in range(40):
             bus.publish("quote.SPY", _quote(i))
             await asyncio.sleep(0.01)
-            now = time.monotonic()
+            now = time_et.elapsed()
             gaps.append(now - last)
             last = now
         stop.set()

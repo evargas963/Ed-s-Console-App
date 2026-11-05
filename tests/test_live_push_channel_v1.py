@@ -26,6 +26,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import time_et
 from app.market_data.schwab.streaming import capture, live_push, live_ui
 from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 from tests.feed_live_helper import RTH_INSTANT, clock_from
@@ -97,15 +98,15 @@ def _spy_trade(last: float, ts: float) -> dict:
 
 
 async def _until(pred, timeout=5.0):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
+    end = time_et.elapsed() + timeout
+    while time_et.elapsed() < end:
         if pred():
             return True
         await asyncio.sleep(0.01)
     return False
 
 
-def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time.time):
+def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
     beat stamped by `clock`."""
     return lambda _now: {
@@ -206,15 +207,15 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     clock = clock_from(RTH_INSTANT)
 
     def sample(seconds):  # a route, on its own thread, as the console serves them
-        end = time.monotonic() + seconds
-        while time.monotonic() < end:
+        end = time_et.elapsed() + seconds
+        while time_et.elapsed() < end:
             samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
             time.sleep(0.05)
 
     async def body(bus, stats):
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         for i in range(300):
-            for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time.time(), None, None):
+            for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time_et.now(), None, None):
                 bus.publish(topic, msg)
         sampler = threading.Thread(target=sample, args=(7.0,))
         sampler.start()
@@ -234,11 +235,11 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
 def test_a_closed_schwab_socket_is_not_live(feed):
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        ts = time.time()
+        ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
         await asyncio.sleep(1.3)  # at least one heartbeat arrived
-        assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time())
+        assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time_et.now())
 
     asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
 
@@ -260,11 +261,11 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
                 ask=1.1,
                 last=1.05,
                 src="not_schwab",
-                ts_recv=time.time(),
+                ts_recv=time_et.now(),
                 native={"LAST_PRICE": 1.05, "CLOSE_PRICE": 1.0},
             ),
         )
-        ts = time.time()
+        ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(502.0, ts))
         assert await _until(_received(ts))
         assert stats["sent"] == 1
@@ -286,7 +287,7 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
 
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        ts = time.time()
+        ts = time_et.now()
         bus.publish(
             f"optquote.{_CONTRACT}",
             options_quote_msg(
@@ -332,7 +333,7 @@ sys.addaudithook(
 def test_the_live_loop_never_opens_the_capture_database(feed):
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        ts = time.time()
+        ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(503.0, ts))
         assert await _until(_received(ts))
 
@@ -364,7 +365,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
         server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
         try:
             assert await _until(lambda: stats.get("clients") == 1)
-            ts = time.time()
+            ts = time_et.now()
             bus.publish("quote.SPY", _spy_trade(504.0, ts))
             assert await _until(_received(ts))
         finally:
@@ -378,7 +379,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
 
 def test_a_message_missing_its_receive_time_is_dropped_whole():
     ofs._ingest_pushed("quote.ZZZNOTS", {"symbol": "ZZZNOTS", "native": {"LAST_PRICE": 1.0}})
-    msg = _spy_trade(1.0, time.time())
+    msg = _spy_trade(1.0, time_et.now())
     msg["symbol"] = "ZZZNOPE"
     del msg["ts_recv"]
     ofs._ingest_pushed("quote.ZZZNOPE", msg)
@@ -515,8 +516,8 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
         server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=0, stats=stats))
         assert await _until(lambda: stats.get("listening"))
         # the daemon publishes a trade, then a bid/ask-only tick -- before any console exists
-        t_trade = time.time() - 5.0
-        t_quote = time.time() - 1.0
+        t_trade = time_et.now() - 5.0
+        t_quote = time_et.now() - 1.0
         bus.publish(
             "quote.SPY",
             quote_msg(

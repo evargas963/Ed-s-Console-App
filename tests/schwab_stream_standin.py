@@ -20,11 +20,12 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-import time
 from collections import defaultdict
 from pathlib import Path
 
 from websockets.asyncio.server import serve
+
+import time_et
 
 #: Schwab's answers to SUBS asking field numbers past what it accepts, per service (2026-10-12)
 FIELD_REPLIES = json.loads(
@@ -111,7 +112,7 @@ class LocalStreamer:
                         "command": command,
                         "requestid": req["requestid"],
                         "SchwabClientCorrelId": req["SchwabClientCorrelId"],
-                        "timestamp": int(time.time() * 1000),
+                        "timestamp": int(time_et.now() * 1000),
                         "content": {"code": code, "msg": msg},
                     }
                 ]

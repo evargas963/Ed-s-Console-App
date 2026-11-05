@@ -22,12 +22,12 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
-import time
 from datetime import datetime
 from pathlib import Path
 
 import live_market_plane as lmp
 import server
+import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.options.order_flow import streaming as ofs
@@ -94,9 +94,9 @@ def _rule(
 
 
 async def _until(cond, seconds: float = 20.0) -> None:
-    deadline = time.monotonic() + seconds
+    deadline = time_et.elapsed() + seconds
     while not cond():
-        assert time.monotonic() < deadline, "not reached in time"
+        assert time_et.elapsed() < deadline, "not reached in time"
         await asyncio.sleep(0.02)
 
 

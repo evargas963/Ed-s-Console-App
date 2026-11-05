@@ -29,12 +29,12 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import schwab_client as sc
+import time_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
 SPY = json.loads((FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
@@ -165,7 +165,7 @@ class LocalSchwab:
             protocol_version = "HTTP/1.1"
 
             def do_GET(self):
-                started = time.monotonic()
+                started = time_et.elapsed()
                 url = urlparse(self.path)
                 query = {k: v[0] for k, v in parse_qs(url.query).items()}
                 if outer.edge:
@@ -191,7 +191,7 @@ class LocalSchwab:
                 )
 
             def do_POST(self):
-                started = time.monotonic()
+                started = time_et.elapsed()
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 if outer.token == "edge":
                     return self._edge(TOKEN, {}, started)
@@ -233,7 +233,7 @@ class LocalSchwab:
                         path,
                         query,
                         started,
-                        time.monotonic(),
+                        time_et.elapsed(),
                         self.client_address[1],
                         self.headers.get("Authorization"),
                     )
@@ -341,13 +341,13 @@ class LocalSchwab:
         sc.write_token_file_atomically(
             str(tok),
             {
-                "creation_timestamp": int(time.time()),
+                "creation_timestamp": int(time_et.now()),
                 "token": {
                     "access_token": "a",
                     "refresh_token": "r",
                     "token_type": "Bearer",
                     "expires_in": 1800,
-                    "expires_at": int(time.time() + expires_in_sec),
+                    "expires_at": int(time_et.now() + expires_in_sec),
                 },
             },
         )

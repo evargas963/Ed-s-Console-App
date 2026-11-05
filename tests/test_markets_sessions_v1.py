@@ -16,7 +16,6 @@ import ast
 import asyncio
 import json
 import sqlite3
-import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -48,7 +47,7 @@ def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_pat
     db = tmp_path / "stream_capture.db"
     schwab = LocalSchwab()
     client = schwab.client(tmp_path)
-    today = datetime.now(ET).date()
+    today = datetime.fromtimestamp(time_et.now(), ET).date()
     # an expiry that has passed is left out of the chain (schwab_client.option_expiries), so it is
     # not a markets date. Schwab answers /markets only 7 days back.
     wanted = {(today - timedelta(days=n)).isoformat() for n in range(8)} | {
@@ -111,7 +110,7 @@ def test_the_console_holds_each_200_answer_and_never_a_400():
 
     for day in ("2026-09-29", "2026-10-07"):
         a = MARKETS_ANSWERS[day]
-        _topic, msg = markets_message(day, a["status"], json.loads(a["body"]), time.time())
+        _topic, msg = markets_message(day, a["status"], json.loads(a["body"]), time_et.now())
         ofs._ingest_pushed(f"markets.{day}", json.loads(msg["frame"])["msg"])
     assert time_et.session("2026-09-29") is None
     s = time_et.session("2026-10-07")
@@ -270,7 +269,7 @@ def test_a_stock_quote_before_schwabs_pre_market_is_shown():
     fx = json.loads((FX / "real_crwd_quote_2026_10_07.json").read_text(encoding="utf-8"))
     tk, native = fx["ticker"], fx["native"]
     try:
-        lmp.record_from_level_one_equity(tk, native, received_ts=time.time())
+        lmp.record_from_level_one_equity(tk, native, received_ts=time_et.now())
         mark_feed_live(tk)
         publish_daemon_rows(tk)
         assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.CLOSED

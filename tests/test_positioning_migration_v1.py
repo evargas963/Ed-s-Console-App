@@ -4,7 +4,6 @@ positioning_migration), from two real days of Schwab's PCG chain (tests/fixtures
 the rows themselves (question 3: a calculation Schwab does not send, against its definition)."""
 
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -123,7 +122,11 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
         # capture: the prior day is recomputed against the new day
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
         lmp.record_feed_heartbeat(
-            {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["PCG"]}}
+            {
+                "ts": time_et.now(),
+                "schwab_socket_open": True,
+                "held": {"LEVELONE_EQUITIES": ["PCG"]},
+            }
         )
         ofs._price_rows["PCG"] = {
             "ticker": "PCG",

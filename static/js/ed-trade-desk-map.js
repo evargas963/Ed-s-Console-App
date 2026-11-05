@@ -76,8 +76,10 @@
       .filter(function (w) { return w != null; }).join(' · ');
   }
   function whenCT(ts) {
-    var d = new Date(ts * 1000);
-    return (CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date()) ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
+    // today is the program's (EdShell.now, its heartbeat); with none yet the date is shown
+    var d = new Date(ts * 1000), now = window.EdShell && window.EdShell.now();
+    var today = now != null && CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date(now * 1000));
+    return (today ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
   }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function onDesk() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'desk'; }
@@ -98,7 +100,7 @@
     ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
     analytics: null, liq: null, quotes: {}, queue: [], sel: null,
     // the Liquidity card's venue (COMPOSITE, or BOOK: the shell's book switch) and depth view
-    liqVenue: sget('ed.desk.liqvenue', 'COMPOSITE'), liqView: ['weighted', '1', '3', '5'].indexOf(sget('ed.desk.liqview', '')) >= 0 ? sget('ed.desk.liqview', '') : 'weighted', liqPainted: 0, liqPaints: 0, liqTimer: null, liqDetail: false,
+    liqVenue: sget('ed.desk.liqvenue', 'COMPOSITE'), liqView: ['weighted', '1', '3', '5'].indexOf(sget('ed.desk.liqview', '')) >= 0 ? sget('ed.desk.liqview', '') : 'weighted', liqPaints: 0, liqHold: null, liqPending: false, liqDetail: false,
     pushDown: null   // the header's word while the daemon's price push is down (ed:price_push_down)
   };
 
@@ -487,7 +489,13 @@
   }
   function paintLiq() {
     var c = $('tdmCardLiq'); if (!c) return;
-    S.liqPainted = Date.now(); S.liqPaints++;
+    S.liqPaints++;
+    // the next second is held: a push in it paints when it ends (paintLiqSoon), no clock read
+    clearTimeout(S.liqHold);
+    S.liqHold = setTimeout(function () {
+      S.liqHold = null;
+      if (S.liqPending) { S.liqPending = false; paintLiq(); }
+    }, 1000);
     var m = S.micro, rd = m && m.readout, key = liqKey(), view = S.liqView;
     c.classList.toggle('liq-composite', key === 'COMPOSITE');
     c.querySelector('[data-liqvenue]').classList.toggle('on', key === 'COMPOSITE');
@@ -546,10 +554,8 @@
   }
   // paints at most once a second; the reads stay on the pushes
   function paintLiqSoon() {
-    if (S.liqTimer) return;
-    var wait = S.liqPainted ? 1000 - (Date.now() - S.liqPainted) : 0;
-    if (wait <= 0) { paintLiq(); return; }
-    S.liqTimer = setTimeout(function () { S.liqTimer = null; paintLiq(); }, wait);
+    if (S.liqHold) { S.liqPending = true; return; }
+    paintLiq();
   }
 
   function paintCardCharts() {

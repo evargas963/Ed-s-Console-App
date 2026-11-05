@@ -116,9 +116,9 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     """The newest ET date at or before `on_or_before` (today) that Schwab's /markets answers
     held say the market was open (the same answers the code reads, so the test cannot disagree
     with them)."""
-    from time_et import ET, session
+    from time_et import ET, now, session
 
-    day = on_or_before or datetime.now(ET).date()
+    day = on_or_before or datetime.fromtimestamp(now(), ET).date()
     for _ in range(14):  # the longest market closure gap is far under two weeks
         s = session(day.isoformat())
         if s is not None and s.is_open:

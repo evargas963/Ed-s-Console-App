@@ -7,7 +7,6 @@ served. A minute Schwab sent neither way stays missing."""
 from __future__ import annotations
 
 import threading
-import time
 from datetime import datetime
 
 import pytest
@@ -15,6 +14,7 @@ from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import server
+import time_et
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from stream_spine import bar_msg
 from tests.feed_live_helper import price_history
@@ -122,7 +122,7 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
     t = threading.Thread(target=price_options, daemon=True)
     t.start()
     try:
-        t0 = time.perf_counter()
+        t0 = time_et.elapsed()
         server._write_streamed_bars(
             [
                 {
@@ -137,7 +137,7 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
             datetime.fromtimestamp(answers["SPY"]["answered_utc"], ET),
         )
         read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in answers}
-        took = time.perf_counter() - t0
+        took = time_et.elapsed() - t0
     finally:
         busy.set()
         t.join()
