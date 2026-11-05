@@ -119,7 +119,20 @@ def test_the_same_test_body_on_different_data_is_no_duplicate(repo):
     body = "def test_rows():\n    assert len(DATA) > 0\n"
     _write(repo, "tests/test_p.py", "DATA = load('a.json')\n\n\n" + body)
     _write(repo, "tests/test_q.py", "DATA = load('b.json')\n\n\n" + body)
+    fixture = "@pytest.fixture\ndef rows():\n    return load('{}')\n\n\n"
+    test = "def test_some(rows):\n    assert rows\n"
+    _write(repo, "tests/test_r.py", fixture.format("a.json") + test)
+    _write(repo, "tests/test_s.py", fixture.format("b.json") + test)
     assert _found(repo) == []
+
+
+def test_two_files_alike_but_for_their_docstring_are_duplicates(repo):
+    body = "def test_rows():\n    assert len(DATA) > 0\n"
+    _write(repo, "tests/test_p.py", '"""One."""\nDATA = load("a.json")\n\n\n' + body)
+    _write(repo, "tests/test_q.py", '"""Two."""\nDATA = load("a.json")\n\n\n' + body)
+    assert _found(repo) == [
+        "a test duplicated: tests/test_p.py::test_rows, tests/test_q.py::test_rows"
+    ]
 
 
 def test_a_test_renamed_with_its_assertions_passes(repo):

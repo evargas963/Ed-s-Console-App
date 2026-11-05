@@ -10,8 +10,8 @@ Test integrity, every pull request:
      renamed or disabled with its assertions kept: a test renamed and one deleted beside a new
      one read the same to a machine;
    - no test is another test again: the same code, arguments and decorators, in a file whose
-     other top-level code (its imports, constants and fixtures) is the same (every test file at
-     the head);
+     other top-level code (its imports, constants, fixtures and helpers; its docstring aside) is
+     the same (every test file at the head);
    - no line added to code skips a test or leaves a deferred-work marker.
 
 Review record, in the description's `## Review` section (`Commit:` the head, `Verdict:` PASS or
@@ -222,11 +222,16 @@ def duplicate_tests(root: Path) -> list[str]:
         if not PYTHON_TESTS.match(name):
             continue
         source = _git(root, "show", f"HEAD:{name}")
-        # the same body tests different code or data when the file's other top-level code differs
+        # the same body tests different code or data when the file's other top-level code differs:
+        # its imports, constants, fixtures and helpers; not its tests, not its docstring
+        tree = ast.parse(source)
+        top = tree.body[1:] if ast.get_docstring(tree) else tree.body
         imports = "".join(
             ast.dump(n)
-            for n in ast.parse(source).body
-            if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            for n in top
+            if not (
+                isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test")
+            )
         )
         for node in _test_functions(source):
             body = node.body[1:] if ast.get_docstring(node) else node.body

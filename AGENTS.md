@@ -188,10 +188,12 @@ then the rule binds with no machine check.
     items are reported and never judged (`check_locks.FREE`); simple code is held by the checks of
     correctness (one producer, no patch shapes, no dead code, the complexity cap, the reviewers)
     and by `/simplify` on every change ("you must always /simplify", no machine check, ENF-12).
-  - No test duplicates another (`tools/check_integrity.py`, `tests/test_check_integrity_v1.py`); a
-    test renamed with an assertion dropped reads to a machine like one deleted beside a new one,
-    so it is rule 14(c)'s review, as is a deletion; a change updates every test it affects in the
-    same PR.
+  - A test is known by what it asserts, not by its name ("why compare only the name, why not the
+    entire code"): a test renamed with an assertion dropped is a lost assertion. A machine cannot
+    tell that from a test deleted beside a new one, so it is rule 14(c)'s review (no machine
+    check, ENF-12; the machine pairing tried in this PR was withdrawn for that reason, the
+    operator told 2026-11-04). No test duplicates another (`tools/check_integrity.py`,
+    `tests/test_check_integrity_v1.py`); a change updates every test it affects in the same PR.
   - `capture_main`'s import goes (rule 13, LINTERS); how a crash while the daemon loads stays
     recorded once it moves is open with the operator.
   - The vendored chart library's one patch shape is left as it is: this repository cannot fix it
