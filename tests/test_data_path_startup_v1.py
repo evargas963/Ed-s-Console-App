@@ -153,12 +153,8 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             time.sleep(0.1)
         noted = [
             (notes / str(p.pid)).read_text(encoding="utf-8")
-            for p in psutil.process_iter(["cmdline", "cwd"])
-            if p.info["cmdline"]
-            and p.info["cmdline"][1:3] == launch.DAEMON_START
-            and p.info["cwd"]
-            and Path(p.info["cwd"]).resolve() == home.resolve()
-            and (notes / str(p.pid)).exists()
+            for p in launch.running(launch.DAEMON_START, home)
+            if (notes / str(p.pid)).exists()
         ]
         assert noted == ["True"], noted
         stopped = subprocess.run(
@@ -223,9 +219,8 @@ def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
 
 def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
     """A forced thread error: the sweep's client raises an error the sweep does not catch (one
-    not an Exception), its thread ends, the daemon's log has it with its traceback (a thread
-    has no error output under pythonw), and run_chains ends with it, before any stop (run then
-    ends the daemon)."""
+    not an Exception), its thread ends, the daemon's log has it with its traceback, and
+    run_chains ends with it, before any stop (run then ends the daemon)."""
 
     class ForcedThreadError(BaseException):
         pass
