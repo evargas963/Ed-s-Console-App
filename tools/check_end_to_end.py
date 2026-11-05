@@ -644,9 +644,12 @@ def violations(root: Path, base: str) -> list[str]:
     parsed: dict[str, list[tuple[int, str]]] = {}  # by blob: a file the PR leaves is read once
 
     def shapes_of(path: str, held: dict[str, tuple[str, str]]) -> list[tuple[int, str]]:
-        blob, text = held.get(path, ("", ""))
+        """The shapes of `path` as `held` holds it; a file it does not hold has none."""
+        if path not in held:
+            return []
+        blob, text = held[path]
         if blob not in parsed:
-            parsed[blob] = shapes(path, text) if text else []
+            parsed[blob] = shapes(path, text)
         return parsed[blob]
 
     count = sum(len(shapes_of(f, was)) for f in was), sum(len(shapes_of(f, now)) for f in now)
@@ -659,7 +662,7 @@ def violations(root: Path, base: str) -> list[str]:
         source = now[f][1]
         out.update((f, line, what) for line, what in shapes(f, source, added.get(f, set())))
         held = set(shapes_of(f, was))
-        kept = unchanged(was.get(f, ("", ""))[1], source)
+        kept = unchanged(was[f][1], source) if f in was else {}  # a new file: every line added
         out.update(
             (f, line, what)
             for line, what in shapes_of(f, now)
