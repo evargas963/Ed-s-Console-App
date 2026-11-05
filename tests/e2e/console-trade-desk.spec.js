@@ -806,8 +806,8 @@ test.describe('Trade Desk renders served values', () => {
       // chart library writes a canvas's attributes in varies, so the drawing itself is compared.
       return page.evaluate(() => {
         const host = document.getElementById('tdmChart');
-        const tree = (n) => n.nodeType === Node.TEXT_NODE ? n.textContent
-          : [n.nodeName, Array.from(n.attributes || [], (a) => [a.name, a.value]).sort(), Array.from(n.childNodes, tree)];
+        const tree = (n) => n.nodeType !== Node.ELEMENT_NODE ? n.textContent
+          : [n.nodeName, Array.from(n.attributes, (a) => [a.name, a.value]).sort(), Array.from(n.childNodes, tree)];
         return { canvases: Array.from(host.querySelectorAll('canvas'), (c) => c.toDataURL()), dom: tree(host) };
       });
     }
