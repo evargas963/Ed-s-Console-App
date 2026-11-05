@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+import ctypes
 import enum
 import json
 import logging
@@ -1059,13 +1060,37 @@ class DailyLog(logging.StreamHandler):
         super().close()
 
 
+#: Windows console input modes (SetConsoleMode): selecting text with the mouse, and the flag that
+#: lets that bit be changed
+QUICK_EDIT, EXTENDED_FLAGS = 0x40, 0x80
+
+
+def _no_selection_pause() -> None:
+    """Turn off selecting text with the mouse in the daemon's window, when it has one.
+
+    Windows' console holds every write to a window while text in it is selected, so one click
+    there stopped the daemon in its next log line (measured 2026-11-05: the event loop and the
+    chain thread both stopped inside a log write, the heartbeat with them). The window still
+    shows every line.
+    """
+    if sys.platform != "win32":
+        return
+    kernel = ctypes.windll.kernel32
+    window = kernel.GetStdHandle(-10)  # STD_INPUT_HANDLE
+    mode = ctypes.c_uint32()
+    if kernel.GetConsoleMode(window, ctypes.byref(mode)):
+        kernel.SetConsoleMode(window, (mode.value & ~QUICK_EDIT) | EXTENDED_FLAGS)
+
+
 def _start_log() -> None:
     """Send every line, with its time to the millisecond, to the day's log file and the window.
 
     The file is runtime_layout.daemon_log_path under <runtime>/logs; the window is the error
-    output (the daemon runs under `python` in it). From here an error reaches both through the
-    handlers (main logs one that ends the daemon).
+    output (the daemon runs under `python` in it), which a selection never pauses
+    (_no_selection_pause). From here an error reaches both through the handlers (main logs one
+    that ends the daemon).
     """
+    _no_selection_pause()
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
