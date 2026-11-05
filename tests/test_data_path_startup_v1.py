@@ -112,19 +112,32 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
     """The real start_capture_daemon.bat in a folder of its own, with launch.py and a virtual
     environment beside it, starts the real daemon in its window (no Schwab token, ports of its
     own). The stop finds it by launch.DAEMON_START and ends it, exit 0, and the batch does not
-    restart it. A batch line apart from DAEMON_START would read "not running", leaving it up."""
+    restart it. A batch line apart from DAEMON_START would read "not running", leaving it up.
+    The daemon has an error output, its window, where an error while it loads shows (operator
+    2026-11-04: "i would rather run capture main on python instead of pythonw"; under pythonw it
+    had none): induced, a sitecustomize notes it for each process by its id."""
     home = tmp_path / "checkout"
     home.mkdir()
     for name in ("launch.py", "start_capture_daemon.bat"):
         shutil.copy(launch.ROOT / name, home)
     venv.create(home / ".venv")
+    notes = tmp_path / "error_output"
+    notes.mkdir()
+    probe = tmp_path / "site"
+    probe.mkdir()
+    (probe / "sitecustomize.py").write_text(
+        "import os, sys\n"
+        f"with open(os.path.join({str(notes)!r}, str(os.getpid())), 'w') as f:\n"
+        "    f.write(str(sys.stderr is not None))\n",
+        encoding="utf-8",
+    )
     with socket.socket() as push, socket.socket() as ui:
         push.bind(("127.0.0.1", 0))
         ui.bind(("127.0.0.1", 0))
         push_port, ui_port = push.getsockname()[1], ui.getsockname()[1]
     env = {
         **os.environ,
-        "PYTHONPATH": os.pathsep.join([str(launch.ROOT), *site.getsitepackages()]),
+        "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
         "ED_LIVE_UI_HOST": "127.0.0.1",
         "ED_LIVE_UI_PORT": str(ui_port),
@@ -138,6 +151,12 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
         while not launch.in_use(push_port):
             assert time.monotonic() < end, "the batch's daemon never served its port"
             time.sleep(0.1)
+        noted = [
+            (notes / str(p.pid)).read_text(encoding="utf-8")
+            for p in launch.running(launch.DAEMON_START, home)
+            if (notes / str(p.pid)).exists()
+        ]
+        assert noted == ["True"], noted
         stopped = subprocess.run(
             [sys.executable, "launch.py", "stop"],
             cwd=home,
@@ -155,7 +174,7 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             started = [
                 p.pid
                 for p in psutil.process_iter(["name", "cwd"])
-                if p.info["name"] == "pythonw.exe"
+                if p.info["name"] == "python.exe"
                 and p.info["cwd"]
                 and Path(p.info["cwd"]).resolve() == home.resolve()
             ]
@@ -200,9 +219,8 @@ def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
 
 def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
     """A forced thread error: the sweep's client raises an error the sweep does not catch (one
-    not an Exception), its thread ends, the daemon's log has it with its traceback (a thread
-    has no error output under pythonw), and run_chains ends with it, before any stop (run then
-    ends the daemon)."""
+    not an Exception), its thread ends, the daemon's log has it with its traceback, and
+    run_chains ends with it, before any stop (run then ends the daemon)."""
 
     class ForcedThreadError(BaseException):
         pass
@@ -669,9 +687,11 @@ def test_a_process_that_only_names_the_console_is_not_the_console():
             _end(p)
 
 
-def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):
-    """The daemon run with no error output (pythonw on Windows; elsewhere its fd 2 closed), with
-    schwab-py missing: the log file under its runtime root has why."""
+def test_a_module_that_fails_to_load_shows_its_reason_in_the_daemons_window(tmp_path):
+    """The daemon run as its window runs it (`python`), with schwab-py missing.
+
+    Its error output, the window, has why, and it exits 1, which the window restarts on.
+    """
     site = tmp_path / "site"
     site.mkdir()
     (site / "sitecustomize.py").write_text(
@@ -684,17 +704,16 @@ def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_pa
         encoding="utf-8",
     )
     env = {**os.environ, "PYTHONPATH": str(site), "ED_RUNTIME_ROOT": str(tmp_path)}
-    module = ["-m", "app.market_data.schwab.streaming.capture_main"]
-    if sys.platform == "win32":
-        cmd = [str(Path(sys.executable).with_name("pythonw.exe")), *module]
-    else:
-        cmd = ["sh", "-c", 'exec "$0" "$@" 2>&-', sys.executable, *module]
-    done = subprocess.run(cmd, cwd=REPO, env=env, timeout=120)  # no handle passed: pythonw has none
-    (path,) = (tmp_path / "logs").glob("stream_capture.*.log")
-    log = path.read_text(encoding="utf-8")
+    done = subprocess.run(
+        [sys.executable, "-m", "app.market_data.schwab.streaming.capture_main"],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
     assert done.returncode == 1
-    assert "capture daemon loading (pid " in log
-    assert "ModuleNotFoundError: No module named 'schwab'" in log, log
+    assert "ModuleNotFoundError: No module named 'schwab'" in done.stderr, done.stderr
 
 
 def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(

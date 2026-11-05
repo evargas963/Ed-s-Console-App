@@ -147,7 +147,7 @@ jobs:
 
   pytest-windows:
     # Production runs on Windows; pytest-full runs on Linux, where the launcher's console windows,
-    # the daemon's pythonw start, the guards' Windows path handling and the guard against killing
+    # the daemon's start in its window, the guards' Windows path handling and the guard against killing
     # it are skipped or take another path. The browser tests and the whole pytest suite run here,
     # one after the other as in pytest-full, so no Windows path is left to a guess of which tests
     # reach it.

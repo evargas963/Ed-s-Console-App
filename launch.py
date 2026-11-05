@@ -118,18 +118,21 @@ def in_use(port: int) -> bool:
         return probe.connect_ex(("127.0.0.1", port)) == 0
 
 
-def running(start: list[str]) -> list[psutil.Process]:
-    """This checkout's processes that run `start` right after their program: those whose folder is
-    ROOT, where its daemon's batch and its console run, so another checkout's daemon or console (a
-    test's) is never taken for one, nor a process that only names them, as a search does (one whose
-    line or folder cannot be read is none)."""
+def running(start: list[str], root: Path = ROOT) -> list[psutil.Process]:
+    """Return the checkout's processes that run `start` right after their program.
+
+    Those whose folder is `root` (this checkout, ROOT, unless a test names another), where its
+    daemon's batch and its console run, so another checkout's daemon or console (a test's) is
+    never taken for one, nor a process that only names them, as a search does (one whose line or
+    folder cannot be read is none).
+    """
     return [
         p
         for p in psutil.process_iter(["cmdline", "cwd", "ppid"])
         if p.info["cmdline"] is not None
         and p.info["cmdline"][1 : len(start) + 1] == start
         and p.info["cwd"] is not None
-        and Path(p.info["cwd"]).resolve() == ROOT
+        and Path(p.info["cwd"]).resolve() == root.resolve()
     ]
 
 
