@@ -15,11 +15,11 @@ at its capture instant, and CRWD's LEVELONE_EQUITIES message the daemon received
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 import live_market_plane as lmp
 import server
+import time_et
 from app.options.order_flow import streaming as ofs
 from option_contract import read_chain
 from terrain_engine import compute_terrain
@@ -50,7 +50,7 @@ def _put_live_chain():
         server._terrain_cache[TK] = {
             "ticker": TK,
             "spot": snap.spot,
-            "computed_ts_utc": time.time(),
+            "computed_ts_utc": time_et.now(),
             "_vanna_rows": server._vanna_rows(snap),
             "_charm_rows": server._charm_rows(snap),
         }
@@ -82,7 +82,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     from math_exposure_core import compute_exposures_by_strike as cebs
 
     # Schwab's CRWD quote reaches the console as the daemon pushes it: its price row
-    lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time.time())
+    lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time_et.now())
     mark_feed_live(TK)
     publish_daemon_rows(TK)
 

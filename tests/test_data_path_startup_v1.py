@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import venv
 from pathlib import Path
 
@@ -30,6 +31,7 @@ import launch
 import live_market_plane as lmp
 import push_changes
 import server
+import time_et
 from app.market_data.schwab.streaming import capture, live_push, live_ui
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import (
@@ -42,12 +44,24 @@ from tests.capture_store import store_capture
 from tests.real_chains import CRWD, MRVL, NFLX
 
 REPO = Path(__file__).resolve().parent.parent
+#: prints the input mode of the console window process `argv[1]` runs in, read from that window
+WINDOW_MODE = (
+    "import ctypes, sys\n"
+    "k = ctypes.windll.kernel32\n"
+    "k.CreateFileW.restype = ctypes.c_void_p\n"
+    "k.FreeConsole()\n"
+    "assert k.AttachConsole(int(sys.argv[1])), 'no window to attach to'\n"
+    "h = k.CreateFileW('CONIN$', 0xC0000000, 3, None, 3, 0, None)\n"
+    "m = ctypes.c_uint32()\n"
+    "assert k.GetConsoleMode(ctypes.c_void_p(h), ctypes.byref(m)), 'no console mode'\n"
+    "sys.stdout.write(str(m.value))\n"
+)
 
 
 async def _until(cond, limit: float = 10.0) -> None:
-    end = time.monotonic() + limit
+    end = time_et.elapsed() + limit
     while not cond():
-        assert time.monotonic() < end, "timed out"
+        assert time_et.elapsed() < end, "timed out"
         await asyncio.sleep(0.05)
 
 
@@ -91,13 +105,13 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
         encoding="utf-8",
     )
     subprocess.Popen(launch.daemon_window(bat), cwd=launch.ROOT)
-    deadline = time.monotonic() + 60.0
+    deadline = time_et.elapsed() + 60.0
     while not window_pid.exists():
-        assert time.monotonic() < deadline, "the batch never ran"
+        assert time_et.elapsed() < deadline, "the batch never ran"
         time.sleep(0.1)
     window = int(window_pid.read_text(encoding="utf-8"))
-    deadline = time.monotonic() + 30.0
-    while psutil.pid_exists(window) and time.monotonic() < deadline:
+    deadline = time_et.elapsed() + 30.0
+    while psutil.pid_exists(window) and time_et.elapsed() < deadline:
         time.sleep(0.1)
     still_open = psutil.pid_exists(window)
     if still_open:
@@ -147,9 +161,9 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
     bat = home / "start_capture_daemon.bat"
     subprocess.Popen(launch.daemon_window(bat), cwd=home, env=env)
     try:
-        end = time.monotonic() + 60
+        end = time_et.elapsed() + 60
         while not launch.in_use(push_port):
-            assert time.monotonic() < end, "the batch's daemon never served its port"
+            assert time_et.elapsed() < end, "the batch's daemon never served its port"
             time.sleep(0.1)
         noted = [
             (notes / str(p.pid)).read_text(encoding="utf-8")
@@ -157,6 +171,16 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             if (notes / str(p.pid)).exists()
         ]
         assert noted == ["True"], noted
+        daemon = launch.running(launch.DAEMON_START, home)[0].pid
+        window_mode = subprocess.run(
+            [sys.executable, "-c", WINDOW_MODE, str(daemon)],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=30,
+        )
+        assert window_mode.returncode == 0, window_mode.stderr
+        assert int(window_mode.stdout) & capture.QUICK_EDIT == 0, "a click would pause the daemon"
         stopped = subprocess.run(
             [sys.executable, "launch.py", "stop"],
             cwd=home,
@@ -169,8 +193,8 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             0,
             "Capture daemon: stopped\nConsole: not running\n",
         ), stopped.stderr
-        end = time.monotonic() + 8  # past the batch's 5 s restart wait
-        while time.monotonic() < end:
+        end = time_et.elapsed() + 8  # past the batch's 5 s restart wait
+        while time_et.elapsed() < end:
             started = [
                 p.pid
                 for p in psutil.process_iter(["name", "cwd"])
@@ -193,14 +217,14 @@ def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
     (another checkout's console, a test's) is not, so the stop's Ctrl+Break never goes to it
     instead of this console. Induced test condition: two sleeping Pythons started by a script of
     this test's own."""
-    start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{time.monotonic_ns()}"]
+    start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{uuid.uuid4().hex}"]
     ours, theirs = (
         subprocess.Popen([sys.executable, *start], cwd=cwd) for cwd in (launch.ROOT, tmp_path)
     )
     try:
         found: set = set()
-        end = time.monotonic() + 10
-        while ours.pid not in found and time.monotonic() < end:
+        end = time_et.elapsed() + 10
+        while ours.pid not in found and time_et.elapsed() < end:
             found = {p.pid for p in launch.running(start)}
             time.sleep(0.05)
         theirs_tree = {theirs.pid} | {
@@ -270,7 +294,7 @@ def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
         stop = asyncio.Event()
         task = asyncio.create_task(daemon.follow_market(stop))
         await asyncio.sleep(0)
-        for topic, msg in chain_messages("SPY", contracts, time.time(), None, None):
+        for topic, msg in chain_messages("SPY", contracts, time_et.now(), None, None):
             bus.publish(topic, msg)
         await asyncio.wait_for(task, timeout=10)
 
@@ -427,7 +451,9 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
             serve_live_ui(stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=port)
         )
         run = asyncio.create_task(daemon.run(schwab_client, stop))
-        await _until(lambda: daemon.status(time.time())["schwab_down"].startswith("NOT CONNECTED"))
+        await _until(
+            lambda: daemon.status(time_et.now())["schwab_down"].startswith("NOT CONNECTED")
+        )
         await asyncio.sleep(0.2)
         async with connect(f"ws://127.0.0.1:{port}", max_size=None) as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
@@ -493,12 +519,12 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
             async def read_all():
                 async for frame in reading:
                     if json.loads(frame)["type"] == "feed":
-                        beats.append(time.monotonic())
+                        beats.append(time_et.elapsed())
 
             reader = asyncio.create_task(read_all())
             await _until(lambda: stats.get("beat_send_failures"), 15)
             await _until(lambda: stats.get("clients") == 1, 3)
-            dropped_at = time.monotonic()
+            dropped_at = time_et.elapsed()
             await _until(
                 lambda: sum(t > dropped_at for t in beats) >= 4, 10 * live_ui.HEARTBEAT_SEC
             )
@@ -564,9 +590,9 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         )
 
     try:
-        end = time.monotonic() + 60
+        end = time_et.elapsed() + 60
         while not launch.in_use(push_port):
-            assert daemon.poll() is None and time.monotonic() < end, daemon.poll()
+            assert daemon.poll() is None and time_et.elapsed() < end, daemon.poll()
             time.sleep(0.1)
         elsewhere = stop(other, push_port)
         out, err = elsewhere.communicate(timeout=60)
@@ -644,12 +670,12 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
 def test_the_console_group_is_known_after_its_processes_have_gone():
     """The console ended between the stop finding it and the signal: its group is still named, so
     the stop goes on to what is left. Induced test condition: a Python of this test's own."""
-    start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{time.monotonic_ns()}"]
+    start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{uuid.uuid4().hex}"]
     console = subprocess.Popen([sys.executable, *start], cwd=launch.ROOT)
     found: list = []
     try:
-        end = time.monotonic() + 10
-        while console.pid not in {p.pid for p in found} and time.monotonic() < end:
+        end = time_et.elapsed() + 10
+        while console.pid not in {p.pid for p in found} and time_et.elapsed() < end:
             found = launch.running(start)
             time.sleep(0.05)
     finally:
@@ -675,9 +701,11 @@ def test_a_process_that_only_names_the_console_is_not_the_console():
         )
     ]
     try:
-        end = time.monotonic() + 10
+        end = time_et.elapsed() + 10
         for p in searches:
-            while time.monotonic() < end and named not in " ".join(psutil.Process(p.pid).cmdline()):
+            while time_et.elapsed() < end and named not in " ".join(
+                psutil.Process(p.pid).cmdline()
+            ):
                 time.sleep(0.05)
             assert named in " ".join(psutil.Process(p.pid).cmdline())
         found = {p.pid for p in launch.running(launch.CONSOLE_START)}
@@ -803,8 +831,8 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
         ticker.start()
         try:
             assert server._load_stored_levels(list(names)) == 2
-            deadline = time.monotonic() + 10
-            while priced() != set(names) and time.monotonic() < deadline:
+            deadline = time_et.elapsed() + 10
+            while priced() != set(names) and time_et.elapsed() < deadline:
                 time.sleep(0.05)
             done = priced()
             repriced = server._gamma_surface_seq[tk] - before

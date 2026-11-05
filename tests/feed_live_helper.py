@@ -7,10 +7,10 @@ exactly the symbols the daemon would hold -- through the production entry point.
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 import live_market_plane as lmp
+import time_et
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -51,8 +51,8 @@ RTH_INSTANT = 1790780400.0
 def clock_from(start: float):
     """A clock running from `start`, time still passing: what a test hands the code it calls as
     `now`."""
-    began = time.monotonic()
-    return lambda: start + time.monotonic() - began
+    began = time_et.elapsed()
+    return lambda: start + time_et.elapsed() - began
 
 
 def mark_feed_live(*tickers: str, now: float | None = None) -> None:
@@ -60,7 +60,7 @@ def mark_feed_live(*tickers: str, now: float | None = None) -> None:
     LEVELONE_EQUITIES."""
     lmp.record_feed_heartbeat(
         {
-            "ts": time.time() if now is None else now,
+            "ts": time_et.now() if now is None else now,
             "schwab_socket_open": True,
             "held": {"LEVELONE_EQUITIES": list(tickers)},
         }
@@ -79,7 +79,7 @@ def publish_daemon_rows(*tickers: str, now: float | None = None) -> None:
     from app.options.order_flow import streaming as ofs
 
     for tk in tickers:
-        row = live_price_rows.price_row(tk, time.time() if now is None else now)
+        row = live_price_rows.price_row(tk, time_et.now() if now is None else now)
         ofs._price_rows[row["ticker"]] = row
 
 

@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+import ctypes
 import enum
 import json
 import logging
@@ -54,7 +55,6 @@ import os
 import sqlite3
 import sys
 import threading
-import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -66,6 +66,7 @@ from websockets.exceptions import ConnectionClosed
 import live_market_plane as lmp
 import live_price_rows
 import runtime_layout
+import time_et
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from calibration.complete_chain_capture import ChainSweep
@@ -213,7 +214,7 @@ def watchlist_message(
     with its HTTP status, as sent."""
     return WATCHLIST_TOPIC, {
         "src": WATCHLIST_SRC,
-        "ts_recv": time.time(),
+        "ts_recv": time_et.now(),
         "tickers": list(tickers),
         "op": op,
         "ticker": ticker,
@@ -405,12 +406,12 @@ def _open_stream(client):
     """schwab-py's StreamClient, recording the time of every frame Schwab sends -- data,
     responses and Schwab's heartbeats alike. That one timestamp is the liveness test."""
     stream = StreamClient(client)
-    stream.last_frame_ts = time.time()
+    stream.last_frame_ts = time_et.now()
     receive = stream._receive
 
     async def timed_receive():
         msg = await receive()
-        stream.last_frame_ts = time.time()
+        stream.last_frame_ts = time_et.now()
         return msg
 
     stream._receive = timed_receive
@@ -467,7 +468,7 @@ class Daemon:
         health: HealthRegistry,
         watchlist: list[str] = (),
         *,
-        clock=time.time,
+        clock=time_et.now,
     ) -> None:
         self.bus = bus
         self.health = health
@@ -785,7 +786,7 @@ class Daemon:
                 if cmd != "UNSUBS":
                     params["fields"] = FIELDS[svc]
                 req, rid = self.stream._make_request(service=svc, command=cmd, parameters=params)
-                self._sent[rid] = _Sent(svc, cmd, chunk, time.time())
+                self._sent[rid] = _Sent(svc, cmd, chunk, time_et.now())
                 await self.stream._send({"requests": [req]})
                 log.info("%s %s sent: %d symbols, requestid %d", svc, cmd, len(chunk), rid)
 
@@ -882,8 +883,8 @@ class Daemon:
         its request (answered), the data to the services' handlers. One task does both reading
         and sending, and it alone reads, so every answer reaches it (websockets' recv is safe to
         cancel, so ending early never loses a frame)."""
-        end = time.monotonic() + seconds
-        while (left := end - time.monotonic()) > 0 and not self.wake.is_set():
+        end = time_et.elapsed() + seconds
+        while (left := end - time_et.elapsed()) > 0 and not self.wake.is_set():
             frame = asyncio.ensure_future(self.stream._receive())
             change = asyncio.ensure_future(self.wake.wait())
             await asyncio.wait({frame, change}, timeout=left, return_when=asyncio.FIRST_COMPLETED)
@@ -919,7 +920,7 @@ class Daemon:
         try:
             self.ask()
             while not stop.is_set():
-                now = time.time()
+                now = time_et.now()
                 if now - self.stream.last_frame_ts > DEAD_SEC:
                     raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
                 late = [
@@ -944,19 +945,19 @@ class Daemon:
         self.schwab_client = schwab_client
         failures = 0
         while not stop.is_set():
-            started = time.time()
+            started = time_et.now()
             try:
                 await self.run_connection(schwab_client(), stop)
             except Exception as e:  # every failure is a reconnect; its reason to the log and health
                 why = f"{type(e).__name__}: {str(e)[:350]}"
                 log.warning("schwab: connection ended (%s)", why, exc_info=True)
                 if self._down_since is None:
-                    self._down_since = time.time()
+                    self._down_since = time_et.now()
                 self.schwab_down = f"NOT CONNECTED since {ct_label(self._down_since)}: {why}"
             if stop.is_set():
                 break
             # a connection that lasted 5 minutes starts the backoff over
-            failures = 1 if time.time() - started > 300 else failures + 1
+            failures = 1 if time_et.now() - started > 300 else failures + 1
             wait = RECONNECT_BACKOFF_SEC[min(failures, len(RECONNECT_BACKOFF_SEC)) - 1]
             log.info("schwab: reconnecting in %.0f s", wait)
             try:
@@ -1062,13 +1063,37 @@ class DailyLog(logging.StreamHandler):
         super().close()
 
 
+#: Windows console input modes (SetConsoleMode): selecting text with the mouse, and the flag that
+#: lets that bit be changed
+QUICK_EDIT, EXTENDED_FLAGS = 0x40, 0x80
+
+
+def _no_selection_pause() -> None:
+    """Turn off selecting text with the mouse in the daemon's window, when it has one.
+
+    Windows' console holds every write to a window while text in it is selected, so one click
+    there stopped the daemon in its next log line (measured 2026-11-05: the event loop and the
+    chain thread both stopped inside a log write, the heartbeat with them). The window still
+    shows every line.
+    """
+    if sys.platform != "win32":
+        return
+    kernel = ctypes.windll.kernel32
+    window = kernel.GetStdHandle(-10)  # STD_INPUT_HANDLE
+    mode = ctypes.c_uint32()
+    if kernel.GetConsoleMode(window, ctypes.byref(mode)):
+        kernel.SetConsoleMode(window, (mode.value & ~QUICK_EDIT) | EXTENDED_FLAGS)
+
+
 def _start_log() -> None:
     """Send every line, with its time to the millisecond, to the day's log file and the window.
 
     The file is runtime_layout.daemon_log_path under <runtime>/logs; the window is the error
-    output (the daemon runs under `python` in it). From here an error reaches both through the
-    handlers (main logs one that ends the daemon).
+    output (the daemon runs under `python` in it), which a selection never pauses
+    (_no_selection_pause). From here an error reaches both through the handlers (main logs one
+    that ends the daemon).
     """
+    _no_selection_pause()
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -1091,7 +1116,7 @@ async def record_feed_status(
     when this feed last carried data -- so a quiet feed and a dead one read differently in the
     database."""
     while True:
-        now = time.time()
+        now = time_et.now()
         try:
             last_frame = daemon.stream.last_frame_ts if daemon.stream is not None else None
             st = daemon.status(now)

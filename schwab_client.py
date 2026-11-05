@@ -25,6 +25,7 @@ from schwab import auth
 from schwab.client import Client
 from schwab.debug import register_redactions
 
+import time_et
 from config import schwab_live_blocked_for
 from option_contract import listed_expiries
 from time_et import ct_clock
@@ -144,7 +145,7 @@ ERROR_BODY_LOGGED = 2000
 
 def request_sent(request: httpx.Request) -> None:
     """The time a request leaves for Schwab (log_request reads it)."""
-    request.extensions["sent"] = time.time()
+    request.extensions["sent"] = time_et.now()
 
 
 def log_request(response: httpx.Response) -> None:
@@ -154,7 +155,7 @@ def log_request(response: httpx.Response) -> None:
     token endpoint's body (it holds tokens) and the request's headers (the bearer token) never
     are."""
     response.read()
-    answered = time.time()
+    answered = time_et.now()
     req = response.request
     path = re.sub(r"(/accounts/)[^/]+", r"\1(account)", req.url.path)
     params = req.url.params
@@ -350,7 +351,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
         elif sc is not None:
             out.scope_value = str(sc)
 
-        now = int(time.time())
+        now = int(time_et.now())
         exp = tok.get("expires_at")  # external-key-ok: Schwab OAuth token payload
         if exp is not None:
             try:
@@ -451,8 +452,8 @@ def _parse_callback_port(callback_url: str) -> tuple[str, int]:
 
 def _wait_for_callback_port(host: str, port: int, timeout: float = 5.0) -> bool:
     """Poll until the callback port is accepting connections. Returns True if ready."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    deadline = time_et.elapsed() + timeout
+    while time_et.elapsed() < deadline:
         try:
             with socket.create_connection((host, port), timeout=0.5):
                 pass

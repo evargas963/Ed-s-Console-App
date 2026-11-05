@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import time
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import time_et
 from app.market_data.schwab.streaming import live_ui
 from tests.test_live_push_channel_v1 import (
     _daemon_heartbeat,
@@ -75,14 +75,14 @@ def test_a_silent_daemon_keeps_the_last_price(feed):
 
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        bus.publish("quote.SPY", _spy_trade(501.0, time.time()))
+        bus.publish("quote.SPY", _spy_trade(501.0, time_et.now()))
         assert await _until(lambda: (ofs.price_row("SPY") or {}).get("spot") == 501.0)
-        end = time.monotonic() + 1.2
-        while time.monotonic() < end:
+        end = time_et.elapsed() + 1.2
+        while time_et.elapsed() < end:
             row = ofs.price_row("SPY")
             if row is None or row.get("spot") != 501.0:
                 missing.append(row)
-            if not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()):
+            if not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time_et.now()):
                 quiet.append(True)
             await asyncio.sleep(0.02)
 

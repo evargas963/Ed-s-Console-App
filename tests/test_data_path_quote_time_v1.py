@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import time
-
 import live_market_plane as lmp
 import live_price_rows
+import time_et
 from tests.feed_live_helper import mark_feed_live
 
 
@@ -22,12 +21,12 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_trade_time():
             "TRADE_TIME_MILLIS": 1790380799830,
             "QUOTE_TIME_MILLIS": 1790380799830,
         },
-        received_ts=time.time(),
+        received_ts=time_et.now(),
     )
     try:
-        live = live_price_rows.price_row("SPY", time.time())
+        live = live_price_rows.price_row("SPY", time_et.now())
         lmp.record_feed_down()
-        down = live_price_rows.price_row("SPY", time.time())
+        down = live_price_rows.price_row("SPY", time_et.now())
     finally:
         lmp.record_feed_down()
     assert live["trade_time_ct"] == live["quote_time_ct"] == "Fri 09/25 06:59 PM CT"

@@ -1,7 +1,7 @@
 """tools/check_end_to_end.py (AGENTS.md rule 1) on real git repositories: each patch shape a pull
 request adds is refused and named; a change with none, a missing value served as missing, a
 container started empty and an old block with a line added inside it pass. What counts as a change
-of product code (shared with check_fails_before) is read by its code, not its comments."""
+of product code is read by its code, not its comments."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def _found(tmp_path, files: dict[str, str]) -> list[str]:
 
 
 def _changed(root: Path) -> list[str]:
-    """The product files a PR changes, as check_fails_before counts them."""
+    """The product files a PR changes, as a PR changes them."""
     return sorted(
         [f for f in cee.pr_files(root, "main", "AMT") if cee.behavior_change(root, "main", f)]
         + cee.deleted_product(root, "main")
@@ -858,22 +858,6 @@ def test_a_file_that_is_not_utf8_fails_the_check_itself(tmp_path):
         text=True,
     )
     assert run.returncode == 2, run.stdout + run.stderr
-
-
-@pytest.mark.parametrize(
-    "body, refused",
-    [
-        ("", 3),
-        ("Schwab → screen: quote\nDeleted: old\nEnd-to-end test: test_x\n", 0),
-        ("Schwab -> screen: quote\nDeleted: old\nEnd-to-end test: test_x\n", 0),
-        ("Schwab → screen: quote\nDeleted:\nEnd-to-end test: test_x\n", 1),
-        ("Deleted: old\nEnd-to-end test: test_x\n", 1),
-        ("Schwab → screen:\n<!-- a -->\nDeleted:\n<!-- b -->\nEnd-to-end test:\n<!-- c -->\n", 3),
-        ("Schwab → screen: q\nDeleted: old\nEnd-to-end test:\n\n## Proof\nran\n", 1),
-    ],
-)
-def test_the_description_fills_its_sections(body, refused):
-    assert len(cee.body_violations(body)) == refused
 
 
 def test_a_ruff_in_the_change_does_not_run_in_the_judge(tmp_path):

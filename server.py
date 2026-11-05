@@ -17,7 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from html import escape as html_escape
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -33,6 +33,7 @@ import live_market_plane as lmp
 import live_price_rows as _lpr  # with_change: the bar-change computation
 import push_changes
 import runtime_layout
+import time_et
 from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow.engine import (
@@ -1006,7 +1007,7 @@ def _gamma_surface_wanted(tk: str) -> bool:
 #: It counts on from the console's start time, so a page that drew a publication of the console
 #: before a restart sees every publication of the new one as new.
 _gamma_surface_seq: dict[str, int] = {}
-_GAMMA_SURFACE_SEQ_START = int(time.time() * 1000)
+_GAMMA_SURFACE_SEQ_START = int(time_et.now() * 1000)
 
 
 def _next_gamma_surface_seq(tk: str) -> int:
@@ -1721,7 +1722,7 @@ def _on_stream_tick(sym: str) -> None:
     for a reprice. Returns at once."""
     tk = _tick_ticker(sym)
     if tk and not vendor_option_root(sym):
-        now = time.time()
+        now = time_et.now()
         spot, _source, _ts = resolve_spot(tk, now=now)
         before, _last_tick_spot[tk] = _last_tick_spot.get(tk), spot
         with _terrain_cache_lock:
@@ -1911,15 +1912,15 @@ WAITING_LOG_EVERY_SEC = 5.0
 def _wait_for(what: str, ready) -> None:
     """Wait until `ready()` (or the loop stops), logging what for and for how long, then how
     long it took once ready."""
-    started = time.monotonic()
+    started = time_et.elapsed()
     next_log = started
     while _terrain_loop_running and not ready():
-        if time.monotonic() >= next_log:
-            log.info("waiting for %s (%.0f s so far)", what, time.monotonic() - started)
+        if time_et.elapsed() >= next_log:
+            log.info("waiting for %s (%.0f s so far)", what, time_et.elapsed() - started)
             next_log += WAITING_LOG_EVERY_SEC
         time.sleep(0.5)
     if ready():
-        log.info("done waiting for %s after %.1f s", what, time.monotonic() - started)
+        log.info("done waiting for %s after %.1f s", what, time_et.elapsed() - started)
 
 
 def refresh_not_live_pages(now: float) -> None:
@@ -1945,9 +1946,9 @@ def _terrain_loop() -> None:
     (_on_chain, _bar_writer)."""
     _wait_for(
         "the capture daemon's heartbeat (it says what the watchlist is)",
-        lambda: _watchlist(time.time()) is not None,
+        lambda: _watchlist(time_et.now()) is not None,
     )
-    watchlist = _watchlist(time.time())
+    watchlist = _watchlist(time_et.now())
     _load_crosses(watchlist)
     _publish_missing_price_levels(watchlist, now_et())
     queued = _load_stored_levels(watchlist)
@@ -1958,13 +1959,13 @@ def _terrain_loop() -> None:
         len(watchlist),
         session_label(now_et()),
     )
-    next_status = time.monotonic() + STATUS_EVERY_SEC
+    next_status = time_et.elapsed() + STATUS_EVERY_SEC
     while _terrain_loop_running:
         time.sleep(1.0)
         try:
-            if time.monotonic() >= next_status:
-                next_status = time.monotonic() + STATUS_EVERY_SEC
-                now = time.time()
+            if time_et.elapsed() >= next_status:
+                next_status = time_et.elapsed() + STATUS_EVERY_SEC
+                now = time_et.now()
                 log.info(_status_line(now))
                 refresh_not_live_pages(now)
                 watchlist = _watchlist(now)
@@ -2137,7 +2138,7 @@ def get_terrain_strikes(
     """The per-strike panels' answer now (terrain_strikes_payload)."""
     return JSONResponse(
         terrain_strikes_payload(
-            ticker_storage_key(_required_ticker(ticker)), scope, centre, shift, time.time()
+            ticker_storage_key(_required_ticker(ticker)), scope, centre, shift, time_et.now()
         )
     )
 
@@ -2368,7 +2369,7 @@ def get_vanna_by_strike(
             scope,
             centre,
             shift,
-            time.time(),
+            time_et.now(),
         )
     )
 
@@ -2389,7 +2390,7 @@ def get_charm_by_strike(
             scope,
             centre,
             shift,
-            time.time(),
+            time_et.now(),
         )
     )
 
@@ -2431,7 +2432,7 @@ def get_options_tape(
                     "reason": "the console holds no chain of this ticker yet",
                 }
             )
-        symbols = _held_option_symbols_for_ticker(held["_contract_symbols"], time.time())
+        symbols = _held_option_symbols_for_ticker(held["_contract_symbols"], time_et.now())
 
     if not symbols:
         return JSONResponse(
@@ -2489,7 +2490,7 @@ def get_order_flow_book_heatmap(
 def get_forces(ticker: str = Query(...)):
     """The ticker's forces, as the levels producer computed them from its chain captures."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    cached = terrain_cache_get(tk, time.time())
+    cached = terrain_cache_get(tk, time_et.now())
     forces = cached.get("_forces") if cached is not None else None
     return JSONResponse(forces if forces is not None else _forces_absent(tk))
 
@@ -3049,7 +3050,7 @@ async def get_changes(ticker: str = Query(...)):
 def api_order_flow_microstructure(
     ticker: str = Query(...), venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$")
 ):
-    return JSONResponse(order_flow_microstructure(ticker, venue, time.time()))
+    return JSONResponse(order_flow_microstructure(ticker, venue, time_et.now()))
 
 
 def _stamp_book_times(payload: dict) -> None:
@@ -3235,7 +3236,7 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     c = (contract or "").strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
-    return JSONResponse(options_microstructure(c, time.time()))
+    return JSONResponse(options_microstructure(c, time_et.now()))
 
 
 def options_microstructure(c: str, now: float) -> dict:
@@ -3255,7 +3256,7 @@ def get_watchlist():
     """The watchlist, the one list of tickers Schwab is asked for, as the capture daemon (its
     keeper) last reported it. A missing heartbeat keeps that list and says it is not live.
     503 only when no beat has ever carried a list."""
-    now = time.time()
+    now = time_et.now()
     tickers = _watchlist(now)
     if tickers is None:
         return JSONResponse(
@@ -3337,7 +3338,7 @@ def get_expiries(ticker: str = Query(...)):
     """The ticker's listed expiries with each one's dropdown label (MM/DD/YYYY and Schwab's
     daysToExpiration, as sent); with none, the levels' own reason."""
     ticker = ticker_storage_key(_required_ticker(ticker))  # SPX -> $SPX: the cache's own key
-    now = time.time()
+    now = time_et.now()
     t = terrain_cache_get(ticker, now)
     if t is None:
         return JSONResponse(
@@ -3382,7 +3383,7 @@ def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)
     listed contracts, its fetch time). Every watchlist ticker's chain is kept. Answers `status:
     unavailable` with a reason when no chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
-    now = time.time()
+    now = time_et.now()
     held = terrain_cache_get(t, now)
     listed = held.get("expiries") if held is not None else None
     requested = expiry.strip()[:10] if expiry else None
@@ -3497,7 +3498,7 @@ def health():
     # vendor outage into it. Schwab is the capture daemon's: its heartbeat says whether its
     # Schwab socket is open and, when not, why (as its log says it); no current heartbeat is
     # UNAVAILABLE (unmeasurable is not ok).
-    now = time.time()
+    now = time_et.now()
     st = lmp.daemon_status(now)
     watchlist = _watchlist(now)
     capability: dict[str, object] = {
@@ -3509,7 +3510,7 @@ def health():
         capability["schwab_reason"] = NO_DAEMON_HEARTBEAT if st is None else st["schwab_down"]
     return {
         "status": "ok",
-        "time": datetime.now().isoformat(),
+        "time": datetime.fromtimestamp(now).isoformat(),
         "watchlist_tickers": len(watchlist) if watchlist is not None else None,
         "capabilities": capability,
     }
@@ -3610,7 +3611,7 @@ def capture_process_identity(checkout: str | Path) -> ProcessIdentityV1:
         startup_git_sha_short=short,
         startup_git_dirty=dirty,
         startup_git_available=sha is not None,
-        startup_identity_captured_at_utc=datetime.now(tz=UTC).timestamp(),
+        startup_identity_captured_at_utc=time_et.now(),
         process_started_at_utc=float(psutil.Process(os.getpid()).create_time()),
         process_id=os.getpid(),
         identity_source=source,

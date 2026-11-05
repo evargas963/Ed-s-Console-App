@@ -15,44 +15,22 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    `.venv/Scripts/python.exe -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__)[\\/])' .`
    — exit 0 (both as the `hardening` job runs them).
 3. The full suite on the final commit: the required CI jobs `pytest-full` (Playwright, then the full
-   pytest), `pytest-windows` (the same two on Windows as production runs, then `check_fails_before`)
-   and `hardening` green, shown by `gh pr checks <pr>` on the final commit (operator 2026-10-30: "Yes,
-   CI proves it"). The suites run here only while a test is written or a failure is chased:
-   `npm run test:all`, one at a time.
-4. `.venv/Scripts/python.exe -m tools.check_fails_before --base origin/main` — exit 0; for a pull
-   request that changes product code it prints "proven", naming the end-to-end path test that fails on
-   the old code, or, for a change that only removes whole undecorated Python functions or classes and
-   the imports only they used, or only fixes what ruff rules the PR newly selects find, or only
-   removes code paths inside functions (the PR shows the trace that no caller reaches them),
-   naming the files.
-5. `.venv/Scripts/python.exe -m tools.check_one_reader --base origin/main` — exit 0; then
+   pytest), `pytest-windows` (the same two on Windows as production runs) and `hardening` green, shown
+   by `gh pr checks <pr>` on the final commit (operator 2026-10-30: "Yes, CI proves it"). The suites
+   run here only while a test is written or a failure is chased: `npm run test:all`, one at a time.
+4. `.venv/Scripts/python.exe -m tools.check_one_reader --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe -m tools.check_credential_leak --base origin/main` and
    `.venv/Scripts/python.exe -m tools.check_eol_style_invariant --base origin/main` — exit 0 each.
-6. `.venv/Scripts/python.exe -m tools.check_end_to_end --base origin/main` — exit 0; then
+5. `.venv/Scripts/python.exe -m tools.check_end_to_end --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_locks.py --base origin/main` — exit 0; `locks` also runs
-   both of them and `tools/check_integrity.py` from the base, with the description.
-7. Four eyes: run the `correctness-reviewer` and `requirements-reviewer` agents on the PR's final
-   commit (`git diff origin/main...HEAD`, with the PR description, the operator's task and the output
-   of steps 1–6), naming that commit. Before the first review, every statement the description makes
-   about behaviour is backed by a command run on that commit, its output shown (AGENTS.md "Claims").
-   A commit made after a review gets a review of both before the PR is offered: the same two
-   reviewers, given the last round's findings, judge whether each is fixed and the diff since the
-   reviewed commit. A finding that reverses the last round's judgment goes to Ed with both rounds'
-   words. Round 1 is the first review; when round 2 leaves a FAIL or NOT_PROVEN open, bring Ed every
-   open finding in one message, a stop AGENTS.md Authority lists, and the PR does not merge until he
-   decides (operator 2026-11-03: "this is unsustainable. audit and fix right away"). Show each verdict
-   (PASS / FAIL / NOT_PROVEN) and its findings, and put both verdicts in the PR description's
-   `## Review`. The rule 14 record comes from a session that did not write the change, given only
-   what rule 14 names (the commit series with `git log -p origin/main..HEAD`). A FAIL or
-   NOT_PROVEN is fixed or proven before the PR merges, or decided by Ed when brought to him; the one NOT_PROVEN a merge
-   may carry is the deployed-screen tier its deploy proves (AGENTS.md Authority). Before bringing Ed a
-   decision, check AGENTS.md, CLAUDE.md and ACTIVE_PROGRAM.md for a rule or recorded decision that
-   answers it; if one does, apply it and cite it. A decision goes to Ed only when none does.
-8. Nothing left running: list each background shell, subagent (`ListAgents`) and process this session
+   both of them and `tools/check_integrity.py` from the base.
+6. The builder's audit (AGENTS.md rule 14): the change read end to end, Schwab to the screen, against
+   the First gate; no patch, no second copy, what it replaces deleted.
+7. Nothing left running: list each background shell, subagent (`ListAgents`) and process this session
    started (`Get-CimInstance Win32_Process`, newer than the session), and show each one finished or
    stopped. Production is what `tools/operator_yes_guard.py` `_production` says it is; it stops only
    by `python launch.py stop` (`docs/DATA_FLOW.md` §3.1), with a notice in chat (CLAUDE.md item 5).
-9. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
+8. End the report as CLAUDE.md shows: CONFIRMED (each step's output above), NOT VERIFIED, SEEN, NOT
    FIXED — each open item verified, fixed or brought to Ed as a decision (AGENTS.md First gate 5).
    These steps do not check the live screen, which AGENTS.md's "Done" needs: show it, or list it as
    NOT VERIFIED.

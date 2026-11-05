@@ -23,6 +23,7 @@ import time
 from datetime import datetime
 
 import schwab_client as sc
+import time_et
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, options_quote_msg
@@ -286,9 +287,9 @@ def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a
     worker = threading.Thread(target=sweep.work, args=(client, stop), daemon=True)
     try:
         worker.start()
-        deadline = time.monotonic() + 10
+        deadline = time_et.elapsed() + 10
         while (
-            len({t for t, m in published if "contracts" in m}) < 2 and time.monotonic() < deadline
+            len({t for t, m in published if "contracts" in m}) < 2 and time_et.elapsed() < deadline
         ):
             time.sleep(0.05)
         settled = len(schwab.requests)

@@ -7,18 +7,19 @@ from __future__ import annotations
 
 import multiprocessing
 import sys
-import time
+
+import time_et
 
 
 def burn(until: float) -> None:
     x = 0
-    while time.time() < until:
+    while time_et.elapsed() < until:
         x += 1
 
 
 def main(argv: list[str]) -> int:
     n, seconds = int(argv[0]), float(argv[1])
-    until = time.time() + seconds
+    until = time_et.elapsed() + seconds
     procs = [multiprocessing.Process(target=burn, args=(until,)) for _ in range(n)]
     for p in procs:
         p.start()

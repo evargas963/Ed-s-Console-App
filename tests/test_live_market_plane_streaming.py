@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import time
-
 import live_market_plane as lmp
+import time_et
 
 
 def _rec(ticker, item, received_ts=None):
     """One streamed message, received now unless the test says when."""
     return lmp.record_from_level_one_equity(
-        ticker, item, received_ts=time.time() if received_ts is None else received_ts
+        ticker, item, received_ts=time_et.now() if received_ts is None else received_ts
     )
 
 
@@ -82,7 +81,7 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
     assert param.default is inspect.Parameter.empty, "no wall-clock default"
     with pytest.raises(TypeError):
         lmp.record_from_level_one_equity("RQD", {"key": "RQD", "LAST_PRICE": 1.0})
-    old = time.time() - 100.0
+    old = time_et.now() - 100.0
     assert _rec("RQD", {"key": "RQD", "LAST_PRICE": 1.0}, received_ts=old)
     row = lmp.get_quote("RQD")
     assert row["server_received_ts"] == old and row["spot_received_ts"] == old
@@ -183,7 +182,7 @@ def test_unchanged_bid_ask_stand_with_their_own_age():
     """Schwab LEVELONE sends only CHANGED fields (measured 2026-09-24 on 4,039 captured
     messages: 11% carried bid+ask+last together, 17% ask-only, 15% bid-only). A message with
     no BID_PRICE means the bid is unchanged -- it used to blank the bid and ask."""
-    t0 = time.time() - 5.0
+    t0 = time_et.now() - 5.0
     _rec(
         "NOCARRY",
         {"key": "NOCARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
@@ -237,7 +236,7 @@ def test_record_from_level_one_rejects_midpoint_spot_fabrication():
 def test_a_resent_identical_last_price_refreshes_its_age():
     """A LAST_PRICE message is a trade report: the same price resent is a NEW trade at that
     price, so its age refreshes (it used to be suppressed as a duplicate, aging the spot)."""
-    t0 = time.time() - 20.0
+    t0 = time_et.now() - 20.0
     _rec(
         "AAA",
         {"key": "AAA", "LAST_PRICE": 50.0, "BID_PRICE": 49.9, "ASK_PRICE": 50.1},

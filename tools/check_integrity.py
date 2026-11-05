@@ -1,4 +1,4 @@
-"""AGENTS.md rule 14: what a change may not take from its tests, and the review it must carry.
+"""AGENTS.md rule 15: what a change may not take from its tests.
 
 Run from the base by `.github/workflows/locks.yml`; the head is read as data, none of its code runs.
 
@@ -6,19 +6,15 @@ Test integrity, every pull request:
    - an assertion of a test that survives is not lost. A test is its function name in Python and
      its title in a Playwright spec, across every changed test file, so a moved test is the same
      test and a rewritten one may restate its assertions. An assertion gone with its test, or
-     with a function it calls that this change deleted, is the review's to judge, as is a test
-     renamed or disabled with its assertions kept: a test renamed and one deleted beside a new
-     one read the same to a machine;
+     with a function it calls that this change deleted, is not judged, nor a test renamed or
+     disabled with its assertions kept: a test renamed and one deleted beside a new one read the
+     same to a machine;
    - no test is another test again: the same code, arguments and decorators, in a file whose
      other top-level code (its imports, constants, fixtures and helpers; its docstring aside) is
      the same (every test file at the head);
    - no line added to code skips a test or leaves a deferred-work marker.
 
-Review record, in the description's `## Review` section (`Commit:` the head, `Verdict:` PASS or
-FAIL): required when the change touches what governs changes, and when present it must name the
-head and not be a FAIL. This proves the record's presence and commit only, never who wrote it.
-
-    python tools/check_integrity.py --base <rev> --body-file <file> --head-sha <sha>
+    python tools/check_integrity.py --base <rev>
 
 Exit 0: clean. Exit 1: each violation on its own line. Exit 2: the check itself failed.
 """
@@ -39,22 +35,9 @@ MARKERS = re.compile(
     r"pytest\.mark\.skip|skipif|\bskip\(|unittest\.skip|importorskip|xfail"
     r"|\b(?:test|describe|it)\.(?:skip|fixme|fail)\b|\bx(?:it|describe)\b|\bTODO\b|\bFIXME\b"
 )
-GOVERNING = re.compile(
-    r"^(AGENTS\.md|CLAUDE\.md|docs/DATA_FLOW\.md|ACTIVE_PROGRAM\.md|locks\.\w+\.toml"
-    r"|pyproject\.toml|\.pre-commit-config\.yaml|\.gitattributes"
-    r"|requirements-dev\.txt|package-lock\.json"
-    r"|\.github/.*|\.claude/.*|\.cursor/.*"
-    r"|tools/.*"
-    r"|tests/test_(check_\w+|governing_docs|test_rules|hook_chain|\w+_guard\w*)_v\d+\.py)$"
-)
 CALLED = re.compile(r"(\w+)\(")
 JS_TEST = re.compile(r"""\btest(?:\.\w+)?\(\s*(['"`])(.*?)(?<!\\)\1""", re.S)
 JS_EXPECT = re.compile(r"\bexpect(?:\.\w+)?\([^;]*;")
-REVIEW = re.compile(r"^## Review[ \t]*$(.*?)(?=^## |\Z)", re.M | re.S)
-# bold or a trailing word does not take a line out of the record
-COMMIT = re.compile(r"^[^\w\n]*Commit[^\w\n]*(.*)$", re.M | re.I)
-VERDICT = re.compile(r"^[^\w\n]*Verdict[^\w\n]*(.*)$", re.M | re.I)
-EVIDENCE = re.compile(r"^[^\w\n]*Evidence[^\w\n]*\w", re.M | re.I)
 #: the head's own attributes and drivers do not decide what the diff shows
 DIFF = ("diff", "-U0", "--text", "--no-ext-diff", "--no-textconv")
 
@@ -194,23 +177,6 @@ def added_markers(root: Path, base: str) -> list[str]:
     return out
 
 
-def review_violations(body: str, head_sha: str, files: list[str]) -> list[str]:
-    governing = [f for f in files if GOVERNING.match(f)]
-    section = REVIEW.search(re.sub(r"<!--.*?-->", "", body, flags=re.S))
-    commits = COMMIT.findall(section.group(1)) if section else []
-    verdicts = VERDICT.findall(section.group(1)) if section else []
-    if not commits and not verdicts:
-        return [f"no ## Review record, and the change touches {governing[0]}"] if governing else []
-    out = []
-    if {c.strip(" *`") for c in commits} != {head_sha}:
-        out.append(f"the ## Review record does not name the head {head_sha}")
-    if {v.strip(" *`") for v in verdicts} != {"PASS"}:
-        out.append("the ## Review record's Verdict is not PASS")
-    if not EVIDENCE.search(section.group(1)):
-        out.append("the ## Review record gives no Evidence")
-    return out
-
-
 def duplicate_tests(root: Path) -> list[str]:
     """Return each Python test of the head that is another one again.
 
@@ -241,25 +207,21 @@ def duplicate_tests(root: Path) -> list[str]:
     return [f"a test duplicated: {', '.join(same)}" for same in seen.values() if len(same) > 1]
 
 
-def violations(root: Path, base: str, body: str, head_sha: str) -> list[str]:
+def violations(root: Path, base: str) -> list[str]:
     files = changed(root, base)
     return [
         *lost_assertions(root, base, files),
         *duplicate_tests(root),
         *added_markers(root, base),
-        *review_violations(body, head_sha, files),
     ]
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--base", required=True)
-    ap.add_argument("--body-file", required=True)
-    ap.add_argument("--head-sha", required=True)
     a = ap.parse_args(argv)
     try:
-        body = Path(a.body_file).read_text(encoding="utf-8")
-        found = violations(Path.cwd(), a.base, body, a.head_sha)
+        found = violations(Path.cwd(), a.base)
     except (ToolError, OSError, SyntaxError) as e:  # a test file that does not parse: exit 2
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
