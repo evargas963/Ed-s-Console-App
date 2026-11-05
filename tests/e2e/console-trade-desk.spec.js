@@ -800,13 +800,20 @@ test.describe('Trade Desk renders served values', () => {
       // the terrain's answer is painted on the next frames
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       await page.mouse.move(0, 0);
-      return page.locator('#tdmChart').screenshot({ animations: 'disabled' });
+      // what the chart draws: every canvas's pixels and the chart's DOM (its labels and
+      // controls). A screenshot of the same drawing differs by a level in a few anti-aliased
+      // pixels under load, so the drawing itself is compared, not a capture of it.
+      return page.evaluate(() => {
+        const host = document.getElementById('tdmChart');
+        return { canvases: Array.from(host.querySelectorAll('canvas'), (c) => c.toDataURL()), dom: host.innerHTML };
+      });
     }
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     const plain = await chartImage(TERRAIN);
     const withRanges = await chartImage(Object.assign({}, TERRAIN, {
       call_wall_range: { lo: 700, hi: 800, coverage_pct: 70, method: 'gamma value area' },
       put_wall_range: { lo: 700, hi: 800, coverage_pct: 70, method: 'gamma value area' } }));
-    expect(withRanges.equals(plain)).toBe(true);
+    expect(plain.canvases.length).toBeGreaterThan(0);
+    expect(withRanges).toEqual(plain);
   });
 });
