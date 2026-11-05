@@ -299,6 +299,15 @@ def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
         )
     if any(_disables_a_lock(st) for st in statements):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+    if any(
+        w == "--unsafe-fixes" or w.startswith("--unsafe-fixes=")
+        for st in statements
+        for w in st.words
+    ):
+        out.append(
+            "ACTION BLOCKED: ruff's unsafe fixes change what code does; none is taken, in any "
+            'file (AGENTS.md "Fix what you find").'
+        )
     if any(_gh_refused(st) for st in statements):
         out.append(
             "ACTION BLOCKED: this `gh` is outside what the agent may run. Write every word out, "

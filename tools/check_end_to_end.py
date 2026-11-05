@@ -668,7 +668,19 @@ def violations(root: Path, base: str) -> list[str]:
             for line, what in shapes_of(f, now)
             if line in kept and (kept[line], what) not in held
         )
-    return [f"{f}:{line}: {what}" for f, line, what in sorted(out)]
+    found = [f"{f}:{line}: {what}" for f, line, what in sorted(out)]
+    if (root / "pyproject.toml").is_file():  # with none, ruff takes no unsafe fix
+        safety = fix_safety(root, root / "pyproject.toml")
+        if (
+            safety is None
+            or safety["unsafe_fixes"] == "enabled"
+            or safety["linter.safety_table.forced_safe"] != "[]"
+        ):
+            found.append(
+                "pyproject.toml: ruff's settings take an unsafe fix, or ruff cannot read them; "
+                "no unsafe fix is taken, in any file"
+            )
+    return found
 
 
 def body_violations(body: str) -> list[str]:

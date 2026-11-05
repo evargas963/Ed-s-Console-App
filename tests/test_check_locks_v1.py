@@ -64,11 +64,11 @@ def test_only_size_may_rise_above_zero():
         "lines of tests",
         "bytes of product code",
         "open work items",
-        "ruff D205",
-        "banned in tests: `sqlite3` is banned: Only the Recorder uses a database.",
     ):
         assert check_locks.rises(Counter({name: 5}), Counter({name: 6})) == []
     for name in (
+        "ruff D205",
+        "banned in tests: `sqlite3` is banned: Only the Recorder uses a database.",
         "banned in server.py: `sqlite3` is banned",
         "banned in tests: `websockets` is banned: Only Feed talks to Schwab.",
         "format suppressions",

@@ -555,6 +555,19 @@ def test_a_fix_ruff_marks_unsafe_is_a_product_change_whatever_the_prs_config_ask
         assert _changed(root) == ["server.py"], config
 
 
+def test_settings_that_take_an_unsafe_fix_are_refused_whatever_file_the_change_touches(tmp_path):
+    """No unsafe fix is taken, in any file (operator 2026-11-04): a change whose ruff settings turn
+    unsafe fixes on, or mark one safe, is refused though it touches only a test."""
+    for config in (
+        RUFF_BASE + "unsafe-fixes = true\n",
+        RUFF_BASE + '[tool.ruff.lint]\nselect = ["UP042"]\nextend-safe-fixes = ["UP042"]\n',
+    ):
+        (where := tmp_path / str(len(config))).mkdir()
+        root = _repo(where, TOOLS_BASE)
+        _commit(root, {"pyproject.toml": config, TEST: "def test_x():\n    assert True\n"})
+        assert any("take an unsafe fix" in v for v in cee.violations(root, "main")), config
+
+
 def test_a_fix_made_for_another_python_than_the_bases_is_a_product_change(tmp_path):
     """A fix ruff calls safe is safe for its target Python only: on 3.14 an annotation is not
     evaluated, so ruff unquotes a forward reference that 3.13, the base's, evaluates at import."""

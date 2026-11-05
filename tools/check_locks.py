@@ -22,8 +22,9 @@ from pathlib import Path
 RULES = "locks.ruff.toml"
 COUNTED_RULES = ".locks-counted.toml"
 REFUSED = 3
-#: the counts that may rise above 0: size, work items, a test's database, docstring style
-FREE = ("banned in tests: `sqlite3`", "bytes of", "lines of", "open work items", "ruff D")
+#: the counts that may rise above 0, reported and never judged: size and work items (operator
+#: 2026-11-04: "i am not going to set some arbitrary number")
+FREE = ("bytes of", "lines of", "open work items")
 DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
 #: what Python can load, by any case of its suffix on Windows

@@ -89,9 +89,9 @@ his "you are in control and control the language", his to reverse.
 `tools/check_locks.py`, which counts on the base and on the head under the base's rules: lines and bytes of everything that is not data (product code, tests, check tools),
 open work items, patching lines in tests, format suppressions, and every finding of
 `locks.ruff.toml` with each `noqa` ignored. A count at 0 is an absolute ban. Above 0, size may rise
-and is reported (`check_locks.FREE`: lines, bytes, work items, a test's database, docstring style),
-so routine work does not wait on the operator (agent's decision 2026-11-01, on his "i don't want
-anything to slow down"; his to reverse); that a change deletes what it replaces — no machine check,
+and is reported (`check_locks.FREE`: lines, bytes, work items; operator 2026-11-04: "i am not
+going to set some arbitrary number"); a test's database and docstring style are one-way counts
+like every other finding (operator 2026-11-04, F4); that a change deletes what it replaces — no machine check,
 ENF-12. No number is kept by hand (`tests/test_check_locks_v1.py`). A banned name (`sqlite3`, the clock, `websockets`, `http.client`, `urllib.request`) counts
 per product file, so no module that does not hold one may start. The same job runs import-linter on
 `locks.imports.toml`, the base's: no import statement outside the modules it names takes `schwab`,
@@ -147,8 +147,12 @@ then the rule binds with no machine check.
   tools' own, and none at all when ruff's own resolved settings for the committed `pyproject.toml`
   (extended files included) turn unsafe fixes on, force a fix safe, require an import of every file,
   or target another Python than the base's, so an unsafe rewrite of a product file is a product
-  change that needs its failing test (`tests/test_check_end_to_end_v1.py`); the rest of this bullet (a found defect fixed, those
-  settings themselves, an unsafe rewrite outside product code) — no machine check, ENF-12.
+  change that needs its failing test; it refuses a change whose committed settings turn unsafe
+  fixes on or force one safe, whatever file the change touches, and the agent's hook refuses
+  `--unsafe-fixes` in any command, so no unsafe fix is taken in any file (operator 2026-11-04:
+  "consistent with everything repo wide"; `tests/test_check_end_to_end_v1.py`,
+  `tests/test_operator_law_guard_action_bans_v1.py`); the rest of this bullet (a found defect
+  fixed, the same rewrite typed by hand outside product code) — no machine check, ENF-12.
 - **Everything is repo wide** (operator 2026-11-04: "everything that we do, every test, every
   governance, lock, hook, enforcement is repo wide"; "you must not narrow anything"). Every check,
   test, hook, lock, rule and fix covers every file of the repository, old code and new alike, with
