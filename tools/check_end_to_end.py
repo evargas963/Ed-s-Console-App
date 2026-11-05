@@ -629,10 +629,8 @@ def files_at(root: Path, rev: str) -> dict[str, tuple[str, str]]:
     for path, blob in listed:
         end = out.index(b"\n", at)
         size = int(out[at:end].rsplit(b" ", 1)[1])
-        try:  # a file that is not UTF-8 is code this check cannot read: the check fails, exit 2
-            found[path] = (blob, out[end + 1 : end + 1 + size].decode("utf-8"))
-        except UnicodeDecodeError as e:
-            raise ToolError(f"{rev}:{path} could not be read: {e}") from e
+        # a file that is not UTF-8 is code this check cannot read: main fails the check, exit 2
+        found[path] = (blob, out[end + 1 : end + 1 + size].decode("utf-8"))
         at = end + 1 + size + 1
     return found
 
@@ -691,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
         found = violations(Path.cwd(), a.base)
         if a.body_file:
             found += body_violations(a.body_file.read_text(encoding="utf-8"))
-    except (ToolError, OSError) as e:
+    except (ToolError, OSError, UnicodeDecodeError) as e:
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
     sys.stdout.reconfigure(encoding="utf-8")  # a file name may hold any character
