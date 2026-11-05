@@ -187,8 +187,11 @@ def _disables_a_lock(st: Statement) -> bool:
 
 
 def _takes_an_unsafe_fix(st: Statement) -> bool:
-    """Whether a ruff run asks for an unsafe fix: the flag, or an inline `--config` setting that
-    turns unsafe fixes on or marks one safe (`unsafe-fixes`, `extend-safe-fixes`)."""
+    """Whether a ruff run asks for an unsafe fix.
+
+    The flag, or an inline `--config` setting that turns unsafe fixes on or marks one safe
+    (`unsafe-fixes`, `extend-safe-fixes`).
+    """
     if not any(Path(w).name.lower().removesuffix(".exe") == "ruff" for w in st.words):
         return False
     return any(
