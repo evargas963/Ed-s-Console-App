@@ -194,37 +194,29 @@ CHAIN_PART_CONTRACTS = 500
 def chain_messages(
     ticker: str, contracts: list[dict], fetched_ts: float, spot: float | None, spot_ts: float | None
 ) -> list[tuple[str, dict]]:
-    """A fetched chain as its bus messages, each carrying its finished wire frame: part i of n,
-    CHAIN_PART_CONTRACTS contracts each, all with the time the chain began and the chain's one spot
-    with its trade time. The console assembles the parts; a chain missing a part is never priced."""
+    """A fetched chain as its bus messages: part i of n, CHAIN_PART_CONTRACTS contracts each, all
+    with the time the chain began and the chain's one spot with its trade time. The console
+    assembles the parts; a chain missing a part is never priced."""
     parts = [
         contracts[i : i + CHAIN_PART_CONTRACTS]
         for i in range(0, len(contracts), CHAIN_PART_CONTRACTS)
     ] or [[]]
-    out = []
-    for i, part in enumerate(parts):
-        msg = {
-            "src": "schwab_chain",
-            "ticker": ticker,
-            "ts_recv": fetched_ts,
-            "spot": spot,
-            "spot_ts": spot_ts,
-            "part": i,
-            "parts": len(parts),
-            "contracts": part,
-        }
-        out.append(
-            (
-                f"chain.{ticker}",
-                {
-                    **msg,
-                    "frame": json.dumps(
-                        {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":")
-                    ),
-                },
-            )
+    return [
+        (
+            f"chain.{ticker}",
+            {
+                "src": "schwab_chain",
+                "ticker": ticker,
+                "ts_recv": fetched_ts,
+                "spot": spot,
+                "spot_ts": spot_ts,
+                "part": i,
+                "parts": len(parts),
+                "contracts": part,
+            },
         )
-    return out
+        for i, part in enumerate(parts)
+    ]
 
 
 #: Schwab's price history of every ticker (GET /pricehistory,
@@ -241,17 +233,14 @@ def price_history_message(
 ) -> tuple[str, dict]:
     """One series of a ticker's price history as its bus message: Schwab's whole answer as sent
     (its candles and every other field), recorded by the daemon's writer like every stream
-    message, with its finished wire frame (built here, off the event loop: a ticker's 1-minute
-    answer is ~1 MB)."""
-    topic = f"pricehistory.{ticker}.{series}"
-    msg = {
+    message."""
+    return f"pricehistory.{ticker}.{series}", {
         "src": "schwab_pricehistory",
         "symbol": ticker,
         "series": series,
         "ts_recv": fetched_ts,
         "answer": answer,
     }
-    return topic, {**msg, "frame": json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))}
 
 
 #: Schwab answers GET /markets for a date as far as 7 days back ("Date cannot be more than 7 days
@@ -277,22 +266,21 @@ MARKETS_ANSWERED = (200, 400)
 
 def markets_message(day: str, status: int, answer: dict, fetched_ts: float) -> tuple[str, dict]:
     """Schwab's /markets answer for `day` as its bus message, as sent, with its status."""
-    topic = f"markets.{day}"
-    msg = {
+    return f"markets.{day}", {
         "src": "schwab_markets",
         "date": day,
         "ts_recv": fetched_ts,
         "status": status,
         "answer": answer,
     }
-    return topic, {**msg, "frame": json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))}
 
 
 def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
-    msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": ts, "failed": reason}
     return f"chain.{ticker}", {
-        **msg,
-        "frame": json.dumps({"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":")),
+        "src": "schwab_chain",
+        "ticker": ticker,
+        "ts_recv": ts,
+        "failed": reason,
     }
 
 

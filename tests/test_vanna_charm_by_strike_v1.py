@@ -20,10 +20,9 @@ from pathlib import Path
 import live_market_plane as lmp
 import server
 import time_et
-from app.options.order_flow import streaming as ofs
 from option_contract import read_chain
 from terrain_engine import compute_terrain
-from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+from tests.feed_live_helper import mark_feed_live
 from tests.real_chains import CRWD
 
 _SPOT = CRWD.spot
@@ -39,7 +38,6 @@ TK = server.ticker_storage_key("CRWD")
 def _clear():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
 
@@ -81,10 +79,9 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     from math_exposure_core import bucket_metric
     from math_exposure_core import compute_exposures_by_strike as cebs
 
-    # Schwab's CRWD quote reaches the console as the daemon pushes it: its price row
+    # Schwab's CRWD quote in the daemon's plane, as the daemon takes it in: its price row
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time_et.now())
     mark_feed_live(TK)
-    publish_daemon_rows(TK)
 
     body = json.loads(server.get_vanna_by_strike(ticker="CRWD", scope="all").body)
     assert body["available"] is True

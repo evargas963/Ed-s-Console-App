@@ -19,7 +19,6 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
@@ -47,10 +46,14 @@ def _price(spot):
     lmp.record_feed_heartbeat(
         {"ts": _AT.timestamp(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
     )
-    if spot is None:
-        ofs._price_rows.pop(TK, None)
-    else:
-        ofs._price_rows[TK] = {"ticker": TK, "spot": spot, "trade_ts": _AT.timestamp()}
+    lmp._by_ticker.pop(TK, None)
+    lmp._fields_by_ticker.pop(TK, None)
+    if spot is not None:
+        lmp.record_from_level_one_equity(
+            TK,
+            {"LAST_PRICE": spot, "TRADE_TIME_MILLIS": int(_AT.timestamp() * 1000)},
+            received_ts=_AT.timestamp(),
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -67,7 +70,8 @@ def _published():
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
+    lmp._by_ticker.pop(TK, None)
+    lmp._fields_by_ticker.pop(TK, None)
     lmp.record_feed_down()
 
 

@@ -272,7 +272,8 @@ def _spy_bars() -> list:
 
 def _forget(tk):
     server._bars.pop(tk, None)
-    ofs._price_rows.pop(tk, None)
+    lmp._by_ticker.pop(tk, None)
+    lmp._fields_by_ticker.pop(tk, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
     for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
@@ -299,14 +300,13 @@ def _priced(tk, chain, spot, ts_utc):
 
 
 def _live_price(tk, last):
-    """Schwab's LAST_PRICE through the daemon's price row, its feed live at FRIDAY_CLOSE (the time
-    the levels are served at)."""
+    """Schwab's LAST_PRICE in the daemon's plane, its feed live at FRIDAY_CLOSE (the time the
+    levels are served at)."""
     at = FRIDAY_CLOSE.timestamp()
     lmp.record_feed_heartbeat(
         {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
     lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=at)
-    ofs._price_rows[tk] = live_price_rows.price_row(tk, at)
 
 
 @pytest.fixture
@@ -495,7 +495,6 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_lev
     lmp.record_from_level_one_equity(
         DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151}, received_ts=at
     )
-    ofs._price_rows[DESK] = live_price_rows.price_row(DESK, at)
     body = server.levels_payload(DESK, "1", FRIDAY_CLOSE)
     priced = [r for r in body["levels"] if r["price"] is not None]
     assert len(priced) > 5 and body["spot"] == 769.5 and body["spot_as_of_ts_utc"] == 1790983830.151
@@ -529,8 +528,6 @@ def test_the_desk_window_is_schwabs_last_session_open_and_its_words_are_served()
 
 
 def test_every_bar_carries_its_change():
-    import live_price_rows
-
     for b in _load("real_spy_1m_bars_2026_09_24_25.json")["bars"][:50]:
         bar = live_price_rows.with_change({"o": b["open"], "c": b["close"]})
         assert bar["chg"] == pytest.approx(b["close"] - b["open"])

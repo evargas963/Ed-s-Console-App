@@ -62,15 +62,18 @@ from datetime import date, datetime
 from pathlib import Path
 
 import psutil
+import uvicorn
 from schwab.streaming import StreamClient
 from websockets.exceptions import ConnectionClosed
 
 import live_market_plane as lmp
 import live_price_rows
 import runtime_layout
+import server
 import time_et
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
-from app.market_data.schwab.streaming.live_ui import serve_live_ui
+from app.market_data.schwab.streaming.live_ui import CONSOLE_HOST, CONSOLE_PORT, serve_live_ui
+from app.options.order_flow import streaming as console_feed
 from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
@@ -661,10 +664,11 @@ class Daemon:
         for task in done:
             task.result()  # a follower's error, raised for run to name
 
-    def console_frame(self, req: dict, sender) -> None:
-        """A frame from a connection `sender` to the daemon's local socket (live_push, 127.0.0.1): a
-        watchlist request ({"op": "watchlist"}, answered on the bus), the contract selected on the
-        Flow panel ({"op": "flow_contract", "contract": symbol or null}), or the clean stop
+    def console_frame(self, req: dict) -> None:
+        """A request from the console in this program, or a frame on the daemon's local socket
+        (live_push, 127.0.0.1, launch.py's stop): a watchlist request ({"op": "watchlist"},
+        answered on the bus), the contract selected on the Flow panel ({"op": "flow_contract",
+        "contract": symbol or null}), or the clean stop
         ({"op": "stop"}, launch.py stop): every task ends, the writer writes what it holds (to the
         spill files while the database refuses writes), and the daemon exits EXIT_STOPPED."""
         if req["op"] == "watchlist":
@@ -1151,6 +1155,25 @@ async def record_feed_status(
             pass
 
 
+async def serve_console(daemon: Daemon, stop: asyncio.Event) -> None:
+    """The console's pages and routes (server.app) in this program until `stop`, reading the
+    daemon's one bus (console_feed.bind_daemon): one program, one copy of every value."""
+    console_feed.bind_daemon(daemon)
+    web = uvicorn.Server(
+        uvicorn.Config(
+            server.app,
+            host=CONSOLE_HOST,
+            port=CONSOLE_PORT,
+            timeout_graceful_shutdown=10,
+            log_config=None,
+        )
+    )
+    serving = asyncio.create_task(web.serve(), name="console web server")
+    await asyncio.wait({serving, asyncio.ensure_future(stop.wait())}, return_when="FIRST_COMPLETED")
+    web.should_exit = True
+    await serving
+
+
 #: the daemon's window alone (_start_log), never its log file
 WINDOW_ONLY = logging.getLogger("capture.window")
 
@@ -1327,10 +1350,9 @@ async def run() -> int:
         asyncio.create_task(show_stream(bus, stop), name="stream window"),
         asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
-        asyncio.create_task(
-            serve_live_push(bus, stop, on_request=daemon.console_frame), name="live push"
-        ),
+        asyncio.create_task(serve_live_push(stop, daemon.console_frame), name="live push"),
         asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status), name="live ui"),
+        asyncio.create_task(serve_console(daemon, stop), name="console"),
     ]
     try:
         await asyncio.sleep(0)  # servers subscribe before the first message

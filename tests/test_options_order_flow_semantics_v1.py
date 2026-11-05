@@ -1,6 +1,7 @@
-"""Option messages, Schwab to the console, through the real code: the daemon's push socket
-(live_push.serve_live_push) and the console's side of it (streaming.serve_push), the console's
-state (app.options.order_flow.state), and the daemon's status (live_market_plane).
+"""Option messages, Schwab to the console, through the real code: the daemon's bus
+(capture.Daemon) and the console's reader of it in the same program
+(streaming.start_order_flow_stream), the console's state (app.options.order_flow.state), and the
+daemon's status (live_market_plane).
 
 Real data: every message received 2026-10-05 14:00:00-14:00:03 CT, as Schwab sent them
 (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json: 7,420 LEVELONE_OPTIONS, 152
@@ -12,15 +13,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 from pathlib import Path
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import time_et
-from app.market_data.schwab.streaming import live_push
+from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
-from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 
 _MIX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -44,18 +44,11 @@ def _message(m: dict) -> tuple[str, dict]:
     )
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
-    """The daemon publishes each message Schwab sent; the console's one connection receives them
-    and keeps each contract's newest values as sent: every option contract's last BID_PRICE and
-    ASK_PRICE (its top of book), and the option book Schwab sent last."""
-    from websockets.asyncio.client import connect
-
+    """The daemon publishes each message Schwab sent on its bus; the console, in the same
+    program, reads that bus and keeps each contract's newest values as sent: every option
+    contract's last BID_PRICE and ASK_PRICE (its top of book), and the option book Schwab sent
+    last."""
     rows = [
         m for m in _MIX if m["service"] in ("LEVELONE_OPTIONS", "LEVELONE_EQUITIES", "OPTIONS_BOOK")
     ]
@@ -78,30 +71,24 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
         return {k: t[k] for k in want[sym] if k in t}
 
     async def go():
-        bus, stop, port = MessageBus(), asyncio.Event(), _free_port()
-        stats: dict = {}
-        pushing = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
-        while stats.get("listening") is None:
-            await asyncio.sleep(0.02)
-        ws = await connect(f"ws://127.0.0.1:{port}", max_size=None)
-        console = asyncio.create_task(ofs.serve_push(ws))
+        daemon = capture.Daemon(MessageBus(), HealthRegistry())
+        ofs.bind_daemon(daemon)
+        assert ofs.start_order_flow_stream()
         try:
             for m in rows:
-                bus.publish(*_message(m))
+                daemon.bus.publish(*_message(m))
             deadline = time_et.elapsed() + 30
             while any(top(s) != t for s, t in want.items()) and time_et.elapsed() < deadline:
                 await asyncio.sleep(0.05)
-        finally:  # a failure still closes the socket: cancelling over an open one can hang
-            await ws.close()
-            await asyncio.wait_for(console, 5)
-            stop.set()
-            await pushing
+            books = ofls.get_content_for_symbol(BOOK_CONTRACT)
+            return {s: top(s) for s in want}, next(i for i in reversed(books) if "BIDS" in i)
+        finally:
+            ofs.stop_order_flow_stream()
+            ofs._daemon = None
 
     ofls.clear_all_live_state()
     try:
-        asyncio.run(go())
-        tops = {s: top(s) for s in want}
-        book = next(i for i in reversed(ofls.get_content_for_symbol(BOOK_CONTRACT)) if "BIDS" in i)
+        tops, book = asyncio.run(go())
     finally:
         ofls.clear_all_live_state()
     assert want and tops == want

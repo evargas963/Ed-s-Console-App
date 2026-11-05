@@ -25,7 +25,6 @@ from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-import live_price_rows
 import server
 import time_et
 from app.options.order_flow.engine import compute_book_microstructure
@@ -61,7 +60,6 @@ def _daemon(at: float, held_options=()):
             "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)},
         }
     )
-    ofs._price_rows[TK] = live_price_rows.price_row(TK, at)
 
 
 def _publish(fetched_ts: float):
@@ -86,7 +84,6 @@ def _publish(fetched_ts: float):
 def _forget():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    ofs._price_rows.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
@@ -231,13 +228,11 @@ def test_the_spot_row_is_served(route):
     lmp.record_feed_heartbeat(
         {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
     )
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time_et.now())
     try:
         body = json.loads(route().body)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("SPY", None)
-        ofs._price_rows.pop("SPY", None)
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
         lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
@@ -307,14 +302,19 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     lmp.record_feed_heartbeat(
         {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}}
     )
-    ofs._price_rows["$SPX"] = {"ticker": "$SPX", "spot": fx["spot"], "trade_ts": fx["ts_utc"]}
+    lmp.record_from_level_one_equity(
+        "$SPX",
+        {"LAST_PRICE": fx["spot"], "TRADE_TIME_MILLIS": int(fx["ts_utc"] * 1000)},
+        received_ts=fx["ts_utc"],
+    )
     try:
         server._publish_levels("$SPX", read_chain(fx["contracts"]), fx["ts_utc"], now=at)
         body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("$SPX", None)
-        ofs._price_rows.pop("$SPX", None)
+        lmp._by_ticker.pop("$SPX", None)
+        lmp._fields_by_ticker.pop("$SPX", None)
         lmp.record_feed_down()
     assert {c["nonStandard"] for c in fx["contracts"]} == {False}
     assert (
@@ -338,12 +338,12 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     lmp.record_from_level_one_equity(
         "SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830}, received_ts=time_et.now()
     )
-    row = live_price_rows.price_row("SPY", time_et.now())
-    ofs._price_rows["SPY"] = row  # the row as the daemon pushes it to the console
+    row = ofs.price_row("SPY", time_et.now())  # the daemon's one row, as the console reads it
     try:
         spot = server.resolve_spot("SPY", now=time_et.now())
     finally:
-        ofs._price_rows.pop("SPY", None)
+        lmp._by_ticker.pop("SPY", None)
+        lmp._fields_by_ticker.pop("SPY", None)
         lmp.record_feed_down()
     assert (row["spot"], row["spot_disp"], row["trade_time_ct"]) == (
         772.04,

@@ -1,8 +1,8 @@
 """docs/DATA_FLOW.md §2, the data rules D1-D6, through the real code.
 
 Each Schwab frame enters where Schwab hands it to the daemon (capture._publisher, the
-schwab-py handler) and is read where the console reads it: a WebSocket client of the daemon's
-real push server (live_push.serve_live_push), the console's own intake, and the console's
+schwab-py handler) and is read where the console reads it: the daemon's bus, as the console's
+_bus_loop subscribes to it in the same program, the console's own intake, and the console's
 routes. Real data: captured TSLA option quotes (tests/fixtures/real_options_stream_history_
 samples.json), SPY equity books and the SPY 0DTE chain. Stand-ins are named where used.
 """
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 import sqlite3
 import sys
 import threading
@@ -22,7 +21,6 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from websockets.asyncio.client import connect
 
 import app.options.order_flow.streaming as ofs
 import schwab_client as sc
@@ -31,7 +29,7 @@ import time_et
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
+from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
 from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
 from time_et import ET, now_et
@@ -52,48 +50,40 @@ def _frame(service: str, items: list[dict], ts_ms: int) -> dict:
     return {"service": service, "timestamp": ts_ms, "command": "SUBS", "content": items}
 
 
-def _port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+async def _console_reads(bus: MessageBus, sub, read_for: float) -> list[dict]:
+    """Every message the console takes from the daemon's bus within `read_for` s, read the way its
+    _bus_loop reads (streaming._bus_loop: a LATEST subscription, Schwab's records only by
+    live_push.is_forwarded, a chain record's parts in order): [{"topic": ..., "msg": ...}]."""
+    got: list[dict] = []
+    try:
+        end = time_et.elapsed() + read_for
+        while time_et.elapsed() < end:
+            try:
+                topic, record = await asyncio.wait_for(sub.get(), timeout=end - time_et.elapsed())
+            except TimeoutError:
+                break
+            if not live_push.is_forwarded(topic, record):
+                continue
+            for msg in record if isinstance(record, list) else [record]:
+                got.append({"topic": topic, "msg": msg})
+        return got
+    finally:
+        bus.unsubscribe(sub)
 
 
 async def _daemon_then_console(
     publish, *, read_for: float = 1.0, connected: bool = False
 ) -> list[dict]:
-    """Start the daemon's real push server on its real bus and let `publish(handler_for)` hand it
-    Schwab frames, with a console connected before (`connected`) or connecting after; return
-    every message the console receives within `read_for` s: [{"topic": ..., "msg": ...}]."""
-    bus, health, stop, stats, port = MessageBus(), HealthRegistry(), asyncio.Event(), {}, _port()
-    server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
-    try:
-        for _ in range(500):
-            if stats.get("listening"):
-                break
-            await asyncio.sleep(0.01)
-        if not connected:
-            publish(lambda service: capture._publisher(service, bus, health))
-        got: list[dict] = []
-        async with connect(f"ws://127.0.0.1:{port}", max_size=None) as ws:
-            if connected:
-                for _ in range(500):
-                    if stats.get("clients"):
-                        break
-                    await asyncio.sleep(0.01)
-                publish(lambda service: capture._publisher(service, bus, health))
-            end = time_et.elapsed() + read_for
-            while time_et.elapsed() < end:
-                try:
-                    frame = await asyncio.wait_for(ws.recv(), timeout=end - time_et.elapsed())
-                except TimeoutError:
-                    break
-                got.append(json.loads(frame))
-        return got
-    finally:
-        stop.set()
-        await asyncio.gather(server, return_exceptions=True)
+    """The daemon's real bus, `publish(handler_for)` handing it Schwab frames through the daemon's
+    own handler, with the console reading before (`connected`) or starting after; return every
+    message the console takes within `read_for` s: [{"topic": ..., "msg": ...}]."""
+    bus, health = MessageBus(), HealthRegistry()
+    if not connected:
+        publish(lambda service: capture._publisher(service, bus, health))
+    sub = bus.subscribe("", policy=LATEST)
+    if connected:
+        publish(lambda service: capture._publisher(service, bus, health))
+    return await _console_reads(bus, sub, read_for)
 
 
 def _values(obj) -> list:
@@ -234,36 +224,15 @@ def test_d3_an_older_chain_never_waits_behind_a_newer_one():
 
 
 async def _chains_then_console(contracts, fetched) -> list[dict]:
-    """A connected console, then the daemon's chain sweep publishing `fetched` chains on the
+    """A console reading the bus, then the daemon's chain sweep publishing `fetched` chains on the
     daemon's bus as it does (capture.run_chains: chain_messages, each part published) before the
     console reads."""
-    bus, stop, stats, port = MessageBus(), asyncio.Event(), {}, _port()
-    server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
-    try:
-        for _ in range(500):
-            if stats.get("listening"):
-                break
-            await asyncio.sleep(0.01)
-        async with connect(f"ws://127.0.0.1:{port}", max_size=None) as ws:
-            for _ in range(500):
-                if stats.get("clients"):
-                    break
-                await asyncio.sleep(0.01)
-            for ts in fetched:
-                for topic, msg in chain_messages("SPY", contracts, ts, None, None):
-                    bus.publish(topic, msg)
-            got = []
-            end = time_et.elapsed() + 3.0
-            while time_et.elapsed() < end:
-                try:
-                    frame = await asyncio.wait_for(ws.recv(), timeout=end - time_et.elapsed())
-                except TimeoutError:
-                    break
-                got.append(json.loads(frame))
-            return got
-    finally:
-        stop.set()
-        await asyncio.gather(server, return_exceptions=True)
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LATEST)
+    for ts in fetched:
+        for topic, msg in chain_messages("SPY", contracts, ts, None, None):
+            bus.publish(topic, msg)
+    return await _console_reads(bus, sub, 3.0)
 
 
 # ── D4. The database is the memory ──────────────────────────────────────────────────────────
@@ -309,7 +278,6 @@ def _served_at(now: float, feed_live: bool) -> dict:
     memory, the feed live or not (the daemon's heartbeat holding both symbols, or none): what the
     header row, the console's one spot, the equity book's top and the option book's top serve."""
     import live_market_plane as lmp
-    import live_price_rows
     import server
     from app.options.order_flow import live_payload
     from app.options.order_flow import streaming as ofs
@@ -343,7 +311,7 @@ def _served_at(now: float, feed_live: bool) -> dict:
     else:
         lmp.record_feed_down()
     try:
-        row = ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", now)
+        row = ofs.price_row("SPY", now)
         return {
             "row": row,
             "spot": server.resolve_spot("SPY", now=now),
@@ -351,7 +319,8 @@ def _served_at(now: float, feed_live: bool) -> dict:
             "option_book": live_payload.options_live_payload(_CONTRACT, now),
         }  # a TSLA option
     finally:
-        ofs._price_rows.pop("SPY", None)
+        lmp._by_ticker.pop("SPY", None)
+        lmp._fields_by_ticker.pop("SPY", None)
         lmp.record_feed_down()
 
 
@@ -806,8 +775,6 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
     price row: that trade is the spot with its trade time, the heartbeat live or not."""
     import live_market_plane as lmp
-    import live_price_rows
-    from app.options.order_flow import streaming as ofs
 
     at = _et("2026-10-02 11:00")
     served = {}
@@ -819,11 +786,11 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
         lmp.record_from_level_one_equity(
             "SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)}, received_ts=at
         )
-        ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", at)
         try:
             body = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         finally:
-            ofs._price_rows.pop("SPY", None)
+            lmp._by_ticker.pop("SPY", None)
+            lmp._fields_by_ticker.pop("SPY", None)
             lmp.record_feed_down()
         served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
     assert served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, at)
@@ -906,7 +873,7 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
     try:
         for tk, a in history.items():
             topic, msg = price_history_message(tk, "1m", a["body"], a["answered_utc"])
-            ofs._ingest_pushed(topic, json.loads(msg["frame"])["msg"])  # as the console receives it
+            ofs._ingest_pushed(topic, msg)  # the bus message, as the console receives it
         for r in pushed:
             ofs._ingest_pushed(
                 f"bar1m.{r['symbol']}",

@@ -46,7 +46,6 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
     import server
     from app.options.order_flow import streaming as ofs
     from stream_spine import book_msg
-    from tests.feed_live_helper import publish_daemon_rows
 
     book = json.loads((_FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
@@ -69,7 +68,6 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
             quotes, key=lambda m: m["ts_recv"]
         ):  # each change as Schwab sent it, in order
             lmp.record_from_level_one_equity("SPY", m["item"], received_ts=m["ts_recv"])
-        publish_daemon_rows("SPY", now=_CLOSED)
         ofs._ingest_pushed(
             "book.SPY",
             book_msg(
@@ -84,7 +82,6 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
             lmp.record_feed_down()
         return json.loads(json.dumps(server.order_flow_microstructure("SPY", "NYSE_BOOK", _CLOSED)))
     finally:
-        ofs._price_rows.pop("SPY", None)
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("SPY", None)
         lmp.record_feed_down()

@@ -35,7 +35,6 @@ from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from stream_spine import book_msg
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import publish_daemon_rows
 from tests.test_order_flow_book_payload_v1 import _same
 from time_et import age_text, auction, ct_label, record_markets
 
@@ -87,7 +86,6 @@ def build_readout_payload(
         lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": _HELD})
         for m in sorted(quotes, key=lambda m: m["ts_recv"]):
             lmp.record_from_level_one_equity("SPY", m["item"], received_ts=m["ts_recv"])
-        publish_daemon_rows("SPY", now=now)
         for ts, svc, content in _ROWS if rows is None else rows:
             ofs._ingest_pushed(
                 "book.SPY",
@@ -99,7 +97,6 @@ def build_readout_payload(
             lmp.record_feed_down()
         return json.loads(json.dumps(server.order_flow_microstructure("SPY", "NYSE_BOOK", now)))
     finally:
-        ofs._price_rows.pop("SPY", None)
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("SPY", None)
         lmp.record_feed_down()

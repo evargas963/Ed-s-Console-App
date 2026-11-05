@@ -2,9 +2,9 @@
 chain sweep asks /pricehistory for each ticker (tests/schwab_rest_standin.py, on the real schwab-py
 client as the daemon builds it) as docs/schwab lists it -- 1-minute bars and two years of daily
 candles, once per ET date, each request ending at the sweep's clock -- and publishes each series
-as Schwab sent it; the daemon's push forwards it (live_push) and the console's bar writer takes
-it: the 1-minute bars every reader reads, and the daily candles the daily, weekly and monthly ATR
-are computed from, today's candle rolled up live from the 1-minute bars.
+as Schwab sent it on the daemon's bus; the console reads it there and its bar writer takes it:
+the 1-minute bars every reader reads, and the daily candles the daily, weekly and monthly ATR are
+computed from, today's candle rolled up live from the 1-minute bars.
 
 Real data: SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json). Inputs, named: the clock.
@@ -96,10 +96,13 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         topic, msg = next((t, m) for t, m in history if t == f"pricehistory.SPY.{series}")
         sent = HISTORY[("SPY", *_SERIES[series])]["body"]
         assert msg["answer"] == sent and msg["src"] == "schwab_pricehistory", series
-        assert json.loads(msg["frame"]) == {
-            "topic": topic,
-            "msg": {k: v for k, v in msg.items() if k != "frame"},
-        }
+        assert msg == {  # the bus message is what the console receives: nothing else on it
+            "src": "schwab_pricehistory",
+            "symbol": "SPY",
+            "series": series,
+            "ts_recv": _et("2026-08-28 09:05"),
+            "answer": sent,
+        }, (topic, series)
 
 
 def _true_range_mean(candles: list[dict]) -> float:
@@ -130,7 +133,8 @@ def _held(tk: str, series: str, now: datetime, candles: list | None = None) -> N
     a = HISTORY[(tk, *_SERIES[series])]
     body = a["body"] if candles is None else dict(a["body"], candles=candles)
     topic, msg = price_history_message(tk, series, body, a["answered_utc"])
-    ofs._ingest_pushed(topic, json.loads(live_push.frames(topic, msg)[0])["msg"])
+    assert live_push.is_forwarded(topic, msg)
+    ofs._ingest_pushed(topic, msg)  # the bus message, as the console's _bus_loop hands it over
     server._write_streamed_bars([ofs.streamed_bars.get_nowait()], now)
 
 
@@ -192,8 +196,9 @@ def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
 
 
 def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_the_atr_from_them():
-    """Each series published on the daemon's bus, forwarded by its push (live_push: the frame the
-    console receives) and taken by the console (streaming._ingest_pushed -> the bar writer): the
+    """Each series published on the daemon's bus, read by the console as Schwab's (live_push.
+    is_forwarded, the console's _bus_loop) and taken by it (streaming._ingest_pushed -> the bar
+    writer): the
     1-minute bars every reader reads are Schwab's candles, each field as sent; the daily, weekly and
     monthly ATR are those of Schwab's daily candles, of the weeks and of the months they make (at
     the answer's time, before the session: no candle of today yet)."""
@@ -215,9 +220,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
         for key in list(sub.changed):
             topic, record = bus.current[key]
             assert live_push.is_forwarded(topic, record)
-            (frame,) = live_push.frames(topic, record)
-            wire = json.loads(frame)
-            ofs._ingest_pushed(wire["topic"], wire["msg"])  # as the console receives it
+            ofs._ingest_pushed(topic, record)  # as the console's _bus_loop hands it over
         msgs = []
         while not ofs.streamed_bars.empty():
             msgs.append(ofs.streamed_bars.get_nowait())
