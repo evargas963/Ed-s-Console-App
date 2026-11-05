@@ -44,6 +44,8 @@ from tests.capture_store import store_capture
 from tests.real_chains import CRWD, MRVL, NFLX
 
 REPO = Path(__file__).resolve().parent.parent
+#: Windows console input mode: selecting text with the mouse (SetConsoleMode)
+QUICK_EDIT = 0x40
 #: prints the input mode of the console window process `argv[1]` runs in, read from that window
 WINDOW_MODE = (
     "import ctypes, sys\n"
@@ -180,7 +182,9 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             timeout=30,
         )
         assert window_mode.returncode == 0, window_mode.stderr
-        assert int(window_mode.stdout) & capture.QUICK_EDIT == 0, "a click would pause the daemon"
+        # selecting text holds only the window (its writer thread), never the program
+        # (test_daemon_log_v1.test_a_window_that_holds_its_writes_never_stops_the_daemon)
+        assert int(window_mode.stdout) & QUICK_EDIT, "the operator can select text to read it"
         stopped = subprocess.run(
             [sys.executable, "launch.py", "stop"],
             cwd=home,

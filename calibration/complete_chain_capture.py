@@ -298,6 +298,8 @@ class _Chain:
     by_expiry: dict[str, list[dict]] = field(default_factory=dict)
     unquoted: set[str] = field(default_factory=set)  # contracts whose quote is not in
     named_invalid: set[str] = field(default_factory=set)  # contracts Schwab's quotes named invalid
+    pushed: int = 0  # contracts whose Greeks the stream pushed (LEVELONE_OPTIONS)
+    requested: int = 0  # contracts asked for on /quotes for their Greeks
 
     def contracts(self) -> list[dict]:
         return [ct for cts in self.by_expiry.values() for ct in cts]
@@ -580,10 +582,12 @@ class ChainSweep:
             ):
                 ct.update(greeks)
                 ct["greeksTime"] = {g: entry[1]["field_ts"][g.upper()][0] for g in GREEK_FIELDS}
+                chain.pushed += 1
             else:
                 ct.update(dict.fromkeys(GREEK_FIELDS))
                 ct["greeksTime"] = None
                 chain.unquoted.add(ct["symbol"])
+                chain.requested += 1
                 self._queue.append((chain, ct))
         if not chain.unquoted:
             self.deliver(chain)
@@ -685,6 +689,18 @@ class ChainSweep:
             self.publish(topic, msg)
         self._delivered.add(chain.ticker)
         self._fetched[chain.ticker] = chain.started
+        log.info(
+            "CHAIN %s: %d contracts in %d expiries asked on /chains (open interest) | Greeks: %d "
+            "pushed by LEVELONE_OPTIONS, %d requested on /quotes, %d Schwab named invalid | "
+            "%.1f s from the first request",
+            chain.ticker,
+            len(contracts),
+            len(chain.by_expiry),
+            chain.pushed,
+            chain.requested,
+            len(chain.named_invalid),
+            now - chain.started,
+        )
         missing = sum(
             1
             for ct in contracts

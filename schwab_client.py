@@ -172,7 +172,7 @@ def log_request(response: httpx.Response) -> None:
         )
     )
     line = (
-        f"REST {req.method} {what} -> {response.status_code}"
+        f"REQUEST {req.method} {what} -> {response.status_code}"
         f" (sent {ct_clock(req.extensions['sent'])}, answered {ct_clock(answered)})"
     )
     if response.status_code < 400:
