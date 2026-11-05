@@ -96,9 +96,16 @@ def test_ruffs_unsafe_fixes_are_refused_in_any_command():
         "ruff check --fix --unsafe-fixes .",
         ".venv/Scripts/python.exe -m ruff check --unsafe-fixes --fix tests",
         "cd tools && ruff check --fix --unsafe-fixes=true x.py",
+        'ruff check --fix --config "unsafe-fixes = true" .',
+        "python -m ruff check --fix --config \"lint.extend-safe-fixes = ['UP042']\" .",
     ):
         assert any("unsafe fixes" in b for b in bash_violations(cmd)), cmd
-    for cmd in ("ruff check --fix .", "ruff check --no-unsafe-fixes --fix .", "ruff format ."):
+    for cmd in (
+        "ruff check --fix .",
+        "ruff check --no-unsafe-fixes --fix .",
+        "ruff format .",
+        "rg -n unsafe-fixes AGENTS.md",
+    ):
         assert not any("unsafe fixes" in b for b in bash_violations(cmd)), cmd
 
 

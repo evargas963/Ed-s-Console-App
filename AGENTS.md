@@ -147,9 +147,11 @@ then the rule binds with no machine check.
   tools' own, and none at all when ruff's own resolved settings for the committed `pyproject.toml`
   (extended files included) turn unsafe fixes on, force a fix safe, require an import of every file,
   or target another Python than the base's, so an unsafe rewrite of a product file is a product
-  change that needs its failing test; it refuses a change whose committed settings turn unsafe
-  fixes on or force one safe, whatever file the change touches, and the agent's hook refuses
-  `--unsafe-fixes` in any command, so no unsafe fix is taken in any file (operator 2026-11-04:
+  change that needs its failing test; it refuses a change whose committed settings, in any
+  `pyproject.toml`, `ruff.toml` or `.ruff.toml` the repository tracks, turn unsafe fixes on or
+  force one safe, whatever file the change touches, and the agent's hook refuses a ruff run that
+  asks for one (`--unsafe-fixes`, or an inline `--config` setting of `unsafe-fixes` or
+  `extend-safe-fixes`), so no unsafe fix is taken in any file (operator 2026-11-04:
   "consistent with everything repo wide"; `tests/test_check_end_to_end_v1.py`,
   `tests/test_operator_law_guard_action_bans_v1.py`); the rest of this bullet (a found defect
   fixed, the same rewrite typed by hand outside product code) — no machine check, ENF-12.

@@ -273,6 +273,15 @@ def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
     return found if run.returncode == 0 and len(found) == len(FIX_SAFETY) else None
 
 
+def takes_unsafe(safety: dict[str, str]) -> bool:
+    """Whether ruff's resolved settings turn unsafe fixes on or force a fix safe."""
+    return safety["unsafe_fixes"] == "enabled" or safety["linter.safety_table.forced_safe"] != "[]"
+
+
+#: the files ruff takes its settings from, in any folder (ruff's own configuration discovery)
+RUFF_CONFIGS = ("pyproject.toml", "ruff.toml", ".ruff.toml")
+
+
 @functools.cache  # one answer per run: the PR's settings against the base's
 def tools_fix_is_safe(root: Path, base: str) -> bool:
     """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
@@ -290,8 +299,7 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
     if was is None or now is None:
         return False
     return (
-        now["unsafe_fixes"] != "enabled"
-        and now["linter.safety_table.forced_safe"] == "[]"
+        not takes_unsafe(now)
         and now["linter.isort.required_imports"] == "[]"  # a fix that adds code, not tidies it
         and all(now[k] == "{}" for k in FIX_SAFETY if "per_file" in k)  # a map prints on many lines
         and all(now[k] == was[k] for k in FIX_SAFETY if "unresolved_target" in k)
@@ -672,15 +680,13 @@ def violations(root: Path, base: str) -> list[str]:
             if line in kept and (kept[line], what) not in held
         )
     found = [f"{f}:{line}: {what}" for f, line, what in sorted(out)]
-    if (root / "pyproject.toml").is_file():  # with none, ruff takes no unsafe fix
-        safety = fix_safety(root, root / "pyproject.toml")
-        if (
-            safety is None
-            or safety["unsafe_fixes"] == "enabled"
-            or safety["linter.safety_table.forced_safe"] != "[]"
-        ):
+    for config in _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0"):
+        if config.rsplit("/", 1)[-1] not in RUFF_CONFIGS:
+            continue
+        safety = fix_safety(root, root / config)
+        if safety is None or takes_unsafe(safety):
             found.append(
-                "pyproject.toml: ruff's settings take an unsafe fix, or ruff cannot read them; "
+                f"{config}: ruff's settings take an unsafe fix, or ruff cannot read them; "
                 "no unsafe fix is taken, in any file"
             )
     return found

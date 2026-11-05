@@ -5,12 +5,13 @@ Run from the base by `.github/workflows/locks.yml`; the head is read as data, no
 Test integrity, every pull request:
    - an assertion of a test that survives is not lost. A test is its function name in Python and
      its title in a Playwright spec, across every changed test file, so a moved test is the same
-     test and a rewritten one may restate its assertions; a test gone under its old name is the
-     one new test holding more than half of its assertions, the same test renamed. An assertion
-     gone with a test that has no such match, or with a function it calls that this change
-     deleted, is the review's to judge, as is a test disabled with its assertions kept;
-   - no test is another test again: the same code, arguments and decorators, in a file that
-     imports the same names (every test file at the head);
+     test and a rewritten one may restate its assertions. An assertion gone with its test, or
+     with a function it calls that this change deleted, is the review's to judge, as is a test
+     renamed or disabled with its assertions kept: a test renamed and one deleted beside a new
+     one read the same to a machine;
+   - no test is another test again: the same code, arguments and decorators, in a file whose
+     other top-level code (its imports, constants and fixtures) is the same (every test file at
+     the head);
    - no line added to code skips a test or leaves a deferred-work marker.
 
 Review record, in the description's `## Review` section (`Commit:` the head, `Verdict:` PASS or
@@ -124,10 +125,7 @@ def js_assertions(source: str) -> dict[str, set[str]]:
     return found
 
 
-def _assertions(
-    root: Path, rev: str, names: list[str], where: dict[str, str] | None = None
-) -> dict[str, set[str]]:
-    """{test: its assertions} over `names` at `rev`; `where`, when given, gets each test's file."""
+def _assertions(root: Path, rev: str, names: list[str]) -> dict[str, set[str]]:
     found: dict[str, set[str]] = {}
     for name in names:
         source = _at(root, rev, name)
@@ -140,8 +138,6 @@ def _assertions(
             raise ToolError(f"{rev}:{name}", e) from e
         for test, held in read.items():
             found.setdefault(test, set()).update(held)
-            if where is not None:
-                where[test] = name
     return found
 
 
@@ -164,42 +160,20 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
 
 
 def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
-    """Return each assertion a surviving test lost on net.
-
-    A test is known by what it asserts, not only by its name: a test gone under its old name is
-    the one new test that is it renamed, judged like one that kept its name. A test with no such
-    match was deleted, the review's to judge. An assertion of a function the change deleted goes
-    with it.
-    """
     tests = [f for f in files if PYTHON_TESTS.match(f) or JS_TESTS.match(f)]
     product = [f for f in files if f.endswith(".py") and not f.startswith("tests/")]
     deleted = _definitions(root, base, product) - _definitions(root, "HEAD", product)
-    was_in: dict[str, str] = {}
-    now_in: dict[str, str] = {}
-    before = _assertions(root, base, tests, was_in)
-    after = _assertions(root, "HEAD", tests, now_in)
-    new = sorted(after.keys() - before.keys())
-    pairs = [(test, test) for test in sorted(before.keys() & after.keys())]
-    for test in sorted(before.keys() - after.keys()):
-        # renamed: a new test in its own file sharing an assertion, or one in another file holding
-        # more than half of them; one common line (`r.returncode == 0`) elsewhere is not the test
-        same = [
-            n
-            for n in new
-            if before[test] & after[n]
-            and (now_in[n] == was_in[test] or 2 * len(before[test] & after[n]) > len(before[test]))
-        ]
-        if len(same) == 1:
-            pairs.append((test, same[0]))
+    before = _assertions(root, base, tests)
+    after = _assertions(root, "HEAD", tests)
     out = []
-    for test, now in pairs:
+    for test in sorted(before.keys() & after.keys()):
         lost = [
             a
-            for a in sorted(before[test] - after[now])
+            for a in sorted(before[test] - after[test])
             if not deleted.intersection(CALLED.findall(a))
         ]
         # an assertion corrected or strengthened is one for one; only a net loss is a loss
-        if len(lost) > len(after[now] - before[test]):
+        if len(lost) > len(after[test] - before[test]):
             out.extend(f"{test}: assertion lost: {a}" for a in lost)
     return out
 
@@ -248,11 +222,11 @@ def duplicate_tests(root: Path) -> list[str]:
         if not PYTHON_TESTS.match(name):
             continue
         source = _git(root, "show", f"HEAD:{name}")
-        # the same body tests different code when the names it calls come from elsewhere
+        # the same body tests different code or data when the file's other top-level code differs
         imports = "".join(
             ast.dump(n)
             for n in ast.parse(source).body
-            if isinstance(n, (ast.Import, ast.ImportFrom))
+            if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         )
         for node in _test_functions(source):
             body = node.body[1:] if ast.get_docstring(node) else node.body

@@ -578,6 +578,10 @@ def test_settings_that_take_an_unsafe_fix_are_refused_whatever_file_the_change_t
         root = _repo(where, TOOLS_BASE)
         _commit(root, {"pyproject.toml": config, TEST: "def test_x():\n    assert True\n"})
         assert any("take an unsafe fix" in v for v in cee.violations(root, "main")), config
+    (where := tmp_path / "nested").mkdir()
+    root = _repo(where, TOOLS_BASE)
+    _commit(root, {"tests/ruff.toml": "unsafe-fixes = true\n"})
+    assert any(v.startswith("tests/ruff.toml: ") for v in cee.violations(root, "main"))
 
 
 def test_a_fix_made_for_another_python_than_the_bases_is_a_product_change(tmp_path):
