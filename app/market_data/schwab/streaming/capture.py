@@ -1063,17 +1063,14 @@ def _start_log() -> None:
     """Send every line, with its time to the millisecond, to the day's log file and the window.
 
     The file is runtime_layout.daemon_log_path under <runtime>/logs; the window is the error
-    output, when the daemon has one. From here an error reaches both through the handlers (main
-    logs one that ends the daemon).
+    output (the daemon runs under `python` in it). From here an error reaches both through the
+    handlers (main logs one that ends the daemon).
     """
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    handlers: list[logging.Handler] = [DailyLog(folder)]
-    if sys.stderr is not None:
-        handlers.append(logging.StreamHandler())
     logging.basicConfig(
         level=logging.INFO,
-        handlers=handlers,
+        handlers=[DailyLog(folder), logging.StreamHandler()],
         format="%(asctime)s.%(msecs)03d %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
