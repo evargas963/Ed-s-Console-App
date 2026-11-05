@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import threading
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -194,27 +195,28 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
 
 
 def test_a_streamed_greek_does_not_replace_the_chains():
-    """Gamma on the book is the chain's. A later LEVELONE_OPTIONS gamma does not reprice it."""
+    """Gamma on the book is the chain's. A later LEVELONE_OPTIONS gamma does not reprice it;
+    the contract's volume is the stream's (the same 0 the chain carries here)."""
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T)
+    _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     c = _cached()
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert c["_gamma_surface"]["stream_overlay_contracts"] == 1
     assert c["_per_strike"] == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download made all 200 heatmap
     legs flip between live and stale while the feed stayed live. A leg's state is the feed's
-    (live while the daemon holds the contract); its value is the newest Schwab sent: the chain's,
-    fetched after the contract's last streamed change."""
+    (live while the daemon holds the contract); its volume is the stream's, whichever arrived
+    last."""
     # a fresh chain
     chain = read_chain([dict(_CONTRACTS[0], quoteTimeInLong=int(_T * 1000))] + _CONTRACTS[1:])
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)  # a minute ago
+    _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T - 60.0)  # a minute ago
     _publish(chain, _T)
     surface = _cached()["_gamma_surface"]
-    assert surface["stream_overlay_symbols"] == []  # the chain is newer
+    assert surface["stream_overlay_symbols"] == [_A]  # the stream's volume, the chain newer
     legs = [
         col[side]
         for cell in surface["cells"]
@@ -228,19 +230,20 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
 def test_a_streamed_gamma_does_not_apply_before_or_after_the_chain():
     """A streamed gamma, newer or older than the chain, leaves the chain's gamma."""
     _daemon(held=[_A])
-    _streamed(_A, {"GAMMA": 0.9}, _T - 60.0)
+    _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T - 60.0)
+    priced = compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
     _put_chain(fetched_ts=_T - 120.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert _cached()["_per_strike"] == priced
     _put_chain(fetched_ts=_T - 30.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert _cached()["_per_strike"] == priced
 
 
 def test_a_streamed_gamma_on_two_contracts_does_not_replace_either():
     _daemon(held=[_A, _B])
-    _streamed(_A, {"GAMMA": 0.9}, _T)
-    _streamed(_B, {"GAMMA": 0.8}, _T)
+    _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T)
+    _streamed(_B, {"GAMMA": 0.8, "TOTAL_VOLUME": 0}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == []
+    assert _cached()["_per_strike"] == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
 
 
 def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
@@ -262,6 +265,21 @@ def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     row = next(r for r in _cached()["_per_strike"]["all"] if r[0] == strike)
     assert row[2] >= 999999
+
+
+def test_a_streamed_contracts_volume_is_the_streams_and_its_open_interest_the_chains():
+    """One producer per field, whichever arrived last: a streamed contract's volume is the
+    stream's even when the chain came after it, and its open interest is the chain's even when
+    the stream sent one after the chain (the stream does not send it for every contract)."""
+    _daemon(held=[_A])
+    _streamed(_A, {"TOTAL_VOLUME": 777}, _T - 60.0)
+    _put_chain(fetched_ts=_T - 30.0)
+    _streamed(_A, {"OPEN_INTEREST": 99999}, _T)
+    _publish()
+    a = replace(_RECORDS[0], volume=777)
+    assert _cached()["_per_strike"] == (
+        compute_terrain(TK, [a, *_RECORDS[1:]], _SPOT, now=_AT).per_strike
+    )
 
 
 def test_a_foreign_tickers_contract_never_overlays_this_chain():
@@ -562,8 +580,9 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
 
 def _real_option(with_greek: bool) -> dict:
     """A real LEVELONE_OPTIONS message (2026-10-05 14:00 CT) carrying a value the levels use
-    (GAMMA, DELTA, OPEN_INTEREST, TOTAL_VOLUME, VOLUME), or none of them."""
-    used = {"GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME"}
+    (TOTAL_VOLUME: a streamed contract's Greeks are the sweep's, its open interest the chain's),
+    or none of them."""
+    used = {"TOTAL_VOLUME"}
     return next(
         m
         for m in _MIX

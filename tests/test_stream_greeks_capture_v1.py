@@ -77,7 +77,7 @@ def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
     g = st.get_stream_greeks("SPY   260116C00580000")
     assert g["gamma"] == 0.0123, "gamma must survive a tick that does not mention it"
     assert g["delta"] == 0.45
-    assert g["open_interest"] == 4200.0
+    assert "open_interest" not in g, "a contract's open interest is the chain's, not the stream's"
 
 
 def test_each_field_is_independently_updatable():
@@ -91,7 +91,7 @@ def test_each_field_is_independently_updatable():
     g = st.get_stream_greeks("SPY   260116C00580000")
     assert g["gamma"] == 0.02, "gamma updates independently"
     assert g["delta"] == 0.40, "delta from the earlier tick is untouched"
-    assert g["open_interest"] == 100.0, "open_interest from the earlier tick is untouched"
+    assert "open_interest" not in g, "a contract's open interest is the chain's, not the stream's"
 
 
 def test_a_negative_open_interest_is_rejected_not_stored():
@@ -101,11 +101,13 @@ def test_a_negative_open_interest_is_rejected_not_stored():
     assert st.get_stream_greeks("SPY   260116C00580000") is None
 
 
-def test_a_genuine_zero_open_interest_is_stored_not_dropped():
+def test_the_streams_open_interest_is_not_kept_the_chains_is_the_one_producer():
+    """Schwab's stream does not send OPEN_INTEREST for every contract it streams, so the chain
+    sends it for every contract and is its one producer; a streamed one is not kept beside it."""
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": 0}, ts_recv=time_et.now())
-    g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["open_interest"] == 0.0
+    st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": 4200}, ts_recv=time_et.now())
+    assert st.get_stream_greeks("SPY   260116C00580000") is None
 
 
 def test_a_non_finite_gamma_is_rejected_not_stored():

@@ -273,13 +273,13 @@ are deleted and the page's `/api` reads and `/api/changes` give way to the one p
   for the date (`time_et.auction`); inside them the number stands and a line says the auction
   imbalance is a different number, not shown (continuous trading runs through them).
   The books streamed are every watchlist ticker's. For each option contract the daemon holds
-  (the option rule, below), each field the stream carries (gamma, delta, open interest, volume,
-  IV) is the newest value Schwab sent (`math_exposure_core.overlay_streamed_contract_fields`):
-  neither source carries a Schwab time for these fields, so the receive times decide -- a field
-  streamed after the chain was fetched replaces the chain's, one streamed before it (yesterday's
-  open interest under today's chain) does not (the feed's state labels the heatmap leg, it never
-  picks the value). Every other field is the chain's, its
-  Greeks from Schwab's quotes (Option chain, below). A book message is the book Schwab sent, a
+  (the option rule, below), each field has one producer, whichever arrived last: its volume is
+  the stream's (`math_exposure_core.overlay_streamed_contract_fields`; one the stream has not sent
+  shows "-"), its Greeks the stream's as the sweep took them (Option chain, below), and its open
+  interest the chain's, for every contract: the stream does not send it for every contract it
+  streams (measured 2026-11-05: none all day for 137 of 375 streamed, while the chain sent each
+  one's). The feed's state labels the heatmap leg; it never picks the value. A contract the
+  daemon does not hold takes every field from the chain, its Greeks from Schwab's quotes. A book message is the book Schwab sent, a
   side with no levels included (empty, never replaced by an older two-sided book); a side Schwab
   sent no level for at a price is absent in the book heatmap, never a 0 size. The book heatmap and
   the options tape serve from the console's memory (§3.3), never the database. Mid and microprice

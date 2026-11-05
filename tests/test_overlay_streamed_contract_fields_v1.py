@@ -1,7 +1,8 @@
 """overlay_streamed_contract_fields (math_exposure_core.py): a contract Schwab streams takes its
-open interest and volume from the stream alone, never the chain's (AGENTS.md rule 3: the pushed
-field is its one producer); one the stream has not sent is None. Gamma, delta, and volatility stay
-the chain's. A contract the stream does not hold keeps the chain's. Pure function: no network, no
+volume from the stream alone, never the chain's (AGENTS.md rule 3: the pushed field is its one
+producer); one the stream has not sent is None. Open interest is the chain's for every contract
+(the stream does not send it for every contract it streams), and gamma, delta, and volatility are
+the sweep's. A contract the stream does not hold keeps the chain's. Pure function: no network, no
 cache, no clock."""
 
 from __future__ import annotations
@@ -23,13 +24,14 @@ def _contract(symbol, **fields):
         "gamma": 0.01,
         "delta": 0.40,
         "openInterest": 100,
+        "totalVolume": 7,
     }
     base.update(fields)
     return read_contract(base)
 
 
 def test_empty_contracts_returns_empty():
-    out, n = overlay_streamed_contract_fields([], {"X": {"gamma": 1.0}}, {"X"})
+    out, n = overlay_streamed_contract_fields([], {"X": {"total_volume": 1}}, {"X"})
     assert out == [] and n == 0
 
 
@@ -43,71 +45,59 @@ def test_no_streamed_contract_passes_contracts_through_unchanged_object_identity
 
 def test_a_contract_the_stream_does_not_hold_is_untouched():
     contracts = [_contract("A"), _contract("B")]
-    out, n = overlay_streamed_contract_fields(contracts, {"C": {"open_interest": 9}}, {"C"})
+    out, n = overlay_streamed_contract_fields(contracts, {"C": {"total_volume": 9}}, {"C"})
     assert out[0] is contracts[0]
     assert out[1] is contracts[1]
     assert n == 0
 
 
-def test_open_interest_is_the_streams_and_a_greek_is_not():
-    contracts = [_contract("A", gamma=0.01, delta=0.40, openInterest=100)]
-    streamed = {"A": {"gamma": 0.05, "delta": 0.55, "open_interest": 250}}
+def test_volume_is_the_streams_and_open_interest_and_greeks_are_not():
+    contracts = [_contract("A", gamma=0.01, delta=0.40, openInterest=100, totalVolume=7)]
+    streamed = {"A": {"gamma": 0.05, "delta": 0.55, "open_interest": 250, "total_volume": 900}}
     out, n = overlay_streamed_contract_fields(contracts, streamed, {"A"})
     assert n == 1
+    assert out[0].volume == 900
+    assert out[0].open_interest == 100, "open interest is the chain's"
     assert out[0].gamma == 0.01
     assert out[0].delta == 0.40
-    assert out[0].open_interest == 250
     assert out[0].strike == 580.0, "fields not in the overlay are preserved"
 
 
 def test_the_input_contract_is_never_mutated():
-    original = _contract("A", openInterest=100)
+    original = _contract("A", totalVolume=7)
     contracts = [original]
-    out, n = overlay_streamed_contract_fields(contracts, {"A": {"open_interest": 250}}, {"A"})
+    out, n = overlay_streamed_contract_fields(contracts, {"A": {"total_volume": 900}}, {"A"})
     assert n == 1
-    assert original.open_interest == 100, "the caller's original record must be untouched"
-    assert out[0].open_interest == 250
+    assert original.volume == 7, "the caller's original record must be untouched"
+    assert out[0].volume == 900
     assert out[0] is not original
 
 
-def test_a_streamed_volume_replaces_the_chains_and_a_streamed_gamma_does_not():
-    contracts = [_contract("A", gamma=0.01, openInterest=100, totalVolume=7)]
-    out, n = overlay_streamed_contract_fields(
-        contracts, {"A": {"gamma": 0.07, "open_interest": 100, "total_volume": 900}}, {"A"}
-    )
-    assert n == 1
-    assert out[0].volume == 900
-    assert out[0].gamma == 0.01
-    assert out[0].open_interest == 100
-
-
 def test_only_the_streamed_symbol_is_copied_others_stay_the_original_object():
-    contracts = [_contract("A", openInterest=100), _contract("B", openInterest=200)]
-    out, n = overlay_streamed_contract_fields(contracts, {"A": {"open_interest": 250}}, {"A"})
+    contracts = [_contract("A"), _contract("B")]
+    out, n = overlay_streamed_contract_fields(contracts, {"A": {"total_volume": 250}}, {"A"})
     assert n == 1
     assert out[0] is not contracts[0]
     assert out[1] is contracts[1], "an unmatched contract must never be copied either"
 
 
-def test_a_streamed_contract_never_shows_the_chains_count():
-    """The chain's open interest and volume are never the screen's for a contract Schwab
-    streams: one the stream has not sent is unknown (None), and one it sent before the chain
-    is still the stream's (the cell stamp says it is not live)."""
-    contracts = [_contract("A", gamma=0.01, openInterest=100, totalVolume=7)]
+def test_a_streamed_contract_never_shows_the_chains_volume():
+    """The chain's volume is never the screen's for a contract Schwab streams: one the stream
+    has not sent is unknown (None), and one it sent before the chain is still the stream's (the
+    cell stamp says whether it is live)."""
+    contracts = [_contract("A", openInterest=100, totalVolume=7)]
     out, n = overlay_streamed_contract_fields(contracts, {}, {"A"})
     assert n == 1
-    assert (out[0].gamma, out[0].open_interest, out[0].volume) == (0.01, None, None)
-    older = {"A": {"open_interest": 90, "open_interest_ts_recv": 1.0}}
+    assert (out[0].open_interest, out[0].volume) == (100, None)
+    older = {"A": {"total_volume": 4, "total_volume_ts_recv": 1.0}}
     out, n = overlay_streamed_contract_fields(contracts, older, {"A"})
-    assert (out[0].open_interest, out[0].volume) == (90, None)
+    assert (out[0].open_interest, out[0].volume) == (100, 4)
 
 
-def test_a_zero_the_stream_sent_is_zero():
-    contracts = [_contract("A", openInterest=100, totalVolume=7)]
-    out, _n = overlay_streamed_contract_fields(
-        contracts, {"A": {"open_interest": 0, "total_volume": 0}}, {"A"}
-    )
-    assert (out[0].open_interest, out[0].volume) == (0, 0)
+def test_a_zero_volume_the_stream_sent_is_zero():
+    contracts = [_contract("A", totalVolume=7)]
+    out, _n = overlay_streamed_contract_fields(contracts, {"A": {"total_volume": 0}}, {"A"})
+    assert out[0].volume == 0
 
 
 def test_a_contract_with_no_symbol_field_is_untouched_never_raises():
@@ -115,6 +105,6 @@ def test_a_contract_with_no_symbol_field_is_untouched_never_raises():
     # contract that specifically lacks it -- a real captured chain's own contracts always
     # carry one, so this fail-closed shape cannot be sourced from tests/fixtures/.
     contracts = [read_contract({"strikePrice": 580.0, "putCall": "CALL"})]
-    out, n = overlay_streamed_contract_fields(contracts, {"A": {"gamma": 0.5}}, {"A"})
+    out, n = overlay_streamed_contract_fields(contracts, {"A": {"total_volume": 5}}, {"A"})
     assert n == 0
     assert out[0] is contracts[0]
