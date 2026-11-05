@@ -44,7 +44,8 @@ def _clean():
     yield
     ofls.clear_all_live_state()
     lmp.record_feed_down()
-    ofs._price_rows.pop(TK, None)
+    lmp._by_ticker.pop(TK, None)
+    lmp._fields_by_ticker.pop(TK, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
 
@@ -60,7 +61,11 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
             "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
         }
     )
-    ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT, "trade_ts": at.timestamp()}
+    lmp.record_from_level_one_equity(
+        TK,
+        {"LAST_PRICE": _SPOT, "TRADE_TIME_MILLIS": int(at.timestamp() * 1000)},
+        received_ts=at.timestamp(),
+    )
     for sym in ticked:
         ofs._ingest_pushed(
             f"optquote.{sym}",

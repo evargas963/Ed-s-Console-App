@@ -51,6 +51,10 @@ LIVE_UI_HOST = os.environ.get(
 LIVE_UI_PORT = int(
     os.environ.get("ED_LIVE_UI_PORT", "8800")
 )  # caps-ok: operator port config with its declared default, not market data
+#: The console's pages and routes (server.app), served by the program on every address;
+#: ED_CONSOLE_PORT points a test's program at a free port of its own
+CONSOLE_HOST = "0.0.0.0"
+CONSOLE_PORT = int(os.environ.get("ED_CONSOLE_PORT", "8000"))
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
 

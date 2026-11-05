@@ -2,9 +2,9 @@
 connection (capture.Daemon.run) on the real schwab-py StreamClient, logged in to Schwab's streamer
 played locally with Schwab's limits (tests/schwab_stream_standin.py: LEVELONE_OPTIONS 3,000 and
 OPTIONS_BOOK 100, measured live 2026-10-07); the rule's inputs on the daemon's bus as the chain
-sweep and the stream publish them (follow_market); the console's side of its socket and its route
-(server.post_flow_contract). The question each test answers: did Schwab get exactly what the rule
-asks for, and hold all of it.
+sweep and the stream publish them (follow_market); the console bound to the daemon it runs in and
+its route (server.post_flow_contract). The question each test answers: did Schwab get exactly
+what the rule asks for, and hold all of it.
 
 Real data: MRVL's full chain as Schwab sent it (2,432 contracts, 21 expirations, captured
 2026-09-25 12:27 ET, tests/fixtures/real_mrvl_full_chain_vs_strike_window.json), with the
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 from datetime import datetime
 from pathlib import Path
 
@@ -29,7 +28,6 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
-from app.market_data.schwab.streaming.live_push import serve_live_push
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import chain_messages
 from schwab_client import flatten_chain_contracts
@@ -296,9 +294,7 @@ def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
             m.chain(tk)
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
         await _until(lambda: m.holds(want))
 
     market.run(steps)
@@ -319,11 +315,9 @@ def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(t
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
         seen["before"] = m.daemon.saved_options & spy
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
         await _until(lambda: "SPY" not in m.daemon.watchlist)
-        m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2}, None)
+        m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2})
         await _until(lambda: "SPY" in m.daemon.watchlist)
         m.price("SPY", PRICES["SPY"])
         await asyncio.sleep(0.5)
@@ -349,9 +343,7 @@ def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_pa
             m.chain(tk)
             m.price(tk, PRICES[tk])
         await _until(lambda: m.daemon.saved_options & spy)
-        m.daemon.console_frame(
-            {"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1}, None
-        )
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
         await _until(lambda: "SPY" not in m.daemon.watchlist)
         m.chain("SPY")
         m.price("SPY", PRICES["SPY"])
@@ -364,66 +356,36 @@ def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_pa
 
 def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tmp_path):
     """Ed selects MRVL's last contract in the rule's order on the Flow panel, through the
-    console's route and its socket to the daemon: Schwab streams it on LEVELONE_OPTIONS and
-    OPTIONS_BOOK, and the rule splits what is left (2,999 and 99) across the watchlist. The console
-    names it again on its next connection to a daemon (a restart)."""
+    console's route to the daemon it runs in: Schwab streams it on LEVELONE_OPTIONS and
+    OPTIONS_BOOK, and the rule splits what is left (2,999 and 99) across the watchlist. Ed's
+    selection cleared, Schwab holds the rule's contracts alone again."""
     far = max(CHAINS["MRVL"], key=lambda c: _order(c, PRICES["MRVL"]))["symbol"]
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], flow=far)
+    rule_alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
     with server._terrain_cache_lock:  # the console holds MRVL's chain
         server._terrain_cache["MRVL"] = {
             "_contract_symbols": frozenset(c["symbol"] for c in CHAINS["MRVL"])
         }
-    restarted = capture.Daemon(MessageBus(), HealthRegistry(), ["MRVL"])
     held: dict = {}
 
     async def steps(m):
-        from websockets.asyncio.client import connect
-
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        stop = asyncio.Event()
-        ports = [_free_port(), _free_port()]
-        sockets = [
-            asyncio.create_task(
-                serve_live_push(m.bus, stop, port=ports[0], on_request=m.daemon.console_frame)
-            ),
-            asyncio.create_task(
-                serve_live_push(
-                    MessageBus(), stop, port=ports[1], on_request=restarted.console_frame
-                )
-            ),
-        ]
-        try:
-            ws = await _connect(connect, ports[0])
-            console = asyncio.create_task(ofs.serve_push(ws))
-            try:
-                await _until(lambda: ofs._push_ws is ws)
-                answer = await server.post_flow_contract(server.FlowContract(contract=far))
-                await _until(lambda: m.holds(want))
-                held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
-            finally:  # a failure still closes the socket: cancelling over an open one can hang
-                await ws.close()
-                await asyncio.wait_for(console, 5)
-            ws2 = await _connect(connect, ports[1])  # the console's next daemon
-            console2 = asyncio.create_task(ofs.serve_push(ws2))
-            try:
-                await _until(lambda: restarted.flow_contract == far)
-                cleared = server.FlowContract(contract=None)  # Ed's selection cleared
-                await server.post_flow_contract(cleared)
-                await _until(lambda: restarted.flow_contract is None)
-            finally:
-                await ws2.close()
-                await asyncio.wait_for(console2, 5)
-        finally:
-            stop.set()
-            await asyncio.gather(*sockets)
+        ofs.bind_daemon(m.daemon)  # the console runs in this daemon's program
+        answer = await server.post_flow_contract(server.FlowContract(contract=far))
+        await _until(lambda: m.holds(want))
+        held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
+        cleared = server.FlowContract(contract=None)  # Ed's selection cleared
+        assert await server.post_flow_contract(cleared) == {"ok": True, "contract": None}
+        await _until(lambda: m.daemon.flow_contract is None and m.holds(rule_alone))
         assert answer == {"ok": True, "contract": far}
 
     try:
         market.run(steps)
     finally:
+        ofs._daemon = None
         with server._terrain_cache_lock:
             server._terrain_cache.pop("MRVL", None)
     assert far in held[L1] and far in held[BOOK]
@@ -433,20 +395,10 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
 def test_a_contract_no_chain_the_console_holds_lists_is_not_taken():
     """The route takes only a contract Schwab listed in a chain the console holds."""
     selected = server.FlowContract(contract="ZZZZ  261120C00100000")
-    answer = asyncio.run(server.post_flow_contract(selected))
-    assert answer.status_code == 409 and ofs._flow_contract is None
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-async def _connect(connect, port: int):
-    for _ in range(100):
-        try:
-            return await connect(f"ws://127.0.0.1:{port}", max_size=None)
-        except OSError:
-            await asyncio.sleep(0.05)
-    raise AssertionError(f"nothing listening on {port}")
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
+    ofs.bind_daemon(daemon)
+    try:
+        answer = asyncio.run(server.post_flow_contract(selected))
+    finally:
+        ofs.bind_daemon(None)
+    assert answer.status_code == 409 and daemon.flow_contract is None

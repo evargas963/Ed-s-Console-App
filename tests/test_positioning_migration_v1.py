@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
 from option_contract import read_chain
@@ -128,17 +127,18 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
                 "held": {"LEVELONE_EQUITIES": ["PCG"]},
             }
         )
-        ofs._price_rows["PCG"] = {
-            "ticker": "PCG",
-            "spot": newest["spot"],
-            "trade_ts": monday.timestamp(),
-        }
+        lmp.record_from_level_one_equity(
+            "PCG",
+            {"LAST_PRICE": newest["spot"], "TRADE_TIME_MILLIS": int(monday.timestamp() * 1000)},
+            received_ts=monday.timestamp(),
+        )
         server._publish_levels("PCG", newest["contracts"], monday.timestamp(), now=monday)
         monday_body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("PCG", None)
-        ofs._price_rows.pop("PCG", None)
+        lmp._by_ticker.pop("PCG", None)
+        lmp._fields_by_ticker.pop("PCG", None)
         lmp.record_feed_down()
     assert body["prior_source"] == "chain_capture:2026-09-24"
     m = body["migration"]["all"]

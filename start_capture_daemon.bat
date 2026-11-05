@@ -1,8 +1,9 @@
 @echo off
 title Ed Capture Daemon
 cd /d "%~dp0"
-REM The capture daemon: holds the ONE Schwab streaming connection and serves every live price
-REM (ws :8800 browsers, :8799 console). Started by launch.py (start_ed_console.bat), which brings the
+REM Ed Console, one program: the ONE Schwab streaming connection, the recording, the console's pages
+REM (:8000) and every live price (ws :8800 browsers; :8799 for launch.py stop). Started by launch.py
+REM (start_ed_console.bat), which brings the
 REM checkout to origin/main first; it reads its own .env (the Schwab credentials). Its output goes
 REM to logs\stream_capture.<date>.log and to this window; an error before its modules load shows in this window (python). If it exits it is restarted here after 5 s -- except when
 REM another daemon already owns the stream (exit 3), this checkout may not run live (exit 2), or it

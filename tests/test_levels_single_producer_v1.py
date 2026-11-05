@@ -142,7 +142,6 @@ def test_strikes_payload_carries_server_side_sums():
 
     import live_market_plane as lmp
     import server as srv
-    from app.options.order_flow import streaming as ofs
 
     tk = "ZZSUMS"
     with srv._terrain_cache_lock:
@@ -154,13 +153,16 @@ def test_strikes_payload_carries_server_side_sums():
     lmp.record_feed_heartbeat(
         {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
-    ofs._price_rows[tk] = {"ticker": tk, "spot": 100.0, "trade_ts": 1.0}
+    lmp.record_from_level_one_equity(
+        tk, {"LAST_PRICE": 100.0, "TRADE_TIME_MILLIS": 1000}, received_ts=time_et.now()
+    )
     try:
         resp = srv.get_terrain_strikes(ticker=tk)
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-        ofs._price_rows.pop(tk, None)
+        lmp._by_ticker.pop(tk, None)
+        lmp._fields_by_ticker.pop(tk, None)
         lmp.record_feed_down()
     payload = json.loads(bytes(resp.body))
     ss = payload["today_side_sums"]

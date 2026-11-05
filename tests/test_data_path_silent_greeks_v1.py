@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import app.options.order_flow.state as ofls
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
@@ -53,6 +52,7 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
         lmp.record_feed_down()
         with lmp._lock:
             lmp._feed["held"] = {}
-        ofs._price_rows.pop(TK, None)
+        lmp._by_ticker.pop(TK, None)
+        lmp._fields_by_ticker.pop(TK, None)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(TK, None)

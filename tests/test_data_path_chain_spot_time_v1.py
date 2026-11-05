@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
+import live_market_plane as lmp
 import server as srv
-from app.options.order_flow import streaming as ofs
 from option_contract import read_chain
 
 
@@ -33,13 +33,18 @@ def test_the_chain_spot_carries_schwabs_trade_time():
             "_contract_symbols": frozenset([symbol]),
             "_chain_fetched_ts": 1.0,
         }
-    ofs._price_rows[tk] = {"ticker": tk, "spot": 601.23, "trade_ts": 1790380799.83}
+    lmp.record_from_level_one_equity(
+        tk,
+        {"LAST_PRICE": 601.23, "TRADE_TIME_MILLIS": 1790380799830},
+        received_ts=1790380799.83,
+    )
     try:
         body = json.loads(bytes(srv.get_chain(ticker=tk, expiry=exp).body))
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-        ofs._price_rows.pop(tk, None)
+        lmp._by_ticker.pop(tk, None)
+        lmp._fields_by_ticker.pop(tk, None)
     assert body["spot"] == 601.23
     assert body["spot_as_of_ts_utc"] == 1790380799.83
     assert body["spot_time_ct"] == "Fri 09/25 06:59 PM CT"

@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
@@ -40,7 +39,8 @@ def _call(tk):
 
 def _daemon(price: float, at: float, *tickers) -> None:
     """The daemon's status at `at` (Schwab's socket open, `tickers` held, the watchlist [_ON]) and
-    each ticker's price row, with the daemon's verdict on it at `at` (live_state)."""
+    each ticker's quote received at `at` (its trade at _AT), in the plane the price row is built
+    from."""
     lmp.record_feed_heartbeat(
         {
             "ts": at,
@@ -50,14 +50,11 @@ def _daemon(price: float, at: float, *tickers) -> None:
         }
     )
     for tk in tickers:
-        label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", at)
-        ofs._price_rows[tk] = {
-            "ticker": tk,
-            "spot": price,
-            "trade_ts": _AT.timestamp(),
-            "feed_label": label,
-            "outage": outage,
-        }
+        lmp.record_from_level_one_equity(
+            tk,
+            {"LAST_PRICE": price, "TRADE_TIME_MILLIS": int(_AT.timestamp() * 1000)},
+            received_ts=at,
+        )
 
 
 @pytest.fixture
@@ -77,7 +74,8 @@ def published():
     with server._terrain_cache_lock:
         for tk in (_ON, _OFF):
             server._terrain_cache.pop(tk, None)
-            ofs._price_rows.pop(tk, None)
+            lmp._by_ticker.pop(tk, None)
+            lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_down()
 
 

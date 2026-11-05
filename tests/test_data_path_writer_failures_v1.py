@@ -1487,9 +1487,7 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
         daemon.writer, daemon.stop = writer, stop
         tasks = [
             asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-            asyncio.create_task(
-                serve_live_push(bus, stop, port=port, on_request=daemon.console_frame)
-            ),
+            asyncio.create_task(serve_live_push(stop, daemon.console_frame, port=port)),
         ]
         await _held_past_the_cap(writer, bus, health, daemon)
         await asyncio.to_thread(launch.ask_daemon_to_stop, port)

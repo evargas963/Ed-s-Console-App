@@ -1,9 +1,9 @@
 """The one watchlist and the daemon's subscriptions, Schwab to the screen, through the real code:
 the capture daemon's connection (capture.Daemon.run) on the real schwab-py StreamClient, logged in
 to Schwab's streamer played locally (tests/schwab_stream_standin.py) through Schwab's REST host
-played locally (tests/schwab_rest_standin.py); the daemon's console socket (live_push); the
-console's side of it (streaming.serve_push) and its routes (server.post_watchlist,
-delete_watchlist, get_watchlist).
+played locally (tests/schwab_rest_standin.py); the daemon's local socket (live_push); the console
+in the daemon's program (streaming.bind_daemon, its feed reading the daemon's bus) and its routes
+(server.post_watchlist, delete_watchlist, get_watchlist).
 
 Real data: Schwab's /quotes answers to SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as
 the watchlist check asks (2026-10-07; ZQZQZ is named in errors.invalidSymbols); Schwab's answers to
@@ -18,7 +18,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import socket
 import threading
 import time
 from pathlib import Path
@@ -51,12 +50,6 @@ async def _until(cond, seconds: float = 15.0) -> None:
     while not cond():
         assert time_et.elapsed() < deadline, "not reached in time"
         await asyncio.sleep(0.02)
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 class _Schwab:
@@ -284,21 +277,17 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
 
 
 def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
-    """The daemon's console socket reads every frame the console sends: one that is not JSON, or
-    JSON that is not an object, is logged with what arrived, never dropped unseen; a request after
-    it still reaches the daemon."""
-    bus, got, stats = MessageBus(), [], {}
+    """The daemon's local socket reads every frame a client sends (launch.py stop's is one): one
+    that is not JSON, or JSON that is not an object, is logged with what arrived, never dropped
+    unseen; a request after it still reaches the daemon."""
+    got, stats = [], {}
     request = {"op": "watchlist", "add": "SPY"}
 
     async def go():
         from websockets.asyncio.client import connect
 
         stop = asyncio.Event()
-        served = asyncio.create_task(
-            serve_live_push(
-                bus, stop, port=0, stats=stats, on_request=lambda req, ws: got.append(req)
-            )
-        )
+        served = asyncio.create_task(serve_live_push(stop, got.append, port=0, stats=stats))
         await _until(lambda: stats.get("listening"))  # the port the system picked
         ws = await connect(stats["listening"], max_size=None)
         try:
@@ -319,7 +308,7 @@ def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(capl
 
 
 def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_no_more(tmp_path):
-    """Through the console's route and the daemon's console socket: TSLA added is checked with one
+    """Through the console's route, in the daemon's program: TSLA added is checked with one
     /quotes request (Schwab quotes it), added, asked for on every equity service and by the
     chain sweep, and stored; ZQZQZ (Schwab names it in errors.invalidSymbols) is not added; TSLA
     removed is asked for no more. The stored list is the daemon's after a restart."""
@@ -334,42 +323,30 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         failures=CaptureWriter(db),
         streamed=daemon.option_record,
     )
-    port = _free_port()
 
     def asked(svc):
         return [(c, k) for c, k in schwab.streamer.asked(svc)]
 
     async def go():
-        from websockets.asyncio.client import connect
-
         stop = asyncio.Event()
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         tasks = [
             asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-            asyncio.create_task(
-                serve_live_push(bus, stop, port=port, on_request=daemon.console_frame)
-            ),
             asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
         ]
         await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
-        for _ in range(100):
-            try:
-                ws = await connect(f"ws://127.0.0.1:{port}", max_size=None)
-                break
-            except OSError:
-                await asyncio.sleep(0.05)
-        console = asyncio.create_task(ofs.serve_push(ws))  # the console's side of the socket
+        ofs.bind_daemon(daemon)  # the console in the daemon's program (capture.serve_console)
+        assert ofs.start_order_flow_stream()
         try:
-            await _until(lambda: ofs._push_ws is ws)
             added = json.loads((await server.post_watchlist("tsla")).body)
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
             swept_after_add = list(daemon.chains.watchlist)
             invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
             removed = json.loads((await server.delete_watchlist("TSLA")).body)
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
-        finally:  # a failure still closes the socket: cancelling over an open one can hang
-            await ws.close()
-            await asyncio.wait_for(console, 5)
+        finally:
+            ofs.stop_order_flow_stream()
+            ofs.bind_daemon(None)
             stop.set()
             await asyncio.gather(*tasks)
         return added, invalid, removed, swept_after_add

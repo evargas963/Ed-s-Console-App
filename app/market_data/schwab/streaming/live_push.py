@@ -1,14 +1,12 @@
-"""Local push channel: the capture daemon -> the console, in memory, no database.
+"""The program's local control socket, and which bus records are Schwab's.
 
-The daemon owns the ONE Schwab streaming connection (Schwab allows one per account). Every
-message it receives is published on its in-memory MessageBus. This module serves a local
-WebSocket on 127.0.0.1 that forwards the Schwab-sourced messages to the console the moment
-they are published, so the console's live values never wait on a database write or a poll.
-SQLite (stream_capture.db) stays the permanent record, written by the writer thread; it is
-not in the live path.
+Ed Console is one program: the console reads the daemon's bus in memory (app.options.order_flow.
+streaming._bus_loop), never a copy over a socket. This module serves a WebSocket on 127.0.0.1
+that hands each request it receives to the daemon (capture.Daemon.console_frame): launch.py's
+clean stop ({"op": "stop"}).
 
-What is forwarded -- Schwab only, by each message's `src` (anything else published on
-the same topics is refused):
+The bus records the console takes -- Schwab only, by each message's `src` (anything else
+published on the same topics is refused, is_forwarded):
   quote.SYM    src "schwab_l1"          LEVELONE_EQUITIES
   book.SYM     src "schwab_book"        NASDAQ_BOOK / NYSE_BOOK / OPTIONS_BOOK (by `service`)
   optquote.SYM src "schwab_options_l1"  LEVELONE_OPTIONS
@@ -21,14 +19,6 @@ the same topics is refused):
                sweep's requests), with its status
   watchlist    src "daemon_watchlist"   the watchlist after each add or removal the console asked
                for, with Schwab's /quotes answer to an add's check (capture.watchlist_message)
-
-A client receives the CURRENT RECORD of each topic as the daemon's bus keeps it (the newest by
-Schwab's time; a LEVELONE record merged field by field, each field's times in `field_ts`; a
-chain whole): first every record the bus holds, then each record that changes, the moment the
-socket can take it. Nothing old waits in line behind a newer value (docs/DATA_FLOW.md §2 D1, D3).
-
-Wire format: one JSON text frame per record, {"topic": str, "msg": {...}}; a chain is one frame
-per part.
 """
 
 from __future__ import annotations
@@ -37,8 +27,6 @@ import asyncio
 import json
 import logging
 import os
-
-from stream_spine import LATEST, MessageBus
 
 log = logging.getLogger(__name__)
 
@@ -80,81 +68,42 @@ def is_forwarded(topic: str, msg) -> bool:
     return False
 
 
-def frames(topic: str, record) -> list[str]:
-    """The wire frames of one current record: a chain's parts and a price history arrive with
-    their frames already built, off the event loop (complete_chain_capture.chain_messages,
-    price_history_message)."""
-    if topic.startswith("chain."):
-        return [part["frame"] for part in record]
-    if topic.startswith(("pricehistory.", "markets.")):
-        return [record["frame"]]
-    return [json.dumps({"topic": topic, "msg": record}, separators=(",", ":"))]
-
-
-async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> None:
-    """Send every current record, then each one that changes, until the connection closes.
-
-    The send loop runs as its own task and this handler waits on the CONNECTION: a loop
-    blocked on `sub.get()` would otherwise never notice a closed socket, and server
-    shutdown (which waits for every handler to return) would hang behind it."""
-    sub = bus.subscribe("", policy=LATEST)
+async def _serve_client(ws, stats: dict, on_request) -> None:
+    """Each frame of one connection handed to `on_request` (capture.Daemon.console_frame), until
+    the connection closes. A frame that is not a JSON object is logged with what arrived."""
     stats["clients"] += 1
-
-    async def _pump() -> None:
-        while True:
-            topic, record = await sub.get()
-            if is_forwarded(topic, record):
-                for frame in frames(topic, record):
-                    await ws.send(frame)
-                stats["sent"] += 1
-
-    async def _read() -> None:
-        """The console's frames, each handed to `on_request` with this connection
-        (capture.Daemon.console_frame): {"op": "watchlist", ...}, an add or a removal. Ends when
-        the socket closes. A frame that is not a JSON object is logged with what arrived."""
+    try:
         async for frame in ws:
             try:
                 req = json.loads(frame)
             except (TypeError, ValueError) as e:
-                log.warning("live push: a console frame that is not JSON (%s): %r", e, frame)
+                log.warning("live push: a frame that is not JSON (%s): %r", e, frame)
                 continue
             if not isinstance(req, dict):
-                log.warning("live push: a console frame that is not a JSON object: %r", frame)
-            elif on_request is not None:
-                on_request(req, ws)
-
-    pump = asyncio.create_task(_pump())
-    closed = asyncio.create_task(_read())
-    try:
-        await asyncio.wait({pump, closed}, return_when=asyncio.FIRST_COMPLETED)
-        if pump.done() and not pump.cancelled() and pump.exception() is not None:
-            e = pump.exception()
-            log.info("live push client ended: %s: %s", type(e).__name__, e)
+                log.warning("live push: a frame that is not a JSON object: %r", frame)
+            else:
+                on_request(req)
     finally:
-        for t in (pump, closed):
-            t.cancel()
-        await asyncio.gather(pump, closed, return_exceptions=True)
-        bus.unsubscribe(sub)
         stats["clients"] -= 1
 
 
 async def serve_live_push(
-    bus: MessageBus,
     stop: asyncio.Event,
+    on_request,
     *,
     host: str = LIVE_PUSH_HOST,
     port: int = LIVE_PUSH_PORT,
     stats: dict | None = None,
-    on_request=None,
 ) -> None:
-    """Run the push server until `stop` is set. `stats` (mutated) reports clients and sent."""
+    """Run the control socket until `stop` is set, each request handed to `on_request`.
+    `stats` (mutated) reports clients and where it listens."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    stats.update(clients=0, sent=0, listening=None)
+    stats.update(clients=0, listening=None)
 
     async def handler(ws):
-        await _serve_client(ws, bus, stats, on_request)
+        await _serve_client(ws, stats, on_request)
 
     async with serve(
         handler,
@@ -167,5 +116,5 @@ async def serve_live_push(
     ) as server:
         bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
         stats["listening"] = f"ws://{host}:{bound}"
-        log.info("live push: serving Schwab stream messages on ws://%s:%s", host, bound)
+        log.info("live push: the control socket listens on ws://%s:%s", host, bound)
         await stop.wait()

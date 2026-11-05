@@ -11,7 +11,8 @@ if not exist "%VENV_PY%" (
     exit /b 1
 )
 
-REM launch.py stop ends the console (its process group alone) and launch.py with 0, and this window
-REM closes; it stays open on an error, so its message can be read. One line, read whole before it
-REM runs: a start that fast-forwards the checkout may rewrite this file, and nothing after it is read.
+REM launch.py starts Ed Console (one program, in the "Ed Capture Daemon" window), opens the browser
+REM once its pages answer and ends with 0, and this window closes; it stays open on an error, so its
+REM message can be read. One line, read whole before it runs: a start that fast-forwards the checkout
+REM may rewrite this file, and nothing after it is read.
 "%VENV_PY%" launch.py || pause & exit /b

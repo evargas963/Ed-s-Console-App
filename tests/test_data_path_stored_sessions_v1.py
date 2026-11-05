@@ -6,21 +6,18 @@ from __future__ import annotations
 
 import json
 import os
-import socket
 import sqlite3
 import subprocess
 import sys
-import threading
-import time
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-import time_et
 from math_levels import compute_charm_by_strike, pick_charm_wall_strikes
 from option_contract import read_chain
 from stream_spine import STREAM_SCHEMA_SQL
+from tests.test_console_startup_waits_v1 import program_env, run_until
 from time_et import ET, INDEX_OPTIONS, valuation_instant
 
 FX = Path(__file__).parent / "fixtures"
@@ -123,43 +120,18 @@ def test_a_stored_chain_is_priced_on_the_stored_market_answers(tmp_path):
     assert json.loads(run.stdout.splitlines()[-1]) == list(pick_charm_wall_strikes(book))
 
 
-@pytest.mark.parametrize("store", ["answers", "no table"])
+@pytest.mark.parametrize("store", ["answers", "none yet"])
 def test_the_console_holds_the_answers_before_its_loops_and_its_feed(tmp_path, store):
-    """The real console (uvicorn server:app), its window as Ed sees it, with no daemon to reach."""
+    """The real program (capture_main: the daemon and the console's pages in one process), its
+    window as Ed sees it, with no Schwab token: the answers the daemon recorded are held before the
+    console's loop and its feed start; with none recorded yet (the program's writer makes the
+    tables at its start), it holds 0."""
     path = tmp_path / "data" / "stream_capture.db"
-    if store == "answers":
-        held = _record_answers(path)
-    else:
-        path.parent.mkdir(parents=True)
-        sqlite3.connect(path).close()
-        held = None
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    env = {k: v for k, v in _env(tmp_path).items() if k != "PYTEST_CURRENT_TEST"}  # loops start
-    console = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "server:app", "--host", "127.0.0.1", "--port", str(port)],
-        cwd=ROOT,
-        env=env,
-        text=True,
-        encoding="utf-8",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    lines: list = []
-    threading.Thread(target=lambda: lines.extend(console.stdout), daemon=True).start()
+    held = _record_answers(path) if store == "answers" else 0
+    env, _pages = program_env(tmp_path)
     waited, fed = "waiting for the capture daemon's heartbeat", "Live-plane feed started"
-    try:
-        end = time_et.elapsed() + 120
-        while not (any(waited in ln for ln in lines) and any(fed in ln for ln in lines)):
-            assert console.poll() is None and time_et.elapsed() < end, "".join(lines)
-            time.sleep(0.25)
-    finally:
-        console.kill()
-        console.wait(30)
-    text = "".join(lines)
-    if held is None:
-        assert "Recorded market answers held" not in text
-    else:
-        at = text.index(f"Recorded market answers held: {held}")
-        assert at < text.index(waited) and at < text.index(fed)
+    text = run_until(env, lambda t: waited in t and fed in t)
+    at = text.index(f"Recorded market answers held: {held}")
+    assert at < text.index(waited) and at < text.index(fed)
+    assert text.count("Recorded market answers held:") == 1, "the answers are loaded once"
+    assert "no capture daemon runs in this program" not in text, "the console found its daemon"

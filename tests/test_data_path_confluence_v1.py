@@ -80,7 +80,6 @@ def _chain_spot(tk: str, quote: dict) -> tuple:
 def _forget(tk: str) -> None:
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
-    ofs._price_rows.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
@@ -413,7 +412,6 @@ def test_the_window_follows_the_live_price_off_the_chains_price():
     try:
         _publish_close(tk)
         _chain_spot(tk, quote)
-        ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
         body = server.confluence_payload(tk, "2026-10-22", at)
     finally:
         _forget(tk)
@@ -443,7 +441,6 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
     try:
         _publish_close(tk)
         _chain_spot(tk, quote)
-        ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
         body = server.confluence_payload(tk, "2026-10-22", at)
     finally:
         _forget(tk)
@@ -1275,7 +1272,6 @@ def test_an_after_hours_print_keeps_the_close_book():
         lmp.record_feed_heartbeat(
             {"ts": at.timestamp(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
         )
-        ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
         second_snap = server._publish_levels(tk, now=at)
         second = server.confluence_payload(tk, expiry, at)
         again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
@@ -1377,7 +1373,6 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     lmp.record_feed_heartbeat(
         {"ts": at.timestamp(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
-    ofs._price_rows[tk] = live_price_rows.price_row(tk, at.timestamp())
     try:
         server._publish_levels(
             tk,

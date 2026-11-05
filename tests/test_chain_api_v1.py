@@ -50,7 +50,8 @@ def _clean():
     with srv._terrain_cache_lock:
         for tk in ("TSLA", "MRVL"):
             srv._terrain_cache.pop(tk, None)
-            ofs._price_rows.pop(tk, None)
+            lmp._by_ticker.pop(tk, None)
+            lmp._fields_by_ticker.pop(tk, None)
 
 
 def _hold(tk, contracts, fetched_ts, price, streamed=()):
@@ -59,7 +60,11 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     beats at _AT (the publication's time) and again now (the routes' time)."""
     held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
     lmp.record_feed_heartbeat({"ts": _AT.timestamp(), "schwab_socket_open": True, "held": held})
-    ofs._price_rows[tk] = {"ticker": tk, "spot": price, "trade_ts": fetched_ts}
+    lmp.record_from_level_one_equity(
+        tk,
+        {"LAST_PRICE": price, "TRADE_TIME_MILLIS": int(fetched_ts * 1000)},
+        received_ts=fetched_ts,
+    )
     for sym, fields, ts in streamed:
         ofs._ingest_pushed(
             f"optquote.{sym}",

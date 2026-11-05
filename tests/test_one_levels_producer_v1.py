@@ -4,8 +4,8 @@ and publishes all three together, so no second producer can show a different num
 the screen shows it correctly and promptly; question 3: each value is the one computation's).
 
 Through the real code: the daemon's status (live_market_plane.record_feed_heartbeat), its pushed
-option messages applied by the console (streaming._ingest_pushed), its price row as the console
-holds it (streaming._price_rows), the console's pages (push_changes), the pricing thread, the
+option messages applied by the console (streaming._ingest_pushed), its price row built from the
+quote in its plane (live_market_plane), the console's pages (push_changes), the pricing thread, the
 chain captures in the console's database. Real data: CRWD's 2026-10-16 chain captured 2026-10-07
 10:38:40 ET (tests/real_chains.py), valued at its capture.
 STAND-INS (named): each streamed value of a CRWD contract (no CRWD contract was streamed in a
@@ -70,7 +70,8 @@ def _clean():
         push_changes.unsubscribe(tk, page)
     ofls.clear_all_live_state()
     lmp.record_feed_down()
-    ofs._price_rows.pop(TK, None)
+    lmp._by_ticker.pop(TK, None)
+    lmp._fields_by_ticker.pop(TK, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
 
@@ -82,8 +83,8 @@ def _view(pages: list, tk: str = TK) -> None:
 
 def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float = _T) -> None:
     """The daemon's status at `at` (the chain's publication time unless given): Schwab's socket
-    open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's price row as the
-    daemon pushes it (None: no price)."""
+    open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's LAST_PRICE in the
+    daemon's plane, traded at the capture's time (None: no price)."""
     lmp.record_feed_heartbeat(
         {
             "ts": at,
@@ -92,9 +93,12 @@ def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float
         }
     )
     if price is None:
-        ofs._price_rows.pop(TK, None)
+        lmp._by_ticker.pop(TK, None)
+        lmp._fields_by_ticker.pop(TK, None)
     else:
-        ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _T}
+        lmp.record_from_level_one_equity(
+            TK, {"LAST_PRICE": price, "TRADE_TIME_MILLIS": int(_T * 1000)}, received_ts=_T
+        )
 
 
 def _streamed(sym: str, content: dict, ts: float) -> None:

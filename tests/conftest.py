@@ -52,6 +52,8 @@ os.environ["ED_CI_OFFLINE"] = "1"
 os.environ["ED_LIVE_PUSH_PORT"] = "1"
 # ...and the browser price socket a test daemon would bind / a test page is told
 os.environ["ED_LIVE_UI_PORT"] = "1"
+# ...and a test program's console pages on a port the system picks, never production's 8000
+os.environ["ED_CONSOLE_PORT"] = "0"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"

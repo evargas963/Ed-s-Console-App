@@ -66,14 +66,14 @@ async def _until(cond, limit: float = 10.0) -> None:
 
 
 def test_a_web_page_cannot_reach_the_daemons_local_socket():
-    """The console and `launch.py stop` send no Origin and connect; a browser always sends one, and
-    a page on any site is refused before it reads the stream or asks the daemon to stop. Induced
-    test condition: a client sending the Origin a page's browser would."""
+    """`launch.py stop` sends no Origin and connects; a browser always sends one, and a page on
+    any site is refused before it asks the daemon anything (to stop). Induced test condition: a
+    client sending the Origin a page's browser would."""
 
     async def go():
         stop, stats = asyncio.Event(), {}
         pushing = asyncio.create_task(
-            live_push.serve_live_push(MessageBus(), stop, port=0, stats=stats)
+            live_push.serve_live_push(stop, [].append, port=0, stats=stats)
         )
         await _until(lambda: stats.get("listening"))
         async with connect(stats["listening"]):
@@ -189,10 +189,7 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             text=True,
             timeout=90,
         )
-        assert (stopped.returncode, stopped.stdout) == (
-            0,
-            "Capture daemon: stopped\nConsole: not running\n",
-        ), stopped.stderr
+        assert (stopped.returncode, stopped.stdout) == (0, "Ed Console: stopped\n"), stopped.stderr
         end = time_et.elapsed() + 8  # past the batch's 5 s restart wait
         while time_et.elapsed() < end:
             started = [
@@ -211,12 +208,11 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
-    """launch.stop finds the daemon and the console by launch.running: of two processes started
-    the same way, the one started in this checkout's folder (as its daemon's batch and its
-    console are) is found, and the one started in another folder
-    (another checkout's console, a test's) is not, so the stop's Ctrl+Break never goes to it
-    instead of this console. Induced test condition: two sleeping Pythons started by a script of
-    this test's own."""
+    """launch.stop finds the program by launch.running: of two processes started the same way, the
+    one started in this checkout's folder (as its batch is) is found, and the one started in
+    another folder (another checkout's program, a test's) is not, so the stop never waits on it
+    instead of this one. Induced test condition: two sleeping Pythons started by a script of this
+    test's own."""
     start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{uuid.uuid4().hex}"]
     ours, theirs = (
         subprocess.Popen([sys.executable, *start], cwd=cwd) for cwd in (launch.ROOT, tmp_path)
@@ -596,24 +592,18 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
             time.sleep(0.1)
         elsewhere = stop(other, push_port)
         out, err = elsewhere.communicate(timeout=60)
-        assert (elsewhere.returncode, out) == (
-            0,
-            "Capture daemon: not running\nConsole: not running\n",
-        ), err
+        assert (elsewhere.returncode, out) == (0, "Ed Console: not running\n"), err
         assert daemon.poll() is None
         not_asked = [stop(home, port) for port in (unserved, closing.getsockname()[1])]
         for p in not_asked:
             out, err = p.communicate(timeout=90)
             assert p.returncode == 1, (out, err)
-            assert "Capture daemon: not asked to stop: " in err
-            assert "Capture daemon: still running (" in out
+            assert "Ed Console: not asked to stop: " in err
+            assert "Ed Console: still running (" in out
         stopping = stop(home, push_port)
         assert daemon.wait(60) == capture.EXIT_STOPPED  # reaped: the stop sees it gone on Linux too
         out, err = stopping.communicate(timeout=60)
-        assert (stopping.returncode, out) == (
-            0,
-            "Capture daemon: stopped\nConsole: not running\n",
-        ), err
+        assert (stopping.returncode, out) == (0, "Ed Console: stopped\n"), err
     finally:
         closing.close()
         _end(daemon)
@@ -663,30 +653,14 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
         finally:
             _end(daemon)
     assert stopping.returncode == 1, (out, err)
-    assert "Capture daemon: not asked to stop: " in err
-    assert "Capture daemon: ended, not asked by this stop\n" in out
-
-
-def test_the_console_group_is_known_after_its_processes_have_gone():
-    """The console ended between the stop finding it and the signal: its group is still named, so
-    the stop goes on to what is left. Induced test condition: a Python of this test's own."""
-    start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{uuid.uuid4().hex}"]
-    console = subprocess.Popen([sys.executable, *start], cwd=launch.ROOT)
-    found: list = []
-    try:
-        end = time_et.elapsed() + 10
-        while console.pid not in {p.pid for p in found} and time_et.elapsed() < end:
-            found = launch.running(start)
-            time.sleep(0.05)
-    finally:
-        _end(console)
-    assert launch.group_leader(found) == console.pid
+    assert "Ed Console: not asked to stop: " in err
+    assert "Ed Console: ended, not asked by this stop\n" in out
 
 
 def test_a_process_that_only_names_the_console_is_not_the_console():
-    """A shell and Pythons in the checkout that name the console, in their text or as an argument
-    of their own, as a process search does, are not taken for the console."""
-    named = launch.CONSOLE_START[-1]
+    """A shell and Pythons in the checkout that name the program (Ed Console, capture_main), in
+    their text or as an argument of their own, as a process search does, are not taken for it."""
+    named = launch.DAEMON_START[-1]
     wait = ["cmd", "/c", f"ping -n 30 127.0.0.1 >nul & rem {named}"]
     if sys.platform != "win32":
         wait = ["sh", "-c", f"sleep 30; echo {named}"]
@@ -697,7 +671,7 @@ def test_a_process_that_only_names_the_console_is_not_the_console():
             wait,
             [sys.executable, "-c", f"{sleep}  # {named}"],
             [sys.executable, "-c", sleep, named],
-            [sys.executable, "-c", sleep, *launch.CONSOLE_START],
+            [sys.executable, "-c", sleep, *launch.DAEMON_START],
         )
     ]
     try:
@@ -708,7 +682,7 @@ def test_a_process_that_only_names_the_console_is_not_the_console():
             ):
                 time.sleep(0.05)
             assert named in " ".join(psutil.Process(p.pid).cmdline())
-        found = {p.pid for p in launch.running(launch.CONSOLE_START)}
+        found = {p.pid for p in launch.running(launch.DAEMON_START)}
         assert not found & {p.pid for p in searches}
     finally:
         for p in searches:

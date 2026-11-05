@@ -118,9 +118,7 @@ def _rotate(sweep, client) -> set[str]:
 
 def _assembled(published):
     ofs._chain_parts.clear()
-    return [
-        o for _t, msg in published for o in ofs.assemble_chain_part(json.loads(msg["frame"])["msg"])
-    ]
+    return [o for _t, msg in published for o in ofs.assemble_chain_part(msg)]
 
 
 def _parts(ts: float):

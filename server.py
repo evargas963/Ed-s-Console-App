@@ -19,10 +19,8 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from html import escape as html_escape
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Annotated
-from zoneinfo import ZoneInfo
 
 import psutil
 from fastapi import Body, FastAPI, HTTPException, Query
@@ -87,7 +85,6 @@ from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
 from option_contract import GREEK_FIELDS, OptionContract, chain_row, read_chain
-from runtime_layout import logs_dir as _runtime_logs_dir
 from terrain_atr import Atr, compute_atrs, roll_up
 from terrain_engine import (
     PRICE_RELATIONS,
@@ -130,109 +127,7 @@ from time_et import (
 APP_DIR = str(Path(__file__).parent.resolve())
 
 
-# ── Logging ──────────────────────────────────────────────────────────────────
-# Visual severity marker: WARNING / ERROR / CRITICAL get a bracket-tag prefix
-# (ANSI-colored on a TTY; plain ASCII otherwise) so operator-actionable events
-# stand out in the dense INFO/DEBUG console stream. Steady-state DEBUG/INFO
-# remain unmarked.
-class _LevelMarkerFormatter(logging.Formatter):
-    _ANSI_BY_LEVEL = {
-        logging.WARNING: "\033[33m[WARN]\033[0m ",  # yellow
-        logging.ERROR: "\033[31m[ERR ]\033[0m ",  # red
-        logging.CRITICAL: "\033[1;31m[CRIT]\033[0m ",  # bold red
-    }
-    _PLAIN_BY_LEVEL = {
-        logging.WARNING: "[WARN] ",
-        logging.ERROR: "[ERR ] ",
-        logging.CRITICAL: "[CRIT] ",
-    }
-
-    def __init__(
-        self, fmt: str | None = None, *, datefmt: str | None = None, use_ansi: bool = True
-    ) -> None:
-        super().__init__(fmt, datefmt)
-        self.use_ansi = use_ansi
-
-    def format(self, record: logging.LogRecord) -> str:
-        table = self._ANSI_BY_LEVEL if self.use_ansi else self._PLAIN_BY_LEVEL
-        marker = table.get(record.levelno, "")
-        return marker + super().format(record)
-
-
-# The console's log file (install_ed_server_file_sink): every logger (db, ed_server, uvicorn, …)
-# at INFO+, under the RUNTIME root (runtime_layout): this checkout, or the primary checkout for a
-# linked worktree, unless ED_RUNTIME_ROOT moves it (docs/ARCHITECTURE.md "Runtime state is not
-# source").
-ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
-
-
-def _console_formatter(*, use_ansi: bool) -> _LevelMarkerFormatter:
-    """The one line format for the console window and logs/ed_server.log: the time in Central
-    (the operator's clock), the level, the logger, the message."""
-    fmt = _LevelMarkerFormatter(
-        "%(asctime)s %(levelname)s:%(name)s:%(message)s", datefmt="%H:%M:%S CT", use_ansi=use_ansi
-    )
-    fmt.converter = lambda t: datetime.fromtimestamp(t, ZoneInfo("America/Chicago")).timetuple()
-    return fmt
-
-
-def install_ed_server_file_sink(
-    log_path: Path | None = None,
-    *,
-    level: int = logging.INFO,
-) -> logging.Handler:
-    """Attach the log file on the root logger for logs/ed_server.log: rotated at 50 MB with one
-    previous file kept, the capture daemon's own policy (unrotated, the file reached 1.3 GB).
-    Every record is flushed as it is written (logging.StreamHandler.emit).
-
-    Captures all loggers (root) at INFO+, so a healthy process keeps writing it.
-    Idempotent for this path.
-    """
-    path = Path(log_path) if log_path is not None else ED_SERVER_LOG_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    root = logging.getLogger()
-    abs_target = str(path.resolve())
-    for h in list(root.handlers):
-        if isinstance(h, logging.FileHandler):
-            try:
-                existing = str(Path(getattr(h, "baseFilename", "")).resolve())
-            except (OSError, TypeError, ValueError):
-                existing = ""
-            if existing == abs_target:
-                return h
-    handler = RotatingFileHandler(path, maxBytes=50 * 1024 * 1024, backupCount=1, encoding="utf-8")
-    handler.setLevel(level)
-    handler.setFormatter(_console_formatter(use_ansi=False))
-    root.addHandler(handler)
-    if root.level == logging.NOTSET or root.level > level:
-        root.setLevel(level)
-    return handler
-
-
-def _install_visual_severity_markers(level: int = logging.INFO) -> None:
-    """Replace any default root handlers with one that adds the level marker."""
-    use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())
-    handler = logging.StreamHandler()
-    handler.setFormatter(_console_formatter(use_ansi=use_ansi))
-    root = logging.getLogger()
-    for h in list(root.handlers):
-        root.removeHandler(h)
-    root.addHandler(handler)
-    root.setLevel(level)
-    # Under pytest only the FILE sink is skipped: a test's deliberate warnings would land in
-    # logs/ed_server.log and read as live console noise (the sink's own test calls
-    # install_ed_server_file_sink with a tmp path). A checkout bound to ANOTHER checkout's
-    # runtime (runtime_layout.live_binding_error) does not write that checkout's live log: a
-    # worktree console appended 15,451 errors to production's. The stream handler still prints.
-    if (
-        "pytest" not in sys.modules
-        and not os.environ.get("PYTEST_CURRENT_TEST")
-        and runtime_layout.live_binding_error() is None
-    ):
-        install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
-
-
-_install_visual_severity_markers(logging.INFO)
+# Its lines go to the program's one log (capture._start_log: the day's file and the window).
 log = logging.getLogger("ed_server")
 
 #: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
@@ -364,9 +259,9 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
     trade time. Why it is not live (price_state) does not remove it; the number stays.
     (None, the outage reason or SPOT_SOURCE_NONE, None) until Schwab has sent one."""
-    row = price_row(ticker)
-    if row and row.get("spot") is not None:
-        return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
+    row = price_row(ticker, now)
+    if row["spot"] is not None:
+        return row["spot"], SPOT_SOURCE_PLANE, row["trade_ts"]
     outage = price_state(ticker, now)[1]
     if outage is None:
         return None, SPOT_SOURCE_NONE, None
@@ -3082,12 +2977,12 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     # top of book: the daemon's price row. The last bid and ask stand when it is not live;
     # top_outage says why and top_feed_label is the page's word for it (docs/DATA_FLOW.md §2 D5)
     top_label, top_outage = price_state(t, now)
-    _row = price_row(t)
-    if _row and _row.get("quote_ts") is not None:
+    _row = price_row(t, now)
+    if _row["quote_ts"] is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = (
-        {k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
-        if _row and (_row.get("bid") is not None or _row.get("ask") is not None)
+        {k: _row[k] for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
+        if _row["bid"] is not None or _row["ask"] is not None
         else None
     )
     # the venue's book: the same verdict on its own service (price_state), its word served

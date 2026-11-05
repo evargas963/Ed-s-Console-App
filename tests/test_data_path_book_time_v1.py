@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import live_market_plane as lmp
-import live_price_rows
 import server
 import time_et
 from app.options.order_flow import state as of_state
-from app.options.order_flow import streaming as ofs
 from tests.feed_live_helper import mark_feed_live
 
 _TK = "ZZBKTIME"
@@ -40,10 +38,10 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
     )
     try:
         lmp.record_feed_down()
-        ofs._price_rows[_TK] = live_price_rows.price_row(_TK, time_et.now())
         body = server.order_flow_microstructure(_TK, "NASDAQ_BOOK", time_et.now())
     finally:
-        ofs._price_rows.pop(_TK, None)
+        lmp._by_ticker.pop(_TK, None)
+        lmp._fields_by_ticker.pop(_TK, None)
         of_state._LIVE_STATE._book.pop(_TK, None)
         lmp.record_feed_down()
     assert body["top_of_book"]["bid"] == 772.00
