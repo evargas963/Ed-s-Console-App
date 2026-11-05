@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+import time_et
 from math_levels import compute_charm_by_strike, pick_charm_wall_strikes
 from option_contract import read_chain
 from stream_spine import STREAM_SCHEMA_SQL
@@ -149,9 +150,9 @@ def test_the_console_holds_the_answers_before_its_loops_and_its_feed(tmp_path, s
     threading.Thread(target=lambda: lines.extend(console.stdout), daemon=True).start()
     waited, fed = "waiting for the capture daemon's heartbeat", "Live-plane feed started"
     try:
-        end = time.monotonic() + 120
+        end = time_et.elapsed() + 120
         while not (any(waited in ln for ln in lines) and any(fed in ln for ln in lines)):
-            assert console.poll() is None and time.monotonic() < end, "".join(lines)
+            assert console.poll() is None and time_et.elapsed() < end, "".join(lines)
             time.sleep(0.25)
     finally:
         console.kill()

@@ -30,6 +30,7 @@ import psutil
 import pytest
 
 import launch
+import time_et
 
 REPO = Path(__file__).resolve().parent.parent
 windows_only = pytest.mark.skipif(
@@ -110,8 +111,8 @@ def _window(argv: list[str]) -> subprocess.Popen:
 
 
 def _until(path: Path, seconds: float = 60.0) -> str:
-    deadline = time.monotonic() + seconds
-    while not path.exists() and time.monotonic() < deadline:
+    deadline = time_et.elapsed() + seconds
+    while not path.exists() and time_et.elapsed() < deadline:
         time.sleep(0.1)
     return path.read_text(encoding="utf-8")
 

@@ -16,7 +16,6 @@ the price row by the daemon's own function.
 
 import inspect
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +27,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import live_price_rows
 import server
+import time_et
 from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from option_contract import read_chain
@@ -89,7 +89,7 @@ def _forget():
     ofs._price_rows.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
     lmp.record_feed_down()
 
 
@@ -98,7 +98,7 @@ def held():
     """CRWD's chain published at the price Schwab sent with it; the live price is Schwab's last
     trade."""
     _publish(_AT.timestamp())
-    _daemon(time.time())  # live now, as the routes read it
+    _daemon(time_et.now())  # live now, as the routes read it
     with server._terrain_cache_lock:
         payload = server._terrain_cache[TK]
     yield payload
@@ -190,7 +190,7 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     assert (
         body["expiries"] == []
         and body["reason"]
-        == server.terrain_staleness(None, "ZZNOLEVELS", now=time.time())["levels_stale_reason"]
+        == server.terrain_staleness(None, "ZZNOLEVELS", now=time_et.now())["levels_stale_reason"]
     )
 
 
@@ -229,9 +229,9 @@ def test_the_spot_row_is_served(route):
     )
     lmp.record_from_level_one_equity("SPY", print_["native"], received_ts=print_["ts_recv"])
     lmp.record_feed_heartbeat(
-        {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
+        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
     )
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())
+    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time_et.now())
     try:
         body = json.loads(route().body)
     finally:
@@ -240,7 +240,7 @@ def test_the_spot_row_is_served(route):
         ofs._price_rows.pop("SPY", None)
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
         lmp.record_feed_down()
     assert body["spot_strike"] == live
 
@@ -305,7 +305,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     )
     at = datetime.fromtimestamp(fx["ts_utc"], ET)
     lmp.record_feed_heartbeat(
-        {"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}}
+        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}}
     )
     ofs._price_rows["$SPX"] = {"ticker": "$SPX", "spot": fx["spot"], "trade_ts": fx["ts_utc"]}
     try:
@@ -336,12 +336,12 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     spot with Schwab's trade time, and every consumer reads it."""
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity(
-        "SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830}, received_ts=time.time()
+        "SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830}, received_ts=time_et.now()
     )
-    row = live_price_rows.price_row("SPY", time.time())
+    row = live_price_rows.price_row("SPY", time_et.now())
     ofs._price_rows["SPY"] = row  # the row as the daemon pushes it to the console
     try:
-        spot = server.resolve_spot("SPY", now=time.time())
+        spot = server.resolve_spot("SPY", now=time_et.now())
     finally:
         ofs._price_rows.pop("SPY", None)
         lmp.record_feed_down()

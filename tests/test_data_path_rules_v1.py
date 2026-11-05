@@ -27,6 +27,7 @@ from websockets.asyncio.client import connect
 import app.options.order_flow.streaming as ofs
 import schwab_client as sc
 import server
+import time_et
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
@@ -82,10 +83,10 @@ async def _daemon_then_console(
                         break
                     await asyncio.sleep(0.01)
                 publish(lambda service: capture._publisher(service, bus, health))
-            end = time.monotonic() + read_for
-            while time.monotonic() < end:
+            end = time_et.elapsed() + read_for
+            while time_et.elapsed() < end:
                 try:
-                    frame = await asyncio.wait_for(ws.recv(), timeout=end - time.monotonic())
+                    frame = await asyncio.wait_for(ws.recv(), timeout=end - time_et.elapsed())
                 except TimeoutError:
                     break
                 got.append(json.loads(frame))
@@ -252,10 +253,10 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
                 for topic, msg in chain_messages("SPY", contracts, ts, None, None):
                     bus.publish(topic, msg)
             got = []
-            end = time.monotonic() + 3.0
-            while time.monotonic() < end:
+            end = time_et.elapsed() + 3.0
+            while time_et.elapsed() < end:
                 try:
-                    frame = await asyncio.wait_for(ws.recv(), timeout=end - time.monotonic())
+                    frame = await asyncio.wait_for(ws.recv(), timeout=end - time_et.elapsed())
                 except TimeoutError:
                     break
                 got.append(json.loads(frame))
@@ -417,7 +418,7 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
     judges it by the daemon's own time, not by when it arrived."""
     import live_market_plane as lmp
 
-    old = time.time() - 120
+    old = time_et.now() - 120
     lmp.record_feed_heartbeat(
         {
             "ts": old,
@@ -426,7 +427,7 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
         }
     )
     try:
-        assert lmp.daemon_status(time.time()) is None, (
+        assert lmp.daemon_status(time_et.now()) is None, (
             "a two-minute-old daemon status counted as live"
         )
     finally:
@@ -490,7 +491,7 @@ class _Swept:
         for _ in range(PASSES):
             if not self.sweep.step(lambda: self.client, self.stop):
                 break
-        return time.monotonic()
+        return time_et.elapsed()
 
     def close(self) -> None:
         self.schwab.close()
@@ -723,8 +724,8 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
     worker.start()
-    deadline = time.monotonic() + 10
-    while len(delivered) < 2 and time.monotonic() < deadline:
+    deadline = time_et.elapsed() + 10
+    while len(delivered) < 2 and time_et.elapsed() < deadline:
         time.sleep(0.02)
     time.sleep(1.0)  # nothing more is asked
     stop.set()
@@ -1086,7 +1087,7 @@ def test_d6_no_live_route_opens_a_database():
                 service=service,
                 content=b["content"],
                 src="schwab_book",
-                ts_recv=time.time(),
+                ts_recv=time_et.now(),
             ),
         )
     writer.insert(
@@ -1095,7 +1096,7 @@ def test_d6_no_live_route_opens_a_database():
             symbol=_CONTRACT,
             content=_EVENTS[0]["content"],
             src="schwab_options_l1",
-            ts_recv=time.time(),
+            ts_recv=time_et.now(),
         ),
     )
     get_db()  # the console database
@@ -1174,13 +1175,13 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
     tok.write_text(
         json.dumps(
             {
-                "creation_timestamp": int(time.time()),
+                "creation_timestamp": int(time_et.now()),
                 "token": {
                     "access_token": "secret-access",
                     "refresh_token": "secret-refresh",
                     "token_type": "Bearer",
                     "expires_in": 3600,
-                    "expires_at": int(time.time()) + 3600,
+                    "expires_at": int(time_et.now()) + 3600,
                 },
             }
         )
@@ -1268,8 +1269,10 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
     worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
     try:
         worker.start()
-        deadline = time.monotonic() + 10
-        while not failed and time.monotonic() < deadline:  # each ticker's price history fails first
+        deadline = time_et.elapsed() + 10
+        while (
+            not failed and time_et.elapsed() < deadline
+        ):  # each ticker's price history fails first
             halt.wait(0.02)
     finally:
         halt.set()

@@ -8,11 +8,11 @@
 from __future__ import annotations
 
 import math
-import time
 
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as live_state
 import l1_trade_observation as l1
+import time_et
 
 
 def _prints(*rows):
@@ -73,13 +73,13 @@ def test_reconnect_clear_resets_restatement_identity():
     live_state.push_level_one(
         sym,
         {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5},
-        ts_recv=time.time(),
+        ts_recv=time_et.now(),
     )
     live_state.clear_all_live_state()
     live_state.push_level_one(
         sym,
         {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5},
-        ts_recv=time.time(),
+        ts_recv=time_et.now(),
     )
     tape = [i for i in live_state.get_content_for_symbol(sym) if i.get("LAST_PRICE") is not None]
     assert len(tape) == 1
@@ -95,7 +95,7 @@ def test_live_state_equals_replay_of_same_receive_order_observations():
         {"key": sym, "LAST_PRICE": 1.1, "LAST_SIZE": 2, "TRADE_TIME_MILLIS": 10},
     ]
     for r in rows:
-        live_state.push_level_one(sym, r, ts_recv=time.time())
+        live_state.push_level_one(sym, r, ts_recv=time_et.now())
     live_cvd = ofe._compute_cum_delta_proxy({"content": live_state.get_content_for_symbol(sym)})
     replay_cvd = ofe._compute_cum_delta_proxy({"content": rows})
     assert live_cvd == replay_cvd == 2

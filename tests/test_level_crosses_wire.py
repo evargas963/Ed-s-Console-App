@@ -8,12 +8,12 @@ SPY's LEVELONE_EQUITIES prints after it, in the order the daemon received them: 
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import live_market_plane as lmp
 import live_price_rows
 import server
+import time_et
 from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
@@ -54,7 +54,7 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
     )
     lmp.record_feed_heartbeat(
         {
-            "ts": time.time() if now is None else now,
+            "ts": time_et.now() if now is None else now,
             "schwab_socket_open": True,
             "held": {"LEVELONE_EQUITIES": [tk]},
         }
@@ -71,7 +71,7 @@ def _print(msg: dict, tk: str = "SPY") -> list:
     """One SPY LEVELONE_EQUITIES message as the daemon received it and the price row it pushes;
     the quote's tick reaches the console. Returns the crosses it stored (on the pricing thread)."""
     lmp.record_from_level_one_equity(tk, msg["native"], received_ts=msg["ts_recv"])
-    ofs._price_rows[tk] = live_price_rows.price_row(tk, time.time())
+    ofs._price_rows[tk] = live_price_rows.price_row(tk, time_et.now())
     before = {c["cross_id"] for c in _stored(tk)}
     server._on_stream_tick(tk)
     server._chain_pricing.submit(lambda: None).result()
@@ -87,7 +87,7 @@ def _forget(tk: str = "SPY") -> None:
     ofs._price_rows.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
     lmp.record_feed_down()
 
 
@@ -163,7 +163,7 @@ def test_the_levels_side_of_a_print_on_a_level_is_at():
     lmp.record_from_level_one_equity(
         "SPY", SPY_PRINT_ON_A_STRIKE["native"], received_ts=SPY_PRINT_ON_A_STRIKE["ts_recv"]
     )
-    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time.time())
+    ofs._price_rows["SPY"] = live_price_rows.price_row("SPY", time_et.now())
     try:
         body = server.levels_payload("SPY", "1", SPY_CLOSE.now)
     finally:
