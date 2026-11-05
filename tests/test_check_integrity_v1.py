@@ -39,7 +39,7 @@ def repo(tmp_path):
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
     _write(root, "tests/test_a.py", SURVIVES)
-    _write(root, "tests/test_gone.py", SURVIVES.replace("test_x", "test_gone"))
+    _write(root, "tests/test_gone.py", "def test_gone():\n    assert 3 == 3\n")
     _write(root, "tests/e2e/page.spec.js", SPEC)
     _write(root, "product.py", "VALUE = 1\n")
     _write(root, "AGENTS.md", "# rules\n")
@@ -93,6 +93,24 @@ def test_a_test_moved_to_another_file_with_its_assertions_passes(repo):
     (repo / "tests/test_a.py").unlink()
     _write(repo, "tests/test_b.py", SURVIVES)
     assert _found(repo) == []
+
+
+def test_a_test_renamed_and_stripped_of_an_assertion_is_refused(repo):
+    """A test is known by what it asserts: renamed, it is still the test it was."""
+    _write(repo, "tests/test_a.py", "def test_y():\n    assert 1 == 1\n")
+    assert _found(repo) == ["test_x: assertion lost: 2 == 2"]
+
+
+def test_a_test_renamed_with_its_assertions_passes(repo):
+    _write(repo, "tests/test_a.py", SURVIVES.replace("test_x", "test_y"))
+    assert _found(repo) == []
+
+
+def test_a_test_that_is_another_test_again_is_refused(repo):
+    _write(repo, "tests/test_b.py", SURVIVES.replace("test_x", "test_again"))
+    assert _found(repo) == [
+        "a test duplicated: tests/test_a.py::test_x, tests/test_b.py::test_again"
+    ]
 
 
 def test_a_test_rewritten_with_its_assertions_restated_passes(repo):

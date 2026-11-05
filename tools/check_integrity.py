@@ -149,21 +149,36 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
     return found
 
 
+def _tests(root: Path, rev: str) -> list[str]:
+    names = _git(root, "ls-tree", "-r", "-z", "--name-only", rev).split("\0")
+    return [f for f in names if PYTHON_TESTS.match(f) or JS_TESTS.match(f)]
+
+
 def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
+    """Each assertion a surviving test lost on net. A test is known by what it asserts, not only by
+    its name: a test gone under its old name is the new test that holds the most of its
+    assertions, judged like one that kept its name. A test with no such match was deleted, the
+    review's to judge. An assertion of a function the change deleted goes with it."""
     tests = [f for f in files if PYTHON_TESTS.match(f) or JS_TESTS.match(f)]
     product = [f for f in files if f.endswith(".py") and not f.startswith("tests/")]
     deleted = _definitions(root, base, product) - _definitions(root, "HEAD", product)
     before = _assertions(root, base, tests)
     after = _assertions(root, "HEAD", tests)
+    new = after.keys() - before.keys()
+    pairs = [(test, test) for test in sorted(before.keys() & after.keys())]
+    for test in sorted(before.keys() - after.keys()):
+        renamed = max(sorted(new), key=lambda n: len(before[test] & after[n]), default=None)
+        if renamed is not None and before[test] & after[renamed]:
+            pairs.append((test, renamed))
     out = []
-    for test in sorted(before.keys() & after.keys()):
+    for test, now in pairs:
         lost = [
             a
-            for a in sorted(before[test] - after[test])
+            for a in sorted(before[test] - after[now])
             if not deleted.intersection(CALLED.findall(a))
         ]
         # an assertion corrected or strengthened is one for one; only a net loss is a loss
-        if len(lost) > len(after[test] - before[test]):
+        if len(lost) > len(after[now] - before[test]):
             out.extend(f"{test}: assertion lost: {a}" for a in lost)
     return out
 
@@ -201,10 +216,30 @@ def review_violations(body: str, head_sha: str, files: list[str]) -> list[str]:
     return out
 
 
+def duplicate_tests(root: Path) -> list[str]:
+    """Each Python test of the head that is another one again: the same code, arguments and
+    decorators once its name and docstring are set aside, over every test file."""
+    seen: dict[str, list[str]] = {}
+    for name in _tests(root, "HEAD"):
+        if not name.endswith(".py"):
+            continue
+        for node in ast.walk(ast.parse(_git(root, "show", f"HEAD:{name}"))):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+                "test"
+            ):
+                body = node.body[1:] if ast.get_docstring(node) else node.body
+                key = ast.dump(ast.Module(body=body, type_ignores=[])) + "".join(
+                    ast.dump(part) for part in (node.args, *node.decorator_list)
+                )
+                seen.setdefault(key, []).append(f"{name}::{node.name}")
+    return [f"a test duplicated: {', '.join(same)}" for same in seen.values() if len(same) > 1]
+
+
 def violations(root: Path, base: str, body: str, head_sha: str) -> list[str]:
     files = changed(root, base)
     return [
         *lost_assertions(root, base, files),
+        *duplicate_tests(root),
         *added_markers(root, base),
         *review_violations(body, head_sha, files),
     ]

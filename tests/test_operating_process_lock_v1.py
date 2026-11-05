@@ -30,8 +30,8 @@ def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
     bad = PLG.production_checkout_edit_violations({"file_path": str(primary / "db.py")}, primary)
     assert any("PROD_CHECKOUT_EDIT" in b for b in bad), bad
     # ...and so is a doc in the primary: every file of it is gated (everything is repo wide)
-    bad = PLG.production_checkout_edit_violations({"file_path": str(primary / "notes.md")}, primary)
-    assert any("PROD_CHECKOUT_EDIT" in b for b in bad), bad
+    doc = PLG.production_checkout_edit_violations({"file_path": str(primary / "notes.md")}, primary)
+    assert any("PROD_CHECKOUT_EDIT" in b and "notes.md" in b for b in doc), doc
 
 
 def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
@@ -252,7 +252,7 @@ def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
     assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
 
 
-def test_a_shell_write_to_the_production_checkouts_app_code_is_refused_and_devices_are_not():
+def test_a_shell_write_to_a_production_file_is_refused_and_devices_are_not():
     """The shell rail places each write destination with `production_path`, against this
     repository's own production checkout: a redirect into static/ or docs/ is refused; a device
     (`/dev/null`, and `NUL` where Windows makes it one) or an empty name is no file there, and

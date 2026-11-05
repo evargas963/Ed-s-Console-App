@@ -167,14 +167,30 @@ then the rule binds with no machine check.
   `check_eol_style_invariant`, `check_fails_before` and `check_integrity` judge a change itself (a
   file's line endings kept, a new test failing on the old code, the review record), not what files
   hold, and read every file of any kind a change touches. Each tool SHAPE adds (import-linter,
-  ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). Open with the
-  operator, 2026-11-04, each a narrowing an earlier decision made: `capture_main`'s import
-  (rule 13, his); the counts `check_locks.FREE` lets rise (size, work items, docstring style; the
-  agent's decision of 2026-11-01, his to reverse); ruff's own fixes judged as such in product code
-  only (`check_end_to_end.tools_fix_is_safe`, "Fix what you find"); the one
-  module rule of `check_one_reader` judging product modules only (tests read Schwab's fields from
-  captured data: 151 second readers counted over every file, 12 over product code); the vendored
-  chart library's one patch shape, which this repository cannot fix at its source.
+  ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). The operator's
+  decisions of 2026-11-04 on what that rule found:
+  - Tests stay independent ("test should remain independent"): a test runs real captured Schwab
+    data through the real code and checks it against values worked out outside that code, so the
+    tests read Schwab's captured answers themselves; every other file has one reader per field
+    (`check_one_reader`, `tests/test_check_one_reader_v1.py`). The captured data each test uses is
+    representative of what it tests and free of flaws such as two snapshots 30 minutes apart read
+    as consecutive values ("the data set must be extremely well representative of the test";
+    TEST-CLEANUP, no machine check, ENF-12).
+  - Size is not a rule ("i am not going to set some arbitrary number"): lines, bytes and work
+    items are reported and never judged (`check_locks.FREE`); simple code is held by the checks of
+    correctness (one producer, no patch shapes, no dead code, the complexity cap, the reviewers)
+    and by `/simplify` on every change ("you must always /simplify", no machine check, ENF-12).
+  - A test is known by what it asserts, not by its name, and no test duplicates another
+    (`tools/check_integrity.py`, `tests/test_check_integrity_v1.py`); a change updates every test
+    it affects in the same PR.
+  - `capture_main`'s import is fixed (rule 13); how a crash while the daemon loads stays recorded
+    once it moves is open with the operator.
+  - The vendored chart library's one patch shape is left as it is: this repository cannot fix it
+    at its source.
+  - Every language the repository holds gets its standard checker, run over the whole repository
+    (Python: ruff; JavaScript, HTML, CSS, JSON, YAML, Markdown: ESLint, html-validate, Stylelint
+    and Prettier; workflows: actionlint; TOML: taplo; Markdown: markdownlint): LINTERS, next after
+    this change.
 
 ## Before writing code
 

@@ -264,7 +264,7 @@ def test_4_a_malformed_payload_fails_safely_and_poisons_nothing(tmp_path):
     assert ok.returncode == 0 and ok.stderr == "", ok.stderr
 
 
-def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_blocks(tmp_path):
+def test_5_every_file_is_free_in_a_worktree_and_refused_in_the_production_checkout(tmp_path):
     """The live-checkout rail reads git TOPOLOGY, never a path name: every file is free in a
     linked worktree, refused in a primary checkout, refused from a linked worktree INTO the
     primary, tests, governance, docs and reports as much as app code (everything is repo wide,

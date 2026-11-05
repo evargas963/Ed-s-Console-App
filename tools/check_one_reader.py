@@ -9,7 +9,7 @@ list is read from the base and from the pull request, so removing a row does not
 A module reads a field raw when its code takes it out of a mapping by that name: `x["NAME"]`,
 `x.get("NAME")`, `x.pop("NAME")` or `"NAME" in x` / `not in x`, the name written as text or as a
 module-level constant holding it (`K = "LAST_PRICE"` ... `x.get(K)`). A write (`x["NAME"] = v`) is
-not a read. For each field, the product Python modules (`check_end_to_end.is_product`) that read it
+not a read. For each field, the Python modules of every folder but `tests/` that read it
 are found at the merge base and on the pull request, and the pull request is refused when a module
 that did not read the field at the merge base reads it and the field is then read by more than one
 module. Moving a field's one reader and bringing readers into one parser pass; renaming one of
@@ -38,8 +38,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-
-from tools.check_end_to_end import is_product
 
 FIELDS_CSV = "docs/schwab_fields.csv"
 #: Schwab's own spelling: an uppercase streamer field (one word or UPPER_SNAKE) or a camelCase
@@ -124,10 +122,12 @@ def fields_read(src: str, fields: set[str]) -> set[str]:
 
 
 def readers(root: Path, rev: str, fields: set[str]) -> dict[str, set[str]]:
-    """field -> the product modules at `rev` that read it raw."""
+    """field -> the modules at `rev` that read it raw: every Python file but the tests, which read
+    Schwab's captured answers themselves to check the code on its own terms (operator 2026-11-04:
+    "test should remain independent")."""
     out: dict[str, set[str]] = {}
     for path in _git(root, "ls-tree", "-r", "--name-only", rev).splitlines():
-        if not (path.endswith(".py") and is_product(path)):
+        if not path.endswith(".py") or path.startswith("tests/"):
             continue
         try:
             names = fields_read(_git(root, "show", f"{rev}:{path}"), fields)
