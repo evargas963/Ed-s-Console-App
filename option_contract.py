@@ -19,8 +19,11 @@ from numeric_contract import SCHWAB_NO_VALUE, schwab_count, schwab_number
 
 log = logging.getLogger("option_contract")
 
-#: the Greeks the chain carries, each Schwab's stream or quote value (schwab_client.GREEK_FIELDS)
+#: the Greeks the chain carries, each Schwab's stream or quote value
 GREEKS = ("gamma", "delta", "theta", "vega", "rho")
+#: the contract fields Schwab's chain sends rounded, which it cannot change (Schwab Trader API
+#: Support, 2026-10-06, item 6), and its quotes and its LEVELONE_OPTIONS stream send as computed
+GREEK_FIELDS = (*GREEKS, "volatility")
 #: the fields read into the record; every other field is the listing, shown as sent
 READ = frozenset(
     {
@@ -80,22 +83,12 @@ def _greek(raw: Mapping, name: str, void: bool) -> float | None:
     return None if void else schwab_number(raw.get(name))
 
 
-#: each Greek of a contract's LEVELONE_OPTIONS record: the contract's name, Schwab's stream field
-STREAMED_GREEKS = (
-    ("gamma", "GAMMA"),
-    ("delta", "DELTA"),
-    ("theta", "THETA"),
-    ("vega", "VEGA"),
-    ("rho", "RHO"),
-    ("volatility", "VOLATILITY"),
-)
-
-
 def streamed_greeks(content: Mapping[str, Any]) -> dict[str, float | None]:
     """Return the Greeks of a contract's LEVELONE_OPTIONS record, under the contract's names.
 
     The one reader of those stream fields (the chain sweep, the console's order-flow state and
-    its history): each as Schwab sent it (schwab_number), None where this record has none.
+    its history): each as Schwab sent it (schwab_number), None where this record has none. Its
+    keys are GREEK_FIELDS, each the stream field's name in lowercase.
     """
     return {
         "gamma": schwab_number(content.get("GAMMA")),

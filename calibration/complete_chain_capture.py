@@ -33,9 +33,8 @@ from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from live_price_rows import price_row
 from numeric_contract import schwab_number
-from option_contract import STREAMED_GREEKS, read_chain, streamed_greeks
+from option_contract import GREEK_FIELDS, read_chain, streamed_greeks
 from schwab_client import (
-    GREEK_FIELDS,
     QUOTES_BATCH_MAX,
     flatten_chain_contracts,
     option_expiries,
@@ -592,7 +591,7 @@ class ChainSweep:
                 and None not in (greeks := streamed_greeks(entry[1]["content"])).values()
             ):
                 ct.update(greeks)
-                ct["greeksTime"] = {g: entry[1]["field_ts"][f][0] for g, f in STREAMED_GREEKS}
+                ct["greeksTime"] = {g: entry[1]["field_ts"][g.upper()][0] for g in GREEK_FIELDS}
             else:
                 ct.update(dict.fromkeys(GREEK_FIELDS))
                 ct["greeksTime"] = None

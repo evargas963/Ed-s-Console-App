@@ -126,11 +126,10 @@ class OrderFlowState:
         # (which reads a contract's OWN totalVolume) can apply the SAME newer-than-REST
         # precedence rule already used for gamma/delta/open_interest, instead of a bare
         # ticker-level number with no freshness of its own.
-        greeks = streamed_greeks(content_item)
-        gamma, delta = greeks["gamma"], greeks["delta"]
-        oi = schwab_count(content_item.get("OPEN_INTEREST"))
         # VOLATILITY too: the model's input must be as fresh as the gamma beside it
-        iv = greeks["volatility"]
+        greeks = streamed_greeks(content_item)
+        gamma, delta, iv = greeks["gamma"], greeks["delta"], greeks["volatility"]
+        oi = schwab_count(content_item.get("OPEN_INTEREST"))
 
         def received(field: str) -> float:
             return ts_recv if field_received is None else field_received[field]

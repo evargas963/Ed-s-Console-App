@@ -85,7 +85,7 @@ from math_exposure_core import (
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from option_contract import OptionContract, chain_row, read_chain
+from option_contract import GREEK_FIELDS, OptionContract, chain_row, read_chain
 from runtime_layout import logs_dir as _runtime_logs_dir
 from terrain_atr import Atr, compute_atrs, roll_up
 from terrain_engine import (
@@ -1396,8 +1396,6 @@ def _contract_ticker(sym: str) -> str | None:
         )
 
 
-#: a quote's values, carried together: its greeks with their volatility
-_QUOTE_GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 _QUOTE_COUNTS = ("open_interest", "volume")
 
 
@@ -1414,7 +1412,7 @@ def _carried(newer: OptionContract, older: OptionContract | None, replaced) -> O
         return newer
     taken = {}
     if newer.gamma is None and older.gamma is not None:
-        taken.update({f: getattr(older, f) for f in _QUOTE_GREEKS})
+        taken.update({f: getattr(older, f) for f in GREEK_FIELDS})
     for f in _QUOTE_COUNTS:
         if _positive(getattr(older, f)) and replaced(getattr(newer, f)):
             taken[f] = getattr(older, f)

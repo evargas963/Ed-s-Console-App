@@ -328,8 +328,8 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
 #: streamed-state key (app.options.order_flow.state) -> the record field it
-#: replaces: a newer streamed value of a contract Schwab streams replaces the chain's (the sweep
-#: took that contract's Greeks from the same stream, so the source does not change).
+#: replaces: a newer streamed value of a contract Schwab streams replaces the chain's, which is the
+#: stream's own when the sweep took it while the contract was streamed.
 _STREAMED_FIELDS: tuple[tuple[str, str], ...] = (
     ("gamma", "gamma"),
     ("delta", "delta"),
