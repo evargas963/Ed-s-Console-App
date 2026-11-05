@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from pathlib import Path
 
 import launch
 import time_et
+from app.market_data.schwab.streaming import capture
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -69,6 +71,44 @@ def run_until(env: dict, done) -> str:
         program.kill()
         program.wait(30)
     return "".join(lines)
+
+
+def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
+    """Ctrl+C or Ctrl+Break in the program's window asks for its one clean stop, as
+    `launch.py stop` does: it says so, writes what it holds, and exits EXIT_STOPPED, which its
+    window does not restart. The real program in a process group of its own, sent Ctrl+Break on
+    Windows (Windows sends a console event to another program's group as Ctrl+Break, not
+    Ctrl+C; both take the same handler, capture.INTERRUPTS), Ctrl+C's SIGINT elsewhere."""
+    windows = sys.platform == "win32"
+    env, pages = program_env(tmp_path)
+    program = subprocess.Popen(
+        [sys.executable, *launch.DAEMON_START],
+        cwd=REPO,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
+    )
+    lines: list = []
+    threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
+    try:
+        end = time_et.elapsed() + 120
+        while "Live-plane feed started" not in "".join(list(lines)):
+            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
+            time.sleep(0.25)
+        assert launch.unhealthy_for(pages, 30) is None  # a page request, as the browser makes
+        os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
+        code = program.wait(90)
+    finally:
+        if program.poll() is None:
+            program.kill()
+            program.wait(30)
+    text = "".join(lines)
+    assert "Ctrl+C: stopping cleanly" in text, text
+    assert code == capture.EXIT_STOPPED, (code, text)
+    assert '"GET /api/health' not in text, "a page request is not the window's"
 
 
 def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):

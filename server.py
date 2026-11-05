@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import ctypes
 import json
 import logging
 import os
-import signal
 import sqlite3
 import subprocess
-import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -144,95 +140,6 @@ SPOT_SOURCE_CAPTURE = (
     "chain_capture"  # underlyingPrice of a stored chain capture (DATA_FLOW decision 7)
 )
 SPOT_SOURCE_NONE = "none"  # Schwab has sent no price
-
-
-#: Seconds the graceful shutdown gets before the process is killed outright. Generous
-#: enough for real teardown, short enough that the operator is never held hostage by one
-#: blocked worker.
-SHUTDOWN_DEADLINE_SEC: float = 12.0
-_shutdown_watchdog_armed = threading.Event()
-
-
-def _hard_exit(reason: str) -> None:
-    """Terminate NOW, bypassing atexit. The only thing that beats a stuck join.
-
-    `os._exit` is deliberate: `sys.exit` unwinds through the concurrent.futures atexit
-    hook, which is one of the things that hangs. Nothing here needs atexit for durability
-    -- DB writes commit inline, and every background pool is a cache/refresh whose work is
-    disposable by design.
-    """
-    try:
-        log.warning("HARD EXIT: %s", reason)
-        for h in list(getattr(log, "handlers", []) or []):
-            # A handler that cannot flush must not stop the exit — that would reintroduce
-            # exactly the hang this function exists to end.
-            with contextlib.suppress(Exception):
-                h.flush()
-        sys.stderr.write(f"\nHARD EXIT: {reason}\n")
-        sys.stderr.flush()
-    finally:
-        os._exit(0)
-
-
-def _arm_shutdown_watchdog(deadline_sec: float = SHUTDOWN_DEADLINE_SEC) -> None:
-    """Kill the process if graceful shutdown has not finished within the deadline.
-
-    REFUSES under pytest. TestClient runs the lifespan inside the TEST process; an armed
-    watchdog outlives the test and os._exit(0)s PYTEST ITSELF 12 s later -- mid-suite,
-    silently, exit code 0, all captured output lost. A watchdog that can kill the test
-    runner is worse than the hang it prevents.
-    """
-    if os.environ.get("PYTEST_CURRENT_TEST"):
-        return
-    if _shutdown_watchdog_armed.is_set():
-        return
-    _shutdown_watchdog_armed.set()
-
-    def _watch() -> None:
-        time.sleep(deadline_sec)
-        _hard_exit(
-            f"graceful shutdown exceeded {deadline_sec:.0f}s - a background worker is "
-            "still running (a chain pricing or a request on a route's worker thread) and cannot be "
-            "interrupted"
-        )
-
-    threading.Thread(target=_watch, name="shutdown-watchdog", daemon=True).start()
-
-
-def _install_signal_handlers() -> None:
-    """First Ctrl+C asks politely; a second one is not a request.
-
-    Without this, a console whose uvicorn graceful path is blocked downstream of the signal
-    stops only when it is killed from another window.
-    """
-
-    def _on_signal(signum, _frame):
-        if _shutdown_watchdog_armed.is_set():
-            _hard_exit(f"second interrupt (signal {signum}) - exiting immediately")
-        log.warning("signal %s received - shutting down (press Ctrl+C again to force)", signum)
-        sys.stderr.write("\nShutting down… press Ctrl+C again to force immediate exit.\n")
-        sys.stderr.flush()
-        _arm_shutdown_watchdog()
-        raise KeyboardInterrupt
-
-    # SIGBREAK (Ctrl+Break on Windows) takes the same bounded path: unregistered, it falls through
-    # to Python's default and waits on whatever background worker is blocked (measured: 24.8 s to
-    # exit, twice the deadline). Ctrl+Break is the operator's second lever when Ctrl+C is being
-    # swallowed. `getattr` because SIGBREAK is Windows-only.
-    # The launcher starts the console in a process group of its own (launch.start_console), which
-    # Windows starts with Ctrl+C switched off; switched back on, the operator's Ctrl+C stops it.
-    if sys.platform == "win32":
-        ctypes.windll.kernel32.SetConsoleCtrlHandler(None, False)
-    _sigs = [signal.SIGINT, signal.SIGTERM]
-    _sigbreak = getattr(signal, "SIGBREAK", None)
-    if _sigbreak is not None:
-        _sigs.append(_sigbreak)
-    for sig in _sigs:
-        try:
-            signal.signal(sig, _on_signal)
-        except (ValueError, OSError, AttributeError) as e:
-            # Not the main thread, or the platform lacks it — never fatal.
-            log.debug("could not install handler for %s: %s", sig, e)
 
 
 def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
@@ -489,10 +396,6 @@ async def _app_lifespan(app):
     if _binding is not None:
         log.critical("LIVE CONSOLE REFUSED: %s", _binding)
         raise RuntimeError(f"live console refused: {_binding}")
-    # Installed FIRST: until these exist, Ctrl+C depends on uvicorn's graceful path
-    # completing, and that path joins background workers which may be blocked.
-    _install_signal_handlers()
-
     # Before the loops and the feed: everything priced from here on has the recorded sessions, and
     # the daemon's answers then replace them.
     _load_stored_sessions(canonical_stream_db_path())
@@ -517,13 +420,8 @@ async def _app_lifespan(app):
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
-    # BOUNDED BY CONSTRUCTION. stop_bar_writer waits up to 10 s for the bar writer; at interpreter
-    # exit Python joins every non-daemon thread with no limit: the pricing thread (_chain_pricing)
-    # and AnyIO's worker threads, which run the plain-def routes. Neither can be interrupted, so one
-    # blocked pricing or request would hold the exit, and abandoning the lifespan would not free the
-    # interpreter. The watchdog ends the process whether or not it returns.
-    _arm_shutdown_watchdog()
-    # the daemon's feed task; the console holds no Schwab socket of its own
+    # The program's one stop (capture.run) ends the pages with everything else; stop_bar_writer
+    # waits up to 10 s for the bar writer.
     try:
         stop_order_flow_stream()
     except Exception as e:  # the other loops still stop

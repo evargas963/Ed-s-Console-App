@@ -95,8 +95,9 @@ REFRESHED = {
     "id_token": "i",
 }
 #: Schwab's answer refusing the daemon's refresh token, built from production's stream_capture log
-#: (stand-in for the body, which the log does not keep): its status ("REST POST /v1/oauth/token ->
-#: 400") and authlib's error and description, Schwab's own `error` and `error_description`
+#: (stand-in for the body, which the log does not keep): its status
+#: ("REQUEST POST /v1/oauth/token -> 400") and authlib's error and description, Schwab's own
+#: `error` and `error_description`
 REFUSED = {
     "error": "unsupported_token_type",
     "error_description": '400 Bad Request: "{"error_description":'

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -113,11 +114,14 @@ def test_market_hours_are_asked_to_the_last_day_schwab_answered(tmp_path):
     assert [(topic, msg["status"]) for topic, msg in published] == [("markets.2027-10-07", 200)]
 
 
-def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_greeks(tmp_path):
+def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_greeks(
+    tmp_path, caplog
+):
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
     try:
-        assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
+        with caplog.at_level(logging.INFO, logger="chain_history"):
+            assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
         first = list(schwab.requests)
         sweep.rotation(client, ["SPY", "TSLA"], threading.Event())
         second = schwab.requests[len(first) :]
@@ -167,6 +171,14 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 
     spy, tsla = delivered(published, "SPY"), delivered(published, "TSLA")
     assert len(spy) == len(SPY["chain"]) and len(tsla) == len(TSLA["chain"])
+    # the window's line for each chain says where its Greeks came from: the held contract pushed,
+    # every other asked for on /quotes, as Schwab saw it asked
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("CHAIN SPY: ")]
+    pushed, requested = 1, len(SPY["chain"]) - 1
+    assert lines and (
+        f"| Greeks: {pushed} pushed by LEVELONE_OPTIONS, {requested} requested on /quotes, "
+        in lines[0]
+    ), lines
     record = daemon.option_record(HELD)[1]
     assert {f: spy[HELD][f] for f in GREEKS} == {f: record["content"][f.upper()] for f in GREEKS}
     assert spy[HELD]["greeksTime"] == {f: record["field_ts"][f.upper()][0] for f in GREEKS}

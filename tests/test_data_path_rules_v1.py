@@ -1166,7 +1166,8 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
     finally:
         srv.shutdown()
     lines = [r.getMessage() for r in caplog.records]
-    chain = [m for m in lines if m.startswith("REST GET /marketdata/v1/chains SPY -> 403 (sent ")]
+    asked = "REQUEST GET /marketdata/v1/chains SPY -> 403 (sent "
+    chain = [m for m in lines if m.startswith(asked)]
     assert len(chain) == 3, "each request once"
     assert " CT, answered " in chain[0] and '"title": "Forbidden"' in chain[0]
     assert "corr-123" in chain[0]

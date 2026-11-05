@@ -47,13 +47,13 @@ from __future__ import annotations
 
 import asyncio
 import bisect
-import ctypes
 import enum
 import json
 import logging
 import logging.handlers
 import os
 import queue
+import signal
 import sqlite3
 import sys
 import threading
@@ -1069,26 +1069,23 @@ class DailyLog(logging.StreamHandler):
         super().close()
 
 
-#: Windows console input modes (SetConsoleMode): selecting text with the mouse, and the flag that
-#: lets that bit be changed
-QUICK_EDIT, EXTENDED_FLAGS = 0x40, 0x80
+def stop_on_interrupt(stop: asyncio.Event, loop: asyncio.AbstractEventLoop) -> None:
+    """Ctrl+C (or Ctrl+Break) in the program's window asks for its one clean stop, the one
+    `launch.py stop` asks for: everything held is written, then it exits EXIT_STOPPED and its
+    window closes. A second press ends it at once (KeyboardInterrupt, main)."""
+
+    def interrupted(_signum, _frame) -> None:
+        log.warning("Ctrl+C: stopping cleanly; press it again to end at once")
+        for sig in INTERRUPTS:
+            signal.signal(sig, signal.default_int_handler)
+        loop.call_soon_threadsafe(stop.set)
+
+    for sig in INTERRUPTS:
+        signal.signal(sig, interrupted)
 
 
-def _no_selection_pause() -> None:
-    """Turn off selecting text with the mouse in the daemon's window, when it has one.
-
-    Windows' console holds every write to a window while text in it is selected, so one click
-    there stopped the daemon in its next log line (measured 2026-11-05: the event loop and the
-    chain thread both stopped inside a log write, the heartbeat with them). The window still
-    shows every line.
-    """
-    if sys.platform != "win32":
-        return
-    kernel = ctypes.windll.kernel32
-    window = kernel.GetStdHandle(-10)  # STD_INPUT_HANDLE
-    mode = ctypes.c_uint32()
-    if kernel.GetConsoleMode(window, ctypes.byref(mode)):
-        kernel.SetConsoleMode(window, (mode.value & ~QUICK_EDIT) | EXTENDED_FLAGS)
+#: the window's interrupts: Ctrl+C, and Ctrl+Break where Windows has it
+INTERRUPTS = (signal.SIGINT, *([signal.SIGBREAK] if hasattr(signal, "SIGBREAK") else []))
 
 
 def _start_log() -> None:
@@ -1097,12 +1094,11 @@ def _start_log() -> None:
     The file is runtime_layout.daemon_log_path under <runtime>/logs, written as the line is
     logged. The window is the error output (the daemon runs under `python` in it), written by a
     thread of its own from a queue (logging.handlers.QueueListener), so a window that holds its
-    writes (a selection, a slow console) never stops the daemon: no line waits on it. A selection
-    is not started by a click there either (_no_selection_pause). From here an error reaches
-    both (main logs one that ends the daemon). WINDOW_ONLY's lines go to the window alone: what
-    Schwab streamed is recorded in stream_capture.db, not a second time in the file.
+    writes (a selection the operator makes to read it, a slow console) never stops the daemon: no
+    line waits on it. From here an error reaches both (main logs one that ends the daemon).
+    WINDOW_ONLY's lines go to the window alone: what Schwab streamed is recorded in
+    stream_capture.db, not a second time in the file.
     """
-    _no_selection_pause()
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
     window = queue.SimpleQueue()
@@ -1166,6 +1162,7 @@ async def serve_console(daemon: Daemon, stop: asyncio.Event) -> None:
             port=CONSOLE_PORT,
             timeout_graceful_shutdown=10,
             log_config=None,
+            access_log=False,  # each page request is not the window's: PUSH and REQUEST lines are
         )
     )
     serving = asyncio.create_task(web.serve(), name="console web server")
@@ -1188,10 +1185,21 @@ STREAM_ITEM = {
 }
 
 
+def pushed_fields(item: dict) -> str:
+    """One pushed Schwab item, readable on one line: each field Schwab sent in it, a single value
+    as sent, a list (a book's levels) as how many it holds."""
+    return ", ".join(
+        f"{k} [{len(v)}]" if isinstance(v, list) else f"{k} {v}"
+        for k, v in item.items()
+        if k != "key"
+    )
+
+
 async def show_stream(bus: MessageBus, stop: asyncio.Event, every: float = 1.0) -> None:
-    """The daemon's window, every `every` seconds: per Schwab service, the messages Schwab pushed,
-    how many symbols they came for, and the newest of them as Schwab sent it, so the operator can
-    watch what the stream carries."""
+    """The daemon's window, every `every` seconds: per Schwab service, the messages Schwab pushed
+    (PUSH: none of it was asked for; the REQUEST lines are the REST calls), how many symbols they
+    came for, and the newest one's fields as Schwab sent them (pushed_fields), so the operator
+    can watch what the stream carries."""
     sub = bus.subscribe("", policy=LOG)
     try:
         while not stop.is_set():
@@ -1213,12 +1221,12 @@ async def show_stream(bus: MessageBus, stop: asyncio.Event, every: float = 1.0) 
                 entry[2] = (msg["symbol"], msg[item])
             for service, (n, symbols, (symbol, item)) in sorted(seen.items()):
                 WINDOW_ONLY.info(
-                    "stream %s: %d messages, %d symbols; newest %s %s",
+                    "PUSH %s: %d messages, %d symbols | newest %s: %s",
                     service,
                     n,
                     len(symbols),
                     symbol,
-                    json.dumps(item),
+                    pushed_fields(item),
                 )
     finally:
         bus.unsubscribe(sub)
@@ -1334,6 +1342,7 @@ async def run() -> int:
         )
     )
     stop = asyncio.Event()
+    stop_on_interrupt(stop, asyncio.get_running_loop())
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()

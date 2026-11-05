@@ -43,7 +43,7 @@ def test_the_console_refuses_before_starting_anything(monkeypatch):
 
     monkeypatch.setattr(runtime_layout, "live_binding_error", lambda *a, **k: "bound elsewhere")
     started = []
-    monkeypatch.setattr(server, "_install_signal_handlers", lambda: started.append("signals"))
+    monkeypatch.setattr(server, "_load_stored_sessions", lambda _path: started.append("sessions"))
 
     async def go():
         async with server._app_lifespan(server.app):

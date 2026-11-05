@@ -166,7 +166,7 @@ def test_a_window_line_reaches_the_window_and_not_the_days_file(tmp_path):
         "import logging\n"
         "from app.market_data.schwab.streaming import capture\n"
         "capture._start_log()\n"
-        "capture.WINDOW_ONLY.info('stream LEVELONE_EQUITIES: 1 messages')\n"
+        "capture.WINDOW_ONLY.info('PUSH LEVELONE_EQUITIES: 1 messages')\n"
         "capture.log.warning('schwab: connected')\n"
         "logging.shutdown()\n"
     )
@@ -179,7 +179,7 @@ def test_a_window_line_reaches_the_window_and_not_the_days_file(tmp_path):
         timeout=120,
         check=True,
     )
-    assert "stream LEVELONE_EQUITIES: 1 messages" in done.stderr
+    assert "PUSH LEVELONE_EQUITIES: 1 messages" in done.stderr
     (log,) = (tmp_path / "logs").glob("stream_capture.*.log")
     assert [line[24:] for line in log.read_text(encoding="utf-8").splitlines()] == [
         "schwab: connected"
@@ -207,15 +207,20 @@ def test_the_window_shows_each_second_what_schwab_streamed(caplog):
 
     with caplog.at_level(logging.INFO, logger="capture"):
         asyncio.run(run())
-    shown = [r.getMessage() for r in caplog.records if r.getMessage().startswith("stream ")]
+    shown = [r.getMessage() for r in caplog.records if r.getMessage().startswith("PUSH ")]
     for service in {m["service"] for m in messages}:
         sent = [m for m in messages if m["service"] == service]
         newest = sent[-1]["item"]
+        fields = ", ".join(
+            f"{k} [{len(v)}]" if isinstance(v, list) else f"{k} {v}"
+            for k, v in newest.items()
+            if k != "key"
+        )
         assert (
             shown.count(
-                f"stream {service}: {len(sent)} messages, "
-                f"{len({m['item']['key'].upper() for m in sent})} symbols; "
-                f"newest {newest['key'].upper()} {json.dumps(newest)}"
+                f"PUSH {service}: {len(sent)} messages, "
+                f"{len({m['item']['key'].upper() for m in sent})} symbols | "
+                f"newest {newest['key'].upper()}: {fields}"
             )
             == 1
         ), service
