@@ -292,7 +292,7 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
             f"optquote.{_CONTRACT}",
             options_quote_msg(
                 symbol=_CONTRACT,
-                content={"key": _CONTRACT, "BID_PRICE": 1.2, "ASK_PRICE": 1.3, "GAMMA": 0.05},
+                content={"key": _CONTRACT, "BID_PRICE": 1.2, "ASK_PRICE": 1.3, "TOTAL_VOLUME": 5},
                 src="schwab_options_l1",
                 ts_recv=ts,
             ),
