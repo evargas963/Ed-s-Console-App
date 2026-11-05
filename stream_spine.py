@@ -1068,6 +1068,7 @@ class CaptureWriter:
         timeout_sec: float = 30.0,
         retry_sec: float = 1.0,
         hold_cap_bytes: int = HOLD_CAP_BYTES,
+        clock=time_et.now,
     ) -> None:
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
         if p.name == "ed_console.db":
@@ -1079,6 +1080,8 @@ class CaptureWriter:
         self.timeout_sec = float(timeout_sec)
         self.retry_sec = float(retry_sec)
         self.hold_cap_bytes = int(hold_cap_bytes)
+        #: the time of day a failure, a block and a spill file are stamped with (time_et.now)
+        self.clock = clock
         self._lock = threading.Lock()
         self._q: queue.SimpleQueue = queue.SimpleQueue()
         self._batch: list = []  # (message, outcome) in the open transaction
@@ -1184,11 +1187,11 @@ class CaptureWriter:
             topic,
             reason,
         )
-        return self._keep(conn, KeptFailure(topic, msg, reason, time_et.now()))
+        return self._keep(conn, KeptFailure(topic, msg, reason, self.clock()))
 
     def _log_once_a_minute(self, key: tuple, fmt: str, *args) -> None:
         """One log line per kind a minute, with how many came since the last line."""
-        minute = int(time_et.now() // 60)
+        minute = int(self.clock() // 60)
         with self._lock:
             seen = self._logged.setdefault(key, [None, 0])
             if seen[0] == minute:
@@ -1326,7 +1329,7 @@ class CaptureWriter:
                 self.state, self.error, self.error_ts = (
                     WRITER_DEAD,
                     f"{type(e).__name__}: {e}",
-                    time_et.now(),
+                    self.clock(),
                 )
                 # not recorded: the open batch, the round's messages not yet in it (the one that
                 # ended the thread first; a retry's round holds its batch and what was waiting),
@@ -1461,7 +1464,7 @@ class CaptureWriter:
         with self._lock:  # rolled back: none of the round is stored
             self._batch, self._batch_spilled, self._stored = [], False, 0
             if self.state != WRITER_BLOCKED:
-                self.error_ts = time_et.now()
+                self.error_ts = self.clock()
             self.state, self.error = WRITER_BLOCKED, reason
             if not holding:  # held now: in memory up to the cap, then spilled
                 self._waiting, self._waiting_bytes = [], 0
@@ -1506,7 +1509,7 @@ class CaptureWriter:
         none or the newest was found at start (read only). Raises the disk's refusal."""
         if self._spills and self._spills[-1].out is not None:
             return self._spills[-1]
-        spill = _Spill.new(self.db_path, int(time_et.now() * 1000), 1)
+        spill = _Spill.new(self.db_path, int(self.clock() * 1000), 1)
         with self._lock:
             self._spills.append(spill)
         log.warning("stream writer: messages go to %s before the database", spill.path)
@@ -1638,7 +1641,7 @@ class CaptureWriter:
             self._round, self._stored = self._waiting, 0
             self._admitting, self._admitted = items, 0
         if items:
-            began = self.error_ts if self.error_ts is not None else time_et.now()
+            began = self.error_ts if self.error_ts is not None else self.clock()
             try:
                 held = _Spill.new(self.db_path, int(began * 1000), 0)
             except OSError as e:

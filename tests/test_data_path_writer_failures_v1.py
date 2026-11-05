@@ -22,7 +22,6 @@ import stat
 import subprocess
 import sys
 import threading
-import time
 import tracemalloc
 from contextlib import closing
 from pathlib import Path
@@ -971,21 +970,22 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
     """INDUCED CONDITIONS: as in the hold-cap test, the database locked while the captured option
     quotes arrive, and a stop while it is still locked, so the writer opens the spill file and, at
     the stop, a file for what memory held; beforehand every name a spill file could take in the
-    1.5 s the quotes arrive in (a millisecond each, in every form) is already taken by a file of
+    1.5 s from the writer's clock (a millisecond each, in every form) is already taken by a file of
     its own. The writer opens neither over any of them: each stays as it was, and the writer's two
-    files hold every quote, memory's file named first. The quotes arrive at least twice the time
-    taking the names is measured to need on this machine as it is loaded now, and never under
-    8 s."""
+    files hold every quote, memory's file named first. The writer's clock is an input, fixed at
+    the capture's first quote time, so the names it would take are known."""
     db = tmp_path / "stream_capture.db"
+    at = _EVENTS[0]["content"]["QUOTE_TIME_MILLIS"] / 1000
     writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
+        db,
+        batch_rows=1,
+        batch_sec=0.01,
+        timeout_sec=0.2,
+        retry_sec=0.1,
+        hold_cap_bytes=_SMALL_CAP,
+        clock=lambda: at,
     )
-    probe = time_et.elapsed()
-    for n in range(300):
-        (tmp_path / f"probe.{n}").write_bytes(b"taken")
-    begin = int(time_et.now() * 1000) + max(
-        8000, int((time_et.elapsed() - probe) * 1000 * 4500 / 300 * 2)
-    )
+    begin = int(at * 1000)
     taken = [
         db.with_name(f"stream_capture.{ms}{n}.spill")
         for ms in range(begin, begin + 1500)
@@ -993,8 +993,6 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
     ]
     for path in taken:
         path.write_bytes(b"taken")
-    assert time_et.now() * 1000 < begin, "the names were not all taken before the quotes arrive"
-    time.sleep(begin / 1000 - time_et.now())
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
 
