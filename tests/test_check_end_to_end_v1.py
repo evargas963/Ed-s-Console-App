@@ -383,6 +383,44 @@ def test_anything_beside_the_running_total_is_still_refused(tmp_path, line):
     assert any("(`.get(key, <literal>)`)" in v for v in found), found
 
 
+_PORT = "import os\n\nPORT = int({line})\n"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'os.environ.get("ED_CONSOLE_PORT", "8000")',
+        'os.environ.get("ED_LIVE_UI_PORT", "8800")',
+        'os.environ.get("ED_LIVE_PUSH_PORT", "8799")',
+    ],
+)
+def test_the_programs_port_settings_are_not_a_missing_value_filled_in(tmp_path, line):
+    """The program's own port, with its written default, which a test points elsewhere: the
+    operator's amendment of 2026-11-05 ("it needs to be extremely narrow")."""
+    assert _found(tmp_path, {"launch.py": _PORT.replace("{line}", line)}) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # another setting's name
+        'os.environ.get("ED_OTHER_PORT", "8000")',
+        'os.environ.get("SCHWAB_API_KEY", "8000")',
+        # a default that is not a whole number written as text
+        'os.environ.get("ED_CONSOLE_PORT", 8000)',
+        'os.environ.get("ED_CONSOLE_PORT", "")',
+        'os.environ.get("ED_CONSOLE_PORT", "80.5")',
+        # another mapping, or the default by keyword
+        'settings.get("ED_CONSOLE_PORT", "8000")',
+        'os.environ.get("ED_CONSOLE_PORT", default="8000")',
+        'environ.get("ED_CONSOLE_PORT", "8000")',
+    ],
+)
+def test_anything_beside_the_port_settings_is_still_refused(tmp_path, line):
+    found = _found(tmp_path, {"launch.py": _PORT.replace("{line}", line)})
+    assert any("(`.get(key, <literal>)`)" in v for v in found), found
+
+
 @pytest.mark.parametrize(
     "text",
     [
