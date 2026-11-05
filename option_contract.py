@@ -1,7 +1,7 @@
 """One option contract of a Schwab chain, read once (AGENTS.md rules 2, 3 and 12).
 
 `read_contract` is the one reader of a chain contract's fields (Schwab's /chains contract, with
-the sweep's quote Greeks, schwab_client.flatten_chain_contracts and
+the sweep's Greeks: the stream's or the quote's, schwab_client.flatten_chain_contracts and
 calibration.complete_chain_capture.ChainSweep). Every calculator, the console's carry rules, the
 gamma surface and /api/chain take the record; none reads the contract's fields again.
 `chain_row` is the record as the chain screens show it, under Schwab's own field names.
@@ -19,7 +19,7 @@ from numeric_contract import SCHWAB_NO_VALUE, schwab_count, schwab_number
 
 log = logging.getLogger("option_contract")
 
-#: the Greeks the chain carries, each Schwab's quote value (complete_chain_capture.GREEK_FIELDS)
+#: the Greeks the chain carries, each Schwab's stream or quote value (schwab_client.GREEK_FIELDS)
 GREEKS = ("gamma", "delta", "theta", "vega", "rho")
 #: the fields read into the record; every other field is the listing, shown as sent
 READ = frozenset(
@@ -78,6 +78,33 @@ class OptionContract:
 
 def _greek(raw: Mapping, name: str, void: bool) -> float | None:
     return None if void else schwab_number(raw.get(name))
+
+
+#: each Greek of a contract's LEVELONE_OPTIONS record: the contract's name, Schwab's stream field
+STREAMED_GREEKS = (
+    ("gamma", "GAMMA"),
+    ("delta", "DELTA"),
+    ("theta", "THETA"),
+    ("vega", "VEGA"),
+    ("rho", "RHO"),
+    ("volatility", "VOLATILITY"),
+)
+
+
+def streamed_greeks(content: Mapping[str, Any]) -> dict[str, float | None]:
+    """Return the Greeks of a contract's LEVELONE_OPTIONS record, under the contract's names.
+
+    The one reader of those stream fields (the chain sweep, the console's order-flow state and
+    its history): each as Schwab sent it (schwab_number), None where this record has none.
+    """
+    return {
+        "gamma": schwab_number(content.get("GAMMA")),
+        "delta": schwab_number(content.get("DELTA")),
+        "theta": schwab_number(content.get("THETA")),
+        "vega": schwab_number(content.get("VEGA")),
+        "rho": schwab_number(content.get("RHO")),
+        "volatility": schwab_number(content.get("VOLATILITY")),
+    }
 
 
 def _expires_at(raw: Any, symbol: Any) -> float | None:

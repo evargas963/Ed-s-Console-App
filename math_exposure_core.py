@@ -327,10 +327,13 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
 _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
-#: streamed-state key (app.options.order_flow.state, read by schwab_count) -> the record field it
-#: replaces. A newer streamed open interest or volume replaces the chain's. Gamma, delta, and
-#: volatility do not: those are the quote the sweep stored, one service for every contract.
-_STREAMED_COUNT_FIELDS: tuple[tuple[str, str], ...] = (
+#: streamed-state key (app.options.order_flow.state) -> the record field it
+#: replaces: a newer streamed value of a contract Schwab streams replaces the chain's (the sweep
+#: took that contract's Greeks from the same stream, so the source does not change).
+_STREAMED_FIELDS: tuple[tuple[str, str], ...] = (
+    ("gamma", "gamma"),
+    ("delta", "delta"),
+    ("volatility", "volatility"),
     ("open_interest", "open_interest"),
     ("total_volume", "volume"),
 )
@@ -341,11 +344,10 @@ def overlay_streamed_contract_fields(
     streamed_by_symbol: dict[str, dict],
     chain_received_ts: float | None,
 ) -> tuple[list[OptionContract], int]:
-    """A contract's streamed open interest and volume onto the chain, matched by `symbol`.
-    Gamma, delta, and volatility stay the quote the sweep stored. For open interest and volume
-    the receive times decide: a streamed field (`<field>_ts_recv`) received after the chain
-    (`chain_received_ts`) replaces the chain's; one received before it does not. A chain with
-    no receive time is replaced by every streamed open interest and volume.
+    """A contract's streamed gamma, delta, volatility, open interest and volume onto the chain,
+    matched by `symbol`. The receive times decide: a streamed field (`<field>_ts_recv`) received
+    after the chain (`chain_received_ts`) replaces the chain's; one received before it does not.
+    A chain with no receive time is replaced by every streamed field.
 
     Pure: a contract that gets a field is a new record, every other the same one. Returns
     (new_contracts, overlaid_count).
@@ -360,7 +362,7 @@ def overlay_streamed_contract_fields(
         streamed = streamed_by_symbol.get(c.symbol) if c.symbol else None
         newer = {
             name: streamed[key]
-            for key, name in _STREAMED_COUNT_FIELDS
+            for key, name in _STREAMED_FIELDS
             if streamed
             and streamed.get(key) is not None
             and (

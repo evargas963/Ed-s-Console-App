@@ -14,6 +14,7 @@ from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, book_side
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
 from numeric_contract import schwab_count, schwab_number
+from option_contract import streamed_greeks
 
 #: the newest prints kept per contract (the tape route serves up to 500)
 TAPE_KEPT = 500
@@ -108,6 +109,7 @@ def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> 
         else None
     )
     bid, ask = schwab_number(item.get("BID_PRICE")), schwab_number(item.get("ASK_PRICE"))
+    greeks = streamed_greeks(item)
     classification = "unknown"
     if trade is not None and bid is not None and ask is not None:
         if trade <= bid:
@@ -132,8 +134,8 @@ def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> 
         "premium": premium,
         "volume": schwab_count(item.get("TOTAL_VOLUME")),
         "oi": schwab_count(item.get("OPEN_INTEREST")),
-        "iv": schwab_number(item.get("VOLATILITY")),
-        "delta": schwab_number(item.get("DELTA")),
+        "iv": greeks["volatility"],
+        "delta": greeks["delta"],
         "multiplier": mult,
         "classification": classification,
     }

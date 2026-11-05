@@ -33,7 +33,7 @@ from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from live_price_rows import price_row
 from numeric_contract import schwab_number
-from option_contract import read_chain
+from option_contract import STREAMED_GREEKS, read_chain, streamed_greeks
 from schwab_client import (
     GREEK_FIELDS,
     QUOTES_BATCH_MAX,
@@ -323,10 +323,11 @@ class ChainSweep:
     next rotation, a removed one is asked for no more). For each ticker, Schwab's expiration
     chain once per ET date, then one chain request per expiry (strike_range=ALL), as Schwab says
     to break up a large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never
-    kept. Every contract is asked for on the quotes endpoint, the one service that carries each of
-    those fields for every contract, QUOTES_BATCH_MAX symbols to a request across tickers, and
-    takes its quote's, with the quote's quoteTime. The stream is not read. A Greek Schwab does
-    not send is absent (None). Each contract carries the time of its Greeks as `greeksTime`
+    kept. A contract Schwab streams (its LEVELONE_OPTIONS record on the bus, `streamed`) with
+    every Greek sent takes the stream's, each with its field's Schwab time, and is not asked for
+    again. Every other contract is asked for on the quotes endpoint, QUOTES_BATCH_MAX symbols to
+    a request across tickers, and takes its quote's, with the quote's quoteTime. A Greek Schwab
+    does not send is absent (None). Each contract carries the time of its Greeks as `greeksTime`
     ({field: Schwab's time, ms}).
 
     The price history (candles, fetch_price_history): each watchlist ticker's 1-minute bars and
@@ -364,7 +365,7 @@ class ChainSweep:
         self.publish = publish  # (topic, msg) -> None, safe from any thread
         self.clock = clock  # when a request begins, and when a chain is delivered
         self.failures = failures  # the daemon's writer: keeps a failed history write
-        self.streamed = streamed  # not read: every greek is the quote's
+        self.streamed = streamed  # option symbol -> its stream record on the bus, or None
         self.round_sec: float | None = None
         self.waiting: str | None = None  # why no chain is asked for (waits), else None
         self._expiries: dict[str, tuple[date, list[date]]] = {}  # ticker -> (ET date, expiries)
@@ -552,8 +553,8 @@ class ChainSweep:
             self._candled[ticker] = now
 
     def fetch_chain(self, schwab_client, ticker: str) -> None:
-        """`ticker`'s chain, every expiry: each contract queued for its quote. Delivered at once
-        when the chain lists no contract."""
+        """`ticker`'s chain, every expiry: each contract's Greeks from the stream, or the contract
+        queued for its quote; delivered at once when none is queued."""
         chain = _Chain(ticker, self.clock())
         try:
             client = schwab_client()
@@ -585,10 +586,18 @@ class ChainSweep:
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
         for ct in chain.contracts():
-            ct.update(dict.fromkeys(GREEK_FIELDS))
-            ct["greeksTime"] = None
-            chain.unquoted.add(ct["symbol"])
-            self._queue.append((chain, ct))
+            entry = self.streamed(ct["symbol"])
+            if (
+                entry is not None
+                and None not in (greeks := streamed_greeks(entry[1]["content"])).values()
+            ):
+                ct.update(greeks)
+                ct["greeksTime"] = {g: entry[1]["field_ts"][f][0] for g, f in STREAMED_GREEKS}
+            else:
+                ct.update(dict.fromkeys(GREEK_FIELDS))
+                ct["greeksTime"] = None
+                chain.unquoted.add(ct["symbol"])
+                self._queue.append((chain, ct))
         if not chain.unquoted:
             self.deliver(chain)
 

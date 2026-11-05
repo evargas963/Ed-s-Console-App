@@ -18,6 +18,7 @@ from l1_trade_observation import (
     vendor_triple,
 )
 from numeric_contract import schwab_count, schwab_number
+from option_contract import streamed_greeks
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -125,11 +126,11 @@ class OrderFlowState:
         # (which reads a contract's OWN totalVolume) can apply the SAME newer-than-REST
         # precedence rule already used for gamma/delta/open_interest, instead of a bare
         # ticker-level number with no freshness of its own.
-        gamma = schwab_number(content_item.get("GAMMA"))
-        delta = schwab_number(content_item.get("DELTA"))
+        greeks = streamed_greeks(content_item)
+        gamma, delta = greeks["gamma"], greeks["delta"]
         oi = schwab_count(content_item.get("OPEN_INTEREST"))
         # VOLATILITY too: the model's input must be as fresh as the gamma beside it
-        iv = schwab_number(content_item.get("VOLATILITY"))
+        iv = greeks["volatility"]
 
         def received(field: str) -> float:
             return ts_recv if field_received is None else field_received[field]
