@@ -558,7 +558,7 @@ class ChainSweep:
             self.fetch_markets(schwab_client, [expiry.isoformat() for expiry in listed[1]])
             for expiry in listed[1]:
                 if stop.is_set():
-                    return
+                    return None
                 resp = safe_get_chain(
                     client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
                 )
@@ -577,6 +577,11 @@ class ChainSweep:
         except Exception as e:  # that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
+        return self.take_greeks(chain)
+
+    def take_greeks(self, chain: _Chain) -> None:
+        """Each contract of a fetched chain takes its Greeks from the stream, or is queued for its
+        quote; the chain is delivered at once when none is queued."""
         for ct in chain.contracts():
             entry = self.streamed(ct["symbol"])
             if (

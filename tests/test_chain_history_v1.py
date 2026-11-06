@@ -278,7 +278,7 @@ def test_a_stop_asked_inside_a_ticker_asks_schwab_for_nothing_more(tmp_path, sch
     published: list = []
 
     def publish(topic, msg):
-        published.append(topic)
+        published.append((topic, msg))
         stop.set()
 
     sweep = cch.ChainSweep(
@@ -287,12 +287,12 @@ def test_a_stop_asked_inside_a_ticker_asks_schwab_for_nothing_more(tmp_path, sch
         publish,
         clock=lambda: _ts("2026-09-30 15:31:57"),
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed={}.get,  # nothing streamed
     )
     client = schwab.client(tmp_path)
     assert sweep.rotation(lambda: client, ["SPY"], stop) == set()
     assert (schwab.asked(CHAIN), schwab.asked(QUOTES)) == ([], [])
-    assert published and not [t for t in published if t.startswith("chain")]
+    assert published and not [t for t, _m in published if t.startswith("chain")]
 
 
 def test_the_daemon_task_stops_when_told(tmp_path):
