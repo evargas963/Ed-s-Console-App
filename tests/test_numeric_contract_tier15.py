@@ -22,9 +22,10 @@ from numeric_contract import (
         (float("inf"), None),
         (float("-inf"), None),
         ("not-a-number", None),
+        (True, None),
         (0, 0.0),
         (-1.5, -1.5),
-        ("0.25", 0.25),
+        ("0.25", None),  # text is never read as a number
     ],
 )
 def test_float_finite_or_none(value, expected):
@@ -44,7 +45,8 @@ def test_float_finite_or_none(value, expected):
         (-1.0, None),
         (float("nan"), None),
         (1e-6, 1e-6),
-        ("1700000000.5", 1700000000.5),
+        (1700000000.5, 1700000000.5),
+        ("1700000000.5", None),
     ],
 )
 def test_float_positive_or_none(value, expected):

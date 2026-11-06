@@ -152,6 +152,11 @@ def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
     fd, lock = cap.acquire_owner_lock(db)
     cap.release_owner_lock(fd, lock)
     assert not lock.exists()
+    for left in ("", "not a pid"):  # a daemon ended between creating the lock and writing its pid
+        lock.write_text(left)
+        fd, lock = cap.acquire_owner_lock(db)
+        cap.release_owner_lock(fd, lock)
+        assert not lock.exists()
 
 
 def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(tmp_path):

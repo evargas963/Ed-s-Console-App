@@ -4,19 +4,18 @@ enforced by tools/check_vendor_field_coercion.py)."""
 from __future__ import annotations
 
 import math
+import numbers
 from typing import (
     Any,
 )
 
 
 def float_finite_or_none(value: Any) -> float | None:
-    """Parse float; reject None, non-numeric, NaN, and ±inf."""
-    if value is None or value == "":
+    """A number of ours as a float: None when it is not a number (None, text, a bool) or not
+    finite. Text is never read as a number."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return None
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return None
+    v = float(value)
     return v if math.isfinite(v) else None
 
 

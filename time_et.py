@@ -12,6 +12,7 @@ unknown. Past the year Schwab answers, a contract's expiry runs to its expiratio
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -61,6 +62,17 @@ def elapsed() -> float:
     is not a time of day.
     """
     return time.monotonic()
+
+
+async def set_within(event: asyncio.Event, seconds: float) -> bool:
+    """Wait up to `seconds` for `event`; True when it is set. An asyncio Event takes no timeout of
+    its own, and asyncio.wait reports one as its answer, not as an error."""
+    waiter = asyncio.ensure_future(event.wait())
+    try:
+        await asyncio.wait({waiter}, timeout=seconds)
+    finally:
+        waiter.cancel()
+    return event.is_set()
 
 
 def now_et() -> datetime:
