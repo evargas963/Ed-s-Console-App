@@ -1180,7 +1180,7 @@ def _contract_ticker(sym: str) -> str | None:
     instrument, whatever the contract's root (SPXW and SPX are both $SPX's)."""
     with _terrain_cache_lock:
         return next(
-            (tk for tk, p in _terrain_cache.items() if sym in (p.get("_contract_symbols") or ())),
+            (tk for tk, p in _terrain_cache.items() if sym in p["_contract_symbols"]),
             None,
         )
 
@@ -1319,7 +1319,7 @@ def _publish_levels(
         spot, spot_source, spot_ts = priced_at
     if new_chain:  # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.symbol for c in chain if c.symbol))
-    listed = payload.get("_contract_symbols") or frozenset()
+    listed = payload["_contract_symbols"]  # set with every new chain; a reprice keeps the cache's
     # one read of the heartbeat: pricing and the cell stamp share it
     feed = lmp.feed_now(at.timestamp())
     streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
@@ -1501,7 +1501,7 @@ def _charm_rows(snap: TerrainSnapshot) -> list:
     """[strike, net dealer charm] from the published charm map (the charm walls' own), exact."""
     return sorted(
         [float(k), float(b["net_charm"])]
-        for k, b in (snap.charm_by_strike or {}).items()
+        for k, b in snap.charm_by_strike.items()
         if b.get("net_charm") is not None
     )
 
@@ -2208,7 +2208,7 @@ def get_options_tape(
     else:
         with _terrain_cache_lock:
             held = _terrain_cache.get(tk)
-        if not held or "_contract_symbols" not in held:
+        if held is None:
             return JSONResponse(
                 {
                     "ticker": tk,
@@ -2398,7 +2398,7 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
     and per-strike rows were computed from. No exposure math here. A contract with a missing
     or malformed expiry is counted, never given a column."""
     by_expiry: dict[str, list] = {}
-    for (exp, _dte), book in (books or {}).items():
+    for (exp, _dte), book in books.items():
         if exp is not None:
             by_expiry.setdefault(exp, []).append(book)
     per_expiry = {
@@ -2435,7 +2435,7 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
     for k in strikes:
         row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
         for col in expirations:
-            bucket = per_expiry.get(col["expiry"], {}).get(k)
+            bucket = per_expiry[col["expiry"]].get(k)  # every column is one of per_expiry's
             syms = symbols_by_expiry.get(col["expiry"], {}).get(k)
             gex, dex, vanna, oi, volume, contracts = _gamma_surface_cell_fields(bucket, syms)
             row.append(gex)
