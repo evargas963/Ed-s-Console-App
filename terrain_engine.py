@@ -164,7 +164,8 @@ class TerrainSnapshot:
     #: The LIVE per-strike map the walls were picked from; the per-strike panel reads it, at
     #: no additional vendor cost — the chain is already in hand. Kept OUT of to_dict() for the
     #: same reason as `profile`: too heavy for every poll; the strikes endpoint reads it directly.
-    per_strike: dict[float, dict[str, Any]] = field(default_factory=dict, repr=False)
+    #: per_strike_view's rows ({all, near, far, dex, oi}); with no book priced, each is empty.
+    per_strike: dict[str, list] = field(default_factory=lambda: per_strike_view({}, {}), repr=False)
     #: The exposure_books every number above was priced from ({(expiry, dte): (book, diag)}):
     #: the gamma-surface grid is shaped from them, so levels, per-strike rows and heatmap
     #: cells come from one pricing pass.

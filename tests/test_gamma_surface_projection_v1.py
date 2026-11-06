@@ -13,7 +13,6 @@ identity is exact).
 
 import json
 
-import time_et
 from math_exposure_core import (
     bucket_metric,
     compute_exposures_by_strike,
@@ -353,18 +352,12 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     DEX and OI profiles (/api/terrain/strikes `measures`, from the terrain publication) are the
     heatmap's own cells summed across expiries -- one computation, two views."""
     import server
-    from terrain_engine import compute_terrain
 
     chain = _chain()
-    snap = compute_terrain("MRVL", chain, SPOT, now=NOW)
+    snap = server._publish_levels(
+        "MRVL", chain, NOW.timestamp(), chain_spot=(SPOT, NOW.timestamp()), now=NOW
+    )
     surface = project_gamma_surface(chain, snap.books)
-    with server._terrain_cache_lock:
-        server._terrain_cache["MRVL"] = {
-            "ticker": "MRVL",
-            "spot": snap.spot,
-            "computed_ts_utc": time_et.now(),
-            "_per_strike": snap.per_strike,
-        }
     try:
         measures = json.loads(server.get_terrain_strikes(ticker="MRVL", scope="all").body)[
             "measures"
