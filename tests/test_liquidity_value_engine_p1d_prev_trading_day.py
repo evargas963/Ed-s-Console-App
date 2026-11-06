@@ -47,12 +47,14 @@ def _held(symbol: str) -> tuple[list, list]:
 
 def _sent(symbol: str, day: date) -> dict:
     """Schwab's daily candle for `day`, as it sent it."""
-    for a in _FX["answers"]:
-        if a["symbol"] == symbol and a["params"]["frequencyType"] == "daily":
-            for c in a["body"]["candles"]:
-                if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() == day:
-                    return c
-    raise AssertionError(f"no daily candle of {symbol} for {day}")
+    (candle,) = [
+        c
+        for a in _FX["answers"]
+        if a["symbol"] == symbol and a["params"]["frequencyType"] == "daily"
+        for c in a["body"]["candles"]
+        if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() == day
+    ]
+    return candle
 
 
 def test_the_prior_days_high_low_and_close_are_schwabs_daily_candle_as_sent():
