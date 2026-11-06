@@ -97,6 +97,7 @@ from terrain_engine import (
     chain_ladder,
     compute_terrain,
     nearest_strike,
+    per_strike_view,
     positioning_migration,
     price_relations,
     side_total,
@@ -1903,7 +1904,7 @@ def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict 
             ),
             f"chain_capture:{prior['et_date']}",
         )
-    return None, None
+    return {"all": [], "near": [], "far": []}, None  # no prior day captured: no rows, no source
 
 
 #: a per-strike panel's window request: Auto / Wider / All, the operator's panned centre strike
@@ -1916,7 +1917,7 @@ ShiftQuery = Annotated[int, Query()]
 def _max_abs_row(rows) -> list | None:
     """The row ([strike, value, ...]) with the largest |value| of every strike; None with no
     known value."""
-    known = [r for r in rows or [] if r[1] is not None]
+    known = [r for r in rows if r[1] is not None]
     return max(known, key=lambda r: abs(r[1])) if known else None
 
 
@@ -1951,28 +1952,19 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     (_windowed): today's GEX and volume (all, near, far expiries), the Chart view's DEX and OI,
     with each list's view; the side sums, the largest-GEX strike and the day-over-day migration
     are of every strike."""
-    today = None
-    measures: dict = {"dex": [], "oi": []}
-    spot_used = None
-    # bound before the try: a failed cache read leaves the panels empty, never a 500
-    _snap: dict = {}
     # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
-    # terrain_engine.per_strike_view)
-    try:
-        cached = terrain_cache_get(tk, now)
-        if cached is not None:
-            _snap = cached
-        _ps = _snap.get("_per_strike") or {}
-        # the terrain loop hands over FINISHED rows ({all,near,far} of
-        # [strike, net_gex_1pct$, volume]); they are served as-is
-        if isinstance(_ps, dict):
-            measures = {m: (_ps.get(m) or []) for m in ("dex", "oi")}
-        if isinstance(_ps, dict) and _ps.get("all"):
-            today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
-            spot_used = _snap.get("spot")
-    except Exception as e:
-        log.warning("terrain strikes live read failed %s: %s", tk, e, exc_info=True)
-    prior, prior_src = _snap.get("_prior_strikes") or (None, None)
+    # terrain_engine.per_strike_view: {all, near, far} of [strike, net_gex_1pct$, volume], and
+    # the dex and oi rows), served as-is; with no levels published, that view of no book: no rows
+    snap = terrain_cache_get(tk, now)
+    if snap is None:  # no levels published for tk: no rows, no prior day, no walls, no times
+        rows, prior, prior_src = per_strike_view({}, {}), {"all": [], "near": [], "far": []}, None
+        walls, spot_used, times = (None, None), None, (None, None)
+    else:  # the prior day's rows are set with every chain the levels are published from
+        rows, (prior, prior_src) = snap["_per_strike"], snap["_prior_strikes"]
+        walls, spot_used = (snap["call_wall"], snap["put_wall"]), snap["spot"]
+        times = (snap["computed_ts_utc"], snap["levels_ts_utc"])
+    today = {k: rows[k] for k in ("all", "near", "far")}
+    measures = {m: rows[m] for m in ("dex", "oi")}
 
     # the per-side GEX and volume sums, against the spot this payload serves (the one aggregator)
     def _side_sums(rows, s):
@@ -1990,12 +1982,8 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         }
 
     live_spot, live_src, _live_ts = resolve_spot(tk, now=now)  # the one spot on every screen
-    today = today or {"all": [], "near": [], "far": []}
     migration = {
-        sc: positioning_migration(
-            today.get(sc), (prior or {}).get(sc), _snap.get("call_wall"), _snap.get("put_wall")
-        )
-        for sc in ("all", "near", "far")
+        sc: positioning_migration(today[sc], prior[sc], *walls) for sc in ("all", "near", "far")
     }
     lists = {**today, **measures}
     windows = {
@@ -2006,7 +1994,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         drawn = {r[0] for r in windows[sc][0]}
         both = [
             abs(v)
-            for r in migration[sc].get("rows") or []
+            for r in migration[sc]["rows"]
             if r[0] in drawn
             for v in (r[1], r[2])
             if v is not None
@@ -2028,19 +2016,14 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         # each list's window: its centre strike and the largest |value| drawn
         "views": {name: windows[name][1] for name in lists},
         "scope": scope,
-        "today_side_sums": _side_sums(today.get("all"), live_spot),
-        "spot_strike": nearest_strike([r[0] for r in today.get("all") or []], live_spot),
+        "today_side_sums": _side_sums(today["all"], live_spot),
+        "spot_strike": nearest_strike([r[0] for r in today["all"]], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
-        "max_abs_row": _max_abs_row(today.get("all")),
+        "max_abs_row": _max_abs_row(today["all"]),
         "migration": migration,
         # the levels verdict these rows carry (LIVE, CLOSE, STALE, NOT LIVE), their time and age
-        **terrain_staleness(
-            _snap.get("computed_ts_utc") if isinstance(_snap, dict) else None,
-            tk,
-            now=now,
-            levels_ts_utc=_snap.get("levels_ts_utc") if isinstance(_snap, dict) else None,
-        ),
-        "prior": prior or {"all": [], "near": [], "far": []},
+        **terrain_staleness(times[0], tk, now=now, levels_ts_utc=times[1]),
+        "prior": prior,
         "prior_source": prior_src,
     }
 

@@ -13,49 +13,13 @@ from math_exposure_core import (
     strike_total_volume,
 )
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.real_chains import NFLX, SPY_0DTE
 
 
-def test_volume_below_and_above_spot_keeps_every_digit():
-    """The strikes below spot and the strikes above it are summed as Schwab sent them. Cutting
-    the total to a whole number happens on the screen, not in the sum."""
-    tk = "ZZSIDE"
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
-            "_per_strike": {"all": [[95.0, 10.0, 10.4], [105.0, -4.0, 3.2]], "near": [], "far": []},
-            "spot": 100.0,
-            "computed_ts_utc": 1.0,
-        }
-    lmp.record_feed_heartbeat(
-        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
-    )
-    lmp.record_from_level_one_equity(
-        tk, {"LAST_PRICE": 100.0, "TRADE_TIME_MILLIS": 1000}, received_ts=1.0
-    )
-    try:
-        resp = srv.get_terrain_strikes(ticker=tk)
-    finally:
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
-        lmp._by_ticker.pop(tk, None)
-        lmp._fields_by_ticker.pop(tk, None)
-        lmp.record_feed_down()
-    sums = json.loads(bytes(resp.body))["today_side_sums"]
-    assert sums["vol_below"] == 10.4
-    assert sums["vol_above"] == 3.2
-    assert sums["spot_basis"] == 100.0
-
-
 def _published(tk: str, chain: list, spot: float, now) -> dict:
-    """The strikes route's answer on `chain` as the levels producer publishes it, at `spot`."""
-    snap = compute_terrain(tk, read_chain(chain), spot, now=now)
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
-            "_per_strike": snap.per_strike,
-            "spot": spot,
-            "computed_ts_utc": 1.0,
-        }
+    """The strikes route's answer on `chain` as the levels producer (_publish_levels) publishes
+    it, at `spot`, with the live price at `spot`."""
+    srv._publish_levels(tk, read_chain(chain), now.timestamp(), chain_spot=(spot, 1.0), now=now)
     lmp.record_feed_heartbeat(
         {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
     )
@@ -71,6 +35,18 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
         lmp._fields_by_ticker.pop(tk, None)
         lmp.record_feed_down()
     return json.loads(bytes(resp.body))
+
+
+def test_volume_below_and_above_spot_keeps_every_digit():
+    """NFLX's whole book: the strikes below spot and the strikes above it are summed as Schwab
+    sent them, every contract's volume, against the payload's own spot; cutting the total to a
+    whole number happens on the screen, not in the sum."""
+    book = compute_exposures_by_strike(read_chain(NFLX.chain), spot=NFLX.spot, now=NFLX.now)[0]
+    sums = _published(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now)["today_side_sums"]
+    volume = {k: strike_total_volume(b) for k, b in book.items()}
+    assert sums["vol_below"] == sum(v for k, v in volume.items() if k < NFLX.spot)
+    assert sums["vol_above"] == sum(v for k, v in volume.items() if k > NFLX.spot)
+    assert sums["spot_basis"] == NFLX.spot
 
 
 def test_a_strike_of_gex_not_known_leaves_its_side_gex_unknown_and_its_volume_in():

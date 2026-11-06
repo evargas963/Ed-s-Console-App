@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from datetime import datetime as _dt
 
+import live_market_plane as lmp
 import push_changes
 import server as srv
 import time_et
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from math_exposure_core import (
+    compute_exposures_by_strike,
+    net_gex_dollars_at_strike,
+    strike_total_volume,
+)
 from micro_structure import Candle
+from option_contract import read_chain
 from tests.feed_live_helper import daemon_bars, stream_daemon_bars
+from tests.real_chains import SPY_0DTE as C
 from time_et import ET
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
@@ -136,39 +145,35 @@ def test_api_levels_b1_contract_single_session_prior_day():
 
 def test_strikes_payload_carries_server_side_sums():
     """STRIP server half: /api/terrain/strikes serves today_side_sums computed against the
-    payload's own spot — the one aggregator. Stand-ins: ZZSUMS's published rows in the console's
-    cache, its price row at 100 with the feed live; no capture of it is stored (no prior day)."""
-    import json
-
-    import live_market_plane as lmp
-    import server as srv
-
-    tk = "ZZSUMS"
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
-            "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]], "near": [], "far": []},
-            "spot": 100.0,
-            "computed_ts_utc": 1.0,
-        }
+    payload's own spot — the one aggregator. SPY's same-day chain (tests/real_chains.SPY_0DTE)
+    published by the levels producer at its captured price, the price row there with the feed
+    live; each side's sum is its strikes' GEX and volume from the same chain's book."""
+    srv._publish_levels(
+        C.ticker, read_chain(C.chain), C.now.timestamp(), chain_spot=(C.spot, 1.0), now=C.now
+    )
     lmp.record_feed_heartbeat(
-        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [C.ticker]}}
     )
     lmp.record_from_level_one_equity(
-        tk, {"LAST_PRICE": 100.0, "TRADE_TIME_MILLIS": 1000}, received_ts=time_et.now()
+        C.ticker, {"LAST_PRICE": C.spot, "TRADE_TIME_MILLIS": 1000}, received_ts=time_et.now()
     )
     try:
-        resp = srv.get_terrain_strikes(ticker=tk)
+        resp = srv.get_terrain_strikes(ticker=C.ticker)
     finally:
         with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
-        lmp._by_ticker.pop(tk, None)
-        lmp._fields_by_ticker.pop(tk, None)
+            srv._terrain_cache.pop(C.ticker, None)
+        lmp._by_ticker.pop(C.ticker, None)
+        lmp._fields_by_ticker.pop(C.ticker, None)
         lmp.record_feed_down()
-    payload = json.loads(bytes(resp.body))
-    ss = payload["today_side_sums"]
-    assert ss["gex_below"] == 10.0 and ss["gex_above"] == -4.0
-    assert ss["vol_below"] == 100 and ss["vol_above"] == 50
-    assert ss["spot_basis"] == 100.0, "sums must be computed against the payload's own spot"
+    book = compute_exposures_by_strike(read_chain(C.chain), spot=C.spot, now=C.now)[0]
+    below = [b for k, b in book.items() if k < C.spot]
+    above = [b for k, b in book.items() if k > C.spot]
+    ss = json.loads(bytes(resp.body))["today_side_sums"]
+    assert ss["gex_below"] == sum(net_gex_dollars_at_strike(b) for b in below)
+    assert ss["gex_above"] == sum(net_gex_dollars_at_strike(b) for b in above)
+    assert ss["vol_below"] == sum(strike_total_volume(b) for b in below)
+    assert ss["vol_above"] == sum(strike_total_volume(b) for b in above)
+    assert ss["spot_basis"] == C.spot, "sums must be computed against the payload's own spot"
 
 
 def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
