@@ -27,7 +27,7 @@ def test_the_console_and_the_daemon_hold_one_watchlist(tmp_path):
     d = capture.Daemon(MessageBus(), HealthRegistry(), capture.stored_watchlist(db))
     status = d.status(time_et.now())
     lmp.record_feed_heartbeat(status)
-    assert d.watchlist == server._watchlist(status["ts"]) == ["SPY", "TSLA", "$SPX"]
+    assert d.watchlist == server._watchlist() == ["SPY", "TSLA", "$SPX"]
 
 
 def test_a_first_run_with_no_database_starts_with_an_empty_watchlist(tmp_path):
@@ -47,4 +47,4 @@ def test_a_heartbeat_with_no_watchlist_is_an_unknown_watchlist_never_an_empty_on
 
     now = time_et.now()
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True})
-    assert server._watchlist(now) is None
+    assert server._watchlist() is None

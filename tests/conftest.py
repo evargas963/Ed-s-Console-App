@@ -106,12 +106,12 @@ def _live_feed_starts_down():
     _lmp_feed.record_feed_down()
     with _lmp_feed._lock:
         _lmp_feed._feed["held"] = {}
-        _lmp_feed._feed["watchlist"] = None
+        _lmp_feed._feed["status"] = None
     yield
     _lmp_feed.record_feed_down()
     with _lmp_feed._lock:
         _lmp_feed._feed["held"] = {}
-        _lmp_feed._feed["watchlist"] = None
+        _lmp_feed._feed["status"] = None
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:

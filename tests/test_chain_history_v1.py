@@ -268,6 +268,21 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
         )
 
 
+def test_a_round_is_timed_only_when_it_asked_for_the_whole_watchlist(tmp_path, schwab):
+    """Production 2026-11-06 08:29:29 CT: a rotation before the open asked for one of the eight
+    watchlist tickers ("1 of 1 tickers delivered in 32 s"), that became the round every ticker's
+    chain was judged by, and at 08:31 every ticker's levels read STALE against the 180 s floor
+    while a whole round takes 234 to 268 s. A round of part of the watchlist is not timed."""
+    ticks = itertools.count(_ts("2026-09-30 15:31:57"), 1.0)
+    sweep, _published, client = _sweep(tmp_path, schwab, lambda: next(ticks))
+    sweep.watchlist = ["SPY", "TSLA"]
+    _rotate(sweep, client)  # SPY alone
+    assert sweep.round_sec is None
+    sweep.watchlist = ["SPY"]
+    _rotate(sweep, client)
+    assert sweep.round_sec is not None and sweep.round_sec > 0
+
+
 def test_a_stop_asked_inside_a_ticker_asks_schwab_for_nothing_more(tmp_path, schwab):
     """Production's stop of 2026-11-06 06:41:51 CT: the sweep went on asking for the chain in hand
     and its quotes for 28 s, past launch.py's 30 s wait. A stop asked once the ticker's sessions

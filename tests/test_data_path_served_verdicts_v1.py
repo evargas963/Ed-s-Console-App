@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -135,6 +135,35 @@ def test_levels_with_no_markets_answer_held_are_not_live(published):
         "NOT LIVE",
         "the market session is unknown",
     )
+
+
+@pytest.mark.parametrize(
+    "after, state, why",
+    [
+        (200, "LIVE", ""),
+        (
+            500,
+            "STALE",
+            "levels are 500s old; the daemon's chain sweep has not delivered this ticker in two "
+            "of its rounds (245s each)",
+        ),
+    ],
+)
+def test_a_late_heartbeat_does_not_shorten_the_round_a_chain_is_judged_by(
+    published, after, state, why
+):
+    """Production 2026-11-06 12:46 to 12:47 CT: META, NVDA and QQQ read STALE at 200 to 205 s
+    old, "the daemon reports no round of its sweep", while the daemon's last round of the
+    watchlist had taken 245 s (its log): a heartbeat more than 3 s old was read as no round, and
+    the limit fell to its 180 s floor. The round the daemon last reported stands while its beat
+    is late; the chain is overdue only past two of them."""
+    delivered = _et(13, 0)
+    published("TSLA", TSLA, delivered)
+    lmp.record_feed_heartbeat(
+        {"ts": delivered.timestamp(), "schwab_socket_open": True, "chain_round_sec": 245.0}
+    )
+    body = server.terrain_answer("TSLA", delivered + timedelta(seconds=after))
+    assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)
 
 
 @pytest.mark.parametrize(
