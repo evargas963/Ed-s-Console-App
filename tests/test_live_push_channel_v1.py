@@ -293,12 +293,12 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
                 content={"key": _CONTRACT, "BIDS": [], "ASKS": []},
             ),
         )
-        assert await _until(lambda: _CONTRACT in seen)
-        assert seen.count(_CONTRACT) == 1
+        assert await _until(lambda: (_CONTRACT, ts) in seen)  # with its receive time
+        assert seen.count((_CONTRACT, ts)) == 1
         assert ofs._option_contract_last_update_ts[_CONTRACT] == ts
         assert ofls.option_top(_CONTRACT) == {"bid": 1.2, "ask": 1.3}
 
-    asyncio.run(_run(body, on_tick=seen.append))
+    asyncio.run(_run(body, on_tick=lambda sym, ts: seen.append((sym, ts))))
 
 
 #: every sqlite3.connect this process makes while _AUDITING is set, as Python's audit hook reports

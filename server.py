@@ -602,7 +602,11 @@ def terrain_cache_get(ticker: str, now: float) -> dict | None:
     if raw is None:
         return None
     out = dict(raw)
-    out.update(terrain_staleness(out.get("computed_ts_utc"), ticker, now=now))
+    out.update(
+        terrain_staleness(
+            out.get("computed_ts_utc"), ticker, now=now, levels_ts_utc=out.get("levels_ts_utc")
+        )
+    )
     return out
 
 
@@ -660,7 +664,11 @@ def _schwab_token_creation_ts() -> float | None:
 
 
 def terrain_staleness(
-    computed_ts_utc: float | None, ticker: str | None = None, *, now: float
+    computed_ts_utc: float | None,
+    ticker: str | None = None,
+    *,
+    now: float,
+    levels_ts_utc: float | None = None,
 ) -> dict:
     """The levels' state at `now`, THE levels verdict every screen shows (`levels_state`): LIVE
     from the market day's start (time_et.options_open) until the ticker's own option market closes
@@ -672,20 +680,21 @@ def terrain_staleness(
     chain (a failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
     (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option market
     is open the daemon fetches every watchlist ticker's chain without end, so age past two of its
-    delivered rounds is a gap, never a schedule. Served beside it: the age and the chain's
-    time."""
+    delivered rounds is a gap, never a schedule. Served beside it: the time of the newest Schwab
+    option value the levels hold (`levels_ts_utc`: the chain, or a value pushed since) and its
+    age."""
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
     failure = str(
         _terrain_refresh_last_error.get(ticker_storage_key(ticker) if ticker else "", "") or ""
     )
     state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
-    age = None if computed_ts_utc is None else now - float(computed_ts_utc)
+    age = None if levels_ts_utc is None else now - float(levels_ts_utc)
     return {
         "levels_state": state,
         "levels_stale_reason": reason,
         "levels_age_sec": age,
         "levels_age_text": None if age is None else age_text(age),
-        "levels_time_ct": None if computed_ts_utc is None else ct_label(computed_ts_utc),
+        "levels_time_ct": None if levels_ts_utc is None else ct_label(levels_ts_utc),
         # actively FAILING is a different action (the chain fetch is erroring, the levels
         # will not come back on their own)
         "levels_failing": bool(state == LEVELS_STALE and failure),
@@ -790,8 +799,8 @@ def levels_verdict(staleness: dict) -> dict:
 
 def _gamma_surface_wanted(tk: str) -> bool:
     """Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for
-    as long as it stays open. It decides only which tickers are repriced on every streamed tick;
-    every watchlist ticker's chain is fetched and priced alike."""
+    as long as it stays open: the heatmap's REQUESTED state. Every watchlist ticker's chain is
+    fetched and priced alike, and every one is repriced on its streamed ticks."""
     return tk in push_changes.watched()
 
 
@@ -1243,12 +1252,13 @@ def _publish_levels(
 ) -> TerrainSnapshot | None:
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
-    Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
-    chain's one spot -- and publishes all three together, so the heatmap, Strike Detail and Key
-    Levels always show one computation. A delivered chain is passed in with its spot
+    Prices the ticker's chain once -- each streamed contract with the values Schwab pushed it
+    (overlay_streamed_contract_fields) -- and publishes all three together, so the heatmap, Strike
+    Detail and Key Levels always show one computation. A delivered chain is passed in with its spot
     (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade time; (None, None)
-    when the daemon held none); a tick on a viewed ticker passes none and the kept chain is
-    repriced at the kept chain's spot. Once that ticker's option window has ended, a
+    when the daemon held none); a streamed tick passes none and the kept chain is repriced at the
+    live price (resolve_spot) with every value pushed since. Once that ticker's option window has
+    ended, a
     later publication keeps the spot already published, so a later equity print does not move
     the close book. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
@@ -1294,7 +1304,7 @@ def _publish_levels(
         chain = _keep_last_reported(
             chain, _previous_counts(memory, payload.get("_count_capture")), begun, product
         )
-    # the chain's spot as published: (price, source, time), kept with the chain for its reprices
+    # the price the levels are computed at: (price, source, time)
     if capture is not None and capture["spot_from_chain"]:
         priced_at = (capture["spot"], SPOT_SOURCE_PLANE, capture["spot_ts"])
     elif capture is not None:
@@ -1307,8 +1317,10 @@ def _publish_levels(
         if chain_spot[0] is None:
             source = SPOT_SOURCE_NONE
         priced_at = (chain_spot[0], source, chain_spot[1])
-    else:
-        priced_at = payload["_chain_spot"]
+    else:  # a streamed tick: the live price, newer than any the levels hold
+        priced_at = resolve_spot(tk, now=at.timestamp())
+        if priced_at[0] is None:  # Schwab has sent this program no price: the last one stands
+            priced_at = payload["_priced_at"]
     if capture is None and valued_at < at and payload.get("spot") is not None:
         # the window has ended: the spot already published is the close, and a later print is not
         spot = payload.get("spot")
@@ -1330,13 +1342,20 @@ def _publish_levels(
     if option_market_open(at, product) is False:
         priced = _keep_last_reported(priced, chain, at, product)
     live_syms = _overlaid_symbols(chain, priced)
+    pushed_ts = [
+        ts
+        for s in live_syms
+        if s in streamed and (ts := _leg_stream_ts_recv(streamed[s])) is not None
+    ]
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
     payload.update(
         {
             # as of the chain they were computed from: a reprice on a kept chain does not make
-            # the levels newer, so a chain that stops arriving shows as stale
+            # the chain newer, so a chain that stops arriving shows as stale
             "computed_ts_utc": fetched_ts,
+            # the newest Schwab option value in them: the chain, or a value pushed since
+            "levels_ts_utc": max([fetched_ts, *pushed_ts]),
             # the instant the book and its charm were valued; a reprice is later than the chain
             "_valued_ts_utc": valued_at.timestamp(),
             "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
@@ -1354,7 +1373,8 @@ def _publish_levels(
             "_charm_by_expiry": snap.charm_by_expiry,
             "_iv_by_expiry": snap.iv_by_expiry,
             "_chain_fetched_ts": fetched_ts,
-            "_chain_spot": priced_at,
+            # the price these levels were computed at: (price, source, time)
+            "_priced_at": priced_at,
         }
     )
     payload["_matrix_by_expiry"] = _ranked_matrices(payload)
@@ -1505,11 +1525,13 @@ def _tick_ticker(sym: str) -> str | None:
     return _contract_ticker(sym)
 
 
-def _on_stream_tick(sym: str) -> None:
+def _on_stream_tick(sym: str, ts: float) -> None:
     """Called by the live feed, on the event loop, for every streamed equity quote and every
-    option quote carrying greeks, open interest or volume. An equity quote checks the ticker's
-    levels for a cross at the live price (stored off the event loop); a viewed ticker is queued
-    for a reprice. Returns at once."""
+    option quote carrying Greeks or volume, with the daemon's receive time of it (`ts`). An equity
+    quote checks the ticker's levels for a cross at the live price (stored off the event loop);
+    the ticker, whichever it is, is queued for a reprice as of `ts` with every value Schwab has
+    pushed (one waits per ticker, as of its newest tick, so the reprice that runs takes the
+    newest). Returns at once."""
     tk = _tick_ticker(sym)
     if tk and not vendor_option_root(sym):
         now = time_et.now()
@@ -1527,17 +1549,18 @@ def _on_stream_tick(sym: str) -> None:
                 now,
                 now_et().strftime("%Y-%m-%d %H:%M:%S ET"),
             )
-    if tk and _gamma_surface_wanted(tk):
-        _wait_to_price(tk, REPRICE)
+    if tk:
+        _wait_to_price(tk, REPRICE, ts=ts)
 
 
 #: prices every ticker's levels, off the event loop, one at a time
 _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
 #: what waits to be priced for a ticker: a chain the daemon DELIVERED, the ticker's STORED
 #: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its held
-#: chain (a streamed tick on a viewed ticker)
+#: chain (a streamed tick of the ticker or of one of its contracts)
 DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
-#: ticker -> (what, contracts, fetched time, the chain's spot): at most one per ticker however far
+#: ticker -> (what, contracts, fetched time or a reprice's tick time, the chain's spot): at most
+#: one per ticker however far
 #: pricing falls behind; a delivered chain replaces what waits, and whatever waits already prices
 #: the newest ticks. Every pricing runs on the one pricing thread, so each ticker's chains are
 #: priced in the order they were fetched.
@@ -1572,10 +1595,14 @@ def _wait_to_price(
 ) -> bool:
     """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread: a delivered
     chain replaces whatever waits for the ticker; anything else waits only for a ticker with
-    nothing waiting, and stored captures only for one with nothing delivered. Returns whether it
-    was queued."""
+    nothing waiting, and stored captures only for one with nothing delivered. A reprice that
+    finds one waiting moves it to its own tick's time (`ts`), so the one that runs is as of the
+    newest tick. Returns whether it was queued."""
     with _chains_waiting_lock:
         held = _chains_waiting.get(tk)
+        if what == REPRICE and held is not None and held[0] == REPRICE:
+            _chains_waiting[tk] = (REPRICE, None, ts, None)
+            return False
         if what != DELIVERED and (held is not None or (what == STORED and tk in _chains_delivered)):
             return False
         if what == DELIVERED:
@@ -1607,11 +1634,11 @@ def _price_chain(
 ) -> None:
     """THE producer of a ticker's levels (_publish_levels): from a newly fetched chain, with the
     chain's own fetch time as its as-of (an older streamed value never overrides it); from the
-    held chain with the newest streamed values (REPRICE); or from the ticker's newest stored
-    captures (STORED, DATA_FLOW decision 7)."""
+    held chain with the newest streamed values, as of the newest tick's receive time (REPRICE,
+    `fetched_ts`); or from the ticker's newest stored captures (STORED, DATA_FLOW decision 7)."""
     if what == REPRICE:  # the held chain: the ticker's reason stays the chain's own
         try:
-            _publish_levels(tk)
+            _publish_levels(tk, now=datetime.fromtimestamp(fetched_ts, ET))
         except Exception as e:  # logged; the next tick or chain reprices
             log.warning("levels reprice failed for %s: %s", tk, e, exc_info=True)
         return
@@ -1671,9 +1698,7 @@ def _status_line(now: float) -> str:
     else:  # no list has arrived: the list is unknown
         prices = "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"
     with _terrain_cache_lock:
-        as_of = [
-            p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")
-        ]
+        as_of = [p.get("levels_ts_utc") for p in _terrain_cache.values() if p.get("levels_ts_utc")]
     newest = ct_label(max(as_of)) if as_of else "none"
     round_sec = (st or {}).get("chain_round_sec")
     return " | ".join(
@@ -2022,7 +2047,10 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         "migration": migration,
         # the levels verdict these rows carry (LIVE, CLOSE, STALE, NOT LIVE), their time and age
         **terrain_staleness(
-            _snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now=now
+            _snap.get("computed_ts_utc") if isinstance(_snap, dict) else None,
+            tk,
+            now=now,
+            levels_ts_utc=_snap.get("levels_ts_utc") if isinstance(_snap, dict) else None,
         ),
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
@@ -2726,7 +2754,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
     t = terrain_answer(tk, now)  # the same payload the terrain route serves
-    tts = t.get("computed_ts_utc")
+    tts = t.get("levels_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
         if t.get(f"{side}_wall_state") == "breached":  # at the live price (price_relations)
             items.append(
@@ -3883,7 +3911,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
     ]
     for gid, label, fam, price in carried:
         if price is not None:
-            as_of = t.get("computed_ts_utc")
+            as_of = t.get("levels_ts_utc")
             producer = (
                 {"producer": "terrain_engine.price_relations", "carried": False}
                 if gid in PRICE_RELATIONS
@@ -3983,13 +4011,13 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                 else t["same_day"].get(gid),
                 "carried": None if t is None else t.get(gid),
                 "staleness": {
-                    "as_of_ts_utc": None if t is None else t.get("computed_ts_utc"),
+                    "as_of_ts_utc": None if t is None else t.get("levels_ts_utc"),
                     "as_of_time_ct": None
-                    if t is None or t.get("computed_ts_utc") is None
-                    else ct_label(t.get("computed_ts_utc")),
+                    if t is None or t.get("levels_ts_utc") is None
+                    else ct_label(t.get("levels_ts_utc")),
                     "age_sec": None
-                    if t is None or t.get("computed_ts_utc") is None
-                    else served_ts - t.get("computed_ts_utc"),
+                    if t is None or t.get("levels_ts_utc") is None
+                    else served_ts - t.get("levels_ts_utc"),
                     "reason": "carried from the terrain",
                 },
             }

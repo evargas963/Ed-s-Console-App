@@ -409,7 +409,7 @@ the program.
   `_publish_levels`: delivered chains, stored captures and the tick reprices all wait in one
   queue, at most one entry per ticker, every ticker the same: longest waiting first, a stored
   capture after every delivered chain waiting, and a reprice in its turn behind the stored
-  captures queued before it (a viewed ticker's ticks queue another during each of its pricings, so
+  captures queued before it (a ticker's ticks queue another during each of its pricings, so
   a reprice put first would leave the stored ones waiting until their chain was delivered:
   Enforced by: `tests/test_data_path_startup_v1.py::test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks`);
   the startup load queues a ticker's stored captures, read from the database when
@@ -556,11 +556,20 @@ the program.
   absent (`server._forces_from_captures`), and a charm, DEX, ΔOI, GEX or volume side with a strike not known, or no strike at all, leaves that side
   absent (enforced by `tests/test_data_path_charm_side_unknown_v1.py` and `tests/test_data_path_side_volume_v1.py`); the screen draws "-". ΔOI is a side's total on the newer day less its total on the older day, both cut at the newer price: a strike a whole chain does not list holds no contracts that day, and the card names the older day. An ATR that cannot be computed is absent (`server._atr_fields`); the
   screen draws "-". None of these rules names a ticker; the
-  watchlist decides which tickers are fetched and priced. A viewed
+  watchlist decides which tickers are fetched and priced. Every streamed tick of a ticker (an
+  equity quote, or a LEVELONE_OPTIONS message of one of its contracts carrying a Greek or its
+  volume, `streaming._REPRICE_FIELDS`) queues a reprice of that ticker on the pricing thread, as
+  of the tick's receive time, whether a page shows it or not (operator 2026-11-06: "the live
+  price is the key"; the levels follow what Schwab pushes). The ticks that arrive while one waits
+  or runs are all in the next, which is as of the newest; it is pushed to the page the moment it
+  changes. A streamed contract's Greeks and volatility are the stream's newest once the stream
+  holds all six, else the chain's (`math_exposure_core.overlay_streamed_contract_fields`); its
+  volume is the stream's. The levels' time (`levels_ts_utc`, served as `levels_time_ct` and the
+  age) is the newest Schwab option value in them: the chain, or a value pushed since; their
+  verdict is judged on the chain's own time (`computed_ts_utc`), so a chain that stops arriving
+  still turns them stale. A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
-  stream runs): every streamed tick queues a reprice on the pricing thread (the ticks that arrive
-  while one waits or runs are all in the next), and it is pushed to the page the moment it
-  changes. Which page opened last decides nothing. With the daemon not reporting (no
+  stream runs). Which page opened last decides nothing. With the daemon not reporting (no
   current heartbeat), no ticker reads "warming": its reason says first that the daemon is not
   reporting, then any other reason (no levels yet, stale levels). A viewed ticker on the
   watchlist reads "warming" until its first chain is priced; any other reads that it is not on
@@ -568,11 +577,13 @@ the program.
   Levels older
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer
   for its chain, or not delivered), whatever the hour.
-  Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`): the
-  chain's one spot (operator 2026-10-23), Schwab's LAST_PRICE with its trade time as the daemon's
+  Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`): for a
+  delivered chain, the chain's one spot, Schwab's LAST_PRICE with its trade time as the daemon's
   price row (`live_price_rows.price_row`) holds it when the chain's last quote is in
   (`ChainSweep.deliver`). The chain carries it to the console (`chain_messages`) and to the chain
-  history; a reprice of the kept chain stays at it; a capture written before the chain carried
+  history. A reprice of the kept chain is at the live price (`resolve_spot`, operator 2026-11-06,
+  replacing 2026-10-23's one spot per chain), or at the price the levels were last computed at
+  while Schwab has sent this program none; a capture written before the chain carried
   one is read at its nearest expiry's underlyingPrice, labelled `chain_capture`
   (`tests/test_data_path_chain_spot_v1.py`). Every route names that price `priced_at_spot` (with
   `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`

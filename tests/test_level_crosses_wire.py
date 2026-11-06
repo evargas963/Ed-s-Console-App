@@ -71,7 +71,7 @@ def _print(msg: dict, tk: str = "SPY") -> list:
     tick reaches the console. Returns the crosses it stored (on the pricing thread)."""
     lmp.record_from_level_one_equity(tk, msg["native"], received_ts=msg["ts_recv"])
     before = {c["cross_id"] for c in _stored(tk)}
-    server._on_stream_tick(tk)
+    server._on_stream_tick(tk, msg["ts_recv"])
     server._chain_pricing.submit(lambda: None).result()
     return [c for c in _stored(tk) if c["cross_id"] not in before]
 
