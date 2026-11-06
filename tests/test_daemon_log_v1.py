@@ -186,6 +186,29 @@ def test_a_window_line_reaches_the_window_and_not_the_days_file(tmp_path):
     ]
 
 
+def test_every_window_line_reaches_the_window_before_the_program_ends(tmp_path):
+    """The window's lines are printed by a thread of their own from a queue: a program that
+    ends the moment it has logged still prints every line it logged, in order (the last lines
+    of a clean stop included)."""
+    script = (
+        "from app.market_data.schwab.streaming import capture\n"
+        "capture._start_log()\n"
+        "for i in range(2000):\n"
+        "    capture.WINDOW_ONLY.info('PUSH line %d', i)\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    shown = [line.split(" ", 2)[2] for line in done.stderr.splitlines() if " PUSH line " in line]
+    assert shown == [f"PUSH line {i}" for i in range(2000)]
+
+
 def test_the_window_shows_each_second_what_schwab_streamed(caplog):
     """Real LEVELONE and book messages Schwab sent (2026-10-05 14:00 CT) through the daemon's
     receive handler: the window's line per service gives the messages, the symbols they came
