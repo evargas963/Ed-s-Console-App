@@ -195,12 +195,66 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     assert not [k for k in body if k.startswith("_")]
 
 
-# ── a streamed greek does not replace the chain's; a streamed volume does ───────────────────────
+# ── a streamed contract's Greeks are the stream's as one set; its volume is the stream's ────────
+
+#: one LEVELONE_OPTIONS message carrying all six of a contract's Greeks and its volume
+#: (STAND-IN values: no CRWD contract was streamed in a capture)
+_PUSHED_SET = {
+    "GAMMA": 0.9,
+    "DELTA": 0.5,
+    "THETA": -0.1,
+    "VEGA": 0.2,
+    "RHO": 0.01,
+    "VOLATILITY": 55.0,
+    "TOTAL_VOLUME": 0,
+}
 
 
-def test_a_streamed_greek_does_not_replace_the_chains():
-    """Gamma on the book is the chain's. A later LEVELONE_OPTIONS gamma does not reprice it;
-    the contract's volume is the stream's (the same 0 the chain carries here)."""
+def _as_pushed(record):
+    """`record` with _PUSHED_SET's values, as the levels take them."""
+    return replace(
+        record, gamma=0.9, delta=0.5, theta=-0.1, vega=0.2, rho=0.01, volatility=55.0, volume=0
+    )
+
+
+def test_a_pushed_greek_set_prices_the_levels_and_their_time_is_the_push():
+    """Schwab pushed every Greek of a streamed contract after the chain: the levels are priced
+    with the pushed values (the pushed field is its one producer), not the chain's, and the
+    levels' time is the push's; the chain's time stays the chain's."""
+    _daemon(held=[_A])
+    _put_chain(fetched_ts=_T - 30.0)
+    _streamed(_A, _PUSHED_SET, _T)
+    _publish()
+    c = _cached()
+    pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
+    assert c["_per_strike"] == pushed.per_strike
+    assert c["_per_strike"] != compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
+    assert (c["levels_ts_utc"], c["computed_ts_utc"]) == (_T, _T - 30.0)
+
+
+def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
+    """Schwab -> the levels, with no page open on the ticker: a LEVELONE_OPTIONS message the
+    daemon pushed reaches the console's feed (streaming._ingest_pushed), whose tick queues the
+    ticker's reprice as of the message's receive time, and the levels the pricing thread
+    publishes carry the pushed Greeks."""
+    _daemon(held=[_A])
+    _put_chain(fetched_ts=_T - 30.0)
+    ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
+    try:
+        _streamed(_A, _PUSHED_SET, _T)
+        _drain()
+    finally:
+        ofs._on_tick_callback = None
+    c = _cached()
+    pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
+    assert c["_per_strike"] == pushed.per_strike
+    assert c["levels_ts_utc"] == _T
+
+
+def test_a_streamed_gamma_alone_does_not_replace_the_chains():
+    """A streamed contract's Greeks are the stream's as one set: a gamma alone (the stream has not
+    sent the other five) leaves the chain's, which the sweep asked /quotes for; the contract's
+    volume is the stream's (the same 0 the chain carries here)."""
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T)
     _put_chain(fetched_ts=_T - 5.0)
@@ -231,8 +285,8 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
-def test_a_streamed_gamma_does_not_apply_before_or_after_the_chain():
-    """A streamed gamma, newer or older than the chain, leaves the chain's gamma."""
+def test_a_streamed_gamma_alone_does_not_apply_before_or_after_the_chain():
+    """A streamed gamma alone, newer or older than the chain, leaves the chain's gamma."""
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T - 60.0)
     priced = compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
@@ -242,7 +296,7 @@ def test_a_streamed_gamma_does_not_apply_before_or_after_the_chain():
     assert _cached()["_per_strike"] == priced
 
 
-def test_a_streamed_gamma_on_two_contracts_does_not_replace_either():
+def test_a_streamed_gamma_alone_on_two_contracts_does_not_replace_either():
     _daemon(held=[_A, _B])
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T)
     _streamed(_B, {"GAMMA": 0.8, "TOTAL_VOLUME": 0}, _T)
@@ -298,25 +352,30 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_levels_are_priced_at_the_chains_spot_and_a_new_chain_moves_them():
-    """One spot per chain (operator 2026-10-23): a reprice of the kept chain on a tick stays at the
-    chain's spot whatever the live price does; the next chain, at its own spot, reprices every
-    view."""
+def test_a_reprice_is_at_the_live_price_and_a_new_chain_at_its_own_spot():
+    """The live price is the key (operator 2026-11-06, replacing 2026-10-23's one spot per chain):
+    a reprice of the kept chain on a tick is at the live price Schwab sent (resolve_spot), with its
+    trade time; the next chain is priced at its own spot, Schwab's LAST_PRICE when it was
+    complete."""
     _daemon()
     _put_chain()
     before = _cached()["_gamma_surface"]
     _daemon(price=_SPOT * 1.02)  # the live price moves
     _publish()
-    kept = _cached()
-    assert kept["spot"] == _SPOT and kept["spot_as_of_ts_utc"] == _T
-    assert kept["_gamma_surface"]["cells"] == before["cells"]
+    moved = _cached()
+    assert (moved["spot"], moved["spot_source"], moved["spot_as_of_ts_utc"]) == (
+        _SPOT * 1.02,
+        server.SPOT_SOURCE_PLANE,
+        int(_T * 1000) / 1000,  # Schwab's TRADE_TIME_MILLIS
+    )
+    assert moved["_gamma_surface"]["spot"] == _SPOT * 1.02
+    assert moved["_gamma_surface"]["cells"] != before["cells"]  # GEX scales with spot
     _publish(
-        _RECORDS, _T + 60.0, chain_spot=(_SPOT * 1.02, _T + 55.0)
+        _RECORDS, _T + 60.0, chain_spot=(_SPOT * 1.01, _T + 55.0)
     )  # the next chain, at its spot
     after = _cached()
-    assert after["_gamma_surface"]["spot"] == _SPOT * 1.02 and after["spot"] == _SPOT * 1.02
+    assert after["_gamma_surface"]["spot"] == _SPOT * 1.01 and after["spot"] == _SPOT * 1.01
     assert after["spot_as_of_ts_utc"] == _T + 55.0
-    assert after["_gamma_surface"]["cells"] != before["cells"]  # GEX scales with spot
     assert (
         after["_gamma_surface"]["surface_seq"] == before["surface_seq"] + 2
     )  # the reprice, then the chain
@@ -437,21 +496,22 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
     _clean,
 ):
     """A streamed tick on a viewed ticker, an equity quote or one of its options, queues one
-    reprice of its kept chain; every tick that arrives while it waits is in that one reprice."""
+    reprice of its kept chain; every tick that arrives while it waits is in that one reprice,
+    which is as of the newest tick's receive time."""
     _daemon()
     _put_chain()
     _view(_clean)
     gate = _busy()
     try:
-        server._on_stream_tick(_A)  # an option of TK
-        for _ in range(10):
-            server._on_stream_tick(TK)
+        server._on_stream_tick(_A, _T)  # an option of TK
+        for i in range(10):
+            server._on_stream_tick(TK, _T + 1 + i)
         with server._chains_waiting_lock:
             waiting = dict(server._chains_waiting)
     finally:
         gate.set()
         _drain()
-    assert waiting == {TK: (server.REPRICE, None, None, None)}
+    assert waiting == {TK: (server.REPRICE, None, _T + 10, None)}
 
 
 def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
@@ -584,9 +644,9 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
 
 def _real_option(with_greek: bool) -> dict:
     """A real LEVELONE_OPTIONS message (2026-10-05 14:00 CT) carrying a value the levels use
-    (TOTAL_VOLUME: a streamed contract's Greeks are the sweep's, its open interest the chain's),
-    or none of them."""
-    used = {"TOTAL_VOLUME"}
+    (a streamed contract's volume or its Greeks; its open interest is the chain's), or none of
+    them."""
+    used = {"TOTAL_VOLUME", "GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY"}
     return next(
         m
         for m in _MIX
@@ -600,8 +660,8 @@ def _real_option(with_greek: bool) -> dict:
 def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_greek):
     m = _real_option(with_greek)
     hits: list = []
-    ofs._on_tick_callback = (
-        hits.append
+    ofs._on_tick_callback = lambda sym, ts: hits.append(
+        (sym, ts)
     )  # the console's callback, as start_order_flow_stream sets it
     try:
         ofs._ingest_pushed(
@@ -615,4 +675,4 @@ def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_g
         )
     finally:
         ofs._on_tick_callback = None
-    assert hits == ([m["item"]["key"]] if with_greek else [])
+    assert hits == ([(m["item"]["key"], m["ts_recv"])] if with_greek else [])

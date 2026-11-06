@@ -168,13 +168,15 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
     assert held_no_trade["spot"] is None
 
 
-def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
-    """A tick queues a reprice for the viewed ticker only (a page open on it, the pricing thread
-    held while the ticks arrive, the queue read as it stands)."""
+def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
+    """Every ticker's levels follow what Schwab pushes, not only the one on screen: a tick queues
+    a reprice of its ticker as of its receive time, whether a page shows it or not (a page open
+    on one, the pricing thread held while the ticks arrive, the queue read as it stands)."""
     import threading
 
     import push_changes
     import server as srv
+    from tests.feed_live_helper import RTH_INSTANT
 
     loop = push_changes._loop
     push_changes.bind(None)
@@ -182,8 +184,8 @@ def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
     gate = threading.Event()
     srv._chain_pricing.submit(gate.wait, 10)
     try:
-        srv._on_stream_tick("ZZNOTVIEWED")
-        srv._on_stream_tick("ZZVIEW")
+        srv._on_stream_tick("ZZNOTVIEWED", RTH_INSTANT)
+        srv._on_stream_tick("ZZVIEW", RTH_INSTANT + 1)
         with srv._chains_waiting_lock:
             waiting = dict(srv._chains_waiting)
     finally:
@@ -191,4 +193,7 @@ def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap():
         srv._chain_pricing.submit(lambda: None).result(timeout=10)
         push_changes.unsubscribe("ZZVIEW", page)
         push_changes.bind(loop)
-    assert waiting == {"ZZVIEW": (srv.REPRICE, None, None, None)}
+    assert waiting == {
+        "ZZNOTVIEWED": (srv.REPRICE, None, RTH_INSTANT, None),
+        "ZZVIEW": (srv.REPRICE, None, RTH_INSTANT + 1, None),
+    }

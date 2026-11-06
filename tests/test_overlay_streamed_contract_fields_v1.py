@@ -1,9 +1,10 @@
 """overlay_streamed_contract_fields (math_exposure_core.py): a contract Schwab streams takes its
 volume from the stream alone, never the chain's (AGENTS.md rule 3: the pushed field is its one
-producer); one the stream has not sent is None. Open interest is the chain's for every contract
-(the stream does not send it for every contract it streams), and gamma, delta, and volatility are
-the sweep's. A contract the stream does not hold keeps the chain's. Pure function: no network, no
-cache, no clock."""
+producer); one the stream has not sent is None. Its Greeks and volatility are the stream's once
+the stream holds all six (one set, as the chain sweep takes them), else the chain's. Open interest
+is the chain's for every contract (the stream does not send it for every contract it streams). A
+contract the stream does not hold keeps the chain's. Pure function: no network, no cache, no
+clock."""
 
 from __future__ import annotations
 
@@ -51,7 +52,53 @@ def test_a_contract_the_stream_does_not_hold_is_untouched():
     assert n == 0
 
 
-def test_volume_is_the_streams_and_open_interest_and_greeks_are_not():
+def test_a_full_set_of_streamed_greeks_is_the_contracts_and_open_interest_stays_the_chains():
+    contracts = [_contract("A", gamma=0.01, delta=0.40, volatility=30.0, openInterest=100)]
+    streamed = {
+        "A": {
+            "gamma": 0.05,
+            "delta": 0.55,
+            "theta": -0.2,
+            "vega": 0.3,
+            "rho": 0.02,
+            "volatility": 41.5,
+            "open_interest": 250,
+            "total_volume": 900,
+        }
+    }
+    out, n = overlay_streamed_contract_fields(contracts, streamed, {"A"})
+    assert n == 1
+    assert (out[0].gamma, out[0].delta, out[0].theta, out[0].vega, out[0].rho) == (
+        0.05,
+        0.55,
+        -0.2,
+        0.3,
+        0.02,
+    )
+    assert out[0].volatility == 41.5 and out[0].volume == 900
+    assert out[0].open_interest == 100, "open interest is the chain's"
+
+
+def test_a_streamed_greek_sent_as_no_value_leaves_the_set_the_chains():
+    """Schwab's -999 is no value (rule 2, read as None): the stream then holds no full set, and
+    the contract's Greeks stay the chain's, never one pushed and five requested mixed."""
+    contracts = [_contract("A", gamma=0.01, delta=0.40, volatility=30.0)]
+    streamed = {
+        "A": {
+            "gamma": None,
+            "delta": 0.55,
+            "theta": -0.2,
+            "vega": 0.3,
+            "rho": 0.02,
+            "volatility": 41.5,
+            "total_volume": 5,
+        }
+    }
+    out, _n = overlay_streamed_contract_fields(contracts, streamed, {"A"})
+    assert (out[0].gamma, out[0].delta, out[0].volatility, out[0].volume) == (0.01, 0.40, 30.0, 5)
+
+
+def test_volume_is_the_streams_and_open_interest_and_a_partial_greek_set_are_not():
     contracts = [_contract("A", gamma=0.01, delta=0.40, openInterest=100, totalVolume=7)]
     streamed = {"A": {"gamma": 0.05, "delta": 0.55, "open_interest": 250, "total_volume": 900}}
     out, n = overlay_streamed_contract_fields(contracts, streamed, {"A"})

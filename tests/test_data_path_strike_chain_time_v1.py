@@ -6,7 +6,8 @@ import server as srv
 
 
 def test_the_strike_panel_carries_the_chain_time():
-    """computed_ts_utc is the chain the per-strike rows were built from. The badge shows
+    """computed_ts_utc is the chain the per-strike rows were built from, and levels_ts_utc the
+    newest Schwab value in them: that chain when nothing was pushed since. The badge shows
     that instant beside the age."""
     tk = "ZZSTRIKETIME"
     fetched = 1790380799.830
@@ -15,6 +16,7 @@ def test_the_strike_panel_carries_the_chain_time():
             "ticker": tk,
             "spot": 100.0,
             "computed_ts_utc": fetched,
+            "levels_ts_utc": fetched,
             "_per_strike": {"all": [[100.0, 1.0, 2.0]], "near": [], "far": []},
         }
     try:

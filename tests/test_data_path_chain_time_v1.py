@@ -18,7 +18,8 @@ def test_the_levels_time_has_one_producer_the_chains_fetch_and_the_calculator_re
 
 
 def test_the_terrain_carries_the_chain_time():
-    """computed_ts_utc is the chain the levels were built from. The desk map shows that
+    """computed_ts_utc is the chain the levels were built from, and levels_ts_utc the newest
+    Schwab value in them: that chain when nothing was pushed since. The desk map shows that
     instant beside the age, and the wall stays. CRWD's real chain, published as chain time
     1790380799.830."""
     tk = "ZZCHAINTIME"
@@ -26,7 +27,7 @@ def test_the_terrain_carries_the_chain_time():
     published = compute_terrain(tk, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now).to_dict()
     assert published["call_wall"] is not None
     with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = published | {"computed_ts_utc": fetched}
+        srv._terrain_cache[tk] = published | {"computed_ts_utc": fetched, "levels_ts_utc": fetched}
     try:
         body = srv.get_terrain(ticker=tk)
     finally:
