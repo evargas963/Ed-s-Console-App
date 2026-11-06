@@ -70,13 +70,10 @@ def bs_vanna(
     """
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
         return None
-    try:
-        vt = sigma * math.sqrt(t_years)
-        d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
-        d2 = d1 - vt
-        v = -math.exp(-div * t_years) * _norm_pdf(d1) * d2 / sigma
-    except (ValueError, ZeroDivisionError, OverflowError):
-        return None
+    vt = sigma * math.sqrt(t_years)
+    d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
+    d2 = d1 - vt
+    v = -math.exp(-div * t_years) * _norm_pdf(d1) * d2 / sigma
     return v if math.isfinite(v) else None
 
 
@@ -95,15 +92,12 @@ def bs_charm(
     """
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
         return None
-    try:
-        vt = sigma * math.sqrt(t_years)
-        d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / vt
-        d2 = d1 - vt
-        # dDelta/dt (calendar time). Sign verified against a finite-difference
-        # derivative of the BS delta.
-        c = -_norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
-    except (ValueError, ZeroDivisionError, OverflowError):
-        return None
+    vt = sigma * math.sqrt(t_years)
+    d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / vt
+    d2 = d1 - vt
+    # dDelta/dt (calendar time). Sign verified against a finite-difference
+    # derivative of the BS delta.
+    c = -_norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
     return c if math.isfinite(c) else None
 
 

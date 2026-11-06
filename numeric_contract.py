@@ -33,11 +33,7 @@ def schwab_number(value: Any) -> float | None:
         return None
     if isinstance(value, int):
         return None if value == SCHWAB_NO_VALUE else float(value)
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return None
-    return v if math.isfinite(v) and v != SCHWAB_NO_VALUE else None
+    return None  # a list or an object: JSON's other kinds are not a number
 
 
 def schwab_count(value: Any) -> float | None:

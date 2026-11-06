@@ -38,7 +38,13 @@ from app.options.order_flow.engine import (
     compute_book_microstructure,
     readout_card,
 )
-from app.options.order_flow.history import LEAN, TAPE, book_heatmap_for_ticker
+from app.options.order_flow.history import (
+    BOOKS_KEPT_SEC,
+    LEAN,
+    TAPE,
+    TAPE_KEPT,
+    book_heatmap_for_ticker,
+)
 from app.options.order_flow.live_payload import flow_block, options_live_payload
 from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
 from app.options.order_flow.streaming import (
@@ -2217,7 +2223,7 @@ def get_charm_by_strike(
 def get_options_tape(
     ticker: str = Query(...),
     contract: str | None = Query(default=None),
-    limit: int = Query(default=100),
+    limit: int = Query(default=100, ge=1, le=TAPE_KEPT),
 ):
     """Discrete option TRADE prints — the Options Flow tape, in the operator's required
     columns: Time/Symbol/Expiry/
@@ -2231,10 +2237,6 @@ def get_options_tape(
     `_held_option_symbols_for_ticker` resolves for the gamma-surface overlay), merged
     newest-first and capped at `limit` across the whole merge, not per-contract."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    try:
-        bounded_limit = max(1, min(500, int(limit)))
-    except (TypeError, ValueError):
-        bounded_limit = 100
 
     if contract:
         symbols = [contract]
@@ -2264,9 +2266,9 @@ def get_options_tape(
 
     rows: list[dict] = []
     for sym in symbols:
-        rows.extend(TAPE.rows(sym, bounded_limit))
+        rows.extend(TAPE.rows(sym, limit))
     rows.sort(key=lambda r: r["ts_recv"], reverse=True)
-    rows = rows[:bounded_limit]
+    rows = rows[:limit]
     return JSONResponse(
         {
             "ticker": tk,
@@ -2289,18 +2291,15 @@ def get_options_tape(
 def get_order_flow_book_heatmap(
     ticker: str = Query(...),
     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
-    minutes: float = Query(default=60.0),
+    minutes: float = Query(default=60.0, gt=0, le=BOOKS_KEPT_SEC / 60),
 ):
     """Book-depth heatmap for one of the ticker's Schwab books, `venue`: delegates to
     app.options.order_flow.history.book_heatmap_for_ticker, which bins the venue's recent books
     in the console's memory into a time x price grid. The window ends at the newest book, never
-    wall-clock now. `minutes` is clamped to [5, 240], the books the console keeps."""
+    wall-clock now. A window longer than the books the console keeps (history.BOOKS_KEPT_SEC),
+    or not above 0, is refused."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    try:
-        bounded_minutes = max(5.0, min(240.0, float(minutes)))
-    except (TypeError, ValueError):
-        bounded_minutes = 60.0
-    payload = book_heatmap_for_ticker(tk, venue, minutes=bounded_minutes)
+    payload = book_heatmap_for_ticker(tk, venue, minutes=minutes)
     return JSONResponse(payload)
 
 
