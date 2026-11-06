@@ -36,6 +36,8 @@ import json
 import logging
 import os
 
+from websockets.asyncio.server import serve
+
 import live_market_plane as lmp
 import live_price_rows
 import time_et
@@ -224,8 +226,6 @@ async def serve_live_ui(
 ) -> None:
     """Run until `stop` is set. Each beat is recorded with `record_heartbeat` (the daemon's own
     plane)."""
-    from websockets.asyncio.server import serve
-
     stats = stats if stats is not None else {}
     srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock)
     lmp.add_row_listener(srv.on_row)

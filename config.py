@@ -3,6 +3,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+from runtime_layout import RUNTIME_ROOT
+
 _ROOT = Path(__file__).resolve().parent
 
 
@@ -13,8 +17,6 @@ ENV_FILE = _ROOT / ".env"
 def load_dotenv_file(path: Path = ENV_FILE) -> None:
     """Put `path`'s variables into the environment, never over ones already set. Entry points
     call it once, first; library code reads the environment and never loads a file."""
-    from dotenv import load_dotenv
-
     if path.is_file():
         load_dotenv(path, override=False)
 
@@ -93,8 +95,6 @@ def token_path() -> str:
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:
         return os.path.abspath(env_token)
-    from runtime_layout import RUNTIME_ROOT
-
     return os.path.abspath(os.path.join(str(RUNTIME_ROOT), "schwab_token.json"))
 
 
