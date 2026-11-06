@@ -3,9 +3,31 @@ Schwab's /markets sends it (tests/conftest.py holds the answers captured 2026-10
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 
-from time_et import ET, now_et
+from time_et import ET, elapsed, now_et, set_within
+
+
+def test_a_wait_for_an_event_answers_whether_it_was_set_and_leaves_no_task_behind():
+    """time_et.set_within: False once the time passes with the event unset, True as soon as it is
+    set (not at the end of the time), and no waiting task is left running after either."""
+
+    async def go():
+        event = asyncio.Event()
+        started = elapsed()
+        unset = await set_within(event, 0.05)
+        waited = elapsed() - started
+        asyncio.get_running_loop().call_later(0.01, event.set)
+        started = elapsed()
+        is_set = await set_within(event, 5.0)
+        await asyncio.sleep(0)  # a cancelled waiter ends on the loop's next turn
+        left = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        return unset, waited, is_set, elapsed() - started, left
+
+    unset, waited, is_set, took, left = asyncio.run(go())
+    assert (unset, is_set, left) == (False, True, [])
+    assert waited >= 0.05 and took < 1.0
 
 
 def test_now_et_uses_america_new_york_zone():

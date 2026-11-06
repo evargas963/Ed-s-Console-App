@@ -60,10 +60,7 @@ def default_console_db_path() -> Path:
 
 
 def is_canonical_db_path(p: Path | str) -> bool:
-    try:
-        return Path(p).resolve() == canonical_console_db_path()
-    except OSError:
-        return False
+    return Path(p).resolve() == canonical_console_db_path()
 
 
 def classify_db_path(p: Path | str) -> Classification:

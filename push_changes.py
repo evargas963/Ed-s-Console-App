@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 
+import time_et
+
 LEVELS, CHAIN, FLOW, LIQUIDITY = "levels", "chain", "flow", "liquidity"
 
 _loop: asyncio.AbstractEventLoop | None = None
@@ -59,9 +61,7 @@ def _mark(tk: str, kind: str) -> None:
 
 async def next_changes(c: Client, timeout: float) -> set[str]:
     """The kinds changed since the last call; empty after `timeout` seconds with none."""
-    try:
-        await asyncio.wait_for(c.wake.wait(), timeout)
-    except TimeoutError:
+    if not await time_et.set_within(c.wake, timeout):
         return set()
     c.wake.clear()
     kinds, c.kinds = c.kinds, set()
