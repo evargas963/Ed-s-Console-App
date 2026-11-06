@@ -6,6 +6,7 @@ traces to a real book's own native BID_PRICE/ASK_PRICE/TOTAL_VOLUME."""
 from __future__ import annotations
 
 from app.options.order_flow import streaming as S
+from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import RecentBooks, book_heatmap_for_ticker
 from stream_spine import book_msg
 
@@ -13,10 +14,11 @@ SYM = "SPY"
 
 
 def _books(rows: list[tuple[float, str, dict]]) -> RecentBooks:
-    """A fresh store fed each (ts_recv, venue, book) as the console's intake does."""
+    """A fresh store fed each (ts_recv, venue, book message) as the console's intake does: the
+    message read by the one reader (engine.read_book) first."""
     books = RecentBooks()
     for ts_recv, service, content in rows:
-        books.record(SYM, service, content, ts_recv)
+        books.record(SYM, service, read_book(content, service), ts_recv)
     return books
 
 

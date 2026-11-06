@@ -10,10 +10,14 @@ publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
+from app.options.order_flow.engine import read_book
 from stream_spine import book_msg, quote_msg
 
 
@@ -64,22 +68,23 @@ def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, m
     _push_l1("SPY", native, ts_recv=time_et.now())
 
     top = ofls.get_content_for_symbol("SPY")
-    assert any(item.get("LAST_PRICE") == 450.0 for item in top)
+    assert any(isinstance(item, dict) and item["price"] == 450.0 for item in top)
     assert lmp.get_quote("SPY") is None  # the price is the daemon's row, not a copy here
 
 
-def test_book_message_lands_verbatim(tmp_path):
+def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):
+    """A real SPY NASDAQ_BOOK message (tests/fixtures/real_spy_nyse_nasdaq_books.json) through the
+    real ingest: the console holds the book as engine.read_book reads it, every level Schwab sent
+    with its price and size."""
     _reset(tmp_path)
-    content = {
-        "key": "SPY",
-        "BIDS": [{"BID_PRICE": 449.9, "BID_SIZE": 100}],
-        "ASKS": [{"ASK_PRICE": 450.1, "ASK_SIZE": 200}],
-        "BOOK_TIME": 555,
-    }
+    fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_nyse_nasdaq_books.json"
+    content = json.loads(fx.read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
     _push_book("SPY", content, ts_recv=time_et.now())
 
     items = ofls.get_content_for_symbol("SPY")
-    assert any(i.get("BIDS") == content["BIDS"] for i in items)
+    held = read_book(content, "NASDAQ_BOOK")
+    assert held in items
+    assert [p for p, _v in held.pairs("BIDS")] == [lv["BID_PRICE"] for lv in content["BIDS"]]
 
 
 def test_each_venue_serves_only_its_own_book(tmp_path):
@@ -167,5 +172,8 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
     monkeypatch.setattr(lmp, "_by_ticker", {})
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time_et.now())
 
-    assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
-    assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
+    def prices(sym: str) -> list:
+        return [i["price"] for i in ofls.get_content_for_symbol(sym) if isinstance(i, dict)]
+
+    assert 380.0 not in prices("SPY")
+    assert 380.0 in prices("QQQ")

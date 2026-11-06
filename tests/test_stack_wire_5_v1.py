@@ -26,4 +26,4 @@ def test_a_book_sent_before_the_open_is_kept_through_the_open(pin_clock):
     st.push_book("SPY", _BOOK, "NASDAQ_BOOK")
     pin_clock(2026, 9, 24, 9, 30)
     st.push_level_one("SPY", {"key": "SPY", "LAST_PRICE": 660.0}, ts_recv=1.0)
-    assert any(i.get("BIDS") for i in st.get_content_for_symbol("SPY", "NASDAQ_BOOK"))
+    assert any(i.bids for i in st.get_content_for_symbol("SPY", "NASDAQ_BOOK"))
