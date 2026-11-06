@@ -921,13 +921,9 @@ def _stamp_gamma_surface_cell_stream_state(
 
     Cell aggregate, over the legs that exist for this strike/expiry: live when all are live,
     partial when some are, else the first of stale > pending present, else unavailable."""
-    for cell in surface.get("cells") or []:
-        contracts_row = cell.get("contracts") or []
+    for cell in surface["cells"]:
         state_row = []
-        for pair in contracts_row:
-            if not isinstance(pair, dict):
-                state_row.append(None)
-                continue
+        for pair in cell["contracts"]:  # {call, put} for every column (_gamma_surface_cell_fields)
             legs: dict = {}
             leg_states: list[str] = []
             for side in ("call", "put"):
@@ -965,16 +961,9 @@ def _stamp_gamma_surface_cell_stream_state(
             state_row.append(legs)
         cell["stream"] = state_row
     # each expiry column's state, from its cells' states -- the column header's streaming status
-    exps = [e.get("expiry") for e in surface.get("expirations") or []]
     surface["stream_by_expiry"] = {
-        e: _stream_state_of(
-            [
-                row["stream"][j]["state"]
-                for row in surface.get("cells") or []
-                if j < len(row.get("stream") or []) and row["stream"][j]
-            ]
-        )
-        for j, e in enumerate(exps)
+        e["expiry"]: _stream_state_of([row["stream"][j]["state"] for row in surface["cells"]])
+        for j, e in enumerate(surface["expirations"])
     }
 
 
@@ -1023,19 +1012,16 @@ def restamp_open_surfaces(now: float) -> None:
     bumped: list[str] = []
     with _terrain_cache_lock:
         for tk, payload in _terrain_cache.items():
-            surface = payload.get("_gamma_surface")
-            if not isinstance(surface, dict):
+            surface = payload["_gamma_surface"]
+            if surface is None:  # this ticker's levels hold no surface (no chain priced)
                 continue
-            symbols: list[str] = []
-            cells = surface.get("cells")
-            if cells:
-                for cell in cells:
-                    pairs = cell.get("contracts")
-                    if not pairs:
-                        continue
-                    for pair in pairs:
-                        if isinstance(pair, dict):
-                            symbols.extend(s for s in (pair.get("call"), pair.get("put")) if s)
+            symbols = [
+                s
+                for cell in surface["cells"]
+                for pair in cell["contracts"]
+                for s in (pair["call"], pair["put"])
+                if s
+            ]
             streamed = {}
             for sym in symbols:
                 greeks = get_stream_greeks(sym)
@@ -1072,14 +1058,10 @@ def _stream_coverage(cells: list, cols: list[int], expired_only: bool) -> dict:
     down (100 only when every cell is live), and the header's words: `state`, `label`, `title`."""
     counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "unavailable": 0}
     for cell in cells:
-        contracts, stream = cell.get("contracts") or [], cell.get("stream") or []
         for j in cols:
-            pair = contracts[j] if j < len(contracts) else None
-            if not (isinstance(pair, dict) and (pair.get("call") or pair.get("put"))):
-                continue
-            col = stream[j] if j < len(stream) else None
-            state = col.get("state") if isinstance(col, dict) else None
-            counts[state if state in counts else "unavailable"] += 1
+            pair = cell["contracts"][j]
+            if pair["call"] or pair["put"]:
+                counts[cell["stream"][j]["state"]] += 1
     cells_n = sum(counts.values())
     live_pct = 100 * counts["live"] // cells_n if cells_n else None
     if not cells_n and expired_only:
@@ -1117,9 +1099,9 @@ HEAT_MEASURES = ("gex", "dex", "oi", "volume")
 
 def _measure_values(cell: dict, measure: str) -> list:
     """One heatmap row's values of `measure`, a value or None per column."""
-    if measure in ("oi", "volume"):
-        return [cp.get("total") if isinstance(cp, dict) else None for cp in cell.get(measure) or []]
-    return list(cell.get(measure) or [])
+    if measure in ("oi", "volume"):  # {call, put, total}, or None where not known (_legs)
+        return [cp if cp is None else cp["total"] for cp in cell[measure]]
+    return list(cell[measure])
 
 
 #: why a strike window is not around the price
@@ -1152,34 +1134,34 @@ def _surface_view(
     `spot` (the row at the price). The view: the window's centre and note, the coverage,
     each measure's largest |value| drawn (the colour scale), and `missing_expiry` when the
     selected expiry is not in the surface."""
-    exps = surf.get("expirations") or []
+    exps = surf["expirations"]
     every = list(range(len(exps)))
-    unexpired = [j for j in every if exps[j].get("expired") is not True]
+    unexpired = [j for j in every if not exps[j]["expired"]]
     if expiry:
-        picked = [j for j in every if exps[j].get("expiry") == expiry]
+        picked = [j for j in every if exps[j]["expiry"] == expiry]
     elif scope == "all" or cols is None:
         picked = every
     elif scope == "wider":
         picked = sorted((unexpired + [j for j in every if j not in unexpired])[: 2 * cols])
     else:
         picked = (unexpired or every)[:cols]
-    lo, hi, view = _window(surf.get("strikes"), spot_strike, scope, centre, shift)
+    lo, hi, view = _window(surf["strikes"], spot_strike, scope, centre, shift)
 
     def pick(v):
-        return [v[j] for j in picked if j < len(v)] if isinstance(v, list) else v
+        return [v[j] for j in picked] if isinstance(v, list) else v
 
     cells = [
-        {**{k: pick(v) for k, v in cell.items()}, "spot": cell.get("strike") == spot_strike}
-        for cell in (surf.get("cells") or [])[lo : hi + 1]
+        {**{k: pick(v) for k, v in cell.items()}, "spot": cell["strike"] == spot_strike}
+        for cell in surf["cells"][lo : hi + 1]
     ]
-    streams = [i for i, j in enumerate(picked) if exps[j].get("expired") is not True]
+    streams = [i for i, j in enumerate(picked) if not exps[j]["expired"]]
     max_abs = {}
     for m in HEAT_MEASURES:
         known = [abs(v) for cell in cells for v in _measure_values(cell, m) if v is not None]
         max_abs[m] = max(known) if known else None
     window = {
         **surf,
-        "strikes": (surf.get("strikes") or [])[lo : hi + 1],
+        "strikes": surf["strikes"][lo : hi + 1],
         "expirations": [exps[j] for j in picked],
         "cells": cells,
     }
@@ -2505,13 +2487,10 @@ def _stamp_columns(surface: dict, now: datetime) -> dict:
     is): `expired` (its expiry is before now's date) and `front` (the nearest expiry that has not
     expired, by Schwab's daysToExpiration). No cell value is touched."""
     today = now.strftime("%Y-%m-%d")
-    exps = [
-        dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
-        for e in (surface.get("expirations") or [])
-    ]
-    live_cols = [e for e in exps if not e["expired"] and e.get("dte") is not None]
+    exps = [dict(e, expired=e["expiry"] < today) for e in surface["expirations"]]
+    live_cols = [e for e in exps if not e["expired"] and e["dte"] is not None]
     front = min(live_cols, key=lambda e: e["dte"])["expiry"] if live_cols else None
-    return {**surface, "expirations": [dict(e, front=e.get("expiry") == front) for e in exps]}
+    return {**surface, "expirations": [dict(e, front=e["expiry"] == front) for e in exps]}
 
 
 @app.get("/api/options/gamma-surface")
