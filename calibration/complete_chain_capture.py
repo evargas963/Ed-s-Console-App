@@ -474,7 +474,9 @@ class ChainSweep:
     def rotation(self, schwab_client, tickers: list[str], stop: threading.Event) -> set[str]:
         """Each ticker's chain in turn (one removed from the watchlist since the rotation began is
         not asked for), the queued quotes asked for whenever a full request's worth is waiting
-        and the rest at the end; the tickers delivered."""
+        and the rest at the end; the tickers delivered. Its time is the round's (`round_sec`)
+        only when it asked for every watchlist ticker: the console judges a ticker's chain
+        overdue by the round, and a round of a few tickers is shorter than the watchlist's."""
         started = self.clock()
         self._delivered = set()
         for ticker in tickers:
@@ -487,12 +489,14 @@ class ChainSweep:
                 self.send_quotes(schwab_client)
         while self._queue and not stop.is_set():
             self.send_quotes(schwab_client)
-        self.round_sec = self.clock() - started
+        took = self.clock() - started
+        if set(self.watchlist) <= set(tickers):
+            self.round_sec = took
         log.info(
             "chain rotation: %d of %d tickers delivered in %.0f s",
             len(self._delivered),
             len(tickers),
-            self.round_sec,
+            took,
         )
         return self._delivered
 

@@ -14,7 +14,7 @@ def test_a_missing_heartbeat_keeps_the_last_watchlist():
     now = time_et.now()
     lmp.record_feed_down()
     with lmp._lock:
-        lmp._feed["watchlist"] = None
+        lmp._feed["status"] = None
     try:
         lmp.record_feed_heartbeat(
             {"ts": now, "schwab_socket_open": True, "watchlist": ["SPY", "TSLA"]}
@@ -25,6 +25,6 @@ def test_a_missing_heartbeat_keeps_the_last_watchlist():
     finally:
         lmp.record_feed_down()
         with lmp._lock:
-            lmp._feed["watchlist"] = None
+            lmp._feed["status"] = None
     assert live["tickers"] == ["SPY", "TSLA"] and live["live"] is True
     assert down["tickers"] == ["SPY", "TSLA"] and down["live"] is False

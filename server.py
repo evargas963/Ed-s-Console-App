@@ -373,16 +373,14 @@ def stop_bar_writer(thread: threading.Thread | None = None) -> None:
     thread.join(timeout=10.0)
 
 
-def _watchlist(now: float) -> list[str] | None:
+def _watchlist() -> list[str] | None:
     """The watchlist: the tickers the capture daemon asks Schwab for. A current heartbeat that
-    carries a list is that list; one that carries none is unknown. A missing heartbeat keeps
-    the last list a beat carried."""
-    st = lmp.daemon_status(now)
-    if st is not None:
-        if not isinstance(st.get("watchlist"), list):
-            return None
-        return list(st["watchlist"])
-    return lmp.last_watchlist()
+    carries a list is that list; one that carries none is unknown. A late or missing heartbeat
+    keeps the list of the last beat."""
+    st = lmp.last_beat()
+    if st is None or not isinstance(st.get("watchlist"), list):
+        return None
+    return list(st["watchlist"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -726,8 +724,10 @@ def _levels_state(
     if market_open is None:
         return lmp.NOT_LIVE, "the market session is unknown" + sep
     age = now - float(computed_ts_utc)
-    # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
-    round_sec = status.get("chain_round_sec") if status is not None else None
+    # judged against the round the daemon's chain sweep last reported (every watchlist ticker
+    # once): a chain's age is its own, and a late heartbeat does not shorten the round
+    last = lmp.last_beat()
+    round_sec = last.get("chain_round_sec") if last is not None else None
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
     # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness;
     # with no round delivered (or no current status) the floor alone.
@@ -1677,7 +1677,7 @@ def _feed_record_state(path: Path, now: float) -> str:
 def _status_line(now: float) -> str:
     """One line for the console window: is each part working at `now`, from its own check."""
     st = lmp.daemon_status(now)
-    watchlist = _watchlist(now)
+    watchlist = _watchlist()
     if st is None and watchlist is not None:
         prices = f"last watchlist: {len(watchlist)} tickers (daemon not reporting)"
     elif watchlist is not None:
@@ -1749,9 +1749,9 @@ def _terrain_loop() -> None:
     (_on_chain, _bar_writer)."""
     _wait_for(
         "the capture daemon's heartbeat (it says what the watchlist is)",
-        lambda: _watchlist(time_et.now()) is not None,
+        lambda: _watchlist() is not None,
     )
-    watchlist = _watchlist(time_et.now())
+    watchlist = _watchlist()
     _load_crosses(watchlist)
     _publish_missing_price_levels(watchlist, now_et())
     queued = _load_stored_levels(watchlist)
@@ -1771,7 +1771,7 @@ def _terrain_loop() -> None:
                 now = time_et.now()
                 log.info(_status_line(now))
                 refresh_not_live_pages(now)
-                watchlist = _watchlist(now)
+                watchlist = _watchlist()
                 if watchlist is not None:
                     _publish_missing_price_levels(watchlist, now_et())
         except Exception as e:  # the status line says it failed, never silence
@@ -2554,7 +2554,7 @@ def gamma_surface_payload(
     # watchlist (fetched in turn; while Closed, once, its close values). The reason is that
     # state's own.
     _requested = _gamma_surface_wanted(tk)
-    _watched = _watchlist(now.timestamp())  # the last list stands when the heartbeat is missing
+    _watched = _watchlist()  # the last list stands when the heartbeat is missing
     _warming = _watched is not None and tk in _watched
     _levels_why = terrain_staleness(
         live.get("computed_ts_utc") if live is not None else None, tk, now=now.timestamp()
@@ -3035,7 +3035,7 @@ def get_watchlist():
     keeper) last reported it. A missing heartbeat keeps that list and says it is not live.
     503 only when no beat has ever carried a list."""
     now = time_et.now()
-    tickers = _watchlist(now)
+    tickers = _watchlist()
     if tickers is None:
         return JSONResponse(
             {
@@ -3282,7 +3282,7 @@ def health():
     # UNAVAILABLE (unmeasurable is not ok).
     now = time_et.now()
     st = lmp.daemon_status(now)
-    watchlist = _watchlist(now)
+    watchlist = _watchlist()
     capability: dict[str, object] = {
         "schwab": "AVAILABLE"
         if st is not None and st.get("schwab_socket_open") is True

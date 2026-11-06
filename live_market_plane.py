@@ -209,10 +209,10 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
 #: only while the latest one was stamped within this of the time judged. The one liveness limit.
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
-#: The daemon's latest status (its heartbeat), the time the daemon stamped it, the symbols
-#: it holds per Schwab service, and the last watchlist a beat carried. Written by
-#: record_feed_heartbeat / record_feed_down only. A down feed keeps `held` and `watchlist`.
-_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}, "watchlist": None}
+#: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
+#: it holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only. A down
+#: feed keeps the status and `held`: what the daemon last reported stands, not live.
+_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
@@ -226,29 +226,23 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
         for svc, syms in (msg.get("held") or {}).items()
         if isinstance(syms, list)
     }
-    watchlist = msg.get("watchlist")
     with _lock:
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
-        if isinstance(watchlist, list):
-            _feed["watchlist"] = list(watchlist)
 
 
 def record_feed_down() -> None:
     """The connection to the daemon ended: nothing is live until a heartbeat arrives.
-    The symbols that beat last named stay, so the last streamed values still price.
-    The last watchlist stays with them."""
+    The latest beat stays (last_beat), so the last streamed values still price."""
     with _lock:
-        _feed.update(rx=None, status=None)
+        _feed["rx"] = None
 
 
-def last_watchlist() -> list[str] | None:
-    """The watchlist on the latest beat that carried one, current or not. None until a beat
-    carries a list. A missing beat does not erase it."""
+def last_beat() -> dict[str, Any] | None:
+    """The latest status the daemon sent, current or not; None until one arrives. What it
+    reported stands while a beat is late or missing (its watchlist, its last round of chains);
+    whether it is live is daemon_status's."""
     with _lock:
-        watchlist = _feed.get("watchlist")
-    if not isinstance(watchlist, list):
-        return None
-    return list(watchlist)
+        return _feed["status"]
 
 
 @dataclass(frozen=True)
