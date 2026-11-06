@@ -108,7 +108,8 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     )
     subprocess.Popen(launch.daemon_window(bat), cwd=launch.ROOT)
     deadline = time_et.elapsed() + 60.0
-    while not window_pid.exists():
+    # the file exists from its open, before its write: the pid is in it once its digits are
+    while not (window_pid.exists() and window_pid.read_text(encoding="utf-8").isdigit()):
         assert time_et.elapsed() < deadline, "the batch never ran"
         time.sleep(0.1)
     window = int(window_pid.read_text(encoding="utf-8"))
