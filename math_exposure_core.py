@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 
 from numeric_contract import float_finite_or_none
-from option_contract import OptionContract
+from option_contract import OptionContract, streamed_greek_set
 from time_et import time_to_expiry_years
 
 
@@ -330,12 +330,14 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 def overlay_streamed_contract_fields(
     contracts: list[OptionContract], streamed_by_symbol: dict[str, dict], held: set[str]
 ) -> tuple[list[OptionContract], int]:
-    """The volume of each contract Schwab streams (`held`) as the stream sent it
-    (`streamed_by_symbol`, its streamed record's `total_volume`), the chain's never: the pushed
-    field is its one producer (AGENTS.md rule 3), and one the stream has not sent is None. Every
-    other contract keeps the chain's. Open interest is the chain's for every contract (the stream
-    does not send it for every contract it streams), and gamma, delta and volatility are the
-    sweep's.
+    """Each contract Schwab streams (`held`) with the values the stream pushed it
+    (`streamed_by_symbol`, its newest streamed record): the pushed field is its one producer
+    (AGENTS.md rule 3). Its volume is the stream's `total_volume`, None until the stream sends one.
+    Its Greeks and volatility are the stream's newest once the stream holds all six (the set the
+    chain sweep takes, option_contract.streamed_greek_set); until then they are the chain's, which
+    the sweep asked /quotes for because the stream had not sent them. Every other contract keeps
+    the chain's. Open interest is the chain's for every contract (the stream does not send it for
+    every contract it streams).
 
     Pure: a streamed contract is a new record, every other the same one. Returns
     (new_contracts, streamed_count).
@@ -345,7 +347,12 @@ def overlay_streamed_contract_fields(
         if c.symbol not in held:
             out.append(c)
         elif c.symbol in streamed_by_symbol:
-            out.append(replace(c, volume=streamed_by_symbol[c.symbol].get("total_volume")))
+            sent = streamed_by_symbol[c.symbol]
+            pushed = {"volume": sent.get("total_volume")}
+            greeks = streamed_greek_set(sent)
+            if greeks is not None:
+                pushed.update(greeks)
+            out.append(replace(c, **pushed))
         else:
             out.append(replace(c, volume=None))
     return out, len(out) - sum(new is old for new, old in zip(out, contracts))

@@ -46,6 +46,7 @@ code 11 (not available) -- there is no trade-by-trade tape and no trade side.
 from __future__ import annotations
 
 import asyncio
+import atexit
 import bisect
 import enum
 import json
@@ -1110,7 +1111,10 @@ def _start_log() -> None:
         format="%(asctime)s.%(msecs)03d %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    logging.handlers.QueueListener(window, logging.StreamHandler()).start()
+    writer = logging.handlers.QueueListener(window, logging.StreamHandler())
+    writer.start()
+    # at exit the writer prints every line still queued, then ends: none is lost with the process
+    atexit.register(writer.stop)
     logging.getLogger("httpx").setLevel(logging.WARNING)  # each request's line is log_request's
 
 

@@ -3,21 +3,20 @@
 from __future__ import annotations
 
 import server as srv
+from option_contract import read_chain
+from tests.real_chains import CRWD
 
 
 def test_the_strike_panel_carries_the_chain_time():
-    """computed_ts_utc is the chain the per-strike rows were built from. The badge shows
-    that instant beside the age."""
+    """The per-strike rows' time is the newest Schwab value in them: the chain they were built
+    from when nothing was pushed since. The badge shows that instant beside the age. CRWD's
+    real chain, published by the one producer (_publish_levels) as chain time 1790380799.830."""
     tk = "ZZSTRIKETIME"
     fetched = 1790380799.830
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
-            "ticker": tk,
-            "spot": 100.0,
-            "computed_ts_utc": fetched,
-            "_per_strike": {"all": [[100.0, 1.0, 2.0]], "near": [], "far": []},
-        }
     try:
+        srv._publish_levels(
+            tk, read_chain(CRWD.chain), fetched, chain_spot=(CRWD.spot, fetched), now=CRWD.now
+        )
         body = srv.terrain_strikes_payload(tk, "auto", None, 0, fetched + 21)
     finally:
         with srv._terrain_cache_lock:

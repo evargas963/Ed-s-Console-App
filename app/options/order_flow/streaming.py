@@ -115,10 +115,10 @@ _feed_running = False
 #: by ticker_storage_key.
 _option_contract_last_update_ts: dict[str, float] = {}
 
-#: Called with the symbol of every streamed equity quote and every option quote carrying a
-#: _REPRICE_FIELDS value (server._on_stream_tick: reprices a viewed ticker). Runs on the event
-#: loop, so it must return at once.
-_on_tick_callback: Callable[[str], None] | None = None
+#: Called with the symbol and the daemon's receive time of every streamed equity quote and every
+#: option quote carrying a _REPRICE_FIELDS value (server._on_stream_tick: reprices its ticker).
+#: Runs on the event loop, so it must return at once.
+_on_tick_callback: Callable[[str, float], None] | None = None
 _on_feed_callback: Callable[[float], None] | None = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
@@ -179,12 +179,12 @@ def assemble_chain_part(
     return out
 
 
-def _tick(sym: str) -> None:
+def _tick(sym: str, ts: float) -> None:
     global _tick_callback_failures
     if _on_tick_callback is None:
         return
     try:
-        _on_tick_callback(sym)
+        _on_tick_callback(sym, ts)
     except Exception as e:  # counted + WARNING; ingest must go on
         _tick_callback_failures += 1
         if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
@@ -219,8 +219,8 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
 
 
 #: the option quote fields the levels are priced from: a message carrying one reprices (a
-#: streamed contract's volume; its Greeks are the sweep's, its open interest the chain's)
-_REPRICE_FIELDS = ("TOTAL_VOLUME",)
+#: streamed contract's volume and its Greeks; its open interest is the chain's)
+_REPRICE_FIELDS = ("TOTAL_VOLUME", "GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY")
 
 
 def _ingest_pushed(topic: str, msg: Any) -> None:
@@ -277,7 +277,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             return None
         push_level_one(sym, item, ts_recv=ts, field_received=received)
         push_changes.changed(sym, push_changes.FLOW)
-        _tick(sym)
+        _tick(sym, ts)
         return None
     if kind == "book":
         content = msg.get("content")
@@ -302,7 +302,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         # a tick when the newest message carried a value the levels use (a merged record holds
         # the last of each field; only one this message brought is new)
         if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
-            _tick(sym)
+            _tick(sym, ts)
     return None
 
 
@@ -377,7 +377,7 @@ def bind_daemon(daemon) -> None:
 
 
 def start_order_flow_stream(
-    on_tick_callback: Callable[[str], None] | None = None,
+    on_tick_callback: Callable[[str, float], None] | None = None,
     on_chain_callback: Callable[..., None] | None = None,
     on_feed_callback: Callable[[float], None] | None = None,
 ) -> bool:
