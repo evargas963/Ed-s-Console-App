@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import time_et
+from tests.feed_live_helper import RTH_INSTANT
 
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
@@ -176,7 +177,6 @@ def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
 
     import push_changes
     import server as srv
-    from tests.feed_live_helper import RTH_INSTANT
 
     loop = push_changes._loop
     push_changes.bind(None)
