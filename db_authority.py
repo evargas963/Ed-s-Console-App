@@ -20,6 +20,8 @@ import os
 from pathlib import Path
 from typing import Literal
 
+from runtime_layout import data_dir
+
 Classification = Literal["canonical", "harness", "proof", "unknown"]
 PermanentDatabaseIdentity = Literal["ed_console", "stream_capture"]
 
@@ -30,15 +32,11 @@ def canonical_console_db_path() -> Path:
     Rooted in the RUNTIME root, not the source checkout: with `ED_RUNTIME_ROOT` unset, a
     standalone checkout is its own runtime root and a linked worktree uses its primary's.
     """
-    from runtime_layout import data_dir
-
     return (data_dir() / "ed_console.db").resolve()
 
 
 def canonical_stream_db_path() -> Path:
     """The one permanent raw receive-time market-event database."""
-    from runtime_layout import data_dir
-
     return (data_dir() / "stream_capture.db").resolve()
 
 

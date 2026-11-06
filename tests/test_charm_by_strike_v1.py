@@ -18,7 +18,8 @@ from datetime import datetime
 from pathlib import Path
 
 import time_et
-from math_levels import bs_charm, compute_charm_by_strike, pick_charm_wall_strikes
+from math_exposure_core import bs_charm
+from math_levels import compute_charm_by_strike, pick_charm_wall_strikes
 from option_contract import read_chain
 
 #: a REAL same-day-expiry SPY chain captured 2026-10-07 12:32 ET, valued at its own capture time
