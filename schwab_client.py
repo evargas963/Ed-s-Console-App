@@ -372,16 +372,11 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
 
         now = int(time_et.now())
         exp = tok.get("expires_at")  # external-key-ok: Schwab OAuth token payload
-        if exp is not None:
-            try:
-                exp_i = int(float(exp))
-            except (TypeError, ValueError):
-                exp_i = None
-            if exp_i is not None:
-                seconds_left = exp_i - now
-                out.seconds_to_expiry = seconds_left
-                out.is_expired = seconds_left <= 0
-                out.is_expiring_soon = 0 < seconds_left < 300
+        if isinstance(exp, int | float) and not isinstance(exp, bool):  # authlib writes a number
+            seconds_left = int(exp) - now
+            out.seconds_to_expiry = seconds_left
+            out.is_expired = seconds_left <= 0
+            out.is_expiring_soon = 0 < seconds_left < 300
 
     issues: list[str] = []
     if not out.has_creation_timestamp:

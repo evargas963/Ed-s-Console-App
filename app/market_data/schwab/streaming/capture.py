@@ -967,10 +967,7 @@ class Daemon:
             failures = 1 if time_et.now() - started > 300 else failures + 1
             wait = RECONNECT_BACKOFF_SEC[min(failures, len(RECONNECT_BACKOFF_SEC)) - 1]
             log.info("schwab: reconnecting in %.0f s", wait)
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=wait)
-            except TimeoutError:
-                pass
+            await time_et.set_within(stop, wait)
 
 
 # ---------------------------------------------------------------------------- process
@@ -999,13 +996,9 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
             os.write(fd, str(os.getpid()).encode())
             return fd, lock
         except FileExistsError:
-            try:
-                pid = int(
-                    lock.read_text().strip() or 0
-                )  # caps-ok: an empty pidfile is not a live owner
-            except (OSError, ValueError):
-                pid = 0
-            if pid and psutil.pid_exists(pid):
+            text = lock.read_text().strip()  # the pid this function wrote, or empty if cut short
+            pid = int(text) if text.isdigit() else None
+            if pid is not None and psutil.pid_exists(pid):
                 print(f"FATAL: another capture daemon holds {lock} (pid {pid}).", file=sys.stderr)
                 raise SystemExit(EXIT_OWNER_LOCK_HELD) from None
             if attempt == 1:
@@ -1148,11 +1141,8 @@ async def record_feed_status(
         except Exception as e:  # this round's rows are missing and the log says why; the next
             # round still runs (the console's status line reports the record's age)
             log.warning("feed status round failed: %s: %s", type(e).__name__, e, exc_info=True)
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=every)
+        if await time_et.set_within(stop, every):
             return
-        except TimeoutError:
-            pass
 
 
 async def serve_console(daemon: Daemon, stop: asyncio.Event) -> None:
@@ -1396,6 +1386,7 @@ def main() -> int:
     try:
         return asyncio.run(run())
     except KeyboardInterrupt:
+        log.info("capture daemon: stopped by Ctrl+C in its window")
         return 0
     except BaseException:
         log.exception("capture daemon: ended by an error")
