@@ -10,13 +10,20 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 from typing import Any
 
+from confluence_composite import iv_by_strike
 from math_exposure_core import (
     book_net_gex,
+    book_total_oi,
+    bs_delta,
+    bs_gamma,
+    bucket_metric,
+    bucket_metric_abs,
     compute_net_vanna,
     compute_zero_dte_gamma_share,
     exposure_books,
     exposures_have_dollar_gex,
     merge_exposure_books,
+    net_gex_dollars_at_strike,
     pick_delta_wall_strikes,
     pick_gamma_wall_strikes,
     pick_key_delta_strike,
@@ -25,12 +32,13 @@ from math_exposure_core import (
     pick_volatility_point_strikes,
     put_call_oi_ratio,
     put_call_volume_ratio,
+    schwab_iv_to_sigma,
+    strike_total_oi,
+    strike_total_volume,
     total_gex_dollars_at_strike,
 )
 from math_levels import (
     _contract_inputs,
-    bs_delta,
-    bs_gamma,
     compute_charm_by_strike,
     compute_gamma_flip_v2,
     compute_gamma_profile,
@@ -40,6 +48,9 @@ from math_levels import (
     merge_charm_maps,
     pick_charm_wall_strikes,
 )
+from math_probabilities import compute_pin_score
+from math_volatility import compute_25d_risk_reversal
+from numeric_contract import float_finite_or_none
 from option_contract import OptionContract
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
 from time_et import ET, option_close_product, time_to_expiry_years
@@ -245,13 +256,6 @@ def _per_strike_rows(exposures: dict) -> list[list]:
       * volume is strike_total_volume, the one reader: Schwab's volumes as sent (0 is a real
         zero); None ("-") when a contract at the strike did not report it, never a partial sum.
     """
-    from math_exposure_core import (
-        exposures_have_dollar_gex,
-        net_gex_dollars_at_strike,
-        strike_total_volume,
-    )
-    from numeric_contract import float_finite_or_none
-
     if not exposures or not exposures_have_dollar_gex(exposures):
         return []
     rows: list[list] = []
@@ -415,7 +419,6 @@ def compute_wall_value_area(
 
     Fail-closed: no wall, wall absent from the mass, or degenerate mass -> None.
     """
-    from math_exposure_core import bucket_metric_abs, exposures_have_dollar_gex
 
     # SIDE GEX$ mass on a dollarized book, valid-gamma strikes only.
     if wall is None or not exposures or not exposures_have_dollar_gex(exposures):
@@ -462,7 +465,6 @@ def atm_sigma_by_expiry(
     and a leg whose nearest contract has no IV from Schwab (-999, or 0: no sigma) has none --
     the next strike's IV never stands in for it. Schwab `volatility` is a percent, converted by
     schwab_iv_to_sigma."""
-    from math_exposure_core import schwab_iv_to_sigma
 
     legs: dict[tuple[str, float | None], dict[str, tuple[float, float | None]]] = {}
     for c in contracts:
@@ -529,8 +531,6 @@ def _per_strike_measure_rows(exposures: dict) -> dict:
     is known, by the heatmap cell's own readers (net_dex_dollars of a dollarized book;
     strike_total_oi). Open interest keeps every digit; the screen rounds the count. A strike
     whose value is unknown has no row."""
-    from math_exposure_core import bucket_metric, exposures_have_dollar_gex, strike_total_oi
-    from numeric_contract import float_finite_or_none
 
     dex: list[list] = []
     oi: list[list] = []
@@ -556,7 +556,6 @@ def per_strike_view(books: dict, exposures: dict) -> dict:
     book's DEX and OI rows (`dex`, `oi`: _per_strike_measure_rows). A contract whose
     days-to-expiry cannot be read belongs to `all` only: a maturity split it cannot answer is
     not answered for it."""
-    from math_exposure_core import merge_exposure_books
 
     def rows(keep) -> list:
         chosen = [b for (_exp, d), b in books.items() if keep(d)]
@@ -714,7 +713,6 @@ def qualify_pin_candidate(
     Returns (pin_candidate, blockers): the strike with an EMPTY blockers list when every
     gate passes, else (None, [failed gate names]) so absence renders with its reason.
     """
-    from math_probabilities import compute_pin_score
 
     blockers: list[str] = []
     complete = not (
@@ -895,7 +893,6 @@ def compute_terrain(
     _abs_gamma_strike, _abs_gamma_strength = pick_pin_and_strength(exposures)
     # pin_score GEX/OI from THIS same exposures book — never a second analytics book.
     # OI from the ONE reader -- unknown (a contract that never reported OI) is None, never 0.
-    from math_exposure_core import book_total_oi, strike_total_oi
 
     _book_oi_total = book_total_oi(exposures)
     _abs_gamma_gex_dollars = None
@@ -946,10 +943,8 @@ def compute_terrain(
         )
         _front_max_pain = compute_max_pain(_exp_front)
     # 25Δ risk reversal from the same wide chain (the expiry nearest 30 days out, tolerance-gated).
-    from math_volatility import compute_25d_risk_reversal
 
     _rr25 = compute_25d_risk_reversal(contracts)
-    from confluence_composite import iv_by_strike
 
     charm_by_expiry = {}
     iv_by_expiry = {}

@@ -15,11 +15,18 @@ compute_net_charm must match its sign for every moneyness, or the build fails.
 from __future__ import annotations
 
 import math
+from datetime import datetime
 
 import pytest
 
-from math_levels import bs_charm
+from math_exposure_core import (
+    bs_charm,
+    bs_vanna,
+    compute_exposures_by_strike,
+    schwab_iv_to_sigma,
+)
 from option_contract import read_chain
+from time_et import ET, time_to_expiry_years
 
 SIGMA = 0.20
 K = 100.0
@@ -123,11 +130,6 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     """The per-strike vanna converts Schwab IV through schwab_iv_to_sigma, the ONE authority:
     Schwab's volatility is a PERCENT (measured 2026-09-27 on 49,244 contracts, min 7.967), so
     20.0 is sigma 0.20 -- equal to bs_vanna at sigma 0.20 -- and 0.20 is 0.2%, not 20%."""
-    from datetime import datetime
-
-    from math_exposure_core import compute_exposures_by_strike
-    from time_et import ET
-
     # valued a month before an expiry Schwab's /markets answers (an input)
     now = datetime(2027, 6, 17, 12, 0, tzinfo=ET)
 
@@ -149,10 +151,6 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
             "totalVolume": 10,
             "putCall": "CALL",
         }
-
-    from math_exposure_core import schwab_iv_to_sigma
-    from math_levels import bs_vanna
-    from time_et import time_to_expiry_years
 
     per_pct, _ = compute_exposures_by_strike(read_chain([one(20.0)]), spot=98.0, now=now)
     v_pct = per_pct[100.0]["call_vanna"]

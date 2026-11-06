@@ -6,12 +6,16 @@ derived from options exposure structure.
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 
+import numpy as np
+
 from math_exposure_core import (
+    SQRT_2PI,
+    bs_charm,
     bucket_metric,
     key_level_strikes_with_oi,
+    schwab_iv_to_sigma,
     strike_oi_legs,
 )
 from option_contract import OptionContract
@@ -21,84 +25,6 @@ from time_et import time_to_expiry_years
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
 # reproduce the profile (against a real SPY reference chain: corr 0.086, never crosses zero);
 # recomputing reproduces the published flip (SPY 745.61, SKHY 124.44).
-
-_SQRT_2PI = math.sqrt(2.0 * math.pi)
-
-
-def _norm_pdf(x: float) -> float:
-    return math.exp(-0.5 * x * x) / _SQRT_2PI
-
-
-def bs_gamma(spot: float, strike: float, t_years: float, sigma: float) -> float | None:
-    """Black-Scholes gamma per share, r = q = 0. The same gamma the profile sums."""
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
-        return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
-    if not math.isfinite(d1):
-        return None
-    g = _norm_pdf(d1) / (spot * vt)
-    return g if math.isfinite(g) else None
-
-
-def bs_delta(
-    spot: float, strike: float, t_years: float, sigma: float, *, call: bool
-) -> float | None:
-    """Black-Scholes delta per share, r = q = 0. A put is the call delta minus one."""
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
-        return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
-    if not math.isfinite(d1):
-        return None
-    call_delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
-    d = call_delta if call else call_delta - 1.0
-    return d if math.isfinite(d) else None
-
-
-def bs_vanna(
-    spot: float, strike: float, t_years: float, sigma: float, rate: float = 0.0, div: float = 0.0
-) -> float | None:
-    """Black-Scholes vanna (dDelta/dSigma) per share — identical for calls and puts.
-
-    Closed form: -e^(-qT) * phi(d1) * d2 / sigma. Sign is driven entirely by -d2, so it
-    flips through SPOT (strikes above spot positive, below negative) — never through the
-    call/put boundary. Equivalent forms: vanna = (vega/S)(1 - d1/(sigma*sqrt(T)))
-    = -Gamma * S * sqrt(T) * d2.
-    Units: delta-change per 1.00 of IV (100 vol points); multiply by 0.01 for per-vol-point
-    — the sigma-scaling convention is LOCKED here beside the dealer convention.
-    """
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
-        return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
-    d2 = d1 - vt
-    v = -math.exp(-div * t_years) * _norm_pdf(d1) * d2 / sigma
-    return v if math.isfinite(v) else None
-
-
-def bs_charm(
-    spot: float, strike: float, t_years: float, sigma: float, rate: float = 0.0
-) -> float | None:
-    """Black-Scholes charm (dDelta/dt, calendar time) per share, q=0.
-
-    Textbook (Haug) charm is dDelta/dT = -phi(d1) * [ r/(sigma*sqrt(T)) - d2/(2T) ].
-    Calendar-time charm is the negative of that. Callers that want the deliberate
-    0DTE-stable r-omission (compute_net_charm) pass rate=0.0; the r term is otherwise
-    retained and guarded by the t_years floor applied upstream.
-
-    Identical for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant
-    vanishes under differentiation with respect to time.
-    """
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
-        return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / vt
-    d2 = d1 - vt
-    # dDelta/dt (calendar time). Sign verified against a finite-difference
-    # derivative of the BS delta.
-    c = -_norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
-    return c if math.isfinite(c) else None
 
 
 def compute_charm_by_strike(
@@ -220,8 +146,6 @@ def _contract_inputs(
     unless the caller passes `t_years`. Offline/replay callers pass
     `now` = the snapshot time.
     """
-    from math_exposure_core import schwab_iv_to_sigma
-
     strike, oi, mult = c.strike, c.open_interest, c.multiplier
     if oi == 0:
         return "zero_open_interest"
@@ -282,8 +206,6 @@ def _gamma_profile_totals(parsed: list, grid: list[float]) -> list[float]:
     full chain (13,290 contracts, 241 prices) a per-call loop over the contracts it could price
     made 2.27M bs_gamma calls, 82% of compute_terrain's 17.8 s with that loop. A gamma that is not
     finite contributes nothing, matching bs_gamma's None."""
-    import numpy as np
-
     arr = np.asarray(parsed, dtype=float)
     strike, oi, mult, t_years, sigma, side = (arr[:, i] for i in range(6))
     vt = sigma * np.sqrt(t_years)
@@ -295,7 +217,7 @@ def _gamma_profile_totals(parsed: list, grid: list[float]) -> list[float]:
         for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
             s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
             d1 = (np.log(s / strike) + drift) / vt
-            g = np.exp(-0.5 * d1 * d1) / _SQRT_2PI / (s * vt)
+            g = np.exp(-0.5 * d1 * d1) / SQRT_2PI / (s * vt)
             g = np.where(np.isfinite(g), g, 0.0)
             out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
     return out

@@ -11,9 +11,11 @@ from pathlib import Path
 
 from db_authority import (
     classify_db_path,
+    default_console_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
+from db_safety import maybe_install_sql_guard_on_connection
 
 log = logging.getLogger(__name__)
 
@@ -69,8 +71,6 @@ def configure_sqlite_connection(conn: sqlite3.Connection, *, busy_timeout_ms: in
 
 
 def _resolve_console_db_path() -> Path:
-    from db_authority import default_console_db_path
-
     blocked = [name for name in ("ED_CONSOLE_DB", "ED_DB_PATH") if os.environ.get(name, "").strip()]
     if blocked:
         raise RuntimeError(
@@ -140,8 +140,6 @@ class EdDB:
         conn.row_factory = sqlite3.Row
         configure_sqlite_connection(conn, busy_timeout_ms=int(timeout_sec * 1000))
         if not getattr(self, "_bootstrap_sql_guard_suppress", False):
-            from db_safety import maybe_install_sql_guard_on_connection
-
             maybe_install_sql_guard_on_connection(conn, self.db_path)
         return conn
 
