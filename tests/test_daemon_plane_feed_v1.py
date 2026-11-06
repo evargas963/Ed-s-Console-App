@@ -10,10 +10,14 @@ publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
+from app.options.order_flow.engine import read_book
 from stream_spine import book_msg, quote_msg
 
 
@@ -72,11 +76,6 @@ def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):
     """A real SPY NASDAQ_BOOK message (tests/fixtures/real_spy_nyse_nasdaq_books.json) through the
     real ingest: the console holds the book as engine.read_book reads it, every level Schwab sent
     with its price and size."""
-    import json
-    from pathlib import Path
-
-    from app.options.order_flow.engine import read_book
-
     _reset(tmp_path)
     fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_nyse_nasdaq_books.json"
     content = json.loads(fx.read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
