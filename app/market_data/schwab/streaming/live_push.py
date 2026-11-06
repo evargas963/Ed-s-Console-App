@@ -28,6 +28,8 @@ import json
 import logging
 import os
 
+from websockets.asyncio.server import serve
+
 log = logging.getLogger(__name__)
 
 LIVE_PUSH_HOST = "127.0.0.1"
@@ -97,8 +99,6 @@ async def serve_live_push(
 ) -> None:
     """Run the control socket until `stop` is set, each request handed to `on_request`.
     `stats` (mutated) reports clients and where it listens."""
-    from websockets.asyncio.server import serve
-
     stats = stats if stats is not None else {}
     stats.update(clients=0, listening=None)
 
