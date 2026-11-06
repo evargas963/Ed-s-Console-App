@@ -477,10 +477,9 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
             halt.set()
             await asyncio.to_thread(worker.join, 10)
             schwab.close()
-        writer = _beat(daemon)["writer"]
         stop.set()
-        await task
-        return chains(), writer
+        await task  # the writer has committed every failure queued to it
+        return chains(), _beat(daemon)["writer"]
 
     fetched, writer = asyncio.run(go())
 
