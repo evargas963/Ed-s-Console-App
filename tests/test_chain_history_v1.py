@@ -25,7 +25,7 @@ from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
-from tests.schwab_rest_standin import CHAIN, SPY_QUOTES, LocalSchwab
+from tests.schwab_rest_standin import CHAIN, QUOTES, SPY_QUOTES, LocalSchwab
 from time_et import ET
 
 _QUOTED = {s: e["quote"] for s, e in SPY_QUOTES.items()}
@@ -266,6 +266,33 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
             c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0]
             == 1
         )
+
+
+def test_a_stop_asked_inside_a_ticker_asks_schwab_for_nothing_more(tmp_path, schwab):
+    """Production's stop of 2026-11-06 06:41:51 CT: the sweep went on asking for the chain in hand
+    and its quotes for 28 s, past launch.py's 30 s wait. A stop asked once the ticker's sessions
+    are in (its first publish, before its first expiry is asked) ends the rotation there: no chain
+    and no quotes request reaches Schwab, and no chain is published, whole or failed."""
+    sqlite3.connect(tmp_path / "ed_console.db").close()
+    stop = threading.Event()
+    published: list = []
+
+    def publish(topic, msg):
+        published.append(topic)
+        stop.set()
+
+    sweep = cch.ChainSweep(
+        tmp_path / "ed_console.db",
+        ["SPY"],
+        publish,
+        clock=lambda: _ts("2026-09-30 15:31:57"),
+        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        streamed=lambda symbol: None,
+    )
+    client = schwab.client(tmp_path)
+    assert sweep.rotation(lambda: client, ["SPY"], stop) == set()
+    assert (schwab.asked(CHAIN), schwab.asked(QUOTES)) == ([], [])
+    assert published and not [t for t in published if t.startswith("chain")]
 
 
 def test_the_daemon_task_stops_when_told(tmp_path):
