@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.options.order_flow.engine import Book
 from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import OrderFlowState
 
@@ -32,11 +33,11 @@ def test_each_contract_keeps_its_newest_book_apart():
 
     first_content = state.get_content_for_symbol(first["symbol"])
     second_content = state.get_content_for_symbol(second["symbol"])
-    first_books = [row for row in first_content if "BIDS" in row]
+    first_books = [row for row in first_content if isinstance(row, Book)]
     # one book per service: the newest, never a backlog
-    assert [row["BOOK_TIME"] for row in first_books] == [base_time + 24]
-    assert all(row.get("BOOK_TIME") != second_book["BOOK_TIME"] for row in first_books)
-    assert len([row for row in second_content if "BIDS" in row]) == 1
+    assert [row.book_time_ms for row in first_books] == [base_time + 24]
+    assert all(row.book_time_ms != second_book["BOOK_TIME"] for row in first_books)
+    assert len([row for row in second_content if isinstance(row, Book)]) == 1
     assert options_live_payload("MISSING", float(base_time) / 1000)["status"] == "no_book"
 
 
@@ -52,8 +53,8 @@ def test_a_quiet_books_newest_stands_however_many_the_other_service_sends():
     state.push_book("SPY", nyse, "NYSE_BOOK")
     for c in nasdaq:
         state.push_book("SPY", c, "NASDAQ_BOOK")
-    assert state.newest_book("SPY", "NYSE_BOOK")["BOOK_TIME"] == nyse["BOOK_TIME"]
-    assert state.newest_book("SPY", "NASDAQ_BOOK")["BOOK_TIME"] == nasdaq[-1]["BOOK_TIME"]
-    assert [b["BOOK_TIME"] for b in state.get_content_for_symbol("SPY", "NYSE_BOOK")] == [
+    assert state.newest_book("SPY", "NYSE_BOOK").book_time_ms == nyse["BOOK_TIME"]
+    assert state.newest_book("SPY", "NASDAQ_BOOK").book_time_ms == nasdaq[-1]["BOOK_TIME"]
+    assert [b.book_time_ms for b in state.get_content_for_symbol("SPY", "NYSE_BOOK")] == [
         nyse["BOOK_TIME"]
     ]

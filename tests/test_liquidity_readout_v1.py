@@ -52,12 +52,21 @@ _END = datetime.fromisoformat("2026-11-02T10:02:30-05:00").timestamp()
 #: 2026-11-02 15:55 ET: inside the closing auction of a normal day
 _CLOSE_AUCTION = datetime.fromisoformat("2026-11-02T15:55:00-05:00").timestamp()
 _HELD = {"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"], "NASDAQ_BOOK": ["SPY"]}
+
+
+def _readout(sent: dict) -> dict:
+    """engine.book_readout of each venue's book as Schwab sent it (`sent`: venue -> its message
+    content, or None), each read by the one reader, engine.read_book, as the console's intake
+    reads it."""
+    return e.book_readout({v: None if c is None else e.read_book(c, v) for v, c in sent.items()})
+
+
 #: every venue with no book
-_NO_BOOK = e.book_readout(dict.fromkeys(e.BOOK_VENUES))
+_NO_BOOK = _readout(dict.fromkeys(e.BOOK_VENUES))
 
 
 def _pair_readout() -> dict:
-    return e.book_readout({v: b["content"] for v, b in _PAIR.items()})
+    return _readout({v: b["content"] for v, b in _PAIR.items()})
 
 
 def _replay(rows: list = _ROWS) -> tuple[dict, list]:
@@ -67,7 +76,7 @@ def _replay(rows: list = _ROWS) -> tuple[dict, list]:
     points = []
     for ts, svc, content in rows:
         newest[svc] = content
-        points.append((ts, e.book_readout(newest)))
+        points.append((ts, _readout(newest)))
     return points[-1][1], points
 
 
@@ -207,7 +216,7 @@ def test_the_composite_is_every_quote_once_its_newest_copy(name):
     maker once, NSDQ (in both books) from the book whose copy carries the newer quote time, the
     shares summed at each distinct price."""
     books = _COMPOSITE_BOOKS[name]
-    comp = e.book_readout(books)["COMPOSITE"]
+    comp = _readout(books)["COMPOSITE"]
     for view in e.READOUT_VIEWS:
         bt, at, pct = _expected(_merged(books), view)
         v = comp["views"][view]
@@ -275,7 +284,7 @@ def test_nsdq_is_one_contributor_however_spelled():
     its dedup whole."""
     want = _pair_readout()["COMPOSITE"]["views"]
     nq = _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "nothing", "nsdq")
-    comp = e.book_readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
+    comp = _readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
     assert comp["COMPOSITE"]["dedup_partial"] is False
     for view in e.READOUT_VIEWS:
         got = comp["COMPOSITE"]["views"][view]
@@ -291,7 +300,7 @@ def test_a_copy_without_its_quote_time_is_never_the_newer():
     767.39 bid and 767.41 ask (the top five 800 bid and 2,160 ask, NASDAQ_BOOK's own book
     unchanged), and the composite says its dedup is partial, and why."""
     nq = _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "SEQUENCE", "NSDQ")
-    comp = e.book_readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
+    comp = _readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
     assert comp["COMPOSITE"]["dedup_partial"] is True
     five = comp["COMPOSITE"]["views"]["5"]
     assert (five["bid_total"], five["ask_total"]) == (800, 2160)
@@ -315,7 +324,7 @@ def test_on_an_equal_quote_time_nyse_books_copy_counts():
             for x in lv[side]:
                 if x["EXCHANGE"] == "NSDQ":
                     x["SEQUENCE"] = same
-    comp = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": nq})["COMPOSITE"]
+    comp = _readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": nq})["COMPOSITE"]
     assert comp["dedup_partial"] is False
     assert (comp["views"]["5"]["bid_total"], comp["views"]["5"]["ask_total"]) == (800, 2160)
     assert comp["views"]["1"]["bid_total"] == 160
@@ -336,7 +345,7 @@ def test_a_level_without_per_exchange_rows_is_taken_whole_and_the_dedup_marked_p
     composite says its dedup is partial."""
     nyse = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
     del nyse["BIDS"][1]["BIDS"]  # 767.38: BATX 80 + NYSE 40, TOTAL_VOLUME 120
-    comp = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
+    comp = _readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
     assert comp["COMPOSITE"]["dedup_partial"] is True
     assert comp["COMPOSITE"]["views"]["5"]["bid_total"] == 780  # 120 whole, as its rows summed
 
@@ -364,8 +373,8 @@ def test_any_code_in_both_books_counts_once():
         for lv in as_nyse[side]:
             for x in lv[side]:
                 x["EXCHANGE"] = x["EXCHANGE"].upper()
-    r = e.book_readout({"NYSE_BOOK": as_nyse, "NASDAQ_BOOK": newer})
-    alone = e.book_readout({"NYSE_BOOK": None, "NASDAQ_BOOK": newer})
+    r = _readout({"NYSE_BOOK": as_nyse, "NASDAQ_BOOK": newer})
+    alone = _readout({"NYSE_BOOK": None, "NASDAQ_BOOK": newer})
     assert r["COMPOSITE"]["status"] == "ok"
     for view in e.READOUT_VIEWS:
         got, one = r["COMPOSITE"]["views"][view], alone["COMPOSITE"]["views"][view]
@@ -375,7 +384,7 @@ def test_any_code_in_both_books_counts_once():
 def test_with_one_book_the_composite_is_that_book():
     """Schwab's NASDAQ_BOOK alone, as for a Nasdaq-listed ticker Schwab sends no NYSE_BOOK for:
     the composite is NASDAQ_BOOK's numbers, its source names that book."""
-    r = e.book_readout({"NYSE_BOOK": None, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
+    r = _readout({"NYSE_BOOK": None, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
     assert r["COMPOSITE"]["books"] == ["NASDAQ_BOOK"]
     for view in e.READOUT_VIEWS:
         comp, nq = r["COMPOSITE"]["views"][view], r["NASDAQ_BOOK"]["views"][view]
@@ -416,12 +425,12 @@ def test_a_book_with_no_levels_adds_nothing_to_the_composite():
     tests/test_order_flow_served_v1.py): the composite is NYSE_BOOK's quotes alone. With NYSE_BOOK's
     asks so, the composite's asks are NASDAQ_BOOK's and its bids both books'."""
     nyse, nq = _PAIR["NYSE_BOOK"]["content"], _PAIR["NASDAQ_BOOK"]["content"]
-    r = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": {**nq, "BIDS": [], "ASKS": []}})
+    r = _readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": {**nq, "BIDS": [], "ASKS": []}})
     for view in e.READOUT_VIEWS:
         comp, one = r[e.COMPOSITE]["views"][view], r["NYSE_BOOK"]["views"][view]
         assert (comp["bid_total"], comp["ask_total"]) == (one["bid_total"], one["ask_total"])
     books = {"NYSE_BOOK": {**nyse, "ASKS": []}, "NASDAQ_BOOK": nq}
-    r = e.book_readout(books)
+    r = _readout(books)
     assert r[e.COMPOSITE]["status"] == "ok"
     for view in e.READOUT_VIEWS:
         bt, at, _pct = _expected(_merged(books), view)
@@ -433,7 +442,7 @@ def test_crossed_withholds_the_sentence_and_locked_keeps_it():
     """Schwab's books when the composite was first locked (NYSE_BOOK's 760.25 bid and ask) and
     first crossed (NYSE_BOOK's 757.58 bid over its 757.57 ask) after 10:00 ET on 2026-11-02."""
     for state, flag in (("LOCKED", "BOOK LOCKED"), ("CROSSED", "BOOK CROSSED")):
-        readout = e.book_readout({svc: content for _ts, svc, content in _TOUCHING[state]})
+        readout = _readout({svc: content for _ts, svc, content in _TOUCHING[state]})
         card = e.readout_card(readout, [(1.0, readout)], dict.fromkeys(readout, 1.0))
         for venue in ("NYSE_BOOK", e.COMPOSITE):
             got = card["venues"][venue]
@@ -480,7 +489,7 @@ def test_a_thin_side_is_read_over_the_levels_it_has_with_the_weights_renormalize
     levels. The asks' top five is its four, the weights renormalized over four, no level
     invented; the counts line says so."""
     _ts, svc, content = _ROWS[66]
-    r = e.book_readout({v: content if v == svc else None for v in e.BOOK_VENUES})[svc]
+    r = _readout({v: content if v == svc else None for v in e.BOOK_VENUES})[svc]
     bids = [lv["TOTAL_VOLUME"] for lv in content["BIDS"]][:5]
     asks = [lv["TOTAL_VOLUME"] for lv in content["ASKS"]]
     assert (len(content["BIDS"]), len(asks)) == (7, 4)
@@ -554,7 +563,7 @@ def test_the_zones_on_the_books_nearest_each_line(case, line, zone):
     exactly -70% and when one read nearest inside each line (9.996%, -9.989%, 69.999%,
     -69.999%), held ten seconds: -70% is very one-sided, just inside a line is not past it."""
     c = _LINES[case]
-    readout = e.book_readout({svc: content for _ts, svc, content in c["books"]})
+    readout = _readout({svc: content for _ts, svc, content in c["books"]})
     w = _steady(readout, c["venue"], c["view"])
     assert w["live_pct"] == pytest.approx(line, abs=0.02)
     assert abs(w["live_pct"]) <= abs(line) and (case.startswith("at") or w["live_pct"] != line)
@@ -673,7 +682,7 @@ def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
     try:
         for ts, svc, content in (_ROWS[0], [_ROWS[0][0] + 400, _ROWS[0][1], _ROWS[0][2]]):
             history.LEAN.record(
-                "SPY", ts, e.book_readout({v: content if v == svc else None for v in e.BOOK_VENUES})
+                "SPY", ts, _readout({v: content if v == svc else None for v in e.BOOK_VENUES})
             )
         points = history.LEAN.points("SPY")
         assert len(points) == 2
@@ -842,9 +851,7 @@ def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
     """INDUCED: Schwab's pair with NYSE_BOOK's BOOK_TIME removed, read with no feed (not live): it
     and the composite keep their words, with "-" never a blank."""
     nyse = {k: v for k, v in _PAIR["NYSE_BOOK"]["content"].items() if k != "BOOK_TIME"}
-    got = _served(
-        e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
-    )
+    got = _served(_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]}))
     assert got["NYSE_BOOK"]["source_text"].startswith(
         "Schwab NYSE_BOOK · not live, no book time sent"
     )
@@ -900,7 +907,7 @@ def test_a_one_sided_book_shows_the_side_it_has_and_no_percentage():
     empty list)."""
     nyse = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
     nyse["ASKS"] = []
-    r = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": None})["NYSE_BOOK"]
+    r = _readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": None})["NYSE_BOOK"]
     assert r["status"] == "one_sided"
     assert all(v["pct"] is None and v["ask_total"] is None for v in r["views"].values())
     assert r["views"]["5"]["bid_total"] == 800
@@ -911,9 +918,9 @@ def test_a_book_with_no_levels_says_so_in_words():
     """INDUCED: Schwab's NYSE_BOOK with both sides as Schwab sends a side it has no level for."""
     nyse = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
     nyse["BIDS"] = nyse["ASKS"] = []
-    r = e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": None})["NYSE_BOOK"]
+    r = _readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": None})["NYSE_BOOK"]
     assert r["status"] == "empty"
-    got = _served(e.book_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": None}))["NYSE_BOOK"]
+    got = _served(_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": None}))["NYSE_BOOK"]
     assert (got["no_number_head"], got["no_number_text"]) == (
         "NO LEVELS",
         "The book Schwab sent has no levels",

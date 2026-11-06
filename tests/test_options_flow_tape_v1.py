@@ -9,15 +9,20 @@ a print landed relative to that SAME tick's own bid/ask."""
 from __future__ import annotations
 
 from app.options.order_flow.history import RecentTape
+from app.options.order_flow.state import OrderFlowState
 
 SYM = "SPY   260918C00600000"
 
 
 def _tape(rows: list[tuple[float, dict]]) -> RecentTape:
-    """A fresh tape fed each (ts_recv, LEVELONE_OPTIONS item) as the console's intake does."""
-    tape = RecentTape()
+    """A fresh tape fed each (ts_recv, LEVELONE_OPTIONS item) as the console's intake does
+    (streaming._ingest_pushed): the live state reads the record first, and the tape takes the
+    state's top of book and streamed values with it."""
+    tape, state = RecentTape(), OrderFlowState()
     for ts_recv, content in rows:
-        tape.record(SYM, content, ts_recv)
+        state.push_level_one(SYM, content, ts_recv=ts_recv)
+        state.push_option_top(SYM, content)
+        tape.record(SYM, content, ts_recv, state.option_top(SYM), state.get_stream_greeks(SYM))
     return tape
 
 
@@ -233,7 +238,9 @@ def test_newest_first_ordering_and_limit_bound():
 
 def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
     tape = _tape([(1000.0, _full_context(TRADE_TIME_MILLIS=1000, LAST_PRICE=1.17, LAST_SIZE=1))])
-    tape.record("", _full_context(TRADE_TIME_MILLIS=2000, LAST_PRICE=1.5, LAST_SIZE=1), 2000.0)
+    tape.record(
+        "", _full_context(TRADE_TIME_MILLIS=2000, LAST_PRICE=1.5, LAST_SIZE=1), 2000.0, None, None
+    )
     assert tape.rows("SPY   260918P00600000", 50) == []
     assert tape.rows("", 50) == []
     assert len(tape.rows(SYM, 50)) == 1
@@ -243,6 +250,7 @@ def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     """The console's intake records a print, then clear_symbol is called for that contract:
     its prints and its books are gone from memory. The release path does not call it."""
     from app.options.order_flow import history, state
+    from app.options.order_flow.engine import read_book
     from app.options.order_flow.streaming import _ingest_pushed
 
     _ingest_pushed(
@@ -254,7 +262,10 @@ def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
         },
     )
     history.BOOKS.record(
-        "SPY", "NYSE_BOOK", {"BIDS": [{"BID_PRICE": 600.0, "TOTAL_VOLUME": 5}]}, 1000.0
+        "SPY",
+        "NYSE_BOOK",
+        read_book({"BIDS": [{"BID_PRICE": 600.0, "TOTAL_VOLUME": 5}]}, "NYSE_BOOK"),
+        1000.0,
     )
     assert len(history.TAPE.rows(SYM, 50)) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)
     state.clear_symbol(SYM)

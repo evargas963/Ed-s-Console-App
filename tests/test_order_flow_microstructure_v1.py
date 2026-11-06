@@ -39,6 +39,23 @@ def _book_snapshot() -> dict:
     }
 
 
+def _read(data: dict) -> dict:
+    """`data` with each book message of its content read by the one reader, engine.read_book,
+    as the live state reads it (a NASDAQ_BOOK); a book the state already read stays."""
+    content = [
+        ofe.read_book(c, "NASDAQ_BOOK")
+        if isinstance(c, dict) and ("BIDS" in c or "ASKS" in c)
+        else c
+        for c in data["content"]
+    ]
+    return {**data, "content": content}
+
+
+def _micro(data: dict, **kw) -> dict:
+    """engine.compute_book_microstructure of `data` as the live state holds it (_read)."""
+    return ofe.compute_book_microstructure(_read(data), **kw)
+
+
 def _l1_top() -> dict:
     return {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500}
 
@@ -48,7 +65,7 @@ def _data() -> dict:
 
 
 def test_top_of_book_is_native():
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    m = _micro(_data(), now_ts=1787233772.0)
     assert m["status"] == "ok"
     tob = m["top_of_book"]
     assert tob == {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500}
@@ -57,7 +74,7 @@ def test_top_of_book_is_native():
 
 
 def test_derived_scalars():
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    m = _micro(_data(), now_ts=1787233772.0)
     assert m["mid"] == 712.48
     # microprice weights each price by the OPPOSITE size: (712.47*500 + 712.49*300)/800.
     assert abs(m["microprice"] - 712.4775) < 1e-6
@@ -66,7 +83,7 @@ def test_derived_scalars():
 
 
 def test_depth_totals_values():
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    m = _micro(_data(), now_ts=1787233772.0)
     d1, d3, d5 = m["depth"]["1"], m["depth"]["3"], m["depth"]["5"]
     assert (d1["bid_total"], d1["ask_total"]) == (1000.0, 960.0)
     assert (d3["bid_total"], d3["ask_total"]) == (1080.0, 1990.0)
@@ -74,7 +91,7 @@ def test_depth_totals_values():
 
 
 def test_book_shape_metrics():
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    m = _micro(_data(), now_ts=1787233772.0)
     # slope: 1360 shares over a 0.04 price span (712.47 -> 712.43) = 34000 shares/$.
     assert abs(m["book_slope"]["bid"] - 34000.0) < 1e-6
     # concentration: 1000 at the touch / 1360 top-5 = 0.7353.
@@ -85,7 +102,7 @@ def test_book_shape_metrics():
 
 
 def test_wall_candidates_are_flagged_heuristic():
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    m = _micro(_data(), now_ts=1787233772.0)
     # median top-5 bid size = 80; the 1000-share touch is 12.5x median -> a candidate. None on ask.
     bid_walls = [w for w in m["wall_candidates"] if w["side"] == "bid"]
     assert bid_walls == [{"side": "bid", "price": 712.47, "volume": 1000.0, "median_mult": 12.5}]
@@ -119,7 +136,7 @@ def test_slope_and_concentration_sparse_and_asymmetric():
         "ASKS": [{"ASK_PRICE": 10.1, "TOTAL_VOLUME": 40}, {"ASK_PRICE": 10.2, "TOTAL_VOLUME": 40}],
         "BOOK_TIME": 1,
     }
-    m = ofe.compute_book_microstructure({"content": [one]}, now_ts=1.0)
+    m = _micro({"content": [one]}, now_ts=1.0)
     assert m["book_slope"]["bid"] is None  # <2 bid levels -> no span
     assert m["liquidity_concentration"]["bid"] == 1.0
     # Asymmetric: ask side has 2 levels over a 0.1 span -> slope = 80/0.1 = 800 shares/$.
@@ -128,7 +145,7 @@ def test_slope_and_concentration_sparse_and_asymmetric():
 
 
 def test_ages_from_native_timestamps():
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    m = _micro(_data(), now_ts=1787233772.0)
     assert m["ages"]["book_age_sec"] == 1787233772.0 - 1787233769563.0 / 1000.0  # in full
     assert m["ages"]["quote_age_sec"] == 3.0
     assert m["provenance"]["book_time_ms"] == 1787233769563.0
@@ -136,7 +153,7 @@ def test_ages_from_native_timestamps():
 
 
 def test_fail_closed_no_book():
-    m = ofe.compute_book_microstructure({"content": []}, now_ts=1787233772.0)
+    m = _micro({"content": []}, now_ts=1787233772.0)
     assert m["status"] == "no_book"
     assert m["depth"]["5"]["imbalance"] is None
     assert m["wall_candidates"] == []
@@ -148,7 +165,7 @@ def test_every_emitted_metric_is_classified():
     classification entry fails. A family match requires a dotted boundary (`key + "."`), so a
     bare prefix collision (an unrelated `mid_price` entry) cannot stand in for the real `mid`
     entry."""
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    m = _micro(_data(), now_ts=1787233772.0)
     cls = m["classification"]
     # Self-describing meta blocks, not emitted metrics: the classification map
     # itself, the explicit deferral list, the status flag, and wall_method (which
@@ -169,7 +186,7 @@ def test_server_received_ts_is_classified_derived():
     """server_received_ts is the server wall clock stamped at serialization, not an
     exchange-native field — it must be labeled DERIVED, distinct from the NATIVE
     exchange_quote_ts."""
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
+    m = _micro(_data(), now_ts=1787233772.0)
     assert m["classification"]["provenance.server_received_ts"] == "DERIVED"
     assert m["classification"]["provenance.exchange_quote_ts"] == "NATIVE"
     assert m["provenance"]["server_received_ts"] == 1787233772.0
@@ -203,7 +220,7 @@ def _unsorted_data() -> dict:
 def test_unsorted_book_is_canonicalized_before_topn():
     """Levels arriving out of order must be sorted (bids desc, asks asc) BEFORE any Top-N
     semantics, so the touch and cumulative depth curve are correct regardless of input order."""
-    m = ofe.compute_book_microstructure(_unsorted_data(), now_ts=2.0)
+    m = _micro(_unsorted_data(), now_ts=2.0)
     assert m["top_of_book"]["bid"] == 712.47  # highest bid, not the 712.43 that arrived first
     assert m["top_of_book"]["ask"] == 712.49  # lowest ask, not the 712.53 that arrived first
     # depth-pressure is cumulative BEST-FIRST after sorting: 712.47(1000),712.45(40),712.43(200)
@@ -235,7 +252,7 @@ def test_invalid_sizes_are_rejected():
         ],
         "top": l1.option_top("BADSIZE"),
     }
-    m = ofe.compute_book_microstructure(bad, now_ts=2.0)
+    m = _micro(bad, now_ts=2.0)
     # only the two valid bid levels (1000 + 80) survive into the depth total
     assert m["depth"]["3"]["bid_total"] == 1080.0
     # a negative L1 bid size is withheld, not published as a real size
@@ -256,7 +273,7 @@ def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
         ],
         "top": {"bid": 712.60, "ask": 712.49, "bid_size": 300, "ask_size": 500},
     }
-    m = ofe.compute_book_microstructure(crossed, now_ts=2.0)
+    m = _micro(crossed, now_ts=2.0)
     assert m["crossed"] is True
     assert m["mid"] == (712.60 + 712.49) / 2.0
     assert m["microprice"] == (712.60 * 500 + 712.49 * 300) / 800
@@ -272,7 +289,7 @@ def test_one_sided_book_fails_closed():
         ],
         "top": {"ask": 712.49, "ask_size": 500},
     }
-    m = ofe.compute_book_microstructure(one, now_ts=2.0)
+    m = _micro(one, now_ts=2.0)
     for n in ("1", "3", "5"):
         assert m["depth"][n]["imbalance"] is None
 
@@ -289,9 +306,7 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
         {"ASKS": [{"ASK_PRICE": 713.10, "TOTAL_VOLUME": 77}], "BOOK_TIME": snap["BOOK_TIME"] + 1},
         "NASDAQ_BOOK",
     )
-    m = ofe.compute_book_microstructure(
-        {"content": st.get_content_for_symbol("ONESIDE")}, now_ts=2.0
-    )
+    m = _micro({"content": st.get_content_for_symbol("ONESIDE")}, now_ts=2.0)
     assert m["status"] == "ok"
     assert m["depth"]["1"]["ask_total"] == 77.0 and m["depth"]["1"]["bid_total"] is None
 
@@ -303,9 +318,9 @@ def test_route_serializes_carried_state_without_recomputing():
     (a recompute stores a new entry)."""
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
     data = _data()
-    first = ofe.compute_book_microstructure(data, now_ts=100.0, ticker="CARRYTEST")
+    first = _micro(data, now_ts=100.0, ticker="CARRYTEST")
     held = ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"]
-    second = ofe.compute_book_microstructure(data, now_ts=200.0, ticker="CARRYTEST")
+    second = _micro(data, now_ts=200.0, ticker="CARRYTEST")
     assert ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"] is held, (
         "structural recomputed instead of carried"
     )
@@ -349,8 +364,8 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     )
 
     ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
-    m1 = ofe.compute_book_microstructure(v1, ticker="STALE", now_ts=1.0)
-    m2 = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=2.0)
+    m1 = _micro(v1, ticker="STALE", now_ts=1.0)
+    m2 = _micro(v2, ticker="STALE", now_ts=2.0)
 
     # Both snapshots genuinely carry the identical BOOK_TIME...
     assert m1["provenance"]["book_time_ms"] == m2["provenance"]["book_time_ms"] == float(BT)
@@ -365,7 +380,7 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
 
     # And an unchanged re-read of v2 (same ticker, same content) still carries without recompute.
     held = ofe._MICRO_STRUCTURAL_CACHE["STALE"]
-    m2b = ofe.compute_book_microstructure(v2, ticker="STALE", now_ts=3.0)
+    m2b = _micro(v2, ticker="STALE", now_ts=3.0)
     assert ofe._MICRO_STRUCTURAL_CACHE["STALE"] is held, (
         "recomputed despite identical canonical book"
     )
@@ -380,8 +395,8 @@ def test_engine_and_route_read_the_same_canonical_state():
 
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
     data = _data()
-    out = OrderFlowEngine().compute(data, now=1787233772.0, ticker="SAME")
-    route = ofe.compute_book_microstructure(data, now_ts=1787233772.0, ticker="SAME")
+    out = OrderFlowEngine().compute(_read(data), now=1787233772.0, ticker="SAME")
+    route = _micro(data, now_ts=1787233772.0, ticker="SAME")
     assert out["book_microstructure"]["depth"] == route["depth"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
 
@@ -414,9 +429,7 @@ def test_zero_size_is_a_real_value_not_a_fallback_trigger():
         "a real BID_SIZE=0 is not missing"
     )
     assert ofe._extract_canonical_book(data)["bid_size"] == 0
-    assert (
-        ofe.compute_book_microstructure(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
-    )
+    assert _micro(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
 
 
 def test_no_top_resolves_to_none():

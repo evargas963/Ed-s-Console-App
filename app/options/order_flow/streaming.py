@@ -38,7 +38,9 @@ from app.options.order_flow import history as recent
 from app.options.order_flow.engine import BOOK_VENUES, book_readout
 from app.options.order_flow.state import (
     clear_all_live_state,
+    get_stream_greeks,
     newest_book,
+    option_top,
     push_book,
     push_level_one,
     push_option_top,
@@ -283,11 +285,12 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         content = msg.get("content")
         if not isinstance(content, dict):
             return None
-        push_book(sym, content, msg["service"])
+        book = push_book(sym, content, msg["service"])
         if msg.get("service") == "OPTIONS_BOOK":
             _option_contract_last_update_ts[sym] = ts
         else:
-            recent.BOOKS.record(sym, msg["service"], content, ts)
+            if book is not None:
+                recent.BOOKS.record(sym, msg["service"], book, ts)
             recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
             push_changes.changed(sym, push_changes.FLOW)
         return None
@@ -297,7 +300,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             return None
         push_level_one(sym, content, ts_recv=ts, field_received=received)
         push_option_top(sym, content)
-        recent.TAPE.record(sym, content, ts)
+        recent.TAPE.record(sym, content, ts, option_top(sym), get_stream_greeks(sym))
         _option_contract_last_update_ts[sym] = ts
         # a tick when the newest message carried a value the levels use (a merged record holds
         # the last of each field; only one this message brought is new)

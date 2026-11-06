@@ -10,11 +10,10 @@ import threading
 from collections import defaultdict, deque
 from typing import Any
 
-from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, book_side
+from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
 from numeric_contract import schwab_count, schwab_number
-from option_contract import streamed_greeks
 
 #: the newest prints kept per contract (the tape route serves up to 500)
 TAPE_KEPT = 500
@@ -44,7 +43,13 @@ class RecentTape:
         self._context: dict[str, dict] = {}
         self._last: dict[str, tuple] = {}
 
-    def record(self, contract: str, item: dict, ts_recv: float) -> None:
+    def record(
+        self, contract: str, item: dict, ts_recv: float, top: dict | None, streamed: dict | None
+    ) -> None:
+        """One LEVELONE_OPTIONS record of `contract` as the live state took it: its top of book
+        (`top`, state.option_top) and its streamed Greeks and volume (`streamed`,
+        state.get_stream_greeks), each read once by the state; the print and the contract's
+        details are read here."""
         sym = ticker_storage_key(contract)
         if not sym or not isinstance(item, dict):
             return
@@ -59,7 +64,7 @@ class RecentTape:
                 return
             self._last[sym] = key
             self._prints.setdefault(sym, deque(maxlen=TAPE_KEPT)).append(
-                _print_row(sym, item, p, dict(context), float(ts_recv))
+                _print_row(sym, item, p, dict(context), float(ts_recv), top, streamed)
             )
 
     def forget(self, contract: str) -> None:
@@ -89,10 +94,18 @@ class RecentTape:
             )
 
 
-def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> dict[str, Any]:
+def _print_row(
+    sym: str,
+    item: dict,
+    p: dict,
+    context: dict,
+    ts_recv: float,
+    top: dict | None,
+    streamed: dict | None,
+) -> dict[str, Any]:
     """One trade print in the Options Flow tape's schema: Schwab's values as sent; premium =
     trade x size x Schwab's multiplier; `classification` only where the trade landed against
-    the same message's bid and ask (no aggressor side)."""
+    the same record's bid and ask (no aggressor side)."""
     strike = schwab_number(context.get("STRIKE_TYPE"))
     side = put_call_side(context.get("CONTRACT_TYPE"))
     y, m, d = (
@@ -108,8 +121,7 @@ def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> 
         if (trade is not None and size is not None and mult is not None)
         else None
     )
-    bid, ask = schwab_number(item.get("BID_PRICE")), schwab_number(item.get("ASK_PRICE"))
-    greeks = streamed_greeks(item)
+    bid, ask = _held(top, "bid"), _held(top, "ask")
     classification = "unknown"
     if trade is not None and bid is not None and ask is not None:
         if trade <= bid:
@@ -126,19 +138,24 @@ def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> 
         "type": side,
         "strike": strike,
         "bid": bid,
-        "bid_size": schwab_count(item.get("BID_SIZE")),
+        "bid_size": _held(top, "bid_size"),
         "ask": ask,
-        "ask_size": schwab_count(item.get("ASK_SIZE")),
+        "ask_size": _held(top, "ask_size"),
         "trade": trade,
         "size": size,
         "premium": premium,
-        "volume": schwab_count(item.get("TOTAL_VOLUME")),
+        "volume": _held(streamed, "total_volume"),
         "oi": schwab_count(item.get("OPEN_INTEREST")),
-        "iv": greeks.get("volatility"),
-        "delta": greeks.get("delta"),
+        "iv": _held(streamed, "volatility"),
+        "delta": _held(streamed, "delta"),
         "multiplier": mult,
         "classification": classification,
     }
+
+
+def _held(record: dict | None, name: str) -> Any:
+    """`record`'s value of `name`; None when the state holds no record or no such value."""
+    return None if record is None else record.get(name)
 
 
 def put_call_side(contract_type) -> str | None:
@@ -186,11 +203,11 @@ class RecentBooks:
         self._lock = threading.Lock()
         self._books: dict[tuple[str, str], deque] = {}
 
-    def record(self, ticker: str, venue: str, item: dict, ts_recv: float) -> None:
+    def record(self, ticker: str, venue: str, book: Book, ts_recv: float) -> None:
         sym = ticker_storage_key(ticker)
-        if not sym or not isinstance(item, dict):
+        if not sym:
             return
-        bids, asks = tuple(book_side(item, "BIDS")), tuple(book_side(item, "ASKS"))
+        bids, asks = tuple(book.pairs("BIDS")), tuple(book.pairs("ASKS"))
         if not bids and not asks:
             return
         book = (float(ts_recv), bids, asks)

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import (
     DISPLAY_TAIL_SHARE,
     RecentBooks,
@@ -23,10 +24,14 @@ _FX = json.loads(
 
 
 def _books(rows) -> RecentBooks:
-    """A fresh store fed each captured (ts_recv, venue, book) as the console's intake does."""
+    """A fresh store fed each captured (ts_recv, venue, book message) as the console's intake
+    does: each message read by the one reader (engine.read_book), a message with no book not
+    recorded."""
     books = RecentBooks()
     for ts, svc, nat in rows:
-        books.record("TSLA", svc, nat, ts)
+        book = read_book(nat, svc)
+        if book is not None:
+            books.record("TSLA", svc, book, ts)
     return books
 
 

@@ -11,9 +11,12 @@ import threading
 from collections import defaultdict, deque
 
 from app.options.order_flow import history
+from app.options.order_flow.engine import Book, read_book
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import (
+    TAPE_CLASSIFICATION,
     TAPE_COMPLETENESS,
+    extract_vendor_print,
     is_adjacent_restatement,
     vendor_triple,
 )
@@ -57,32 +60,21 @@ class OrderFlowState:
                 self._tape[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
             return self._tape[symbol]
 
-    def push_book(self, symbol: str, content_item: dict, service: str) -> None:
+    def push_book(self, symbol: str, content_item: dict, service: str) -> Book | None:
         """Apply one Schwab book observation (from `service`: NYSE_BOOK, NASDAQ_BOOK or
-        OPTIONS_BOOK) to this state instance."""
+        OPTIONS_BOOK) to this state instance: the book as read once (engine.read_book), returned;
+        None when the message carries no book."""
         if not content_item or not isinstance(content_item, dict):
-            return
-        bids = content_item.get("BIDS")
-        asks = content_item.get("ASKS")
-        if bids is None and asks is None:
-            return
+            return None
+        book = read_book(content_item, service)
         sym = ticker_storage_key(symbol or content_item.get("key"))
-        if not sym:
-            return
-
-        def _side(levels) -> list:  # a side Schwab sent no levels for is empty, as sent
-            return [] if levels is None else list(levels) if isinstance(levels, list) else [levels]
-
-        item = {
-            "BIDS": _side(bids),
-            "ASKS": _side(asks),
-            "BOOK_TIME": content_item.get("BOOK_TIME"),
-            "SERVICE": service,
-        }
+        if book is None or not sym:
+            return None
         with self._lock:
             books = self._book[sym]
             books.pop(service, None)
-            books[service] = item
+            books[service] = book
+        return book
 
     def push_level_one(
         self,
@@ -126,67 +118,50 @@ class OrderFlowState:
                 if vf is not None:
                     g["total_volume"], g["total_volume_ts_recv"] = vf, received("TOTAL_VOLUME")
 
-        trade_ms = content_item.get("TRADE_TIME_MILLIS")
-        last_price = content_item.get("LAST_PRICE")
-        last_size = content_item.get("LAST_SIZE")
-        if last_price is None:
+        trade = extract_vendor_print(content_item)
+        if trade is None:
             return
-
-        curr_key = vendor_triple(trade_ms, last_price, last_size)
-        # the daemon's receive time of the message that carried the trade, not the console's
-        # clock, and not a later tick merged into the same record
-        received_ts = float(received("LAST_PRICE"))
+        key = vendor_triple(trade["time_millis"], trade["price"], trade["size"])
         with self._lock:
+            # an adjacent repeat of the same trade is a restatement: never a second print
+            if is_adjacent_restatement(self._prev_trade.get(sym), key):
+                return
+            self._prev_trade[sym] = key
             seq = self._receive_seq.get(sym, 0) + 1
             self._receive_seq[sym] = seq
-            prev = self._prev_trade.get(sym)
-            prev_key = None
-            if prev:
-                prev_key = vendor_triple(
-                    prev.get("time_millis"), prev.get("price"), prev.get("size")
-                )
-            restatement = is_adjacent_restatement(prev_key, curr_key)
-            receipt = {
-                "LAST_PRICE": last_price,
-                "LAST_SIZE": last_size,
-                "TRADE_TIME_MILLIS": trade_ms,
-                "receive_seq": seq,
-                "server_received_ts": received_ts,
-                "is_restatement": restatement,
-                "completeness": TAPE_COMPLETENESS,
-                "native_event_id": False,
-            }
-            if restatement:
-                return
-            self._prev_trade[sym] = {
-                "price": last_price,
-                "size": last_size,
-                "time_millis": trade_ms,
-            }
-            self._get_tape(sym).append(receipt)
+            self._get_tape(sym).append(
+                {
+                    **trade,
+                    "receive_seq": seq,
+                    # the daemon's receive time of the message that carried the trade, not the
+                    # console's clock, and not a later tick merged into the same record
+                    "server_received_ts": float(received("LAST_PRICE")),
+                    "classification": TAPE_CLASSIFICATION,
+                    "completeness": TAPE_COMPLETENESS,
+                    "native_event_id": False,
+                }
+            )
 
-    def get_content_for_symbol(self, symbol: str, venue: str | None = None) -> list[dict]:
-        """Return the canonical engine-facing state for one symbol; with `venue`, only that
-        Schwab book service's books (an equity has two: NYSE_BOOK and NASDAQ_BOOK)."""
+    def get_content_for_symbol(self, symbol: str, venue: str | None = None) -> list:
+        """The engine's input for one symbol: its newest book of each Schwab service (engine.Book)
+        then its tape's prints (dicts), in receive order; with `venue`, only that Schwab book
+        service's book (an equity has two: NYSE_BOOK and NASDAQ_BOOK)."""
         sym = ticker_storage_key(symbol)
         if not sym:
             return []
-        out: list[dict] = []
+        out: list = []
         with self._lock:
             out.extend(
-                dict(item)
-                for item in self._book[sym].values()
-                if venue is None or item["SERVICE"] == venue
+                book for book in self._book[sym].values() if venue is None or book.service == venue
             )
             out.extend(dict(item) for item in self._get_tape(sym))
         return out
 
-    def newest_book(self, symbol: str, venue: str) -> dict | None:
+    def newest_book(self, symbol: str, venue: str) -> Book | None:
         """The newest book held for `symbol` from Schwab service `venue`; None: none held."""
         sym = ticker_storage_key(symbol)
         with self._lock:
-            book = self._book[sym].get(venue)
-            return None if book is None else dict(book)
+            return self._book[sym].get(venue)
 
     def clear_all(self) -> None:
         """Drop tape/book/top/prev-print identity for every symbol."""
@@ -268,9 +243,9 @@ def option_top(symbol: str) -> dict | None:
     return _LIVE_STATE.option_top(symbol)
 
 
-def push_book(symbol: str, content_item: dict, service: str) -> None:
-    """Apply a book observation to the live singleton."""
-    _LIVE_STATE.push_book(symbol, content_item, service)
+def push_book(symbol: str, content_item: dict, service: str) -> Book | None:
+    """Apply a book observation to the live singleton: the book as read, or None."""
+    return _LIVE_STATE.push_book(symbol, content_item, service)
 
 
 def push_level_one(
@@ -283,12 +258,12 @@ def push_level_one(
     _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv, field_received=field_received)
 
 
-def get_content_for_symbol(symbol: str, venue: str | None = None) -> list[dict]:
+def get_content_for_symbol(symbol: str, venue: str | None = None) -> list:
     """Return canonical engine content from the live singleton."""
     return _LIVE_STATE.get_content_for_symbol(symbol, venue)
 
 
-def newest_book(symbol: str, venue: str) -> dict | None:
+def newest_book(symbol: str, venue: str) -> Book | None:
     """The live singleton's newest book of `symbol` from `venue`."""
     return _LIVE_STATE.newest_book(symbol, venue)
 

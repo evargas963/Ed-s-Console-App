@@ -20,6 +20,7 @@ import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
+from app.options.order_flow.engine import Book, read_book
 from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
 
 _MIX = json.loads(
@@ -81,7 +82,9 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
             while any(top(s) != t for s, t in want.items()) and time_et.elapsed() < deadline:
                 await asyncio.sleep(0.05)
             books = ofls.get_content_for_symbol(BOOK_CONTRACT)
-            return {s: top(s) for s in want}, next(i for i in reversed(books) if "BIDS" in i)
+            return {s: top(s) for s in want}, next(
+                i for i in reversed(books) if isinstance(i, Book)
+            )
         finally:
             ofs.stop_order_flow_stream()
             ofs._daemon = None
@@ -92,7 +95,7 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
     finally:
         ofls.clear_all_live_state()
     assert want and tops == want
-    assert book["BIDS"] == newest_book["BIDS"] and book["ASKS"] == newest_book["ASKS"]
+    assert book == read_book(newest_book, "OPTIONS_BOOK")  # every level Schwab sent, as read
 
 
 def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():

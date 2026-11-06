@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import statistics
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -82,7 +83,43 @@ def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
     return tuple(out)
 
 
-def _side_levels(content_item: dict, side: str) -> list[tuple[float, float, Exchanges | None]]:
+#: one level of a book: (price, TOTAL_VOLUME, the level's per-exchange rows), as Schwab sent them
+Level = tuple[float, float, Exchanges | None]
+
+
+@dataclass(frozen=True)
+class Book:
+    """One Schwab book message (NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK), read once (read_book):
+    its service, BOOK_TIME, and each side's levels in the order Schwab sent them."""
+
+    service: str
+    book_time_ms: float | None
+    bids: tuple[Level, ...]
+    asks: tuple[Level, ...]
+
+    def levels(self, side: str) -> tuple[Level, ...]:
+        """The levels of `side`, "BIDS" or "ASKS"."""
+        return self.bids if side == "BIDS" else self.asks
+
+    def pairs(self, side: str) -> list[tuple[float, float]]:
+        """The (price, TOTAL_VOLUME) of each level of `side`, "BIDS" or "ASKS", as sent."""
+        return [(p, v) for p, v, _ in self.levels(side)]
+
+
+def read_book(content_item: dict, service: str) -> Book | None:
+    """The one reader of a Schwab book message: None when it carries neither side (a side Schwab
+    sent no levels for is empty)."""
+    if content_item.get("BIDS") is None and content_item.get("ASKS") is None:
+        return None
+    return Book(
+        service,
+        schwab_number(content_item.get("BOOK_TIME")),
+        tuple(_side_levels(content_item, "BIDS")),
+        tuple(_side_levels(content_item, "ASKS")),
+    )
+
+
+def _side_levels(content_item: dict, side: str) -> list[Level]:
     """One side of a Schwab book, "BIDS" or "ASKS": (price, TOTAL_VOLUME, the level's per-exchange
     sizes) for each level, as sent. A level without a number for both price and size is not a
     level."""
@@ -104,22 +141,16 @@ def _side_levels(content_item: dict, side: str) -> list[tuple[float, float, Exch
     return out
 
 
-def book_side(content_item: dict, side: str) -> list[tuple[float, float]]:
-    """One side of a Schwab book, "BIDS" or "ASKS", as (price, TOTAL_VOLUME) pairs as sent: the
-    one reader of a book's levels for the microstructure, the readout and the recent books."""
-    return [(p, v) for p, v, _ in _side_levels(content_item, side)]
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # BOOK METRICS
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _latest_book_snapshot(items: list) -> dict | None:
-    """Return the most recent book content item (a one-sided book included: the side Schwab sent
-    no levels for is empty)."""
+def _latest_book_snapshot(items: list) -> Book | None:
+    """Return the most recent book (a one-sided book included: the side Schwab sent no levels for
+    is empty)."""
     for item in reversed(items):
-        if isinstance(item, dict) and ("BIDS" in item or "ASKS" in item):
+        if isinstance(item, Book):
             return item
     return None
 
@@ -244,16 +275,12 @@ def _extract_canonical_book(data: dict) -> dict:
     bid_size = schwab_count(t.get("bid_size"))
     ask_size = schwab_count(t.get("ask_size"))
 
-    bid_levels = (
-        _sorted_valid_levels(book_side(snapshot, "BIDS"), descending=True) if snapshot else []
-    )
-    ask_levels = (
-        _sorted_valid_levels(book_side(snapshot, "ASKS"), descending=False) if snapshot else []
-    )
+    bid_levels = _sorted_valid_levels(snapshot.pairs("BIDS"), descending=True) if snapshot else []
+    ask_levels = _sorted_valid_levels(snapshot.pairs("ASKS"), descending=False) if snapshot else []
     mark, mark_leaf = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,
-        "venue": snapshot.get("SERVICE") if snapshot else None,
+        "venue": snapshot.service if snapshot else None,
         "bid": bid,
         "ask": ask,
         "bid_size": bid_size,
@@ -262,7 +289,7 @@ def _extract_canonical_book(data: dict) -> dict:
         "ask_leaf": ask_leaf,
         "bid_levels": bid_levels,
         "ask_levels": ask_levels,
-        "book_time_ms": schwab_number(snapshot.get("BOOK_TIME")) if snapshot else None,
+        "book_time_ms": snapshot.book_time_ms if snapshot else None,
         "mark": mark,
         "mark_leaf": mark_leaf,
     }
@@ -588,7 +615,7 @@ _TOUCH_FLAG = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 Levels = list[tuple[float, float]]
 
 
-def _composite_side(books: dict[str, dict], side: str) -> tuple[Levels, bool]:
+def _composite_side(books: dict[str, Book], side: str) -> tuple[Levels, bool]:
     """One side of the composite of the books held: every quote, one per contributor (its code,
     matched without regard to case), from the book whose copy has the newer quote time (on an equal
     time, or neither sent, the first in BOOK_VENUES order), the shares summed at each distinct
@@ -597,8 +624,8 @@ def _composite_side(books: dict[str, dict], side: str) -> tuple[Levels, bool]:
     (the second value)."""
     rows_held = [
         (code.upper(), venue, quoted)
-        for venue, item in books.items()
-        for _price, _total, rows in _side_levels(item, side)
+        for venue, book in books.items()
+        for _price, _total, rows in book.levels(side)
         if rows is not None
         for code, _size, quoted in rows
     ]
@@ -613,8 +640,8 @@ def _composite_side(books: dict[str, dict], side: str) -> tuple[Levels, bool]:
         for key, _venue, quoted in rows_held
     )
     sizes: dict[float, float] = {}
-    for venue, item in books.items():
-        for price, total, rows in _side_levels(item, side):
+    for venue, book in books.items():
+        for price, total, rows in book.levels(side):
             if rows is None:
                 partial = True
                 sizes[price] = sizes.get(price, 0.0) + total
@@ -692,26 +719,26 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
     }
 
 
-def book_readout(books: dict[str, dict | None]) -> dict[str, dict]:
+def book_readout(books: dict[str, Book | None]) -> dict[str, dict]:
     """The imbalance readout of each Schwab book and of their composite, from each venue's newest
     book (`state.newest_book`, every venue of BOOK_VENUES; None: no book). The composite is of the
     books held (`books` names them): with one, that book; with none, no_book, `books` naming the
     two it reads. Its time is its older book's."""
     out: dict[str, dict] = {}
-    held: dict[str, dict] = {}
+    held: dict[str, Book] = {}
     for v in BOOK_VENUES:
-        item = books[v]
-        if item is None:
+        book = books[v]
+        if book is None:
             out[v] = {"status": "no_book", "book_time_ms": None}
             continue
-        held[v] = item
-        bids = _sorted_valid_levels(book_side(item, "BIDS"), descending=True)
-        asks = _sorted_valid_levels(book_side(item, "ASKS"), descending=False)
-        out[v] = _readout(bids, asks, schwab_number(item.get("BOOK_TIME")))
+        held[v] = book
+        bids = _sorted_valid_levels(book.pairs("BIDS"), descending=True)
+        asks = _sorted_valid_levels(book.pairs("ASKS"), descending=False)
+        out[v] = _readout(bids, asks, book.book_time_ms)
     if not held:
         out[COMPOSITE] = {"status": "no_book", "book_time_ms": None, "books": list(BOOK_VENUES)}
         return out
-    times = [schwab_number(i.get("BOOK_TIME")) for i in held.values()]
+    times = [b.book_time_ms for b in held.values()]
     (bids, bid_partial), (asks, ask_partial) = (_composite_side(held, s) for s in ("BIDS", "ASKS"))
     out[COMPOSITE] = _readout(bids, asks, None if None in times else min(times))
     out[COMPOSITE]["books"] = list(held)
