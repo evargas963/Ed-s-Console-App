@@ -11,7 +11,7 @@ import live_market_plane as lmp
 import push_changes
 import server as srv
 import time_et
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, DAILY_CANDLE_BASIS
 from math_exposure_core import (
     compute_exposures_by_strike,
     net_gex_dollars_at_strike,
@@ -19,7 +19,12 @@ from math_exposure_core import (
 )
 from micro_structure import Candle
 from option_contract import read_chain
-from tests.feed_live_helper import daemon_bars, stream_daemon_bars
+from tests.feed_live_helper import (
+    daemon_bars,
+    hold_schwab_daily,
+    price_history,
+    stream_daemon_bars,
+)
 from tests.real_chains import SPY_0DTE as C
 from time_et import ET
 
@@ -33,6 +38,7 @@ def _forget(*tickers: str) -> None:
     """No bar in memory or published level of `tickers` is left behind."""
     for tk in tickers:
         srv._bars.pop(tk, None)
+        srv._daily.pop(tk, None)
         for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
             del _MATERIALIZED_SNAPSHOTS[key]
 
@@ -55,6 +61,16 @@ def _newest(rows: list[dict], tk: str) -> list[dict]:
         if r["symbol"] == tk:
             out[r["bar_start_ms"]] = r
     return [out[ms] for ms in sorted(out)]
+
+
+def _sent_daily(tk: str, day: str) -> dict:
+    """Schwab's daily candle of `tk` for `day`, as sent (real_pricehistory_spy_tsla_2026_10_07)."""
+    (candle,) = [
+        c
+        for c in price_history(tk, "1d")["body"]["candles"]
+        if _dt.fromtimestamp(c["datetime"] / 1000, ET).date().isoformat() == day
+    ]
+    return candle
 
 
 def _rth(rows: list[dict], tk: str, day: str) -> list[dict]:
@@ -92,10 +108,22 @@ def test_api_levels_b1_contract_single_session_prior_day():
         _bar(2026, 10, 5, 9, 45, 103, 104, 102, 103),  # today post-ORB
     ]
     now = _dt(2026, 10, 5, 10, 0, tzinfo=ET)
+    # the tape's two prior sessions as Schwab's daily candles carry them, dated at midnight ET
+    daily = [
+        {
+            "datetime": b["timestamp"],
+            **{k: b[k] for k in ("open", "high", "low", "close", "volume")},
+        }
+        for b in (
+            _bar(2026, 10, 1, 0, 0, 100, 110, 90, 100),
+            _bar(2026, 10, 2, 0, 0, 96, 105, 95, 102),
+        )
+    ]
     _forget(tk)
     try:
         for b in tape:
             srv._keep_bar(tk, _candle(b))
+        srv._write_price_history({"symbol": tk, "series": "1d", "answer": {"candles": daily}})
         srv._publish_price_levels(tk, now)  # as the bar writer does
         payload = srv.levels_payload(tk, "1", now)
     finally:
@@ -179,13 +207,17 @@ def test_strikes_payload_carries_server_side_sums():
 def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
     """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
     live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
-    matched. The console's 1-minute bars in memory are the one bar history, so the whole prior
-    session there sets every prior-day level. Schwab's SPY and TSLA bars of Thu 2026-10-01 as
-    recorded, streamed to the console, the levels of Fri 10-02 at 10:00 ET."""
+    matched. The prior day's high, low and close are Schwab's daily candle for it, as sent: its
+    high and low are the whole session's 1-minute extremes, and its close is the official close,
+    which the last 1-minute bar's is not. Schwab's SPY and TSLA bars of Thu 2026-10-01 as recorded
+    and their daily candles (real_pricehistory_spy_tsla_2026_10_07.json), the levels of Fri 10-02
+    at 10:00 ET."""
     now = _dt(2026, 10, 2, 10, 0, tzinfo=ET)
     _forget(*_PAIR)
     try:
         stream_daemon_bars(_DAEMON_BARS)
+        for tk in _PAIR:
+            hold_schwab_daily(tk)
         payloads = {}
         for tk in _PAIR:
             srv._publish_price_levels(tk, now)  # as the bar writer does
@@ -201,9 +233,10 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
             "PDL is not the whole prior session's min",
         )
         assert by_id["PDH"]["price"] == max(r["high"] for r in monday), tk
-        assert by_id["PDC"]["price"] == monday[-1]["close"], tk
-        assert srv.BAR_SOURCE in by_id["PDL"]["provenance"]["vendor_basis"], (
-            "provenance names the one bar source"
+        thursday = _sent_daily(tk, "2026-10-01")
+        assert by_id["PDC"]["price"] == thursday["close"] != monday[-1]["close"], tk
+        assert by_id["PDL"]["provenance"]["vendor_basis"] == DAILY_CANDLE_BASIS, (
+            "provenance names Schwab's daily candle"
         )
 
 
@@ -220,6 +253,8 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
     _forget(*_PAIR)
     try:
         stream_daemon_bars(loaded)
+        for t in _PAIR:
+            hold_schwab_daily(t)
 
         # nothing published yet: the levels are absent with their reason
         none_yet = srv.levels_payload(tk, "1", now)
@@ -266,12 +301,13 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         ]
         srv._bars[tk] = kept
 
-        # a new session: the levels loop builds its levels (10-02's bars are its prior day)
+        # a new session: the levels loop builds its levels (10-02 is its prior day: Schwab's daily
+        # high 772.65, which the recorded stream's bars, topping at 772.49, missed)
         monday = _dt(2026, 10, 5, 7, 30, tzinfo=ET)  # pre-market (Schwab's: 07:00)
         srv._publish_missing_price_levels([tk], monday)
         nextday = srv.levels_payload(tk, "1", monday)
-        assert {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"] == max(
-            r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-02")
-        )
+        assert {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"] == _sent_daily(
+            tk, "2026-10-02"
+        )["high"]
     finally:
         _forget(*_PAIR)

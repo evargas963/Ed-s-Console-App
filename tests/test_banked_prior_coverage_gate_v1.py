@@ -20,7 +20,7 @@ from datetime import datetime
 
 import server
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
-from tests.feed_live_helper import daemon_bars, stream_daemon_bars
+from tests.feed_live_helper import daemon_bars, hold_schwab_daily, stream_daemon_bars
 from time_et import ET
 
 _ROWS = daemon_bars("real_daemon_bars_spy_tsla_spx_2026_10_01_02.json", "SPY", "TSLA")
@@ -34,12 +34,15 @@ def _published(now: datetime) -> dict:
     def forget():
         for tk in _PAIR:
             server._bars.pop(tk, None)
+            server._daily.pop(tk, None)
             for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
                 del _MATERIALIZED_SNAPSHOTS[key]
 
     forget()
     try:
         stream_daemon_bars(_ROWS)
+        for tk in _PAIR:
+            hold_schwab_daily(tk)  # the prior session's high, low and close: Schwab's candle
         out = {}
         for tk in _PAIR:
             server._publish_price_levels(tk, now)
@@ -58,7 +61,7 @@ def test_thin_banked_prior_session_is_stamped_degraded():
         )
         stamps = [d for d in snap.degraded if d.get("family") == "prior_day"]
         assert stamps and "prior session 2026-10-02" in stamps[0]["reason"], (tk, snap.degraded)
-        assert "partial tape" in stamps[0]["reason"], (tk, stamps)
+        assert "estimated from a partial tape" in stamps[0]["reason"], (tk, stamps)
         assert "291" in stamps[0]["reason"], (tk, stamps)
 
 

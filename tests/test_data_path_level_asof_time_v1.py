@@ -8,7 +8,7 @@ import pytest
 
 import server
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
-from tests.feed_live_helper import daemon_bars, stream_daemon_bars
+from tests.feed_live_helper import daemon_bars, hold_schwab_daily, stream_daemon_bars
 from time_et import ET, ct_label
 
 _BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
@@ -17,6 +17,7 @@ _BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 def _forget(*tickers: str) -> None:
     for tk in tickers:
         server._bars.pop(tk, None)
+        server._daily.pop(tk, None)
         for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
             del _MATERIALIZED_SNAPSHOTS[key]
 
@@ -42,19 +43,19 @@ def test_the_levels_page_carries_each_levels_time():
     "now, window",
     [
         (datetime(2026, 10, 3, 12, 0, tzinfo=ET), "2026-10-01 RTH close -> 2026-10-02 RTH open"),
-        (
-            datetime(2026, 10, 1, 12, 0, tzinfo=ET),
-            "2026-10-01 before the RTH open (no prior session)",
-        ),
+        (datetime(2026, 10, 1, 12, 0, tzinfo=ET), "2026-09-30 RTH close -> 2026-10-01 RTH open"),
     ],
 )
 def test_the_overnight_levels_name_the_sessions_they_span(now, window):
-    """SPY's overnight high and low name the sessions their bars span. Saturday 2026-10-03:
-    Thursday's regular close to Friday's regular open. Thursday 2026-10-01, the first day the
-    bars hold: that morning's pre-open, with no session before it."""
+    """SPY's overnight high and low name the sessions their bars span, from the prior session
+    Schwab's daily candles name (real_pricehistory_spy_tsla_2026_10_07.json). Saturday
+    2026-10-03: Thursday's regular close to Friday's regular open. Thursday 2026-10-01, the first
+    day the bars hold: Schwab's candle of Wednesday 09-30 makes it the prior session, though no
+    bar of it is held."""
     _forget("SPY", "TSLA")
     try:
         stream_daemon_bars(_BARS)
+        hold_schwab_daily("SPY")
         server._publish_price_levels("SPY", now)
         body = server.levels_payload("SPY", "1", now)
         overnight = [r for r in body["levels"] if r["family"] == "overnight"]

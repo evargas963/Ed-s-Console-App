@@ -54,6 +54,22 @@ def _fresh():
         del LVE._MATERIALIZED_SNAPSHOTS[key]
 
 
+def _daily(session, bars) -> list:
+    """The prior session's daily candle as Schwab dates it (midnight ET), of its bars above."""
+    prior = most_recent_trading_day_et(on_or_before=session - timedelta(days=1))
+    held = [b for b in bars if datetime.fromtimestamp(b["timestamp"] / 1000, ET).date() == prior]
+    return [
+        Candle(
+            ts=datetime(prior.year, prior.month, prior.day, tzinfo=ET).timestamp(),
+            open=held[0]["open"],
+            high=max(b["high"] for b in held),
+            low=min(b["low"] for b in held),
+            close=held[-1]["close"],
+            volume=sum(b["volume"] for b in held),
+        )
+    ]
+
+
 def _mat(session, bars):
     return materialize_price_level_snapshot(
         "ZZRC324",
@@ -71,6 +87,7 @@ def _mat(session, bars):
                 for b in bars
             ]
         ),
+        daily=_daily(session, bars),
         bar_source="test_fixture",
         config=PlaybookConfig(),
     )
@@ -138,12 +155,13 @@ def test_the_fingerprint_covers_every_bar_field():
     """Each field that can move a level must move the key — checked field by field."""
     session = most_recent_trading_day_et()
     base = _bars(session, 105.0)
-    fp = LVE._snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture")
+    (prior,) = _daily(session, base)
+    fp = LVE._snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture", prior)
 
     for field in ("open", "high", "low", "close", "volume"):
         mutated = [dict(b) for b in base]
         mutated[30][field] = (mutated[30][field] or 0.0) + 7.0
-        other = LVE._snapshot_input_fingerprint("ZZRC324", session, mutated, "test_fixture")
+        other = LVE._snapshot_input_fingerprint("ZZRC324", session, mutated, "test_fixture", prior)
         assert other != fp, (
             f"changing an interior bar's {field} left the fingerprint unchanged — that "
             f"field can go stale (RC-324)"
@@ -152,4 +170,12 @@ def test_the_fingerprint_covers_every_bar_field():
     # A timestamp change must also register.
     shifted = [dict(b) for b in base]
     shifted[30]["timestamp"] = shifted[30]["timestamp"] + 60_000
-    assert LVE._snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture") != fp
+    assert LVE._snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture", prior) != fp
+
+    # So must each field of the prior session's daily candle, and its absence.
+    for field in ("high", "low", "close"):
+        moved = Candle(**{**prior.__dict__, field: getattr(prior, field) + 7.0})
+        assert (
+            LVE._snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture", moved) != fp
+        )
+    assert LVE._snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture", None) != fp
