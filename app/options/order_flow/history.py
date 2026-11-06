@@ -232,11 +232,7 @@ class RecentBooks:
         key = (ticker_storage_key(ticker), venue)
         with self._lock:
             held = list(self._books[key]) if key in self._books else []
-        return (
-            [b for b in held if b[0] >= held[-1][0] - max(1.0, float(minutes)) * 60.0]
-            if held
-            else []
-        )
+        return [b for b in held if b[0] >= held[-1][0] - minutes * 60.0] if held else []
 
 
 class RecentLean:
