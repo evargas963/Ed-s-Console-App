@@ -482,8 +482,8 @@ class ChainSweep:
                 break
             if ticker not in self.watchlist:
                 continue
-            self.fetch_chain(schwab_client, ticker)
-            while len(self._queue) >= QUOTES_BATCH_MAX:
+            self.fetch_chain(schwab_client, ticker, stop)
+            while len(self._queue) >= QUOTES_BATCH_MAX and not stop.is_set():
                 self.send_quotes(schwab_client)
         while self._queue and not stop.is_set():
             self.send_quotes(schwab_client)
@@ -541,9 +541,10 @@ class ChainSweep:
         if whole:
             self._candled[ticker] = now
 
-    def fetch_chain(self, schwab_client, ticker: str) -> None:
+    def fetch_chain(self, schwab_client, ticker: str, stop: threading.Event) -> None:
         """`ticker`'s chain, every expiry: each contract's Greeks from the stream, or the contract
-        queued for its quote; delivered at once when none is queued."""
+        queued for its quote; delivered at once when none is queued. A stop asked between two
+        expiries ends it there: no expiry more is asked for, and the part fetched is not a chain."""
         chain = _Chain(ticker, self.clock())
         try:
             client = schwab_client()
@@ -556,6 +557,8 @@ class ChainSweep:
                 listed = self._expiries[ticker] = (today, expiries)
             self.fetch_markets(schwab_client, [expiry.isoformat() for expiry in listed[1]])
             for expiry in listed[1]:
+                if stop.is_set():
+                    return None
                 resp = safe_get_chain(
                     client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
                 )
@@ -574,6 +577,11 @@ class ChainSweep:
         except Exception as e:  # that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
+        return self.take_greeks(chain)
+
+    def take_greeks(self, chain: _Chain) -> None:
+        """Each contract of a fetched chain takes its Greeks from the stream, or is queued for its
+        quote; the chain is delivered at once when none is queued."""
         for ct in chain.contracts():
             entry = self.streamed(ct["symbol"])
             if (
