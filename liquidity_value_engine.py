@@ -39,6 +39,9 @@ log = logging.getLogger(__name__)
 #: price levels built from it
 LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
 
+#: where the prior day's high, low and close come from: Schwab sends them on its daily candle
+DAILY_CANDLE_BASIS = "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+
 
 def _regular(d: date) -> tuple[datetime, datetime] | None:
     """`d`'s regular session (open, close) as Schwab's /markets sent it (time_et.session); None:
@@ -98,49 +101,30 @@ def bars_from_candles(candles) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def prior_trading_session_date(bars_norm: list, session_date: date) -> date | None:
-    """The most recent date BEFORE `session_date` that actually traded an RTH session.
-
-    THE single definition of "the prior session", for both the
-    previous-day levels and the overnight window. The calendar cannot answer this question:
-    `session_date - 1 day` is Sunday on a Monday and a closed holiday after one, and a market
-    that was shut has no close for an overnight range to start from.
-
-    Presence of bars inside a day's regular session (the hours Schwab's /markets sent, early
-    closes included) is the evidence a session happened, so an ad-hoc closure with no bars is
-    skipped.
-    Fail-closed: no prior RTH date in the buffer returns None, never a guessed date.
-    """
-    prior: date | None = None
-    for b in bars_norm:
-        dt = b["_dt"]
-        d = dt.date()
-        if d < session_date and _in_rth(dt):
-            if prior is None or d > prior:
-                prior = d
-    return prior
+def prior_session(daily: list, session_date: date):
+    """THE prior session, for the previous-day levels and the overnight window: the newest of
+    Schwab's daily candles (the bar writer's, server._daily) dated before `session_date`. Schwab
+    sends a daily candle for each session that traded, so a weekend, a holiday or a closure has
+    none. None: no such candle held (not received), never a guessed date."""
+    before = [c for c in daily if datetime.fromtimestamp(c.ts, ET).date() < session_date]
+    return max(before, key=lambda c: c.ts) if before else None
 
 
-def get_previous_day_levels(
-    bars_norm: list,
-    session_date: date,
-    config: PlaybookConfig,
-) -> dict:
-    """The prior session (the most recent earlier date with RTH bars, prior_trading_session_date)
-    from normalized bars (bars_from_candles): its date, its RTH bar count, and its high, low, close,
-    POC, VAH and VAL from those RTH bars. No prior session: {} (never a calendar walk or other
-    days' bars)."""
-    prior = prior_trading_session_date(bars_norm, session_date)
+def get_previous_day_levels(bars_norm: list, prior, config: PlaybookConfig) -> dict:
+    """The prior session's levels: its high, low and close as Schwab sent them on its daily candle
+    (`prior`, prior_session), and its POC, VAH and VAL estimated from its RTH 1-minute bars
+    (Schwab sends no volume profile), with the count of those bars. No prior session: {}."""
     if prior is None:
         return {}
-    prev_bars = [b for b in bars_norm if b["_dt"].date() == prior and _in_rth(b["_dt"])]
+    prior_date = datetime.fromtimestamp(prior.ts, ET).date()
+    prev_bars = [b for b in bars_norm if b["_dt"].date() == prior_date and _in_rth(b["_dt"])]
     p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
     return {
-        "prior_date": prior,
+        "prior_date": prior_date,
         "rth_bars": len(prev_bars),
-        "pdh": max(b["high"] for b in prev_bars),
-        "pdl": min(b["low"] for b in prev_bars),
-        "pdc": prev_bars[-1]["close"],
+        "pdh": prior.high,
+        "pdl": prior.low,
+        "pdc": prior.close,
         "pd_poc": None if p is None else p.poc,
         "pd_vah": None if p is None else p.vah,
         "pd_val": None if p is None else p.val,
@@ -153,7 +137,7 @@ def get_overnight_levels(
     prev_session: date | None,
 ) -> dict:
     """Overnight range over normalized bars (bars_from_candles): the continuous interval from the
-    prior session's (`prev_session`, prior_trading_session_date) regular close to this session's
+    prior session's (`prev_session`, prior_session's candle date) regular close to this session's
     regular open, as Schwab's /markets sent them -- a weekend's or holiday's bars included. With
     no prior session the interval has no start, so only this session's pre-open bars are used.
     No bars in the window, or a session's hours not held: {}."""
@@ -892,7 +876,7 @@ _BAR_ABSENT = struct.Struct("<qddddB")
 
 
 def _snapshot_input_fingerprint(
-    ticker: str, session_date: date, bars_norm: list, bar_source: str
+    ticker: str, session_date: date, bars_norm: list, bar_source: str, prior
 ) -> tuple:
     """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
 
@@ -905,6 +889,7 @@ def _snapshot_input_fingerprint(
     """
     h = hashlib.blake2b(digest_size=16)
     h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f{len(bars_norm)}".encode())
+    h.update(repr(prior).encode())  # the prior session's Schwab daily candle (a dataclass), or None
     present, absent = _BAR_PRESENT.pack, _BAR_ABSENT.pack
     for b in bars_norm:
         ts, o, hi, lo, c = (
@@ -927,11 +912,13 @@ def build_price_level_snapshot(
     session_date: date,
     bars_norm: list,
     *,
+    prior,
     bar_source: str,
     config: PlaybookConfig | None = None,
     generation: int = 0,
 ) -> PriceLevelSnapshot:
-    """THE level producer, from normalized bars (bars_from_candles). The only production caller
+    """THE level producer, from normalized bars (bars_from_candles) and the prior session's Schwab
+    daily candle (`prior`, prior_session; None when none is held). The only production caller
     of the canonical helpers.
 
     Absent input stays absent: a family with no bars in its window is declared in
@@ -951,7 +938,7 @@ def build_price_level_snapshot(
 
     basis = f"1m bars ({bar_source}); Schwab streamed bars"
 
-    def _put(level_id: str, price, *, producer: str, window: str) -> None:
+    def _put(level_id: str, price, *, producer: str, window: str, vendor_basis=basis) -> None:
         if price is None:
             return
         v = float_finite_or_none(price)
@@ -966,33 +953,34 @@ def build_price_level_snapshot(
             evidence_tier=tier,
             producer=producer,
             window=window,
-            vendor_basis=basis,
+            vendor_basis=vendor_basis,
             as_of_ts_utc=as_of,
             generation=generation,
         )
 
     # ── prior day ────────────────────────────────────────────────────────────
-    eng = get_previous_day_levels(bars_norm, session_date, cfg)
+    eng = get_previous_day_levels(bars_norm, prior, cfg)
     prior_date = eng.get("prior_date")
     if prior_date is None:
         families_absent.append(
-            {
-                "family": "prior_day",
-                "reason": f"no prior RTH session in available bars (source {bar_source})",
-            }
+            {"family": "prior_day", "reason": "no Schwab daily candle held for a prior session"}
         )
     else:
         window = f"{prior_date.isoformat()} RTH (most recent prior RTH session)"
-        for lid, key in (
-            ("PDH", "pdh"),
-            ("PDL", "pdl"),
-            ("PDC", "pdc"),
-            ("PD_POC", "pd_poc"),
-            ("PD_VAH", "pd_vah"),
-            ("PD_VAL", "pd_val"),
+        for lid, key, sent_by in (
+            ("PDH", "pdh", DAILY_CANDLE_BASIS),
+            ("PDL", "pdl", DAILY_CANDLE_BASIS),
+            ("PDC", "pdc", DAILY_CANDLE_BASIS),
+            ("PD_POC", "pd_poc", basis),
+            ("PD_VAH", "pd_vah", basis),
+            ("PD_VAL", "pd_val", basis),
         ):
             _put(
-                lid, eng.get(key), producer=f"{_PRODUCER_NS}.get_previous_day_levels", window=window
+                lid,
+                eng.get(key),
+                producer=f"{_PRODUCER_NS}.get_previous_day_levels",
+                window=window,
+                vendor_basis=sent_by,
             )
         if eng["rth_bars"] < LEVELS_PRIOR_SESSION_MIN_BARS:
             degraded.append(
@@ -1001,8 +989,8 @@ def build_price_level_snapshot(
                     "last_good_ts_utc": None,
                     "reason": (
                         f"prior session {prior_date} holds only {eng['rth_bars']} of >= "
-                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day levels derive from "
-                        "a partial tape"
+                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
+                        "estimated from a partial tape"
                     ),
                 }
             )
@@ -1144,18 +1132,20 @@ def materialize_price_level_snapshot(
     session_date: date,
     bars_norm: list,
     *,
+    daily: list,
     bar_source: str,
     config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
-    """Materialize once per generation from normalized bars (bars_from_candles); return the SAME
-    object within a generation.
+    """Materialize once per generation from normalized bars (bars_from_candles) and Schwab's daily
+    candles (`daily`, server._daily); return the SAME object within a generation.
 
-    A new market generation (the bar input changed) invokes the producer exactly once.
-    Every later ask in that generation is a read, never a recomputation.
+    A new market generation (the bar input or the prior session's candle changed) invokes the
+    producer exactly once. Every later ask in that generation is a read, never a recomputation.
     """
     tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
     key = (tk, session_date.isoformat())
-    fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source)
+    prior = prior_session(daily, session_date)
+    fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source, prior)
     # The read, the generation decision, the build and the write-back are ONE
     # critical section. Unguarded, two concurrent callers can both see `existing is None`,
     # both compute generation 1 and produce two results under one generation.
@@ -1168,6 +1158,7 @@ def materialize_price_level_snapshot(
             tk,
             session_date,
             bars_norm,
+            prior=prior,
             bar_source=bar_source,
             config=config,
             generation=generation,

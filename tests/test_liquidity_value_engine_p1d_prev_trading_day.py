@@ -1,120 +1,109 @@
-"""UI-04 P1D — previous-day levels must use the previous TRADING day.
+"""The prior session and its high, low and close are Schwab's daily candle, as sent.
 
-Pre-fix defect: session_date-1 on Mondays/post-holiday sessions produced an
-empty window, and the fallback swept EVERY prior bar in the buffer
-(multi-day, extended-hours included) into PDH/PDL/PDC.
-
-The sessions are Schwab's /markets answers captured 2026-10-07 (tests/conftest.py): a Friday and
-the Monday after it (2026-10-02, -05), Thanksgiving (2026-11-26, closed) and the early close after
-it (2026-11-27, regular session 09:30-13:00 ET). The bars are hand-built on those dates: each case
-needs a bar placed exactly inside or outside a session boundary.
+Real data: Schwab's /pricehistory answers for SPY and TSLA of 2026-10-07 09:57 UTC
+(fixtures/real_pricehistory_spy_tsla_2026_10_07.json): a year of daily candles and ten days of
+1-minute bars, through the real bar writer (server._write_price_history) and the real level
+producer. Schwab's daily close is the official close, which the last 1-minute bar's close is
+not (SPY 2026-10-01: 763.99 against 764.03).
 """
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
-from datetime import time as dtime
-from zoneinfo import ZoneInfo
+from pathlib import Path
 
-from liquidity_value_engine import PlaybookConfig, bars_from_candles
-from liquidity_value_engine import get_previous_day_levels as _levels
-from micro_structure import Candle
+import server
+from liquidity_value_engine import (
+    PlaybookConfig,
+    bars_from_candles,
+    get_previous_day_levels,
+    prior_session,
+)
+from time_et import ET
 
-
-def get_previous_day_levels(bars, session_date, cfg):
-    """The engine's prior-day levels of the bar writer's candles, as its producer takes them."""
-    return _levels(bars_from_candles(bars), session_date, cfg)
-
-
-ET = ZoneInfo("America/New_York")
-
-
-def _bar(d: date, hh: int, mm: int, o: float, h: float, lo: float, c: float, v: int = 100):
-    # institutional-synthetic-ok: each case places a bar exactly inside or outside a session
-    # boundary Schwab's /markets sent
-    ts = datetime.combine(d, dtime(hh, mm), tzinfo=ET).timestamp()
-    return Candle(ts=ts, open=o, high=h, low=lo, close=c, volume=v)
+_FX = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
-def _cfg() -> PlaybookConfig:
-    return PlaybookConfig()
+def _held(symbol: str) -> tuple[list, list]:
+    """(daily candles, 1-minute candles) of `symbol` as the bar writer holds them."""
+    for a in _FX["answers"]:
+        if a["symbol"] == symbol:
+            series = "1m" if a["params"]["frequencyType"] == "minute" else "daily"
+            if a["params"]["frequency"] == "1" or series == "daily":
+                server._write_price_history(
+                    {"symbol": symbol, "series": series, "answer": a["body"]}
+                )
+    try:
+        return list(server._daily[symbol]), list(server._bars[symbol])
+    finally:
+        server._daily.pop(symbol, None)
+        server._bars.pop(symbol, None)
 
 
-def test_monday_uses_friday_not_weekend_calendar_walk():
-    """Monday session: prior trading day is Friday; Thursday bars must not leak."""
-    thursday, friday, monday = date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 5)
-    bars = [
-        _bar(thursday, 10, 0, 100, 120, 90, 110),  # decoy older day
-        _bar(friday, 10, 0, 100, 105, 95, 101),
-        _bar(friday, 14, 0, 101, 106, 96, 102),
-    ]
-    out = get_previous_day_levels(bars, monday, _cfg())
-    assert out["pdh"] == 106
-    assert out["pdl"] == 95
-    assert out["pdc"] == 102
+def _sent(symbol: str, day: date) -> dict:
+    """Schwab's daily candle for `day`, as it sent it."""
+    for a in _FX["answers"]:
+        if a["symbol"] == symbol and a["params"]["frequencyType"] == "daily":
+            for c in a["body"]["candles"]:
+                if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() == day:
+                    return c
+    raise AssertionError(f"no daily candle of {symbol} for {day}")
 
 
-def test_extended_hours_bars_never_enter_prev_day_levels():
-    prev, today = date(2026, 10, 6), date(2026, 10, 7)
-    bars = [
-        _bar(prev, 8, 0, 100, 999, 1, 100),  # premarket outlier — must be excluded
-        _bar(prev, 10, 0, 100, 105, 95, 101),
-        _bar(prev, 17, 0, 100, 998, 2, 100),  # after-hours outlier — must be excluded
-    ]
-    out = get_previous_day_levels(bars, today, _cfg())
-    assert out["pdh"] == 105
-    assert out["pdl"] == 95
+def test_the_prior_days_high_low_and_close_are_schwabs_daily_candle_as_sent():
+    for symbol in ("SPY", "TSLA"):
+        daily, minutes = _held(symbol)
+        for session_day, prior_day in (
+            (date(2026, 10, 2), date(2026, 10, 1)),
+            (date(2026, 10, 6), date(2026, 10, 5)),
+            (date(2026, 10, 7), date(2026, 10, 6)),
+        ):
+            out = get_previous_day_levels(
+                bars_from_candles(minutes), prior_session(daily, session_day), PlaybookConfig()
+            )
+            sent = _sent(symbol, prior_day)
+            assert out["prior_date"] == prior_day
+            assert (out["pdh"], out["pdl"], out["pdc"]) == (
+                sent["high"],
+                sent["low"],
+                sent["close"],
+            )
 
 
-def test_multi_day_buffer_selects_only_most_recent_trading_day():
-    d1, d2, today = date(2026, 10, 1), date(2026, 10, 6), date(2026, 10, 7)
-    bars = [
-        _bar(d1, 11, 0, 100, 200, 50, 150),  # older day extremes — must not leak
-        _bar(d2, 11, 0, 100, 110, 90, 105),
-    ]
-    out = get_previous_day_levels(bars, today, _cfg())
-    assert out["pdh"] == 110
-    assert out["pdl"] == 90
-    assert out["pdc"] == 105
+def test_the_prior_close_is_schwabs_official_close_not_the_last_minutes():
+    """SPY 2026-10-01: Schwab's daily close 763.99; its last regular 1-minute bar closed 764.03."""
+    daily, minutes = _held("SPY")
+    out = get_previous_day_levels(
+        bars_from_candles(minutes), prior_session(daily, date(2026, 10, 2)), PlaybookConfig()
+    )
+    assert out["pdc"] == 763.99
 
 
-def test_no_prior_rth_bars_fails_closed_empty():
-    """No prior-day RTH bar anywhere: levels stay absent — never fabricated
-    from extended-hours or same-day bars (the pre-fix fallback defect)."""
-    today = date(2026, 10, 7)
-    bars = [
-        _bar(date(2026, 10, 6), 7, 0, 100, 120, 80, 110),  # premarket only
-        _bar(today, 10, 0, 100, 105, 95, 101),  # same-day RTH
-    ]
-    out = get_previous_day_levels(bars, today, _cfg())
-    assert "pdh" not in out and "pdl" not in out and "pdc" not in out
+def test_monday_s_prior_session_is_friday_schwab_sends_no_weekend_candle():
+    daily, _minutes = _held("SPY")
+    prior = prior_session(daily, date(2026, 10, 5))
+    assert datetime.fromtimestamp(prior.ts, ET).date() == date(2026, 10, 2)
 
 
-def test_empty_bars_returns_empty():
-    assert get_previous_day_levels([], date(2026, 10, 7), _cfg()) == {}
+def test_no_daily_candle_before_the_session_leaves_the_prior_day_absent():
+    daily, minutes = _held("SPY")
+    first = min(datetime.fromtimestamp(c.ts, ET).date() for c in daily)
+    assert prior_session(daily, first) is None
+    assert get_previous_day_levels(bars_from_candles(minutes), None, PlaybookConfig()) == {}
 
 
-def test_the_prior_session_ends_at_schwabs_close_on_an_early_close_day():
-    """ONE-10: the levels engine fixed the regular session at 09:30-16:00, so on an early close
-    (13:00) its prior-day high, low and close took in three hours of after-hours trading. The
-    close is the one Schwab's /markets sent: 2026-11-27's regular session ends 13:00 ET, so the
-    14:00 bar is after hours and never a prior-day level of Monday 2026-11-30."""
-    friday, monday = date(2026, 11, 27), date(2026, 11, 30)
-    bars = [
-        _bar(friday, 10, 0, 100, 105, 95, 101),
-        _bar(friday, 12, 59, 101, 106, 96, 102),
-        _bar(friday, 14, 0, 102, 150, 50, 140),  # after the early close — must be excluded
-    ]
-    out = get_previous_day_levels(bars, monday, _cfg())
-    assert (out["pdh"], out["pdl"], out["pdc"]) == (106, 95, 102)
-
-
-def test_a_holiday_has_no_session_whatever_bars_it_carries():
-    """A day Schwab's /markets says is closed is never the prior session: Thanksgiving 2026-11-26
-    carries bars, and the prior session of 2026-11-27 is 2026-11-25."""
-    bars = [
-        _bar(date(2026, 11, 25), 11, 0, 100, 105, 95, 101),
-        _bar(date(2026, 11, 26), 11, 0, 100, 200, 50, 150),  # the holiday's bar — never a level
-    ]
-    out = get_previous_day_levels(bars, date(2026, 11, 27), _cfg())
-    assert (out["prior_date"], out["pdh"], out["pdl"]) == (date(2026, 11, 25), 105, 95)
+def test_the_prior_value_area_is_estimated_from_that_sessions_regular_bars_only():
+    """The POC and value area are ours (Schwab sends no volume profile), from the prior session's
+    390 regular 1-minute bars, none before its open or after its close."""
+    daily, minutes = _held("SPY")
+    out = get_previous_day_levels(
+        bars_from_candles(minutes), prior_session(daily, date(2026, 10, 2)), PlaybookConfig()
+    )
+    assert out["rth_bars"] == 390
+    assert out["pd_val"] <= out["pd_poc"] <= out["pd_vah"]
+    assert out["pdl"] <= out["pd_val"] and out["pd_vah"] <= out["pdh"]

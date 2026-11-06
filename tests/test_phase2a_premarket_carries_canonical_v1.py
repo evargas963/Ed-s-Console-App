@@ -75,10 +75,22 @@ def _bars(session: date, n: int = 120) -> list:
 
 
 def _canonical(session: date, bars: list):
+    prior_day = session - timedelta(days=1)
+    held = [b for b in bars if datetime.fromtimestamp(b.ts, ET).date() == prior_day]
+    # the prior session's daily candle as Schwab dates it (midnight ET), of the bars placed in it
+    prior = Candle(
+        ts=datetime(prior_day.year, prior_day.month, prior_day.day, tzinfo=ET).timestamp(),
+        open=held[0].open,
+        high=max(b.high for b in held),
+        low=min(b.low for b in held),
+        close=held[-1].close,
+        volume=sum(b.volume for b in held),
+    )
     return build_price_level_snapshot(
         "SPY",
         session,
         bars_from_candles(bars),
+        prior=prior,
         bar_source="test_fixture",
         config=PlaybookConfig(),
         generation=1,

@@ -15,6 +15,7 @@ import pytest
 import live_market_plane as lmp
 import server as srv
 from micro_structure import Candle
+from tests.feed_live_helper import price_history
 from tests.test_liquidity_snapshot_spot_identity_v1 import _BARS, FRIDAY, TK
 from tests.test_liquidity_snapshot_spot_identity_v1 import published as published
 from time_et import ET
@@ -37,6 +38,16 @@ def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> d
         zero = datetime.fromtimestamp(ts, ET).day in zero_days and ts != keep
         o, h, lo, c = (0, 0, 0, 0) if zero else (b["open"], b["high"], b["low"], b["close"])
         srv._keep_bar(TK, Candle(ts=ts, open=o, high=h, low=lo, close=c, volume=b["volume"]))
+    # Schwab's SPY daily candles of the same days (the prior session's high, low and close), a
+    # zeroed day's at 0 like its bars
+    sent = [
+        {**c, "open": 0, "high": 0, "low": 0, "close": 0}
+        if datetime.fromtimestamp(c["datetime"] / 1000, ET).day in zero_days
+        else c
+        for c in price_history("SPY", "1d")["body"]["candles"]
+        if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() < at.date()
+    ]
+    srv._write_price_history({"symbol": TK, "series": "1d", "answer": {"candles": sent}})
     srv._publish_price_levels(TK, at)
     resp = srv.liquidity_snapshot(TK, at)
     return json.loads(resp.body) if hasattr(resp, "body") else resp

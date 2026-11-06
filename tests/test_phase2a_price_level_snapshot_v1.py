@@ -8,15 +8,19 @@ from pathlib import Path
 
 import pytest
 
+import liquidity_value_engine as lve
+import server as srv
 from liquidity_value_engine import (
     PHASE2A_LEVEL_IDS,
     bars_from_candles,
     build_price_level_snapshot,
     compute_session_vwap_series,
     materialize_price_level_snapshot,
+    prior_session,
 )
 from micro_structure import Candle
 from server import _schwab_bar
+from tests.feed_live_helper import daemon_bars, schwab_daily
 from time_et import ET
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,11 +56,42 @@ def _tape():
     return bars
 
 
+#: the tape's two prior sessions as Schwab's daily candles carry them (high, low, close of each
+#: session's regular bars above), dated at midnight ET as Schwab dates a daily candle
+_DAILY_SENT = [
+    {
+        "datetime": int(datetime(2026, 10, d, tzinfo=ET).timestamp() * 1000),
+        "open": o,
+        "high": h,
+        "low": lo,
+        "close": c,
+        "volume": 2000,
+    }
+    for d, o, h, lo, c in ((1, 100, 110, 90, 100), (2, 96, 105, 95, 102))
+]
+
+
+def _daily_msg(tk: str) -> dict:
+    """The tape's daily candles as the daemon pushes a /pricehistory daily answer."""
+    return {"symbol": tk, "series": "1d", "answer": {"symbol": tk, "candles": _DAILY_SENT}}
+
+
+def _daily(tk: str) -> list:
+    """`tk`'s daily candles as the bar writer holds them (server._write_price_history)."""
+    srv._write_price_history(_daily_msg(tk))
+    try:
+        return list(srv._daily[tk])
+    finally:
+        srv._daily.pop(tk, None)
+
+
+def _prior(tk: str, session):
+    return prior_session(_daily(tk), session)
+
+
 def _daemon_bars(name: str, tk: str) -> list:
     """The capture daemon's newest receipt of each of `tk`'s minutes in fixture `name`, taken in
     by the bar writer's own check (server._schwab_bar)."""
-    from tests.feed_live_helper import daemon_bars
-
     newest = {}
     for r in sorted(daemon_bars(name, tk), key=lambda r: r["ts_recv"]):
         newest[r["bar_start_ms"]] = r
@@ -69,8 +104,6 @@ def _daemon_bars(name: str, tk: str) -> list:
 
 @pytest.fixture(autouse=True)
 def _clean_snapshots():
-    import liquidity_value_engine as lve
-
     lve._MATERIALIZED_SNAPSHOTS.clear()
     yield
     lve._MATERIALIZED_SNAPSHOTS.clear()
@@ -81,7 +114,12 @@ def _clean_snapshots():
 
 def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
     snap = build_price_level_snapshot(
-        "SPY", SESSION, bars_from_candles(_tape()), bar_source="unit_tape", generation=7
+        "SPY",
+        SESSION,
+        bars_from_candles(_tape()),
+        prior=_prior("SPY", SESSION),
+        bar_source="unit_tape",
+        generation=7,
     )
     for lid, value in snap.levels.items():
         assert lid in PHASE2A_LEVEL_IDS, f"{lid} is not a declared Phase 2A id"
@@ -99,14 +137,14 @@ def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
 
 def test_one_materialization_per_generation_returns_the_same_object():
     """A new generation may invoke the producer once; re-asking is a READ."""
-    tape = bars_from_candles(_tape())
-    a = materialize_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
-    b = materialize_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
+    tape, daily = bars_from_candles(_tape()), _daily("SPY")
+    a = materialize_price_level_snapshot("SPY", SESSION, tape, daily=daily, bar_source="unit_tape")
+    b = materialize_price_level_snapshot("SPY", SESSION, tape, daily=daily, bar_source="unit_tape")
     assert a is b, "the same generation re-materialized — that is a second result"
     assert a.generation == 1
 
     moved = bars_from_candles(_tape() + [_bar(2026, 8, 4, 11, 1, 107, 112, 106, 111)])
-    c = materialize_price_level_snapshot("SPY", SESSION, moved, bar_source="unit_tape")
+    c = materialize_price_level_snapshot("SPY", SESSION, moved, daily=daily, bar_source="unit_tape")
     assert c is not a and c.generation == 2, "a new bar input must bump the generation"
     assert all(v.generation == 2 for v in c.levels.values())
 
@@ -116,14 +154,19 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
     traded volume (the daemon's record of 2026-10-01/02: every bar volume 0), so VWAP and the value
     area cannot exist for it and are absent with that reason; the value area said "no today RTH
     bars" over 278 RTH bars (2026-09-28, the running app). SPY's real bars of the same days have
-    volume and get both. The prior day (Thursday 10-01) is price-only and present for both."""
+    volume and get both. The prior day (Thursday 10-01) is Schwab's daily candle, present for both
+    (fixtures/real_schwab_daily_spx_2026_10.json, real_pricehistory_spy_tsla_2026_10_07.json)."""
     friday = datetime(2026, 10, 2, tzinfo=ET).date()
     for name, tk, has_volume in (
         ("real_daemon_bars_spx_2026_10_01_02.json", "$SPX", False),
         ("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY", True),
     ):
         snap = build_price_level_snapshot(
-            tk, friday, bars_from_candles(_daemon_bars(name, tk)), bar_source=name
+            tk,
+            friday,
+            bars_from_candles(_daemon_bars(name, tk)),
+            prior=prior_session(schwab_daily(tk), friday),
+            bar_source=name,
         )
         absent = {f["family"]: f["reason"] for f in snap.families_absent}
         assert snap.price("PDH") is not None and "prior_day" not in absent, tk
@@ -135,7 +178,7 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
 
 
 def test_absent_input_stays_absent_and_is_declared():
-    snap = build_price_level_snapshot("SPY", SESSION, [], bar_source="empty")
+    snap = build_price_level_snapshot("SPY", SESSION, [], prior=None, bar_source="empty")
     assert snap.levels == {}, "no bars must produce no levels, not zeros or spot"
     fams = {f["family"] for f in snap.families_absent}
     assert {"prior_day", "vwap", "opening_range", "overnight", "value_area"} <= fams
@@ -150,7 +193,9 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
         "no VWAP series for a session with RTH volume"
     )
 
-    snap = build_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
+    snap = build_price_level_snapshot(
+        "SPY", SESSION, tape, prior=_prior("SPY", SESSION), bar_source="unit_tape"
+    )
     assert snap.price("VWAP") == snap.vwap_series[-1][1]
     for lid, idx in (("VWAP_P1", 2), ("VWAP_M1", 3), ("VWAP_P2", 4), ("VWAP_M2", 5)):
         assert snap.price(lid) == snap.vwap_series[-1][idx], (
@@ -164,24 +209,22 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
 def _published(tk: str, now: datetime) -> None:
     """The tape in the console's memory under stand-in ticker `tk`, published as the bar writer
     publishes it (its tiny prior session is stamped degraded, and still served)."""
-    import server as srv
-
     srv._bars.pop(tk, None)
     for b in _tape():
         srv._keep_bar(tk, b)
+    srv._write_price_history(_daily_msg(tk))  # the tape's sessions as Schwab's daily candles
     srv._publish_price_levels(tk, now)
 
 
 def test_api_levels_serializes_the_snapshot_and_does_not_compute():
     """Stand-in: ticker ZZP2A carries the tape."""
-    import server as srv
-
     noon = datetime(2026, 10, 5, 12, 0, tzinfo=ET)
     try:
         _published("ZZP2A", noon)
         payload = srv.levels_payload("ZZP2A", "1", noon)
     finally:
         srv._bars.pop("ZZP2A", None)
+        srv._daily.pop("ZZP2A", None)
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     ids = [lv["id"] for lv in payload["levels"]]
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload"
@@ -202,8 +245,6 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
     prior day, overnight, VWAP and value area from bars, and a default ("premarket") that served
     those under "@checkpoint" ids. It serves the one snapshot now: every level it shows is the
     /api/levels value under the same id. Stand-in: ticker ZZP2B carries the tape."""
-    import server as srv
-
     noon = datetime(2026, 10, 5, 12, 0, tzinfo=ET)
     try:
         _published("ZZP2B", noon)
@@ -211,6 +252,7 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
         liq = srv.liquidity_snapshot("ZZP2B", noon)
     finally:
         srv._bars.pop("ZZP2B", None)
+        srv._daily.pop("ZZP2B", None)
     used = {i["tag"]: i["value"] for i in liq["raw_levels_used"]}
     assert used and set(used) <= set(PHASE2A_LEVEL_IDS), used
     for tag, value in used.items():

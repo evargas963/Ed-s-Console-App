@@ -30,7 +30,12 @@ from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
-from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
+from tests.feed_live_helper import (
+    daemon_bars,
+    hold_schwab_daily,
+    price_history,
+    stream_daemon_bars,
+)
 from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
 from time_et import ET, now_et
 
@@ -822,6 +827,7 @@ def _forget(*tickers: str) -> None:
     """No bar in memory or published level of `tickers` is left behind."""
     for tk in tickers:
         server._bars.pop(tk, None)
+        server._daily.pop(tk, None)
         for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
             del _MATERIALIZED_SNAPSHOTS[key]
 
@@ -836,6 +842,7 @@ def test_d5_while_closed_the_price_levels_are_the_last_sessions():
     try:
         stream_daemon_bars(_DAEMON_BARS)
         for tk in _PAIR:
+            hold_schwab_daily(tk)
             server._publish_price_levels(tk, closed)
             body = server.levels_payload(tk, "1", closed)
             served = {r["id"]: r["price"] for r in body["levels"]}
@@ -876,6 +883,9 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
         for tk, a in history.items():
             topic, msg = price_history_message(tk, "1m", a["body"], a["answered_utc"])
             ofs._ingest_pushed(topic, msg)  # the bus message, as the console receives it
+            daily = price_history(tk, "1d")  # and its daily candles, the prior day's levels
+            topic, msg = price_history_message(tk, "1d", daily["body"], daily["answered_utc"])
+            ofs._ingest_pushed(topic, msg)
         for r in pushed:
             ofs._ingest_pushed(
                 f"bar1m.{r['symbol']}",

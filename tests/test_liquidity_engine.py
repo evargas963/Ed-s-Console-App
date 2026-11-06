@@ -9,10 +9,19 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from liquidity_value_engine import bars_from_candles, get_overnight_levels
 from micro_structure import Candle
 from time_et import (
     ET,
 )
+
+
+def _daily_candle(d: date, high: float, low: float, close: float) -> Candle:
+    """A session's daily candle as Schwab dates it (midnight ET), from the regular bars the test
+    places in it."""
+    # institutional-synthetic-ok: the session is the test's own placed bars
+    ts = datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
+    return Candle(ts=ts, open=low, high=high, low=low, close=close, volume=1000.0)
 
 
 def _mk_bar(dt: datetime, o: float, h: float, lo: float, c: float, vol: float = 1000.0) -> Candle:
@@ -169,17 +178,11 @@ def _bar(
     )
 
 
-def _overnight(bars: list, session_date: date) -> dict:
-    """The engine's overnight range as its producer gets it: bars normalized once, the prior
-    session found once."""
-    from liquidity_value_engine import (
-        bars_from_candles,
-        get_overnight_levels,
-        prior_trading_session_date,
-    )
-
-    norm = bars_from_candles(bars)
-    return get_overnight_levels(norm, session_date, prior_trading_session_date(norm, session_date))
+def _overnight(bars: list, session_date: date, prior: date | None) -> dict:
+    """The engine's overnight range as its producer gets it: bars normalized once, from the close
+    of the prior session `prior` (the date of Schwab's newest daily candle before the session,
+    liquidity_value_engine.prior_session)."""
+    return get_overnight_levels(bars_from_candles(bars), session_date, prior)
 
 
 def test_overnight_window_monday_reaches_back_to_friday():
@@ -193,7 +196,7 @@ def test_overnight_window_monday_reaches_back_to_friday():
         _bar(monday, 4, 30, 96.0, 95.0),  # Monday pre-open — inside the overnight
         _bar(monday, 10, 0, 120.0, 90.0),  # Monday RTH — must NOT be in the overnight
     ]
-    out = _overnight(bars, monday)
+    out = _overnight(bars, monday, friday)
     assert out["overnight_high"] == 108.0, (
         f"Friday's post-close high is missing from Monday's overnight: {out}"
     )
@@ -210,7 +213,7 @@ def test_overnight_window_midweek_uses_the_immediately_prior_session():
         _bar(tuesday, 8, 0, 99.0, 98.0),  # Tuesday pre-open — included
         _bar(tuesday, 9, 30, 140.0, 60.0),  # Tuesday RTH open bar — must be EXCLUDED
     ]
-    out = _overnight(bars, tuesday)
+    out = _overnight(bars, tuesday, monday)
     assert out["overnight_high"] == 104.0 and out["overnight_low"] == 98.0, (
         f"midweek overnight leaked an RTH bar: {out}"
     )
@@ -220,9 +223,8 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
     """A closed day has no close for a range to start from. With Thanksgiving Thursday shut
     (Schwab's /markets: 2026-11-26 closed), Friday's overnight must reach back to WEDNESDAY's
     16:00 and include the Thursday bars in between — the interval is continuous, not two
-    hand-picked calendar dates."""
-    from liquidity_value_engine import bars_from_candles, prior_trading_session_date
-
+    hand-picked calendar dates. Schwab sends no daily candle for the closed day, so the prior
+    session is Wednesday's."""
     wed, thu, fri = date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)
     bars = [
         _bar(wed, 10, 0, 100.0, 99.0),  # Wednesday RTH — the real prior session
@@ -234,10 +236,7 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
         _bar(fri, 8, 0, 97.0, 96.0),  # Friday pre-open
         _bar(fri, 10, 0, 200.0, 10.0),  # Friday RTH — excluded
     ]
-    assert prior_trading_session_date(bars_from_candles(bars), fri) == wed, (
-        "a day with no RTH bars was treated as the prior trading session"
-    )
-    out = _overnight(bars, fri)
+    out = _overnight(bars, fri, wed)
     assert out["overnight_high"] == 111.0 and out["overnight_low"] == 94.0, (
         f"the holiday gap was skipped instead of spanned: {out}"
     )
@@ -247,8 +246,9 @@ def test_overnight_empty_is_empty_never_fabricated():
     """No bars in the window -> {}. Absence reads as absence."""
     tuesday = date(2026, 10, 6)
     only_rth = [_bar(date(2026, 10, 5), 11, 0, 100.0, 99.0), _bar(tuesday, 10, 0, 101.0, 98.0)]
-    assert _overnight(only_rth, tuesday) == {}, "an overnight range was invented"
-    assert _overnight([], tuesday) == {}
+    monday = date(2026, 10, 5)
+    assert _overnight(only_rth, tuesday, monday) == {}, "an overnight range was invented"
+    assert _overnight([], tuesday, monday) == {}
 
 
 def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
@@ -259,7 +259,7 @@ def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
         _bar(date(2026, 10, 5), 20, 0, 300.0, 290.0),  # prior-day AFTER hours, no RTH anywhere
         _bar(tuesday, 8, 0, 99.0, 98.0),
     ]
-    out = _overnight(bars, tuesday)
+    out = _overnight(bars, tuesday, None)  # no daily candle held for a prior session
     assert out == {"overnight_high": 99.0, "overnight_low": 98.0}, (
         f"an unbounded window swept bars from a session that was never established: {out}"
     )
@@ -291,10 +291,12 @@ def _overnight_under_prior_low_zones(session_date: date):
         build_price_level_snapshot,
     )
 
+    prev = date.fromordinal(session_date.toordinal() - 1)
     snap = build_price_level_snapshot(
         "SPY",
         session_date,
         bars_from_candles(_overnight_under_prior_low_bars(session_date)),
+        prior=_daily_candle(prev, 106.0, 100.0, 102.0),  # the prior session's two regular bars
         bar_source="test",
     )
     return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
@@ -348,7 +350,12 @@ def test_no_lookahead_premarket():
         bars.append(_mk_bar(dt, 500, 501, 499, 500, 1000))
     cfg = PlaybookConfig()
     snap = build_price_level_snapshot(
-        "SPY", session, bars_from_candles(bars), bar_source="test", config=cfg
+        "SPY",
+        session,
+        bars_from_candles(bars),
+        prior=_daily_candle(prev_date, 501.0, 499.0, 500.0),
+        bar_source="test",
+        config=cfg,
     )
     out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
     assert out.raw_levels.get("prev_day")

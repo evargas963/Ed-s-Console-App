@@ -42,6 +42,35 @@ def price_history(symbol: str, series: str) -> dict:
     return next(a for a in fx["answers"] if a["symbol"] == symbol and a["series"] == series)
 
 
+def hold_schwab_daily(symbol: str, under: str | None = None) -> None:
+    """What the daemon pushes of `symbol`'s daily candles, through the console's own writer
+    (server._write_price_history), held under ticker `under` (default `symbol`): Schwab's
+    recorded /pricehistory daily answer, SPY's and TSLA's of 2026-10-07
+    (real_pricehistory_spy_tsla_2026_10_07.json), $SPX's of 2026-11-03
+    (real_schwab_daily_spx_2026_10.json, 2024-11-04 through 2026-11-02). The caller pops
+    server._daily when done, as it pops server._bars."""
+    import server
+
+    if symbol == "$SPX":
+        sent = json.loads(
+            (_FIXTURES / "real_schwab_daily_spx_2026_10.json").read_text(encoding="utf-8")
+        )["message"]
+    else:
+        sent = price_history(symbol, "1d")["body"]
+    server._write_price_history({"symbol": under or symbol, "series": "1d", "answer": sent})
+
+
+def schwab_daily(symbol: str) -> list:
+    """`symbol`'s daily candles as the bar writer holds them (hold_schwab_daily), taken out."""
+    import server
+
+    hold_schwab_daily(symbol)
+    try:
+        return list(server._daily[symbol])
+    finally:
+        server._daily.pop(symbol, None)
+
+
 #: Wednesday 2026-09-30, 11:00 ET: regular hours in Schwab's /markets answer held for that date
 #: (tests/conftest.py MARKETS_ANSWERS), the instant a live-feed test is judged at, whatever day it
 #: runs

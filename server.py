@@ -323,10 +323,9 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
         try:
             if "series" in msg:
                 tk = _write_price_history(msg)
-                if tk is not None:
+                if tk is not None:  # 1-minute bars or daily candles: both are the levels' inputs
                     push_changes.changed(tk, push_changes.LIQUIDITY)
-                    if msg["series"] == "1m":
-                        written.append(tk)
+                    written.append(tk)
             elif _write_streamed_bar(msg):
                 written.append(msg["symbol"])
         except Exception as e:  # logged; the next bar is still written
@@ -3445,10 +3444,13 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
     tk = ticker_storage_key(_required_ticker(ticker))
     before = canonical_price_level_snapshot(tk, now)
     try:
+        with _bars_lock:
+            daily = list(_daily[tk]) if tk in _daily else []  # Schwab's daily candles held
         snap = materialize_price_level_snapshot(
             tk,
             market_session_date(now),
             bars_from_candles(_bars_1m(tk, 2500)),
+            daily=daily,
             bar_source=BAR_SOURCE,
             config=PlaybookConfig(),
         )
