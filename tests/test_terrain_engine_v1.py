@@ -11,14 +11,22 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
+from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
 from math_levels import GAMMA_FLIP_TRUSTED
+from math_probabilities import compute_pin_score
 from option_contract import OptionContract, read_chain, read_contract
 from terrain_engine import (
     TERRAIN_SCHEMA_VERSION,
     WALL_BREACHED,
     WALL_CONTAINS,
+    atm_sigma_by_expiry,
+    compute_implied_one_day_move,
     compute_terrain,
+    compute_wall_value_area,
     price_relations,
+    wall_geometry_state,
 )
 from tests.real_chains import CRWD, MRVL, SPY_0DTE
 
@@ -126,8 +134,6 @@ def test_is_deterministic() -> None:
 def test_implied_one_day_move_matches_the_named_formula() -> None:
     """EM = S x sigma_ATM x sqrt(1/252). The chain here is hand-built ON PURPOSE — a formula
     verification needs known inputs (the real-chain test below covers the live shape)."""
-    from terrain_engine import compute_implied_one_day_move
-
     spot = 700.0
     # institutional-synthetic-ok: formula verification REQUIRES known inputs — the exactness
     # assertion below is meaningless on a live chain; the real-chain test covers the live shape.
@@ -152,8 +158,6 @@ def test_implied_one_day_move_matches_the_named_formula() -> None:
 
 def test_implied_move_fails_closed_without_usable_iv() -> None:
     """No usable ATM IV -> None. A fabricated sigma is worse than no sigma."""
-    from terrain_engine import compute_implied_one_day_move
-
     # institutional-synthetic-ok: fail-closed tests MUST feed malformed contracts on purpose.
     assert compute_implied_one_day_move([], 700.0) is None
     assert compute_implied_one_day_move(None, 700.0) is None
@@ -195,8 +199,6 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
     """The ATM call's IV is Schwab's -999 (no value): that leg has no IV, and the expiry's ATM IV
     is None -- the 705 call's IV used to stand in for it, labelled ATM (operator 2026-10-01: "we
     use what schwab gives us and we display it")."""
-    from terrain_engine import atm_sigma_by_expiry
-
     # institutional-synthetic-ok: the rule needs a known ATM contract with no IV beside a priced one
     chain = read_chain(
         [
@@ -263,8 +265,6 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
 def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:
     """The CQG value-area rule verbatim: start at the POC, absorb the bigger neighbor each
     step until 68.2% is enclosed."""
-    from terrain_engine import compute_wall_value_area
-
     # institutional-synthetic-ok: algorithm verification requires known mass — the real-chain
     # test below covers the live shape.
     # side GEX$ mass on a dollarized book (T-05: raw gamma no longer stands in)
@@ -285,8 +285,6 @@ def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:
 
 
 def test_wall_value_area_fails_closed() -> None:
-    from terrain_engine import compute_wall_value_area
-
     # institutional-synthetic-ok: fail-closed probes must feed degenerate inputs on purpose.
     assert compute_wall_value_area({}, 705.0, "put") is None
     assert compute_wall_value_area({700.0: {"put_gamma": 1.0}}, None, "put") is None
@@ -317,8 +315,6 @@ def test_real_chain_carries_per_side_wall_ranges() -> None:
 
 
 def test_wall_geometry_state_truth_table() -> None:
-    from terrain_engine import wall_geometry_state
-
     # the live defect, exactly: put wall above spot is NOT support
     assert wall_geometry_state(735.13, 740.0, "put") == "breached"
     assert wall_geometry_state(735.13, 730.0, "put") == "contains"
@@ -333,18 +329,12 @@ def test_wall_geometry_state_truth_table() -> None:
 
 
 def test_wall_geometry_state_rejects_unknown_side() -> None:
-    import pytest
-
-    from terrain_engine import wall_geometry_state
-
     with pytest.raises(ValueError):
         wall_geometry_state(735.0, 740.0, "steel")
 
 
 def test_real_chain_wall_states_agree_with_the_geometry() -> None:
     """The states qualify the walls at the price given, and agree with the geometry."""
-    from terrain_engine import wall_geometry_state
-
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     d = price_relations(snap.to_dict(), spot)
@@ -381,8 +371,6 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
     """RC-413: absolute_gamma_gex_dollars / absolute_gamma_oi / book_oi_total are the same
     compute_exposures_by_strike map pick_pin_and_strength used (RC-292 renamed the fields).
     """
-    from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
-
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     exposures, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
@@ -406,9 +394,6 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     """The pin's GEX and open interest are the whole book's (every expiry), so its pin_score is
     not the selected expiry's. MRVL's full real chain, all its expiries, against its front
     expiry."""
-    from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
-    from math_probabilities import compute_pin_score
-
     wide, spot, now = read_chain(MRVL.chain), MRVL.spot, MRVL.now
     front = min(c.expiry for c in wide)
     chain = [c for c in wide if c.expiry.startswith(front)]
