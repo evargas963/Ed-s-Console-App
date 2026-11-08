@@ -33,6 +33,14 @@ def _exp_key(ct: dict) -> str:
     return str(ct.get("expirationDate") or "")[:10]
 
 
+def _heaviest(rows: list[dict]) -> dict:
+    """The row with the largest open interest Schwab sent; a row it sent none for is not ranked
+    (missing is not zero)."""
+    return max(
+        (ct for ct in rows if ct.get("openInterest") is not None), key=lambda ct: ct["openInterest"]
+    )
+
+
 E1, E2 = sorted({_exp_key(ct) for ct in MRVL.chain})[:2]  # 2026-10-09, 2026-10-16
 
 
@@ -72,8 +80,13 @@ def test_fixture_preconditions_are_real_two_expiry_input():
     """Two distinct native expirations with OI-bearing rows on both."""
     chain = _chain()
     assert (E1, E2) == ("2026-10-09", "2026-10-16")
-    assert sum(1 for ct in _slice(chain, E1) if (ct.open_interest or 0) > 0) > 0
-    assert sum(1 for ct in _slice(chain, E2) if (ct.open_interest or 0) > 0) > 0
+    # open interest Schwab sent, above 0 (a row with none sent is not counted: missing is not zero)
+    assert sum(
+        1 for ct in _slice(chain, E1) if ct.open_interest is not None and ct.open_interest > 0
+    )
+    assert sum(
+        1 for ct in _slice(chain, E2) if ct.open_interest is not None and ct.open_interest > 0
+    )
     # the native stamp is the ISO form production feeds the projection, not a bare date
     assert "T" in str(chain[0].expiration)
 
@@ -162,7 +175,7 @@ def test_F_input_projection_coverage():
 #    rows are REAL rows with their native expirationDate broken (the only field under test).
 def test_G_malformed_expiry_excluded_not_reassigned():
     clean_chain = _chain()
-    probe = max(_raw_slice(E1), key=lambda ct: ct.get("openInterest") or 0)  # the heaviest real row
+    probe = _heaviest(_raw_slice(E1))  # the heaviest real row
     chain = clean_chain + read_chain(
         [dict(probe, expirationDate=None), dict(probe, expirationDate="bad")]
     )
@@ -184,7 +197,7 @@ def test_H_spx_identity_unchanged():
     assert ticker_storage_key("$SPX") == "$SPX"
     # an SPXW-rooted contract projects without any symbol rewriting: a REAL vendor row re-rooted
     # to an SPXW symbol and strike, which is the only thing this identity check reads.
-    probe = max(_raw_slice(E1), key=lambda ct: ct.get("openInterest") or 0)
+    probe = _heaviest(_raw_slice(E1))
     spxw = read_chain([dict(probe, symbol="SPXW  261009C07690000", strikePrice=7690)])
     surface = _surface(spxw, 7690.0)
     assert surface["expirations"] and surface["strikes"] == [7690.0]
@@ -211,7 +224,7 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
     # strike so no PUT row exists there -- the minimal input this identity check needs.
     """
     chain = _raw_chain()
-    probe = dict(max(_raw_slice(E1), key=lambda ct: ct.get("openInterest") or 0))
+    probe = dict(_heaviest(_raw_slice(E1)))
     lonely_strike = max(ct["strikePrice"] for ct in chain) + 1000.0
     probe["strikePrice"] = lonely_strike
     probe["symbol"] = "MRVL  261009C" + str(int(lonely_strike * 1000)).zfill(8)
@@ -225,7 +238,7 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
 def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_wrong_value():
     """A contract missing its own `symbol` field must never silently borrow a strike-mate's
     symbol or fall back to a stale cached value -- it must report None."""
-    probe = max(_raw_slice(E1), key=lambda ct: ct.get("openInterest") or 0)
+    probe = _heaviest(_raw_slice(E1))
     no_symbol = dict(probe)
     no_symbol.pop("symbol", None)
     surface = _surface(read_chain([no_symbol]), SPOT)
