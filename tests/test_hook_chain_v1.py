@@ -256,6 +256,18 @@ def test_3_read_only_actions_establish_nothing_and_pass():
         assert r.returncode == 0 and r.stderr == "", (command, r.stderr)
 
 
+def test_4b_a_shell_payload_without_its_command_is_refused_never_read_as_empty():
+    """Claude Code always sends a shell tool's `command`. Each guard reads it as sent, so one
+    missing raises and the chain refuses (2); before, `or ""` judged it an empty command and let
+    it through (fails open)."""
+    for tool in ("Bash", "PowerShell"):
+        for tool_input in ({}, {"description": "no command"}):
+            r = _chain(
+                {"tool_name": tool, "tool_input": tool_input, "cwd": str(ROOT)}, WIRED_ROSTER
+            )
+            assert r.returncode == 2 and "crashed" in r.stderr, (tool, tool_input, r.stderr)
+
+
 def test_4_a_malformed_payload_fails_safely_and_poisons_nothing(tmp_path):
     for junk in ("{not json", "", "[1,2]", "null"):
         r = _chain(junk)
