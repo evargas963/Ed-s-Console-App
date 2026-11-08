@@ -87,10 +87,21 @@ ORDERS = Path(tempfile.gettempdir()) / "ed_orders"
 ANSWER = re.compile(r"^ORDER (\d+) (?:DONE|PUSHBACK):[ \t]*\S", re.M)
 
 
+#: a session id as Claude Code sends it, safe as a file name
+SESSION = re.compile(r"[\w-]+")
+
+
+def session(payload: dict) -> str:
+    """The payload's session id as sent; one that is missing or not a plain name raises, so the
+    hook fails closed instead of filing the session under a name of its own."""
+    sid = payload["session_id"]
+    if not isinstance(sid, str) or not SESSION.fullmatch(sid):
+        raise ValueError(f"session_id {sid!r} is not a plain name")
+    return sid
+
+
 def _ledger(payload: dict, orders: Path) -> Path:
-    return orders / (
-        (re.sub(r"[^\w-]", "", str(payload.get("session_id", ""))) or "unknown") + ".jsonl"
-    )
+    return orders / f"{session(payload)}.jsonl"
 
 
 def _entries(ledger: Path) -> list[dict]:
@@ -174,7 +185,7 @@ COUNTS = Path(tempfile.gettempdir()) / "ed_keep_going"
 def in_a_row(payload: dict, counts: Path = COUNTS) -> int:
     """Which refusal in a row this stop would be: 1 after a stop the hook did not refuse, else one
     more than the session's count in `counts`. The count is replaced whole, never half-written."""
-    count = counts / (re.sub(r"[^\w-]", "", str(payload.get("session_id", ""))) or "unknown")
+    count = counts / session(payload)
     active = payload.get("stop_hook_active") is True
     previous = int(count.read_text()) if active and count.exists() else 0
     counts.mkdir(exist_ok=True)

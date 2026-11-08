@@ -114,6 +114,7 @@ def test_the_final_message_is_the_last_assistant_entry_and_a_bad_line_never_deci
     assert keep_going.last_message(_entries(tmp_path, waiting, damaged)).startswith("WAITING")
     run = _run(
         {
+            "session_id": "s",
             "transcript_path": str(_entries(tmp_path, waiting)),
             "last_assistant_message": "Step 1b is merged.",
         },
@@ -217,6 +218,17 @@ def test_every_order_holds_the_turn_until_it_is_answered(tmp_path):
     assert keep_going.decide(DONE_ROW, "", open_orders=[]) is None
     # another session's orders are its own
     assert keep_going.unanswered({"session_id": "orders-2"}, "", tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "payload", [{}, {"session_id": ""}, {"session_id": "../x"}, {"session_id": 5}]
+)
+def test_a_session_id_missing_or_not_a_plain_name_fails_closed(payload, tmp_path):
+    """No session is filed under a name of the hook's own: the stop is judged unreadable."""
+    with pytest.raises((KeyError, ValueError)):
+        keep_going.record_order({**payload, "prompt": "go"}, tmp_path)
+    with pytest.raises((KeyError, ValueError)):
+        keep_going.in_a_row(payload, tmp_path)
 
 
 def test_waiting_on_the_operator_does_not_pass_an_unanswered_order():

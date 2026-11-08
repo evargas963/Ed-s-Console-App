@@ -32,18 +32,21 @@ RULES = (
     " would a bank do? Is it repo wide? Is every link repaired at its source?"
 )
 
+#: what the agent is told about the message it is reading, when the message is an order
+ORDER = (
+    "\nThis message is ORDER {n}: do it; you do not choose. End the turn with "
+    "`ORDER {n} DONE: <evidence>`, or `ORDER {n} PUSHBACK: <reason>` only when it is not "
+    "allowed or not possible."
+)
+
 
 def main() -> int:
     payload = json.load(sys.stdin)
+    said = RULES
     n = record_order(payload)
-    order = (
-        ""
-        if n is None
-        else f"\nThis message is ORDER {n}: do it; you do not choose. End the turn with "
-        f"`ORDER {n} DONE: <evidence>`, or `ORDER {n} PUSHBACK: <reason>` only when it is not "
-        "allowed or not possible."
-    )
-    out = {"hookEventName": payload["hook_event_name"], "additionalContext": RULES + order}
+    if n is not None:
+        said += ORDER.format(n=n)
+    out = {"hookEventName": payload["hook_event_name"], "additionalContext": said}
     print(json.dumps({"hookSpecificOutput": out}))
     return 0
 
