@@ -169,21 +169,22 @@ def _merged(books: dict) -> dict:
     out = {}
     for side, pk, sk in (("BIDS", "BID_PRICE", "BID_VOLUME"), ("ASKS", "ASK_PRICE", "ASK_VOLUME")):
         newest: dict = {}
-        # NYSE_BOOK first: an equal quote time keeps its copy
-        sent = sorted(books.items(), key=lambda vb: vb[0] != "NYSE_BOOK")
-        for venue, book in sent:
-            if side not in book:  # Schwab leaves an empty side out
-                continue
-            for lv in book[side]:
+        # each venue's levels on this side (Schwab leaves an empty side out), NYSE_BOOK first:
+        # an equal quote time keeps its copy
+        sent = [
+            (venue, book[side])
+            for venue, book in sorted(books.items(), key=lambda vb: vb[0] != "NYSE_BOOK")
+            if side in book
+        ]
+        for venue, levels in sent:
+            for lv in levels:
                 for x in lv[side]:
                     code = x["EXCHANGE"].upper()
                     if code not in newest or x["SEQUENCE"] > newest[code][0]:
                         newest[code] = (x["SEQUENCE"], venue)
         at: dict = {}
-        for venue, book in sent:
-            if side not in book:
-                continue
-            for lv in book[side]:
+        for venue, levels in sent:
+            for lv in levels:
                 for x in lv[side]:
                     if newest[x["EXCHANGE"].upper()][1] == venue:
                         at[lv[pk]] = at.get(lv[pk], 0) + x[sk]
