@@ -69,10 +69,7 @@
   // D: persist UI navigation state (client state, not market truth)
   // The strike-window scopes, served in the page (meta ed-scopes, from terrain_engine.SCOPES):
   // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
-  var SCOPES = (function () {
-    var m = document.querySelector('meta[name="ed-scopes"]');
-    try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
-  })();
+  var SCOPES = JSON.parse(document.querySelector('meta[name="ed-scopes"]').getAttribute('content'));
   var SCOPE_MODES = SCOPES.map(function (s) { return s.key; });
   function _lsScope() { var v = _ls('ed_scope', SCOPE_MODES[0]); return SCOPE_MODES.indexOf(v) !== -1 ? v : SCOPE_MODES[0]; }
   // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
@@ -782,10 +779,8 @@
   // The market context the server always streams, served in the page (meta ed-market-context,
   // from live_push.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
   // subscribes to, so every page asks for it.
-  var MARKET_CONTEXT = (function () {
-    var m = document.querySelector('meta[name="ed-market-context"]');
-    try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
-  })();
+  var MARKET_CONTEXT = JSON.parse(
+    document.querySelector('meta[name="ed-market-context"]').getAttribute('content'));
   function priceSymbols() {
     var out = [];
     if (state.ticker) out.push(String(state.ticker).toUpperCase());
@@ -795,7 +790,7 @@
   }
   function subscribePrices() {
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
+    _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() }));
   }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
   // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
@@ -813,7 +808,7 @@
                      //  outage keeps reading OFFLINE, not WAITING)
     ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
     ws.onmessage = function (ev) {
-      var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      var msg = JSON.parse(ev.data);
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
       if (msg && msg.type === 'feed') {
         paintRecord(msg.feed && msg.feed.writer);
@@ -827,7 +822,7 @@
     ws.onclose = function () {
       if (_priceWs === ws) { _priceWs = null; _priceUp = false; schedulePriceReconnect(); }
     };
-    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+    ws.onerror = function () { ws.close(); };
   }
   function schedulePriceReconnect() {
     // 0.25 s, 0.5 s, 1 s, then every 2 s: the daemon restarting is seen and recovered at once
@@ -874,7 +869,7 @@
       setWlRow(wlSym, q.spot, q.chg_pct, q.trade_time_ct);
       markWlHealthy();
     });
-    try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
+    window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q }));
   }
   function pricePushHealthy() { return _priceUp && _priceFresh; }
   // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
@@ -889,7 +884,7 @@
   // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
   var _changes = null;
   function openChangeStream(tk) {
-    if (_changes) { try { _changes.close(); } catch (e) {} }
+    if (_changes) _changes.close();
     _changes = null;
     if (typeof EventSource === 'undefined') return;
     try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
