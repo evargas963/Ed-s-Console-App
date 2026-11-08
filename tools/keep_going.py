@@ -12,6 +12,13 @@ session's ledger in ORDERS (`record_order`, run by tools/wiring_rules.py on ever
 whatever the SHAPE row says, a stop is refused while any order is unanswered. The agent's final
 message answers order n with a line `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>`;
 an answer is kept, so it is given once.
+
+Production runs what main holds (operator 2026-11-07, after Windows Update restarted the machine
+on 2026-11-06 at 20:29 and Ed Console stayed down 25 hours with no one told): a stop is refused,
+whatever SHAPE's row says, while the production checkout (this file's own, where the hooks run) is
+not at its `origin/main` or nothing listens on the console's port, unless the final message begins
+`WAITING ON OPERATOR:` (he may stop it himself). `origin/main` is as last fetched.
+
 From the third refusal in a row the reason sends the agent to the cause and a different approach
 (AGENTS.md Authority); the count is kept per session in COUNTS. Wired by `.claude/settings.json`
 (Stop).
@@ -29,7 +36,10 @@ with the reason, which also refuses the stop: "cannot judge" never reads as "may
 from __future__ import annotations
 
 import json
+import os
 import re
+import socket
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -138,8 +148,40 @@ def unanswered(payload: dict, last: str, orders: Path = ORDERS) -> list[tuple[in
     return [(n, text) for n, text in sorted(given.items()) if n not in answered | new]
 
 
+#: the console's port, as launch.py reads it
+CONSOLE_PORT = int(os.environ.get("ED_CONSOLE_PORT", "8000"))
+
+
+def production_wrong(repo: Path = REPO, port: int = CONSOLE_PORT) -> str | None:
+    """Why production is not running main, or None when it is: the checkout at `repo` beside its
+    `origin/main`, or nothing listening on 127.0.0.1 `port`."""
+    head, main = (
+        subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--short", ref],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        for ref in ("HEAD", "origin/main")
+    )
+    if head != main:
+        return f"production's checkout is at {head}, main at {main}: deploy it (the deploy skill)."
+    with socket.socket() as probe:
+        probe.settimeout(2.0)
+        if probe.connect_ex(("127.0.0.1", port)) != 0:
+            return (
+                f"nothing listens on 127.0.0.1:{port}: Ed Console is not running. Find why "
+                "(its log, the machine's boot time), then start it (the deploy skill)."
+            )
+    return None
+
+
 def decide(
-    work_list: str, last: str, in_a_row: int = 1, open_orders: list[tuple[int, str]] = ()
+    work_list: str,
+    last: str,
+    in_a_row: int = 1,
+    open_orders: list[tuple[int, str]] = (),
+    production: str | None = None,
 ) -> str | None:
     """Why the stop is refused, or None when it may end; `in_a_row` is which refusal in a row this
     would be, and from BEDROCK_AT on the reason sends the agent to the cause, not back to the
@@ -151,9 +193,11 @@ def decide(
             "<evidence>`, or `ORDER n PUSHBACK: <reason>` only when it is not allowed or not "
             "possible.\n" + "\n".join(f"ORDER {n}: {text[:400]}" for n, text in open_orders)
         )
-    if not OPEN.search(work_list):
-        return None
     if last.lstrip().startswith(WAITING):
+        return None
+    if production is not None:
+        return "Production does not run main: " + production
+    if not OPEN.search(work_list):
         return None
     why = (
         "SHAPE in ACTIVE_PROGRAM.md is IN PROGRESS: take its next step now (AGENTS.md Authority: "
@@ -202,10 +246,18 @@ def main() -> int:
         said = payload.get("last_assistant_message")
         last = said if isinstance(said, str) else last_message(Path(payload["transcript_path"]))
         orders = unanswered(payload, last)
-        why = decide(work_list, last, open_orders=orders)
+        wrong = production_wrong()
+        why = decide(work_list, last, open_orders=orders, production=wrong)
         if why is not None:
-            why = decide(work_list, last, in_a_row(payload), orders)
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+            why = decide(work_list, last, in_a_row(payload), orders, wrong)
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        subprocess.CalledProcessError,
+    ) as e:
         sys.stderr.write(
             f"keep_going cannot judge the stop ({e!r}); keep working and fix the hook\n"
         )
