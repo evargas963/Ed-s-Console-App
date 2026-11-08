@@ -19,19 +19,34 @@ from time_et import time_to_expiry_years
 SQRT_2PI = math.sqrt(2.0 * math.pi)
 
 
-def _norm_pdf(x: float) -> float:
-    return math.exp(-0.5 * x * x) / SQRT_2PI
+def norm_pdf(x, *, exp=math.exp):
+    """The standard normal density. A number, or a numpy array with exp=np.exp."""
+    return exp(-0.5 * x * x) / SQRT_2PI
+
+
+def d1_vt(spot, strike, t_years, sigma, carry=0.0, *, log=math.log, sqrt=math.sqrt):
+    """THE Black-Scholes d1 and sigma*sqrt(T), with `carry` = r - q (0 unless given). Numbers,
+    or numpy arrays with log=np.log and sqrt=np.sqrt (the gamma profile prices whole chains)."""
+    vt = sigma * sqrt(t_years)
+    return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
+
+
+def _priced_d1(spot, strike, t_years, sigma, carry=0.0) -> tuple[float, float] | None:
+    """d1 and sigma*sqrt(T) for one contract, or None when it cannot be priced (a value that is
+    not positive, or a d1 that is not finite)."""
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    d1, vt = d1_vt(spot, strike, t_years, sigma, carry)
+    return (d1, vt) if math.isfinite(d1) else None
 
 
 def bs_gamma(spot: float, strike: float, t_years: float, sigma: float) -> float | None:
     """Black-Scholes gamma per share, r = q = 0. The same gamma the profile sums."""
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+    priced = _priced_d1(spot, strike, t_years, sigma)
+    if priced is None:
         return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
-    if not math.isfinite(d1):
-        return None
-    g = _norm_pdf(d1) / (spot * vt)
+    d1, vt = priced
+    g = norm_pdf(d1) / (spot * vt)
     return g if math.isfinite(g) else None
 
 
@@ -39,12 +54,10 @@ def bs_delta(
     spot: float, strike: float, t_years: float, sigma: float, *, call: bool
 ) -> float | None:
     """Black-Scholes delta per share, r = q = 0. A put is the call delta minus one."""
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+    priced = _priced_d1(spot, strike, t_years, sigma)
+    if priced is None:
         return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
-    if not math.isfinite(d1):
-        return None
+    d1, _vt = priced
     call_delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
     d = call_delta if call else call_delta - 1.0
     return d if math.isfinite(d) else None
@@ -62,12 +75,12 @@ def bs_vanna(
     Units: delta-change per 1.00 of IV (100 vol points); multiply by 0.01 for per-vol-point
     — the sigma-scaling convention is LOCKED here beside the dealer convention.
     """
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+    priced = _priced_d1(spot, strike, t_years, sigma, rate - div)
+    if priced is None:
         return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
+    d1, vt = priced
     d2 = d1 - vt
-    v = -math.exp(-div * t_years) * _norm_pdf(d1) * d2 / sigma
+    v = -math.exp(-div * t_years) * norm_pdf(d1) * d2 / sigma
     return v if math.isfinite(v) else None
 
 
@@ -84,14 +97,14 @@ def bs_charm(
     Identical for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant
     vanishes under differentiation with respect to time.
     """
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+    priced = _priced_d1(spot, strike, t_years, sigma, rate)
+    if priced is None:
         return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / vt
+    d1, vt = priced
     d2 = d1 - vt
     # dDelta/dt (calendar time). Sign verified against a finite-difference
     # derivative of the BS delta.
-    c = -_norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
+    c = -norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
     return c if math.isfinite(c) else None
 
 
