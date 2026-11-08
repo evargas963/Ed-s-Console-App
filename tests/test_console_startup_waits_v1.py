@@ -43,15 +43,6 @@ def program_env(tmp_path: Path) -> dict:
     return env
 
 
-def pages_port(program: subprocess.Popen, lines: list) -> int:
-    """The port the program's pages bound, from its own window line (120 s at most)."""
-    end = time_et.elapsed() + 120
-    while (found := SERVING.search("".join(list(lines)))) is None:
-        assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
-        time.sleep(0.25)
-    return int(found.group(1))
-
-
 def run_until(env: dict, done) -> str:
     """Run the program until `done(window text)` (120 s at most), then stop it: its window."""
     program = subprocess.Popen(
@@ -96,7 +87,11 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     lines: list = []
     threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
     try:
-        pages = pages_port(program, lines)
+        end = time_et.elapsed() + 120
+        while (serving := SERVING.search("".join(list(lines)))) is None:
+            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
+            time.sleep(0.25)
+        pages = int(serving.group(1))
         why = launch.unhealthy_for(pages, 30)  # a page request, as the browser makes
         assert why is None, (why, "".join(lines))
         os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
@@ -130,7 +125,11 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
     threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
     page = socket.socket()
     try:
-        pages = pages_port(program, lines)
+        end = time_et.elapsed() + 120
+        while (serving := SERVING.search("".join(list(lines)))) is None:
+            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
+            time.sleep(0.25)
+        pages = int(serving.group(1))
         why = launch.unhealthy_for(pages, 30)
         assert why is None, (why, "".join(lines))
         page.settimeout(30)
