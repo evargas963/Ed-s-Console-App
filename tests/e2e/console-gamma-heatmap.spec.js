@@ -860,7 +860,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       body: JSON.stringify(Object.assign({}, TERRAIN, { pcr_by_expiry: {}, pcr_all: null })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('582.90');
-    await expect(page.locator('#klPcr')).toHaveText('—');
+    await expect(page.locator('#klPcr')).toHaveText('-');
   });
 
   // A real 116-strike x 16-expiration surface (SPY, captured 2026-09-10 06:35 CDT; 2026-09-09
@@ -975,7 +975,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
-    await expect(page.locator('#hChgReg')).toHaveText('REG —');
+    await expect(page.locator('#hChgReg')).toHaveText('REG -');
   });
 
   test('a price that stops arriving stays, and the chip says OFFLINE', async ({ page }) => {
@@ -1010,7 +1010,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klSpot')).toHaveText('601.23');
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
-    await expect(page.locator('#klSpot')).toHaveText('—');
+    await expect(page.locator('#klSpot')).toHaveText('-');
     await expect(page.locator('#hFeed')).toHaveText('WAITING');
   });
 
