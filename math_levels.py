@@ -243,7 +243,7 @@ def gamma_flip_from_profile(profile: list[tuple[float, float]], spot: float) -> 
         if v0 == 0:
             crossings.append(p0)
         elif (v0 < 0 <= v1) or (v0 > 0 >= v1):
-            crossings.append(p0 + (p1 - p0) * (-v0) / (v1 - v0))
+            crossings.append(_lerp(0.0, v0, v1, p0, p1))
     if not crossings:
         return None
     return min(crossings, key=lambda c: abs(c - spot))
@@ -264,6 +264,15 @@ GSF_STATE_BELOW_SUPPORT = "BELOW_SUPPORT"
 GSF_STATE_UNAVAILABLE = "UNAVAILABLE"
 
 
+def _lerp(x: float, x0: float, x1: float, y0: float, y1: float) -> float:
+    """THE one linear interpolation of the profile: y at `x` on the segment (x0, y0)-(x1, y1);
+    y0 on a segment with no width. Read both ways: the value at a price, and the price at a
+    value (the flip, the support and resistance crossings)."""
+    if x1 == x0:
+        return y0
+    return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+
+
 def _interp_profile_at(profile: list[tuple[float, float]], s: float) -> float | None:
     """Linear interpolation of net GEX$ at price s on an ascending profile."""
     if not profile:
@@ -275,9 +284,7 @@ def _interp_profile_at(profile: list[tuple[float, float]], s: float) -> float | 
     for i in range(1, len(profile)):
         (p0, v0), (p1, v1) = profile[i - 1], profile[i]
         if p0 <= s <= p1:
-            if p1 == p0:
-                return v0
-            return v0 + (v1 - v0) * (s - p0) / (p1 - p0)
+            return _lerp(s, p0, p1, v0, v1)
     return None
 
 
@@ -349,12 +356,6 @@ def compute_gamma_support_levels(
         return {"gsf": None, "grc": None, "state": GSF_STATE_BELOW_SUPPORT, "n_at_spot": n_spot}
     target = phi * n_spot
 
-    def _cross(p0: float, v0: float, p1: float, v1: float) -> float:
-        # price where the segment crosses `target` (v0 and v1 straddle it)
-        if v1 == v0:
-            return p0
-        return p0 + (p1 - p0) * (target - v0) / (v1 - v0)
-
     gsf: float | None = None
     grc: float | None = None
     # walk DOWN from spot: the FIRST crossing below spot is the highest such s
@@ -362,7 +363,7 @@ def compute_gamma_support_levels(
     prev_p, prev_v = float(spot), float(n_spot)
     for p, v in reversed(below):
         if v <= target < prev_v:
-            gsf = _cross(p, v, prev_p, prev_v)
+            gsf = _lerp(target, v, prev_v, p, prev_p)  # the price where N(s) crosses target
             break
         prev_p, prev_v = p, v
     # walk UP from spot: the FIRST crossing above spot is the lowest such s
@@ -370,7 +371,7 @@ def compute_gamma_support_levels(
     prev_p, prev_v = float(spot), float(n_spot)
     for p, v in above:
         if v <= target < prev_v:
-            grc = _cross(prev_p, prev_v, p, v)
+            grc = _lerp(target, prev_v, v, prev_p, p)
             break
         prev_p, prev_v = p, v
     return {"gsf": gsf, "grc": grc, "state": GSF_STATE_OK, "n_at_spot": n_spot}
