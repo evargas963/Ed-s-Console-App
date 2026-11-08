@@ -574,10 +574,10 @@ def _merged_recent_crosses(ticker: str, n: int) -> list[dict]:
     return merged[:n]
 
 
-def _required_ticker(ticker: str | None) -> str:
+def _required_ticker(ticker: str) -> str:
     """The ticker the caller asked for -- never a default one: every ticker is treated the same.
     Blank -> HTTP 400."""
-    t = str(ticker or "").strip()
+    t = ticker.strip()
     if not t:
         raise HTTPException(status_code=400, detail="ticker is required")
     return t
@@ -3011,7 +3011,7 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route neither builds
     nor checks that format, it serializes what the console holds for the literal string given.
     A contract symbol is not a ticker."""
-    c = (contract or "").strip()
+    c = contract.strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
     return JSONResponse(options_microstructure(c, time_et.now()))
