@@ -103,7 +103,7 @@ class _Market:
     its bus fed as the chain sweep and the stream feed it."""
 
     def __init__(self, tmp_path, watchlist: list[str], clock):
-        self.streamer = LocalStreamer(capture.OPTION_LIMITS)
+        self.streamer = LocalStreamer(capture.OPTION_LIMITS, data={})
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
         self.bus = MessageBus()
