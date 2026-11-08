@@ -11,7 +11,7 @@ daemon's).
 Paths: `endpoint.key.key`; a list item and an option chain's expiry and strike keys are `*`;
 market-hours products are kept (market_hours.future.GC.isOpen). Containers are rows too.
 
-    python tools/schwab_field_inventory.py [--seed older_list.csv]
+    python -m tools.schwab_field_inventory [--seed older_list.csv]
 """
 
 from __future__ import annotations
