@@ -30,8 +30,8 @@ import time_et
 from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from option_contract import read_chain
-from stream_spine import options_quote_msg
-from tests.feed_live_helper import mark_feed_live
+from stream_spine import verbatim_msg
+from tests.feed_live_helper import daemon_status, mark_feed_live
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
 from time_et import ET
 
@@ -54,11 +54,11 @@ def _daemon(at: float, held_options=()):
     from Schwab's captured quote."""
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
     lmp.record_feed_heartbeat(
-        {
-            "ts": at,
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)},
-        }
+        daemon_status(
+            at,
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)},
+        )
     )
 
 
@@ -86,7 +86,7 @@ def _forget():
         server._terrain_cache.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
     lmp.record_feed_down()
 
 
@@ -224,7 +224,7 @@ def test_the_spot_row_is_served(route):
     )
     lmp.record_from_level_one_equity("SPY", print_["native"], received_ts=print_["ts_recv"])
     lmp.record_feed_heartbeat(
-        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
+        daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     try:
         body = json.loads(route().body)
@@ -233,7 +233,7 @@ def test_the_spot_row_is_served(route):
             server._terrain_cache.pop("SPY", None)
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
-        lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
         lmp.record_feed_down()
     assert body["spot_strike"] == live
 
@@ -255,7 +255,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     _daemon(_AT.timestamp(), [sym])
     ofs._ingest_pushed(
         f"optquote.{sym}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=sym,
             content={"key": sym, "GAMMA": call["gamma"]},
             src="schwab_options_l1",
@@ -298,7 +298,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     )
     at = datetime.fromtimestamp(fx["ts_utc"], ET)
     lmp.record_feed_heartbeat(
-        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}}
+        daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["$SPX"]})
     )
     lmp.record_from_level_one_equity(
         "$SPX",

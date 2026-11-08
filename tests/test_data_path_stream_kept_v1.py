@@ -36,8 +36,8 @@ from stream_spine import (
     HealthRegistry,
     MessageBus,
     book_msg,
-    options_quote_msg,
     quote_msg,
+    verbatim_msg,
 )
 from tests.real_chains import MRVL, SPY_0DTE
 from time_et import ET
@@ -112,7 +112,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
         for sym in every:
             bus.publish(
                 f"optquote.{sym}",
-                options_quote_msg(
+                verbatim_msg(
                     symbol=sym, content={"key": sym, "MARK": 1.0}, src="schwab_options_l1"
                 ),
             )
@@ -174,7 +174,7 @@ def _recorded(bus) -> None:
     for when in ("2026-09-30 15:00", "2026-10-07 15:00"):
         bus.publish(
             "optquote.SPY   261007C00777000",
-            options_quote_msg(
+            verbatim_msg(
                 symbol="SPY   261007C00777000",
                 content={"key": "SPY   261007C00777000"},
                 src="schwab_options_l1",

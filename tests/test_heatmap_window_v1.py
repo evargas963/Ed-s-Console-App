@@ -23,6 +23,7 @@ import live_market_plane as lmp
 import server
 from option_contract import read_chain
 from terrain_engine import SCOPE_ROWS, strike_window
+from tests.feed_live_helper import daemon_status
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -44,7 +45,7 @@ def _price(spot):
     """The daemon's status at _AT (Schwab's socket open, SPY held) and SPY's price row (None: no
     price)."""
     lmp.record_feed_heartbeat(
-        {"ts": _AT.timestamp(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
+        daemon_status(_AT.timestamp(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)

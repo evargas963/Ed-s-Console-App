@@ -412,9 +412,9 @@ def test_engine_and_route_read_the_same_canonical_state():
 
 def test_top_prices_and_sizes_are_carried_exactly():
     data = {"top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(data)
+    bid, ask = ofe._resolve_bid_ask_prices(data)
     assert (bid, ask) == (0.58, 0.59)
-    assert (bid_leaf, ask_leaf) == ("streaming.BID_PRICE", "streaming.ASK_PRICE")
+    assert ofe._extract_canonical_book(data)["mark"] is None
     assert ofe._compute_top_book_pressure(data) == (11 - 23) / (11 + 23)
     cb = ofe._extract_canonical_book(data)
     assert (cb["bid_size"], cb["ask_size"]) == (11, 23)
@@ -434,7 +434,7 @@ def test_zero_size_is_a_real_value_not_a_fallback_trigger():
 
 def test_no_top_resolves_to_none():
     data = {"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": None}  # tape print only
-    assert ofe._resolve_bid_ask_prices(data) == (None, None, None, None)
+    assert ofe._resolve_bid_ask_prices(data) == (None, None)
     assert ofe._compute_top_book_pressure(data) is None
 
 
@@ -511,7 +511,7 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's GAMMA as Schwab
     sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json)."""
     import app.options.order_flow.streaming as ofs
-    from stream_spine import options_quote_msg, quote_msg
+    from stream_spine import quote_msg, verbatim_msg
 
     mix = json.loads(
         (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -530,7 +530,7 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
         )
         ofs._ingest_pushed(
             f"optquote.{opt_sym}",
-            options_quote_msg(
+            verbatim_msg(
                 symbol=opt_sym, content=opt["item"], src="schwab_options_l1", ts_recv=opt["ts_recv"]
             ),
         )
@@ -553,10 +553,8 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
             "BOOK_TIME": 1,
         }
     ]
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(
-        {"content": items, "top": {"ask_size": 12}}
-    )
-    assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
+    bid, ask = ofe._resolve_bid_ask_prices({"content": items, "top": {"ask_size": 12}})
+    assert (bid, ask) == (None, None)
 
 
 def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
@@ -567,7 +565,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     import live_market_plane as lmp
     from app.options.order_flow import state
     from app.options.order_flow.live_payload import options_live_payload
-    from tests.feed_live_helper import RTH_INSTANT
+    from tests.feed_live_helper import RTH_INSTANT, daemon_status
 
     c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
     sym = c["symbol"]
@@ -576,7 +574,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
             state.push_option_top(sym, ev["content"])
     try:
         lmp.record_feed_heartbeat(
-            {"ts": RTH_INSTANT, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}
+            daemon_status(RTH_INSTANT, schwab_socket_open=True, held={"LEVELONE_OPTIONS": [sym]})
         )
         payload = options_live_payload(sym, RTH_INSTANT)  # a TSLA option
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None

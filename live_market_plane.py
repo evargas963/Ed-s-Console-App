@@ -185,15 +185,11 @@ _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
-    """Apply one daemon heartbeat (live_ui's ``feed`` beat), judged by the time the daemon
-    stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
-    (docs/DATA_FLOW.md §2 D5). A status without its time is not applied."""
-    if not isinstance(msg, dict) or not isinstance(msg.get("ts"), (int, float)):
-        return
+    """Apply one daemon heartbeat (capture.Daemon.status, live_ui's beat), judged by the time the
+    daemon stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
+    (docs/DATA_FLOW.md §2 D5)."""
     held = {
-        svc: frozenset(ticker_storage_key(s) for s in syms)
-        for svc, syms in (msg.get("held") or {}).items()
-        if isinstance(syms, list)
+        svc: frozenset(ticker_storage_key(s) for s in syms) for svc, syms in msg["held"].items()
     }
     with _lock:
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
@@ -242,12 +238,12 @@ def feed_now(now: float) -> FeedNow:
 
 def feed_up(feed: FeedNow) -> bool:
     """Whether `feed` is a current heartbeat reporting the Schwab socket open."""
-    return feed.status is not None and feed.status.get("schwab_socket_open") is True
+    return feed.status is not None and feed.status["schwab_socket_open"]
 
 
-def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:
+def live_on(feed: FeedNow, symbol: str, service: str) -> bool:
     """Whether `feed` says Schwab `service` is delivering `symbol`."""
-    if symbol is None or not feed_up(feed):
+    if not feed_up(feed):
         return False
     t = ticker_storage_key(symbol)
     symbols = feed.held.get(service)
@@ -259,7 +255,7 @@ def daemon_status(now: float) -> dict[str, Any] | None:
     return feed_now(now).status
 
 
-def not_trading(symbol: str | None, service: str, now: float) -> str | None:
+def not_trading(symbol: str, service: str, now: float) -> str | None:
     """Why `symbol`'s values on Schwab `service` are not live at `now`, or None in a valid session
     (time_et.session_label): no valid session, that /markets answer not held, for an option today's
     option markets closed (time_et.options_open), or for a stock or an index Schwab's own
@@ -278,7 +274,7 @@ def not_trading(symbol: str | None, service: str, now: float) -> str | None:
     return f"Schwab marks {t} {status}" if status in ("Closed", "Halted") else None
 
 
-def live_state(symbol: str | None, service: str, now: float) -> tuple[str, str | None]:
+def live_state(symbol: str, service: str, now: float) -> tuple[str, str | None]:
     """THE live rule, for every streamed value: `symbol`'s state on Schwab `service` at `now` and
     why it is not live (docs/DATA_FLOW.md §2 D5). LIVE while it is updating: the daemon's heartbeat
     current (feed_now) reporting the Schwab socket open, the symbol held on that service, and a
@@ -297,7 +293,7 @@ def live_symbols(feed: FeedNow, symbols, service: str, now: float) -> set[str]:
     return {s for s in symbols if _judge(feed, s, service, now)[0] == LIVE}
 
 
-def _judge(feed: FeedNow, symbol: str | None, service: str, now: float) -> tuple[str, str | None]:
+def _judge(feed: FeedNow, symbol: str, service: str, now: float) -> tuple[str, str | None]:
     if not feed_up(feed):
         return (
             OFFLINE,
@@ -309,11 +305,11 @@ def _judge(feed: FeedNow, symbol: str | None, service: str, now: float) -> tuple
     return (LIVE, None) if why is None else (NOT_LIVE, why)
 
 
-def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
+def feed_live_for(symbol: str, service: str, now: float) -> bool:
     """Whether `symbol` on Schwab `service` is live at `now` (live_state)."""
     return live_state(symbol, service, now)[0] == LIVE
 
 
-def outage(symbol: str | None, service: str, now: float) -> str | None:
+def outage(symbol: str, service: str, now: float) -> str | None:
     """Why `symbol` on Schwab `service` is not live at `now`, or None when it is (live_state)."""
     return live_state(symbol, service, now)[1]

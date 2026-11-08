@@ -13,6 +13,7 @@ from math_exposure_core import (
     strike_total_volume,
 )
 from option_contract import read_chain
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import NFLX, SPY_0DTE
 
 
@@ -21,7 +22,7 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
     it, at `spot`, with the live price at `spot`."""
     srv._publish_levels(tk, read_chain(chain), now.timestamp(), chain_spot=(spot, 1.0), now=now)
     lmp.record_feed_heartbeat(
-        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
     )
     lmp.record_from_level_one_equity(
         tk, {"LAST_PRICE": spot, "TRADE_TIME_MILLIS": 1000}, received_ts=1.0

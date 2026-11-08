@@ -40,8 +40,8 @@ from stream_spine import (
     HealthRegistry,
     MessageBus,
     book_msg,
-    options_quote_msg,
     quote_msg,
+    verbatim_msg,
 )
 from tests.feed_live_helper import RTH_INSTANT, clock_from
 
@@ -283,7 +283,7 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
         ts = time_et.now()
         bus.publish(
             f"optquote.{_CONTRACT}",
-            options_quote_msg(
+            verbatim_msg(
                 symbol=_CONTRACT,
                 content={"key": _CONTRACT, "BID_PRICE": 1.2, "ASK_PRICE": 1.3, "TOTAL_VOLUME": 5},
                 src="schwab_options_l1",

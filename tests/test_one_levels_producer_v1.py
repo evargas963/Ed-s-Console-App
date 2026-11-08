@@ -31,9 +31,10 @@ import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from math_exposure_core import bucket_metric, merge_exposure_books
 from option_contract import read_chain
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -86,11 +87,11 @@ def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float
     open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's LAST_PRICE in the
     daemon's plane, traded at the capture's time (None: no price)."""
     lmp.record_feed_heartbeat(
-        {
-            "ts": at,
-            "schwab_socket_open": socket_open,
-            "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
-        }
+        daemon_status(
+            at,
+            schwab_socket_open=socket_open,
+            held={"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
+        )
     )
     if price is None:
         lmp._by_ticker.pop(TK, None)
@@ -105,7 +106,7 @@ def _streamed(sym: str, content: dict, ts: float) -> None:
     """One LEVELONE_OPTIONS message for `sym`, as the daemon pushes it."""
     ofs._ingest_pushed(
         f"optquote.{sym}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=sym, content={"key": sym, **content}, src="schwab_options_l1", ts_recv=ts
         ),
     )
@@ -663,7 +664,7 @@ def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_g
     try:
         ofs._ingest_pushed(
             f"optquote.{m['item']['key']}",
-            options_quote_msg(
+            verbatim_msg(
                 symbol=m["item"]["key"],
                 content=m["item"],
                 src="schwab_options_l1",
