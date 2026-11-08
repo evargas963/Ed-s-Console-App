@@ -23,7 +23,7 @@
   var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
   // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
-  function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '—'; }
+  function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '-'; }
   var FAMILIES = [
     { id: 'volume_profile', lbl: 'Volume profile (RTH)' },
     { id: 'value_area', lbl: 'Value area' }, { id: 'vwap', lbl: 'VWAP' }, { id: 'gamma', lbl: 'Gamma' },
@@ -46,14 +46,14 @@
     return s + '$' + a.toFixed(0);
   }
   function fmtVol(n) {
-    if (n == null || isNaN(n)) return '—';
+    if (n == null || isNaN(n)) return '-';
     var a = Math.abs(Number(n));
     if (a >= 1e6) return (a / 1e6).toFixed(2) + 'M';
     if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
     return String(Math.round(a));
   }
   function age(sec) {
-    if (sec == null || isNaN(sec)) return '—';
+    if (sec == null || isNaN(sec)) return '-';
     sec = Math.max(0, Number(sec));
     if (sec < 90) return Math.round(sec) + 's';
     if (sec < 5400) return Math.round(sec / 60) + 'm';
@@ -77,11 +77,11 @@
   }
   function whenCT(ts) {
     // today is the program's (EdShell.now, its heartbeat); with none yet the date is shown
-    var d = new Date(ts * 1000), now = window.EdShell && window.EdShell.now();
+    var d = new Date(ts * 1000), now = window.EdShell.now();
     var today = now != null && CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date(now * 1000));
     return (today ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
   }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function onDesk() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'desk'; }
   // the instrument's served display name (the daemon's answer, EdShell state.display); as typed
   // until it arrives
@@ -126,7 +126,7 @@
     document.querySelectorAll('#tdmFamilies [data-famv]').forEach(function (b) { b.textContent = v[b.getAttribute('data-famv')] || ''; });
     // the profile's basis, or why there is none (the value area's served reason)
     var vp = S.levels && S.levels.volume_profile, pn = $('tdmProfNote');
-    var why = ((S.levels && S.levels.families_absent) || []).filter(function (a) { return a.family === 'value_area'; })[0];
+    var why = (S.levels ? S.levels.families_absent : []).filter(function (a) { return a.family === 'value_area'; })[0];
     if (pn) pn.textContent = vp ? vp.basis + (vp.bars_without_volume ? ' · ' + vp.bars_without_volume + ' of ' + vp.bars +
       ' RTH bars sent no volume and are not in it' : '') : why ? 'Volume profile (RTH) not drawn: ' + why.reason : '';
   }
@@ -151,9 +151,9 @@
     paintTfButtons();
     document.querySelectorAll('[data-drill]').forEach(function (el) {
       el.addEventListener('click', function () {
-        var d = DRILL[el.getAttribute('data-drill')]; if (!d || !window.EdShell) return;
+        var d = DRILL[el.getAttribute('data-drill')]; if (!d) return;
         window.EdShell.setWorkspace(d[0]);
-        if (window.EdShell.setSubview) window.EdShell.setSubview(d[1]);
+        window.EdShell.setSubview(d[1]);
       });
     });
     return S.chart;
@@ -189,8 +189,7 @@
         $('tdmChartEmpty').hidden = bars.length > 0;
         $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
           : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
-        paintChartOverlays(); paintQueue(); openView();
-        var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
+        paintChartOverlays(); paintQueue(); openView(); paintFooter();
       } else if (bars.length) {
         S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
       }
@@ -225,7 +224,7 @@
     ]).then(function (r) {
       if (gen !== S.gen) return;
       S.terrain = r[0]; S.liq = r[1]; S.strikes = r[2]; S.forces = r[3];
-      S.flowBars = r[4] ? r[4].bars || [] : null;
+      S.flowBars = r[4] ? r[4].bars : null;
       paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     });
   }
@@ -252,9 +251,9 @@
       expected_move: [P.stale, 3, 1], gamma: [P.stale, 2, 1] };
     var gamma = { call_wall: ['Call wall', P.up, 0, 2], put_wall: ['Put wall', P.down, 0, 2],
       gamma_flip: ['γ flip', P.accent, 0, 2], max_pain: ['Max pain', P.ink3, 3, 1] };
-    var byId = {}; ((S.levels && S.levels.levels) || []).forEach(function (l) { byId[l.id] = l; });
+    var byId = {}; (S.levels ? S.levels.levels : []).forEach(function (l) { byId[l.id] = l; });
     // served order: nearest the live price first (by_distance); the chart keeps the first N on screen
-    ((S.levels && S.levels.by_distance) || []).forEach(function (id) {
+    (S.levels ? S.levels.by_distance : []).forEach(function (id) {
       var l = byId[id]; if (!l || l.price == null || S.fam[l.family] === 0) return;
       var g = l.family === 'gamma' && gamma[l.id];
       var lean = S.terrain && S.terrain[l.id + '_lean'];   // served: call_wall_lean / put_wall_lean
@@ -266,7 +265,7 @@
     return out;
   }
   function levelPrice(id) {
-    var l = ((S.levels && S.levels.levels) || []).filter(function (x) { return x.id === id; })[0];
+    var l = (S.levels ? S.levels.levels : []).filter(function (x) { return x.id === id; })[0];
     return l && l.price != null ? Number(l.price) : null;
   }
   function pdValueArea() { return { val: levelPrice('PD_VAL'), vah: levelPrice('PD_VAH') }; }
@@ -301,7 +300,7 @@
   }
 
   // ------------------------------------------------------------------ attention queue
-  function queueItems() { return (S.events && S.events.items) || []; }   // served, ordered, numbered
+  function queueItems() { return S.events ? S.events.items : []; }   // served, ordered, numbered
   function paintQueue() {
     var host = $('tdmQueue'); if (!host) return;
     var items = queueItems(); S.queue = items;
@@ -394,7 +393,7 @@
     c = $('tdmCardFlow');
     if (c) {
       var q = S.quotes[st().key], tob = m && m.top_of_book;
-      var cc = (S.events && S.events.cross_counts) || null;   // served for the window
+      var cc = S.events ? S.events.cross_counts : null;   // served for the window
       // Schwab's values with Schwab's trade time; the outage stays beside that time, and the feed state beside them
       state(c, S.pushDown ? S.pushDown : !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : q.feed_label,
         q && q.feed_live && !S.pushDown ? '' : 'warn');
@@ -405,9 +404,9 @@
       var tradeWhy = !q ? 'no price row yet' : (q.outage ? esc(q.outage) : (tradeWhen ? null : 'no trade sent'));
       src(c, 'Schwab LEVELONE · ' + (tradeWhen && tradeWhy ? (tradeWhen + ' · ' + tradeWhy) : (tradeWhen || tradeWhy)));
       c.querySelector('.tdm-rows').innerHTML =
-        row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
-        row('Top of book', tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
-        row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
+        row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '-') +
+        row('Top of book', tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '-') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '-') : '-') +
+        row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '-');
     }
     // OPTIONS POSITIONING — full-chain terrain
     c = $('tdmCardOpt');
@@ -420,13 +419,13 @@
         // the served regime word, and its tone from the one regime table (ed-gamma-panels.js)
         var reg = t.regime ? String(t.regime) : null;
         var rm = reg != null ? window.EdGammaRegime[reg] : null;
-        state(c, reg != null ? reg.replace(/_/g, ' ') : '—', t.levels_state !== 'LIVE' ? 'warn' : (rm ? rm.tone : ''));
+        state(c, reg != null ? reg.replace(/_/g, ' ') : '-', t.levels_state !== 'LIVE' ? 'warn' : (rm ? rm.tone : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
         src(c, 'Schwab option chain · ' + esc(chainAgeLabel(t)));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
           row('Flip', num(t.gamma_flip)) + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
-          row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
+          row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + forcesRows();
       }
     }
     // VOLATILITY
@@ -440,7 +439,7 @@
         state(c, 'ATM IV ' + num(im.iv_pct_atm, 1) + '%', '');
         c.querySelector('.tdm-hero').innerHTML = '±' + num(im.points, 2) + ' <small>implied 1-day move, 1σ</small>';
       }
-      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : esc(chainAgeLabel(t))));
+      src(c, 'Schwab option chain · ' + (!t || t.error ? '-' : esc(chainAgeLabel(t))));
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', num(t && t.atr_daily)) +
@@ -558,27 +557,32 @@
     paintLiq();
   }
 
+  // what a card says with nothing to draw: not answered yet (undefined), our request failed (null),
+  // the served error, or the served answer holding nothing
+  function noneText(x, what, none) {
+    if (x === undefined) return 'loading…';
+    if (x === null) return 'the ' + what + ' request failed';
+    return x.error ? x.error : none;
+  }
   function paintCardCharts() {
     if (!S.chart) return;
     var P = S.chart.palette(), t = S.terrain, c;
+    var fb = S.flowBars, served = t && !t.error;   // a card draws only an answer
     if ((c = $('tdmCardFlow'))) {
-      var fb = S.flowBars || [];
-      spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
-        colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
+      spark(c, fb ? [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
+        colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }] : [],
         'Volume per 1-minute bar, last hour · green up, red down',
-        S.flowBars === undefined ? 'loading…' : 'no 1-minute bars for this symbol');
+        noneText(fb, 'bars', 'no 1-minute bars for this symbol'));
     }
     if ((c = $('tdmCardOpt'))) {
-      var pcr = (t && t.pcr_by_expiry) || {};
-      spark(c, [{ ys: Object.keys(pcr).map(function (k) { return pcr[k]; }), color: P.research, kind: 'line' }],
+      spark(c, served ? [{ ys: Object.keys(t.pcr_by_expiry).map(function (k) { return t.pcr_by_expiry[k]; }), color: P.research, kind: 'line' }] : [],
         'Put/call open interest by expiry, nearest first',
-        t === undefined ? 'loading…' : (t && t.error) || 'no expiry carries open interest');
+        noneText(t, 'terrain', 'no expiry carries open interest'));
     }
     if ((c = $('tdmCardVol'))) {
-      var iv = (t && t.atm_iv_pct_by_expiry) || {};
-      spark(c, [{ ys: Object.keys(iv).map(function (k) { return iv[k]; }), color: P.accent, kind: 'line' }],
+      spark(c, served ? [{ ys: Object.keys(t.atm_iv_pct_by_expiry).map(function (k) { return t.atm_iv_pct_by_expiry[k]; }), color: P.accent, kind: 'line' }] : [],
         'ATM implied vol by expiry, nearest first',
-        t === undefined ? 'loading…' : (t && t.error) || 'no expiry has both ATM legs priced');
+        noneText(t, 'terrain', 'no expiry has both ATM legs priced'));
     }
   }
 
@@ -590,10 +594,10 @@
     var lv = m && m.readout && m.readout.venues[liqKey()], lz = lv && lv.views[S.liqView] && lv.views[S.liqView].zone;
     var cells = [
       ['LIQUIDITY', lz ? lv.views[S.liqView].side_word.toLowerCase() : 'No book', lz === 'BALANCED' ? '' : lz ? (/BID/.test(lz) ? 'up' : 'dn') : ''],
-      ['VALUE', l && l.summary ? String(l.summary.value_state || '—').replace(/_/g, ' ') : '—', ''],
-      ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '—').replace(/_/g, ' ') : '—', ''],
-      ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '—', ''],
-      ['GAMMA', t && t.flip_relation ? ({ ABOVE: 'Above flip', AT: 'At flip', BELOW: 'Below flip' })[t.flip_relation] + notLive(t) : '—',
+      ['VALUE', l && l.summary ? String(l.summary.value_state || '-').replace(/_/g, ' ') : '-', ''],
+      ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '-').replace(/_/g, ' ') : '-', ''],
+      ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '-', ''],
+      ['GAMMA', t && t.flip_relation ? ({ ABOVE: 'Above flip', AT: 'At flip', BELOW: 'Below flip' })[t.flip_relation] + notLive(t) : '-',
         t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
     host.innerHTML = cells.map(function (c) {
@@ -614,7 +618,7 @@
       : pill('BOOK', bookAgeLabel(m, m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? m.book_feed_label : 'AGE UNKNOWN'),
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     // the session levels snapshot's served time and age
-    var levelWord = L && L.snapshot_age_text != null ? L.snapshot_age_text : '—';
+    var levelWord = L && L.snapshot_age_text != null ? L.snapshot_age_text : '-';
     var levelWhen = (L && L.snapshot_time_ct != null) ? L.snapshot_time_ct : null;
     var levelShown = levelWhen != null ? (levelWhen + ' · ' + levelWord) : levelWord;
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', levelShown, (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
@@ -629,10 +633,10 @@
     var host = $('tdmFoot'); if (!host) return;
     var t = S.terrain, m = S.micro, L = S.levels;
     host.innerHTML = [
-      'Bars: <b id="tdmBarsSrc">' + esc(($('tdmBarsSrc') || {}).textContent || '—') + '</b>',
-      'Book: <b>' + esc((m && m.provenance && m.provenance.book_source) || '—') + '</b>',
-      'Levels: <b>' + esc((L && L.bar_source) || '—') + '</b>',
-      'Options: <b>' + esc(t && !t.error ? (t.chain_basis || '—') + ' chain · ' + (t.strikes_used == null ? '—' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + ' contracts' : '—') + '</b>',
+      'Bars: <b>' + (S.barsAnswered === S.gen && S.bars.length ? 'streamed 1m bars' : '-') + '</b>',
+      'Book: <b>' + esc((m && m.provenance && m.provenance.book_source) || '-') + '</b>',
+      'Levels: <b>' + esc((L && L.bar_source) || '-') + '</b>',
+      'Options: <b>' + esc(t && !t.error ? (t.chain_basis || '-') + ' chain · ' + (t.strikes_used == null ? '-' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + ' contracts' : '-') + '</b>',
       'Clock: <b>Central</b>'
     ].map(function (x) { return '<span>' + x + '</span>'; }).join('');
   }
@@ -651,7 +655,7 @@
       else if (r.trade_time_ct != null) el.title = 'last trade ' + r.trade_time_ct;
       else if (r.outage != null) el.title = r.outage;
       else el.title = 'no trade sent';
-      el.innerHTML = '<span>' + c.display + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') + '</b>' +
+      el.innerHTML = '<span>' + c.display + '</span><b>' + (r && r.spot != null ? num(r.spot) : '-') + '</b>' +
         (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '') +
         (r && r.trade_time_ct != null ? '<span> · last trade ' + esc(r.trade_time_ct) + '</span>' : '');
     });
@@ -662,7 +666,7 @@
     if (!onDesk()) return;
     buildToolbar();
     if (!ensureChart()) return;
-    var tk = st().ticker || '';
+    var tk = st().ticker;
     if (!tk) return;
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed

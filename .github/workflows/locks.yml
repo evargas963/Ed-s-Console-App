@@ -50,3 +50,16 @@ jobs:
           python ../judge/tools/check_integrity.py --base "$base"
           cd ..
           lint-imports --config judge/locks.imports.toml --no-cache
+      - name: the pull request lists how it can fail and gives measured before and after counts
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          section() {
+            printf '%s\n' "$BODY" | tr -d '\r' \
+              | awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } on' \
+              | grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*<!--'
+          }
+          section 'Failure modes' | grep -q . \
+            || { echo "::error::no '## Failure modes' section with content"; exit 1; }
+          section 'Census before and after' | grep -Eq '[0-9][0-9,]* -> [0-9]' \
+            || { echo "::error::'## Census before and after' has no measured count (N -> M)"; exit 1; }

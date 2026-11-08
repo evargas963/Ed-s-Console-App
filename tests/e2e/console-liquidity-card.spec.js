@@ -13,9 +13,9 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await intercept(page);
     await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(body) }));
-    await page.addInitScript((k) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    await page.addInitScript((k) => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK');
-      if (!k) { localStorage.removeItem('ed.desk.liqvenue'); localStorage.removeItem('ed.desk.liqview'); } } catch (e) {} }, keep);
+      if (!k) { localStorage.removeItem('ed.desk.liqvenue'); localStorage.removeItem('ed.desk.liqview'); } }, keep);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
   }
   const card = (page) => page.locator('#tdmCardLiq');
@@ -183,8 +183,8 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
   test('a failed read says so on the source line, naming no book the server did not name', async ({ page }) => {
     await intercept(page);
     await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({ status: 500, body: '' }));
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
-      localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(card(page).locator('.liq-body')).toContainText('UNAVAILABLE');
     await expect(card(page).locator('.tdm-src')).toHaveText('microstructure request failed');
