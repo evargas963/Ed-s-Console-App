@@ -26,7 +26,7 @@ def _expected_volume_by_strike() -> dict[float, int]:
     out: dict[float, int] = {}
     for c in CHAIN:
         k = float(c["strikePrice"])
-        out[k] = out.get(k, 0) + int(c.get("totalVolume") or 0)
+        out[k] = out.get(k, 0) + int(c["totalVolume"])  # every contract here sent its volume
     return out
 
 
@@ -62,5 +62,5 @@ def test_rows_are_the_shape_the_panel_renders():
 def test_absence_renders_as_absence_not_as_stale_data():
     """With no chain there must be no fabricated per-strike data."""
     snap = compute_terrain(TICKER, [], SPOT, now=NOW)
-    assert not (snap.per_strike or {}).get("all")
+    assert not snap.per_strike["all"]
     assert snap.error

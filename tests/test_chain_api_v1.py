@@ -114,7 +114,7 @@ def test_only_the_requested_expiry_is_served():
 def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
     fetched = _AT.timestamp() - 20.0
     target = _TSLA_CONTRACTS[0]
-    streamed = (target["totalVolume"] or 0) + 4321
+    streamed = target["totalVolume"] + 4321
     _hold(
         "TSLA",
         _TSLA_CONTRACTS,
@@ -135,7 +135,7 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
     it. Open interest is the chain's."""
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]
-    volume, gamma = (target["totalVolume"] or 0) + 4321, (target["gamma"] or 0) + 0.05
+    volume, gamma = target["totalVolume"] + 4321, target["gamma"] + 0.05
     _hold(
         "TSLA",
         _TSLA_CONTRACTS,
