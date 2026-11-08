@@ -56,9 +56,8 @@
   function ladderHtml(bidLevels, askLevels, wallSet) {
     var maxVol = 0;
     bidLevels.concat(askLevels).forEach(function (l) { if (l.volume > maxVol) maxVol = l.volume; });
-    maxVol = maxVol || 1;
     function row(l, side) {
-      var w = Math.max(2, Math.round((l.volume / maxVol) * 100));
+      var s = window.EdShell.strength(l.volume, maxVol), w = s == null ? 0 : s * 100;
       var isWall = wallSet[side + '@' + l.price];
       return '<div class="dom-row ' + side + (isWall ? ' wall' : '') + '">' +
         '<div class="dom-bar-track"><i class="dom-bar" style="width:' + w + '%"></i></div>' +
