@@ -11,10 +11,11 @@ from datetime import datetime
 import numpy as np
 
 from math_exposure_core import (
-    SQRT_2PI,
     bs_charm,
     bucket_metric,
+    d1_vt,
     key_level_strikes_with_oi,
+    norm_pdf,
     schwab_iv_to_sigma,
     strike_oi_legs,
 )
@@ -208,16 +209,14 @@ def _gamma_profile_totals(parsed: list, grid: list[float]) -> list[float]:
     finite contributes nothing, matching bs_gamma's None."""
     arr = np.asarray(parsed, dtype=float)
     strike, oi, mult, t_years, sigma, side = (arr[:, i] for i in range(6))
-    vt = sigma * np.sqrt(t_years)
-    drift = 0.5 * sigma * sigma * t_years
     weight = side * oi * mult
     s_all = np.asarray(grid, dtype=float)
     out: list[float] = []
     with np.errstate(all="ignore"):
         for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
             s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
-            d1 = (np.log(s / strike) + drift) / vt
-            g = np.exp(-0.5 * d1 * d1) / SQRT_2PI / (s * vt)
+            d1, vt = d1_vt(s, strike, t_years, sigma, log=np.log, sqrt=np.sqrt)
+            g = norm_pdf(d1, exp=np.exp) / (s * vt)
             g = np.where(np.isfinite(g), g, 0.0)
             out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
     return out

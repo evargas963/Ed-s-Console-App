@@ -36,25 +36,22 @@ def _token_file(tmp_path):
     return tok
 
 
-def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
+def test_every_token_refresh_writes_atomically(tmp_path):
     """The client we build refreshes through OUR writer (temp + replace), never open(path, 'w')
-    in place (audit of #280: the atomic helper had no production caller)."""
+    in place (audit of #280: the atomic helper had no production caller). A replace puts a new
+    file at the path (its file id changes); a write in place keeps the same file."""
     import json
     import os as _os
 
     import schwab_client as sc
 
     tok = _token_file(tmp_path)
-    replaced = []
-    real_replace = _os.replace
-    monkeypatch.setattr(
-        _os, "replace", lambda a, b: (replaced.append((a, b)), real_replace(a, b))[1]
-    )
     client = sc.client_from_token_file_atomic(str(tok), "k", "s")
     assert client.session.token["access_token"] == "a"
+    before = _os.stat(tok).st_ino
     client.session.update_token({"access_token": "b", "refresh_token": "r"})  # a refresh
     assert json.loads(tok.read_text())["token"]["access_token"] == "b"
-    assert replaced and str(replaced[0][1]) == str(tok), "the refresh must land via os.replace"
+    assert _os.stat(tok).st_ino != before, "the refresh must land via os.replace"
 
 
 def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):

@@ -30,7 +30,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
         return [
             col[side]["state"]
             for cell in surface["cells"]
-            for col, pair in zip(cell.get("stream") or [], cell.get("contracts") or [])
+            for col, pair in zip(cell["stream"], cell["contracts"])  # a published surface's cell
             for side in ("call", "put")
             if col and pair.get(side) == _A
         ]
@@ -45,11 +45,11 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
         )
         out[at.hour] = _cached()
     rth, closed = out[11], out[22]
-    rth_row = next(r for r in rth["_per_strike"]["all"] if r[0] == strike)
-    closed_row = next(r for r in closed["_per_strike"]["all"] if r[0] == strike)
-    assert rth["spot"] == _SPOT and rth["spot_source"] == server.SPOT_SOURCE_PLANE
+    rth_row = next(r for r in rth.snap.per_strike["all"] if r[0] == strike)
+    closed_row = next(r for r in closed.snap.per_strike["all"] if r[0] == strike)
+    assert rth.snap.spot == _SPOT and rth.spot_source == server.SPOT_SOURCE_PLANE
     assert rth_row[2] >= 999999 and closed_row[2] >= 999999
-    assert rth["_gamma_surface"]["stream_overlay_contracts"] >= 1
-    rth_states = states(rth["_gamma_surface"])
+    assert rth.gamma_surface["stream_overlay_contracts"] >= 1
+    rth_states = states(rth.gamma_surface)
     assert rth_states and "live" not in rth_states
-    assert closed["spot"] == _SPOT
+    assert closed.snap.spot == _SPOT
