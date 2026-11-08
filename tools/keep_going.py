@@ -96,7 +96,7 @@ def session(payload: dict) -> str:
     hook fails closed instead of filing the session under a name of its own."""
     sid = payload["session_id"]
     if not isinstance(sid, str) or not SESSION.fullmatch(sid):
-        raise ValueError(f"session_id {sid!r} is not a plain name")
+        raise ValueError(sid)
     return sid
 
 
