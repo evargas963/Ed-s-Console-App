@@ -2,6 +2,18 @@
   "about": "Issues no machine counts yet, each found by hand (the 2026-11-06 census, its 50 decisions, the 2026-11-07 database inventory). census.py counts them under 'I. Found by hand'. An item leaves only when it is fixed, or when a count in census.py covers it.",
   "items": [
     {
+      "category": "a hand-written parser where a standard one exists",
+      "item": "tools/shell_parse.py (1,035 lines) lexes bash and PowerShell by hand; standard parsers exist: bashlex for bash, PowerShell's own System.Management.Automation.Language.Parser"
+    },
+    {
+      "category": "a hand-written parser where a standard one exists",
+      "item": "tools/check_end_to_end.py HUNK reads git's diff format by regex; standard: the unidiff library, or git's own line numbers"
+    },
+    {
+      "category": "a hand-written parser where a standard one exists",
+      "item": "runtime_layout.py reads a worktree's .git file and commondir by hand; standard: git rev-parse --git-common-dir"
+    },
+    {
       "category": "computed value: Schwab sends it",
       "item": "option mid (bid+ask)/2: Schwab sends option MARK (LEVELONE_OPTIONS field 37), equal in 99.95% (decision 1)"
     },

@@ -2066,6 +2066,37 @@ for a, fs in sorted(scores.items()):
                 f"{it} ({s})",
             )
 
+out = run(
+    [
+        PY,
+        "-m",
+        "ruff",
+        "check",
+        ".",
+        "--isolated",
+        "--select",
+        "D",
+        "--ignore",
+        "D1",  # a missing docstring: one is written only where it does work (operator 2026-11-08)
+        "--config",
+        'lint.pydocstyle.convention = "pep257"',
+        "--output-format",
+        "concise",
+        "--no-cache",
+        "--exit-zero",
+    ]
+)
+for ln in out.splitlines():
+    if m := re.match(r"(.+?):(\d+):\d+: (D\d+) (.*)", ln):
+        f = m.group(1).replace("\\", "/")
+        add(
+            S,
+            f"docstrings not as PEP 257 writes them: {area(f)}",
+            "13",
+            "ruff D (pep257)",
+            f"{f}:{m.group(2)}: {m.group(3)} {m.group(4)[:100]}",
+        )
+
 # =============================================================================================
 # L. FLAKY AND BROWSER TESTS (a test that passes and fails on the same code; Playwright's own)
 # =============================================================================================
