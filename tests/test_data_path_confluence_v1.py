@@ -32,6 +32,7 @@ from option_contract import read_chain
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import (
     CRWD,
     MRVL,
@@ -82,7 +83,7 @@ def _forget(tk: str) -> None:
         server._terrain_cache.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_heartbeat(daemon_status(0.0, schwab_socket_open=True))
     lmp.record_feed_down()
 
 

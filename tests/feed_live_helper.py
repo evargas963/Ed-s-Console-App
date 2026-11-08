@@ -11,8 +11,16 @@ from pathlib import Path
 
 import live_market_plane as lmp
 import time_et
+from app.market_data.schwab.streaming import capture
+from stream_spine import HealthRegistry, MessageBus
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def daemon_status(now: float, **staged) -> dict:
+    """A capture daemon's status at `now` as the daemon builds it (capture.Daemon.status: every
+    key it sends), with the `staged` keys set: the socket, the symbols held, the watchlist."""
+    return {**capture.Daemon(MessageBus(), HealthRegistry(), []).status(now), **staged}
 
 
 def daemon_bars(name: str, *symbols: str) -> list[dict]:
@@ -88,11 +96,11 @@ def mark_feed_live(*tickers: str, now: float | None = None) -> None:
     """The daemon's heartbeat stamped `now` (the wall clock when not given), holding `tickers` on
     LEVELONE_EQUITIES."""
     lmp.record_feed_heartbeat(
-        {
-            "ts": time_et.now() if now is None else now,
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_EQUITIES": list(tickers)},
-        }
+        daemon_status(
+            time_et.now() if now is None else now,
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": list(tickers)},
+        )
     )
 
 

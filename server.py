@@ -378,9 +378,7 @@ def _watchlist() -> list[str] | None:
     carries a list is that list; one that carries none is unknown. A late or missing heartbeat
     keeps the list of the last beat."""
     st = lmp.last_beat()
-    if st is None or not isinstance(st.get("watchlist"), list):
-        return None
-    return list(st["watchlist"])
+    return None if st is None else list(st["watchlist"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -712,7 +710,7 @@ def _levels_state(
     """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness. While the daemon asks
     Schwab for nothing (its status's `chains_waiting`: a refused sign-in), that is the why."""
     status = lmp.daemon_status(now)
-    waiting = status.get("chains_waiting") if status is not None else None
+    waiting = None if status is None else status["chains_waiting"]
     if waiting:
         failure = f"no chain is fetched: {waiting}"
     sep = f" — {failure}" if failure else ""
@@ -727,7 +725,7 @@ def _levels_state(
     # judged against the round the daemon's chain sweep last reported (every watchlist ticker
     # once): a chain's age is its own, and a late heartbeat does not shorten the round
     last = lmp.last_beat()
-    round_sec = last.get("chain_round_sec") if last is not None else None
+    round_sec = None if last is None else last["chain_round_sec"]
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
     # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness;
     # with no round delivered (or no current status) the floor alone.
@@ -1688,14 +1686,14 @@ def _status_line(now: float) -> str:
     with _terrain_cache_lock:
         as_of = [p.get("levels_ts_utc") for p in _terrain_cache.values() if p.get("levels_ts_utc")]
     newest = ct_label(max(as_of)) if as_of else "none"
-    round_sec = (st or {}).get("chain_round_sec")
+    round_sec = None if st is None else st["chain_round_sec"]
     return " | ".join(
         [
             "alive",
             f"session {session_label(datetime.fromtimestamp(now, ET))}",
             "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
             "Schwab socket: "
-            + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
+            + ("open" if st is not None and st["schwab_socket_open"] else "NOT OPEN"),
             prices,
             f"levels: {len(as_of)} tickers, newest as of {newest}",
             _feed_record_state(canonical_stream_db_path(), now),
@@ -3284,9 +3282,7 @@ def health():
     st = lmp.daemon_status(now)
     watchlist = _watchlist()
     capability: dict[str, object] = {
-        "schwab": "AVAILABLE"
-        if st is not None and st.get("schwab_socket_open") is True
-        else "UNAVAILABLE"
+        "schwab": "AVAILABLE" if st is not None and st["schwab_socket_open"] else "UNAVAILABLE"
     }
     if capability["schwab"] == "UNAVAILABLE":
         capability["schwab_reason"] = NO_DAEMON_HEARTBEAT if st is None else st["schwab_down"]

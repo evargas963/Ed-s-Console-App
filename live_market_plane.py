@@ -216,15 +216,11 @@ _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
-    """Apply one daemon heartbeat (live_ui's ``feed`` beat), judged by the time the daemon
-    stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
-    (docs/DATA_FLOW.md §2 D5). A status without its time is not applied."""
-    if not isinstance(msg, dict) or not isinstance(msg.get("ts"), (int, float)):
-        return
+    """Apply one daemon heartbeat (capture.Daemon.status, live_ui's beat), judged by the time the
+    daemon stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
+    (docs/DATA_FLOW.md §2 D5)."""
     held = {
-        svc: frozenset(ticker_storage_key(s) for s in syms)
-        for svc, syms in (msg.get("held") or {}).items()
-        if isinstance(syms, list)
+        svc: frozenset(ticker_storage_key(s) for s in syms) for svc, syms in msg["held"].items()
     }
     with _lock:
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
@@ -273,7 +269,7 @@ def feed_now(now: float) -> FeedNow:
 
 def feed_up(feed: FeedNow) -> bool:
     """Whether `feed` is a current heartbeat reporting the Schwab socket open."""
-    return feed.status is not None and feed.status.get("schwab_socket_open") is True
+    return feed.status is not None and feed.status["schwab_socket_open"]
 
 
 def live_on(feed: FeedNow, symbol: str | None, service: str) -> bool:

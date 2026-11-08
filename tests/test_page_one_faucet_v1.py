@@ -31,7 +31,7 @@ from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from option_contract import read_chain
 from stream_spine import options_quote_msg
-from tests.feed_live_helper import mark_feed_live
+from tests.feed_live_helper import daemon_status, mark_feed_live
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
 from time_et import ET
 
@@ -86,7 +86,7 @@ def _forget():
         server._terrain_cache.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
     lmp.record_feed_down()
 
 
@@ -235,7 +235,7 @@ def test_the_spot_row_is_served(route):
             server._terrain_cache.pop("SPY", None)
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
-        lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
         lmp.record_feed_down()
     assert body["spot_strike"] == live
 

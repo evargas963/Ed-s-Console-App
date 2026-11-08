@@ -35,6 +35,7 @@ from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from stream_spine import book_msg
 from tests.conftest import MARKETS_ANSWERS
+from tests.feed_live_helper import daemon_status
 from tests.test_order_flow_book_payload_v1 import _same
 from time_et import age_text, auction, ct_label, record_markets
 
@@ -92,7 +93,7 @@ def build_readout_payload(
     ofls.clear_all_live_state()
     history.LEAN.forget("SPY")
     try:
-        lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": _HELD})
+        lmp.record_feed_heartbeat(daemon_status(now, schwab_socket_open=True, held=_HELD))
         for m in sorted(quotes, key=lambda m: m["ts_recv"]):
             lmp.record_from_level_one_equity("SPY", m["item"], received_ts=m["ts_recv"])
         for ts, svc, content in _ROWS if rows is None else rows:
@@ -101,7 +102,7 @@ def build_readout_payload(
                 book_msg(symbol="SPY", service=svc, content=content, src="schwab_book", ts_recv=ts),
             )
         if held_after is not None:
-            lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": held_after})
+            lmp.record_feed_heartbeat(daemon_status(now, schwab_socket_open=True, held=held_after))
         if feed_down:
             lmp.record_feed_down()
         return json.loads(json.dumps(server.order_flow_microstructure("SPY", "NYSE_BOOK", now)))

@@ -17,7 +17,7 @@ from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
-from tests.feed_live_helper import clock_from
+from tests.feed_live_helper import clock_from, daemon_status
 from tests.real_chains import (
     SPY_AFTER_HOURS_PRINT,
     SPY_CLOSE,
@@ -84,7 +84,7 @@ def _forget(tk: str = "SPY") -> None:
     server._last_tick_spot.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
     lmp.record_feed_down()
 
 
