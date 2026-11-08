@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -143,34 +142,6 @@ def tracked_files() -> list[str]:
         check=True,
     ).stdout
     return sorted(p for p in out.split("\0") if p)
-
-
-@pytest.fixture
-def pin_clock(monkeypatch):
-    """Value a test at a fixed instant: `pin_clock(2026, 9, 22, 12, 46)` (ET). A test built on a
-    stored Schwab chain is valued at the chain's capture instant, so the chain's expiries passing
-    can never empty the greeks the test compares (2026-09-27: six tests had been comparing None
-    with None since their fixtures expired)."""
-    from datetime import datetime as _dt
-
-    import time_et
-
-    real = time_et.now_et
-    pinned: list = []  # modules this test has pinned, so a second pin moves them
-
-    def pin(*when):
-        at = _dt(*when, tzinfo=time_et.ET)
-        if not pinned:
-            pinned.extend(
-                m
-                for m in list(sys.modules.values())
-                if m is not None and "now_et" in vars(m) and m.now_et is real
-            )
-        for mod in pinned:
-            monkeypatch.setattr(mod, "now_et", lambda: at)
-        return at
-
-    return pin
 
 
 @pytest.fixture
