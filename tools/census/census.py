@@ -355,6 +355,16 @@ class _Unnamed(ast.NodeTransformer):
         return ast.copy_location(ast.Name(id="_", ctx=ast.Load()), node)
 
 
+def _own_nodes(fn):
+    """`fn`'s nodes, not those of a function defined inside it (that one is counted itself)."""
+    stack = list(ast.iter_child_nodes(fn))
+    while stack:
+        n = stack.pop()
+        yield n
+        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            stack.extend(ast.iter_child_nodes(n))
+
+
 FORMULA = "the same formula in more than one function: Python product (one producer, rule 3)"
 ANSWER = (
     "the same answer built by hand in more than one function: Python product "
@@ -369,7 +379,7 @@ for f in PRODUCT_PY:
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         where = f"{f}:{fn.lineno} {fn.name}"
-        for n in ast.walk(fn):
+        for n in _own_nodes(fn):
             # 11 nodes: below it, a time difference or a slice reads alike in unrelated code;
             # `|` is a type union or a set or dict merge, not a formula
             if (
