@@ -402,7 +402,7 @@ test.describe('Trade Desk renders served values', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await routeWatchlist(page, ['SPY', 'MU']);
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const bars = page.locator('#tdmFoot span', { hasText: 'Bars:' }).locator('b');
     await expect(bars).toHaveText('streamed 1m bars');
