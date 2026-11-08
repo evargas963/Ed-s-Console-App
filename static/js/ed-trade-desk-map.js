@@ -471,7 +471,8 @@
   }
   function liqBar(side, label, text, shares, total) {
     // shares not sent: no bar; a total of 0 shares: an empty track
-    var fill = shares == null || !total ? '' : '<i class="' + side + '" style="width:' + (shares / total * 100) + '%"></i>';
+    var s = window.EdShell.strength(shares, total);
+    var fill = s == null ? '' : '<i class="' + side + '" style="width:' + (s * 100) + '%"></i>';
     return '<div class="liq-bar-h"><span>' + label + '</span><div class="liq-track">' + fill + '</div><b>' + esc(text == null ? '-' : text) + '</b></div>';
   }
   function liqSpans(rd, view) {
