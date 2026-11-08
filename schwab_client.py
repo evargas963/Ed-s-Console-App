@@ -52,9 +52,6 @@ class TokenInspectionResult:
     has_refresh_token: bool = False
     has_expires_at: bool = False
     scope_value: str | None = None
-    seconds_to_expiry: int | None = None
-    is_expired: bool = False
-    is_expiring_soon: bool = False
     message: str = ""
 
 
@@ -369,14 +366,6 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
             out.scope_value = sc.strip()
         elif sc is not None:
             out.scope_value = str(sc)
-
-        now = int(time_et.now())
-        exp = tok.get("expires_at")  # external-key-ok: Schwab OAuth token payload
-        if isinstance(exp, int | float) and not isinstance(exp, bool):  # authlib writes a number
-            seconds_left = int(exp) - now
-            out.seconds_to_expiry = seconds_left
-            out.is_expired = seconds_left <= 0
-            out.is_expiring_soon = 0 < seconds_left < 300
 
     issues: list[str] = []
     if not out.has_creation_timestamp:
