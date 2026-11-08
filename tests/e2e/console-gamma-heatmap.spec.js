@@ -23,6 +23,7 @@
  * it exercises the real shell HTML/JS, not stubbed rendering.
  */
 const { test, expect } = require('@playwright/test');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const path = require('path');
 
 // The served window (server.py _surface_view): the cells to draw, each with `spot` (the row at
@@ -173,7 +174,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-09-11', '2026-09-18'], {});    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
 }
@@ -1285,7 +1286,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [] })), view: view({ missing_expiry: '2026-09-25' }) });
   test('a selected expiry absent from the surface reads unavailable (no substitute expiries)', async ({ page }) => {
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+      body: JSON.stringify(expiriesAnswer(['2026-09-11', '2026-09-18', '2026-09-25'], {})) }));
     await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? MISSING_0925 : SURFACE) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1300,7 +1301,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('recovers automatically once the requested expiry appears in a later surface poll', async ({ page }) => {
     let missing = MISSING_0925;   // SURFACE only has 2026-09-11/2026-09-18 -- 09-25 is initially missing
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+      body: JSON.stringify(expiriesAnswer(['2026-09-11', '2026-09-18', '2026-09-25'], {})) }));
     await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? missing : SURFACE) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
