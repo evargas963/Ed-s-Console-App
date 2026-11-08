@@ -100,7 +100,10 @@ per product file, so no module that does not hold one may start. The same job ru
 0, so absolute (`tools/check_locks.py`). The builtin `__import__("schwab")` and a module loaded from a zip
 on `sys.path` are seen by no tool: the builder's audit (rule 14), no machine check.
 GitHub runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so
-a change cannot edit its judge. `locks` is a required check on `main`: a change it refuses cannot
+a change cannot edit its judge. In GitHub's merge queue (`merge_group`) the queued change's copy of
+the workflow runs, but it judges with the tools of main, the queue's base, and a change reaches the
+queue only after its `pull_request_target` run passed; the three required workflows run there too,
+so the queue merges without each pull request being brought current by hand. `locks` is a required check on `main`: a change it refuses cannot
 merge, and nothing approves past it. No step waits on the operator's click, and none is built again
 (operator 2026-11-01: "you need to remove all of this. don't do this again. we strengthen
 enfocement instead from now on"). `gh` is allowed by a list and `gh api` only reads, in the forms

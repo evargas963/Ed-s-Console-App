@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # GitHub's merge queue: the change on top of main and the changes queued ahead of it.
+  merge_group:
 
 # A newer push to a pull request cancels the run it replaces; every commit to main runs whole.
 concurrency:

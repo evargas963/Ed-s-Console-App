@@ -3,10 +3,14 @@ name: Locks
 # pull_request_target: GitHub runs this file and the tools it names from the base, so a pull
 # request cannot edit its judge. The head is only read as data; none of its code runs. `locks` is
 # a required check, and a change it refuses cannot merge.
+# merge_group: GitHub's merge queue runs this file as the queued change holds it, so the tools
+# that judge are still checked out from main (the queue's base) and the queued change is only
+# read as data; a change reaches the queue only after its pull_request_target run passed.
 on:
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, edited]
+  merge_group:
 
 permissions:
   contents: read
@@ -21,6 +25,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           path: judge
+          ref: ${{ github.event.merge_group.base_sha }}
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
@@ -34,6 +39,7 @@ jobs:
             "$(grep '^grimp==' judge/requirements-dev.txt)"
           npm ci --prefix judge
       - name: the change, against the base
+        if: github.event_name == 'pull_request_target'
         env:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -50,7 +56,22 @@ jobs:
           python ../judge/tools/check_integrity.py --base "$base"
           cd ..
           lint-imports --config judge/locks.imports.toml --no-cache
+      - name: the queued change, against main
+        if: github.event_name == 'merge_group'
+        env:
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$HEAD_SHA"
+          git -C judge worktree add -q --detach "$PWD/head" "$HEAD_SHA"
+          base="$(git -C judge rev-parse HEAD)"
+          cd head
+          python ../judge/tools/check_locks.py --base "$base"
+          python ../judge/tools/check_end_to_end.py --base "$base"
+          python ../judge/tools/check_integrity.py --base "$base"
+          cd ..
+          lint-imports --config judge/locks.imports.toml --no-cache
       - name: the pull request lists how it can fail and gives measured before and after counts
+        if: github.event_name == 'pull_request_target'
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |
