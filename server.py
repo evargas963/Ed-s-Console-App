@@ -4015,60 +4015,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
     }
 
 
-def _build_raw_levels_used(raw_levels: dict) -> list:
-    """Flatten raw_levels (the one price-level snapshot's values) into [{tag, value}] for
-    display, ordered by price, under their canonical ids."""
-    items = []
-    tag_map = {
-        "pdh": "PDH",
-        "pdl": "PDL",
-        "pdc": "PDC",
-        "pd_poc": "PD_POC",
-        "pd_vah": "PD_VAH",
-        "pd_val": "PD_VAL",
-        "overnight_high": "OVERNIGHT_HIGH",
-        "overnight_low": "OVERNIGHT_LOW",
-        "orb_high": "ORB_HIGH",
-        "orb_low": "ORB_LOW",
-        "orb_mid": "ORB_MID",
-        "vwap": "VWAP",
-        "plus1": "VWAP_P1",
-        "minus1": "VWAP_M1",
-        "plus2": "VWAP_P2",
-        "minus2": "VWAP_M2",
-        "poc": "TODAY_POC",
-        "vah": "TODAY_VAH",
-        "val": "TODAY_VAL",
-    }
-    prev = raw_levels.get("prev_day") or raw_levels.get("prev") or {}
-    for k, v in prev.items():
-        if v is not None and isinstance(v, (int, float)) and k in tag_map:
-            items.append({"tag": tag_map[k], "value": float(v)})
-    for k in ["overnight_high", "overnight_low"]:
-        v = (raw_levels.get("overnight") or {}).get(k)
-        if v is not None:
-            items.append({"tag": tag_map[k], "value": float(v)})
-    orb = raw_levels.get("orb") or {}
-    for k in ["orb_high", "orb_low", "orb_mid"]:
-        if orb.get(k) is not None:
-            items.append({"tag": tag_map[k], "value": float(orb[k])})
-    if raw_levels.get("vwap") is not None:
-        items.append({"tag": "VWAP", "value": float(raw_levels["vwap"])})
-    vwap_bands = raw_levels.get("vwap_bands") or {}
-    for k, tag in [
-        ("plus2", "VWAP_P2"),
-        ("plus1", "VWAP_P1"),
-        ("minus1", "VWAP_M1"),
-        ("minus2", "VWAP_M2"),
-    ]:
-        if vwap_bands.get(k) is not None:
-            items.append({"tag": tag, "value": float(vwap_bands[k])})
-    for k in ["poc", "vah", "val"]:
-        if raw_levels.get(k) is not None:
-            items.append({"tag": tag_map[k], "value": float(raw_levels[k])})
-    return sorted(items, key=lambda x: x["value"])
-
-
 #: the terrain levels the liquidity zones are fused with, and the tag each carries
 TERRAIN_FUSION_LEVELS = (
     ("call_wall", "GAMMA_CALL_WALL"),
@@ -4189,15 +4135,11 @@ def liquidity_snapshot(ticker: str, now: datetime):
             "snapshot_type": snapshot_val,
             "zones": zones_payload,
             "summary": None,
-            "raw_levels": out.raw_levels,
-            "raw_levels_used": _build_raw_levels_used(out.raw_levels),
             "fusion": fusion_status,
-            "as_of_cutoff_et": (out.raw_levels or {}).get("cutoff_et"),
             "spot_used_for_scoring": spot_for_zones,
             "spot_location": _spot_location(zones_payload, spot_for_zones),
             # which snapshot generation these level values ARE
             "level_generation": _canon.generation,
-            "level_semantic_scope": (out.raw_levels or {}).get("semantic_scope"),
             "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
             "level_bar_source": _canon.bar_source,
         }
