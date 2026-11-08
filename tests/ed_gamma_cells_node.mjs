@@ -13,29 +13,36 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const surface = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const events = new EventTarget();   // the document's events, as a browser dispatches them
 const host = { innerHTML: '', setAttribute: () => {}, removeAttribute: () => {}, querySelector: () => null, querySelectorAll: () => [] };
+// the page's served metas: the scopes and market context the shell reads, and the
+// streaming-state words (none needed for the cell text)
+const METAS = {
+  'ed-scopes': '[{"key": "all"}]', 'ed-market-context': '[]', 'ed-stream-words': '{"cell": {}, "column": {}}',
+};
 const ctx = {
   document: {
     documentElement: {},
-    getElementById: (id) => (id === 'heatBody' ? host : null),
+    readyState: 'loading',
+    getElementById: (id) => (id === 'heatBody' ? host : id === 'app' ? { getAttribute: () => null } : null),
     querySelectorAll: () => [],
-    // the page's served metas: the streaming-state words (none needed for the cell text)
-    querySelector: () => ({ getAttribute: () => '{"cell": {}, "column": {}}' }),
+    querySelector: (sel) => ({ getAttribute: () => METAS[/name="([^"]*)"/.exec(sel)[1]] }),
     addEventListener: events.addEventListener.bind(events),
   },
+  localStorage: { getItem: () => null, setItem: () => {} },
   getComputedStyle: () => ({ getPropertyValue: () => '' }),
   fetch: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(surface) }),
   AbortController, Promise, JSON, Math, Number, String, Object, Array, Date, isNaN, URL, console,
 };
 ctx.window = ctx;
 ctx.globalThis = ctx;
-// the shell (ed-core.js) as the heatmap uses it: the view, no pan, no expiry selected
-ctx.EdShell = {
+vm.createContext(ctx);
+// the shell (ed-core.js) itself, its intensity rule and heat colours as the page has them; the
+// view it reports held at the heatmap, no pan, no expiry selected
+vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-core.js'), 'utf8'), ctx, { filename: 'ed-core.js' });
+Object.assign(ctx.EdShell, {
   getState: () => ({ workspace: 'options', subview: 'gamma', view: 'heatmap', ticker: surface.ticker }),
   getMeasure: () => 'gex', getExpiry: () => null, setStrike: () => {},
-  newPan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
   windowQuery: () => '&scope=all', wireStrikeAxis: () => {},
-};
-vm.createContext(ctx);
+});
 vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });
 vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'), ctx, { filename: 'ed-gamma.js' });
 events.dispatchEvent(new CustomEvent('ed:view', { detail: {} }));   // the shell's view change
