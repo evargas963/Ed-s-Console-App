@@ -2,10 +2,9 @@
 ACTIVE_PROGRAM.md's SHAPE row is IN PROGRESS, the agent's attempt to end its turn is refused and it
 is sent back to the next step.
 
-The ways through are the stops the rules allow: the agent's final message begins
-`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5), or
-`WAITING ON CI:` and names the pull requests whose CI the app watches with Auto-fix, which wakes the
-session when CI ends (AGENTS.md Authority).
+The way through is a stop the rules allow: the agent's final message begins
+`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5).
+A wait on CI is not one: a pull request merges by itself, and the next step starts meanwhile.
 From the third refusal in a row the reason sends the agent to the cause and a different approach
 (AGENTS.md Authority); the count is kept per session in COUNTS. Wired by `.claude/settings.json`
 (Stop).
@@ -31,8 +30,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 WORK_LIST = REPO / "ACTIVE_PROGRAM.md"
 WAITING = "WAITING ON OPERATOR:"
-#: a stop while the work's pull requests are in CI under the app's Auto-fix, which wakes the session
-WAITING_ON_CI = "WAITING ON CI:"
 #: the SHAPE row while any of its steps is left
 OPEN = re.compile(r"^\| SHAPE \| IN PROGRESS \|", re.M)
 
@@ -83,15 +80,14 @@ def decide(work_list: str, last: str, in_a_row: int = 1) -> str | None:
     same attempt."""
     if not OPEN.search(work_list):
         return None
-    if last.lstrip().startswith((WAITING, WAITING_ON_CI)):
+    if last.lstrip().startswith(WAITING):
         return None
     why = (
         "SHAPE in ACTIVE_PROGRAM.md is IN PROGRESS: take its next step now (AGENTS.md Authority: "
-        "work continues until SHAPE is finished; merges do not wait on the operator). Stop only "
-        "for a stop the rules require (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5), "
-        f"saying why in a message that begins `{WAITING}`, or while every open pull request of "
-        f"the work is in CI with Auto-fix on, in a message that begins `{WAITING_ON_CI}` naming "
-        "them."
+        "work continues until SHAPE is finished; merges do not wait on the operator, and a pull "
+        "request in CI merges by itself while the next step starts). Stop only for a stop the "
+        "rules require (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5), saying why in "
+        f"a message that begins `{WAITING}`."
     )
     if in_a_row < BEDROCK_AT:
         return why
