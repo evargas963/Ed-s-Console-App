@@ -58,8 +58,8 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
             "held": {"LEVELONE_EQUITIES": [tk]},
         }
     )
-    with server._terrain_cache_lock:
-        return {name: server._terrain_cache[tk][k] for k, name in server.CROSS_LEVELS}
+    published = server.published_levels(tk).served()
+    return {name: published[k] for k, name in server.CROSS_LEVELS}
 
 
 def _stored(tk: str) -> list:
