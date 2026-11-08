@@ -151,7 +151,7 @@
     paintTfButtons();
     document.querySelectorAll('[data-drill]').forEach(function (el) {
       el.addEventListener('click', function () {
-        var d = DRILL[el.getAttribute('data-drill')]; if (!d || !window.EdShell) return;
+        var d = DRILL[el.getAttribute('data-drill')]; if (!d) return;
         window.EdShell.setWorkspace(d[0]);
         window.EdShell.setSubview(d[1]);
       });
