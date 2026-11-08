@@ -104,6 +104,28 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
   expect(errs).toEqual([]);
 });
 
+test('Liquidity map: a failed request is named, and an empty snapshot shows the served reason', async ({ page }) => {
+  // server.liquidity_snapshot's answer with no price levels published (NO_PRICE_LEVELS_REASON), and
+  // /api/bars1m failing: the map says so for each, never draws a failure as an empty answer
+  const REASON = 'no price levels published for this ticker for the market\'s session yet (they are ' +
+    'built from its 1-minute bars on each new bar and at the console\'s start)';
+  const errs = watchErrors(page);
+  await intercept(page);
+  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ticker: 'SPY', zones: [], reason: REASON }) }));
+  await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 500, body: 'x' }));
+  await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.liqm-zones')).toContainText(REASON);
+  await expect(page.locator('.liqm-empty')).toHaveText('the bars request failed for SPY');
+  await page.unroute('**/api/liquidity-snapshot**');
+  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 500, body: 'x' }));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.liqm-zones')).toContainText('the liquidity snapshot request failed');
+  await expect(page.locator('.liqm-empty')).toHaveText('the liquidity snapshot, bars request failed for SPY');
+  expect(errs).toEqual([]);
+});
+
 test('the liquidity map fits its price scale to the candles; a far zone does not flatten them', async ({ page }) => {
   // 2026-09-29 RTH: SPY's served zones at 750 and 800 joined the auto-fit, the scale ran 735-805
   // and the candles (765) were a flat line
