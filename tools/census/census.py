@@ -1,11 +1,13 @@
 """The census of everything in the repository that must reach 0. Read-only on the repository.
 
-    python -m tools.census.census <out dir> [<data dir>]
+    python -m tools.census.census <out dir> [--data <dir>] [--repo <checkout>]
 
 Run from the checkout with the repository's Python, which also holds tools/census/requirements.txt;
-`npm ci --prefix tools/census` holds the other checkers. <data dir> holds the two databases
-(default data/); a checkout without them reports so. Writes <out>/census_<date>_<sha>.md (the
-report) and <out>/items_<date>_<sha>.txt (every item).
+`npm ci --prefix tools/census` holds the other checkers. --repo is the checkout counted (default
+the one it runs from), so a pull request's base is counted by the head's census: one ruler before
+and after. --data holds the two databases (default <repo>/data); a checkout without them reports
+so. Writes <out>/census_<date>_<sha>.md (the report) and <out>/items_<date>_<sha>.txt (every
+item); `python -m tools.census.compare <before.md> <after.md>` prints what changed.
 
 Every section names the AGENTS.md rule it checks and the tool that counts it, and each checker's
 own total is compared with what the census read. What no machine counts yet is in hand_found.json;
@@ -13,8 +15,10 @@ each candidate's verdict and its reason is in candidate_decisions.json. A checke
 census cannot read stops the census with that error.
 """
 
+import argparse
 import ast
 import collections
+import dataclasses
 import datetime as dt
 import hashlib
 import io
@@ -34,9 +38,14 @@ from tools import check_end_to_end as e2e
 from tools import check_integrity
 
 log = logging.getLogger("census")
-REPO = Path.cwd()
-OUT = Path(sys.argv[1]).resolve()
-DATA = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else REPO / "data"
+ARGS = argparse.ArgumentParser(description="The census of everything that must reach 0.")
+ARGS.add_argument("out", type=Path)
+ARGS.add_argument("--repo", type=Path, default=Path.cwd())
+ARGS.add_argument("--data", type=Path)
+_args = ARGS.parse_args()
+REPO = _args.repo.resolve()
+OUT = _args.out.resolve()
+DATA = (_args.data if _args.data else REPO / "data").resolve()
 CENSUS = Path(__file__).resolve().parent
 LINT = CENSUS / ".lint"  # the commit's tracked files, as locks.yml checks them out (`head`)
 HEAD = LINT / "head"
@@ -144,19 +153,38 @@ PAGE_ALL = [f for f in FILES if f.startswith("static/") and "vendor" not in f an
 ALL_PY = [f for f in FILES if f.endswith(".py") and f in TEXT]
 page_text = "\n".join(TEXT[f] for f in PAGE_ALL)
 
-rows = collections.OrderedDict()  # (section, category, rule, tool) -> items
+
+@dataclasses.dataclass
+class Row:
+    """One category of the census: the rule it checks, what counts it, and its items. A check
+    declares its row before it looks, so a row with no items is a check that ran and found 0;
+    `counted` is a count a tool gave whole, its items elsewhere."""
+
+    rule: str
+    tool: str
+    items: list = dataclasses.field(default_factory=list)
+    counted: int | None = None
+
+    @property
+    def count(self) -> int:
+        return self.counted if self.counted is not None else len(self.items)
+
+
+rows: dict[tuple[str, str], Row] = {}  # (section, category) -> its row, in the order checked
 
 
 def add(section, category, rule, tool, item=None, count=None):
-    key = (section, category, rule, tool)
-    rows.setdefault(key, [])
+    """Declare `category` (a check that ran) and add `item` to it, or give its whole `count`."""
+    row = rows.setdefault((section, category), Row(rule, tool))
     if item is not None:
-        rows[key].append(item)
+        row.items.append(item)
     if count is not None:
-        rows[key].append(f"__COUNT__{count}")
+        row.counted = count
 
 
 def lines_matching(files, patterns, section, rule, tool, skip_comment=False):
+    for _pat, cat in patterns:
+        add(section, cat, rule, tool)
     for f in [f for f in files if f in TEXT]:
         for n, ln in enumerate(TEXT[f].splitlines(), 1):
             s = ln.strip()
@@ -171,9 +199,9 @@ def by_line(category_start, joiner):
     """One item per source line for a category whose finder reports each value on a line."""
     for key in [k for k in rows if k[1].startswith(category_start)]:
         lines = collections.OrderedDict()
-        for it in rows[key]:
+        for it in rows[key].items:
             lines.setdefault(it.split(": ")[0], []).append(it.split(": ", 1)[-1])
-        rows[key] = [f"{ln}: {joiner.join(vs)}" for ln, vs in lines.items()]
+        rows[key].items = [f"{ln}: {joiner.join(vs)}" for ln, vs in lines.items()]
 
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -183,7 +211,10 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 # =============================================================================================
 log.info("census: A")
 S = "A. Code patterns"
-for f in [f for f in FILES if f.endswith(e2e.SHAPED_SUFFIXES) and f in TEXT]:
+SHAPED = [f for f in FILES if f.endswith(e2e.SHAPED_SUFFIXES) and f in TEXT]
+for f in SHAPED:
+    add(S, f"patch shapes: {lang(f)} {area(f)}", "1", "check_end_to_end.shapes")
+for f in SHAPED:
     for line, kind in e2e.shapes(f, TEXT[f]):
         add(
             S,
@@ -202,12 +233,20 @@ OTHER = {
     "PowerShell": [(r"(?i)-ErrorAction\s+SilentlyContinue", "an error silenced")],
 }
 for f in [f for f in FILES if lang(f) in OTHER and f in TEXT]:
+    add(S, f"patch shapes: {lang(f)} {area(f)}", "1", "regex")
     for n, ln in enumerate(TEXT[f].splitlines(), 1):
         for pat, kind in OTHER[lang(f)]:
             if re.search(pat, ln):
                 add(S, f"patch shapes: {lang(f)} {area(f)}", "1", "regex", f"{f}:{n}: {kind}")
+add(S, "text files that are not UTF-8", "13", "git grep -I")
 for f in NOT_UTF8:
     add(S, "text files that are not UTF-8", "13", "git grep -I", f)
+for f in ALL_PY:
+    add(S, f"inner imports: {area(f)}", "13", "ruff PLC0415")
+    add(S, f"duplicate function groups: {area(f)}", "1", "ast body hash")
+add(S, "second readers of a Schwab field", "3", "tools.check_one_reader --list")
+add(S, "identical files (extra copies)", "1", "git blob")
+add(S, "product modules doing math (target: one Calculators part)", "shape", "ast")
 
 out = run(
     [
@@ -276,6 +315,7 @@ for f in [
     for f in FILES
     if lang(f) and lang(f) not in ("Markdown", "JSON") and "vendor" not in f and f in TEXT
 ]:
+    add(S, f"copied blocks (8+ lines): {lang(f)} {area(f)}", "1", "line-window hash")
     lines = [(n, re.sub(r"\s+", " ", ln.strip())) for n, ln in enumerate(TEXT[f].splitlines(), 1)]
     lines = [(n, s) for n, s in lines if len(s) > 3 and not s.startswith(("#", "//", '"""'))]
     last_hit = -WIN
@@ -360,7 +400,7 @@ stats = run(
     stdout_only=True,
 )
 ruff_own = sum(int(m.group(1)) for m in re.finditer(r"(?m)^\s*(\d+)\s+[A-Z]+\d+", stats))
-ruff_ours = sum(len(v) for k, v in rows.items() if k[1].startswith("ruff ") and "locks" in k[1])
+ruff_ours = sum(r.count for k, r in rows.items() if k[1].startswith("ruff ") and "locks" in k[1])
 if ruff_own == ruff_ours:
     add(
         S,
@@ -377,6 +417,9 @@ else:
         "ruff",
         f"ruff reports {ruff_own}, the census read {ruff_ours}",
     )
+add(S, "ruff findings under pyproject's selection (fail at commit)", "13", "ruff")
+add(S, "files ruff format would change", "13", "ruff format")
+add(S, "import-linter: broken contracts / forbidden imports", "10", "lint-imports")
 out = run(
     [PY, "-m", "ruff", "check", ".", "--output-format", "concise", "--no-cache", "--exit-zero"]
 )
@@ -410,6 +453,8 @@ lines_matching(
     "locks",
     "regex",
 )
+for _pat, cat in SUPPRESSIONS:
+    add(S, cat, "locks", "tokenize")
 for f in [f for f in ALL_PY if "vendor" not in f]:
     for tok in tokenize.generate_tokens(io.StringIO(TEXT[f]).readline):
         if tok.type == tokenize.COMMENT:
@@ -471,13 +516,16 @@ for mode in ("basic", "strict"):
         f"pyright {mode}",
         count=pj["summary"]["filesAnalyzed"],
     )
-    add(S, f"pyright {mode}-mode errors in product code", "12", f"pyright {mode}", count=len(diags))
-    key = (S, f"pyright {mode}-mode errors in product code", "12", f"pyright {mode}")
-    rows[key] = [
-        f"{Path(d['file']).resolve().relative_to(HEAD.resolve()).as_posix()}:"
-        f"{d['range']['start']['line'] + 1}: {d['message'].splitlines()[0][:120]}"
-        for d in diags
-    ]
+    add(S, f"pyright {mode}-mode errors in product code", "12", f"pyright {mode}")
+    for d in diags:
+        add(
+            S,
+            f"pyright {mode}-mode errors in product code",
+            "12",
+            f"pyright {mode}",
+            f"{Path(d['file']).resolve().relative_to(HEAD.resolve()).as_posix()}:"
+            f"{d['range']['start']['line'] + 1}: {d['message'].splitlines()[0][:120]}",
+        )
     if pj["summary"]["errorCount"] == len(diags):
         add(
             S,
@@ -500,6 +548,28 @@ for mode in ("basic", "strict"):
 # =============================================================================================
 log.info("census: C")
 S = "C. Dead code"
+for a in ("product", "tools"):
+    add(S, f"vulture: unused code in {a}", "1", "vulture")
+    add(
+        S,
+        f"vulture: attribute set on another object in {a} (candidates, check each: a library "
+        "may read it)",
+        "1",
+        "vulture",
+    )
+for cat, tool in (
+    ("product modules nothing imports or starts", "ast imports"),
+    ("product modules only tests or tools import", "ast imports"),
+    ("page functions nothing calls", "regex"),
+    ("CSS custom properties nothing uses", "regex"),
+    ("CSS classes no page or script uses", "regex"),
+    ("routes the page never calls", "regex"),
+    ("Python packages required that nothing imports, needs or runs", "requirements + pip show"),
+    ("JS packages required but never used (check each)", "package.json"),
+    ("page files index.html never loads", "regex"),
+    ("keys built that nothing reads: no page, no other code", "ast+regex"),
+):
+    add(S, cat, "1", tool)
 out = run(
     [
         PY,
@@ -774,6 +844,19 @@ JS_KIND = {
     "math-call": "page computes: Math.* calls (acorn parse)",
     "layout-arithmetic": "page layout arithmetic, pixels and positions (reported)",
 }
+for cat in JS_KIND.values():
+    add(S, cat, "4", "acorn")
+for cat, rule, tool in (
+    ("clock time typed in code", "8", "ast"),
+    ("prose in code: history, dates, PRs, incidents", "1", "regex"),
+    ("product functions over 80 lines", "1", "ast"),
+    ("public functions returning a plain dict, not a typed record", "12", "ast"),
+    ("global statements (module state changed at run time)", "11", "ast"),
+    ("a ticker typed into code (every ticker treated the same)", "7", "ast"),
+    ("product files over 1,000 lines", "1", "wc"),
+    ("computing functions not in docs/derived_register.md (check each)", "First gate 2", "ast"),
+):
+    add(S, cat, rule, tool)
 parsed = subprocess.run(
     ["node", str(CENSUS / "census_js.mjs"), *PAGE_JS],
     cwd=REPO,
@@ -909,8 +992,8 @@ def enclosing(f, line):
 
 
 for key in [k for k in rows if k[1].startswith("clock taken")]:
-    rows[key] = [
-        f"{it} in {enclosing(it.split(':')[0], int(it.split(':')[1]))}" for it in rows[key]
+    rows[key].items = [
+        f"{it} in {enclosing(it.split(':')[0], int(it.split(':')[1]))}" for it in rows[key].items
     ]
 lines_matching(
     PRODUCT_PY,
@@ -1037,6 +1120,17 @@ S = "E. Tests"
 TEST_FILES = [
     f for f in FILES if area(f) == "tests" and lang(f) in ("Python", "JavaScript") and f in TEXT
 ]
+for cat, rule, tool in (
+    (
+        "loose tolerances in tests (above one part in a million; each needs its reason)",
+        "9/15",
+        "regex",
+    ),
+    ("test functions with no assert of their own (check each)", "14", "ast"),
+    ("tests of product code that use no captured Schwab data", "9", "ast"),
+    ("fixtures no test names", "1", "regex"),
+):
+    add(S, cat, rule, tool)
 lines_matching(
     TEST_FILES,
     [
@@ -1191,6 +1285,13 @@ for name in ("ed_console.db", "stream_capture.db"):
             str(p),
         )
         continue
+    for cat, rule in (
+        (f"tables no product code reads or writes ({name})", "1/6"),
+        (f"indexes on tables nothing uses ({name})", "1/6"),
+        (f"columns no product code names ({name})", "1/6"),
+        (f"columns stamped by SQLite's own clock ({name})", "11"),
+    ):
+        add(S, cat, rule, "db.inventory")
     for t in db.inventory(p):
         named = re.search(
             rf"""(?i)\b(?:from|into|update|table(?:\s+if\s+not\s+exists)?|join)"""
@@ -1208,7 +1309,7 @@ for name in ("ed_console.db", "stream_capture.db"):
             for i in t.indexes:
                 add(
                     S,
-                    "indexes on tables nothing uses",
+                    f"indexes on tables nothing uses ({name})",
                     "1/6",
                     "db.inventory",
                     f"{name}:{i} on {t.name}",
@@ -1221,7 +1322,7 @@ for name in ("ed_console.db", "stream_capture.db"):
             if not re.search(rf"\b{re.escape(c.name)}\b", product_use):
                 add(
                     S,
-                    "columns no product code names",
+                    f"columns no product code names ({name})",
                     "1/6",
                     "db.inventory",
                     f"{name}:{t.name}.{c.name}",
@@ -1229,12 +1330,14 @@ for name in ("ed_console.db", "stream_capture.db"):
             if c.default_sql is not None and "now" in c.default_sql.lower():
                 add(
                     S,
-                    "columns stamped by SQLite's own clock",
+                    f"columns stamped by SQLite's own clock ({name})",
                     "11",
                     "db.inventory",
                     f"{name}:{t.name}.{c.name} DEFAULT {c.default_sql}",
                 )
 DB_FILES = re.compile(r"(ed_console|stream_capture)\.db(-wal|-shm)?")
+if DATA.is_dir():
+    add(S, "files under data/ that are not the two databases", "6", "ls")
 for p in (
     [p for p in sorted(DATA.iterdir()) if not DB_FILES.fullmatch(p.name)] if DATA.is_dir() else []
 ):
@@ -1268,6 +1371,28 @@ RUNTIME = re.compile(
 )
 untracked = git("ls-files", "--others", "--exclude-standard").splitlines()
 ignored = git("ls-files", "--others", "--ignored", "--exclude-standard").splitlines()
+for cat, rule, tool in (
+    ("tracked code importing a file git does not hold (runs unreviewed)", "Authority", "ast"),
+    ("worktrees", "housekeeping", "git worktree"),
+    ("local branches", "housekeeping", "git branch"),
+    ("remote branches", "housekeeping", "git branch -r"),
+    ("stashes", "housekeeping", "git stash"),
+    ("open pull requests", "housekeeping", "gh pr list"),
+    ("tracked data, logs or binaries outside tests/fixtures", "1", "git ls-files"),
+    ("documents naming a file that does not exist", "Close the change", "regex"),
+):
+    add(S, cat, rule, tool)
+add(
+    S,
+    "files on disk git does not hold, all of them, by extension below (reported)",
+    "Authority",
+    "git ls-files",
+    count=sum(
+        1
+        for p in untracked + ignored
+        if not THIRD_PARTY.search(p) and not p.startswith("data/") and not RUNTIME.search(p)
+    ),
+)
 loose_py = []
 for kind, paths in (("untracked", untracked), ("ignored", ignored)):
     for p in [p for p in paths if not THIRD_PARTY.search(p) and not p.startswith("data/")]:
@@ -1360,6 +1485,20 @@ for f in [f for f in FILES if f.endswith(".md") and f in TEXT]:
 # =============================================================================================
 log.info("census: H")
 S = "H. Governance"
+for cat, rule, tool in (
+    ("requirements with no machine check", "ENF-12", "regex"),
+    ("required CI on main not green", "Before saying done", "gh run list"),
+    ("hand-built check tools (replaced by standard tools in SHAPE step 7)", "1", "ls"),
+):
+    add(S, cat, rule, tool)
+WORK_ROW = re.compile(r"^\| ([A-Z][A-Z0-9-]+) \| ([A-Z][A-Z ,0-9:-]*?) \|", re.M)
+add(
+    S,
+    "open work rows, every status, by status below (reported)",
+    "work list",
+    "ACTIVE_PROGRAM.md",
+    count=sum(1 for m in WORK_ROW.finditer(TEXT["ACTIVE_PROGRAM.md"]) if m.group(1) != "ID"),
+)
 for f in ["AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md"] + [
     f for f in FILES if f.startswith(".claude/rules/")
 ]:
@@ -1372,11 +1511,15 @@ for f in ["AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md"] + [
                 "regex",
                 f"{f}:{n}: {m.group(0)[:110]}",
             )
-for m in re.finditer(
-    r"^\| ([A-Z][A-Z0-9-]+) \| ([A-Z][A-Z ,0-9:-]*?) \|", TEXT["ACTIVE_PROGRAM.md"], re.M
-):
+for m in WORK_ROW.finditer(TEXT["ACTIVE_PROGRAM.md"]):
     if m.group(1) != "ID":
-        add(S, f"open work rows: {m.group(2).strip()[:30]}", "work list", "regex", m.group(1))
+        add(
+            S,
+            f"open work rows: {m.group(2).strip()[:30]}",
+            "work list",
+            "ACTIVE_PROGRAM.md",
+            m.group(1),
+        )
 latest = {}
 for r_ in json.loads(
     run(
@@ -1424,15 +1567,17 @@ def rel(p):
     return p[len(h) + 1 :] if p.lower().startswith(h.lower()) else p.removeprefix("./")
 
 
-def reconcile(name, own_total, prefix):
-    """The census's count of a checker's findings must equal the checker's own total."""
-    ours = sum(len(v) for k, v in rows.items() if k[0] == S and k[1].startswith(prefix))
+def reconcile(name, own_total, prefix, tool):
+    """The census's count of a checker's findings must equal the checker's own total. The row
+    carries the checker's tool name, so it also shows the checker ran: a rule of it with no row
+    found nothing."""
+    ours = sum(r.count for k, r in rows.items() if k[0] == S and k[1].startswith(prefix))
     if own_total == ours:
         add(
             S,
             f"{name}: census count equals its own total (reported)",
             "census",
-            name,
+            tool,
             count=own_total,
         )
     else:
@@ -1440,9 +1585,20 @@ def reconcile(name, own_total, prefix):
             S,
             f"{name}: findings the census did not read (census error)",
             "census",
-            name,
+            tool,
             f"{name} reports {own_total}, the census read {ours}",
         )
+
+
+for cat, tool in (
+    ("files Prettier cannot parse", "prettier"),
+    ("TOML: taplo lint errors", "taplo"),
+    ("TOML: files taplo would format", "taplo"),
+    ("JSON files that do not parse", "json.tool"),
+    ("files no installed checker reads (checked by hand)", "none"),
+    ("tracked files of a kind no check reads", "git ls-files"),
+):
+    add(S, cat, "13/LINTERS", tool)
 
 
 def json_findings(cmd, start):
@@ -1465,7 +1621,10 @@ for fr in report:
             f"{rel(fr['filePath'])}:{msg['line']}: {msg['message'][:110]}",
         )
 reconcile(
-    "ESLint", sum(fr["errorCount"] + fr["warningCount"] for fr in report), "JavaScript: ESLint"
+    "ESLint",
+    sum(fr["errorCount"] + fr["warningCount"] for fr in report),
+    "JavaScript: ESLint",
+    "eslint recommended",
 )
 report = json_findings(
     [
@@ -1489,7 +1648,12 @@ for fr in report:
             "stylelint standard",
             f"{rel(fr['source'])}:{w['line']}: {w['text'][:110]}",
         )
-reconcile("Stylelint", sum(len(fr["warnings"]) for fr in report), "CSS: Stylelint")
+reconcile(
+    "Stylelint",
+    sum(len(fr["warnings"]) for fr in report),
+    "CSS: Stylelint",
+    "stylelint standard",
+)
 report = json_findings(
     [
         exe("html-validate"),
@@ -1514,6 +1678,33 @@ reconcile(
     "html-validate",
     sum(fr["errorCount"] + fr["warningCount"] for fr in report),
     "HTML: html-validate",
+    "html-validate recommended",
+)
+PRETTIER_KINDS = (
+    "js",
+    "mjs",
+    "css",
+    "html",
+    "json",
+    "jsonc",
+    "md",
+    "mdc",
+    "yml",
+    "yaml",
+    "webmanifest",
+)
+add(
+    S,
+    "files Prettier checked (reported)",
+    "13",
+    "prettier",
+    count=sum(
+        1
+        for f in FILES
+        if f.rsplit(".", 1)[-1] in PRETTIER_KINDS
+        and not f.startswith(("static/vendor/", "tests/fixtures/"))
+        and not f.endswith("package-lock.json")
+    ),
 )
 for ln in run(
     [
@@ -1558,9 +1749,13 @@ for ln in out.splitlines():
             f"{m.group(1)}:{m.group(2)}: {m.group(5)[:110]}",
         )
 reconcile(
-    "markdownlint", int(re.search(r"Summary: (\d+) error", out).group(1)), "Markdown: markdownlint"
+    "markdownlint",
+    int(re.search(r"Summary: (\d+) error", out).group(1)),
+    "Markdown: markdownlint",
+    "markdownlint",
 )
 tomls = [HEAD / f for f in FILES if f.endswith(".toml")]
+add(S, "TOML files taplo checked (reported)", "13", "taplo", count=len(tomls))
 for ln in run([exe("taplo"), "lint", *tomls]).splitlines():
     if "ERROR" in ln and "operation failed" not in ln:
         add(S, "TOML: taplo lint errors", "13/LINTERS", "taplo", ln.strip()[:200])
@@ -1581,7 +1776,7 @@ for ln in out.splitlines():
             "yamllint",
             f"{rel(m.group(1))}:{m.group(2)}: {m.group(4)[:110]}",
         )
-reconcile("yamllint", sum(1 for x in out.splitlines() if x.strip()), "YAML: yamllint")
+reconcile("yamllint", sum(1 for x in out.splitlines() if x.strip()), "YAML: yamllint", "yamllint")
 wfs = [f for f in FILES if f.startswith(".github/workflows/")]
 out = run([exe("actionlint"), "-oneline", *wfs], cwd=HEAD, stdout_only=True)
 for ln in out.splitlines():
@@ -1593,9 +1788,16 @@ for ln in out.splitlines():
             "actionlint",
             f"{rel(m.group(1))}:{m.group(2)}: {m.group(3)[:110]}",
         )
-reconcile("actionlint", sum(1 for x in out.splitlines() if x.strip()), "Workflows: actionlint")
+reconcile(
+    "actionlint",
+    sum(1 for x in out.splitlines() if x.strip()),
+    "Workflows: actionlint",
+    "actionlint",
+)
 add(S, "workflow files actionlint checked (reported)", "13", "actionlint", count=len(wfs))
-for f in [f for f in FILES if f.endswith((".bat", ".cmd"))]:
+BATCH = [f for f in FILES if f.endswith((".bat", ".cmd"))]
+add(S, "batch files Blinter checked (reported)", "13", "blinter", count=len(BATCH))
+for f in BATCH:
     for ln in run([exe("blinter"), f], cwd=HEAD).splitlines():
         if m := re.match(r"Line (\d+): (.+) \(([A-Z]\d+)\)$", ln.strip()):
             add(
@@ -1654,7 +1856,15 @@ add(
 # =============================================================================================
 log.info("census: I")
 S = "I. Found by hand"
-for found in json.loads((CENSUS / "hand_found.json").read_text(encoding="utf-8"))["items"]:
+HAND = json.loads((CENSUS / "hand_found.json").read_text(encoding="utf-8"))["items"]
+add(
+    S,
+    "items found by hand, all categories below (reported)",
+    "see item",
+    "by hand",
+    count=len(HAND),
+)
+for found in HAND:
     add(S, found["category"], "see item", "by hand", found["item"])
 
 # =============================================================================================
@@ -1669,8 +1879,11 @@ decisions = [
     ]
 ]
 for key in [k for k in list(rows) if CANDIDATE.search(k[1])]:
+    row = rows[key]
+    for verdict in (": confirmed", ": checked, not an issue (reported)"):
+        add(key[0], key[1].split(" (")[0] + verdict, row.rule, row.tool + " + by hand")
     keep = []
-    for it in rows[key]:
+    for it in row.items:
         hits = [d for d in decisions if key[1].startswith(d[1]) and d[2].search(it)]
         if not hits:
             keep.append(it)
@@ -1679,13 +1892,11 @@ for key in [k for k in list(rows) if CANDIDATE.search(k[1])]:
         add(
             key[0],
             key[1].split(" (")[0] + verdict,
-            key[2],
-            key[3] + " + by hand",
+            row.rule,
+            row.tool + " + by hand",
             f"{it} -- {hits[0][3]}",
         )
-    rows[key] = keep
-for key in [k for k in list(rows) if not rows[k]]:
-    del rows[key]
+    row.items = keep
 
 # =============================================================================================
 # REPORT
@@ -1704,16 +1915,14 @@ lines = [
 items_out = []
 totals = collections.Counter()
 cands = collections.Counter()
-for (sec, cat, rule, counted_by), its in rows.items():
-    counted = [int(x[9:]) for x in its if x.startswith("__COUNT__")]
-    real = [x for x in its if not x.startswith("__COUNT__")]
-    n = counted[0] if counted else len(real)
+for (sec, cat), row in rows.items():
+    n = row.count
     kinds = (("(reported)" in cat, "reported"), (bool(CANDIDATE.search(cat)), "candidate"))
     kind = next((k for hit, k in kinds if hit), "issue")
-    lines.append(f"| {sec} | {cat} | {rule} | {counted_by} | {n:,} | {kind} |")
+    lines.append(f"| {sec} | {cat} | {row.rule} | {row.tool} | {n:,} | {kind} |")
     totals[sec] += n if kind == "issue" else 0
     cands[sec] += n if kind == "candidate" else 0
-    items_out += [f"\n## {sec} / {cat} ({n}, {kind})", *real]
+    items_out += [f"\n## {sec} / {cat} ({n}, {kind})", *row.items]
 lines += [
     "",
     "Kind: issue = each item breaks a rule; candidate = each item must be checked by "
