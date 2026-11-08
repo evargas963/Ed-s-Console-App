@@ -1,0 +1,101 @@
+{
+  "about": "Each candidate item is checked by hand once; its verdict and reason are recorded here and census.py applies them. verdict 'issue' moves the item to the issues column; 'ok' moves it to a reported 'checked, not an issue' row with this reason. An item no decision matches stays a candidate. 'category' is the start of the candidate row's name; 'pattern' a regular expression searched in the item.",
+  "decisions": [
+    {
+      "verdict": "ok",
+      "category": "a product function more than one route calls",
+      "pattern": "^(_required_ticker|ticker_storage_key):",
+      "reason": "reads the route's own input, the ticker asked for; produces no served value"
+    },
+    {
+      "verdict": "ok",
+      "category": "a product function more than one route calls",
+      "pattern": "^ct_label:",
+      "reason": "the one Central Time formatter (AGENTS.md rule 13), not a producer of a value"
+    },
+    {
+      "verdict": "ok",
+      "category": "clock taken",
+      "pattern": "in (get_\\w+|health|api_\\w+) \\[route\\]",
+      "reason": "a route is an entry point (AGENTS.md rule 11)"
+    },
+    {
+      "verdict": "ok",
+      "category": "clock taken",
+      "pattern": "in (_terrain_loop|run|main|_beat_loop|run_connection|serve_live_ui|_write|beat)\\b",
+      "reason": "a loop is an entry point (rule 11)"
+    },
+    {
+      "verdict": "ok",
+      "category": "clock taken",
+      "pattern": "in (_on_stream_tick|timed_receive|_open_stream|_send|send_requests)\\b",
+      "reason": "a stream handler is an entry point (rule 11)"
+    },
+    {
+      "verdict": "ok",
+      "category": "clock taken",
+      "pattern": "in (read_for|_wait_for|unhealthy_for|_wait_for_callback_port)\\b",
+      "reason": "a wait loop's own timer (time_et.elapsed)"
+    },
+    {
+      "verdict": "ok",
+      "category": "clock taken",
+      "pattern": "clock(: callable)? ?= ?time_et\\.now,? in __init__",
+      "reason": "passes the clock in (clock=time_et.now), the rule's own pattern"
+    },
+    {
+      "verdict": "issue",
+      "category": "clock taken",
+      "pattern": "in _now\\b",
+      "reason": "a missing receipt time replaced by the clock (rule 5 substitute, rule 11)"
+    },
+    {
+      "verdict": "issue",
+      "category": "clock taken",
+      "pattern": "in (read|_unframed)\\b",
+      "reason": "the spill reader is not an entry point; take now from its loop"
+    },
+    {
+      "verdict": "issue",
+      "category": "clock taken",
+      "pattern": "in <module>",
+      "reason": "a clock read when the module loads"
+    },
+    {
+      "verdict": "issue",
+      "category": "clock taken",
+      "pattern": "in (watchlist_message|capture_process_identity|record_feed_status|log_request|request_sent|inspect_token_file)\\b",
+      "reason": "a helper reads the clock; take now from its caller"
+    },
+    {
+      "verdict": "ok",
+      "category": "computing functions not in",
+      "pattern": "pick_options",
+      "reason": "chooses the contracts to subscribe to, produces no value"
+    },
+    {
+      "verdict": "issue",
+      "category": "computing functions not in",
+      "pattern": ".",
+      "reason": "a derived value with no register row (definition, why Schwab does not send it)"
+    },
+    {
+      "verdict": "ok",
+      "category": "vulture: attribute set",
+      "pattern": "'should_exit'",
+      "reason": "uvicorn's Server reads should_exit to stop"
+    },
+    {
+      "verdict": "ok",
+      "category": "vulture: attribute set",
+      "pattern": "'row_factory'",
+      "reason": "sqlite3's Connection reads row_factory"
+    },
+    {
+      "verdict": "issue",
+      "category": "vulture: attribute set",
+      "pattern": "'seconds_to_expiry'|'is_expiring_soon'",
+      "reason": "set on the token report, read by nothing"
+    }
+  ]
+}
