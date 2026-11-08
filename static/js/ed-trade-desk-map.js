@@ -77,11 +77,11 @@
   }
   function whenCT(ts) {
     // today is the program's (EdShell.now, its heartbeat); with none yet the date is shown
-    var d = new Date(ts * 1000), now = window.EdShell && window.EdShell.now();
+    var d = new Date(ts * 1000), now = window.EdShell.now();
     var today = now != null && CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date(now * 1000));
     return (today ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
   }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function onDesk() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'desk'; }
   // the instrument's served display name (the daemon's answer, EdShell state.display); as typed
   // until it arrives
