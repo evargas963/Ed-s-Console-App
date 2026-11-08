@@ -290,6 +290,230 @@
     {
       "category": "needs market",
       "item": "live update speed, page refetches per tick (ENF-15), full chain reprice on unchanged inputs"
+    },
+    {
+      "category": "contradiction: rule vs guard",
+      "item": "the rule against polling CI lives only in the agent's notes: tools/operator_law_guard.py:209,222 allow gh pr checks and gh run watch"
+    },
+    {
+      "category": "contradiction: rule vs hook",
+      "item": "CLAUDE.md:15 'One small task per session' vs AGENTS.md:294 and keep_going.py:85, which refuse a stop after that task"
+    },
+    {
+      "category": "contradiction: rule vs hook",
+      "item": "CLAUDE.md:12 waits for the operator's yes on every plan; AGENTS.md:294-297 allows that stop only for work outside SHAPE"
+    },
+    {
+      "category": "contradiction: rule vs rule",
+      "item": "CLAUDE.md:13 'ask again only for work outside the plan' vs AGENTS.md:139-140 a defect found anywhere is fixed with no yes asked"
+    },
+    {
+      "category": "contradiction: rule vs rule",
+      "item": "AGENTS.md:47 and CLAUDE.md:20 'no change reaches production without Ed's approval' vs AGENTS.md:290 merges and deploys without waiting on the operator"
+    },
+    {
+      "category": "contradiction: doc vs rule",
+      "item": ".github/pull_request_template.md:28-33 requires a reviewer verdict; AGENTS.md:133 and :48 say no reviewer verdict is required"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:192-193 and :212 'both reviews pass' vs ACTIVE_PROGRAM.md:260 and AGENTS.md:133 no reviewer verdict since 2026-11-05"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:68 ENF-12 'enforced by the operator's review' vs AGENTS.md:48,133 the builder audits, reviewers are not used"
+    },
+    {
+      "category": "contradiction: value disagrees",
+      "item": "AGENTS.md:219-223 'the operator's three rules' vs tools/wiring_rules.py:1,15 injects five rules"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:8 status values NEXT|IN PROGRESS|QUEUED|BLOCKED|OPERATOR vs rows using ACTIVE (:261, :262) and a date (:270)"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "docs/DATA_FLOW.md:22 'the program is two ... joined by two local sockets' vs DATA_FLOW.md:212-215 and capture.py:1148-1156 one program"
+    },
+    {
+      "category": "contradiction: doc vs code",
+      "item": "README.md:3,7-8 a console and a separate daemon on port 8000 vs start_capture_daemon.bat:4 and capture.serve_console, one program"
+    },
+    {
+      "category": "contradiction: doc vs code",
+      "item": "SHAPE step 3 (ACTIVE_PROGRAM.md:260, ARCHITECTURE.md:48) deletes live_push :8799; live_push.py:39-40 still serves it and launch.py:36,129 use it"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "DATA_FLOW.md:807 Calculators on one pricing thread (a pool measured no better) vs DATA_FLOW.md:852-854 and SHAPE step 3, a worker pool"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:284 P2-2 levels producer in its own process vs DATA_FLOW.md:852-853 decision 2 superseded by one program"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:285 P2-3 builds two push connections vs DATA_FLOW.md:856-859 one WebSocket and ARCHITECTURE.md:48 push_changes.py deleted"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:286-287 P2-5/P2-6 folders daemon/, producer/, console/ vs ARCHITECTURE.md:10-26 feed/, state/, calc/, push/, recorder/, shared/"
+    },
+    {
+      "category": "contradiction: rule vs doc",
+      "item": "AGENTS.md:121 rule 2 'a reported 0 is 0' vs ACTIVE_PROGRAM.md:33-36 and DATA_FLOW.md:510-519 a zero outside the window keeps the last count"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:100 LIVE-SESSION cites the 2026-09-27 ruling that ACTIVE_PROGRAM.md:39-40 says was replaced on 2026-10-25"
+    },
+    {
+      "category": "contradiction: rule vs doc",
+      "item": "AGENTS.md:124 rule 5 every stopped value shows its time and age vs ACTIVE_PROGRAM.md:18-20,93 and DATA_FLOW.md:398-399 the matrix shows no chain age"
+    },
+    {
+      "category": "contradiction: rule vs doc",
+      "item": "AGENTS.md:124 rule 5 age shown 'for any reason' vs DATA_FLOW.md:177-179 and ACTIVE_PROGRAM.md:226-228 trade time without an age while the push is down"
+    },
+    {
+      "category": "contradiction: rule vs doc",
+      "item": "AGENTS.md:122 rule 3 the pushed field is the producer vs DATA_FLOW.md:290-293,529 open interest is the chain's while the stream sends field 9"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "DATA_FLOW.md:497-500 no streamed tick replaces the chain's Greeks vs DATA_FLOW.md:559-566 a streamed contract's Greeks are the stream's newest"
+    },
+    {
+      "category": "contradiction: doc vs code",
+      "item": "DATA_FLOW.md:440,577-579 STALE after two delivered rounds vs server.py:619,735-737 an undocumented 180 s floor"
+    },
+    {
+      "category": "contradiction: rule vs code",
+      "item": "AGENTS.md:3,121 no bound of ours vs time_et.py:349,400 a 10-minute time-to-expiry floor (DATA_FLOW.md:893 adopts it, ACTIVE_PROGRAM.md:145 M-37 calls it a defect)"
+    },
+    {
+      "category": "contradiction: rule vs code",
+      "item": "AGENTS.md:3,121 no bound of ours vs history.py:19 TAPE_KEPT = 500, :21 BOOKS_KEPT_SEC and server.py:194 BARS_KEPT"
+    },
+    {
+      "category": "contradiction: rule vs code",
+      "item": "AGENTS.md:55,126 every ticker treated the same vs time_et.py:102 _INDEX_CLOSE_UNDERLYINGS = SPY, QQQ, IWM"
+    },
+    {
+      "category": "contradiction: rule vs code",
+      "item": "AGENTS.md:127 says test_markets_sessions refuses a clock time in product code; liquidity_value_engine.py:190 has one and the test reads only root and app/"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "DATA_FLOW.md:716-718 no hand-typed table exists vs time_et.py:102 a hand-typed ticker list that decides the close"
+    },
+    {
+      "category": "contradiction: doc vs code",
+      "item": "DATA_FLOW.md:887-889 no inferred buy/sell side is computed or shown vs DATA_FLOW.md:673 and ed-gamma-flow.js:114 Cum delta (proxy, tick rule)"
+    },
+    {
+      "category": "contradiction: rule vs code",
+      "item": "AGENTS.md:124 rule 5 shows '-' vs 13 page scripts drawing an em dash and DATA_FLOW.md:726-727 saying the label reads an em dash"
+    },
+    {
+      "category": "contradiction: rule vs code",
+      "item": "AGENTS.md:123 rule 4 and DATA_FLOW.md:646-647 the page computes nothing vs static/js Math. and toFixed( calls"
+    },
+    {
+      "category": "contradiction: rule vs code",
+      "item": "AGENTS.md:130 rule 11 the page reads no clock vs ed-core.js:764 PRICE_SILENCE_MS and :605 a timer deciding WAITING or OFFLINE"
+    },
+    {
+      "category": "contradiction: rule vs code",
+      "item": "AGENTS.md:120 rule 1 allows only three port settings vs live_ui.py:50-51 os.environ.get(\"ED_LIVE_UI_HOST\", \"0.0.0.0\")"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "AGENTS.md:163 no exception list vs AGENTS.md:130 and pyproject.toml:35 a per-file ignore of TID251 for time_et.py"
+    },
+    {
+      "category": "contradiction: rule vs state",
+      "item": "AGENTS.md:32 every derived value is in the register vs docs/derived_register.md:3-5 the older values are not (walls, flip, max pain, GEX, ATR, VWAP)"
+    },
+    {
+      "category": "contradiction: rule vs tests",
+      "item": ".claude/rules/tests.md:8 a test never reads source text vs tests/test_markets_sessions_v1.py:182-183 parses product source"
+    },
+    {
+      "category": "contradiction: rule vs tests",
+      "item": ".claude/rules/tests.md:6,10 'enforced' never patches vs 14 test files using monkeypatch or mock.patch"
+    },
+    {
+      "category": "contradiction: rule vs doc",
+      "item": "AGENTS.md:54,128 no fake data, no stand-ins vs ACTIVE_PROGRAM.md:95 STAND-INS records operator-allowed made-up values"
+    },
+    {
+      "category": "contradiction: rule vs doc",
+      "item": "AGENTS.md:212-213 every change carries a test forcing each failure vs pull_request_template.md:13-14 'or why the change needs none'"
+    },
+    {
+      "category": "contradiction: doc vs code",
+      "item": "ACTIVE_PROGRAM.md:243-244 code_identical read by check_fails_before vs ACTIVE_PROGRAM.md:260 check_fails_before removed 2026-11-05"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:262 index.html comments wait on a failing-test gate vs ACTIVE_PROGRAM.md:56 that gate was removed 2026-11-05"
+    },
+    {
+      "category": "contradiction: doc vs code",
+      "item": "process_lock_guard.py:11-12,198-199 a push to main is operator_yes_guard's vs operator_yes_guard.py:16 judges no push: no guard handles it"
+    },
+    {
+      "category": "contradiction: doc vs config",
+      "item": "tools/hook_chain.py:5 runs two guards vs .claude/settings.json and .cursor/hooks.json running three"
+    },
+    {
+      "category": "contradiction: config vs config",
+      "item": ".cursor/hooks.json 'roster must stay identical' to .claude/settings.json, but it wires no Stop or UserPromptSubmit hook"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": ".cursor/rules/00-always.mdc:2 AGENTS.md is the single law vs CLAUDE.md:6-23 rules found nowhere in AGENTS.md"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:107 keeps each day's 0DTE contracts vs DATA_FLOW.md:96-103 and stream-db-switch SKILL.md:11 five strikes each side of the soonest expiry"
+    },
+    {
+      "category": "contradiction: value disagrees",
+      "item": "ACTIVE_PROGRAM.md:67 ENF-23 second readers 19 and :272 12 vs check_one_reader --list 4"
+    },
+    {
+      "category": "contradiction: doc vs tool",
+      "item": "ACTIVE_PROGRAM.md:268 ONE-24 schwab_field_inventory is not a second reader vs check_one_reader counting it twice"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "ACTIVE_PROGRAM.md:314 the console drops its copy of the price rows vs DATA_FLOW.md:234,255 the console keeps no price of its own"
+    },
+    {
+      "category": "contradiction: doc vs code",
+      "item": "ACTIVE_PROGRAM.md:133 M-16 and :263 name _iv_ok as an open defect; no _iv_ok exists in any .py file"
+    },
+    {
+      "category": "contradiction: doc vs code",
+      "item": "ACTIVE_PROGRAM.md:93 and DATA_FLOW.md:795-796 NO_PRICE_LEVELS_REASON; it appears in no .py file"
+    },
+    {
+      "category": "contradiction: value disagrees",
+      "item": "ACTIVE_PROGRAM.md:104 launch.running at launch.py:121-133; it is launch.py:104-119"
+    },
+    {
+      "category": "contradiction: doc vs config",
+      "item": "DATA_FLOW.md:834-836 pyproject's selection without BLE or TID251; pyproject.toml:8 selects both"
+    },
+    {
+      "category": "contradiction: doc vs doc",
+      "item": "DATA_FLOW.md:843-844 a gap gets a check only after a failure vs AGENTS.md:19-21 every requirement names its enforcement"
+    },
+    {
+      "category": "contradiction: value disagrees",
+      "item": "docs/playwright.md:11-12 and run-pytest-full.mjs:115 -n auto vs pytest.yml -n $(nproc) and flaky-test-fix SKILL.md:8 -n 8"
     }
   ]
 }
