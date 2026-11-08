@@ -7,6 +7,7 @@
  * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
  */
 const { test, expect } = require('@playwright/test');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
@@ -40,7 +41,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { spot: spot });
     else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { spot: spot });
     else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/expiries')) body = { expiries: EXPS };
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 });
     else if (url.includes('/api/chain')) body = { ticker: dec, spot: spot, expiry: EXPS[0], status: 'ok',
       scope: { kind: 'complete_single_expiry' }, contracts: [] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });

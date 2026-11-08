@@ -635,7 +635,7 @@
       .then(function (r) { if (!r.ok) throw new Error('expiries unavailable: HTTP ' + r.status); return r.json(); })
       .then(function (d) {
         if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
-        var exps = d.expiries || [], labels = d.labels || {};
+        var exps = d.expiries, labels = d.labels;
         var opts = '<option value="">All Expirations</option>';
         exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
         if (!exps.length && d.reason) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
