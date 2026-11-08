@@ -8,9 +8,8 @@
 (function () {
   'use strict';
 
-  function st() { return window.EdShell.getState(); }
-  function isHeatmap() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'heatmap'; }
-  function ticker() { return st().ticker; }
+  function isHeatmap() { var s = window.EdShell.getState(); return s.workspace === 'order-flow' && s.subview === 'heatmap'; }
+  function ticker() { return window.EdShell.getState().ticker; }
   function stillHeatmap(tk) { return isHeatmap() && ticker() === tk; }
   function fmtCT(ts) {
     try { return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' }); } catch (e) { return '-'; }
@@ -41,7 +40,7 @@
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillHeatmap(tk)) return;
-    return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
+    return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillHeatmap(tk)) render(h, tk, d); })
       .catch(function (e) {
@@ -53,7 +52,7 @@
   function load() {
     if (!isHeatmap()) return;
     // keyed on ticker + venue + minutes: a different window while a fetch is in flight aborts it
-    _loader.trigger(ticker() + '|' + st().bookVenue + '|' + _minutes);
+    _loader.trigger(ticker() + '|' + window.EdShell.getState().bookVenue + '|' + _minutes);
   }
 
   if (typeof document !== 'undefined') {

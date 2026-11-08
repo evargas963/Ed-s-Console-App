@@ -19,8 +19,7 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '-' : String(Math.round(Number(n))); }
-  function st() { return window.EdShell.getState(); }
-  function isFlow() { var s = st(); return s.workspace === 'options' && s.subview === 'flow'; }
+  function isFlow() { var s = window.EdShell.getState(); return s.workspace === 'options' && s.subview === 'flow'; }
 
   function host() { return document.getElementById('flowBody'); }
 
@@ -149,7 +148,7 @@
   }
 
   function header(desired, ss, putCall) {   // putCall: Schwab's CONTRACT_TYPE, served
-    var strike = st().selStrike, expiry = st().selExpiry;
+    var strike = window.EdShell.getState().selStrike, expiry = window.EdShell.getState().selExpiry;
     return '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
       '<span class="fl-sym">' + esc(desired || '-') + '</span>' +
       '<span class="fl-meta">' + (putCall === 'CALL' ? 'Call' : putCall === 'PUT' ? 'Put' : '-') + (strike != null ? ' · ' + strike : '') + (expiry ? ' · ' + esc(expiry) : '') + '</span></div>' +
