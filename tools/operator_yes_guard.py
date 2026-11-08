@@ -151,7 +151,7 @@ def decide(payload: dict) -> tuple[str, list[str]]:
     """The answer to the action in `payload` (PASS, ASK or DENY), with its reasons."""
     if payload.get("tool_name") not in BASH_TOOLS:
         return PASS, []
-    cmd = str((payload.get("tool_input") or {}).get("command") or "")
+    cmd = payload["tool_input"]["command"]  # always sent for a shell tool; missing: refused
     asks, denies = [], []
     statements = [
         st

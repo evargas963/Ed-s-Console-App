@@ -50,7 +50,7 @@ def _git(*args: str) -> str:
         r = subprocess.run(
             ["git", *args], cwd=str(REPO), capture_output=True, text=True, timeout=15, check=False
         )
-        return (r.stdout or "").strip()
+        return r.stdout.strip()  # capture_output with text: always a string
     except (OSError, subprocess.SubprocessError):
         return ""
 
