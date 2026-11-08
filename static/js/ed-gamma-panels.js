@@ -272,8 +272,8 @@
     // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "-"; the
     // NET row is this expiry's net GEX at this strike, served on the same /api/chain response --
     // the heatmap's own cell, not GEX-by-Strike's all-expiry total beside one expiry's contracts.
-    var net = null;
-    d.net_gex_by_strike.forEach(function (r) {
+    var net = null;   // served null: this expiry has no surface column, so no strike has one
+    if (d.net_gex_by_strike !== null) d.net_gex_by_strike.forEach(function (r) {
       if (Math.abs(Number(r[0]) - Number(strike)) < 0.01) net = Number(r[1]);
     });
     var netCls = net == null ? '' : (net >= 0 ? 'pos' : 'neg');

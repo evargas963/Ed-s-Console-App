@@ -4,8 +4,6 @@ low, one row per listed contract, in-the-money flags against the live spot. Real
 import json
 from pathlib import Path
 
-import pytest
-
 from option_contract import chain_row, read_chain
 from terrain_engine import chain_ladder as _chain_ladder
 
@@ -21,11 +19,6 @@ def chain_ladder(raw, spot):
     contracts = read_chain(raw)
     shown = [chain_row(c) for c in contracts]
     return _chain_ladder(contracts, spot, shown)
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    return pin_clock(2026, 9, 2, 12, 0)
 
 
 def test_every_contract_on_one_row_strikes_high_to_low():
