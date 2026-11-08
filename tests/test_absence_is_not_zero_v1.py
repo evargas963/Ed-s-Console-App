@@ -28,14 +28,9 @@ import pytest
 import terrain_engine as TE
 from liquidity_models import volume_profile
 
-# ------------------------------------- a NULL short volume is not zero shares short ----
-
-
-# ------------------------------------------ a NULL strike count is not zero strikes ----
-
-
-# ------------------------------------- an unpriced bar is not zero dollars of turnover ----
-
+#: what every strike bucket holds whatever it is testing (math_exposure_core builds each so): a
+#: dollarized book, its volumes known, no contract listed on either side
+_KNOWN = {"dollarized": True, "volume_unreported": 0, "call_volume": 0.0, "put_volume": 0.0}
 
 # ---------------------------------------- an unknown gamma is not a flat gamma bar ----
 
@@ -53,7 +48,7 @@ def test_a_strike_with_no_resolvable_gamma_draws_no_bar():
 
 def test_a_measured_gamma_still_draws_its_bar():
     """Negative control: absence is refused, presence is not."""
-    rows = TE._per_strike_rows({500.0: {"dollarized": True, "net_gex_1pct": 1_234_567.0}})
+    rows = TE._per_strike_rows({500.0: {**_KNOWN, "net_gex_1pct": 1_234_567.0}})
     assert len(rows) == 1
     assert rows[0][0] == pytest.approx(500.0)
     assert rows[0][1] == pytest.approx(1_234_567.0, rel=1e-6)
@@ -61,7 +56,7 @@ def test_a_measured_gamma_still_draws_its_bar():
 
 def test_a_genuine_zero_gamma_still_draws_its_bar():
     """A strike measured at flat gamma is information and must remain on the chart."""
-    rows = TE._per_strike_rows({500.0: {"dollarized": True, "net_gex_1pct": 0.0}})
+    rows = TE._per_strike_rows({500.0: {**_KNOWN, "net_gex_1pct": 0.0}})
     assert len(rows) == 1 and rows[0][1] == pytest.approx(0.0)
 
 
@@ -69,7 +64,7 @@ def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_has_gex_unknown(
     """A contract at the strike sent no open interest (or has open interest and no Greek): the
     strike's GEX is not known, whatever its accumulator holds."""
     rows = TE._per_strike_rows(
-        {500.0: {"dollarized": True, "call_gamma_unreported": 1, "net_gex_1pct": 1_234_567.0}}
+        {500.0: {**_KNOWN, "call_gamma_unreported": 1, "net_gex_1pct": 1_234_567.0}}
     )
     assert [r[:2] for r in rows] == [[500.0, None]]
 
