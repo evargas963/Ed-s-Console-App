@@ -64,8 +64,8 @@
       { id: 'provenance', label: 'Provenance' }, { id: 'runtime', label: 'Runtime' } ], views: Object.create(null) }
   };
 
-  function _ls(k, d) { try { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; } catch (e) { return d; } }
-  function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function _ls(k, d) { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; }
+  function _lsSet(k, v) { localStorage.setItem(k, v); }
   // D: persist UI navigation state (client state, not market truth)
   // The strike-window scopes, served in the page (meta ed-scopes, from terrain_engine.SCOPES):
   // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
@@ -75,7 +75,7 @@
   // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
   var _served = {};
   var state = {
-    ticker: (_ls(TICKER_KEY, '') || '').toUpperCase(),
+    ticker: _ls(TICKER_KEY, '').toUpperCase(),
     // the selected instrument's identity as the daemon's price socket serves it (ingestIdentity):
     // the key every price row and route uses ("$SPX") and its display name ("SPX"); null until served
     key: null, display: null,
@@ -591,7 +591,7 @@
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
     state.key = null; state.display = null;
-    try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
+    _lsSet(TICKER_KEY, state.ticker);
     paintIdentity(state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
@@ -943,7 +943,7 @@
     if (localStorage.getItem(RAIL_KEY) === '0') app.classList.remove('rail-open');
     document.getElementById('railToggle').addEventListener('click', function () {
       app.classList.toggle('rail-open');
-      try { localStorage.setItem(RAIL_KEY, app.classList.contains('rail-open') ? '1' : '0'); } catch (e) {}
+      _lsSet(RAIL_KEY, app.classList.contains('rail-open') ? '1' : '0');
     });
     // theme control — window.EdTheme owns resolution/first-paint/OS changes; reflect + wire the cycle
     reflectThemeIcon();
@@ -990,7 +990,7 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { var g = document.querySelector('.gamma-grid'); if (g && g.classList.contains('maxed')) applyMaximize(false); }
     });
-    try { if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true); } catch (e) {}
+    if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true);
     window.addEventListener('resize', function () { emit('ed:resize', {}); });   // a view event too
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
