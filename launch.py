@@ -111,7 +111,7 @@ def running(start: list[str], root: Path = ROOT) -> list[psutil.Process]:
     """
     return [
         p
-        for p in psutil.process_iter(["cmdline", "cwd", "ppid"])
+        for p in psutil.process_iter(["cmdline", "cwd"])
         if p.info["cmdline"] is not None
         and p.info["cmdline"][1 : len(start) + 1] == start
         and p.info["cwd"] is not None
