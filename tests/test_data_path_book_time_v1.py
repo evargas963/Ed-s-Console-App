@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import live_market_plane as lmp
 import server
 import time_et
 from app.options.order_flow import state as of_state
+from app.options.order_flow.engine import book_age_sec
 from tests.feed_live_helper import mark_feed_live
 
+_FX = Path(__file__).resolve().parent / "fixtures"
 _TK = "ZZBKTIME"
 _WHEN = 1790380799830  # Fri 09/25 06:59 PM CT
 
@@ -54,3 +59,26 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
     assert body["book_when_age_text"] == "Fri 09/25 06:59 PM CT · " + age
     assert body["quote_when_age_text"] == "Fri 09/25 06:59 PM CT · " + age
     assert body["book_age_text"] == age
+
+
+def _served_book_age(content: dict, now: float) -> float | None:
+    of_state.push_book(_TK, content, "NYSE_BOOK")
+    try:
+        return server.order_flow_microstructure(_TK, "NYSE_BOOK", now)["ages"]["book_age_sec"]
+    finally:
+        of_state._LIVE_STATE._book.pop(_TK, None)
+
+
+def test_the_book_age_is_read_from_schwabs_book_time_as_sent():
+    """SPY's first NYSE_BOOK message of 2026-11-02 10:00 ET, as Schwab sent it: its age is the
+    seconds from its BOOK_TIME to now, the one age (engine.book_age_sec) the microstructure and
+    the Liquidity card both serve. INDUCED CONDITION: the same message with BOOK_TIME 0. Schwab's
+    0 is a value (rule 2), so the age is from 0; it was served as no age here while the card
+    served one."""
+    rows = json.loads((_FX / "real_spy_books_2026_11_02.json").read_text(encoding="utf-8"))
+    ts_recv, service, sent = next(r for r in rows["rows"] if r[1] == "NYSE_BOOK")
+    assert service == "NYSE_BOOK"
+    assert _served_book_age(sent, ts_recv) == ts_recv - sent["BOOK_TIME"] / 1000.0
+    assert book_age_sec(sent["BOOK_TIME"], ts_recv) == ts_recv - sent["BOOK_TIME"] / 1000.0
+    assert _served_book_age({**sent, "BOOK_TIME": 0}, ts_recv) == ts_recv
+    assert book_age_sec(None, ts_recv) is None

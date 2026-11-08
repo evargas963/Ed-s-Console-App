@@ -34,6 +34,7 @@ from app.options.order_flow.engine import (
     BOOK_VENUES,
     COMPOSITE,
     OrderFlowEngine,
+    book_age_sec,
     book_readout,
     compute_book_microstructure,
     readout_card,
@@ -2834,6 +2835,8 @@ async def get_changes(ticker: str = Query(...)):
             yield f"event: session\ndata: {session_label(now_et())}\n\n"
             while True:
                 kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
+                if client.closed:  # the program is stopping (push_changes.close_all)
+                    return
                 for k in sorted(kinds):
                     yield f"event: {k}\ndata: {t}\n\n"
                 if not kinds:
@@ -3026,7 +3029,8 @@ def liquidity_readout(t: str, now: float) -> dict:
         r["feed_label"] = labels[v]
         r["live"] = labels[v] == lmp.LIVE
         r["book_time_ct"] = None if book_ms is None else ct_label(book_ms / 1000.0)
-        r["book_age_text"] = None if book_ms is None else age_text(now - book_ms / 1000.0)
+        age = book_age_sec(book_ms, now)
+        r["book_age_text"] = None if age is None else age_text(age)
         r["source_text"] = _source_text(v, r, window)
         why = _no_number(r)
         r["no_number_text"] = None if why is None else why[1]
