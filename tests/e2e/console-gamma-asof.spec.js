@@ -26,6 +26,7 @@ const STRIKES = { ticker: 'SPY', spot: 100, spot_strike: 100, spot_source: 'schw
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
 const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
+  net_gex_by_strike: [], adjusted_deliverable_symbols: [],
   scope: { kind: 'complete_single_expiry', requested_expiry: '2026-09-11', completeness_basis: 'strike_range=ALL' },
   contracts: [
     { putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
