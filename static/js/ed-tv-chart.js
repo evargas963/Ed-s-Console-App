@@ -30,7 +30,7 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function fmtVol(n) {
-    if (n == null || isNaN(n)) return '—';
+    if (n == null || isNaN(n)) return '-';
     var a = Math.abs(Number(n));
     if (a >= 1e9) return (a / 1e9).toFixed(2) + 'B';
     if (a >= 1e6) return (a / 1e6).toFixed(2) + 'M';
@@ -518,7 +518,7 @@
         pinBox.innerHTML = '<div class="tvc-pin-h"><span>' + esc(CT_FULL.format(new Date(S.pinned.time * 1000))) + ' CT</span>' +
           '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
           '<div class="tvc-pin-g"><span>Price</span><b>' + S.pinned.price.toFixed(2) + '</b><span>Bid size</span><b>' +
-          (cell && cell.bid != null ? fmtVol(cell.bid) : '—') + '</b><span>Ask size</span><b>' + (cell && cell.ask != null ? fmtVol(cell.ask) : '—') + '</b></div>';
+          (cell && cell.bid != null ? fmtVol(cell.bid) : '-') + '</b><span>Ask size</span><b>' + (cell && cell.ask != null ? fmtVol(cell.ask) : '-') + '</b></div>';
         pinBox.querySelector('.tvc-pin-x').addEventListener('click', function () { unpin(); });
         return;
       }
@@ -529,7 +529,7 @@
         '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
         '<div class="tvc-pin-g"><span>Open</span><b>' + b.o.toFixed(2) + '</b><span>High</span><b>' + b.h.toFixed(2) +
         '</b><span>Low</span><b>' + b.l.toFixed(2) + '</b><span>Close</span><b>' + b.c.toFixed(2) +
-        '</b><span>Bar change</span><b class="' + (chg == null ? '' : chg >= 0 ? 'up' : 'dn') + '">' + (chg == null ? '—' : (chg >= 0 ? '+' : '') + chg.toFixed(2)) +
+        '</b><span>Bar change</span><b class="' + (chg == null ? '' : chg >= 0 ? 'up' : 'dn') + '">' + (chg == null ? '-' : (chg >= 0 ? '+' : '') + chg.toFixed(2)) +
         (pct == null ? '' : ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)') + '</b><span>Volume</span><b>' + fmtVol(b.v) + '</b>' +
         (S.pinned.price != null ? '<span>Price at click</span><b>' + S.pinned.price.toFixed(2) + '</b>' : '') + '</div>';
       pinBox.querySelector('.tvc-pin-x').addEventListener('click', function () { unpin(); });

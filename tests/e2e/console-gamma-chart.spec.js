@@ -85,7 +85,7 @@ async function clickStrike(page, strike) {
 
 test.describe('Options/Gamma Chart subview', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('a real click on a Chart mark carries the workspace expiry through to Strike Detail\'s real native call/put identity (state-authority review)', async ({ page }) => {
@@ -137,13 +137,30 @@ test.describe('Options/Gamma Chart subview', () => {
     expect(errors).toEqual([]);
   });
 
+  test('a failed request is named on the chart, never drawn as an empty answer', async ({ page }) => {
+    // /api/terrain failing while the bars and the profile arrive: the flip and the walls are not
+    // drawn and the chart says the terrain request failed; then the bars failing too
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await intercept(page);
+    await page.route(/\/api\/terrain\?/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#chartBody .gchart-empty')).toHaveText('the terrain request failed for SPY');
+    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 500, body: 'x' }));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#chartBody .gchart-empty')).toHaveText('the bars, terrain request failed for SPY');
+    expect(errors).toEqual([]);
+  });
+
   test('the Delta / DEX and Open Interest Chart views draw the served profile of their measure', async ({ page }) => {
     // operator 2026-09-29: "dex has a chart, oi has a chart" -- both views were blank
     await intercept(page);
     for (const [sub, rows, title] of [['dex', STRIKES.measures.dex.rows.length, 'Price + DEX Profile'],
       ['oi', STRIKES.measures.oi.rows.length, 'Price + Open Interest Profile']]) {
-      await page.addInitScript((s) => { try { localStorage.setItem('ed_ws', 'options'); localStorage.setItem('ed_sub', s);
-        localStorage.setItem('ed_view', 'chart'); localStorage.setItem('ed_scope', 'all'); } catch (e) {} }, sub);
+      await page.addInitScript((s) => { localStorage.setItem('ed_ws', 'options'); localStorage.setItem('ed_sub', s);
+        localStorage.setItem('ed_view', 'chart'); localStorage.setItem('ed_scope', 'all'); }, sub);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('#mvTitle')).toHaveText(title);
       await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(rows);

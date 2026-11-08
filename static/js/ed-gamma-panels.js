@@ -8,7 +8,7 @@
   'use strict';
 
   var usd = window.EdGamma.formatUsd;
-  function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  function px(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
   // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
   function fmtVol(n) {
@@ -29,10 +29,10 @@
   // PREVIOUS ticker's spot/flip/wall values) -- every check in this file recognizes all
   // three, exactly like ed-gamma.js's _isGammaFamilySubview.
   function isGamma() {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     return s.workspace === 'options' && (s.subview === 'gamma' || s.subview === 'dex' || s.subview === 'oi');
   }
-  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
+  function ticker() { return window.EdShell.getState().ticker; }
 
   var REGIME = {
     LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)', tone: 'up' },
@@ -58,7 +58,7 @@
       'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
     paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {   // nothing current: no tooltip or colour of the last answer stays
-      ids.forEach(function (id) { txt(id, '—'); var el = document.getElementById(id); if (el) el.style.color = ''; });
+      ids.forEach(function (id) { txt(id, '-'); var el = document.getElementById(id); if (el) el.style.color = ''; });
       txt('klSrc', failed || 'terrain not ready');
       var src0 = document.getElementById('klSrc'); if (src0) { src0.title = ''; src0.style.color = ''; }
       var klb0 = document.getElementById('klBody'); if (klb0) klb0.classList.add('recede');
@@ -79,12 +79,12 @@
     var net = document.getElementById('klNet');
     if (net) {
       var v = d.net_gex_at_spot;
-      net.textContent = (v == null) ? '—' : usd(v);
+      net.textContent = (v == null) ? '-' : usd(v);
       net.style.color = (v == null) ? '' : (v >= 0 ? 'var(--ed-pos-ink)' : 'var(--ed-neg-ink)');
     }
     var reg = document.getElementById('klRegime');
     if (reg) {
-      var rm = REGIME[d.regime] || { t: (d.regime || '—'), c: 'var(--ed-ink-2)' };
+      var rm = REGIME[d.regime] || { t: (d.regime || '-'), c: 'var(--ed-ink-2)' };
       reg.textContent = rm.t; reg.style.color = rm.c;
     }
     // the levels rail recedes while the served levels are STALE
@@ -106,23 +106,23 @@
       src.style.color = d.levels_mark === 'LIVE' ? '' : 'var(--ed-stale)';
       // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
       // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
-      if (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) src.textContent += ' · all-exp';
+      if (window.EdShell.getExpiry()) src.textContent += ' · all-exp';
     }
   }
 
   // ---------- Put/Call OI and volume <- /api/terrain pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
-  function expiryFilter() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || ''; }
+  function expiryFilter() { return window.EdShell.getExpiry(); }
   function paintPcr(d) {
     var byExp = (d && d.pcr_by_expiry) || {};
     var byExpVol = (d && d.pcr_volume_by_expiry) || {};
     // the selected expiry, else the whole book -- both served; the page picks no expiry itself
-    var ex = expiryFilter() || '';
+    var ex = expiryFilter();
     var v = ex ? byExp[ex] : (d && d.pcr_all);
     var vv = ex ? byExpVol[ex] : (d && d.pcr_volume_all);
     var scope = ex ? 'exp ' + ex : 'all exp';
-    txt('klPcr', v == null ? '—' : Number(v).toFixed(2));
+    txt('klPcr', v == null ? '-' : Number(v).toFixed(2));
     txt('klPcrScope', 'OI · ' + scope);
-    txt('klPcrVol', vv == null ? '—' : Number(vv).toFixed(2));
+    txt('klPcrVol', vv == null ? '-' : Number(vv).toFixed(2));
     txt('klPcrVolScope', 'volume · ' + scope);
   }
 
@@ -145,10 +145,8 @@
     var el = document.getElementById('gbsSrc'); if (!el) return;
     if (!d) { el.innerHTML = ''; return; }
     // the levels verdict the server serves (levels_state, its time and age); the badge formats it
-    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: 'terrain', state: d.levels_state, when: d.levels_time_ct,
-          age: d.levels_age_text, reason: d.levels_stale_reason })
-      : '';
+    el.innerHTML = window.EdShell.asOfBadge({ label: 'terrain', state: d.levels_state,
+      when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason });
   }
   // A per-strike bar list (GEX, vanna, charm by strike): the window of `rows` the server sent
   // ([strike, value, ...], ascending), drawn highest strike first, each bar's length its |value|
@@ -179,7 +177,7 @@
       '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
       '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
     host.querySelectorAll('.gbs-row').forEach(function (rr) {   // click a strike: every panel follows it
-      rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
+      rr.addEventListener('click', function () { window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
     });
     var firstRow = host.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(host.querySelectorAll('.gbs-k'), host.querySelector('.gbs-scroll'), pan,
@@ -200,7 +198,7 @@
       return;
     }
     // /api/terrain/strikes is aggregate across expiries; with one expiry selected, say so
-    var expOn = window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry();
+    var expOn = window.EdShell.getExpiry();
     // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change])
     var chg = {}, mig = d.migration && d.migration.all;
     ((mig && mig.compared && mig.rows) || []).forEach(function (m) { chg[m[0]] = m[3]; });
@@ -218,7 +216,7 @@
   }
   function applyGbsHighlight(host) {
     host = host || document.getElementById('gbsBody'); if (!host) return;
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    var sel = (window.EdShell.getState()).selStrike;
     host.querySelectorAll('.gbs-row.gbs-sel').forEach(function (n) { n.classList.remove('gbs-sel'); });
     if (sel == null) return;
     host.querySelectorAll('.gbs-row[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('gbs-sel'); });
@@ -227,7 +225,7 @@
   // ---------- Strike Detail ----------
   // the workspace expiry filter, else the selected strike's own expiry
   function strikeDetailExpiry() {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     return expiryFilter() || s.selExpiry || null;
   }
   // loadStrike() records the desired (strike, expiry); the loader always fetches the current one
@@ -254,7 +252,7 @@
   }
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
-    el.innerHTML = (window.EdShell && window.EdShell.chainScopeBadge) ? window.EdShell.chainScopeBadge(d) : '';
+    el.innerHTML = window.EdShell.chainScopeBadge(d);
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
@@ -271,8 +269,8 @@
     var call = pick('CALL'), put = pick('PUT');
     txt('sdCtx', px(strike, strike % 1 ? 2 : 0) + (expiry ? ' · ' + esc(expiry.slice(5)) : ''));
     // d2: decimals; none: every digit Schwab sent (its Greeks)
-    function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (d2 == null ? String(v) : v.toFixed(d2)) : esc(v)); }
-    // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "—"; the
+    function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '-' : (typeof v === 'number' ? (d2 == null ? String(v) : v.toFixed(d2)) : esc(v)); }
+    // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "-"; the
     // NET row is this expiry's net GEX at this strike, served on the same /api/chain response --
     // the heatmap's own cell, not GEX-by-Strike's all-expiry total beside one expiry's contracts.
     var net = null;
@@ -283,11 +281,11 @@
     host.innerHTML =
       '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
       '<tr><td class="side c">Call</td><td>' + cell(call, 'openInterest', 0) + '</td><td>' + cell(call, 'totalVolume', 0) +
-      '</td><td>' + cell(call, 'gamma') + '</td><td class="dim">—</td><td>' + cell(call, 'delta') + '</td><td>' + cell(call, 'volatility') + '</td></tr>' +
+      '</td><td>' + cell(call, 'gamma') + '</td><td class="dim">-</td><td>' + cell(call, 'delta') + '</td><td>' + cell(call, 'volatility') + '</td></tr>' +
       '<tr><td class="side p">Put</td><td>' + cell(put, 'openInterest', 0) + '</td><td>' + cell(put, 'totalVolume', 0) +
-      '</td><td>' + cell(put, 'gamma') + '</td><td class="dim">—</td><td>' + cell(put, 'delta') + '</td><td>' + cell(put, 'volatility') + '</td></tr>' +
-      '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
-      (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
+      '</td><td>' + cell(put, 'gamma') + '</td><td class="dim">-</td><td>' + cell(put, 'delta') + '</td><td>' + cell(put, 'volatility') + '</td></tr>' +
+      '<tr class="sd-net"><td class="side">Net</td><td>-</td><td>-</td><td>-</td><td class="' + netCls + '">' +
+      (net == null ? '-' : usd(net)) + '</td><td>-</td><td>-</td></tr>' +
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';
   }
 
@@ -311,7 +309,7 @@
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
   function _mkStrikeBar(kind, endpoint, hostId, srcId) {
     function inSub() {
-      var s = (window.EdShell && window.EdShell.getState()) || {};
+      var s = window.EdShell.getState();
       return s.workspace === 'options' && s.subview === kind;
     }
     function stillCtx(tk) { var host = document.getElementById(hostId); return inSub() && !!host && ticker() === tk; }
@@ -347,22 +345,22 @@
   // surfaces -- one strike per row, both sides, no new computation, no second fetch shape
   // (same /api/chain response Chain and Strike Detail already read).
   function inStructures() {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     return s.workspace === 'options' && s.subview === 'structures';
   }
   function stillStructuresCtx(tk, exp) {
     var host = document.getElementById('stBody');
     return inStructures() && !!host && ticker() === tk &&
-      (exp == null || (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) === exp);
+      (exp == null || (window.EdShell.getExpiry()) === exp);
   }
   function _flag(label, on) { return '<span class="st-flag' + (on ? ' on' : '') + '">' + esc(label) + '</span>'; }
   // lastTradingDay is native epoch MILLISECONDS (the same convention as quoteTimeInLong/
   // tradeTimeInLong), not an ISO date string -- String(...).slice(0,10) on 1789430400000
   // would print the meaningless digit-string "1789430400", not a date.
   function fmtEpochMs(ms) {
-    if (ms == null || isNaN(ms)) return '—';
+    if (ms == null || isNaN(ms)) return '-';
     var d = new Date(Number(ms));
-    if (isNaN(d.getTime())) return '—';
+    if (isNaN(d.getTime())) return '-';
     return d.toISOString().slice(0, 10);
   }
   // ADJUSTED DELIVERABLE: served per contract (Schwab's nonStandard flag, as sent)
@@ -383,10 +381,10 @@
         _flag('ADJUSTED DELIVERABLE', (d.adjusted_deliverable_symbols || []).indexOf(rep.symbol) !== -1),
       ].join('');
       return '<tr><td class="side">' + px(k, k % 1 ? 2 : 0) + '</td>' +
-        '<td>' + (rep.multiplier == null ? '—' : rep.multiplier) + '</td>' +
-        '<td>' + esc(rep.settlementType || '—') + '</td>' +
-        '<td>' + esc(rep.exerciseType || '—') + '</td>' +
-        '<td>' + esc(rep.expirationType || '—') + '</td>' +
+        '<td>' + (rep.multiplier == null ? '-' : rep.multiplier) + '</td>' +
+        '<td>' + esc(rep.settlementType || '-') + '</td>' +
+        '<td>' + esc(rep.exerciseType || '-') + '</td>' +
+        '<td>' + esc(rep.expirationType || '-') + '</td>' +
         '<td>' + fmtEpochMs(rep.lastTradingDay) + '</td>' +
         '<td>' + flags + '</td></tr>';
     }).join('');
@@ -405,12 +403,11 @@
       function (words) { if (stillStructuresCtx(tk, exp)) window.EdShell.placeholder(host, words); });
   }
   var _structuresLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
-    return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); });
+    return loadStructuresImpl(ticker(), (window.EdShell.getExpiry()), signal); });
   // keyed on ticker+expiry: a context change aborts the read in flight (makeCoalescedLoader)
   function loadStructures() {
     if (!inStructures()) return;
-    var exp = (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || '';
-    _structuresLoader.trigger(ticker() + '|' + exp);
+    _structuresLoader.trigger(ticker() + '|' + window.EdShell.getExpiry());
   }
 
   // ---------- Options Flow tape ------------
@@ -418,11 +415,11 @@
   // every contract of the ticker the daemon streams (its option rule), never a fabricated
   // buy/sell side.
   var OF_CLS_LABEL = { at_bid: 'at bid', at_ask: 'at ask', inside_spread: 'inside',
-    outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '—' };
-  function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(2); }
-  function fmtOfSize(n) { return (n == null || isNaN(n)) ? '—' : String(n); }
+    outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '-' };
+  function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(2); }
+  function fmtOfSize(n) { return (n == null || isNaN(n)) ? '-' : String(n); }
   function fmtOfTime(tsRecv) {
-    if (tsRecv == null) return '—';
+    if (tsRecv == null) return '-';
     var d = new Date(tsRecv * 1000);
     return d.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
   }
@@ -440,21 +437,21 @@
     var body = d.rows.map(function (r) {
       return '<tr>' +
         '<td>' + fmtOfTime(r.ts_recv) + '</td>' +
-        '<td class="of-sym">' + esc(r.symbol || '—') + '</td>' +
-        '<td>' + esc(r.expiry ? r.expiry.slice(5) : '—') + '</td>' +
-        '<td>' + esc(r.type || '—') + '</td>' +
-        '<td>' + (r.strike == null ? '—' : px(r.strike, r.strike % 1 ? 2 : 0)) + '</td>' +
+        '<td class="of-sym">' + esc(r.symbol || '-') + '</td>' +
+        '<td>' + esc(r.expiry ? r.expiry.slice(5) : '-') + '</td>' +
+        '<td>' + esc(r.type || '-') + '</td>' +
+        '<td>' + (r.strike == null ? '-' : px(r.strike, r.strike % 1 ? 2 : 0)) + '</td>' +
         '<td>' + fmtOfPrice(r.bid) + '×' + fmtOfSize(r.bid_size) + '</td>' +
         '<td>' + fmtOfPrice(r.ask) + '×' + fmtOfSize(r.ask_size) + '</td>' +
         '<td>' + fmtOfPrice(r.trade) + '</td>' +
         '<td>' + fmtOfSize(r.size) + '</td>' +
-        '<td>' + (r.premium == null ? '—' : usd(r.premium)) + '</td>' +
+        '<td>' + (r.premium == null ? '-' : usd(r.premium)) + '</td>' +
         '<td>' + fmtVol(r.volume) + '</td>' +
         '<td>' + fmtOfSize(r.oi) + '</td>' +
-        '<td>' + (r.iv == null ? '—' : Number(r.iv).toFixed(1)) + '</td>' +
-        '<td>' + (r.delta == null ? '—' : Number(r.delta).toFixed(3)) + '</td>' +
+        '<td>' + (r.iv == null ? '-' : Number(r.iv).toFixed(1)) + '</td>' +
+        '<td>' + (r.delta == null ? '-' : Number(r.delta).toFixed(3)) + '</td>' +
         '<td><span class="of-cls ' + esc(r.classification || 'unknown') + '">' +
-          esc(OF_CLS_LABEL[r.classification] || '—') + '</span></td></tr>';
+          esc(OF_CLS_LABEL[r.classification] || '-') + '</span></td></tr>';
     }).join('');
     host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
       '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
@@ -482,7 +479,7 @@
     if (e.detail.kind === 'flow') { loadOf(); return; }
     if (e.detail.kind !== 'levels') return;
     loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures();
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
   document.addEventListener('ed:strike', function (e) {
@@ -492,7 +489,7 @@
   });
   document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
     loadLevels(); loadGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
   // Initial hydration comes SOLELY from ed-core.js's deferred ed:ticker/ed:view dispatch --

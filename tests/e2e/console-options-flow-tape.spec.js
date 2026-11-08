@@ -47,7 +47,7 @@ async function intercept(page, tapeBody) {
 
 test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('an empty tape discloses the reason, never a fabricated row', async ({ page }) => {

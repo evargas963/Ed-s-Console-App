@@ -36,7 +36,7 @@
 .gchart-head{flex:none;padding:4px 10px}
 .gchart-tb,.liqm-tb{flex:none;display:flex;padding:0 10px 6px}
 .gchart-plot{position:relative;flex:1;min-height:320px}
-.gchart-empty{position:absolute;inset:40% 0 auto;text-align:center;color:var(--ed-warn);font-size:13px;z-index:5}
+.gchart-empty{position:absolute;inset:40% 0 auto;text-align:center;color:var(--ed-warn);font-size:13px;z-index:5;pointer-events:none}
 .gchart-empty[hidden]{display:none}
 
 /* ---------- Order Flow > Heatmap on the shared chart ---------- */

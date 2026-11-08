@@ -19,8 +19,8 @@ function priceRow(ticker, spot, extra) {
 async function mockPriceSocket(page, rows, later) {
   await page.routeWebSocket(/:1\/$/, (ws) => {
     ws.onMessage((m) => {
-      let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
-      if (!req || req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;
+      const req = JSON.parse(String(m));
+      if (req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;
       ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
       (rows || []).forEach((r, i) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [r] })), 300 * i));
       (later || []).forEach((l) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [l.row] })), l.afterMs));

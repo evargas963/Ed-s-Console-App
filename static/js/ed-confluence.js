@@ -35,21 +35,20 @@
   ];
 
   function state() {
-    if (!window.EdShell) return null;
     return window.EdShell.getState();
   }
 
   function text(value) {
-    if (value == null) return '—';
-    if (value === '') return '—';
+    if (value == null) return '-';
+    if (value === '') return '-';
     return String(value);
   }
 
   function regimeWords(code) {
     var table = window.EdGammaRegime;
-    if (!table || code == null) return '—';
+    if (!table || code == null) return '-';
     var row = table[code];
-    if (!row || row.t == null) return '—';
+    if (!row || row.t == null) return '-';
     return row.t;
   }
 
@@ -59,7 +58,7 @@
 
   function loadImpl(signal) {
     var st = state();
-    if (!st || st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
+    if (st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
     var tk = st.key || st.ticker;
     var box = document.getElementById('cmBody');
     if (!box) return;
@@ -82,7 +81,7 @@
 
   function load() {
     var st = state();
-    if (!st || st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
+    if (st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
     var tk = st.key || st.ticker;
     _loader.trigger((tk == null ? '' : tk) + '|' + (expiry == null ? '' : expiry));
   }
@@ -178,7 +177,7 @@
     var cls = (edge ? 'edge ' : '') + (missing ? 'missing' : '');
     var title = missing && reason ? ' title="' + esc(reason) + '"' : '';
     var paint = !missing && style ? ' style="' + esc(style) + '"' : '';
-    return '<td class="' + cls + '"' + title + paint + '>' + (missing ? '—' : esc(shown)) + '</td>';
+    return '<td class="' + cls + '"' + title + paint + '>' + (missing ? '-' : esc(shown)) + '</td>';
   }
 
   function showDetail(row) {
@@ -206,7 +205,7 @@
     var cards = facts.map(function (f) {
       var missingValue = f[1] == null || f[1] === '';
       var caption = missingValue && f[2] ? f[2] : f[3];
-      var shown = missingValue ? '—' : String(f[1]) + f[4];
+      var shown = missingValue ? '-' : String(f[1]) + f[4];
       return '<div class="card"><label>' + esc(f[0]) + '</label><b>' + esc(shown) + '</b><span>' + esc(caption) + '</span></div>';
     }).join('');
     var why = parts.map(function (p) { return p.label + ' ' + p.text; }).join(' · ');
@@ -399,7 +398,7 @@
       bodyRows += '<td class="strike">' + esc(text(row.strike_text)) + '</td>';
       bodyRows += '<td class="' + (inside ? 'inside' : '') + '">' + esc(text(row.distance_text)) + '</td>';
       if (row.score_text == null) {
-        bodyRows += '<td class="edge missing" title="' + esc(scoreReason) + '">—</td>';
+        bodyRows += '<td class="edge missing" title="' + esc(scoreReason) + '">-</td>';
       } else {
         var paint = row.heat_background ? ' style="' + esc(row.heat_background) + '"' : '';
         bodyRows += '<td class="edge"' + paint + '>' + scoreShown + '</td>';

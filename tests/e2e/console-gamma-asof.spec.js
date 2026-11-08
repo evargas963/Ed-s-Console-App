@@ -48,7 +48,7 @@ function routes(over) {
 
 test.describe('#4 per-panel source / as-of / freshness', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('GEX-by-strike discloses its terrain source + as-of (not a global LIVE)', async ({ page }) => {

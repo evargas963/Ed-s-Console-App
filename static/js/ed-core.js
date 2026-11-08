@@ -64,21 +64,18 @@
       { id: 'provenance', label: 'Provenance' }, { id: 'runtime', label: 'Runtime' } ], views: Object.create(null) }
   };
 
-  function _ls(k, d) { try { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; } catch (e) { return d; } }
-  function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function _ls(k, d) { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; }
+  function _lsSet(k, v) { localStorage.setItem(k, v); }
   // D: persist UI navigation state (client state, not market truth)
   // The strike-window scopes, served in the page (meta ed-scopes, from terrain_engine.SCOPES):
   // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
-  var SCOPES = (function () {
-    var m = document.querySelector('meta[name="ed-scopes"]');
-    try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
-  })();
+  var SCOPES = JSON.parse(document.querySelector('meta[name="ed-scopes"]').getAttribute('content'));
   var SCOPE_MODES = SCOPES.map(function (s) { return s.key; });
   function _lsScope() { var v = _ls('ed_scope', SCOPE_MODES[0]); return SCOPE_MODES.indexOf(v) !== -1 ? v : SCOPE_MODES[0]; }
   // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
   var _served = {};
   var state = {
-    ticker: (_ls(TICKER_KEY, '') || '').toUpperCase(),
+    ticker: _ls(TICKER_KEY, '').toUpperCase(),
     // the selected instrument's identity as the daemon's price socket serves it (ingestIdentity):
     // the key every price row and route uses ("$SPX") and its display name ("SPX"); null until served
     key: null, display: null,
@@ -518,8 +515,8 @@
       // Tab reaches it and Enter/Space activates it natively — CSS (:hover/:focus-within/
       // :focus) alone controls its visibility, no mouse required to discover or use it.
       row.innerHTML = '<span class="wl-sym s">' + (_served[sym] ? _served[sym].display : sym) + '</span>' +
-        '<span class="wl-px" data-wlpx="' + sym + '">—</span>' +
-        '<span class="wl-chg" data-wlchg="' + sym + '">—</span>' +
+        '<span class="wl-px" data-wlpx="' + sym + '">-</span>' +
+        '<span class="wl-chg" data-wlchg="' + sym + '">-</span>' +
         '<button class="st-x" data-rm="' + sym + '" aria-label="Remove ' + sym + ' from watchlist">×</button>';
       row.addEventListener('click', function (e) {
         if (e.target.getAttribute('data-rm')) return;
@@ -576,8 +573,8 @@
   }
   function paintNoTicker() {
     var px = document.getElementById('hPx'); if (px) px.textContent = 'CHOOSE A SYMBOL';
-    setFeed('stale', 'NO SYMBOL', '—');
-    paintIdentity('—');
+    setFeed('stale', 'NO SYMBOL', '-');
+    paintIdentity('-');
   }
 
   // ================= ticker store (ONE selected-symbol state across every surface) =================
@@ -594,7 +591,7 @@
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
     state.key = null; state.display = null;
-    try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
+    _lsSet(TICKER_KEY, state.ticker);
     paintIdentity(state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
@@ -678,7 +675,7 @@
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
-  function fmt(n, d) { return (n === null || n === undefined || isNaN(n)) ? '—' : Number(n).toFixed(d === undefined ? 2 : d); }
+  function fmt(n, d) { return (n === null || n === undefined || isNaN(n)) ? '-' : Number(n).toFixed(d === undefined ? 2 : d); }
   function setFeed(cls, label, age, ageTitle) {
     var dot = document.getElementById('hFeedDot'), f = document.getElementById('hFeed'), a = document.getElementById('hAge');
     if (dot) dot.className = 'dot' + (cls ? ' ' + cls : '');
@@ -688,7 +685,7 @@
       a.title = ageTitle == null ? '' : ageTitle;
     }
     var shown = age != null ? age : (a ? a.textContent : '');
-    var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (shown && shown !== '—' ? ' · ' + shown : '');
+    var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (shown && shown !== '-' ? ' · ' + shown : '');
     // Key Levels' Spot is this price: not live, it says so with the reason, the trade time and age
     var spot = document.getElementById('klSpot');
     if (spot) {
@@ -717,26 +714,26 @@
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
     var spot = document.getElementById('klSpot');
-    if (spot) spot.textContent = q.spot_disp == null ? '—' : q.spot_disp;
+    if (spot) spot.textContent = q.spot_disp == null ? '-' : q.spot_disp;
     if (ba) {
       ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
       ba.title = q.quoteTime ? ('quote ' + q.quoteTime) : '';
     }
     // Schwab's two change percents, each labelled: the regular session's and the last price's
-    // (extended hours included). Formatting only; absent reads "—".
+    // (extended hours included). Formatting only; absent reads "-".
     [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular], [chg, 'EXT ', q.chgPct]].forEach(function (c) {
       if (!c[0]) return;
       if (c[2] != null) {
         c[0].textContent = c[1] + (c[2] >= 0 ? '+' : '') + fmt(c[2]) + '%';
         c[0].className = 'chg mono ' + (c[2] >= 0 ? 'pos' : 'neg');
-      } else { c[0].textContent = c[1] + '—'; c[0].className = 'chg mono'; }
+      } else { c[0].textContent = c[1] + '-'; c[0].className = 'chg mono'; }
     });
     setFeed(q.feedCls, q.feedLabel, q.ageLabel, q.ageTitle);
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
     // the same quote_tick event (one producer, two surfaces).
   }
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
-  // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
+  // quote_tick handler (and markWlDegraded). A null field CLEARS to "-" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
   function setWlRow(sym, spot, chgPct, tradeTime) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
@@ -747,7 +744,7 @@
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
       if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
-      else { ce.textContent = '—'; ce.className = 'wl-chg'; }
+      else { ce.textContent = '-'; ce.className = 'wl-chg'; }
     }
   }
   // A silent price push marks the list degraded. The last prices stay.
@@ -774,18 +771,15 @@
   // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
   // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
-    var m = document.querySelector('meta[name="ed-live-ui-port"]');
-    var port = m ? String(m.getAttribute('content') || '') : '';
+    var port = document.querySelector('meta[name="ed-live-ui-port"]').getAttribute('content');
     if (!/^\d+$/.test(port)) return null;
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
   }
   // The market context the server always streams, served in the page (meta ed-market-context,
   // from live_push.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
   // subscribes to, so every page asks for it.
-  var MARKET_CONTEXT = (function () {
-    var m = document.querySelector('meta[name="ed-market-context"]');
-    try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
-  })();
+  var MARKET_CONTEXT = JSON.parse(
+    document.querySelector('meta[name="ed-market-context"]').getAttribute('content'));
   function priceSymbols() {
     var out = [];
     if (state.ticker) out.push(String(state.ticker).toUpperCase());
@@ -795,13 +789,13 @@
   }
   function subscribePrices() {
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
+    _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() }));
   }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
-  // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
+  // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '-'.
   function paintRecord(w) {
     var el = document.getElementById('hRecord'); if (!el) return;
-    el.textContent = w ? w.line : '—';
+    el.textContent = w ? w.line : '-';
     el.className = w ? 'v ' + w.cls : 'v';
   }
   function openPriceSocket() {
@@ -813,7 +807,7 @@
                      //  outage keeps reading OFFLINE, not WAITING)
     ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
     ws.onmessage = function (ev) {
-      var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      var msg = JSON.parse(ev.data);
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
       if (msg && msg.type === 'feed') {
         paintRecord(msg.feed && msg.feed.writer);
@@ -827,7 +821,7 @@
     ws.onclose = function () {
       if (_priceWs === ws) { _priceWs = null; _priceUp = false; schedulePriceReconnect(); }
     };
-    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+    ws.onerror = function () { ws.close(); };
   }
   function schedulePriceReconnect() {
     // 0.25 s, 0.5 s, 1 s, then every 2 s: the daemon restarting is seen and recovered at once
@@ -874,7 +868,7 @@
       setWlRow(wlSym, q.spot, q.chg_pct, q.trade_time_ct);
       markWlHealthy();
     });
-    try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
+    window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q }));
   }
   function pricePushHealthy() { return _priceUp && _priceFresh; }
   // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
@@ -889,7 +883,7 @@
   // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
   var _changes = null;
   function openChangeStream(tk) {
-    if (_changes) { try { _changes.close(); } catch (e) {} }
+    if (_changes) _changes.close();
     _changes = null;
     if (typeof EventSource === 'undefined') return;
     try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
@@ -911,7 +905,7 @@
     var el = document.getElementById('hSession'); if (!el) return;
     var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'],
               'Unknown': ['UNKNOWN', 'unknown'] };
-    var v = m[label] || [(label || '—'), ''];
+    var v = m[label] || [(label || '-'), ''];
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }
 
@@ -948,7 +942,7 @@
     if (localStorage.getItem(RAIL_KEY) === '0') app.classList.remove('rail-open');
     document.getElementById('railToggle').addEventListener('click', function () {
       app.classList.toggle('rail-open');
-      try { localStorage.setItem(RAIL_KEY, app.classList.contains('rail-open') ? '1' : '0'); } catch (e) {}
+      _lsSet(RAIL_KEY, app.classList.contains('rail-open') ? '1' : '0');
     });
     // theme control — window.EdTheme owns resolution/first-paint/OS changes; reflect + wire the cycle
     reflectThemeIcon();
@@ -995,7 +989,7 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { var g = document.querySelector('.gamma-grid'); if (g && g.classList.contains('maxed')) applyMaximize(false); }
     });
-    try { if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true); } catch (e) {}
+    if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true);
     window.addEventListener('resize', function () { emit('ed:resize', {}); });   // a view event too
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
