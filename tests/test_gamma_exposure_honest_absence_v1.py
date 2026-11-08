@@ -6,12 +6,14 @@ absent); a genuinely netted zero shows 0.
 
 from __future__ import annotations
 
+import copy
+import json
+
 import server
-import time_et
 from math_exposure_core import compute_exposures_by_strike, exposure_books
 from option_contract import read_chain
 from server import project_gamma_surface
-from terrain_engine import _per_strike_rows, compute_terrain
+from terrain_engine import _per_strike_rows
 from tests.real_chains import CRWD
 
 
@@ -55,8 +57,6 @@ SPOT = 100.0
 def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
     """Real CRWD chain (tests/real_chains.py), valued at its capture. Stand-in: open interest
     removed from every contract at one strike, as Schwab never omitted it in the captures."""
-    import copy
-
     chain = copy.deepcopy(CRWD.chain)
     ois = {}
     for c in chain:
@@ -80,21 +80,17 @@ def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
 
 
 def test_vanna_by_strike_route_omits_unreported_oi_strikes():
-    import copy
-    import json
-
     chain = copy.deepcopy(CRWD.chain)
     for c in chain:
         del c["openInterest"]
     tk = server.ticker_storage_key("ZZTESTNOOI")
-    snap = compute_terrain(tk, read_chain(chain), CRWD.spot, now=CRWD.now)
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {
-            "ticker": tk,
-            "spot": CRWD.spot,
-            "computed_ts_utc": time_et.now(),
-            "_vanna_rows": server._vanna_rows(snap),
-        }
+    server._publish_levels(
+        tk,
+        read_chain(chain),
+        CRWD.now.timestamp(),
+        chain_spot=(CRWD.spot, CRWD.now.timestamp()),
+        now=CRWD.now,
+    )
     try:
         body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
         assert body["rows"] == [], f"a chain with no reported OI yields no rows: {body['rows']}"
