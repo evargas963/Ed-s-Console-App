@@ -2,8 +2,8 @@
 
 Wired by `.claude/settings.json` / `.cursor/hooks.json` as
     python tools/hook_chain.py tools/<guard>.py [tools/<guard>.py ...]
-for PreToolUse (operator_law_guard + process_lock_guard). One process instead of one
-interpreter per guard (measured: ~300 ms vs 2.8-6 s).
+for PreToolUse (operator_law_guard + process_lock_guard + operator_yes_guard). One process
+instead of one interpreter per guard (measured: ~300 ms vs 2.8-6 s).
 
 What it does, entirely: read the payload; refuse one that is not a JSON object ("cannot judge"
 and "judged clean" must not share an exit code); import each guard and call its `main()` on
