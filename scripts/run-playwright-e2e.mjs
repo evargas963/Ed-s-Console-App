@@ -90,11 +90,13 @@ function main() {
   }
   // The Playwright run (and the uvicorn webServer output it relays) goes to a log file, never
   // to this process's terminal pipe — a reader that stops draining cannot block the run. Only
-  // the bounded tail is echoed. No shell (see PLAYWRIGHT_CLI above).
+  // the bounded tail is echoed, and on a failed run Playwright's failure reports with it, so a CI
+  // log says why a test failed. No shell (see PLAYWRIGHT_CLI above).
+  const logPath = path.join(logDir(), "test_e2e_last.log");
   let exitCode;
   try {
     exitCode = runWithFileSink("test:e2e", process.execPath, [PLAYWRIGHT_CLI, "test", ...forwardedArgs], {
-      logPath: path.join(logDir(), "test_e2e_last.log"),
+      logPath,
       cwd: root,
       env: e2eEnv,
       tailBytes: 700,
@@ -104,10 +106,28 @@ function main() {
     console.log(`[test:e2e] removed isolated runtime: ${e2eRuntime}`);
   }
   if (exitCode !== 0) {
+    printFailureReports(logPath);
     process.exit(exitCode);
   }
   // The run's exit code is its proof, and required CI executes this runner directly; no
   // success marker is written. `npm run test:all` runs E2E first.
+}
+
+// the most lines of failure reports a failed run echoes (the log keeps every line)
+const FAILURE_LINES = 400;
+
+// Playwright's numbered failure reports ("  1) tests/e2e/x.spec.js:24:3 › ..." through the
+// summary), from the run's log, without the console server's own lines it relays.
+export function printFailureReports(logPath) {
+  const lines = fs.readFileSync(logPath, "utf8").split(/\r?\n/);
+  const first = lines.findIndex((line) => /^\s+1\) /.test(line));
+  if (first === -1) {
+    console.log("[test:e2e] the log holds no numbered failure report; see the tail above");
+    return;
+  }
+  const report = lines.slice(first).filter((line) => !line.includes("[WebServer]"));
+  console.log(`[test:e2e] failure reports (${Math.min(report.length, FAILURE_LINES)} of ${report.length} lines):`);
+  for (const line of report.slice(0, FAILURE_LINES)) console.log(line);
 }
 
 // Run only when invoked directly (`node scripts/run-playwright-e2e.mjs ...`), never as a
