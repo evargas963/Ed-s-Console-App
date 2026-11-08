@@ -30,9 +30,9 @@ const path = require('path');
 // the price) and the `view` -- the centre, the coverage words and each measure's colour scale.
 // The page draws these; it picks and counts nothing.
 const WARMING = { state: 'warming', label: 'WARMING', title: 'no cell on screen has a contract yet' };
-function view(over) {
+function view(over = {}) {
   return Object.assign({ centre: 583, scope: 'auto', coverage: WARMING,
-    max_abs: { gex: 958600, dex: null, oi: null, volume: null }, missing_expiry: null }, over || {});
+    max_abs: { gex: 958600, dex: null, oi: null, volume: null }, missing_expiry: null }, over);
 }
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, front_expiry: '2026-09-11',
@@ -1350,7 +1350,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // dispatch) a real chance to land before asserting the count stayed at exactly one.
     await page.waitForTimeout(300);
     for (const path of ['gamma-surface', 'terrain-strikes', 'terrain', 'tape', 'chain']) {
-      expect(counts[path] || 0, `${path} must hydrate exactly once on cold start`).toBe(1);
+      expect(counts[path], `${path} must hydrate exactly once on cold start`).toBe(1);
     }
   });
 
@@ -1547,7 +1547,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     let seq = 0;
     await page.route('**/api/options/gamma-surface**', (route) => {
       const url = route.request().url();
-      const tk = decodeURIComponent((url.match(/[?&]ticker=([^&]+)/) || [])[1] || 'SPY');
+      const tk = new URL(url).searchParams.get('ticker');   // every surface request names its ticker
       const value = tk === 'SPY' ? 1000 : 9000;
       seq += 1;
       return route.fulfill({
