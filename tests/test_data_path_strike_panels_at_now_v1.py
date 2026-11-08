@@ -17,6 +17,7 @@ from pathlib import Path
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads(
@@ -40,7 +41,7 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
     try:
         lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
         lmp.record_feed_heartbeat(
-            {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+            daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
         )
         server._publish_levels(
             tk,

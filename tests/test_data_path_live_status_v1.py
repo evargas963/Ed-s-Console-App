@@ -28,6 +28,7 @@ import live_price_rows
 import server
 from option_contract import read_chain
 from stream_spine import verbatim_msg
+from tests.feed_live_helper import daemon_status
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -73,14 +74,14 @@ def _clean():
 
 def _beat(ts: float, *, socket_open: bool = True, options: list[str] | None = None) -> None:
     lmp.record_feed_heartbeat(
-        {
-            "ts": ts,
-            "schwab_socket_open": socket_open,
-            "held": {
+        daemon_status(
+            ts,
+            schwab_socket_open=socket_open,
+            held={
                 "LEVELONE_EQUITIES": [TK],
                 "LEVELONE_OPTIONS": [SYM] if options is None else options,
             },
-        }
+        )
     )
 
 
@@ -253,16 +254,16 @@ def _et(day: str, hh: int, mm: int = 0) -> float:
 def _all_held(now: float, *tickers: str) -> None:
     """The daemon's status at `now`: the Schwab socket open, every service holding these."""
     lmp.record_feed_heartbeat(
-        {
-            "ts": now,
-            "schwab_socket_open": True,
-            "held": {
+        daemon_status(
+            now,
+            schwab_socket_open=True,
+            held={
                 "LEVELONE_EQUITIES": list(tickers),
                 "NYSE_BOOK": list(tickers),
                 "LEVELONE_OPTIONS": [SYM],
                 "OPTIONS_BOOK": [SYM],
             },
-        }
+        )
     )
 
 

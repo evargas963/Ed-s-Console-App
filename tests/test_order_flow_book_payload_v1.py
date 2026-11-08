@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from app.options.order_flow import history
+from tests.feed_live_helper import daemon_status
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _E2E_FIXTURE = (
@@ -58,11 +59,11 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
     history.LEAN.forget("SPY")
     try:
         lmp.record_feed_heartbeat(
-            {
-                "ts": _CLOSED,
-                "schwab_socket_open": True,
-                "held": {"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"]},
-            }
+            daemon_status(
+                _CLOSED,
+                schwab_socket_open=True,
+                held={"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"]},
+            )
         )
         for m in sorted(
             quotes, key=lambda m: m["ts_recv"]
@@ -104,7 +105,7 @@ def _row_after(ticker: str, messages: list, at: float) -> dict:
 
     try:
         lmp.record_feed_heartbeat(
-            {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [ticker]}}
+            daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [ticker]})
         )
         for m in sorted(messages, key=lambda m: m["ts_recv"]):
             lmp.record_from_level_one_equity(ticker, m["item"], received_ts=m["ts_recv"])
