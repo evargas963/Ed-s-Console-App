@@ -52,14 +52,6 @@
     if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
     return String(Math.round(a));
   }
-  function age(sec) {
-    if (sec == null || isNaN(sec)) return '-';
-    sec = Math.max(0, Number(sec));
-    if (sec < 90) return Math.round(sec) + 's';
-    if (sec < 5400) return Math.round(sec / 60) + 'm';
-    if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
-    return Math.round(sec / 86400) + 'd';
-  }
   // a value computed from the live price, marked when that price is not live (served price_mark)
   function notLive(d) { return d && d.spot_not_live_text ? ' · ' + d.spot_not_live_text : ''; }
   // Schwab's book time stands beside the age words. A book that is not live keeps that
@@ -616,8 +608,8 @@
       : q ? pill('PRICE', q.feed_label, q.feed_live ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
-      : pill('BOOK', bookAgeLabel(m, m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? m.book_feed_label : 'AGE UNKNOWN'),
-          m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
+      : pill('BOOK', bookAgeLabel(m, m.ages.book_stale === false ? m.book_age_text : m.ages.book_stale ? m.book_feed_label : 'AGE UNKNOWN'),
+          m.ages.book_stale === false ? 'ok' : 'bad');
     // the session levels snapshot's served time and age
     var levelWord = L && L.snapshot_age_text != null ? L.snapshot_age_text : '-';
     var levelWhen = (L && L.snapshot_time_ct != null) ? L.snapshot_time_ct : null;

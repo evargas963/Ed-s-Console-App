@@ -97,9 +97,7 @@ test('an offline book keeps Schwab\'s quote time and book time', async ({ page }
   await openBook(page, OFFLINE_BOOK);
   await expect(page.locator('#obBody')).toContainText(OFFLINE_BOOK.top_of_book.bid.toFixed(2));
   await expect(page.locator('#obBody')).toContainText('OFFLINE');
-  // each time with its served age (whenAge: the age rounded to whole seconds)
-  await expect(page.locator('#obBody')).toContainText(
-    OFFLINE_BOOK.quote_time_ct + ' · ' + Math.round(OFFLINE_BOOK.ages.quote_age_sec) + 's');
-  await expect(page.locator('#obBody')).toContainText(
-    OFFLINE_BOOK.book_time_ct + ' · ' + Math.round(OFFLINE_BOOK.ages.book_age_sec) + 's');
+  // each time with its age, as served (server._when_age, the one age formatter)
+  await expect(page.locator('#obBody')).toContainText(OFFLINE_BOOK.quote_when_age_text);
+  await expect(page.locator('#obBody')).toContainText(OFFLINE_BOOK.book_when_age_text);
 });

@@ -2858,13 +2858,27 @@ def api_order_flow_microstructure(
     return JSONResponse(order_flow_microstructure(ticker, venue, time_et.now()))
 
 
+def _when_age(when: str | None, sec: float | None) -> str | None:
+    """A clock's time and its age as the screen shows them ("Fri 09/25 06:59 PM CT · 4s"),
+    either alone when the other is missing; None when both are."""
+    shown = [x for x in (when, None if sec is None else age_text(sec)) if x is not None]
+    return " · ".join(shown) or None
+
+
 def _stamp_book_times(payload: dict) -> None:
-    """Schwab's quote clock and book clock, as the screen shows them. Absent stays absent."""
+    """Schwab's quote clock and book clock, as the screen shows them, each with its age (the
+    engine's `ages`). Absent stays absent."""
     prov = payload.get("provenance")
     quote_ts = prov.get("exchange_quote_ts") if isinstance(prov, dict) else None
     book_ms = prov.get("book_time_ms") if isinstance(prov, dict) else None
     payload["quote_time_ct"] = ct_label(quote_ts) if quote_ts is not None else None
     payload["book_time_ct"] = ct_label(book_ms / 1000.0) if book_ms is not None else None
+    ages = payload["ages"]
+    payload["book_age_text"] = (
+        None if ages["book_age_sec"] is None else age_text(ages["book_age_sec"])
+    )
+    payload["book_when_age_text"] = _when_age(payload["book_time_ct"], ages["book_age_sec"])
+    payload["quote_when_age_text"] = _when_age(payload["quote_time_ct"], ages["quote_age_sec"])
 
 
 def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:

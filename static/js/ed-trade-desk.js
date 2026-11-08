@@ -71,15 +71,8 @@
     }
     var tob = d.top_of_book || {}, depth = d.depth || {}, cls = d.classification || {};
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
-    var ages = d.ages || {};
-    // Schwab's book time stands beside the seconds. The seconds stay when no book time was
-    // sent, and the time stays when the age is missing. Neither sent shows "-".
-    var bookSec = ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : null;
-    var bookWhen = d.book_time_ct != null ? d.book_time_ct : null;
-    var bookAge = '-';
-    if (bookWhen != null && bookSec != null) bookAge = bookWhen + ' · ' + bookSec;
-    else if (bookWhen != null) bookAge = bookWhen;
-    else if (bookSec != null) bookAge = bookSec;
+    // Schwab's book time and its age, as served; neither sent shows "-"
+    var bookAge = d.book_when_age_text == null ? '-' : d.book_when_age_text;
     var rows = [
       ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
@@ -95,7 +88,7 @@
     var side = zone == null || zone === 'BALANCED' ? null : /BID/.test(zone) ? 'BID' : 'ASK';
     // the served words: the top of book's while it is not live, else the book's (book_feed_label);
     // no book age served reads AGE UNKNOWN, never live
-    var bs = ages.book_stale;
+    var bs = d.ages.book_stale;
     var badge = d.top_outage ? d.top_feed_label : (bs == null ? 'AGE UNKNOWN' : d.book_feed_label);
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
       rows, badge, d.top_outage || bs !== false ? 'stale' : 'live');

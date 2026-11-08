@@ -36,9 +36,10 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
         },
         "NASDAQ_BOOK",
     )
+    now = time_et.now()
     try:
         lmp.record_feed_down()
-        body = server.order_flow_microstructure(_TK, "NASDAQ_BOOK", time_et.now())
+        body = server.order_flow_microstructure(_TK, "NASDAQ_BOOK", now)
     finally:
         lmp._by_ticker.pop(_TK, None)
         lmp._fields_by_ticker.pop(_TK, None)
@@ -48,3 +49,8 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
     assert body["top_outage"] is not None
     assert body["quote_time_ct"] == "Fri 09/25 06:59 PM CT"
     assert body["book_time_ct"] == "Fri 09/25 06:59 PM CT"
+    # each time with its age, by the one formatter (time_et.age_text): the page draws the text
+    age = time_et.age_text(now - _WHEN / 1000.0)
+    assert body["book_when_age_text"] == "Fri 09/25 06:59 PM CT · " + age
+    assert body["quote_when_age_text"] == "Fri 09/25 06:59 PM CT · " + age
+    assert body["book_age_text"] == age

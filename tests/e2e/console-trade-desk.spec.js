@@ -611,7 +611,8 @@ test.describe('Trade Desk renders served values', () => {
     await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, MICRO, {
-        book_time_ct: BOOK_TIME, top_outage: 'Schwab NASDAQ_BOOK feed down during RTH', top_feed_label: 'OFFLINE',
+        book_time_ct: BOOK_TIME, book_when_age_text: BOOK_TIME + ' · 1s',
+        top_outage: 'Schwab NASDAQ_BOOK feed down during RTH', top_feed_label: 'OFFLINE',
       })),
     }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');

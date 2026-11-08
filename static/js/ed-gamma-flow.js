@@ -82,7 +82,6 @@
     var ss = subState(plane);
     var tob = d.top_of_book || {};
     var depth = d.depth || {};
-    var ages = d.ages || {};
     var flow = d.flow || {};                        // the ONE flow block (never flattened)
     var bookCls = d.classification || {};           // engine's book/microstructure classification
     var flowCls = flow.classification || {};        // live_payload's flow classification
@@ -118,18 +117,11 @@
     var fh = plane.feed_health || {};   // served: the selected contract's three feeds
     function svc(x) { return x ? (x.state || '-') + (x.age_sec != null ? ' · ' + num(x.age_sec, 1) + 's' : '') : '-'; }
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
-    // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
+    // Book/quote ages are served as text from the engine's `ages` block (classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
-    function whenAge(when, sec) {
-      var age = sec != null ? (Math.round(sec) + 's') : null;
-      if (when != null && age != null) return when + ' · ' + age;
-      if (when != null) return when;
-      if (age != null) return age;
-      return '-';
-    }
     var fresh = [
-      ['Book age', whenAge(d.book_time_ct, ages.book_age_sec), 'ages.book_age_sec', bk('ages.book_age_sec')],
-      ['Quote age', whenAge(d.quote_time_ct, ages.quote_age_sec), 'ages.quote_age_sec', bk('ages.quote_age_sec')],
+      ['Book age', d.book_when_age_text == null ? '-' : d.book_when_age_text, 'ages.book_age_sec', bk('ages.book_age_sec')],
+      ['Quote age', d.quote_when_age_text == null ? '-' : d.quote_when_age_text, 'ages.quote_age_sec', bk('ages.quote_age_sec')],
       ['Replay', fh.replay || '-', 'streaming_plane.feed_health.replay', undefined],
       ['L1 upstream', svc(fh.l1), 'streaming_plane.feed_health.l1', undefined],
       ['Book upstream', svc(fh.book), 'streaming_plane.feed_health.book', undefined],

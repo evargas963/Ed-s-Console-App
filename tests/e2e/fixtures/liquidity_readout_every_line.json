@@ -4,12 +4,14 @@
   "book_stale": true,
   "quote_age_sec": 867355.7660000324
  },
+ "book_age_text": "3h",
  "book_feed_label": "OFFLINE",
  "book_slope": {
   "ask": 8500.00000000773,
   "bid": 28799.99999996071
  },
  "book_time_ct": "Mon 11/02 11:49 AM CT",
+ "book_when_age_text": "Mon 11/02 11:49 AM CT \u00b7 3h",
  "classification": {
   "ages.book_age_sec": "DERIVED",
   "ages.book_stale": "DERIVED",
@@ -150,6 +152,7 @@
   "top_of_book_bid_leaf": "streaming.BID_PRICE"
  },
  "quote_time_ct": "Fri 10/23 02:59 PM CT",
+ "quote_when_age_text": "Fri 10/23 02:59 PM CT \u00b7 10d",
  "readout": {
   "auction": "CLOSE",
   "auction_text": "Closing auction window \u2014 auction imbalance is a different number, not shown here.",
