@@ -496,10 +496,6 @@
       "item": "ACTIVE_PROGRAM.md:133 M-16 and :263 name _iv_ok as an open defect; no _iv_ok exists in any .py file"
     },
     {
-      "category": "contradiction: doc vs code",
-      "item": "ACTIVE_PROGRAM.md:93 and DATA_FLOW.md:795-796 NO_PRICE_LEVELS_REASON; it appears in no .py file"
-    },
-    {
       "category": "contradiction: value disagrees",
       "item": "ACTIVE_PROGRAM.md:104 launch.running at launch.py:121-133; it is launch.py:104-119"
     },
