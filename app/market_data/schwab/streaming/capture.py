@@ -768,10 +768,11 @@ class Daemon:
 
     def status(self, now: float) -> dict:
         """What the console and browsers are told every second (live_push / live_ui), at `now`."""
-        last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {
             "ts": now,
-            "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
+            # open while a stream exists and Schwab sent a frame within DEAD_SEC
+            "schwab_socket_open": self.stream is not None
+            and now - self.stream.last_frame_ts < DEAD_SEC,
             "schwab_down": self.schwab_down,
             "watchlist": list(self.watchlist),
             "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
@@ -1133,8 +1134,8 @@ async def record_feed_status(
                         "ts": now,
                         "service": svc,
                         "socket_open": st["schwab_socket_open"],
-                        "schwab_last_frame_ts": last_frame or None,
-                        "held": len(daemon.held.get(svc) or ()),
+                        "schwab_last_frame_ts": last_frame,
+                        "held": len(daemon.held[svc]),
                         "last_data_ts": daemon.health.last(svc),
                     },
                 )
