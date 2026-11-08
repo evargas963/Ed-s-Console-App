@@ -30,6 +30,7 @@ from pathlib import Path
 import db
 import time_et
 from tools import check_end_to_end as e2e
+from tools import check_integrity
 
 log = logging.getLogger("census")
 REPO = Path.cwd()
@@ -1027,10 +1028,9 @@ lines_matching(
             "stand-ins in tests",
         ),
         (
-            r"pytest\.skip|mark\.skip|skipif|xfail|test\.skip\(|test\.fixme\(",
-            "skipped or expected-fail tests",
+            check_integrity.MARKERS.pattern,
+            "skip or deferred-work markers (check_integrity's own definition)",
         ),
-        (r"\b(TODO|FIXME|XXX|HACK)\b", "deferred-work markers"),
         (r"time\.sleep\(|waitForTimeout\(", "sleeps in tests (timing that can flake)"),
     ],
     S,
