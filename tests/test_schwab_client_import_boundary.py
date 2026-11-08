@@ -42,8 +42,8 @@ def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
     code = (
         "import config, schwab_client\n"
         "cfg = config.build_config()\n"
-        "assert cfg.api_key == '' and cfg.app_secret == '', cfg\n"
-        "assert config.schwab_live_blocked_for() is True\n"
+        "assert cfg.api_key is None and cfg.app_secret is None, cfg\n"
+        "assert config.schwab_live_blocked_for(cfg.api_key, cfg.app_secret) is True\n"
         "state = schwab_client.build_client_from_token("
         f"{str(tmp_path / 'token.json')!r}, cfg.api_key, cfg.app_secret)\n"
         "assert state.ok is False and state.client is None "
