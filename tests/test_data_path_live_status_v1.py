@@ -226,8 +226,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
         chain_spot=(row["spot"], row["trade_ts"]),
         now=at,
     )
-    with server._terrain_cache_lock:
-        gex = [cell["gex"] for cell in server._terrain_cache[TK]["_gamma_surface"]["cells"]]
+    gex = [cell["gex"] for cell in server.published_levels(TK).gamma_surface["cells"]]
     kept = ofls.get_stream_greeks(SYM)
     _beat(_AT, socket_open=False, options=[])
     server.restamp_open_surfaces(_AT)
@@ -238,8 +237,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
         for col, pair in zip(cell["stream"], cell["contracts"])
         if col and (pair.get("call") == SYM or pair.get("put") == SYM)
     ]
-    with server._terrain_cache_lock:
-        after = [cell["gex"] for cell in server._terrain_cache[TK]["_gamma_surface"]["cells"]]
+    after = [cell["gex"] for cell in server.published_levels(TK).gamma_surface["cells"]]
     assert kept and ofls.get_stream_greeks(SYM) == kept
     assert after == gex
     assert cells and all(col["state"] == "stale" for col in cells)

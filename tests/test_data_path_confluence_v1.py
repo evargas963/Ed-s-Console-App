@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import statistics
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -30,7 +31,7 @@ from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
 from stream_spine import verbatim_msg
-from terrain_engine import compute_terrain
+from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.capture_store import store_capture
 from tests.real_chains import (
     CRWD,
@@ -86,22 +87,43 @@ def _forget(tk: str) -> None:
     lmp.record_feed_down()
 
 
-def _published(held) -> dict:
-    """The levels the producer publishes for `held`'s chain at its own price and capture."""
-    return compute_terrain(held.ticker, read_chain(held.chain), held.spot, now=held.now).to_dict()
+def _published_0dte() -> server.PublishedLevels:
+    """SPY's captured 0DTE chain (SPY_0DTE) published by the levels producer as the stored
+    capture it is, at Schwab's price in it."""
+    held = SPY_0DTE
+    server._publish_levels(
+        "SPY",
+        captures=[
+            {
+                "contracts": read_chain(held.chain),
+                "ts_utc": held.now.timestamp(),
+                "spot": held.spot,
+                "et_date": held.now.date().isoformat(),
+                "basis": CAPTURE_BASIS,
+                "spot_ts": None,
+                "spot_from_chain": False,
+            }
+        ],
+        now=held.now,
+    )
+    return server.published_levels("SPY")
 
 
-def _store(tk: str, cache: dict) -> None:
-    """The publication ranks once. The request then reads that ranking."""
-    cache["_matrix_by_expiry"] = server._ranked_matrices(cache)
-    server._terrain_cache[tk] = cache
+def _hold_with(levels: server.PublishedLevels, **snap_fields) -> None:
+    """`levels` held with its snapshot's `snap_fields` in their place, ranked once on them as
+    the publication ranks (_ranked_matrices). The request then reads that ranking."""
+    snap = replace(levels.snap, **snap_fields)
+    with server._terrain_cache_lock:
+        server._terrain_cache["SPY"] = replace(
+            levels, snap=snap, matrix_by_expiry=server._ranked_matrices(snap)
+        )
 
 
-def _book_magnitudes(live: dict, expiry: str, spot: float) -> dict:
+def _book_magnitudes(live: TerrainSnapshot, expiry: str, spot: float) -> dict:
     """Each strike's factor magnitudes of one published expiry, as the matrix builds them."""
-    book = next(b for (e, _d), (b, _x) in live["_books"].items() if e == expiry)
-    charm = live["_charm_by_expiry"].get(expiry) or {}
-    iv = live["_iv_by_expiry"].get(expiry) or {}
+    book = next(b for (e, _d), (b, _x) in live.books.items() if e == expiry)
+    charm = live.charm_by_expiry[expiry]
+    iv = live.iv_by_expiry[expiry]
     mags = {s: magnitudes(b, charm.get(s), iv.get(s), spot) for s, b in book.items()}
     return {s: {k: v for k, v in m.items() if not k.startswith("_")} for s, m in mags.items()}
 
@@ -126,10 +148,10 @@ def _nflx_far_book() -> tuple[dict, dict]:
             ],
             now=NFLX.now,
         )
-        live = server._terrain_cache["NFLX"]
+        live = server.published_levels("NFLX").snap
     finally:
         _forget("NFLX")
-    book = next(b for (e, _d), (b, _x) in live["_books"].items() if e == "2027-12-17")
+    book = next(b for (e, _d), (b, _x) in live.books.items() if e == "2027-12-17")
     return book, _book_magnitudes(live, "2027-12-17", NFLX.spot)
 
 
@@ -202,7 +224,7 @@ def test_an_am_settled_expiry_past_the_year_is_scored():
             ],
             now=at,
         )
-        live = server._terrain_cache[tk]
+        live = server.published_levels(tk).snap
     finally:
         _forget(tk)
     mags = _book_magnitudes(live, "2027-12-17", fx["spot"])
@@ -235,7 +257,7 @@ def test_a_missing_factor_is_not_called_flat():
     )
 
 
-def _publish_close(tk: str = "SPY") -> dict:
+def _publish_close(tk: str = "SPY") -> server.PublishedLevels:
     """SPY's 2026-10-22 close capture, published as the stored capture it is, at Schwab's price."""
     server._publish_levels(
         tk,
@@ -252,8 +274,7 @@ def _publish_close(tk: str = "SPY") -> dict:
         ],
         now=SPY_CLOSE.now,
     )
-    with server._terrain_cache_lock:
-        return server._terrain_cache[tk]
+    return server.published_levels(tk)
 
 
 def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
@@ -263,7 +284,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     cannot pass 72."""
     try:
         live = _publish_close()
-        book = live["_books"][("2026-10-22", 0.0)][0]
+        book = live.snap.books[("2026-10-22", 0.0)][0]
         body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -303,14 +324,14 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     assert strike not in compute_charm_by_strike(legs, SPY_CLOSE.spot, now=inside)
     try:
         live = _publish_close()
-        bucket = live["_books"][("2026-10-22", 0.0)][0][strike]
+        bucket = live.snap.books[("2026-10-22", 0.0)][0][strike]
         body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         server._terrain_cache.pop("SPY", None)
     assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] == 0.0
     walls = [level for level in body["levels"] if level["abbrev"] == "CW"]
     assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
-        (live["call_wall"], price_text(live["call_wall"]), "options")
+        (live.snap.call_wall, price_text(live.snap.call_wall), "options")
     ]
 
 
@@ -526,19 +547,9 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
     )
     at_capture = compute_charm_by_strike(chain, held.spot, now=held.now, product=INDEX_OPTIONS)
     strike = min(book, key=lambda s: abs(s - held.spot))
-    _store(
-        "SPY",
-        _published(held)
-        | {
-            "computed_ts_utc": held.now.timestamp(),
-            "_valued_ts_utc": held.now.timestamp(),
-            "expiry_dte": {expiry: 0},
-            "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": chain,
-            "_charm_by_expiry": {expiry: earlier},
-        },
-    )
     try:
+        levels = _published_0dte()
+        _hold_with(levels, charm_by_expiry=levels.snap.charm_by_expiry | {expiry: earlier})
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -555,24 +566,11 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
     held = SPY_0DTE
     chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
-    book, _diag = compute_exposures_by_strike(
-        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
-    )
     puts = iv_by_strike(read_chain(SPY_CLOSE.chain))
     whole = iv_by_strike(chain)
-    _store(
-        "SPY",
-        _published(held)
-        | {
-            "computed_ts_utc": held.now.timestamp(),
-            "_valued_ts_utc": held.now.timestamp(),
-            "expiry_dte": {expiry: 0},
-            "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": chain,
-            "_iv_by_expiry": {expiry: puts},
-        },
-    )
     try:
+        levels = _published_0dte()
+        _hold_with(levels, iv_by_expiry=levels.snap.iv_by_expiry | {expiry: puts})
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -597,15 +595,12 @@ def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
         chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
     )
     try:
-        other = _publish_close()["_matrix_by_expiry"]["2026-10-22"]
-        server._terrain_cache["SPY"] = _published(held) | {
-            "computed_ts_utc": held.now.timestamp(),
-            "_valued_ts_utc": held.now.timestamp(),
-            "expiry_dte": {expiry: 0},
-            "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": chain,
-            "_matrix_by_expiry": {expiry: other},
-        }
+        other = _publish_close().matrix_by_expiry["2026-10-22"]
+        levels = _published_0dte()
+        with server._terrain_cache_lock:
+            server._terrain_cache["SPY"] = replace(
+                levels, matrix_by_expiry=levels.matrix_by_expiry | {expiry: other}
+            )
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -1088,9 +1083,9 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
             ],
             now=after,
         )
-        book = server.terrain_cache_get(tk, after.timestamp())
-        overlaid = book["_gamma_surface"]["stream_overlay_contracts"]
-        kept = {ct.symbol: ct.volume for ct in book["_priced_chain"] if ct.symbol in traded}
+        book = server.published_levels(tk)
+        overlaid = book.gamma_surface["stream_overlay_contracts"]
+        kept = {ct.symbol: ct.volume for ct in book.priced_chain if ct.symbol in traded}
     finally:
         ofls.clear_all_live_state()
         _forget(tk)
@@ -1208,8 +1203,9 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), after.timestamp(), chain_spot=spot, now=after
         )
-        book = server.terrain_cache_get(tk, after.timestamp())
-        kept = next(ct for ct in book["_priced_chain"] if ct.symbol == target["symbol"])
+        kept = next(
+            ct for ct in server.published_levels(tk).priced_chain if ct.symbol == target["symbol"]
+        )
     finally:
         _forget(tk)
     assert kept.volume == later[target["symbol"]] != target["totalVolume"]
