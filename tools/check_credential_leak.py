@@ -90,10 +90,8 @@ def _git(root: Path, *args: str, given: bytes | None = None) -> bytes:
     """Return git's output, RAISING when git failed: an unread file would scan clean."""
     p = subprocess.run(["git", *args], cwd=root, input=given, capture_output=True)
     if p.returncode != 0:
-        raise DiffUnreadable(
-            f"git {' '.join(args)} exited {p.returncode}: "
-            f"{(p.stderr.decode('utf-8', errors='replace').strip().splitlines() or [''])[0]}"
-        )
+        why = p.stderr.decode("utf-8", errors="replace").strip().partition("\n")[0]
+        raise DiffUnreadable(f"git {' '.join(args)} exited {p.returncode}: {why}")
     return p.stdout
 
 

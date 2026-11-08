@@ -118,10 +118,8 @@ def current_bytes(path: str, staged: bool, base: str | None = None) -> bytes | N
         proc = _git("show", f":{path}")
         return proc.stdout if proc.returncode == 0 else None
     p = REPO / path
-    try:
-        return p.read_bytes()
-    except OSError:
-        return None
+    # a file the change deletes has no bytes; any other read error is the check's to report
+    return p.read_bytes() if p.exists() else None
 
 
 def normalize(data: bytes) -> bytes:
