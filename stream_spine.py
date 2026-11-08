@@ -263,7 +263,7 @@ def bar_msg(
     open=None,
     high=None,
     low=None,
-    close=None,  # noqa: A002
+    close=None,
     volume=None,
     src: str,
     ts_recv: float | None = None,

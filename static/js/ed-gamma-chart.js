@@ -12,7 +12,7 @@
   var usd = window.EdGamma.formatUsd;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function ctTime(sec) { try { return new Date(sec * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function isChart() {
     var s = st();
     return s.workspace === 'options' && ['gamma', 'dex', 'oi'].indexOf(s.subview) !== -1 && s.view === 'chart';
@@ -29,7 +29,7 @@
   function strikesUrl(tk) {   // the same window GEX by Strike reads unpanned: one shared read
     return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(null);
   }
-  function ticker() { return st().ticker || ''; }
+  function ticker() { return st().ticker; }
 
   var _mode = 'profile';          // 'profile' (bars) | 'dotmap' (dots)
   var _chart = null;
@@ -50,9 +50,7 @@
     host.innerHTML = '<div class="gchart-head"></div><div class="gchart-tb"></div><div class="gchart-plot"></div><div class="gchart-empty" hidden></div>';
     _chart = window.EdTvChart.create(host.querySelector('.gchart-plot'), { nearestN: 99,
       onProfileClick: function (row) {
-        if (!window.EdShell) return;
-        var exp = window.EdShell.getExpiry ? window.EdShell.getExpiry() : null;   // the workspace's expiry filter carries through
-        window.EdShell.setStrike(row.price, exp || null);
+        window.EdShell.setStrike(row.price, window.EdShell.getExpiry());   // the workspace's expiry filter carries through
       } });
     window.EdTvChart.toolbar(host.querySelector('.gchart-tb'), _chart, { tf: _tf, styleKey: 'ed.gchart.style',
       onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.gchart.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
@@ -94,10 +92,13 @@
     var c = ensureChart(); if (!c) return;
     var host = document.getElementById('chartBody');
     var P = c.palette(), barsD = _last.bars, sd = _last.strikes, t = _last.terrain;
-    var bars = (barsD && barsD.bars) || [];
     var prof = served(sd);
+    // each answer as served; a request that failed (null) draws nothing and is named, never drawn as empty
+    var failed = [[barsD, 'bars'], [sd, 'per-strike ' + prof.name], [t, 'terrain']]
+      .filter(function (a) { return !a[0]; }).map(function (a) { return a[1]; });
+    var bars = barsD ? barsD.bars : [];
     var win = prof.rows.filter(function (r) { return r[1] != null; });   // the served window; unknown: nothing drawn
-    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(bars, barsD ? barsD.tf : _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       prof.scale, _mode === 'dotmap' ? 'dots' : 'bars');
@@ -113,14 +114,14 @@
     var tradeTime = (_liveQuote && spot != null) ? _liveQuote.trade_time_ct : null;
     c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null, tradeTime);
     var empty = host.querySelector('.gchart-empty');
-    empty.hidden = !!(bars.length || win.length);
-    empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
-      : 'the bars and per-strike ' + prof.name + ' requests failed');
+    empty.hidden = !failed.length && !!(bars.length || win.length);
+    empty.textContent = failed.length ? 'the ' + failed.join(', ') + ' request failed for ' + ticker()
+      : empty.hidden ? '' : 'no bars / per-strike ' + prof.name + ' for this symbol';
     paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot, tradeTime);
   }
   function paintHead(el, bars, win, prof, sd, spot, tradeTime) {
     var n = prof.name;
-    var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
+    var ab = window.EdShell.asOfBadge;
     var lastT = bars.length ? bars[bars.length - 1].t : null;
     var asof = (lastT ? '<span class="asof">price ' + tfLabel() + ' · ' + ctTime(lastT) + ' CT</span>' : '') +
       (sd ? ab({ label: n + ' terrain', state: sd.levels_state, when: sd.levels_time_ct,
@@ -133,7 +134,7 @@
           '<span><span class="sw" style="background:var(--ed-neg)"></span>−' + n + '</span>'
         : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + '</span>') +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
-      '<span>spot ' + (spot == null ? '—' : spot.toFixed(2)) +
+      '<span>spot ' + (spot == null ? '-' : spot.toFixed(2)) +
       (tradeTime ? (' · last trade ' + esc(tradeTime)) : '') + '</span>' +
       (top ? '<span>largest |' + n + '| ' + esc(top[0]) + ' · ' + esc(shown) + '</span>' : '') + '</div>';
   }

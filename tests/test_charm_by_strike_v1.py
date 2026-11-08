@@ -72,7 +72,7 @@ def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:
     chain, spot = _load_real_chain()
     cbs = compute_charm_by_strike(chain, spot, now=NOW)
     assert cbs, "real chain must produce per-strike charm"
-    for _k, b in cbs.items():
+    for b in cbs.values():
         assert math.isfinite(b["call_charm"])
         assert math.isfinite(b["put_charm"])
         assert abs(b["net_charm"] - (b["call_charm"] - b["put_charm"])) < 1e-6
