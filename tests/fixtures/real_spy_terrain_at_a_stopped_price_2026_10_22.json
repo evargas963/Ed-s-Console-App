@@ -127,7 +127,7 @@
  },
  "schema_version": 3,
  "schwab_token_age_days": null,
- "schwab_token_note": "token file unreadable \u2014 collection may be dead",
+ "schwab_token_note": "token file unreadable (FileNotFoundError) \u2014 collection may be dead",
  "schwab_token_urgency": "unknown",
  "spot": 773.1269,
  "spot_age_sec": 4859.43825507164,

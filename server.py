@@ -662,12 +662,12 @@ def schwab_token_countdown(token: tuple[float | None, str | None], now: float) -
 
 def _schwab_token_creation_ts() -> tuple[float | None, str | None]:
     """creation_timestamp from schwab_token.json, or None (never a fake age) with why the file
-    gives none, which the screen's note shows."""
+    gives none, by its error's type, which the screen's note shows (its message names a path)."""
     try:
         raw = json.loads(Path(TOKEN_PATH).read_text(encoding="utf-8"))
         return float(raw["creation_timestamp"]), None
     except (OSError, ValueError, KeyError, TypeError) as e:
-        return None, f"token file unreadable ({type(e).__name__}: {e})"
+        return None, f"token file unreadable ({type(e).__name__})"
 
 
 def terrain_staleness(
