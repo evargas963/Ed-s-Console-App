@@ -18,8 +18,8 @@ command as bash or, for the PowerShell tool, as PowerShell:
     command;
   * text in quotes is one word, never a statement; a heredoc body or a PowerShell here-string is
     data unless a shell reads it;
-  * cd, pushd, chdir, Set-Location and sl set the `cwd` of the statements after them (a group or
-    nested command keeps its own).
+  * cd, pushd, chdir, Set-Location, Push-Location and sl are statements like any other, and set
+    the `cwd` of the statements after them (a group or nested command keeps its own).
 
 The lexer is written by hand, not on `shlex`: shlex (posix, punctuation_chars) glues a line break
 into a word, splits `$(` into `$` and `(`, gives `"$(x)"` (runs x) and `'$(x)'` (text) the same
@@ -614,7 +614,7 @@ _PY_SHELL_CALLS = frozenset(
     }
 )
 PYTHON = re.compile(r"python[\d.]*w?|py")
-_CD = frozenset({"cd", "pushd", "chdir", "set-location", "sl"})
+_CD = frozenset({"cd", "pushd", "chdir", "set-location", "push-location", "sl"})
 _SH = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
 PWSH = frozenset({"pwsh", "powershell"})
 #: PowerShell's command that runs the text it is given
@@ -758,13 +758,13 @@ def _command(
     vals, raws = vals[i:], raws[i:]
     if not (vals or env or redirects or heredoc is not None):
         return []
-    if vals and program_name(vals[0]) in _CD:
-        target = next((v for v in vals[1:] if v.lower() != "/d" and not v.startswith("-")), "")
-        ctx["cwd"] = _join_dir(ctx["cwd"], target) if target else ctx["cwd"]
-        return []
     st = Statement(
         tuple(vals), tuple(raws), redirects, heredoc, tuple(env), ctx["cwd"], upstream, ctx["ps"]
     )
+    if vals and program_name(vals[0]) in _CD:
+        target = next((v for v in vals[1:] if v.lower() != "/d" and not v.startswith("-")), "")
+        ctx["cwd"] = _join_dir(ctx["cwd"], target) if target else ctx["cwd"]
+        return [st]
     out: list[Statement] = []
     for script, ps in _scripts(st):
         out += _nested(script, ctx, ps)
