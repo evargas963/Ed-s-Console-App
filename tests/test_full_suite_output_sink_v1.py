@@ -240,3 +240,47 @@ def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path)
     assert not (ROOT / "PWNED_BACKTICK").exists(), (
         "a shell executed a backtick substitution inside a forwarded argument"
     )
+
+
+def test_a_failed_browser_run_echoes_why_each_test_failed(tmp_path):
+    """A failed Playwright run's terminal output carries Playwright's numbered failure reports,
+    not only a 700-byte tail, so a CI log says why a test failed (2026-11-07: two CI failures,
+    on #768 and #775, showed only the test's name). The relayed server lines stay in the log
+    alone. The lines are a real failing run's, as Playwright and the console printed them."""
+    log = tmp_path / "test_e2e_last.log"
+    log.write_text(
+        "\n".join(
+            [
+                "Running 208 tests using 8 workers",
+                '[WebServer] INFO:     127.0.0.1:54003 - "GET /static/js/ed-core.js HTTP/1.1"'
+                " 200 OK",
+                "  1) tests\\e2e\\console-gamma-chain.spec.js:235:3 › D — Gamma Chain subview ›"
+                " switching the expiry dropdown re-fetches and renders that expiry's own distinct"
+                " contracts ",
+                "    Error: locator.selectOption: Test timeout of 120000ms exceeded.",
+                '[WebServer] INFO:     127.0.0.1:51145 - "GET /api/changes?ticker=QQQ HTTP/1.1"'
+                " 200 OK",
+                "  10 failed",
+                "  199 passed (7.7m)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    script = (
+        "import("
+        + json.dumps((ROOT / "scripts" / "run-playwright-e2e.mjs").as_uri())
+        + ").then(m => m.printFailureReports("
+        + json.dumps(str(log))
+        + "));"
+    )
+    out = subprocess.run(
+        [NODE, "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout
+    assert "1) tests\\e2e\\console-gamma-chain.spec.js:235:3" in out
+    assert "Error: locator.selectOption: Test timeout of 120000ms exceeded." in out
+    assert "10 failed" in out and "199 passed" in out
+    assert "[WebServer]" not in out and "Running 208 tests" not in out
