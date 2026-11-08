@@ -285,9 +285,9 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
     without positive gamma on both days); grew / shrank: the two strikes that gained / lost the
     most GEX; busiest: the two strikes with the most volume and where they sit against the walls;
     volume_total: the scope's session volume (side_total)."""
-    prior_gex = {r[0]: r[1] for r in prior or []}
+    prior_gex = {r[0]: r[1] for r in prior}
     rows, pos_t, pos_p = [], [], []
-    for k, gx, _vol in today or []:
+    for k, gx, _vol in today:
         gy = prior_gex.get(k)
         both = gx is not None and gy is not None
         rows.append([k, gx, gy, (gx - gy) if both else None])
@@ -314,7 +314,7 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
     changes = sorted((r for r in rows if r[3] is not None), key=lambda r: r[3], reverse=True)
     grew = [r[0] for r in changes if r[3] > 0][:2]
     shrank = [r[0] for r in changes if r[3] < 0][-2:]
-    vols = [(r[0], r[2]) for r in today or [] if r[2]]
+    vols = [(r[0], r[2]) for r in today if r[2]]
     busiest = sorted(k for k, _v in sorted(vols, key=lambda kv: kv[1], reverse=True)[:2])
     where = None
     if busiest:
@@ -342,7 +342,7 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
 def nearest_strike(strikes, spot) -> float | None:
     """The listed strike nearest `spot` (the lower one on a tie): the row every panel marks as
     spot. None without a spot or a strike."""
-    ks = sorted(float(k) for k in strikes or [])
+    ks = sorted(float(k) for k in strikes)
     if spot is None or not ks:
         return None
     return min(ks, key=lambda k: abs(k - float(spot)))
@@ -359,7 +359,7 @@ def strike_window(strikes, centre, scope: str, shift: int = 0) -> tuple[int, int
     on the listed strike nearest `centre` (the operator's panned strike, else the price) moved
     `shift` rows (a drag), held inside the list; every strike for "all"; the middle of the list
     when there is no centre (no price). (0, -1, None) for no strikes."""
-    ks = [float(k) for k in strikes or []]
+    ks = [float(k) for k in strikes]
     if not ks:
         return 0, -1, None
     n = None if scope == "all" else SCOPE_ROWS[scope]
@@ -536,7 +536,7 @@ def _per_strike_measure_rows(exposures: dict) -> dict:
     dex: list[list] = []
     oi: list[list] = []
     dollarized = bool(exposures) and exposures_have_dollar_gex(exposures)
-    for k, b in (exposures or {}).items():
+    for k, b in exposures.items():
         sk = float_finite_or_none(k)
         if sk is None or not isinstance(b, dict):
             continue
@@ -869,8 +869,6 @@ def compute_terrain(
     is the fail-closed backstop: a genuinely narrow chain (e.g. wide
     capture unavailable) still yields STAND_ASIDE, never a trusted-looking verdict.
     """
-    if not ticker:
-        return _unavailable(ticker or "", spot, "no ticker")
     if not contracts:
         return _unavailable(ticker, spot, "no option chain")
     if spot is None or spot <= 0:
@@ -1013,7 +1011,7 @@ def compute_terrain(
         contracts_used=diag.contracts_used,
         strikes_used=len(exposures),
         dollarized=exposures_have_dollar_gex(exposures),
-        flip_diag=dict(flip_diag or {}),
+        flip_diag=dict(flip_diag),
         profile=profile,
         # the LIVE per-strike map, computed from THIS chain; session volume is carried alongside.
         per_strike=per_strike_view(books, exposures),

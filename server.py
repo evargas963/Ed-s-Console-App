@@ -2703,7 +2703,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                 "price": c.get("level_value"),
                 "dir": c.get("direction"),
                 "marker": False,
-                "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
+                "title": f"Crossed {_CROSS_WORD[c['direction']]} {names}",
                 "detail": f"{price_text(c['level_value'])} · spot "
                 f"{price_text(c['spot_at_cross'])} at the cross",
                 "src": "level_crosses",
@@ -2738,16 +2738,16 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                 "dir": None,
                 "warn": True,
                 "title": "Gamma levels are stale",
-                "detail": t.get("levels_stale_reason") or "",
+                "detail": t["levels_stale_reason"],
                 "src": "/api/terrain",
             }
         )
     # the book's size walls, stamped with the book's own time (BOOK_TIME); a book that is not live
     # is a past observation and says so
     micro = order_flow_microstructure(tk, venue, now.timestamp())
-    book_ms = (micro.get("provenance") or {}).get("book_time_ms")
-    live_book = (micro.get("ages") or {}).get("book_stale") is False
-    for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
+    book_ms = micro["provenance"]["book_time_ms"]
+    live_book = micro["ages"]["book_stale"] is False
+    for i, w in enumerate(micro["wall_candidates"][:3]):
         items.append(
             {
                 "key": f"wall{i}",
@@ -2757,17 +2757,15 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                 "warn": not live_book,
                 "title": f"{venue} size wall · {w['side']} {price_text(w['price'])}"
                 + ("" if live_book else " (not live)"),
-                "detail": f"{w.get('volume')} shown · "
-                + (
-                    f"{w['median_mult']:.1f}× the median level"
-                    if w.get("median_mult") is not None
-                    else "size outlier"
-                )
+                "detail": f"{w['volume']} shown · {w['median_mult']:.1f}× the median level"
                 + ("" if live_book else " · a past book, not the current one"),
                 "src": "/api/order-flow/microstructure",
             }
         )
-    items.sort(key=lambda it: (it["ts"] is None, -(it["ts"] if it["ts"] is not None else 0.0)))
+    # newest first; an event with no time of its own after every timed one
+    items = sorted((it for it in items if it["ts"] is not None), key=lambda it: -it["ts"]) + [
+        it for it in items if it["ts"] is None
+    ]
     return {
         "ticker": tk,
         "tf": tf,
@@ -4040,13 +4038,11 @@ def _liquidity_option_levels(tk: str, now: float) -> tuple[list[tuple[float, str
 
 def _liquidity_zone_tradeable_fields(zp: dict, spot: float | None) -> None:
     """Add anchor, distance_to_spot, spot_inside_zone, options_level_count (mutates zp)."""
-    tags = zp.get("source_tags") or []
     lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
-    mid = zp.get("zone_mid")
-    if mid is None:
-        mid = (lo + hi) / 2.0
-    zp["anchor"] = float(mid)
-    n_opt = sum(1 for t in tags if t.startswith(("GAMMA_", "DELTA_", "OI_", "EM_", "SYNTH_")))
+    zp["anchor"] = float(zp["zone_mid"])  # the zone's own mid, built with it
+    n_opt = sum(
+        1 for t in zp["source_tags"] if t.startswith(("GAMMA_", "DELTA_", "OI_", "EM_", "SYNTH_"))
+    )
     zp["options_level_count"] = n_opt
     if spot is None:
         zp["distance_to_spot"] = None
@@ -4118,7 +4114,7 @@ def liquidity_snapshot(ticker: str, now: datetime):
                 "source_tags": z.source_tags,
                 "confluence_score": z.confluence_score,
                 "merged_levels_count": merged,
-                "interpretation_notes": z.interpretation_notes or "",
+                "interpretation_notes": z.interpretation_notes,
                 "first_snapshot": snapshot_val,
                 "last_snapshot": snapshot_val,
                 "persistence": 1,
