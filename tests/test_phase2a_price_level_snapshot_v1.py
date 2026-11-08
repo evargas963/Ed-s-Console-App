@@ -252,7 +252,9 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
     finally:
         srv._bars.pop("ZZP2B", None)
         srv._daily.pop("ZZP2B", None)
-    used = {i["tag"]: i["value"] for i in liq["raw_levels_used"]}
+    copies = {"raw_levels", "raw_levels_used", "as_of_cutoff_et", "level_semantic_scope"}
+    assert not copies & set(liq), "the snapshot's values are served once, by /api/levels"
+    used = {s["label"]: s["value"] for z in liq["zones"] for s in z["source_levels"]}
     assert used and set(used) <= set(PHASE2A_LEVEL_IDS), used
     for tag, value in used.items():
         assert levels[tag] == value, tag
