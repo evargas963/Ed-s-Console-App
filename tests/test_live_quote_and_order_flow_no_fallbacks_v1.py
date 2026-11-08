@@ -53,5 +53,5 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
 def test_mark_is_the_streamed_mark_only():
     from app.options.order_flow.engine import _resolve_quote_mark
 
-    assert _resolve_quote_mark({"top": {"mark": 10.05, "bid_size": 5}}) == (10.05, "streaming.MARK")
-    assert _resolve_quote_mark({"quote": {"mark": 10.05}}) == (None, None)
+    assert _resolve_quote_mark({"top": {"mark": 10.05, "bid_size": 5}}) == 10.05
+    assert _resolve_quote_mark({"quote": {"mark": 10.05}}) is None

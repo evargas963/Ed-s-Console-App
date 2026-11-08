@@ -14,7 +14,7 @@ import time_et
 from app.options.order_flow import state as of_state
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.history import TAPE
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
 
 _SYM = "ZZOPT  261016C00100000"
 _WHEN = 1790380799830  # Fri 09/25 06:59 PM CT
@@ -33,7 +33,7 @@ def test_the_flow_panel_shows_the_side_schwab_sent_in_the_contracts_first_messag
         for sym, msgs in _SIDES.items():
             ofs._ingest_pushed(
                 f"optquote.{sym}",
-                options_quote_msg(
+                verbatim_msg(
                     symbol=sym, content=msgs[1]["item"], src="schwab", ts_recv=msgs[1]["ts_recv"]
                 ),
             )
@@ -41,9 +41,7 @@ def test_the_flow_panel_shows_the_side_schwab_sent_in_the_contracts_first_messag
             for m in msgs:
                 ofs._ingest_pushed(
                     f"optquote.{sym}",
-                    options_quote_msg(
-                        symbol=sym, content=m["item"], src="schwab", ts_recv=m["ts_recv"]
-                    ),
+                    verbatim_msg(symbol=sym, content=m["item"], src="schwab", ts_recv=m["ts_recv"]),
                 )
             sides[sym] = (before, server.options_microstructure(sym, time_et.now())["put_call"])
     finally:

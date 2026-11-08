@@ -238,7 +238,7 @@ def book_msg(
     }
 
 
-def options_quote_msg(
+def verbatim_msg(
     *,
     symbol: str,
     content: dict,
@@ -246,7 +246,7 @@ def options_quote_msg(
     ts_recv: float | None = None,
     schwab_ts: int | None = None,
 ) -> dict:
-    """optquote.* (LEVELONE_OPTIONS), Schwab's item verbatim."""
+    """optquote.* (LEVELONE_OPTIONS) and news.* (NEWS_HEADLINE), Schwab's item verbatim."""
     return {
         "ts_recv": _now(ts_recv),
         "schwab_ts": schwab_ts,
@@ -283,24 +283,6 @@ def bar_msg(
         "volume": volume,
         "src": src,
         "native": native,
-    }
-
-
-def news_msg(
-    *,
-    symbol: str,
-    content: dict,
-    src: str,
-    ts_recv: float | None = None,
-    schwab_ts: int | None = None,
-) -> dict:
-    """news.* (NEWS_HEADLINE), Schwab's item verbatim."""
-    return {
-        "ts_recv": _now(ts_recv),
-        "schwab_ts": schwab_ts,
-        "symbol": symbol,
-        "content": content,
-        "src": src,
     }
 
 
