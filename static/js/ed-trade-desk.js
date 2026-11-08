@@ -17,9 +17,8 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
-  function st() { return window.EdShell.getState(); }
-  function isRightNow() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
-  function ticker() { return st().ticker; }
+  function isRightNow() { var s = window.EdShell.getState(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
+  function ticker() { return window.EdShell.getState().ticker; }
   function host() { return document.getElementById('tdBody'); }
   function stillRightNow(tk) { return isRightNow() && ticker() === tk; }
 
@@ -314,7 +313,7 @@
     var h = host();
     if (!h || !stillRightNow(tk)) return;
     return window.EdL1SseGuards.show(Promise.all([
-      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
+      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue, signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
@@ -346,8 +345,8 @@
   // queueing behind it: the ticker, the venue, the migration chips, the Gamma scope and the pan
   function _loadKey() {
     var tk = ticker(), pan = migPan(tk);
-    return tk + '|venue=' + st().bookVenue + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) +
-      '|scope=' + st().scope + '|pan=' + pan.centre + ',' + pan.shift;
+    return tk + '|venue=' + window.EdShell.getState().bookVenue + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) +
+      '|scope=' + window.EdShell.getState().scope + '|pan=' + pan.centre + ',' + pan.shift;
   }
   function load() {
     if (!isRightNow()) return;

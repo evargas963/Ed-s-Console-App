@@ -15,9 +15,8 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '-' : String(Math.round(Number(n))); }
-  function st() { return window.EdShell.getState(); }
-  function isBook() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'book'; }
-  function ticker() { return st().ticker; }
+  function isBook() { var s = window.EdShell.getState(); return s.workspace === 'order-flow' && s.subview === 'book'; }
+  function ticker() { return window.EdShell.getState().ticker; }
   function host() { return document.getElementById('obBody'); }
   function stillBook(tk) { return isBook() && ticker() === tk; }
 
@@ -25,7 +24,7 @@
     var h = host();
     if (!h || !stillBook(tk)) return;
     var G = window.EdL1SseGuards;
-    return G.show(G.readJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
+    return G.show(G.readJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue, signal),
       '/api/order-flow/microstructure',
       function (d) { if (stillBook(tk)) render(h, tk, d); },
       function (words) { if (stillBook(tk)) window.EdShell.placeholder(h, words); });
@@ -74,7 +73,7 @@
     if (!d || d.status === 'no_book') {
       h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
         '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
-        '<div class="placeholder"><div class="sm">No ' + esc(st().bookVenue) + ' for ' + esc(tk) +
+        '<div class="placeholder"><div class="sm">No ' + esc(window.EdShell.getState().bookVenue) + ' for ' + esc(tk) +
         ' — Schwab has sent no book from this venue for this symbol.</div></div>';
       return;
     }
