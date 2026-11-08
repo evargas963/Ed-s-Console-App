@@ -416,7 +416,7 @@
     var heat = new HeatPrimitive(function () { return chart; }); timeline.attachPrimitive(heat);
 
     var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], unlabelled: [], nearestN: opts.nearestN || 6,
-      pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerList: [], markerMeta: {}, onMarkerClick: null };
+      pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerList: [], markersShown: [], markerSel: null, markerMeta: {}, onMarkerClick: null };
 
     // ---- time <-> logical (bars are sorted, time = bar start in epoch seconds) ----
     function barIndexAt(t) {
@@ -817,7 +817,7 @@
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
           heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length,
           levels: S.priceLines.map(function (l) { return l.options().title; }),
-          markers: S.markersShown || [], markerSelected: S.markerSel || null, callouts: callouts.centers,
+          markers: S.markersShown, markerSelected: S.markerSel, callouts: callouts.centers,
           priceTop: candles.coordinateToPrice(0), priceBottom: candles.coordinateToPrice(Math.max(1, plot.clientHeight - 30)) };
       },
       // where a price's profile row is drawn, in page coordinates (tests click it as a user would):
