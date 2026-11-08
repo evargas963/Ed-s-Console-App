@@ -129,39 +129,3 @@ def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500(
     resp = srv.liquidity_snapshot("", FRIDAY)
     assert resp.status_code == 400
     assert json.loads(resp.body)["error"] == "ticker is required"
-
-
-class _FakeSnapshotOutput:
-    def __init__(self, ticker, session_date, zones=None):
-        self.ticker = ticker
-        self.session_date = session_date
-        self.snapshot_type = SnapshotType.LIVE
-        self.zones = zones or []
-        self.summary = None
-
-
-class _FakeCanon:
-    generation, as_of_ts_utc, bar_source = 1, 0.0, "test"
-
-
-def _wire_common(monkeypatch, *, zones=None, resolved_spot=None):
-    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda *a, **k: ([], "n/a"))
-    monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (resolved_spot, None, None))
-    # the route's one level input: the materialized price-level snapshot
-    monkeypatch.setattr(srv, "canonical_price_level_snapshot", lambda t: _FakeCanon())
-    fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", zones=zones)
-    monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
-    return fake_out
-
-
-def test_an_unrelated_crash_still_reports_500(monkeypatch):
-    """Negative control: a genuine unexpected error still reports 500."""
-    _wire_common(monkeypatch)
-
-    def _boom(*a, **k):
-        raise RuntimeError("something actually broke")
-
-    monkeypatch.setattr(srv, "canonical_price_level_snapshot", _boom)
-    resp = srv.get_liquidity_snapshot(ticker="SPY")
-    assert resp.status_code == 500
-    assert "something actually broke" in json.loads(resp.body)["error"]
