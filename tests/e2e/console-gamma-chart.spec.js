@@ -45,6 +45,7 @@ const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
 const CALL_SYM = 'SPY   260918C00102000';
 const PUT_SYM = 'SPY   260918P00102000';
 const CHAIN = { spot: 100, spot_strike: 102, expiry: '2026-09-18', status: 'ok', scope: { kind: 'complete_single_expiry' },
+  net_gex_by_strike: [], adjusted_deliverable_symbols: [],
   contracts: [
     { symbol: CALL_SYM, putCall: 'CALL', strikePrice: 102, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12 },
     { symbol: PUT_SYM, putCall: 'PUT', strikePrice: 102, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12 },
