@@ -33,6 +33,7 @@ from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import CaptureWriter
 from calibration import complete_chain_capture as cch
 from stream_spine import HealthRegistry, MessageBus
+from tests.feed_live_helper import daemon_status
 from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab
 from time_et import ET
 
@@ -380,7 +381,7 @@ def _verdict(daemon, computed: float | None, at: datetime) -> tuple:
     try:
         verdict = server.terrain_staleness(computed, "SPY", now=now)
     finally:
-        lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
+        lmp.record_feed_heartbeat(daemon_status(0.0, schwab_socket_open=True))
         lmp.record_feed_down()
     return verdict["levels_state"], verdict["levels_stale_reason"]
 

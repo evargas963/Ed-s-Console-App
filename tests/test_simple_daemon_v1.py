@@ -64,7 +64,9 @@ def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_a
 
 def test_news_and_every_subscription_answer_are_written(tmp_path):
     w = ss.CaptureWriter(tmp_path / "s.db")
-    w.insert("news.SPY", ss.news_msg(symbol="SPY", content={"4": "headline"}, src="schwab_news"))
+    w.insert(
+        "news.SPY", ss.verbatim_msg(symbol="SPY", content={"4": "headline"}, src="schwab_news")
+    )
     w.insert(
         "sub.NYSE_BOOK",
         ss.subscription_msg(

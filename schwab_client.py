@@ -65,6 +65,10 @@ def _resolve_token_path(token_path: str) -> str:
 TOKEN_REPLACE_ATTEMPTS = 5
 #: the longest a writer of the token file waits for another to finish, in seconds
 TOKEN_LOCK_WAIT_SEC = 10
+
+#: how long the sign-in waits for the browser to return to the local callback (schwab-py's
+#: callback_timeout)
+OAUTH_CALLBACK_TIMEOUT_SEC = 900.0
 #: the session's one connection, kept through a pause (httpx closes an idle one after 5 s): only
 #: Schwab or the network ends it, and then the next request opens another (docs/DATA_FLOW.md §1)
 ONE_CONNECTION = httpx.Limits(max_connections=1, max_keepalive_connections=1, keepalive_expiry=None)
@@ -447,14 +451,6 @@ def build_client_from_token(
         raise ConnectionError(e) from e
 
 
-def _parse_callback_port(callback_url: str) -> tuple[str, int]:
-    """Parse host and port from callback URL (e.g. https://127.0.0.1:8182)."""
-    parsed = urlparse(callback_url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 8182
-    return host, port
-
-
 def _wait_for_callback_port(host: str, port: int, timeout: float = 5.0) -> bool:
     """Poll until the callback port is accepting connections. Returns True if ready."""
     deadline = time_et.elapsed() + timeout
@@ -487,16 +483,19 @@ def run_login_flow(
                 token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
                 enforce_enums=False,
                 interactive=False,
-                callback_timeout=float(
-                    os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")
-                ),  # caps-ok: OAuth/config timeout only
+                callback_timeout=OAUTH_CALLBACK_TIMEOUT_SEC,
             )
         except BaseException as e:
             log.warning("OAuth login flow failed", exc_info=True)
             exc_holder.append(e)
 
+    # the callback URL as configured (e.g. https://127.0.0.1:8182): one that names no host or no
+    # port is refused, never a host or port filled in
+    parsed = urlparse(callback_url)
+    host, port = parsed.hostname, parsed.port
+    if host is None or port is None:
+        return False, f"the callback URL names no host or no port: {callback_url!r}"
     try:
-        host, port = _parse_callback_port(callback_url)
         t = threading.Thread(target=_run, daemon=False)
         t.start()
 
@@ -566,7 +565,7 @@ def complete_oauth_from_redirect_url(
     Finish OAuth when the browser already redirected but the local callback server
     did not persist the token (common: self-signed cert warning on 127.0.0.1:8182).
     """
-    url = (redirect_url or "").strip()
+    url = redirect_url.strip()
     if not url:
         return False, "Redirect URL is empty."
     parsed = urlparse(url)

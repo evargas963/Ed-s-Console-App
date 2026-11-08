@@ -26,6 +26,7 @@ import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from tests.capture_store import store_capture
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET
 
@@ -61,7 +62,7 @@ def _publish(tk: str, chain, delivered: datetime) -> None:
     quote = _QUOTES[tk]
     lmp.record_from_level_one_equity(tk, quote["native"], received_ts=quote["ts_recv"])
     lmp.record_feed_heartbeat(
-        {"ts": quote["ts_recv"], "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        daemon_status(quote["ts_recv"], schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
     )
     row = live_price_rows.price_row(tk, quote["ts_recv"])
     server._publish_levels(
@@ -160,7 +161,7 @@ def test_a_late_heartbeat_does_not_shorten_the_round_a_chain_is_judged_by(
     delivered = _et(13, 0)
     published("TSLA", TSLA, delivered)
     lmp.record_feed_heartbeat(
-        {"ts": delivered.timestamp(), "schwab_socket_open": True, "chain_round_sec": 245.0}
+        daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=245.0)
     )
     body = server.terrain_answer("TSLA", delivered + timedelta(seconds=after))
     assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)
@@ -185,11 +186,11 @@ def test_the_flow_panel_judges_a_contract_by_the_option_market_of_the_chain_that
     published(tk, chain, _et(13, 0))
     sym = chain.chain[0]["symbol"]
     lmp.record_feed_heartbeat(
-        {
-            "ts": at.timestamp(),
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": [sym]},
-        }
+        daemon_status(
+            at.timestamp(),
+            schwab_socket_open=True,
+            held={"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": [sym]},
+        )
     )
     body = server.options_microstructure(sym, at.timestamp())
     assert (body["top_feed_label"], body["top_outage"]) == (state, why)
@@ -288,11 +289,11 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
     published("TSLA", TSLA, _et(16, 1))
     later = _et(16, 5)
     lmp.record_feed_heartbeat(
-        {
-            "ts": later.timestamp(),
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_EQUITIES": ["TSLA"]},
-        }
+        daemon_status(
+            later.timestamp(),
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": ["TSLA"]},
+        )
     )
     assert server.terrain_answer("TSLA", later)["levels_state"] == "CLOSE"
     assert _told("TSLA", later) == {push_changes.LEVELS}

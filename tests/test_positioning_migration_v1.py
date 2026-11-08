@@ -14,6 +14,7 @@ import time_et
 from option_contract import read_chain
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
 from tests.capture_store import store_capture
+from tests.feed_live_helper import daemon_status
 
 _FX = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_day_chain.json").read_text(
@@ -121,11 +122,9 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
         # capture: the prior day is recomputed against the new day
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
         lmp.record_feed_heartbeat(
-            {
-                "ts": time_et.now(),
-                "schwab_socket_open": True,
-                "held": {"LEVELONE_EQUITIES": ["PCG"]},
-            }
+            daemon_status(
+                time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["PCG"]}
+            )
         )
         lmp.record_from_level_one_equity(
             "PCG",

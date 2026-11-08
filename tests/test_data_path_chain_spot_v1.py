@@ -22,6 +22,7 @@ import server
 from app.options.order_flow import streaming as ofs
 from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads(
@@ -60,7 +61,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
     try:
         lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
         lmp.record_feed_heartbeat(
-            {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
+            daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
         )
         sweep = cch.ChainSweep(
             tmp_path / "ed_console.db",

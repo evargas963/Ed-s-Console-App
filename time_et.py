@@ -107,8 +107,6 @@ def option_close_product(ticker: str) -> str:
 
     An index Schwab names with "$", and SPY, QQQ and IWM, stop at the index close.
     Every other ticker stops at the equity-option close."""
-    if not isinstance(ticker, str):
-        return EQUITY_OPTIONS
     t = ticker.strip().upper()
     if t.startswith("$") or t in _INDEX_CLOSE_UNDERLYINGS:
         return INDEX_OPTIONS

@@ -199,7 +199,7 @@ def _tick(sym: str, ts: float) -> None:
             )
 
 
-def _service_feed(symbol: str | None, service: str, now: float) -> dict:
+def _service_feed(symbol: str, service: str, now: float) -> dict:
     """One Schwab option service's feed for contract `symbol` at `now`, as the page shows it: its
     state by the one live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and how
     long ago the daemon last received anything on that service (its own report)."""

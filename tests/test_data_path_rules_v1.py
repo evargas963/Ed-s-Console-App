@@ -32,6 +32,7 @@ from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import (
     daemon_bars,
+    daemon_status,
     hold_schwab_daily,
     price_history,
     stream_daemon_bars,
@@ -305,15 +306,15 @@ def _served_at(now: float, feed_live: bool) -> dict:
     push_option_top(_CONTRACT, _EVENTS[0]["content"])
     if feed_live:
         lmp.record_feed_heartbeat(
-            {
-                "ts": now,
-                "schwab_socket_open": True,
-                "held": {
+            daemon_status(
+                now,
+                schwab_socket_open=True,
+                held={
                     "LEVELONE_EQUITIES": ["SPY"],
                     "NYSE_BOOK": ["SPY"],
                     "LEVELONE_OPTIONS": [_CONTRACT],
                 },
-            }
+            )
         )
     else:
         lmp.record_feed_down()
@@ -396,11 +397,11 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
 
     old = time_et.now() - 120
     lmp.record_feed_heartbeat(
-        {
-            "ts": old,
-            "schwab_socket_open": True,  # arrives now
-            "held": {"LEVELONE_EQUITIES": ["SPY"]},
-        }
+        daemon_status(
+            old,  # arrives now
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": ["SPY"]},
+        )
     )
     try:
         assert lmp.daemon_status(time_et.now()) is None, (
@@ -788,7 +789,7 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     for live in (True, False):
         if live:
             lmp.record_feed_heartbeat(
-                {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
+                daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
             )
         lmp.record_from_level_one_equity(
             "SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)}, received_ts=at
@@ -1052,7 +1053,7 @@ def test_d6_no_live_route_opens_a_database():
 
     import server
     from db import get_db
-    from stream_spine import book_msg, options_quote_msg
+    from stream_spine import book_msg, verbatim_msg
 
     books = json.loads((FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
@@ -1071,7 +1072,7 @@ def test_d6_no_live_route_opens_a_database():
         )
     writer.insert(
         f"optquote.{_CONTRACT}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=_CONTRACT,
             content=_EVENTS[0]["content"],
             src="schwab_options_l1",
