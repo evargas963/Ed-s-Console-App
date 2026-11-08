@@ -3,7 +3,7 @@ audit, 2026-09-13): both wrap ALREADY-canonical, already-tested faucets --
 math_exposure_core.compute_exposures_by_strike's own call_vanna/put_vanna (RC-211's exact
 BS-vanna faucet) and math_levels.compute_charm_by_strike (the same function /api/forces's
 charm_below/charm_above already sum) -- read off the snapshot _publish_levels last
-published (the _vanna_rows/_charm_rows _publish_levels writes into the cached payload),
+published (the vanna_rows/charm_rows of the PublishedLevels record it holds),
 zero extra vendor calls or pricing. These tests
 prove the wiring, not the math (bs_vanna/bs_charm/compute_charm_by_strike are proven
 elsewhere: test_charm_by_strike_v1.py, test_charm_sign_finite_difference.py).
@@ -21,7 +21,6 @@ import live_market_plane as lmp
 import server
 import time_et
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.feed_live_helper import mark_feed_live
 from tests.real_chains import CRWD
 
@@ -43,15 +42,9 @@ def _clear():
 
 
 def _put_live_chain():
-    snap = compute_terrain(TK, _CONTRACTS, _SPOT, now=CRWD.now)
-    with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {
-            "ticker": TK,
-            "spot": snap.spot,
-            "computed_ts_utc": time_et.now(),
-            "_vanna_rows": server._vanna_rows(snap),
-            "_charm_rows": server._charm_rows(snap),
-        }
+    """CRWD's chain published by the one producer at its capture."""
+    at = CRWD.now.timestamp()
+    server._publish_levels(TK, _CONTRACTS, at, chain_spot=(_SPOT, at), now=CRWD.now)
 
 
 def setup_function(_fn):
