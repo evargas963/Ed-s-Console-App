@@ -4036,13 +4036,11 @@ def _liquidity_option_levels(tk: str, now: float) -> tuple[list[tuple[float, str
 
 def _liquidity_zone_tradeable_fields(zp: dict, spot: float | None) -> None:
     """Add anchor, distance_to_spot, spot_inside_zone, options_level_count (mutates zp)."""
-    tags = zp.get("source_tags") or []
     lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
-    mid = zp.get("zone_mid")
-    if mid is None:
-        mid = (lo + hi) / 2.0
-    zp["anchor"] = float(mid)
-    n_opt = sum(1 for t in tags if t.startswith(("GAMMA_", "DELTA_", "OI_", "EM_", "SYNTH_")))
+    zp["anchor"] = float(zp["zone_mid"])  # the zone's own mid, built with it
+    n_opt = sum(
+        1 for t in zp["source_tags"] if t.startswith(("GAMMA_", "DELTA_", "OI_", "EM_", "SYNTH_"))
+    )
     zp["options_level_count"] = n_opt
     if spot is None:
         zp["distance_to_spot"] = None
@@ -4114,7 +4112,7 @@ def liquidity_snapshot(ticker: str, now: datetime):
                 "source_tags": z.source_tags,
                 "confluence_score": z.confluence_score,
                 "merged_levels_count": merged,
-                "interpretation_notes": z.interpretation_notes or "",
+                "interpretation_notes": z.interpretation_notes,
                 "first_snapshot": snapshot_val,
                 "last_snapshot": snapshot_val,
                 "persistence": 1,
