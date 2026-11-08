@@ -395,11 +395,21 @@ SUPPRESSIONS = [
     (r"#\s*pragma:\s*no cover", "coverage exclusions"),
     (r"eslint-disable|@ts-ignore|stylelint-disable", "JS/CSS lint suppressions"),
     (r"#\s*pyright:\s*ignore", "pyright ignores"),
-    (
-        r"[a-z]+(?:-[a-z]+)*-ok\b",
-        "exemption markers of hand-built checks (an opt-out the rules forbid)",
-    ),
 ]
+# an exemption marker is an opt-out wherever a hand-built check reads it: comments, docstrings,
+# and the tool that honors it
+lines_matching(
+    [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML", "CSS") and "vendor" not in f],
+    [
+        (
+            r"(?:#|//)\s*[a-z]+(?:-[a-z]+)*-ok\b",
+            "exemption markers of hand-built checks (an opt-out the rules forbid)",
+        )
+    ],
+    S,
+    "locks",
+    "regex",
+)
 for f in [f for f in ALL_PY if "vendor" not in f]:
     for tok in tokenize.generate_tokens(io.StringIO(TEXT[f]).readline):
         if tok.type == tokenize.COMMENT:
