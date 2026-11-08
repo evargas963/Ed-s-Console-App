@@ -65,8 +65,7 @@ def reauth():
     load_dotenv_file()
     cfg = build_config()
     if schwab_live_blocked_for(cfg.api_key, cfg.app_secret):
-        print("No Schwab credentials: set SCHWAB_API_KEY and SCHWAB_APP_SECRET in .env")
-        sys.exit(1)
+        sys.exit("No Schwab credentials: set SCHWAB_API_KEY and SCHWAB_APP_SECRET in .env")
     token_path = os.path.abspath(cfg.token_path)
 
     print("=" * 60)
