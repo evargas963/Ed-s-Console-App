@@ -216,11 +216,12 @@ then the rule binds with no machine check.
   it and a token refresh caught in the freeze was refused for 25 minutes: "shouldn't this apply
   repo wide? ... why just the daemon? why not repo wide?"; "always end to end repairs").
   Enforced by: the builder's audit (rule 14), no machine check.
-- The operator's three rules (2026-11-03): this is a simple wiring job; we use Schwab's data as
-  Schwab sends it; this is a financial app, and a question is answered by what a bank would do.
-  They apply to all code in the repository and to every answer, proposal and change, each
-  answering: which Schwab field or registered derived value, the simplest direct wire, and what a
-  bank would do. Enforced by: `tools/wiring_rules.py`,
+- The operator's five rules (2026-11-03, two added since): this is a simple wiring job; we use
+  Schwab's data as Schwab sends it; this is a financial app, and a question is answered by what a
+  bank would do; everything is repo wide; every repair is end to end. They apply to all code in
+  the repository and to every answer, proposal and change, each answering: which Schwab field or
+  registered derived value, the simplest direct wire, what a bank would do, whether it is repo
+  wide, and whether every link is repaired at its source. Enforced by: `tools/wiring_rules.py`,
   which puts them before the agent on every message in Claude Code
   (`tests/test_wiring_rules_v1.py`); that they were applied — the builder's audit (rule 14), no
   machine check.
