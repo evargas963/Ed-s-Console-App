@@ -56,10 +56,7 @@ def _default_runtime_root() -> Path:
     if not dotgit.is_file():
         return SOURCE_ROOT
     why = f"cannot resolve canonical runtime root from linked worktree {SOURCE_ROOT}"
-    try:
-        marker = dotgit.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise RuntimeError(f"{why}: {exc}") from exc
+    marker = dotgit.read_text(encoding="utf-8").strip()  # an OSError names the file itself
     if not marker.lower().startswith("gitdir:"):
         raise RuntimeError(f"{why}: invalid linked-worktree marker: {dotgit}")
     gitdir = Path(marker.split(":", 1)[1].strip())
@@ -68,11 +65,7 @@ def _default_runtime_root() -> Path:
     commondir_file = gitdir / "commondir"
     if not commondir_file.is_file():
         raise RuntimeError(f"{why}: linked-worktree commondir missing: {commondir_file}")
-    try:
-        common = commondir_file.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise RuntimeError(f"{why}: {exc}") from exc
-    common_git = (gitdir / common).resolve()
+    common_git = (gitdir / commondir_file.read_text(encoding="utf-8").strip()).resolve()
     if common_git.name != ".git":
         raise RuntimeError(
             f"{why}: linked-worktree commondir is not a .git directory: {common_git}"
