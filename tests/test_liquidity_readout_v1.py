@@ -169,15 +169,21 @@ def _merged(books: dict) -> dict:
     out = {}
     for side, pk, sk in (("BIDS", "BID_PRICE", "BID_VOLUME"), ("ASKS", "ASK_PRICE", "ASK_VOLUME")):
         newest: dict = {}
-        for venue in ("NYSE_BOOK", "NASDAQ_BOOK"):
-            for lv in books.get(venue, {}).get(side, []):
+        # NYSE_BOOK first: an equal quote time keeps its copy
+        sent = sorted(books.items(), key=lambda vb: vb[0] != "NYSE_BOOK")
+        for venue, book in sent:
+            if side not in book:  # Schwab leaves an empty side out
+                continue
+            for lv in book[side]:
                 for x in lv[side]:
                     code = x["EXCHANGE"].upper()
                     if code not in newest or x["SEQUENCE"] > newest[code][0]:
                         newest[code] = (x["SEQUENCE"], venue)
         at: dict = {}
-        for venue, book in books.items():
-            for lv in book.get(side, []):
+        for venue, book in sent:
+            if side not in book:
+                continue
+            for lv in book[side]:
                 for x in lv[side]:
                     if newest[x["EXCHANGE"].upper()][1] == venue:
                         at[lv[pk]] = at.get(lv[pk], 0) + x[sk]
@@ -362,8 +368,9 @@ def test_any_code_in_both_books_counts_once():
         x["EXCHANGE"]
         for _ts, _svc, c in tsla
         for side in ("BIDS", "ASKS")
-        for lv in c.get(side, [])
-        for x in lv.get(side, [])
+        if side in c  # Schwab leaves an empty side out
+        for lv in c[side]
+        for x in lv[side]
     }
     assert {"arcx", "edgx", "batx", "NSDQ"} <= lower
     newer = tsla[0][2]

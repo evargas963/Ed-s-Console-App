@@ -20,7 +20,7 @@ const ctx = {
     querySelectorAll: () => [],
     // the page's served metas: the streaming-state words (none needed for the cell text)
     querySelector: () => ({ getAttribute: () => '{"cell": {}, "column": {}}' }),
-    addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
+    addEventListener: (ev, fn) => { if (!(ev in listeners)) listeners[ev] = []; listeners[ev].push(fn); },
   },
   getComputedStyle: () => ({ getPropertyValue: () => '' }),
   fetch: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(surface) }),
@@ -38,7 +38,7 @@ ctx.EdShell = {
 vm.createContext(ctx);
 vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });
 vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'), ctx, { filename: 'ed-gamma.js' });
-(listeners['ed:view'] || []).forEach((fn) => fn({ detail: {} }));
+listeners['ed:view'].forEach((fn) => fn({ detail: {} }));   // ed-gamma.js listens for the view
 await new Promise((r) => setTimeout(r, 50));
 const cell = /<td class="hcell[^"]*"[^>]*data-strike="([^"]*)" data-expiry="([^"]*)"[^>]*>(.*?)<\/td>/g;
 let m;
