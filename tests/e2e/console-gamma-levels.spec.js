@@ -85,7 +85,7 @@ test.describe('D — Gamma Levels view', () => {
     await expect(lv.locator('.lv-row').first()).toContainText('Prior Day High');
     await expect(lv.locator('.lv-row').first().locator('.lv-px').nth(0)).toHaveText('101.50');
     await expect(lv.locator('.lv-row', { hasText: 'VWAP' }).locator('.lv-px').nth(0)).toHaveText('100.02');
-    await expect(lv.locator('.lv-row', { hasText: 'VWAP' }).locator('.lv-px').nth(1)).toHaveText('—');
+    await expect(lv.locator('.lv-row', { hasText: 'VWAP' }).locator('.lv-px').nth(1)).toHaveText('-');
     // no proximity marking (operator 2026-09-29); absence disclosed honestly
     await expect(lv.locator('.lv-row.near-spot')).toHaveCount(0);
     await expect(lv.locator('.lv-foot')).toContainText('VWAP curve');

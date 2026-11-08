@@ -64,7 +64,7 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   const hi = rows[0].strike;
   const lo = rows[rows.length - 1].strike;
   await expect(page.locator('#cmBody')).toContainText(rows[0].score_text);
-  await expect(page.locator('#cmBody')).toContainText('—');
+  await expect(page.locator('#cmBody td', { hasText: /^-$/ }).first()).toBeVisible();
   await expect(page.locator('#cmBody h1')).toHaveCount(0);
   await expect(page.locator('#cmBody')).not.toContainText('Hover a level to trace its price');
   await expect(page.locator('#cmExp')).toHaveValue(FRONT);

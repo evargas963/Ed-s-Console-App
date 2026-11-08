@@ -213,16 +213,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    let pushes = 0;
+    let pushes = 0, firstDrawn;
+    const drawn = new Promise((resolve) => { firstDrawn = resolve; });
     await page.route('**/api/changes**', async (route) => {
       pushes += 1;
-      await new Promise((r) => setTimeout(r, 500));   // after the first render
+      if (pushes === 1) await drawn;   // the push goes once the first surface is on screen, not after a guessed delay
       route.fulfill({ status: 200, contentType: 'text/event-stream',
         body: pushes === 1 ? 'event: levels\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
+    firstDrawn();
     await expect(cell).toHaveText('$2.0K', { timeout: 3000 });
     expect(surfaceCalls).toBeGreaterThanOrEqual(2);
   });
@@ -858,7 +860,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       body: JSON.stringify(Object.assign({}, TERRAIN, { pcr_by_expiry: {}, pcr_all: null })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('582.90');
-    await expect(page.locator('#klPcr')).toHaveText('—');
+    await expect(page.locator('#klPcr')).toHaveText('-');
   });
 
   // A real 116-strike x 16-expiration surface (SPY, captured 2026-09-10 06:35 CDT; 2026-09-09
@@ -973,7 +975,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
-    await expect(page.locator('#hChgReg')).toHaveText('REG —');
+    await expect(page.locator('#hChgReg')).toHaveText('REG -');
   });
 
   test('a price that stops arriving stays, and the chip says OFFLINE', async ({ page }) => {
@@ -1008,7 +1010,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klSpot')).toHaveText('601.23');
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
-    await expect(page.locator('#klSpot')).toHaveText('—');
+    await expect(page.locator('#klSpot')).toHaveText('-');
     await expect(page.locator('#hFeed')).toHaveText('WAITING');
   });
 

@@ -84,7 +84,7 @@ for (const theme of THEMES) {
       // the heatmap is the hero: its cells must render, dense
       await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
       expect(await page.locator('#view-heatmap .hcell').count()).toBeGreaterThan(60);
-      await expect(page.locator('#klFlip')).not.toHaveText('—');   // right rail populated
+      await expect(page.locator('#klFlip')).not.toHaveText('-');   // right rail populated
       // body must not scroll sideways
       const bodyScroll = await page.evaluate(() => document.body.scrollWidth - document.body.clientWidth);
       expect(bodyScroll).toBeLessThanOrEqual(1);
