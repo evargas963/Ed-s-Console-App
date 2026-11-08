@@ -4,6 +4,7 @@ and the SPY 0DTE and CRWD chains (tests/fixtures). Expected values are worked ou
 fixtures themselves."""
 
 import json
+from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,7 @@ import time_et
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.engine import _zone, book_readout
 from calibration.complete_chain_capture import CAPTURE_BASIS
+from db import LevelCrossEvent
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
 from option_contract import read_chain
@@ -50,10 +52,6 @@ def _desk_events(tk, crosses, now, tf):
     """The desk's queue at `now` on real crosses: written by the console's own writer under `tk`
     (a stand-in ticker no other test holds, so it has no live price either), loaded as the
     console's start loads them. Returns the queue and the rows as stored (their cross ids)."""
-    from dataclasses import fields
-
-    from db import LevelCrossEvent
-
     stored = server.get_db().record_level_crosses(
         [
             LevelCrossEvent(
@@ -143,10 +141,6 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     """SPY's level crosses of 2026-10-06 and 10-07 as the console recorded them
     (tests/fixtures/real_spy_level_crosses_2026_10_06_07.json), written by the console's own
     writer and loaded as its start loads them. Stand-in: ticker ZZDESKX carries them."""
-    from dataclasses import fields
-
-    from db import LevelCrossEvent
-
     tk = "ZZDESKX"
     fx = _load("real_spy_level_crosses_2026_10_06_07.json")["rows"]
     server.get_db().record_level_crosses(
