@@ -1936,9 +1936,11 @@ while todo:
         if isinstance(node, ast.Import):
             names = [a.name for a in node.names]
         elif isinstance(node, ast.ImportFrom):
-            base = node.module or ""
-            if node.level:
-                base = ".".join([*pkg.split(".")[: len(pkg.split(".")) - node.level + 1], base])
+            # `from . import x` names no module: its package is the importing file's, `level` up
+            parts = pkg.split(".")[: len(pkg.split(".")) - node.level + 1] if node.level else []
+            if node.module is not None:
+                parts.append(node.module)
+            base = ".".join(parts)
             names = [base, *(f"{base}.{a.name}" for a in node.names)]
         for name in names:
             parts = name.strip(".").split(".")
