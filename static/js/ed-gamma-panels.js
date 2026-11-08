@@ -113,12 +113,11 @@
   // ---------- Put/Call OI and volume <- /api/terrain pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
   function expiryFilter() { return window.EdShell.getExpiry(); }
   function paintPcr(d) {
-    var byExp = (d && d.pcr_by_expiry) || {};
-    var byExpVol = (d && d.pcr_volume_by_expiry) || {};
-    // the selected expiry, else the whole book -- both served; the page picks no expiry itself
+    // the selected expiry, else the whole book -- both served on every terrain answer (TerrainSnapshot
+    // fields); the page picks no expiry itself. A failed read (no d) is missing: "-"
     var ex = expiryFilter();
-    var v = ex ? byExp[ex] : (d && d.pcr_all);
-    var vv = ex ? byExpVol[ex] : (d && d.pcr_volume_all);
+    var v = !d ? null : ex ? d.pcr_by_expiry[ex] : d.pcr_all;
+    var vv = !d ? null : ex ? d.pcr_volume_by_expiry[ex] : d.pcr_volume_all;
     var scope = ex ? 'exp ' + ex : 'all exp';
     txt('klPcr', v == null ? '-' : Number(v).toFixed(2));
     txt('klPcrScope', 'OI · ' + scope);
