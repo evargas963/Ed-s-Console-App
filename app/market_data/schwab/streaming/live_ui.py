@@ -47,9 +47,7 @@ log = logging.getLogger(__name__)
 
 #: The browser connects to this port on the console's own host name. Binds like the console
 #: (0.0.0.0): the page is served to whatever address the operator opened it on.
-LIVE_UI_HOST = os.environ.get(
-    "ED_LIVE_UI_HOST", "0.0.0.0"
-)  # caps-ok: operator bind config with its declared default, not market data
+LIVE_UI_HOST = "0.0.0.0"
 LIVE_UI_PORT = int(
     os.environ.get("ED_LIVE_UI_PORT", "8800")
 )  # caps-ok: operator port config with its declared default, not market data
@@ -119,7 +117,8 @@ class LiveUiServer:
         t0 = time_et.elapsed()
         await c.ws.send(json.dumps(payload, separators=(",", ":"), default=str))
         self.stats["frames_sent"] += 1
-        self.stats["rows_sent"] += len(payload.get("rows") or ())
+        if "rows" in payload:  # a symbols frame carries none
+            self.stats["rows_sent"] += len(payload["rows"])
         self.stats["last_send_ms"] = (time_et.elapsed() - t0) * 1000.0
 
     async def _pump(self, c: _Client) -> None:

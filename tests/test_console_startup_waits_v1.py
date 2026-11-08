@@ -38,7 +38,6 @@ def program_env(tmp_path: Path) -> tuple[dict, int]:
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}  # its loops start
     env.update(
         ED_RUNTIME_ROOT=str(tmp_path),
-        ED_LIVE_UI_HOST="127.0.0.1",
         ED_LIVE_PUSH_PORT=str(push),
         ED_LIVE_UI_PORT=str(ui),
         ED_CONSOLE_PORT=str(pages),

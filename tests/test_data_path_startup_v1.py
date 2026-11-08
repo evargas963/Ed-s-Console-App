@@ -156,7 +156,6 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_HOST": "127.0.0.1",
         "ED_LIVE_UI_PORT": str(ui_port),
         "ED_LIVE_PUSH_PORT": str(push_port),
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
@@ -573,7 +572,6 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         **os.environ,
         "PYTHONPATH": str(launch.ROOT),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_HOST": "127.0.0.1",
         "ED_LIVE_UI_PORT": str(ui_port),
         "ED_LIVE_PUSH_PORT": str(push_port),
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
@@ -626,7 +624,7 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
         'import sys, time\nif "-m" in sys.orig_argv:\n    time.sleep(6)\n', encoding="utf-8"
     )
     with socket.socket() as held, socket.socket() as push, socket.socket() as nothing:
-        held.bind(("127.0.0.1", 0))
+        held.bind((live_ui.LIVE_UI_HOST, 0))  # the address the daemon binds
         held.listen()
         push.bind(("127.0.0.1", 0))
         nothing.bind(("127.0.0.1", 0))
@@ -634,7 +632,6 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
             **os.environ,
             "PYTHONPATH": str(launch.ROOT),
             "ED_RUNTIME_ROOT": str(tmp_path),
-            "ED_LIVE_UI_HOST": "127.0.0.1",
             "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
             "ED_LIVE_PUSH_PORT": str(push.getsockname()[1]),
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
@@ -730,12 +727,11 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
     the bind's error in its log and an exit code its window restarts on (not EXIT_STOPPED), instead
     of running with no browser served."""
     with socket.socket() as held:
-        held.bind(("127.0.0.1", 0))
+        held.bind((live_ui.LIVE_UI_HOST, 0))  # the address the daemon binds
         held.listen()
         env = {
             **os.environ,
             "ED_RUNTIME_ROOT": str(tmp_path),
-            "ED_LIVE_UI_HOST": "127.0.0.1",
             "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
             "ED_LIVE_PUSH_PORT": "0",
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
