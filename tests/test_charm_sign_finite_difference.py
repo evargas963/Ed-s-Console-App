@@ -89,11 +89,6 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
 def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
     """RC-211: put-call parity kills any call/put vanna split — same strike/expiry/IV must
     aggregate the SAME per-contract vanna into both bucket sides (splits come from OI only)."""
-    from datetime import datetime
-
-    from math_exposure_core import compute_exposures_by_strike
-    from time_et import ET
-
     # valued 30 days before a fixed expiry Schwab's /markets answers (an input: the date never
     # ages out)
     now = datetime(2026, 9, 28, 12, 0, tzinfo=ET)
