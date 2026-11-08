@@ -18,6 +18,7 @@ census cannot read stops the census with that error.
 import argparse
 import ast
 import collections
+import copy
 import dataclasses
 import datetime as dt
 import hashlib
@@ -344,6 +345,44 @@ for f in [
             )
             last_hit = i
         seen.setdefault(h, ((f, i), f"{f}:{lines[i][0]}"))
+
+
+class _Unnamed(ast.NodeTransformer):
+    """A formula with its names set aside: two functions computing the same thing from
+    differently named inputs read the same."""
+
+    def visit_Name(self, node):
+        return ast.copy_location(ast.Name(id="_", ctx=ast.Load()), node)
+
+
+FORMULA = "the same formula in more than one function: Python product (one producer, rule 3)"
+ANSWER = (
+    "the same answer built by hand in more than one function: Python product "
+    "(dict literals with the same 3+ keys; one producer, rule 3)"
+)
+add(S, FORMULA, "3", "ast: arithmetic of 7+ nodes, names set aside")
+add(S, ANSWER, "3", "ast: dict literal key sets")
+formulas = collections.defaultdict(set)
+answers = collections.defaultdict(set)
+for f in PRODUCT_PY:
+    for fn in ast.walk(trees[f]):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        where = f"{f}:{fn.lineno} {fn.name}"
+        for n in ast.walk(fn):
+            if isinstance(n, ast.BinOp) and sum(1 for _ in ast.walk(n)) >= 7:
+                shape = ast.dump(_Unnamed().visit(copy.deepcopy(n)), annotate_fields=False)
+                formulas[shape].add(where)
+            elif isinstance(n, ast.Dict) and len(n.keys) >= 3:
+                keys = [k.value for k in n.keys if isinstance(k, ast.Constant)]
+                if len(keys) == len(n.keys) and all(isinstance(k, str) for k in keys):
+                    answers[tuple(sorted(keys))].add(where)
+for shape, where in formulas.items():
+    if len({w.split(" ")[1] for w in where}) > 1:
+        add(S, FORMULA, "3", "ast", " = ".join(sorted(where)))
+for keys, where in answers.items():
+    if len(where) > 1:
+        add(S, ANSWER, "3", "ast", f"{{{', '.join(keys)}}}: " + " = ".join(sorted(where)))
 
 
 def computes(tree):
