@@ -294,7 +294,7 @@ def cluster_price_levels_into_zones(
     for p, tag in levels:
         tag_map[p].append(tag)
 
-    max_width = float_positive_or_none(getattr(config, "max_zone_width", None))
+    max_width = float_positive_or_none(config.max_zone_width)
 
     def _flush_current(cur):
         if not cur:
@@ -304,7 +304,7 @@ def cluster_price_levels_into_zones(
         tags = []
         source_pairs = []
         for p in cur:
-            for t in tag_map.get(p, []):
+            for t in tag_map[p]:  # every price clustered came with its tags
                 tags.append(t)
                 source_pairs.append((p, t))
         clusters.append((lo, hi, mid, list(dict.fromkeys(tags)), source_pairs))
@@ -563,7 +563,7 @@ def build_live_snapshot(
     *,
     canonical: PriceLevelSnapshot,
     now: datetime,
-    extra_levels: list[tuple[float, str]] | None = None,
+    extra_levels: list[tuple[float, str]],
 ) -> SnapshotOutput:
     """
     The session's zones from the one materialized price-level snapshot (``canonical``), with
@@ -613,7 +613,7 @@ def build_live_snapshot(
     if over.get("overnight_low") is not None:
         levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
 
-    for pair in extra_levels or []:
+    for pair in extra_levels:
         p, tag = pair[0], pair[1]
         pf = float(p)
         levels.append((pf, str(tag)))
@@ -816,7 +816,7 @@ class PriceLevelSnapshot:
         families_absent: list,
         degraded: list,
         bars_used: int,
-        vwap_series: list | None = None,
+        vwap_series: list,
         session_rth_positive_volume_bars: int = 0,
         volume_profile: VolumeProfile | None = None,
     ) -> None:
@@ -827,7 +827,7 @@ class PriceLevelSnapshot:
         self.as_of_ts_utc = as_of_ts_utc
         self.levels = levels  # level_id -> PriceLevelValue
         self.vwap_path = vwap_path  # [(epoch_sec, vwap)]
-        self.vwap_series = vwap_series or []  # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
+        self.vwap_series = vwap_series  # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
         self.families_absent = families_absent
         self.degraded = degraded
         self.bars_used = bars_used
