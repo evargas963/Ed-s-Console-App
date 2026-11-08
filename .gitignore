@@ -30,6 +30,9 @@ calibration/trading_data.db
 test-results/
 .coverage
 
+# The census's copy of the commit it checks
+tools/census/.lint/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -6,6 +6,7 @@ import math
 
 import pytest
 
+from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from numeric_contract import schwab_count, schwab_number
 from option_contract import read_chain
 from tests.real_chains import CRWD
@@ -36,8 +37,6 @@ def test_counts_keep_zero_and_refuse_negatives():
 def test_a_reported_zero_open_interest_is_reported_not_missing():
     """Real CRWD chain: 25 of 244 contracts carry openInterest 0 -- reported, so no strike
     counts them as unreported."""
-    from math_exposure_core import compute_exposures_by_strike
-
     assert sum(1 for c in CRWD.chain if c["openInterest"] == 0) == 25
     books, _ = compute_exposures_by_strike(read_chain(CRWD.chain), spot=CRWD.spot, now=CRWD.now)
     assert sum(b["oi_unreported"] for b in books.values()) == 0
@@ -46,8 +45,6 @@ def test_a_reported_zero_open_interest_is_reported_not_missing():
 def test_minus_999_open_interest_is_unreported():
     """Stand-in: no captured contract has carried -999 open interest (0 of 108 million captured
     messages, measured 2026-09-27), so one real CRWD contract has it set to -999."""
-    from math_exposure_core import compute_exposures_by_strike
-
     chain = copy.deepcopy(CRWD.chain)
     chain[0]["openInterest"] = -999
     books, _ = compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)
@@ -57,8 +54,6 @@ def test_minus_999_open_interest_is_unreported():
 def test_a_strike_whose_open_interest_is_all_zero_shows_zero_not_absent():
     """Operator ruling 2026-09-27 (take what Schwab sends): a strike whose every contract reports
     openInterest 0 has OI 0 and exposure 0, not "—". Real CRWD chain."""
-    from math_exposure_core import bucket_metric, compute_exposures_by_strike
-
     by_strike = {}
     for c in CRWD.chain:
         by_strike.setdefault(c["strikePrice"], []).append(c["openInterest"])

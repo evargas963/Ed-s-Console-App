@@ -160,7 +160,7 @@ def test_the_fingerprint_covers_every_bar_field():
 
     for field in ("open", "high", "low", "close", "volume"):
         mutated = [dict(b) for b in base]
-        mutated[30][field] = (mutated[30][field] or 0.0) + 7.0
+        mutated[30][field] = mutated[30][field] + 7.0
         other = LVE._snapshot_input_fingerprint("ZZRC324", session, mutated, "test_fixture", prior)
         assert other != fp, (
             f"changing an interior bar's {field} left the fingerprint unchanged — that "
