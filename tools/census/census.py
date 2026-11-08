@@ -370,8 +370,13 @@ for f in PRODUCT_PY:
             continue
         where = f"{f}:{fn.lineno} {fn.name}"
         for n in ast.walk(fn):
-            # 11 nodes: below it, a time difference or a slice reads alike in unrelated code
-            if isinstance(n, ast.BinOp) and sum(1 for _ in ast.walk(n)) >= 11:
+            # 11 nodes: below it, a time difference or a slice reads alike in unrelated code;
+            # `|` is a type union or a set or dict merge, not a formula
+            if (
+                isinstance(n, ast.BinOp)
+                and not isinstance(n.op, ast.BitOr)
+                and sum(1 for _ in ast.walk(n)) >= 11
+            ):
                 shape = ast.dump(_Unnamed().visit(copy.deepcopy(n)), annotate_fields=False)
                 formulas[shape].add(where)
             elif isinstance(n, ast.Dict) and len(n.keys) >= 3:
