@@ -22,9 +22,9 @@ def test_record_from_level_one_equity_updates_plane():
     assert ok is True
     row = lmp.get_quote("ZZZ")
     assert row is not None
-    assert row["quote_ingestion"] == "schwab_streaming_level_one"
+    assert row["exchange_quote_ts"] is None  # no QUOTE_TIME_MILLIS sent: none filled in
     assert abs(row["spot"] - 101.0) < 1e-6
-    assert row["quote_source_detail"]["spot"] == "LAST_PRICE"
+    assert row["mark"] is None  # no MARK sent: the bid/ask midpoint never stands in
     assert row["bid"] == 100.9 and row["ask"] == 101.1
 
 
@@ -44,11 +44,10 @@ def test_record_from_level_one_uses_schwab_quote_timestamp_for_fast_ts():
     row = lmp.get_quote("TIMEAUTH")
     assert row is not None
     assert row["exchange_quote_ts"] == 1_778_018_399.0
-    assert row["quote_time_source"] == "schwab_streaming_level_one"
+    assert row["trade_ts"] is None  # no TRADE_TIME_MILLIS sent
     assert isinstance(row["server_received_ts"], float)
-    # M6: exchange_quote_ts is the exchange QUOTE clock, and the row records WHICH clock —
-    # never a silent quote/trade conflation. server_received_ts is the distinct wall clock.
-    assert row["quote_source_detail"]["quote_ts"] == "QUOTE_TIME_MILLIS"
+    # exchange_quote_ts is the exchange QUOTE clock; server_received_ts is the distinct wall clock
+    assert row["spot"] == 101.0
     assert row["exchange_quote_ts"] != row["server_received_ts"]
 
 
@@ -69,7 +68,7 @@ def test_record_from_level_one_never_uses_trade_time_as_the_quote_time():
     assert ok is True
     row = lmp.get_quote("TRADEPROXY")
     assert row["exchange_quote_ts"] is None
-    assert row["quote_source_detail"]["quote_ts"] == "unavailable"
+    assert row["trade_ts"] == 1_778_018_500.0  # the trade's own clock, kept as the trade's
 
 
 def test_received_ts_is_required_and_is_what_freshness_judges():
@@ -252,8 +251,8 @@ def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
     assert row is not None
     assert row["bid"] is None
     assert row["ask"] is None
-    assert row["quote_source_detail"]["bid"] is None
-    assert row["quote_source_detail"]["ask"] is None
+    assert "BID" not in row and "ASK" not in row
+    assert row["spot"] == 100.0
 
 
 def test_prior_close_is_the_streamed_close_price_and_stands_between_sends():
@@ -271,19 +270,10 @@ def test_last_price_is_carried_forward_only_from_a_streamed_row():
     and stamp the result schwab_streaming_level_one. Only a streamed LAST_PRICE may carry."""
     assert not hasattr(lmp, "record_quote"), "the plane has ONE writer: the stream"
     with lmp._lock:
-        lmp._by_ticker["RESTROW"] = {
-            "ticker": "RESTROW",
-            "spot": 50.0,
-            "quote_ingestion": "rest_fast_quote",
-            "quote_source_detail": {"spot": "LAST_PRICE"},
-        }
+        lmp._by_ticker["RESTROW"] = {"ticker": "RESTROW", "spot": 50.0}
     assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}) is True
-    row = lmp.get_quote("RESTROW")  # the streamed fields only: the REST row's price never carries
-    assert (row["spot"], row["bid"], row["quote_ingestion"]) == (
-        None,
-        49.9,
-        "schwab_streaming_level_one",
-    )
+    row = lmp.get_quote("RESTROW")  # the streamed fields only: a price not streamed never carries
+    assert (row["spot"], row["bid"]) == (None, 49.9)
     _rec("STREAMROW", {"key": "STREAMROW", "LAST_PRICE": 50.0})
     assert _rec("STREAMROW", {"key": "STREAMROW", "BID_PRICE": 49.9}) is True
     row = lmp.get_quote("STREAMROW")
