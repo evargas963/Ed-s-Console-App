@@ -17,7 +17,7 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function isRightNow() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
   function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('tdBody'); }

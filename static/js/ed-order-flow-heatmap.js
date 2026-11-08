@@ -8,7 +8,7 @@
 (function () {
   'use strict';
 
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function isHeatmap() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'heatmap'; }
   function ticker() { return (st().ticker || ''); }
   function stillHeatmap(tk) { return isHeatmap() && ticker() === tk; }
