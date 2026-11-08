@@ -9,22 +9,21 @@ import sqlite3
 
 import time_et
 from app.market_data.schwab.streaming import capture
-from stream_spine import CaptureWriter, HealthRegistry, MessageBus
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 
 
 class _Stream:
     last_frame_ts = 1000.0
 
 
-def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch):
+def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db)
     bus, health = MessageBus(), HealthRegistry()
     health.beat("NEWS_HEADLINE", 990.0)
     daemon = capture.Daemon(bus, health)
     daemon.stream = _Stream()
-    got = []
-    monkeypatch.setattr(bus, "publish", lambda topic, msg: got.append((topic, msg)))
+    log = bus.subscribe("", policy=LOG)  # as the database writer reads the bus
 
     async def go():
         stop = asyncio.Event()
@@ -33,8 +32,8 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch)
 
     asyncio.run(go())
 
-    for topic, msg in got:
-        writer.insert(topic, msg)
+    while not log.queue.empty():
+        writer.insert(*log.queue.get_nowait())
     with sqlite3.connect(db) as c:
         rows = c.execute(
             "SELECT ts, service, schwab_last_frame_ts, last_data_ts "
