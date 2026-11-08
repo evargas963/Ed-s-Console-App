@@ -298,11 +298,11 @@ then the rule binds with no machine check.
   to a change of request rates, limits or settings, CLAUDE.md item 5;
   the next bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive
   data action,
-  a product decision), said in a message that begins `WAITING ON OPERATOR:`; or a wait on CI,
-  every open pull request of the work in CI with Auto-fix on, so the app wakes the session when CI
-  ends, said in a message that begins `WAITING ON CI:` and naming each pull request (operator
-  2026-11-07: "allow the monitor so you can see. you can turn on auto fix ... i want to be able to
-  walk away while you work"; the agent never polls CI itself). From the third
+  a product decision), said in a message that begins `WAITING ON OPERATOR:`. A wait on CI is not
+  a stop: every pull request has auto-merge and Auto-fix on, so it merges by itself or the app wakes
+  the session on a failure, and the next step starts meanwhile (operator 2026-11-07: "i want to be
+  able to walk away while you work"; "you cannot continue stopping"; the agent never polls CI
+  itself). From the third
   refused stop in a row since the operator last wrote, what is being done is suspect (operator
   2026-10-30: "at that point in time i would suspect that what you are doing isn't working"): the
   agent does not try again what already failed, finds the cause down to the line of code or data
