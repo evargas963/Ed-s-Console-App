@@ -7,6 +7,7 @@ from the chain and position structure.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
 
@@ -502,14 +503,22 @@ def book_total_oi(exposures: dict[float, dict]) -> float | None:
     return total
 
 
+def _put_call_ratio(legs: Iterable[tuple[float, float] | None]) -> float | None:
+    """Total put / total call over the book's strikes; None if any strike's legs are unknown or
+    the calls total 0 (an empty book included)."""
+    calls = puts = 0.0
+    for leg in legs:
+        if leg is None:
+            return None
+        calls += leg[0]
+        puts += leg[1]
+    return puts / calls if calls > 0 else None
+
+
 def put_call_oi_ratio(exposures: dict[float, dict]) -> float | None:
     """Total put OI / total call OI of the book -- the positions held; None if any strike's OI is
     unknown or call OI is 0."""
-    legs = [strike_oi_legs(b) for b in exposures.values()]
-    if not legs or None in legs:
-        return None
-    calls = sum(c for c, _ in legs)
-    return sum(p for _, p in legs) / calls if calls > 0 else None
+    return _put_call_ratio(strike_oi_legs(b) for b in exposures.values())
 
 
 def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
@@ -517,11 +526,7 @@ def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
     (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
     None when any contract in the book did not report its volume, or no call traded. A strike with
     no call (or put) contract listed has no volume on that side, not a zero."""
-    legs = [strike_volume_legs(b) for b in (exposures or {}).values()]
-    if not legs or None in legs:
-        return None
-    calls = sum(c for c, _ in legs)
-    return sum(p for _, p in legs) / calls if calls > 0 else None
+    return _put_call_ratio(strike_volume_legs(b) for b in exposures.values())
 
 
 def exposures_have_dollar_gex(exposures: dict[float, dict]) -> bool:
