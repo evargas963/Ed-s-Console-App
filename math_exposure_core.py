@@ -308,7 +308,7 @@ def compute_exposures_by_strike(
             # exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna), per
             # vol point; vanna is the same for a call and a put at a strike and expiry.
             _T = _tte_memo(c)
-            if iv is not None and iv > 0 and _T is not None and _T > 0:
+            if _T is not None and _T > 0:
                 _sig = schwab_iv_to_sigma(iv)
                 _vn = bs_vanna(spt, float(strike), _T, _sig) if _sig is not None else None
                 if _vn is not None:

@@ -90,7 +90,7 @@ print(json.dumps(payload))
 shutil.rmtree(runtime_layout.RUNTIME_ROOT, ignore_errors=True)
 """
     env = dict(os.environ)
-    for name in ("ED_CONSOLE_DB", "ED_DB_PATH", "ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT"):
+    for name in ("ED_CONSOLE_DB", "ED_DB_PATH", "ED_RUNTIME_ROOT"):
         env.pop(name, None)
     if worker is None:
         env.pop("PYTEST_XDIST_WORKER", None)
