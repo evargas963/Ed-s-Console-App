@@ -39,7 +39,7 @@ async function intercept(page) {
 test.describe('#8 Gamma panel maximize', () => {
   test.beforeEach(async ({ page }) => {
     await intercept(page);
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('maximize hides the rail + bottom and lets the heatmap fill; Esc restores', async ({ page }) => {

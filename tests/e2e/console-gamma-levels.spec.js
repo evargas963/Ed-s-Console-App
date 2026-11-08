@@ -46,7 +46,7 @@ async function intercept(page) {
 test.describe('D — Gamma Levels view', () => {
   test.beforeEach(async ({ page }) => {
     await intercept(page);
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_view', 'levels'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_view', 'levels'); });
   });
 
   test('the levels spot keeps its last trade time', async ({ page }) => {
