@@ -298,7 +298,7 @@ def _priced(tk, chain, spot, ts_utc):
             }
         ],
     )
-    return server.terrain_cache_get(tk, ts_utc)
+    return server.published_levels(tk).served()
 
 
 def _live_price(tk, last):

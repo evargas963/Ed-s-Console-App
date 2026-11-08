@@ -237,9 +237,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
             chain_spot=(friday["spot"], friday["ts_utc"]),
             now=at,
         )
-        priced = {
-            c.symbol: c for c in server.terrain_cache_get("SPY", at.timestamp())["_priced_chain"]
-        }
+        priced = {c.symbol: c for c in server.published_levels("SPY").priced_chain}
         same_day = server.terrain_answer("SPY", at)["same_day"]
     finally:
         _forget()

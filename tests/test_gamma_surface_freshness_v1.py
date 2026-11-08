@@ -83,8 +83,7 @@ def published():
 def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(published):
     _daemon(206.0, _AT.timestamp(), _ON)  # the price has moved since
     d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
-    with server._terrain_cache_lock:
-        surface = server._terrain_cache[_ON]["_gamma_surface"]
+    surface = server.published_levels(_ON).gamma_surface
     # 2026-09-02 has no /markets answer held: the levels, and so the surface, are not live
     assert d["source"] == "terrain_live_cache" and d["levels_state"] == "NOT LIVE"
     assert [c["gex"] for c in d["cells"]] == [c["gex"] for c in surface["cells"]]  # served verbatim
@@ -96,7 +95,7 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
 
 
 def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
-    live = server.terrain_cache_get(_ON, time_et.now())  # the one authority
+    _levels, live = server.terrain_cache_get(_ON, time_et.now())  # the one authority
     d = _call(_ON)
     assert (d["levels_state"], d["levels_stale_reason"]) == (
         live["levels_state"],

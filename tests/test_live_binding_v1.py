@@ -7,11 +7,15 @@ token and log, writing 15,451 errors into production's logs/ed_server.log.
 
 from __future__ import annotations
 
-import asyncio
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 import runtime_layout
+from tests.test_data_path_stored_sessions_v1 import _record_answers
 
 
 def test_the_checkout_that_owns_its_runtime_may_run(tmp_path):
@@ -38,17 +42,46 @@ def test_another_checkouts_runtime_is_refused(tmp_path, git_kind):
     assert why is not None and str(other) in why and "ED_RUNTIME_ROOT" in why
 
 
-def test_the_console_refuses_before_starting_anything(monkeypatch):
-    import server
+#: a console process starting its pages (server._app_lifespan), its log on stderr
+CONSOLE_START = """
+import asyncio
+import logging
 
-    monkeypatch.setattr(runtime_layout, "live_binding_error", lambda *a, **k: "bound elsewhere")
-    started = []
-    monkeypatch.setattr(server, "_load_stored_sessions", lambda _path: started.append("sessions"))
+import server
 
-    async def go():
-        async with server._app_lifespan(server.app):
-            pass
+logging.basicConfig(level=logging.INFO)
 
-    with pytest.raises(RuntimeError, match="live console refused: bound elsewhere"):
-        asyncio.run(go())
-    assert started == [], "nothing may start before the binding check"
+
+async def go():
+    async with server._app_lifespan(server.app):
+        pass
+
+
+asyncio.run(go())
+"""
+
+
+def test_the_console_refuses_before_starting_anything(tmp_path):
+    """A console whose runtime root is another checkout (a `.git` folder in it) holding the
+    daemon's recorded /markets answers: it refuses at its start, and loads none of them (the
+    first thing it starts, logged as 'Recorded market answers held')."""
+    _record_answers(tmp_path / "data" / "stream_capture.db")
+    (tmp_path / ".git").mkdir()
+    run = subprocess.run(
+        [sys.executable, "-c", CONSOLE_START],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parent.parent,
+        env={
+            **os.environ,
+            "ED_RUNTIME_ROOT": str(tmp_path),
+            "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_schwab_token.json"),
+            "PYTHONIOENCODING": "utf-8",
+        },
+        timeout=120,
+    )
+    assert run.returncode != 0
+    assert "live console refused: this checkout" in run.stderr and str(tmp_path) in run.stderr
+    assert "Recorded market answers held" not in run.stderr, (
+        "nothing may start before the binding check"
+    )

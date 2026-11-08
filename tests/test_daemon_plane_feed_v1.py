@@ -53,9 +53,10 @@ def _push_book(symbol, content, ts_recv):
     )
 
 
-def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, monkeypatch):
+def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
+    lmp._by_ticker.pop("SPY", None)  # a plane row an earlier test wrote
+    lmp._fields_by_ticker.pop("SPY", None)
     native = {
         "key": "SPY",
         "BID_PRICE": 449.98,
@@ -167,11 +168,10 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
 
 
-def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
+def test_each_symbol_lands_in_its_own_state_only(tmp_path):
     """Every roster symbol is applied, each into its OWN state: a QQQ tick must never appear in
     SPY's."""
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time_et.now())
 
     def prices(sym: str) -> list:

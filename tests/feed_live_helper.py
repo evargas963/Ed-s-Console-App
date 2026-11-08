@@ -106,12 +106,3 @@ def mark_feed_live(*tickers: str, now: float | None = None) -> None:
 
 def mark_feed_down() -> None:
     lmp.record_feed_down()
-
-
-def feed_live_during(monkeypatch, *tickers: str) -> None:
-    """For route tests that start the app (TestClient): the daemon's heartbeat holding `tickers`
-    for the whole test."""
-    mark_feed_live(*tickers)
-    # importing/starting the app can take longer than the 3 s heartbeat bound on a loaded CI
-    # worker; heartbeat AGE is not what these tests exercise (it has its own tests)
-    monkeypatch.setattr(lmp, "FEED_HEARTBEAT_MAX_AGE_SEC", 3600.0)

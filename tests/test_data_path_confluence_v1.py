@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import statistics
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -16,6 +17,8 @@ import server
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from confluence_composite import (
+    LEANS,
+    SHADED,
     at_price,
     build_matrix,
     in_score_weights,
@@ -30,8 +33,9 @@ from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
 from stream_spine import options_quote_msg
-from terrain_engine import compute_terrain
+from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.capture_store import store_capture
+from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import (
     CRWD,
@@ -43,7 +47,7 @@ from tests.real_chains import (
     SPY_PRINT_A_STRIKE_AWAY,
     TSLA,
 )
-from time_et import ET, INDEX_OPTIONS, ct_label, valuation_instant
+from time_et import ET, INDEX_OPTIONS, ct_label, record_markets, valuation_instant
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -87,22 +91,43 @@ def _forget(tk: str) -> None:
     lmp.record_feed_down()
 
 
-def _published(held) -> dict:
-    """The levels the producer publishes for `held`'s chain at its own price and capture."""
-    return compute_terrain(held.ticker, read_chain(held.chain), held.spot, now=held.now).to_dict()
+def _published_0dte() -> server.PublishedLevels:
+    """SPY's captured 0DTE chain (SPY_0DTE) published by the levels producer as the stored
+    capture it is, at Schwab's price in it."""
+    held = SPY_0DTE
+    server._publish_levels(
+        "SPY",
+        captures=[
+            {
+                "contracts": read_chain(held.chain),
+                "ts_utc": held.now.timestamp(),
+                "spot": held.spot,
+                "et_date": held.now.date().isoformat(),
+                "basis": CAPTURE_BASIS,
+                "spot_ts": None,
+                "spot_from_chain": False,
+            }
+        ],
+        now=held.now,
+    )
+    return server.published_levels("SPY")
 
 
-def _store(tk: str, cache: dict) -> None:
-    """The publication ranks once. The request then reads that ranking."""
-    cache["_matrix_by_expiry"] = server._ranked_matrices(cache)
-    server._terrain_cache[tk] = cache
+def _hold_with(levels: server.PublishedLevels, **snap_fields) -> None:
+    """`levels` held with its snapshot's `snap_fields` in their place, ranked once on them as
+    the publication ranks (_ranked_matrices). The request then reads that ranking."""
+    snap = replace(levels.snap, **snap_fields)
+    with server._terrain_cache_lock:
+        server._terrain_cache["SPY"] = replace(
+            levels, snap=snap, matrix_by_expiry=server._ranked_matrices(snap)
+        )
 
 
-def _book_magnitudes(live: dict, expiry: str, spot: float) -> dict:
+def _book_magnitudes(live: TerrainSnapshot, expiry: str, spot: float) -> dict:
     """Each strike's factor magnitudes of one published expiry, as the matrix builds them."""
-    book = next(b for (e, _d), (b, _x) in live["_books"].items() if e == expiry)
-    charm = live["_charm_by_expiry"].get(expiry) or {}
-    iv = live["_iv_by_expiry"].get(expiry) or {}
+    book = next(b for (e, _d), (b, _x) in live.books.items() if e == expiry)
+    charm = live.charm_by_expiry[expiry]
+    iv = live.iv_by_expiry[expiry]
     mags = {s: magnitudes(b, charm.get(s), iv.get(s), spot) for s, b in book.items()}
     return {s: {k: v for k, v in m.items() if not k.startswith("_")} for s, m in mags.items()}
 
@@ -127,10 +152,10 @@ def _nflx_far_book() -> tuple[dict, dict]:
             ],
             now=NFLX.now,
         )
-        live = server._terrain_cache["NFLX"]
+        live = server.published_levels("NFLX").snap
     finally:
         _forget("NFLX")
-    book = next(b for (e, _d), (b, _x) in live["_books"].items() if e == "2027-12-17")
+    book = next(b for (e, _d), (b, _x) in live.books.items() if e == "2027-12-17")
     return book, _book_magnitudes(live, "2027-12-17", NFLX.spot)
 
 
@@ -203,7 +228,7 @@ def test_an_am_settled_expiry_past_the_year_is_scored():
             ],
             now=at,
         )
-        live = server._terrain_cache[tk]
+        live = server.published_levels(tk).snap
     finally:
         _forget(tk)
     mags = _book_magnitudes(live, "2027-12-17", fx["spot"])
@@ -236,7 +261,7 @@ def test_a_missing_factor_is_not_called_flat():
     )
 
 
-def _publish_close(tk: str = "SPY") -> dict:
+def _publish_close(tk: str = "SPY") -> server.PublishedLevels:
     """SPY's 2026-10-22 close capture, published as the stored capture it is, at Schwab's price."""
     server._publish_levels(
         tk,
@@ -253,8 +278,7 @@ def _publish_close(tk: str = "SPY") -> dict:
         ],
         now=SPY_CLOSE.now,
     )
-    with server._terrain_cache_lock:
-        return server._terrain_cache[tk]
+    return server.published_levels(tk)
 
 
 def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
@@ -264,7 +288,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     cannot pass 72."""
     try:
         live = _publish_close()
-        book = live["_books"][("2026-10-22", 0.0)][0]
+        book = live.snap.books[("2026-10-22", 0.0)][0]
         body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -281,7 +305,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
         call, put = bucket_metric(bucket, "call_gex_1pct"), bucket_metric(bucket, "put_gex_1pct")
         if net is not None and abs(net) >= 5_000:
             assert row["net_gex_text"] == f"{net / 1e6:+.2f}"
-            assert row["heat_background"].startswith("background:")
+            assert row["net_gex"] == net and abs(net) <= body["peaks"]["net_gex"]
             checked += 1
         if call is not None and put is not None and call >= 0 and put >= 0:
             assert row["gross_text"] == f"{(call + put) / 1e6:.2f}"
@@ -304,14 +328,14 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     assert strike not in compute_charm_by_strike(legs, SPY_CLOSE.spot, now=inside)
     try:
         live = _publish_close()
-        bucket = live["_books"][("2026-10-22", 0.0)][0][strike]
+        bucket = live.snap.books[("2026-10-22", 0.0)][0][strike]
         body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         server._terrain_cache.pop("SPY", None)
     assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] == 0.0
     walls = [level for level in body["levels"] if level["abbrev"] == "CW"]
     assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
-        (live["call_wall"], price_text(live["call_wall"]), "options")
+        (live.snap.call_wall, price_text(live.snap.call_wall), "options")
     ]
 
 
@@ -479,30 +503,93 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     assert rows and not any(r["spot_line"] for r in rows)
 
 
+#: Sunday 2026-10-11, after MRVL's front expiry (2026-10-09) passed
+_SUNDAY = datetime(2026, 10, 11, 12, 0, tzinfo=ET)
+#: the answers tests/e2e/console-confluence.spec.js draws, kept equal to the route's own
+#: (mrvl_answers), never hand written; tests/conftest.py, imported first, sets the tests'
+#: environment:
+#:   python -c "import tests.conftest, tests.test_data_path_confluence_v1 as t
+#:   t.write_mrvl_e2e_fixture()"
+_MRVL_ANSWERS = _FX / "real_mrvl_confluence_payloads_2026_10_07.json"
+
+
+def _publish_mrvl() -> None:
+    """MRVL's full chain, published as the stored capture it is, at the price Schwab sent."""
+    server._publish_levels(
+        "MRVL",
+        captures=[
+            {
+                "contracts": read_chain(MRVL.chain),
+                "ts_utc": MRVL.now.timestamp(),
+                "spot": MRVL.spot,
+                "et_date": MRVL.now.date().isoformat(),
+                "basis": CAPTURE_BASIS,
+                "spot_ts": None,
+                "spot_from_chain": False,
+            }
+        ],
+        now=MRVL.now,
+    )
+
+
+def mrvl_answers() -> dict:
+    """/api/confluence on MRVL's published chain, no live price row: its first two expiries asked
+    at the capture instant, and the front one asked on Sunday, after it passed."""
+    try:
+        _publish_mrvl()
+        by_expiry = {
+            e: server.confluence_payload("MRVL", e, MRVL.now) for e in ("2026-10-09", "2026-10-16")
+        }
+        front_passed = server.confluence_payload("MRVL", "2026-10-09", _SUNDAY)
+    finally:
+        server._terrain_cache.pop("MRVL", None)
+    return json.loads(
+        json.dumps(
+            {
+                "source": "/api/confluence (server.confluence_payload) on MRVL's full chain "
+                "captured 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_full_chain_2026_10_07"
+                ".json), published as the stored capture at the price Schwab sent; no live price "
+                "row (spot absent). by_expiry: each expiry asked at the capture instant; "
+                "front_passed: the front expiry asked on Sunday 2026-10-11, after it passed. "
+                "Written by tests/test_data_path_confluence_v1.py write_mrvl_e2e_fixture.",
+                "by_expiry": by_expiry,
+                "front_passed": front_passed,
+            }
+        )
+    )
+
+
+def write_mrvl_e2e_fixture() -> None:
+    """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
+    hold them (tests/conftest.py), then the route's answers written to the browser test's
+    fixture."""
+    for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
+        if a["status"] == 200:
+            record_markets(json.loads(a["body"]))
+    _MRVL_ANSWERS.write_text(json.dumps(mrvl_answers(), indent=1) + "\n", encoding="utf-8")
+
+
+def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
+    """The confluence browser test's answers are the route's on MRVL's captured chain: each
+    column's shading number and peak served beside its text."""
+    served = mrvl_answers()
+    assert json.loads(_MRVL_ANSWERS.read_text(encoding="utf-8")) == served, (
+        "drifted from the route; regenerate with write_mrvl_e2e_fixture()"
+    )
+    front = served["by_expiry"]["2026-10-09"]
+    assert set(front["peaks"]) == {*SHADED, *LEANS}
+    assert any(r["net_gex"] is not None and r["net_gex"] < 0 for r in front["rows"])
+
+
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     """MRVL's full chain captured Wednesday 2026-10-07 still holds Friday's 2026-10-09 expiry. On
     Sunday the matrix opens on the next one, and a request for Friday's opens there too."""
     tk = "MRVL"
-    sunday = datetime(2026, 10, 11, 12, 0, tzinfo=ET)
     listed = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
     try:
-        server._publish_levels(
-            tk,
-            captures=[
-                {
-                    "contracts": read_chain(MRVL.chain),
-                    "ts_utc": MRVL.now.timestamp(),
-                    "spot": MRVL.spot,
-                    "et_date": MRVL.now.date().isoformat(),
-                    "basis": CAPTURE_BASIS,
-                    "spot_ts": None,
-                    "spot_from_chain": False,
-                }
-            ],
-            now=MRVL.now,
-        )
-        opened = server.confluence_payload(tk, None, sunday)
-        asked = server.confluence_payload(tk, listed[0], sunday)
+        _publish_mrvl()
+        opened = server.confluence_payload(tk, None, _SUNDAY)
+        asked = server.confluence_payload(tk, listed[0], _SUNDAY)
     finally:
         server._terrain_cache.pop(tk, None)
     assert listed[:2] == ["2026-10-09", "2026-10-16"]
@@ -527,19 +614,9 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
     )
     at_capture = compute_charm_by_strike(chain, held.spot, now=held.now, product=INDEX_OPTIONS)
     strike = min(book, key=lambda s: abs(s - held.spot))
-    _store(
-        "SPY",
-        _published(held)
-        | {
-            "computed_ts_utc": held.now.timestamp(),
-            "_valued_ts_utc": held.now.timestamp(),
-            "expiry_dte": {expiry: 0},
-            "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": chain,
-            "_charm_by_expiry": {expiry: earlier},
-        },
-    )
     try:
+        levels = _published_0dte()
+        _hold_with(levels, charm_by_expiry=levels.snap.charm_by_expiry | {expiry: earlier})
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -556,24 +633,11 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
     held = SPY_0DTE
     chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
-    book, _diag = compute_exposures_by_strike(
-        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
-    )
     puts = iv_by_strike(read_chain(SPY_CLOSE.chain))
     whole = iv_by_strike(chain)
-    _store(
-        "SPY",
-        _published(held)
-        | {
-            "computed_ts_utc": held.now.timestamp(),
-            "_valued_ts_utc": held.now.timestamp(),
-            "expiry_dte": {expiry: 0},
-            "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": chain,
-            "_iv_by_expiry": {expiry: puts},
-        },
-    )
     try:
+        levels = _published_0dte()
+        _hold_with(levels, iv_by_expiry=levels.snap.iv_by_expiry | {expiry: puts})
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -598,15 +662,12 @@ def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
         chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
     )
     try:
-        other = _publish_close()["_matrix_by_expiry"]["2026-10-22"]
-        server._terrain_cache["SPY"] = _published(held) | {
-            "computed_ts_utc": held.now.timestamp(),
-            "_valued_ts_utc": held.now.timestamp(),
-            "expiry_dte": {expiry: 0},
-            "_books": {(expiry, 0): (book, None)},
-            "_priced_chain": chain,
-            "_matrix_by_expiry": {expiry: other},
-        }
+        other = _publish_close().matrix_by_expiry["2026-10-22"]
+        levels = _published_0dte()
+        with server._terrain_cache_lock:
+            server._terrain_cache["SPY"] = replace(
+                levels, matrix_by_expiry=levels.matrix_by_expiry | {expiry: other}
+            )
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
         server._terrain_cache.pop("SPY", None)
@@ -1089,9 +1150,9 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
             ],
             now=after,
         )
-        book = server.terrain_cache_get(tk, after.timestamp())
-        overlaid = book["_gamma_surface"]["stream_overlay_contracts"]
-        kept = {ct.symbol: ct.volume for ct in book["_priced_chain"] if ct.symbol in traded}
+        book = server.published_levels(tk)
+        overlaid = book.gamma_surface["stream_overlay_contracts"]
+        kept = {ct.symbol: ct.volume for ct in book.priced_chain if ct.symbol in traded}
     finally:
         ofls.clear_all_live_state()
         _forget(tk)
@@ -1209,8 +1270,9 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), after.timestamp(), chain_spot=spot, now=after
         )
-        book = server.terrain_cache_get(tk, after.timestamp())
-        kept = next(ct for ct in book["_priced_chain"] if ct.symbol == target["symbol"])
+        kept = next(
+            ct for ct in server.published_levels(tk).priced_chain if ct.symbol == target["symbol"]
+        )
     finally:
         _forget(tk)
     assert kept.volume == later[target["symbol"]] != target["totalVolume"]

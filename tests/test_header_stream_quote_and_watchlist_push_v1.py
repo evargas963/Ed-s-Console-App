@@ -4,6 +4,11 @@ screen and a price in a console calculation are the same value."""
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import live_market_plane as lmp
 import live_price_rows
 import server as srv
@@ -67,12 +72,17 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
         lmp.record_feed_down()
 
 
-def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:
-    """The console fills the page's price-socket port from the daemon's own setting; e2e
-    points it at a dead port so no test page can ever reach the real daemon."""
-    from app.market_data.schwab.streaming import live_ui
-
-    monkeypatch.setattr(live_ui, "LIVE_UI_PORT", 8811)
-    html = srv.root().body.decode("utf-8")
+def test_pages_are_told_the_daemon_price_port() -> None:
+    """The console fills the page's price-socket port from the daemon's own setting
+    (ED_LIVE_UI_PORT, read when the console loads); e2e points it at a dead port so no test page
+    can ever reach the real daemon. A console loaded with the setting at 8811 serves the page."""
+    html = subprocess.run(
+        [sys.executable, "-c", "import sys, server; sys.stdout.buffer.write(server.root().body)"],
+        cwd=Path(__file__).resolve().parent.parent,
+        env={**os.environ, "ED_LIVE_UI_PORT": "8811"},
+        capture_output=True,
+        check=True,
+        timeout=120,
+    ).stdout.decode("utf-8")
     assert '<meta name="ed-live-ui-port" content="8811">' in html
     assert 'content="">' not in html.split("ed-live-ui-port", 1)[1][:12]

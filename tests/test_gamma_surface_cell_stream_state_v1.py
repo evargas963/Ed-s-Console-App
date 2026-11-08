@@ -81,8 +81,7 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
         TK, _CONTRACTS, at.timestamp() - 10.0, chain_spot=(_SPOT, at.timestamp()), now=at
     )
     body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
-    with server._terrain_cache_lock:
-        surface = server._terrain_cache[TK]["_gamma_surface"]
+    surface = server.published_levels(TK).gamma_surface
     return body["view"]["coverage"], surface
 
 

@@ -87,8 +87,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
             for done in ofs.assemble_chain_part(msg):
                 server._on_chain(*done)
         _drain()
-        with server._terrain_cache_lock:
-            held = dict(server._terrain_cache[TK])
+        held = server.published_levels(TK).served()
     finally:
         _forget()
     assert (held["spot"], held["spot_as_of_ts_utc"], held["spot_source"]) == (
@@ -119,11 +118,9 @@ def test_a_capture_written_before_the_chain_carried_a_spot_is_read_at_its_neares
     published = []
     try:
         server._publish_levels(TK, captures=[read], now=CRWD.now)
-        with server._terrain_cache_lock:
-            published.append(dict(server._terrain_cache[TK]))
+        published.append(server.published_levels(TK).served())
         server._publish_levels(TK, now=CRWD.now)  # a reprice of the kept capture
-        with server._terrain_cache_lock:
-            published.append(dict(server._terrain_cache[TK]))
+        published.append(server.published_levels(TK).served())
     finally:
         _forget()
     for held in published:
