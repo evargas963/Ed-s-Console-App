@@ -151,9 +151,9 @@
     paintTfButtons();
     document.querySelectorAll('[data-drill]').forEach(function (el) {
       el.addEventListener('click', function () {
-        var d = DRILL[el.getAttribute('data-drill')]; if (!d || !window.EdShell) return;
+        var d = DRILL[el.getAttribute('data-drill')]; if (!d) return;
         window.EdShell.setWorkspace(d[0]);
-        if (window.EdShell.setSubview) window.EdShell.setSubview(d[1]);
+        window.EdShell.setSubview(d[1]);
       });
     });
     return S.chart;
@@ -666,7 +666,7 @@
     if (!onDesk()) return;
     buildToolbar();
     if (!ensureChart()) return;
-    var tk = st().ticker || '';
+    var tk = st().ticker;
     if (!tk) return;
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed

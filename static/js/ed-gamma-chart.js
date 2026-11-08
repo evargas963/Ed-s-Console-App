@@ -29,7 +29,7 @@
   function strikesUrl(tk) {   // the same window GEX by Strike reads unpanned: one shared read
     return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(null);
   }
-  function ticker() { return st().ticker || ''; }
+  function ticker() { return st().ticker; }
 
   var _mode = 'profile';          // 'profile' (bars) | 'dotmap' (dots)
   var _chart = null;
@@ -50,9 +50,7 @@
     host.innerHTML = '<div class="gchart-head"></div><div class="gchart-tb"></div><div class="gchart-plot"></div><div class="gchart-empty" hidden></div>';
     _chart = window.EdTvChart.create(host.querySelector('.gchart-plot'), { nearestN: 99,
       onProfileClick: function (row) {
-        if (!window.EdShell) return;
-        var exp = window.EdShell.getExpiry ? window.EdShell.getExpiry() : null;   // the workspace's expiry filter carries through
-        window.EdShell.setStrike(row.price, exp || null);
+        window.EdShell.setStrike(row.price, window.EdShell.getExpiry());   // the workspace's expiry filter carries through
       } });
     window.EdTvChart.toolbar(host.querySelector('.gchart-tb'), _chart, { tf: _tf, styleKey: 'ed.gchart.style',
       onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.gchart.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });

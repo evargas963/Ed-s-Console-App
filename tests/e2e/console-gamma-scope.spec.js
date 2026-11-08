@@ -52,7 +52,7 @@ test.describe('the Gamma presentation scope', () => {
     await intercept(page, asked);
     // each Playwright test gets a fresh context (localStorage already empty), so we only seed the
     // ticker — NOT localStorage.clear(), which would re-run on reload and wipe the persisted scope.
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('one control governs the workspace, labelled "All available" not "Full"', async ({ page }) => {

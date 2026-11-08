@@ -177,7 +177,7 @@
       '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
       '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
     host.querySelectorAll('.gbs-row').forEach(function (rr) {   // click a strike: every panel follows it
-      rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
+      rr.addEventListener('click', function () { window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
     });
     var firstRow = host.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(host.querySelectorAll('.gbs-k'), host.querySelector('.gbs-scroll'), pan,

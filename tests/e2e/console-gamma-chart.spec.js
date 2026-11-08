@@ -84,7 +84,7 @@ async function clickStrike(page, strike) {
 
 test.describe('Options/Gamma Chart subview', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('a real click on a Chart mark carries the workspace expiry through to Strike Detail\'s real native call/put identity (state-authority review)', async ({ page }) => {
@@ -158,8 +158,8 @@ test.describe('Options/Gamma Chart subview', () => {
     await intercept(page);
     for (const [sub, rows, title] of [['dex', STRIKES.measures.dex.rows.length, 'Price + DEX Profile'],
       ['oi', STRIKES.measures.oi.rows.length, 'Price + Open Interest Profile']]) {
-      await page.addInitScript((s) => { try { localStorage.setItem('ed_ws', 'options'); localStorage.setItem('ed_sub', s);
-        localStorage.setItem('ed_view', 'chart'); localStorage.setItem('ed_scope', 'all'); } catch (e) {} }, sub);
+      await page.addInitScript((s) => { localStorage.setItem('ed_ws', 'options'); localStorage.setItem('ed_sub', s);
+        localStorage.setItem('ed_view', 'chart'); localStorage.setItem('ed_scope', 'all'); }, sub);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('#mvTitle')).toHaveText(title);
       await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(rows);
