@@ -92,10 +92,13 @@
     var c = ensureChart(); if (!c) return;
     var host = document.getElementById('chartBody');
     var P = c.palette(), barsD = _last.bars, sd = _last.strikes, t = _last.terrain;
-    var bars = (barsD && barsD.bars) || [];
     var prof = served(sd);
+    // each answer as served; a request that failed (null) draws nothing and is named, never drawn as empty
+    var failed = [[barsD, 'bars'], [sd, 'per-strike ' + prof.name], [t, 'terrain']]
+      .filter(function (a) { return !a[0]; }).map(function (a) { return a[1]; });
+    var bars = barsD ? barsD.bars : [];
     var win = prof.rows.filter(function (r) { return r[1] != null; });   // the served window; unknown: nothing drawn
-    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(bars, barsD ? barsD.tf : _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       prof.scale, _mode === 'dotmap' ? 'dots' : 'bars');
@@ -111,9 +114,9 @@
     var tradeTime = (_liveQuote && spot != null) ? _liveQuote.trade_time_ct : null;
     c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null, tradeTime);
     var empty = host.querySelector('.gchart-empty');
-    empty.hidden = !!(bars.length || win.length);
-    empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
-      : 'the bars and per-strike ' + prof.name + ' requests failed');
+    empty.hidden = !failed.length && !!(bars.length || win.length);
+    empty.textContent = failed.length ? 'the ' + failed.join(', ') + ' request failed for ' + ticker()
+      : empty.hidden ? '' : 'no bars / per-strike ' + prof.name + ' for this symbol';
     paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot, tradeTime);
   }
   function paintHead(el, bars, win, prof, sd, spot, tradeTime) {
