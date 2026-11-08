@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -14,10 +15,16 @@ REPO = Path(__file__).resolve().parent.parent
 def test_every_message_carries_the_three_rules_and_the_three_questions():
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     wired = [h["command"] for e in settings["hooks"]["UserPromptSubmit"] for h in e["hooks"]]
-    assert wired == [".venv/Scripts/python.exe tools/wiring_rules.py"]
+    assert wired == [".venv/Scripts/python.exe -m tools.wiring_rules"]
     done = subprocess.run(
-        [sys.executable, "tools/wiring_rules.py"],
-        input=json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "go"}),
+        [sys.executable, "-m", "tools.wiring_rules"],
+        input=json.dumps(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": "go",
+                "session_id": f"wiring-test-{uuid.uuid4().hex}",
+            }
+        ),
         capture_output=True,
         text=True,
         cwd=REPO,
@@ -39,3 +46,6 @@ def test_every_message_carries_the_three_rules_and_the_three_questions():
     assert "Everything is repo wide" in said and "every ticker" in said
     assert "Every repair is end to end" in said and "never a patch" in said
     assert "Is it repo wide? Is every link repaired at its source?" in said
+    # operator 2026-11-07: "once i tell you do something, you must do it"; every message is an order
+    assert "This message is ORDER 1: do it; you do not choose." in said
+    assert "`ORDER 1 DONE: <evidence>`" in said and "`ORDER 1 PUSHBACK: <reason>`" in said
