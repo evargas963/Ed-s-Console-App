@@ -433,6 +433,7 @@ async def _app_lifespan(app):
 
     stop_terrain_loop()
     stop_bar_writer()
+    push_changes.bind(None)  # the loop it was bound to ends with this lifespan
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)

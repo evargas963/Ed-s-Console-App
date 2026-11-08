@@ -23,7 +23,7 @@ class Client:
         self.wake = asyncio.Event()
 
 
-def bind(loop: asyncio.AbstractEventLoop) -> None:
+def bind(loop: asyncio.AbstractEventLoop | None) -> None:
     global _loop
     _loop = loop
 

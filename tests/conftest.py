@@ -145,17 +145,20 @@ def tracked_files() -> list[str]:
 
 
 @pytest.fixture
-def view(monkeypatch):
+def view():
     """Open the page on tickers: `view("SPY")` opens its /api/changes connection (the one viewing
-    signal) as the page does; the test starts with no page open and ends with them closed. No
-    event loop is bound, so a change is recorded for the page but not delivered (another test's
-    loop may be closed)."""
+    signal) as the page does, and closes each at the test's end as the page does when it goes.
+    With no event loop bound (the console's shutdown unbinds its own), a change is recorded for
+    the page but not delivered."""
     import push_changes
 
-    monkeypatch.setattr(push_changes, "_open", [])
-    monkeypatch.setattr(push_changes, "_loop", None)
+    opened: list = []
 
     def open_(*tickers):
-        return [push_changes.subscribe(tk) for tk in tickers]
+        pages = [(tk, push_changes.subscribe(tk)) for tk in tickers]
+        opened.extend(pages)
+        return [c for _tk, c in pages]
 
-    return open_
+    yield open_
+    for tk, c in opened:
+        push_changes.unsubscribe(tk, c)
