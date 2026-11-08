@@ -312,6 +312,26 @@ def stopped_price_answers() -> dict:
     return json.loads(json.dumps(bodies))
 
 
+def write_stopped_e2e_fixtures() -> None:
+    """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
+    hold them (tests/conftest.py, imported first for the tests' environment), then each route's
+    answer written to its browser fixture (STOPPED_FIXTURES):
+    python -c "import tests.conftest, tests.test_level_crosses_wire as t
+    t.write_stopped_e2e_fixtures()"
+    """
+    import json
+
+    from tests.conftest import MARKETS_ANSWERS
+
+    for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
+        if a["status"] == 200:
+            time_et.record_markets(json.loads(a["body"]))
+    served = stopped_price_answers()
+    for route, name in STOPPED_FIXTURES.items():
+        text = json.dumps(served[route], indent=1, sort_keys=True).replace("\n", "\r\n")
+        (Path(__file__).parent / "fixtures" / name).write_bytes(text.encode("utf-8"))
+
+
 def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
     """The browser tests' answers are these routes', on captured data: kept equal to them. SPY's
     chain was fetched at 16:17 ET, after its own 16:15 option close, so at 18:00 its levels are the
