@@ -197,7 +197,7 @@
     if (srow && srow.scrollIntoView) srow.scrollIntoView({ block: 'center' });
     host.querySelectorAll('.hcell').forEach(function (c) {
       c.addEventListener('click', function () {   // the shared selection: every panel follows this strike
-        if (window.EdShell) window.EdShell.setStrike(Number(c.getAttribute('data-strike')), c.getAttribute('data-expiry'));
+        window.EdShell.setStrike(Number(c.getAttribute('data-strike')), c.getAttribute('data-expiry'));
       });
     });
     var firstRow = host.querySelector('tbody tr');
