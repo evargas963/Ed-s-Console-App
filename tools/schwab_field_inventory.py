@@ -11,7 +11,7 @@ daemon's).
 Paths: `endpoint.key.key`; a list item and an option chain's expiry and strike keys are `*`;
 market-hours products are kept (market_hours.future.GC.isOpen). Containers are rows too.
 
-    python -m tools.schwab_field_inventory [--seed older_list.csv]
+    python -m tools.schwab_field_inventory
 """
 
 from __future__ import annotations
@@ -64,12 +64,21 @@ EXTRA_QUOTES = [
 ]
 #: underlyings whose full chains are read: ETF, index, stock, adjusted-deliverable candidates
 CHAIN_SYMBOLS = ["SPY", "$SPX", "AAPL", "GME", "TSLA"]
-TYPES = {bool: "bool", int: "number", float: "number", str: "string", dict: "object", list: "array"}
+#: the JSON types json.loads returns
+TYPES = {
+    bool: "bool",
+    int: "number",
+    float: "number",
+    str: "string",
+    dict: "object",
+    list: "array",
+    type(None): "null",
+}
 
 
 def paths(obj, prefix: str, out: dict[str, str]) -> None:
     """Every path in `obj`, containers included, as {path: json type}; a list item is *."""
-    out[prefix] = TYPES.get(type(obj), "null")
+    out[prefix] = TYPES[type(obj)]
     if isinstance(obj, dict):
         for k, v in obj.items():
             paths(v, f"{prefix}.{k}", out)
@@ -82,9 +91,11 @@ def chain_paths(body: dict, out: dict[str, str]) -> None:
     """A chain's expiry and strike keys are data: chains.callExpDateMap.*.<contract field>."""
     paths({k: v for k, v in body.items() if not k.endswith("ExpDateMap")}, "chains", out)
     for side in ("callExpDateMap", "putExpDateMap"):
+        if side not in body:  # a spread strategy answers with monthlyStrategyList instead
+            continue
         out[f"chains.{side}"] = "object"
         out[f"chains.{side}.*"] = "object"
-        for strikes in (body.get(side) or {}).values():
+        for strikes in body[side].values():
             for contracts in strikes.values():
                 for contract in contracts:
                     paths(contract, f"chains.{side}.*", out)
@@ -96,7 +107,7 @@ def _option_symbols(c) -> list[str]:
     for sym in CHAIN_SYMBOLS:
         body = c.get_option_chain(sym, strike_count=1).json()
         for side in ("callExpDateMap", "putExpDateMap"):
-            for strikes in (body.get(side) or {}).values():
+            for strikes in body[side].values():
                 out.append(next(iter(strikes.values()))[0]["symbol"])
                 break
     return out
@@ -104,7 +115,7 @@ def _option_symbols(c) -> list[str]:
 
 def _expirations(c, symbol: str) -> list[dt.date]:
     body = c.get_option_expiration_chain(symbol).json()
-    return [dt.date.fromisoformat(e["expirationDate"][:10]) for e in body.get("expirationList", [])]
+    return [dt.date.fromisoformat(e["expirationDate"][:10]) for e in body["expirationList"]]
 
 
 def _paced(call):
@@ -282,7 +293,7 @@ def rest_rows(
             continue
         found: dict[str, str] = {}
         if endpoint == "instruments":  # {"instruments": [...]}: the wrapper key is not a field
-            body = body.get("instruments", [])
+            body = body["instruments"]
         if (
             endpoint == "quotes"
         ):  # keyed by symbol: the symbol level is dropped, the asset type kept
@@ -290,7 +301,8 @@ def rest_rows(
                 one: dict[str, str] = {}
                 paths(q, "quotes", one)
                 for p, t in one.items():
-                    rows.setdefault((p, t), set()).add(str(q.get("assetMainType") or ""))
+                    # an entry Schwab sent with no asset type (its errors) names no variant
+                    rows.setdefault((p, t), set()).add(q.get("assetMainType"))
                     endpoint_of[p] = endpoint
             continue
         if endpoint == "chains":
@@ -321,12 +333,8 @@ def captured_stream_paths(db: Path) -> dict[tuple[str, str], set[str]]:
                 f"SELECT native_json FROM {table} WHERE native_json IS NOT NULL "
                 "ORDER BY rowid DESC LIMIT 20000"
             ):
-                try:
-                    item = json.loads(raw)
-                except ValueError:
-                    continue
                 found: dict[str, str] = {}
-                paths(item, "streaming.content.*", found)
+                paths(json.loads(raw), "streaming.content.*", found)
                 for p, t in found.items():
                     rows.setdefault((p, t), set()).add(service)
     finally:
@@ -342,13 +350,7 @@ def _read(path: Path) -> dict[str, dict]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument(
-        "--seed",
-        type=Path,
-        help="an older field list (canonical_field, source_endpoints, last_seen)",
-    )
-    args = ap.parse_args()
+    argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args()
     from config import build_config, load_dotenv_file
     from db_authority import canonical_stream_db_path
     from runtime_layout import RUNTIME_ROOT
@@ -369,19 +371,6 @@ def main() -> int:
     documented = streaming_fields()
 
     rows = _read(OUT)
-    if args.seed:
-        for field, r in _read(args.seed).items():
-            rows.setdefault(
-                field,
-                {
-                    "canonical_field": field,
-                    "endpoint": r.get("source_endpoints", ""),
-                    "type": "",
-                    "variants": "",
-                    "first_seen": r.get("first_seen", ""),
-                    "last_seen": r.get("last_seen", ""),
-                },
-            )
 
     def seen(field: str, endpoint: str, typ: str, variants: set[str]) -> None:
         r = rows.setdefault(
@@ -397,12 +386,10 @@ def main() -> int:
         )
         r.update(
             endpoint=endpoint,
-            type=typ or r.get("type", ""),
+            type=typ,
             last_seen=today,
-            first_seen=r.get("first_seen") or today,
-            variants=";".join(
-                sorted(set(filter(None, (r.get("variants") or "").split(";"))) | variants)
-            ),
+            first_seen=r["first_seen"] or today,  # never seen before: first seen today
+            variants=";".join(sorted(set(filter(None, r["variants"].split(";"))) | variants)),
         )
 
     for (field, typ), variants in rest.items():
@@ -425,16 +412,17 @@ def main() -> int:
                 },
             )
             if name in received:
-                r.update(last_seen=today, first_seen=r.get("first_seen") or today)
+                r.update(last_seen=today, first_seen=r["first_seen"] or today)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open("w", encoding="utf-8", newline="\n") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS, lineterminator="\n")
         w.writeheader()
         for field in sorted(rows):
-            w.writerow({k: rows[field].get(k, "") for k in COLUMNS})
+            # a field this run added has no schwab_doc or sample yet: written empty
+            w.writerow(rows[field])
 
-    n_today = sum(1 for r in rows.values() if r.get("last_seen") == today)
+    n_today = sum(1 for r in rows.values() if r["last_seen"] == today)
     by_endpoint: dict[str, int] = {}
     for r in rows.values():
         by_endpoint[r["endpoint"]] = by_endpoint.get(r["endpoint"], 0) + 1
