@@ -61,7 +61,7 @@ def run_in(root: Path, *extra: str) -> tuple[int, str]:
         text=True,
         check=False,
     )
-    return r.returncode, (r.stdout or "") + (r.stderr or "")
+    return r.returncode, r.stdout + r.stderr
 
 
 def test_clean_repo_passes(repo):

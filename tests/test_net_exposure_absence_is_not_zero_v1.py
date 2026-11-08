@@ -15,9 +15,13 @@ from __future__ import annotations
 from datetime import datetime
 
 from math_exposure_core import (
+    book_total_oi,
     compute_exposures_by_strike,
+    strike_total_oi,
 )
+from math_levels import compute_max_pain
 from option_contract import read_chain
+from terrain_engine import _per_strike_rows, compute_terrain
 from time_et import ET
 
 SPOT = 500.0
@@ -48,8 +52,6 @@ def _book(contracts, spot=SPOT):
 
 
 def test_unreported_oi_is_unknown_and_one_sided_oi_is_known():
-    from math_exposure_core import book_total_oi, strike_total_oi
-
     ex, _ = _book(
         [
             _c(500.0, "CALL", delta=0.5, gamma=0.02, oi=1000),  # one-sided: known
@@ -63,8 +65,6 @@ def test_unreported_oi_is_unknown_and_one_sided_oi_is_known():
 
 
 def test_per_strike_bars_are_dollar_gex_on_valid_gamma_only():
-    from terrain_engine import _per_strike_rows
-
     cts = [
         _c(500.0, "CALL", delta=0.5, gamma=0.02),
         _c(510.0, "CALL", delta=0.5, gamma=float("nan")),
@@ -84,9 +84,6 @@ def test_per_strike_bars_are_dollar_gex_on_valid_gamma_only():
 
 
 def test_terrain_max_pain_uses_only_the_front_expiry():
-    from math_levels import compute_max_pain
-    from terrain_engine import compute_terrain
-
     def c(k, typ, oi, dte):
         ct = _c(k, typ, delta=0.5 if typ == "CALL" else -0.5, gamma=0.02, oi=oi)
         ct["daysToExpiration"] = dte
