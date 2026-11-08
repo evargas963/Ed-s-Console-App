@@ -3757,9 +3757,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     pin = _level_named(levels, "0D Pin")
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
-    body = {
-        key: value for key, value in stored.items() if key not in ("ranked", "peaks", "strikes")
-    }
+    body = {key: value for key, value in stored.items() if key not in ("ranked", "strikes")}
     ranked = sorted(stored["ranked"])
     lo, hi, view = _window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
     body["rows"] = window_rows(stored, ranked[lo : hi + 1])
