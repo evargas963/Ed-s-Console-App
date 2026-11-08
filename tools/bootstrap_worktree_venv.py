@@ -38,7 +38,8 @@ def ensure_venv(
     """Create .venv if missing; optionally pip-install requirements*.txt.
 
     with_pip=False skips ensurepip (~27s measured) — only for callers that assert
-    interpreter creation and install nothing; requirements installs need pip."""
+    interpreter creation and install nothing; requirements installs need pip.
+    """
     root = (repo or REPO).resolve()
     vpy = venv_python(root)
     if not vpy.is_file():
