@@ -4132,6 +4132,3 @@ def liquidity_snapshot(ticker: str, now: datetime):
     except HTTPException as e:
         # its own status code (a missing ticker is 400), never re-issued as a bare 500
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
-    except Exception as e:
-        log.exception("liquidity snapshot for %s failed", ticker)
-        return JSONResponse({"error": str(e)}, status_code=500)
