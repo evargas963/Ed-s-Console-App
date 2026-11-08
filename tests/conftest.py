@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -30,12 +29,10 @@ import pytest
 os.environ.pop("ED_CONSOLE_DB", None)
 os.environ.pop("ED_DB_PATH", None)
 _PYTEST_RUNTIME_ROOT = Path(
-    tempfile.mkdtemp(
-        prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"
-    )
+    tempfile.mkdtemp(prefix=f"ed-pytest-{os.getpid()}-")  # the process id names each worker's
 ).resolve()
 os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
-os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
+os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
 # The console DB and stream-capture DB are NOT set by env: RC-534 disabled ambient
 # ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db._resolve_console_db_path raises on
 # them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
@@ -119,7 +116,8 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     with them)."""
     from time_et import ET, now, session
 
-    day = on_or_before or datetime.fromtimestamp(now(), ET).date()
+    start = on_or_before or datetime.fromtimestamp(now(), ET).date()
+    day = start
     for _ in range(14):  # the longest market closure gap is far under two weeks
         s = session(day.isoformat())
         if s is not None and s.is_open:
@@ -127,28 +125,8 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
         day -= timedelta(days=1)
     raise AssertionError(
         f"no open day in Schwab's /markets answers held in the 14 ET days before "
-        f"{on_or_before or 'today'} ({MARKETS_ANSWERS.name} covers 2026-09-30 to 2027-10-07)"
+        f"{start} ({MARKETS_ANSWERS.name} covers 2026-09-30 to 2027-10-07)"
     )
-
-
-@pytest.fixture(autouse=True)
-def _clear_quote_memo_between_tests():
-    """RC-314: `server._quote_memo` is process-global and outlives every pytest boundary.
-
-    `test_rest_fast_quote_spot_fail_closed_not_zero` passed as a single node and FAILED as
-    part of its own file, with `quote_attempts=0` in the log: a sibling had left SPY at
-    501.25 in the memo, `_memoized_quote_response` served it, and the fail-closed path under
-    test never ran. tmp_path, fresh DBs and monkeypatch all isolate what the TEST owns; a
-    cache owned by the import is invisible to them.
-
-    Guarded on `server` already being imported, so the tests that never touch it pay nothing
-    and none of them triggers a server import it did not ask for.
-    """
-    srv = sys.modules.get("server")
-    memo = getattr(srv, "_quote_memo", None) if srv is not None else None
-    if isinstance(memo, dict):
-        memo.clear()
-    yield
 
 
 @pytest.fixture(scope="session")
@@ -164,34 +142,6 @@ def tracked_files() -> list[str]:
         check=True,
     ).stdout
     return sorted(p for p in out.split("\0") if p)
-
-
-@pytest.fixture
-def pin_clock(monkeypatch):
-    """Value a test at a fixed instant: `pin_clock(2026, 9, 22, 12, 46)` (ET). A test built on a
-    stored Schwab chain is valued at the chain's capture instant, so the chain's expiries passing
-    can never empty the greeks the test compares (2026-09-27: six tests had been comparing None
-    with None since their fixtures expired)."""
-    from datetime import datetime as _dt
-
-    import time_et
-
-    real = time_et.now_et
-    pinned: list = []  # modules this test has pinned, so a second pin moves them
-
-    def pin(*when):
-        at = _dt(*when, tzinfo=time_et.ET)
-        if not pinned:
-            pinned.extend(
-                m
-                for m in list(sys.modules.values())
-                if m is not None and getattr(m, "now_et", None) is real
-            )
-        for mod in pinned:
-            monkeypatch.setattr(mod, "now_et", lambda: at)
-        return at
-
-    return pin
 
 
 @pytest.fixture

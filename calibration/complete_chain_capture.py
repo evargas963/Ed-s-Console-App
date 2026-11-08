@@ -276,10 +276,13 @@ def markets_message(day: str, status: int, answer: dict, fetched_ts: float) -> t
 
 
 def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
+    """A failed fetch as its one bus message: part 0 of 1, with Schwab's answer or the error."""
     return f"chain.{ticker}", {
         "src": "schwab_chain",
         "ticker": ticker,
         "ts_recv": ts,
+        "part": 0,
+        "parts": 1,
         "failed": reason,
     }
 
