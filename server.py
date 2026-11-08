@@ -2802,6 +2802,8 @@ async def get_changes(ticker: str = Query(...)):
             yield f"event: session\ndata: {session_label(now_et())}\n\n"
             while True:
                 kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
+                if client.closed:  # the program is stopping (push_changes.close_all)
+                    return
                 for k in sorted(kinds):
                     yield f"event: {k}\ndata: {t}\n\n"
                 if not kinds:
