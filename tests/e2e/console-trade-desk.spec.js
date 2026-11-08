@@ -32,7 +32,7 @@ test('every chart is the one TradingView-style chart, with its controls', async 
   // the liquidity map draws the served zones and shows the prior-day level from /api/levels: a line
   // when it is inside the candles' price range, else named at the pane's edge (PDH 773.50 is above
   // this fixture's one bar, 769-772; the scale fits the candles, 2026-09-29)
-  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).zones)).toBe(LIQ.zones.length);
+  await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(LIQ.zones.length);
   await expect.poll(() => page.evaluate(() => ((window.EdLiquidityMap.state() || { levels: [] }).levels.join(' ') + ' ' +
     document.querySelector('#liqmBody .tvc-edge-top').textContent))).toContain('PDH');
   expect(errs).toEqual([]);
@@ -81,8 +81,8 @@ test('Liquidity map: the live price keeps its last trade time', async ({ page })
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity');
     localStorage.setItem('ed_sub', 'map'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).liveTitle)).toBe('LAST · last trade Fri 10/02 10:00 AM CT');
-  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).livePrice)).toBe(SPOT);
+  await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().liveTitle)).toBe('LAST · last trade Fri 10/02 10:00 AM CT');
+  await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().livePrice)).toBe(SPOT);
 });
 
 test('a level at 0 draws as a price: the map lists its zone, the desk its value words', async ({ page }) => {
@@ -96,7 +96,7 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.liqm-zones')).toContainText('Resistance 0.00');
-  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).zones)).toBe(AT_ZERO.zones.length);
+  await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(AT_ZERO.zones.length);
   await page.addInitScript(() => { localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('#tdmAgree')).toContainText('shifted lower');
@@ -136,7 +136,7 @@ test('the liquidity map fits its price scale to the candles; a far zone does not
     body: JSON.stringify(Object.assign({}, LIQ, { zones: LIQ.zones.concat([far]) })) }));
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).zones)).toBe(LIQ.zones.length + 1);
+  await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(LIQ.zones.length + 1);
   const st = await page.evaluate(() => window.EdLiquidityMap.state());
   expect(st.priceTop).toBeLessThan(far.zone_low);          // the bar's range (769-772) sets the scale
   expect(errs).toEqual([]);
@@ -159,7 +159,7 @@ test('the Gamma chart and the liquidity map carry the Trade Desk toolbar; a time
     asked.length = 0;
     await page.locator(host + ' .tvc-toolbar [data-tf="15"]').click();
     await expect(page.locator(host + ' .tvc-toolbar [data-tf="15"]')).toHaveClass(/on/);
-    await expect.poll(() => page.evaluate((a) => (window[a].state() || {}).tf, api), ws).toBe('15');
+    await expect.poll(() => page.evaluate((a) => window[a].state() && window[a].state().tf, api), ws).toBe('15');
     expect(asked, ws).toContain('15');
   }
   expect(errs).toEqual([]);
@@ -476,8 +476,8 @@ test.describe('Trade Desk renders served values', () => {
     await page.evaluate((spot) => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: {
       ticker: 'SPY', spot: spot, feed_live: false, feed_label: 'OFFLINE', trade_age_sec: 1, trade_time_ct: '14:00:01 CT',
       outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' } })), SPOT);
-    await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).liveTitle)).toBe('LAST · last trade 14:00:01 CT');
-    await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).livePrice)).toBe(SPOT);
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart && window.EdTradeDeskMap.state().chart.liveTitle)).toBe('LAST · last trade 14:00:01 CT');
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart && window.EdTradeDeskMap.state().chart.livePrice)).toBe(SPOT);
   });
 
   test('Market Map: the served last completed bar; a price tick moves the live LAST line and reads no bars', async ({ page }) => {
@@ -830,7 +830,7 @@ test.describe('Trade Desk renders served values', () => {
       await routeWatchlist(page, ['SPY']);
       await Promise.all([page.waitForResponse((r) => /\/api\/terrain\?/.test(r.url())),
         page.goto('/', { waitUntil: 'domcontentloaded' })]);
-      await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).bars || 0)).toBeGreaterThan(0);
+      await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart && window.EdTradeDeskMap.state().chart.bars)).toBeGreaterThan(0);
       // the terrain's answer is painted on the next frames
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       await page.mouse.move(0, 0);
