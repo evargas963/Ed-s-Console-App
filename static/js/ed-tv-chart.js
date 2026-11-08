@@ -416,7 +416,7 @@
     var heat = new HeatPrimitive(function () { return chart; }); timeline.attachPrimitive(heat);
 
     var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], unlabelled: [], nearestN: opts.nearestN || 6,
-      pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerMeta: {}, onMarkerClick: null };
+      pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerList: [], markerMeta: {}, onMarkerClick: null };
 
     // ---- time <-> logical (bars are sorted, time = bar start in epoch seconds) ----
     function barIndexAt(t) {
@@ -703,8 +703,8 @@
       // Replace the whole series (ticker or timeframe change).
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
-        S.lastBarLabel = lastBarLabel || null;
-        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
+        S.lastBarLabel = lastBarLabel;
+        S.bars = bars.map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
         S.tf = tf; S.symbol = symbol;
         candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
@@ -741,32 +741,32 @@
       _volPoint: function (b) {
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },
-      setVolume: function (bars) { volume.setData((bars || []).map(api._volPoint)); },
+      setVolume: function (bars) { volume.setData(bars.map(api._volPoint)); },
       // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels?tf=:
       // the value as of the bar's last minute, stamped with the bar's t). Rows are
       // [t, vwap, +1, -1, +2, -2].
       setVwap: function (rows) {
         var cols = [1, 2, 3, 4, 5], out = cols.map(function () { return []; });
-        (rows || []).forEach(function (r) { cols.forEach(function (c, k) { if (r && r[c] != null) out[k].push({ time: r[0], value: r[c] }); }); });
+        rows.forEach(function (r) { cols.forEach(function (c, k) { if (r && r[c] != null) out[k].push({ time: r[0], value: r[c] }); }); });
         vwapLine.setData(out[0]);
         bandLines.forEach(function (s, k) { s.setData(out[k + 1]); });
       },
       setStyle: function (style) { S.style = style === 'line' ? 'line' : 'candles'; paintStyle(); },
       setValueArea: function (val, vah) { band.set(val, vah, alpha(P.warn, 0.10)); },
       // levels: [{id, price, label, color, style, width}]
-      setLevels: function (levels) { S.levels = (levels || []).filter(function (l) { return l && isFinite(l.price); }); paintLevels(true); },
+      setLevels: function (levels) { S.levels = levels.filter(function (l) { return l && isFinite(l.price); }); paintLevels(true); },
       setNearestN: function (n) { S.nearestN = n; paintLevels(true); },
       // markers: [{id, time, price, num, text, color, meta}], drawn as numbered callouts at their
       // bar and price; one with no price or no bar is not drawn; the selected one (selectMarker)
       // is drawn heavier; a click on one calls onClick(meta)
       setMarkers: function (list, onClick) {
-        S.markerList = list || []; S.onMarkerClick = onClick || null;
+        S.markerList = list; S.onMarkerClick = onClick;
         api.selectMarker(S.markerSel);
       },
       selectMarker: function (id) {
         S.markerSel = id; S.markerMeta = {};
         var m = [];
-        (S.markerList || []).forEach(function (x) {
+        S.markerList.forEach(function (x) {
           var i = barIndexAt(Number(x.time)); if (i < 0 || x.price == null) return;
           S.markerMeta[x.id] = x.meta;
           m.push({ id: x.id, time: S.bars[i].t, price: x.price, num: x.num, text: x.text || '', color: x.color || P.accent2 });
