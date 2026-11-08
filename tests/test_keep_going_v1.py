@@ -252,33 +252,51 @@ def test_the_hook_as_wired_counts_its_refusals_and_an_allowed_stop_writes_no_cou
     assert (run.returncode, run.stdout, count.exists()) == (0, "", False)
 
 
-def test_every_order_holds_the_turn_until_it_is_answered(tmp_path):
+def test_every_message_is_read_and_every_order_answered_before_the_turn_ends(tmp_path):
     """Operator 2026-11-07: "once i tell you do something, you must do it ... you must enforce
-    this rule". Each message is an order; a stop is refused until each is answered, SHAPE or not."""
+    this rule"; 2026-11-08: "you must ask if it's an order and if it is an order then you must
+    immediately tell me if it breaks anything". A stop is refused until each message is read, and
+    each read as an order is answered, SHAPE or not."""
     s = {"session_id": "orders-1"}
-    first = keep_going.record_order({**s, "prompt": "fix all 13 now"}, tmp_path)
-    second = keep_going.record_order({**s, "prompt": "I NEED A NEW CENSUS TOTAL"}, tmp_path)
+    first = keep_going.record_message({**s, "prompt": "fix all 13 now"}, tmp_path)
+    second = keep_going.record_message({**s, "prompt": "what is a dict?"}, tmp_path)
     assert (first, second) == (1, 2)
-    # an event the app sends as a message is no one's order
+    # an event the app sends as a message is no one's message
     for event in ("<task-notification>done</task-notification>", "<ci-monitor-event>x", "  "):
-        assert keep_going.record_order({**s, "prompt": event}, tmp_path) is None
-    assert keep_going.unanswered(s, "Merged #775.", tmp_path) == [
-        (1, "fix all 13 now"),
-        (2, "I NEED A NEW CENSUS TOTAL"),
+        assert keep_going.record_message({**s, "prompt": event}, tmp_path) is None
+    assert keep_going.open_messages(s, "Merged #775.", tmp_path) == [
+        (1, "fix all 13 now", "read"),
+        (2, "what is a dict?", "read"),
     ]
-    why = keep_going.decide(DONE_ROW, "SHAPE is finished.", open_orders=[(2, "census total")])
-    assert why is not None and "ORDER 2: census total" in why
-    # an answer with nothing after it, mid-line, or for an order never given answers nothing
-    for empty in ("ORDER 1 DONE:", "Note: ORDER 1 DONE: #776", "ORDER 9 DONE: #776"):
-        assert [n for n, _ in keep_going.unanswered(s, empty, tmp_path)] == [1, 2]
-    left = keep_going.unanswered(s, "ORDER 1 DONE: #776, #777 merged", tmp_path)
-    assert left == [(2, "I NEED A NEW CENSUS TOTAL")]
-    # an answer is kept: a later message need not repeat it
-    assert keep_going.unanswered(s, "", tmp_path) == left
-    assert keep_going.unanswered(s, "ORDER 2 PUSHBACK: needs his GitHub setting", tmp_path) == []
+    why = keep_going.decide(DONE_ROW, "SHAPE is finished.", open_orders=[(2, "a dict?", "read")])
+    assert why is not None and "MESSAGE 2: a dict?" in why and "BREAKS:" in why
+    # a reading with nothing after it, mid-line, an order with no BREAKS, or for a message never
+    # sent reads nothing; nor does an answer to a message not read as an order
+    for empty in (
+        "MESSAGE 1 READ: ORDER - fix them",
+        "MESSAGE 1 READ: ORDER - fix them; BREAKS:",
+        "Note: MESSAGE 1 READ: NOT AN ORDER - a question",
+        "MESSAGE 9 READ: NOT AN ORDER - a question",
+        "ORDER 1 DONE: #776",
+    ):
+        assert [n for n, *_ in keep_going.open_messages(s, empty, tmp_path)] == [1, 2]
+    left = keep_going.open_messages(
+        s,
+        "MESSAGE 1 READ: ORDER - fix the 13 items; BREAKS: nothing\n"
+        "MESSAGE 2 READ: NOT AN ORDER - a question about dicts",
+        tmp_path,
+    )
+    assert left == [(1, "fix all 13 now", "answer")]
+    assert keep_going.standing_orders(s, tmp_path) == [(1, "fix all 13 now")]
+    why = keep_going.decide(DONE_ROW, "", open_orders=left)
+    assert why is not None and "ORDER 1: fix all 13 now" in why
+    # a reading and an answer are kept: a later message need not repeat them
+    assert keep_going.open_messages(s, "", tmp_path) == left
+    assert keep_going.open_messages(s, "ORDER 1 DONE: #776, #777 merged", tmp_path) == []
+    assert keep_going.open_messages(s, "", tmp_path) == []
     assert keep_going.decide(DONE_ROW, "", open_orders=[]) is None
-    # another session's orders are its own
-    assert keep_going.unanswered({"session_id": "orders-2"}, "", tmp_path) == []
+    # another session's messages are its own
+    assert keep_going.open_messages({"session_id": "orders-2"}, "", tmp_path) == []
 
 
 @pytest.mark.parametrize(
@@ -287,14 +305,16 @@ def test_every_order_holds_the_turn_until_it_is_answered(tmp_path):
 def test_a_session_id_missing_or_not_a_plain_name_fails_closed(payload, tmp_path):
     """No session is filed under a name of the hook's own: the stop is judged unreadable."""
     with pytest.raises((KeyError, ValueError)):
-        keep_going.record_order({**payload, "prompt": "go"}, tmp_path)
+        keep_going.record_message({**payload, "prompt": "go"}, tmp_path)
     with pytest.raises((KeyError, ValueError)):
         keep_going.in_a_row(payload, tmp_path)
 
 
 def test_waiting_on_the_operator_does_not_pass_an_unanswered_order():
-    why = keep_going.decide(OPEN_ROW, "WAITING ON OPERATOR: his yes.", open_orders=[(1, "x")])
-    assert why is not None and why.startswith("The operator's orders are not answered")
+    why = keep_going.decide(
+        OPEN_ROW, "WAITING ON OPERATOR: his yes.", open_orders=[(1, "x", "answer")]
+    )
+    assert why is not None and why.startswith("The operator's messages are not all read")
 
 
 def test_a_subagents_message_is_not_the_agents_final_message(tmp_path):
