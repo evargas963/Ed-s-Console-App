@@ -171,11 +171,13 @@ def unhealthy_for(port: int, seconds: float) -> str | None:
 START_WAIT_SEC = 180.0
 
 
-def ports_within(seconds: float) -> Ports | None:
+def ports_within(seconds: float) -> Ports:
     """The ports the program holds (program_ports), once it has written them, within `seconds`;
-    None when it has not by then."""
+    TimeoutError when it has not by then."""
     deadline = time_et.elapsed() + seconds
-    while (ports := program_ports()) is None and time_et.elapsed() < deadline:
+    while (ports := program_ports()) is None:
+        if time_et.elapsed() >= deadline:
+            raise TimeoutError("it did not open its ports")
         time.sleep(0.25)
     return ports
 
@@ -193,12 +195,11 @@ def main() -> int:
         subprocess.Popen(daemon_window(ROOT / "start_capture_daemon.bat"), cwd=ROOT)
         print('Ed Console: started in its own window ("Ed Capture Daemon").')
     started = time_et.elapsed()
-    ports = ports_within(START_WAIT_SEC)
-    why = (
-        "it did not open its ports"
-        if ports is None
-        else unhealthy_for(ports.console, START_WAIT_SEC - (time_et.elapsed() - started))
-    )
+    try:
+        ports = ports_within(START_WAIT_SEC)
+        why = unhealthy_for(ports.console, START_WAIT_SEC - (time_et.elapsed() - started))
+    except TimeoutError as e:
+        why = str(e)
     if why is not None:
         print(f"Ed Console: its pages did not answer in {START_WAIT_SEC:.0f} s: {why}")
         return 1
