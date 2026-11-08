@@ -36,7 +36,7 @@ function ageText(when, sec) {
   if (when != null && age != null) return when + ' · ' + age;
   if (when != null) return when;
   if (age != null) return age;
-  return '—';
+  return '-';
 }
 const rowV = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .v');
 const rowTag = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .fl-tag');
@@ -65,7 +65,7 @@ function makeContext() {
 }
 
 async function setup(page, ctx) {
-  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); } catch (e) {} });
+  await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'TSLA'); });
   // FALSIFIER (re-runnable from the tree): ED_FLOW_JS_OVERRIDE=<file> serves that file as
   // ed-gamma-flow.js, so the negative controls can be shown to FAIL against a consumer that reads
   // the old flattened shape / hardcodes tags.
@@ -141,7 +141,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody .fl-meta')).toHaveText(/^Put · 762/);
     const tsla = makeContext(); const other = await page.context().newPage(); await setup(other, tsla);
     await selectCallAndOpenFlow(other);
-    await expect(other.locator('#flowBody .fl-meta')).toHaveText(/^— · 367.5/);
+    await expect(other.locator('#flowBody .fl-meta')).toHaveText(/^- · 367.5/);
   });
 
   test('the selected contract is named once to stream; its served state on the badge; classifications + no signed flow', async ({ page }) => {
@@ -188,7 +188,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'ages.book_age_sec')).toHaveText(ageText(FIXTURE.book_time_ct, FIXTURE.ages.book_age_sec));
     // No flow row fell back to the absent-value placeholder.
     for (const k of ['flow.tape_pressure_30s', 'flow.tape_pressure_2m', 'flow.tape_pressure_5m', 'flow.cum_delta_proxy', 'flow.cum_delta_slope', 'flow.top_book_pressure']) {
-      await expect(rowV(page, k)).not.toHaveText('—');
+      await expect(rowV(page, k)).not.toHaveText('-');
     }
   });
 
@@ -260,7 +260,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowTag(page, 'flow.cum_delta_slope')).toHaveClass(/unknown/);
     await expect(rowV(page, 'flow.cum_delta_slope')).toHaveText(fmt(FIXTURE.flow.cum_delta_slope, 3));   // value still served
     await expect(rowTag(page, 'flow.tape_pressure_2m')).toHaveText(FIXTURE.flow.classification.tape_pressure_2m);   // untouched rows unchanged
-    await expect(page.locator('#flowBody .fl-foot')).toContainText('native_aggressor_available=—');
+    await expect(page.locator('#flowBody .fl-foot')).toContainText('native_aggressor_available=-');
     await expect(page.locator('#flowBody .fl-foot')).not.toContainText('native_aggressor_available=false');
   });
 
