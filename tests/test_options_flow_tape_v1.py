@@ -11,9 +11,11 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import server
+from app.options.order_flow import history, state
 from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import RecentTape
 from app.options.order_flow.state import OrderFlowState
+from app.options.order_flow.streaming import _ingest_pushed
 
 SYM = "SPY   260918C00600000"
 
@@ -22,11 +24,11 @@ def _tape(rows: list[tuple[float, dict]]) -> RecentTape:
     """A fresh tape fed each (ts_recv, LEVELONE_OPTIONS item) as the console's intake does
     (streaming._ingest_pushed): the live state reads the record first, and the tape takes the
     state's top of book and streamed values with it."""
-    tape, state = RecentTape(), OrderFlowState()
+    tape, live = RecentTape(), OrderFlowState()
     for ts_recv, content in rows:
-        state.push_level_one(SYM, content, ts_recv=ts_recv)
-        state.push_option_top(SYM, content)
-        tape.record(SYM, content, ts_recv, state.option_top(SYM), state.get_stream_greeks(SYM))
+        live.push_level_one(SYM, content, ts_recv=ts_recv)
+        live.push_option_top(SYM, content)
+        tape.record(SYM, content, ts_recv, live.option_top(SYM), live.get_stream_greeks(SYM))
     return tape
 
 
@@ -253,9 +255,6 @@ def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
 def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     """The console's intake records a print, then clear_symbol is called for that contract:
     its prints and its books are gone from memory. The release path does not call it."""
-    from app.options.order_flow import history, state
-    from app.options.order_flow.streaming import _ingest_pushed
-
     _ingest_pushed(
         f"optquote.{SYM}",
         {
