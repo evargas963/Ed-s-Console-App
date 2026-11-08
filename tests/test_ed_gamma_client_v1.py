@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+import server as srv
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -31,8 +33,6 @@ def test_ed_gamma_node_script():
 
 
 def test_gamma_surface_route_registered():
-    import server as srv
-
     paths = [getattr(route, "path", "") for route in srv.app.routes if hasattr(route, "path")]
     assert "/api/options/gamma-surface" in paths
     # /console converged into `/` here (/console cutover, operator directive 2026-09-14) --
