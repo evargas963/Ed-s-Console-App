@@ -2644,11 +2644,11 @@ def terrain_answer(tk: str, at: datetime) -> dict:
         return out | levels_mark(out)
     spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     _why = _terrain_refresh_last_error.get(tk)
-    unavailable = compute_terrain(tk, None, spot, now=at).to_dict()
+    empty = compute_terrain(tk, None, spot, now=at).to_dict()
     mark = price_mark(tk, spot_ts, at.timestamp())
     return (
-        unavailable
-        | price_relations(unavailable, spot).to_dict()
+        empty
+        | price_relations(empty, spot).to_dict()
         | mark
         | levels_mark(staleness | mark)
         | {
