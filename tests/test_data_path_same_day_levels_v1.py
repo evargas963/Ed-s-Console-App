@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 
+import terrain_engine
 from option_contract import read_chain
 from terrain_engine import SAME_DAY_LEVELS, compute_terrain
 from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, TSLA
@@ -45,8 +46,6 @@ def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
 def test_a_same_day_expiry_reads_the_charm_map_already_priced():
     """SPY expires 2026-10-07, the day this chain was captured. The rail charm is that
     expiry's map. Charm is calculated once for the expiry, not again for the rail."""
-    import terrain_engine
-
     held = SPY_0DTE
     calls = {"n": 0}
     real = terrain_engine.compute_charm_by_strike

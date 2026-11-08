@@ -7,31 +7,50 @@ from the chain and position structure.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from numeric_contract import float_finite_or_none
 from option_contract import OptionContract, streamed_greek_set
 from time_et import time_to_expiry_years
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
 
 # ── Black-Scholes Greeks per share: the one place their formulas live ──
 
 SQRT_2PI = math.sqrt(2.0 * math.pi)
 
 
-def norm_pdf(x, *, exp=math.exp):
+def norm_pdf[Num: (float, NDArray[np.float64])](
+    x: Num, *, exp: Callable[[Num], Num] = math.exp
+) -> Num:
     """The standard normal density. A number, or a numpy array with exp=np.exp."""
     return exp(-0.5 * x * x) / SQRT_2PI
 
 
-def d1_vt(spot, strike, t_years, sigma, carry=0.0, *, log=math.log, sqrt=math.sqrt):
+def d1_vt[Num: (float, NDArray[np.float64])](
+    spot: Num,
+    strike: Num,
+    t_years: Num,
+    sigma: Num,
+    carry: float = 0.0,
+    *,
+    log: Callable[[Num], Num] = math.log,
+    sqrt: Callable[[Num], Num] = math.sqrt,
+) -> tuple[Num, Num]:
     """THE Black-Scholes d1 and sigma*sqrt(T), with `carry` = r - q (0 unless given). Numbers,
-    or numpy arrays with log=np.log and sqrt=np.sqrt (the gamma profile prices whole chains)."""
+    or numpy arrays with log=np.log and sqrt=np.sqrt."""
     vt = sigma * sqrt(t_years)
     return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
 
 
-def _priced_d1(spot, strike, t_years, sigma, carry=0.0) -> tuple[float, float] | None:
+def _priced_d1(
+    spot: float, strike: float, t_years: float, sigma: float, carry: float = 0.0
+) -> tuple[float, float] | None:
     """d1 and sigma*sqrt(T) for one contract, or None when it cannot be priced (a value that is
     not positive, or a d1 that is not finite)."""
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
@@ -502,14 +521,22 @@ def book_total_oi(exposures: dict[float, dict]) -> float | None:
     return total
 
 
+def _put_call_ratio(legs: Iterable[tuple[float, float] | None]) -> float | None:
+    """Total put / total call over the book's strikes; None if any strike's legs are unknown or
+    the calls total 0 (an empty book included)."""
+    calls = puts = 0.0
+    for leg in legs:
+        if leg is None:
+            return None
+        calls += leg[0]
+        puts += leg[1]
+    return puts / calls if calls > 0 else None
+
+
 def put_call_oi_ratio(exposures: dict[float, dict]) -> float | None:
     """Total put OI / total call OI of the book -- the positions held; None if any strike's OI is
     unknown or call OI is 0."""
-    legs = [strike_oi_legs(b) for b in exposures.values()]
-    if not legs or None in legs:
-        return None
-    calls = sum(c for c, _ in legs)
-    return sum(p for _, p in legs) / calls if calls > 0 else None
+    return _put_call_ratio(strike_oi_legs(b) for b in exposures.values())
 
 
 def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
@@ -517,11 +544,7 @@ def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
     (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
     None when any contract in the book did not report its volume, or no call traded. A strike with
     no call (or put) contract listed has no volume on that side, not a zero."""
-    legs = [strike_volume_legs(b) for b in (exposures or {}).values()]
-    if not legs or None in legs:
-        return None
-    calls = sum(c for c, _ in legs)
-    return sum(p for _, p in legs) / calls if calls > 0 else None
+    return _put_call_ratio(strike_volume_legs(b) for b in exposures.values())
 
 
 def exposures_have_dollar_gex(exposures: dict[float, dict]) -> bool:

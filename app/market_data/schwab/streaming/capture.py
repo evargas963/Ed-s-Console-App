@@ -1156,6 +1156,14 @@ class _PagesServer(uvicorn.Server):
     def capture_signals(self):
         yield
 
+    async def startup(self, sockets=None) -> None:
+        """Bind, then say where: the port taken (ED_CONSOLE_PORT=0: the system's pick, so no
+        other program can hold it between a choice and the bind)."""
+        await super().startup(sockets)
+        for srv in self.servers:
+            host, port = srv.sockets[0].getsockname()[:2]
+            log.info("console: serving the pages on http://%s:%s", host, port)
+
 
 async def serve_console(daemon: Daemon, stop: asyncio.Event) -> None:
     """The console's pages and routes (server.app) in this program until `stop`, reading the
