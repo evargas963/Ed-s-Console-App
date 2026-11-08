@@ -100,8 +100,8 @@ def _store(tk: str, cache: dict) -> None:
 def _book_magnitudes(live: dict, expiry: str, spot: float) -> dict:
     """Each strike's factor magnitudes of one published expiry, as the matrix builds them."""
     book = next(b for (e, _d), (b, _x) in live["_books"].items() if e == expiry)
-    charm = live["_charm_by_expiry"].get(expiry) or {}
-    iv = live["_iv_by_expiry"].get(expiry) or {}
+    charm = live["_charm_by_expiry"][expiry]
+    iv = live["_iv_by_expiry"][expiry]
     mags = {s: magnitudes(b, charm.get(s), iv.get(s), spot) for s, b in book.items()}
     return {s: {k: v for k, v in m.items() if not k.startswith("_")} for s, m in mags.items()}
 
