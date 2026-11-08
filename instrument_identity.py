@@ -24,12 +24,12 @@ BROKER_INDEX_BARE_ROOTS: frozenset[str] = frozenset(
 )
 
 
-def ticker_storage_key(ticker: str | None) -> str:
+def ticker_storage_key(ticker: str) -> str:
     """
     Normalize user/JSON ticker to Schwab's symbol, the key the console and the capture
     daemon's record use.
     """
-    t = (ticker or "").strip()
+    t = ticker.strip()
     if not t:
         return ""
     if t.startswith("$"):
