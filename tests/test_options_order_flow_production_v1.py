@@ -49,7 +49,7 @@ def build_flow_e2e_fixture_response() -> dict:
     import live_market_plane as lmp
     import server as srv
     from app.options.order_flow import streaming as ofs
-    from stream_spine import book_msg, options_quote_msg
+    from stream_spine import book_msg, verbatim_msg
 
     events = next(
         c
@@ -81,7 +81,7 @@ def build_flow_e2e_fixture_response() -> dict:
             else:
                 ofs._ingest_pushed(
                     f"optquote.{FLOW_CONTRACT}",
-                    options_quote_msg(
+                    verbatim_msg(
                         symbol=FLOW_CONTRACT,
                         content=e["content"],
                         src="schwab_options_l1",
@@ -102,7 +102,7 @@ def build_side_e2e_fixture_response() -> dict:
     import server as srv
     from app.options.order_flow import streaming as ofs
     from app.options.order_flow.history import TAPE
-    from stream_spine import options_quote_msg
+    from stream_spine import verbatim_msg
 
     contracts = json.loads(_SIDES.read_text(encoding="utf-8"))["contracts"]
     out = {}
@@ -134,9 +134,7 @@ def build_side_e2e_fixture_response() -> dict:
             for m in msgs:
                 ofs._ingest_pushed(
                     f"optquote.{sym}",
-                    options_quote_msg(
-                        symbol=sym, content=m["item"], src="schwab", ts_recv=m["ts_recv"]
-                    ),
+                    verbatim_msg(symbol=sym, content=m["item"], src="schwab", ts_recv=m["ts_recv"]),
                 )
             out[sym] = srv.options_microstructure(sym, at)
         return out

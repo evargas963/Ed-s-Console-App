@@ -27,7 +27,7 @@ import schwab_client as sc
 import time_et
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import ChainSweep
-from stream_spine import CaptureWriter, HealthRegistry, MessageBus, options_quote_msg
+from stream_spine import CaptureWriter, HealthRegistry, MessageBus, verbatim_msg
 from tests.schwab_rest_standin import (
     CHAIN,
     CHAINS,
@@ -67,7 +67,7 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
         if e["kind"] == "l1":
             daemon.bus.publish(
                 f"optquote.{HELD}",
-                options_quote_msg(
+                verbatim_msg(
                     symbol=HELD,
                     content={**e["content"], "key": HELD},
                     src="schwab_options_l1",
@@ -230,7 +230,7 @@ def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
     record = daemon.option_record(HELD)[1]
     daemon.bus.publish(
         f"optquote.{HELD}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=HELD,
             content={**record["content"], **{f.upper(): -999 for f in GREEKS}},
             src="schwab_options_l1",

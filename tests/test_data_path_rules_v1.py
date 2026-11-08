@@ -1052,7 +1052,7 @@ def test_d6_no_live_route_opens_a_database():
 
     import server
     from db import get_db
-    from stream_spine import book_msg, options_quote_msg
+    from stream_spine import book_msg, verbatim_msg
 
     books = json.loads((FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
@@ -1071,7 +1071,7 @@ def test_d6_no_live_route_opens_a_database():
         )
     writer.insert(
         f"optquote.{_CONTRACT}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=_CONTRACT,
             content=_EVENTS[0]["content"],
             src="schwab_options_l1",

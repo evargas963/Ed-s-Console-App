@@ -29,7 +29,7 @@ from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
 from tests.real_chains import (
@@ -1069,7 +1069,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
         for m in messages:
             ofs._ingest_pushed(
                 f"optquote.{m['symbol']}",
-                options_quote_msg(
+                verbatim_msg(
                     symbol=m["symbol"], content=m["native"], src=m["src"], ts_recv=m["ts_recv"]
                 ),
             )

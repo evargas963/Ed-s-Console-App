@@ -24,7 +24,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -69,7 +69,7 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     for sym in ticked:
         ofs._ingest_pushed(
             f"optquote.{sym}",
-            options_quote_msg(
+            verbatim_msg(
                 symbol=sym,
                 content={"key": sym, "GAMMA": 0.05},
                 src="schwab_options_l1",

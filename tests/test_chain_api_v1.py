@@ -25,7 +25,7 @@ import server as srv
 import time_et
 from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
 from time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -68,7 +68,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     for sym, fields, ts in streamed:
         ofs._ingest_pushed(
             f"optquote.{sym}",
-            options_quote_msg(
+            verbatim_msg(
                 symbol=sym, content={"key": sym, **fields}, src="schwab_options_l1", ts_recv=ts
             ),
         )
