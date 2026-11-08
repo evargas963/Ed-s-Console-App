@@ -477,7 +477,7 @@
      showing its real, valid, already-computed value regardless of stream state -- these
      marks are DISCLOSURE ONLY, layered beside the value (never dimming/obscuring it, same
      lesson as .recede above), so a trader can tell live from a held snapshot at a glance
-     without the number itself ever being withheld, narrowed, or replaced with '—'. */
+     without the number itself ever being withheld, narrowed, or replaced with '-'. */
   .heat .hcell.state-partial{box-shadow:inset 0 0 0 1px var(--ed-warn)}
   .heat .hcell.state-stale,.heat .hcell.state-unavailable{box-shadow:inset 0 0 0 1px var(--ed-stale)}
 
@@ -699,23 +699,23 @@
   <!-- ===== HEADER ===== -->
   <header>
     <div class="hx">
-      <span class="sym" id="hSym">—</span>
-      <span class="px mono" id="hPx">—</span>
-      <span class="chg mono" id="hChgReg" title="Schwab REGULAR_MARKET_CHANGE_PERCENT: regular session vs prior close">—</span>
-      <span class="chg mono" id="hChg" title="Schwab NET_CHANGE_PERCENT: last price vs prior close, extended hours included">—</span>
+      <span class="sym" id="hSym">-</span>
+      <span class="px mono" id="hPx">-</span>
+      <span class="chg mono" id="hChgReg" title="Schwab REGULAR_MARKET_CHANGE_PERCENT: regular session vs prior close">-</span>
+      <span class="chg mono" id="hChg" title="Schwab NET_CHANGE_PERCENT: last price vs prior close, extended hours included">-</span>
     </div>
     <div class="hsep"></div>
-    <div class="hkv"><span class="k">Bid × Ask</span><span class="v" id="hBidAsk">—</span></div>
+    <div class="hkv"><span class="k">Bid × Ask</span><span class="v" id="hBidAsk">-</span></div>
     <div class="hsep"></div>
     <div class="live"><span class="dot" id="hFeedDot"></span><span id="hFeed">FEED —</span></div>
     <div class="hsep"></div>
-    <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">—</span></div>
+    <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">-</span></div>
     <div class="hsep"></div>
-    <div class="hkv"><span class="k">Record</span><span class="v" id="hRecord" title="the capture daemon's database writer, from its heartbeat">—</span></div>
+    <div class="hkv"><span class="k">Record</span><span class="v" id="hRecord" title="the capture daemon's database writer, from its heartbeat">-</span></div>
     <div class="hsep"></div>
-    <div class="hkv"><span class="k">Session</span><span class="sess" id="hSession">—</span></div>
+    <div class="hkv"><span class="k">Session</span><span class="sess" id="hSession">-</span></div>
     <div class="hsep"></div>
-    <div class="hkv"><span class="k" id="hClockDate">—</span><span class="v" id="hClock">--:--:-- CT</span></div>
+    <div class="hkv"><span class="k" id="hClockDate">-</span><span class="v" id="hClock">--:--:-- CT</span></div>
     <div class="search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
       <input id="symSearch" placeholder="Search symbol" autocomplete="off">
@@ -768,7 +768,7 @@
           <!-- main working panel — view tabs (Heatmap/Chart/Levels/Multi-Map) swap this -->
           <div class="panel p-heat">
             <div class="panel-h">
-              <span class="hticker" id="mvTicker">—</span>
+              <span class="hticker" id="mvTicker">-</span>
               <span class="t" id="mvTitle">Gamma Exposure Heatmap</span>
               <div class="r">
                 <span class="sub cov" id="heatScope"></span>
@@ -809,20 +809,20 @@
             <div class="panel-b klbody" id="klBody">
               <div class="kl-pairs">
                 <span></span><span class="h">Regular</span><span class="h">0DTE</span>
-                <span class="k">Spot</span><span class="v" id="klSpot">—</span><span class="v"></span>
-                <span class="k">Gamma Flip</span><span class="v" id="klFlip">—</span><span class="v" id="kl0Flip">—</span>
-                <span class="k">Call Wall</span><span class="v" id="klCall">—</span><span class="v" id="kl0Call">—</span>
-                <span class="k">Put Wall</span><span class="v" id="klPut">—</span><span class="v" id="kl0Put">—</span>
-                <span class="k">Absolute γ (pin)</span><span class="v" id="klAbs">—</span><span class="v" id="kl0Abs">—</span>
-                <span class="k">Net GEX peak</span><span class="v" id="klPeak">—</span><span class="v" id="kl0Peak">—</span>
+                <span class="k">Spot</span><span class="v" id="klSpot">-</span><span class="v"></span>
+                <span class="k">Gamma Flip</span><span class="v" id="klFlip">-</span><span class="v" id="kl0Flip">-</span>
+                <span class="k">Call Wall</span><span class="v" id="klCall">-</span><span class="v" id="kl0Call">-</span>
+                <span class="k">Put Wall</span><span class="v" id="klPut">-</span><span class="v" id="kl0Put">-</span>
+                <span class="k">Absolute γ (pin)</span><span class="v" id="klAbs">-</span><span class="v" id="kl0Abs">-</span>
+                <span class="k">Net GEX peak</span><span class="v" id="klPeak">-</span><span class="v" id="kl0Peak">-</span>
               </div>
               <div class="kl-sec">Exposure</div>
-              <div class="kl-row"><span class="k">Net GEX / 1%</span><span class="v" id="klNet">—</span></div>
-              <div class="kl-row"><span class="k">Put/Call OI <span class="kl-scope" id="klPcrScope"></span></span><span class="v" id="klPcr">—</span></div>
-              <div class="kl-row"><span class="k">Put/Call volume <span class="kl-scope" id="klPcrVolScope"></span></span><span class="v" id="klPcrVol">—</span></div>
+              <div class="kl-row"><span class="k">Net GEX / 1%</span><span class="v" id="klNet">-</span></div>
+              <div class="kl-row"><span class="k">Put/Call OI <span class="kl-scope" id="klPcrScope"></span></span><span class="v" id="klPcr">-</span></div>
+              <div class="kl-row"><span class="k">Put/Call volume <span class="kl-scope" id="klPcrVolScope"></span></span><span class="v" id="klPcrVol">-</span></div>
               <div class="kl-regime-box">
                 <span class="rlab">Dealer Regime</span>
-                <span class="rval" id="klRegime">—</span>
+                <span class="rval" id="klRegime">-</span>
                 <span class="rsub" id="klRegimeSub">dealer-sign gated per ticker</span>
               </div>
             </div>
@@ -831,7 +831,7 @@
           <!-- bottom drill-down -->
           <div class="p-bottom">
             <div class="panel">
-              <div class="panel-h"><span class="t">Strike Detail</span><span class="sub" id="sdCtx">—</span><div class="r"><span id="sdSrc"></span><span class="prov native">CHAIN</span></div></div>
+              <div class="panel-h"><span class="t">Strike Detail</span><span class="sub" id="sdCtx">-</span><div class="r"><span id="sdSrc"></span><span class="prov native">CHAIN</span></div></div>
               <div class="panel-b" id="sdBody"><div class="placeholder"><div class="sm">Select a strike/expiry. OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div></div>
             </div>
             <div class="panel">
@@ -857,7 +857,7 @@
         <!-- OPTIONS / CHAIN subview — the full vendor chain ladder (/api/chain + /api/expiries) -->
         <div class="sub-pane" data-sub-pane="chain">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="chTicker">—</span><span class="t">Option Chain</span>
+            <div class="panel-h"><span class="hticker" id="chTicker">-</span><span class="t">Option Chain</span>
               <div class="r"><span id="chSrc"></span><span class="prov native">CHAIN</span></div></div>
             <div class="panel-b" id="chainBody"><div class="placeholder"><div class="sm">Full vendor chain ladder from /api/chain (strike_range=ALL, one expiry).</div></div></div>
           </div>
@@ -866,7 +866,7 @@
         <!-- OPTIONS / FLOW subview -->
         <div class="sub-pane" data-sub-pane="flow">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="flTicker">—</span><span class="t">Options Flow</span></div>
+            <div class="panel-h"><span class="hticker" id="flTicker">-</span><span class="t">Options Flow</span></div>
             <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from /api/order-flow/options-microstructure (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
           </div>
         </div>
@@ -878,7 +878,7 @@
              already-canonical call_vanna/put_vanna (RC-211's exact BS-vanna faucet). -->
         <div class="sub-pane" data-sub-pane="vanna">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="vnTicker">—</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · delta-shares per vol point · agg all expiries</span>
+            <div class="panel-h"><span class="hticker" id="vnTicker">-</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · delta-shares per vol point · agg all expiries</span>
               <div class="r"><span id="vnSrc"></span><span class="prov derived">DERIVED</span></div></div>
             <div class="panel-b" id="vnBody"><div class="placeholder"><div class="sm">Net dealer vanna (call_vanna − put_vanna) per strike from /api/options/vanna-by-strike.</div></div></div>
           </div>
@@ -888,7 +888,7 @@
              /api/forces's charm_below/charm_above already sum (math_levels.compute_charm_by_strike). -->
         <div class="sub-pane" data-sub-pane="charm">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="chmTicker">—</span><span class="t">Charm by Strike</span><span class="sub">dealer net charm · Δ-shares/day · agg all expiries</span>
+            <div class="panel-h"><span class="hticker" id="chmTicker">-</span><span class="t">Charm by Strike</span><span class="sub">dealer net charm · Δ-shares/day · agg all expiries</span>
               <div class="r"><span id="chmSrc"></span><span class="prov derived">DERIVED</span></div></div>
             <div class="panel-b" id="chmBody"><div class="placeholder"><div class="sm">Net dealer charm (call_charm − put_charm) per strike from /api/options/charm-by-strike.</div></div></div>
           </div>
@@ -901,7 +901,7 @@
              settled contract from silently being treated like an ordinary 100-share monthly. -->
         <div class="sub-pane" data-sub-pane="structures">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="stTicker">—</span><span class="t">Contract Structures</span><span class="sub">non-standard · settlement · exercise · deliverables</span>
+            <div class="panel-h"><span class="hticker" id="stTicker">-</span><span class="t">Contract Structures</span><span class="sub">non-standard · settlement · exercise · deliverables</span>
               <div class="r"><span id="stSrc"></span><span class="prov native">CHAIN</span></div></div>
             <div class="panel-b" id="stBody"><div class="placeholder"><div class="sm">Contract-safety metadata (multiplier, non-standard, deliverables, settlement/exercise/expiration type, last trading day, penny pilot) from /api/chain — vendor-native, never inferred.</div></div></div>
           </div>
@@ -929,9 +929,9 @@
             </div>
             <div class="tdm-cards" id="tdmCards">
               <div class="tdm-card panel liq" id="tdmCardLiq"><div class="tdm-card-h"><span class="t">Liquidity</span><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ</button></span><button type="button" class="scbtn liq-comp" data-liqvenue="COMPOSITE">COMPOSITE</button><button type="button" class="tdm-open" data-drill="liquidity" title="Order Flow · Heatmap">Open tab ›</button></div><div class="tdm-src"></div><div class="liq-body"></div></div>
-              <div class="tdm-card panel" id="tdmCardFlow"><div class="tdm-card-h"><span class="t">Order Flow</span><button type="button" class="tdm-open" data-drill="flow" title="Order Flow · Book / DOM">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">—</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
-              <div class="tdm-card panel" id="tdmCardOpt"><div class="tdm-card-h"><span class="t">Options Positioning</span><button type="button" class="tdm-open" data-drill="options" title="Options · Gamma">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">—</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
-              <div class="tdm-card panel" id="tdmCardVol"><div class="tdm-card-h"><span class="t">Volatility</span><button type="button" class="tdm-open" data-drill="vol" title="Options · Chain">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">—</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
+              <div class="tdm-card panel" id="tdmCardFlow"><div class="tdm-card-h"><span class="t">Order Flow</span><button type="button" class="tdm-open" data-drill="flow" title="Order Flow · Book / DOM">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">-</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
+              <div class="tdm-card panel" id="tdmCardOpt"><div class="tdm-card-h"><span class="t">Options Positioning</span><button type="button" class="tdm-open" data-drill="options" title="Options · Gamma">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">-</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
+              <div class="tdm-card panel" id="tdmCardVol"><div class="tdm-card-h"><span class="t">Volatility</span><button type="button" class="tdm-open" data-drill="vol" title="Options · Chain">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">-</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
             </div>
             <div class="tdm-agree panel"><span class="tdm-agree-t">Cross-Domain Read</span><div class="tdm-agree-row" id="tdmAgree"></div></div>
             <div class="tdm-foot"><span class="tdm-idx" id="tdmIdxSPX"></span><span class="tdm-idx" id="tdmIdxNDX"></span><span class="tdm-idx" id="tdmIdxVIX"></span><span class="tdm-trust-l">Data trust</span><span class="tdm-trust" id="tdmTrust"></span><span class="tdm-foot-src" id="tdmFoot"></span></div>
@@ -944,7 +944,7 @@
         </div>
         <div class="sub-pane" data-sub-pane="right-now">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="tdTicker">—</span><span class="t">Right Now</span><span class="sub">detect · frame · confirm — one page, zero new math</span>
+            <div class="panel-h"><span class="hticker" id="tdTicker">-</span><span class="t">Right Now</span><span class="sub">detect · frame · confirm — one page, zero new math</span>
               <div class="r"><span class="prov derived">SYNTHESIS</span></div></div>
             <div class="panel-b" id="tdBody"><div class="placeholder"><div class="sm">Assembles /api/order-flow/microstructure, /api/levels and /api/terrain — the same canonical endpoints Order Flow, Liquidity and Options already read. Computes nothing new.</div></div></div>
           </div>
@@ -963,14 +963,14 @@
       <section class="workspace" data-ws-pane="order-flow">
         <div class="sub-pane" data-sub-pane="book">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="obTicker">—</span><span class="t">Book / DOM</span><span class="sub">top-of-book · depth · imbalance</span>
+            <div class="panel-h"><span class="hticker" id="obTicker">-</span><span class="t">Book / DOM</span><span class="sub">top-of-book · depth · imbalance</span>
               <div class="r"><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></span></div></div>
             <div class="panel-b" id="obBody"><div class="placeholder"><div class="sm">Real L2 book microstructure from /api/order-flow/microstructure — top-of-book/spread/depth/imbalance NATIVE/DERIVED; aggressor side deferred (Schwab exposes no native field).</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="heatmap">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="ofhTicker">—</span><span class="t">Book Heatmap</span><span class="sub">displayed depth over time</span>
+            <div class="panel-h"><span class="hticker" id="ofhTicker">-</span><span class="t">Book Heatmap</span><span class="sub">displayed depth over time</span>
               <div class="r"><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></span>
                 <div class="chart-modes">
                   <button type="button" class="cmode" data-ofh-minutes="15">15m</button>
@@ -991,14 +991,14 @@
       <section class="workspace" data-ws-pane="liquidity">
         <div class="sub-pane" data-sub-pane="map">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="liqmTicker">—</span><span class="t">Liquidity Map</span><span class="sub">confluence-scored zones · reference levels · spot</span>
+            <div class="panel-h"><span class="hticker" id="liqmTicker">-</span><span class="t">Liquidity Map</span><span class="sub">confluence-scored zones · reference levels · spot</span>
               <div class="r"><span class="prov derived">LIQUIDITY SNAPSHOT</span></div></div>
             <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from /api/liquidity-snapshot's own confluence-scored support/resistance zones, plus prior-day/overnight reference levels and spot — never a fabricated line.</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="levels">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="lvlTicker">—</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
+            <div class="panel-h"><span class="hticker" id="lvlTicker">-</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
               <div class="r"><span class="prov native">LEVELS</span></div></div>
             <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from /api/levels (PDH/PDL/PDC, POC/VAH/VAL, overnight, VWAP±σ) — vendor-derived, never a fabricated line.</div></div></div>
           </div>
@@ -1017,10 +1017,10 @@
   <div class="aid-b">
     <div class="aid-ctx">
       <div class="cl">Context sent automatically</div>
-      <div class="cr"><span>Ticker</span><span id="aiCtxSym">—</span></div>
+      <div class="cr"><span>Ticker</span><span id="aiCtxSym">-</span></div>
       <div class="cr"><span>Workspace</span><span id="aiCtxWs">Options · Gamma · Heatmap</span></div>
       <div class="cr"><span>Expiry</span><span id="aiCtxExp">All</span></div>
-      <div class="cr"><span>Freshness</span><span id="aiCtxFresh">—</span></div>
+      <div class="cr"><span>Freshness</span><span id="aiCtxFresh">-</span></div>
     </div>
     <div class="notproven" style="align-self:flex-start">AI BACKEND NOT_PROVEN — access architecture only</div>
     <div style="font-size:11px;color:var(--ed-ink-3);letter-spacing:.02em">Backend = canonical truth · AI = interpretation only. Intended questions:</div>

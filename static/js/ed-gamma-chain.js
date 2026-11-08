@@ -6,23 +6,23 @@
 (function () {
   'use strict';
 
-  function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  function px(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   var AS_SENT = 'as_sent';
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function isChain() { var s = st(); return s.workspace === 'options' && s.subview === 'chain'; }
 
   function setSrc(d) {
     var el = document.getElementById('chSrc'); if (!el) return;
-    el.innerHTML = (window.EdShell && window.EdShell.chainScopeBadge) ? window.EdShell.chainScopeBadge(d) : '';
+    el.innerHTML = window.EdShell.chainScopeBadge(d);
   }
 
   // auto-scroll to spot only the first time a ticker+expiry is rendered
   var _lastScrollContext = null;
 
-  function curExpiry() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || null; }
-  function stillChain(tk, exp) { return isChain() && (st().ticker || '') === tk && curExpiry() === exp; }
+  function curExpiry() { return window.EdShell.getExpiry(); }
+  function stillChain(tk, exp) { return isChain() && st().ticker === tk && curExpiry() === exp; }
   // A -> B -> A could let the FIRST A request's response paint over the THIRD (fresh) A
   // request's response. `stillChain` proves the identity (ticker, expiry) still matches NOW,
   // but two requests issued at different times for the identical identity are
@@ -44,8 +44,8 @@
       function (d) { if (current()) render(host, d); },
       function (words) { if (current()) { setSrc(null); window.EdShell.placeholder(host, words); } });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); });
-  function load() { _loader.trigger((st().ticker || '') + '|' + (curExpiry() || '')); }
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker, curExpiry(), signal); });
+  function load() { _loader.trigger(st().ticker + '|' + curExpiry()); }
 
   function render(host, d) {
     setSrc(d);
@@ -57,14 +57,14 @@
     var desired = window.EdFlow.selected();
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
-    var filterNull = !(window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry());
-    var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '—') +
+    var filterNull = !(window.EdShell.getExpiry());
+    var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '-') +
       (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + esc(d.n_strikes) + ' strikes' +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
-      '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') +
+      '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '-') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') +
       (d.spot_time_ct ? (' · last trade ' + esc(d.spot_time_ct)) : '') + '</span></div>';
     // dg: decimals, or AS_SENT: every digit Schwab sent (its Greeks)
-    function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
+    function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '-' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
     function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
     // No `position:sticky`: the header table is a FROZEN (non-scrolling) sibling of a separate
@@ -114,10 +114,10 @@
         var cell = e.target.closest ? e.target.closest('td') : null;
         if (cell && cell.classList.contains('chn-call') && tr.getAttribute('data-csym')) return selectContract(tr.getAttribute('data-csym'), k, d.expiry);
         if (cell && cell.classList.contains('chn-put') && tr.getAttribute('data-psym')) return selectContract(tr.getAttribute('data-psym'), k, d.expiry);
-        if (window.EdShell) window.EdShell.setStrike(k, d.expiry);   // centre strike -> shared strike only
+        window.EdShell.setStrike(k, d.expiry);   // centre strike -> shared strike only
       });
     });
-    var context = (st().ticker || '') + '|' + (d.expiry || '');
+    var context = st().ticker + '|' + d.expiry;
     var isNewContext = context !== _lastScrollContext;
     _lastScrollContext = context;
     if (isNewContext) {
@@ -129,7 +129,7 @@
   }
 
   function selectContract(symbol, strike, expiry) {
-    if (window.EdShell) window.EdShell.setStrike(strike, expiry);      // exact strike + expiry = shared context
+    window.EdShell.setStrike(strike, expiry);      // exact strike + expiry = shared context
     var host = document.getElementById('chainBody'); if (host) {
       host.querySelectorAll('.chn-selc').forEach(function (n) { n.classList.remove('chn-selc'); });
       host.querySelectorAll('[data-sym="' + (window.CSS && CSS.escape ? CSS.escape(symbol) : symbol) + '"]').forEach(function (n) { n.classList.add('chn-selc'); });

@@ -35,7 +35,6 @@ _PYTEST_RUNTIME_ROOT = Path(
     )
 ).resolve()
 os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
-os.environ["ED_ARTIFACTS_ROOT"] = str(_PYTEST_RUNTIME_ROOT / "artifacts")
 os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
 # The console DB and stream-capture DB are NOT set by env: RC-534 disabled ambient
 # ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db._resolve_console_db_path raises on
