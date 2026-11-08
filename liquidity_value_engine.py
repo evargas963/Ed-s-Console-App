@@ -423,14 +423,12 @@ def build_premarket_snapshot(
     else:
         out_zones = zones
 
-    raw = {"prev_day": prev, "overnight": over}
     return SnapshotOutput(
         ticker=ticker,
         session_date=session_date.isoformat(),
         snapshot_type=SnapshotType.PREMARKET,
         zones=out_zones,
         summary=None,
-        raw_levels=raw,
     )
 
 
@@ -571,15 +569,13 @@ def build_live_snapshot(
     The session's zones from the one materialized price-level snapshot (``canonical``), with
     optional ``extra_levels`` (the option levels and spot) fused in; no level helper runs here.
     Before the session's regular open it is the premarket shape, as it is while the session's
-    hours are not held. The cutoff shown is min(now, the day's close) -- the regular session
-    Schwab's /markets sent, early closes included.
+    hours are not held: the regular session Schwab's /markets sent.
     """
     session_date = canonical.session_date
     regular = _regular(session_date)
     if regular is None or now < regular[0]:
         return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
-    cutoff = min(now, regular[1])
-    prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, vwap_p2, vwap_m2) = (
+    prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, _vwap_p2, _vwap_m2) = (
         _phase2a_families_from_canonical(canonical)
     )
 
@@ -646,30 +642,6 @@ def build_live_snapshot(
             )
         )
 
-    vwap_bands = None
-    if vwap is not None:
-        vwap_bands = {
-            "vwap": vwap,
-            "plus1": vwap_p1,
-            "minus1": vwap_m1,
-            "plus2": vwap_p2,
-            "minus2": vwap_m2,
-        }
-    raw = {
-        "prev": prev,
-        "overnight": over,
-        "orb": orb,
-        "poc": poc,
-        "vah": vah,
-        "val": val,
-        "vwap": vwap,
-        "vwap_bands": vwap_bands,
-        "cutoff_et": cutoff.isoformat(),
-        # which snapshot generation these numbers ARE, in the payload
-        "semantic_scope": "session_rth",
-        "level_generation": canonical.generation,
-        "level_snapshot_as_of_ts_utc": canonical.as_of_ts_utc,
-    }
     summary = SnapshotSummary(
         value_state=value_state,
         vwap_relation=vwap_relation,
@@ -684,7 +656,6 @@ def build_live_snapshot(
         snapshot_type=SnapshotType.LIVE,
         zones=zones,
         summary=summary,
-        raw_levels=raw,
     )
 
 
