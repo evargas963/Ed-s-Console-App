@@ -154,10 +154,9 @@
   // `reload`); a pan is never silent. `opts`: `top` html above the list, `attrs(r)` and `cells(r)`
   // a row's extra attributes and cells.
   function drawStrikeBars(host, rows, view, pan, spotStrike, reload, opts) {
-    opts = opts || {};
     window.EdShell.panServed(pan, view.centre);
     var maxAbs = view.max_abs;   // at least |v| for every v drawn
-    var note = (opts.top || '') + (pan.centre != null ? '<div class="gbs-allexp">Panned to ' +
+    var note = opts.top + (pan.centre != null ? '<div class="gbs-allexp">Panned to ' +
       px(pan.served, pan.served % 1 ? 2 : 0) + ' · double-click a strike to follow the price</div>' : '') +
       (view.note ? '<div class="gbs-allexp">' + esc(view.note) + '</div>' : '');   // why not around the price
     var bars = '';
@@ -226,7 +225,7 @@
   // the workspace expiry filter, else the selected strike's own expiry
   function strikeDetailExpiry() {
     var s = window.EdShell.getState();
-    return expiryFilter() || s.selExpiry || null;
+    return expiryFilter() || s.selExpiry;
   }
   // loadStrike() records the desired (strike, expiry); the loader always fetches the current one
   var _sdDesired = { strike: null, expiry: null };
@@ -248,7 +247,7 @@
   var _sdLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry, signal); });
   function loadStrike(strike, expiry) {
     _sdDesired = { strike: strike, expiry: expiry };
-    _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
+    _sdLoader.trigger(ticker() + '|' + strike + '|' + expiry);
   }
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
@@ -256,14 +255,14 @@
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
-    var cs = (d && d.contracts) || [];
+    var cs = d.contracts;
     if (!cs.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>';
       return;
     }
     function pick(side) {
       return cs.filter(function (c) {
-        return (c.putCall || '').toUpperCase() === side &&
+        return c.putCall === side &&
           Math.abs(Number(c.strikePrice) - Number(strike)) < 0.01; })[0];
     }
     var call = pick('CALL'), put = pick('PUT');
@@ -274,7 +273,7 @@
     // NET row is this expiry's net GEX at this strike, served on the same /api/chain response --
     // the heatmap's own cell, not GEX-by-Strike's all-expiry total beside one expiry's contracts.
     var net = null;
-    ((d && d.net_gex_by_strike) || []).forEach(function (r) {
+    d.net_gex_by_strike.forEach(function (r) {
       if (Math.abs(Number(r[0]) - Number(strike)) < 0.01) net = Number(r[1]);
     });
     var netCls = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
@@ -316,12 +315,11 @@
     var pan = window.EdShell.newPan(), panTicker = null;
     function renderIt(host, d) {
       var src = document.getElementById(srcId); if (src) src.textContent = '';
-      if (!d.available || !d.rows || !d.rows.length) {
-        host.innerHTML = '<div class="placeholder"><div class="sm">' +
-          esc(d.reason || 'the console sent no reason') + '</div></div>';
+      if (!d.available) {
+        host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(d.reason) + '</div></div>';
         return;
       }
-      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, load);
+      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, load, { top: '' });
     }
     function impl(tk, signal) {
       var host = document.getElementById(hostId);
@@ -367,18 +365,18 @@
   function renderStructures(host, d, tk) {
     var src = document.getElementById('stSrc'); if (src) src.textContent = '';
     // served: one row per strike, high to low; an 'unavailable' chain answer carries none
-    var ladder = d.ladder ? d.ladder.filter(function (r) { return r.first; }) : [];
-    if (!ladder.length) {
+    if (d.status !== 'ok') {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         esc(window.EdShell.chainEmptyText(d)) + '</div></div>';
       return;
     }
+    var ladder = d.ladder.filter(function (r) { return r.first; });
     var rows = ladder.map(function (r) {
       var k = r.strike, rep = r.call || r.put;   // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
       var flags = [
         _flag('NON-STD', rep.nonStandard === true),
         _flag('PENNY', rep.pennyPilot === true),
-        _flag('ADJUSTED DELIVERABLE', (d.adjusted_deliverable_symbols || []).indexOf(rep.symbol) !== -1),
+        _flag('ADJUSTED DELIVERABLE', d.adjusted_deliverable_symbols.indexOf(rep.symbol) !== -1),
       ].join('');
       return '<tr><td class="side">' + px(k, k % 1 ? 2 : 0) + '</td>' +
         '<td>' + (rep.multiplier == null ? '-' : rep.multiplier) + '</td>' +
