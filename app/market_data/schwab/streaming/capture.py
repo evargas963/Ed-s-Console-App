@@ -48,6 +48,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import bisect
+import contextlib
 import enum
 import json
 import logging
@@ -69,6 +70,7 @@ from websockets.exceptions import ConnectionClosed
 
 import live_market_plane as lmp
 import live_price_rows
+import push_changes
 import runtime_layout
 import server
 import time_et
@@ -1142,11 +1144,29 @@ async def record_feed_status(
             return
 
 
+class _PagesServer(uvicorn.Server):
+    """The console's web server inside this program. The program's interrupt handler
+    (INTERRUPTS) is the one stop, so the server takes no signal of its own: uvicorn's would stop
+    the pages first and wait out every open page before the program heard it."""
+
+    @contextlib.contextmanager
+    def capture_signals(self):
+        yield
+
+    async def startup(self, sockets=None) -> None:
+        """Bind, then say where: the port taken (ED_CONSOLE_PORT=0: the system's pick, so no
+        other program can hold it between a choice and the bind)."""
+        await super().startup(sockets)
+        for srv in self.servers:
+            host, port = srv.sockets[0].getsockname()[:2]
+            log.info("console: serving the pages on http://%s:%s", host, port)
+
+
 async def serve_console(daemon: Daemon, stop: asyncio.Event) -> None:
     """The console's pages and routes (server.app) in this program until `stop`, reading the
     daemon's one bus (console_feed.bind_daemon): one program, one copy of every value."""
     console_feed.bind_daemon(daemon)
-    web = uvicorn.Server(
+    web = _PagesServer(
         uvicorn.Config(
             server.app,
             host=CONSOLE_HOST,
@@ -1158,6 +1178,7 @@ async def serve_console(daemon: Daemon, stop: asyncio.Event) -> None:
     )
     serving = asyncio.create_task(web.serve(), name="console web server")
     await asyncio.wait({serving, asyncio.ensure_future(stop.wait())}, return_when="FIRST_COMPLETED")
+    push_changes.close_all()  # each open page's stream ends, so the server need not wait on it
     web.should_exit = True
     await serving
 

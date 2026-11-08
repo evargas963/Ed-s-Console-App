@@ -17,6 +17,8 @@ import server
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from confluence_composite import (
+    LEANS,
+    SHADED,
     at_price,
     build_matrix,
     in_score_weights,
@@ -33,6 +35,7 @@ from option_contract import read_chain
 from stream_spine import verbatim_msg
 from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.capture_store import store_capture
+from tests.conftest import MARKETS_ANSWERS
 from tests.real_chains import (
     CRWD,
     MRVL,
@@ -43,7 +46,7 @@ from tests.real_chains import (
     SPY_PRINT_A_STRIKE_AWAY,
     TSLA,
 )
-from time_et import ET, INDEX_OPTIONS, ct_label, valuation_instant
+from time_et import ET, INDEX_OPTIONS, ct_label, record_markets, valuation_instant
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -301,7 +304,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
         call, put = bucket_metric(bucket, "call_gex_1pct"), bucket_metric(bucket, "put_gex_1pct")
         if net is not None and abs(net) >= 5_000:
             assert row["net_gex_text"] == f"{net / 1e6:+.2f}"
-            assert row["heat_background"].startswith("background:")
+            assert row["net_gex"] == net and abs(net) <= body["peaks"]["net_gex"]
             checked += 1
         if call is not None and put is not None and call >= 0 and put >= 0:
             assert row["gross_text"] == f"{(call + put) / 1e6:.2f}"
@@ -499,30 +502,93 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     assert rows and not any(r["spot_line"] for r in rows)
 
 
+#: Sunday 2026-10-11, after MRVL's front expiry (2026-10-09) passed
+_SUNDAY = datetime(2026, 10, 11, 12, 0, tzinfo=ET)
+#: the answers tests/e2e/console-confluence.spec.js draws, kept equal to the route's own
+#: (mrvl_answers), never hand written; tests/conftest.py, imported first, sets the tests'
+#: environment:
+#:   python -c "import tests.conftest, tests.test_data_path_confluence_v1 as t
+#:   t.write_mrvl_e2e_fixture()"
+_MRVL_ANSWERS = _FX / "real_mrvl_confluence_payloads_2026_10_07.json"
+
+
+def _publish_mrvl() -> None:
+    """MRVL's full chain, published as the stored capture it is, at the price Schwab sent."""
+    server._publish_levels(
+        "MRVL",
+        captures=[
+            {
+                "contracts": read_chain(MRVL.chain),
+                "ts_utc": MRVL.now.timestamp(),
+                "spot": MRVL.spot,
+                "et_date": MRVL.now.date().isoformat(),
+                "basis": CAPTURE_BASIS,
+                "spot_ts": None,
+                "spot_from_chain": False,
+            }
+        ],
+        now=MRVL.now,
+    )
+
+
+def mrvl_answers() -> dict:
+    """/api/confluence on MRVL's published chain, no live price row: its first two expiries asked
+    at the capture instant, and the front one asked on Sunday, after it passed."""
+    try:
+        _publish_mrvl()
+        by_expiry = {
+            e: server.confluence_payload("MRVL", e, MRVL.now) for e in ("2026-10-09", "2026-10-16")
+        }
+        front_passed = server.confluence_payload("MRVL", "2026-10-09", _SUNDAY)
+    finally:
+        server._terrain_cache.pop("MRVL", None)
+    return json.loads(
+        json.dumps(
+            {
+                "source": "/api/confluence (server.confluence_payload) on MRVL's full chain "
+                "captured 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_full_chain_2026_10_07"
+                ".json), published as the stored capture at the price Schwab sent; no live price "
+                "row (spot absent). by_expiry: each expiry asked at the capture instant; "
+                "front_passed: the front expiry asked on Sunday 2026-10-11, after it passed. "
+                "Written by tests/test_data_path_confluence_v1.py write_mrvl_e2e_fixture.",
+                "by_expiry": by_expiry,
+                "front_passed": front_passed,
+            }
+        )
+    )
+
+
+def write_mrvl_e2e_fixture() -> None:
+    """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
+    hold them (tests/conftest.py), then the route's answers written to the browser test's
+    fixture."""
+    for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
+        if a["status"] == 200:
+            record_markets(json.loads(a["body"]))
+    _MRVL_ANSWERS.write_text(json.dumps(mrvl_answers(), indent=1) + "\n", encoding="utf-8")
+
+
+def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
+    """The confluence browser test's answers are the route's on MRVL's captured chain: each
+    column's shading number and peak served beside its text."""
+    served = mrvl_answers()
+    assert json.loads(_MRVL_ANSWERS.read_text(encoding="utf-8")) == served, (
+        "drifted from the route; regenerate with write_mrvl_e2e_fixture()"
+    )
+    front = served["by_expiry"]["2026-10-09"]
+    assert set(front["peaks"]) == {*SHADED, *LEANS}
+    assert any(r["net_gex"] is not None and r["net_gex"] < 0 for r in front["rows"])
+
+
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     """MRVL's full chain captured Wednesday 2026-10-07 still holds Friday's 2026-10-09 expiry. On
     Sunday the matrix opens on the next one, and a request for Friday's opens there too."""
     tk = "MRVL"
-    sunday = datetime(2026, 10, 11, 12, 0, tzinfo=ET)
     listed = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
     try:
-        server._publish_levels(
-            tk,
-            captures=[
-                {
-                    "contracts": read_chain(MRVL.chain),
-                    "ts_utc": MRVL.now.timestamp(),
-                    "spot": MRVL.spot,
-                    "et_date": MRVL.now.date().isoformat(),
-                    "basis": CAPTURE_BASIS,
-                    "spot_ts": None,
-                    "spot_from_chain": False,
-                }
-            ],
-            now=MRVL.now,
-        )
-        opened = server.confluence_payload(tk, None, sunday)
-        asked = server.confluence_payload(tk, listed[0], sunday)
+        _publish_mrvl()
+        opened = server.confluence_payload(tk, None, _SUNDAY)
+        asked = server.confluence_payload(tk, listed[0], _SUNDAY)
     finally:
         server._terrain_cache.pop(tk, None)
     assert listed[:2] == ["2026-10-09", "2026-10-16"]
