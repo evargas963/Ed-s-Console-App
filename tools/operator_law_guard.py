@@ -294,7 +294,7 @@ def _sed_writes(st: Statement) -> list[str]:
     ]
 
 
-def bash_violations(cmd: str, powershell: bool = False) -> list[str]:
+def bash_violations(cmd: str | None, powershell: bool = False) -> list[str]:
     """Every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
     Applicability is per rule, never an early return (a foreign-repository target
     exempts nothing host-wide); no rule reads a repository."""
