@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import pytest
 
+from app.options.order_flow.state import OrderFlowState
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
+from terrain_read import FLIP_CURVE_DISAGREES, GAMMA_FLIP_TRUSTED, build_terrain_read
 from tests.real_chains import SPY_0DTE
 
 
@@ -39,8 +41,6 @@ def test_each_contract_carries_the_chains_rate_and_dividend_as_sent():
 
 
 def test_the_option_stream_keeps_iv_beside_gamma():
-    from app.options.order_flow.state import OrderFlowState
-
     st = OrderFlowState()
     sym = "SPY   301231C00700000"
     st.push_level_one(sym, {"key": sym, "GAMMA": 0.01, "VOLATILITY": 18.5}, ts_recv=1000.0)
@@ -49,8 +49,6 @@ def test_the_option_stream_keeps_iv_beside_gamma():
 
 
 def test_a_flip_whose_curve_disagrees_with_schwab_says_so():
-    from terrain_read import FLIP_CURVE_DISAGREES, GAMMA_FLIP_TRUSTED, build_terrain_read
-
     kw = dict(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=-5.0)
     assert FLIP_CURVE_DISAGREES in build_terrain_read(**kw, flip_curve_agrees=False).lines
     assert FLIP_CURVE_DISAGREES not in build_terrain_read(**kw, flip_curve_agrees=True).lines

@@ -17,6 +17,8 @@ only if nothing needs it at all.
 
 from __future__ import annotations
 
+from math_exposure_core import pick_net_gex_peak_strike, pick_pin_and_strength
+
 
 def test_the_two_pin_metrics_are_different_quantities():
     """RC-315: demonstrate the distinction the register describes, instead of describing it.
@@ -32,8 +34,6 @@ def test_the_two_pin_metrics_are_different_quantities():
     what decides whether hedging at a strike stabilises or repels — which is why neither is
     a demonstrated magnet and why RC-315 withdrew the claim that one of them is.
     """
-    from math_exposure_core import pick_net_gex_peak_strike, pick_pin_and_strength
-
     # RC-320: the PRODUCTION sign convention, verified against the real captured SPY chain
     # rather than assumed — `compute_exposures_by_strike` stores put_gex_1pct NONNEGATIVE
     # (14 positive buckets, 0 negative on that chain) and net = call - put. A first version

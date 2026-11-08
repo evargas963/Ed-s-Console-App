@@ -4,9 +4,9 @@
 // in `invalid`, which is answered as Schwab answered ZQZQZ on 2026-10-07
 // (tests/fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json: {"errors": {"invalidSymbols": [T]}}).
 // Returns the list it keeps, so a test can read what the daemon would hold.
-async function routeWatchlist(page, tickers, invalid) {
-  const list = (tickers || []).slice();
-  const bad = new Set(invalid || []);
+async function routeWatchlist(page, tickers = [], invalid = []) {
+  const list = tickers.slice();
+  const bad = new Set(invalid);
   await page.route('**/api/watchlist**', (route) => {
     const req = route.request();
     const answer = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
