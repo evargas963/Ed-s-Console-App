@@ -76,16 +76,15 @@ for (const theme of THEMES) {
     test(`hero composition ${theme} ${vp.w}x${vp.h}`, async ({ page }) => {
       await intercept(page);
       await page.addInitScript((t) => {
-        try { localStorage.setItem('ed_ticker', '$SPX'); localStorage.setItem('ed_theme', t);
+        localStorage.setItem('ed_ticker', '$SPX'); localStorage.setItem('ed_theme', t);
           localStorage.setItem('ed_ws', 'options'); localStorage.setItem('ed_sub', 'gamma');
-          localStorage.setItem('ed_view', 'heatmap'); localStorage.setItem('ed_rail_open', '1'); } catch (e) {}
-      }, theme);
+          localStorage.setItem('ed_view', 'heatmap'); localStorage.setItem('ed_rail_open', '1');      }, theme);
       await page.setViewportSize({ width: vp.w, height: vp.h });
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       // the heatmap is the hero: its cells must render, dense
       await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
       expect(await page.locator('#view-heatmap .hcell').count()).toBeGreaterThan(60);
-      await expect(page.locator('#klFlip')).not.toHaveText('—');   // right rail populated
+      await expect(page.locator('#klFlip')).not.toHaveText('-');   // right rail populated
       // body must not scroll sideways
       const bodyScroll = await page.evaluate(() => document.body.scrollWidth - document.body.clientWidth);
       expect(bodyScroll).toBeLessThanOrEqual(1);

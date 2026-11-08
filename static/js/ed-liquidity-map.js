@@ -9,10 +9,10 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
+  function st() { return window.EdShell.getState(); }
   function isMap() { var s = st(); return s.workspace === 'liquidity' && s.subview === 'map'; }
-  function ticker() { return (st().ticker || ''); }
+  function ticker() { return st().ticker; }
   function host() { return document.getElementById('liqmBody'); }
   function stillMap(tk) { return isMap() && ticker() === tk; }
   function fetchJson(url, signal) {
@@ -39,27 +39,31 @@
     var tags = (z.source_levels || []).map(function (l) { return esc(l.label) + ' ' + num(l.value); }).join(' · ');
     return '<div class="fl-row"><span class="k">' + esc(z.zone_label) + ' ' + num(z.zone_low) + '–' + num(z.zone_high) + '</span>' +
       '<span class="v">confluence ' + esc(z.confluence_score) + '</span></div>' +
-      '<div class="sm liqm-tags">' + (tags || '—') + (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
+      '<div class="sm liqm-tags">' + (tags || '-') + (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
   }
 
   function render(h, tk, snap, levels, barsD) {
     var c = ensureChart(h); if (!c) return;
     var P = c.palette();
     var side = { support: P.up, resistance: P.down, value: P.ink3 };
-    var zones = (snap && snap.zones) || [];
-    c.setBars((barsD && barsD.bars) || [], (barsD && barsD.tf) || _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
+    // each answer as served; a request that failed (null) draws nothing and is named, never drawn as empty
+    var failed = [[snap, 'liquidity snapshot'], [levels, 'levels'], [barsD, 'bars']]
+      .filter(function (a) { return !a[0]; }).map(function (a) { return a[1]; });
+    var zones = snap ? snap.zones : [];
+    c.setBars(barsD ? barsD.bars : [], barsD ? barsD.tf : _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
     c.setZones(zones.map(function (z) {
       return { lo: z.zone_low, hi: z.zone_high, color: side[z.zone_side] || P.ink3, label: z.zone_label + ' · ' + z.confluence_score + '×' };
     }));
-    c.setLevels(((levels && levels.levels) || []).filter(function (l) { return REF_FAMILIES[l.family] && l.price != null; })
+    c.setLevels((levels ? levels.levels : []).filter(function (l) { return REF_FAMILIES[l.family] && l.price != null; })
       .map(function (l) { return { id: l.id, price: Number(l.price), label: l.short, color: P.stale, style: 2, width: 1 }; }));
     var spot = (levels && levels.spot != null) ? Number(levels.spot) : null;
     c.setLivePrice(spot, null, (spot != null && levels.spot_time_ct != null) ? levels.spot_time_ct : null);
     var empty = h.querySelector('.liqm-empty');
-    empty.hidden = !!(snap && snap.zones !== undefined);
-    empty.textContent = empty.hidden ? '' : 'the liquidity snapshot request failed for ' + tk;
+    empty.hidden = !failed.length;
+    empty.textContent = failed.length ? 'the ' + failed.join(', ') + ' request failed for ' + tk : '';
+    var none = !snap ? 'the liquidity snapshot request failed' : snap.reason ? esc(snap.reason) : 'no zones for this session yet';
     h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot)</div>' +
-      (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">no zones for this session yet</div>') + '</div>';
+      (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">' + none + '</div>') + '</div>';
   }
 
   function loadImpl(tk, signal) {
