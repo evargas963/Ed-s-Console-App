@@ -4,9 +4,21 @@ Schwab's /markets sends it (tests/conftest.py holds the answers captured 2026-10
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime
+from pathlib import Path
 
-from time_et import ET, elapsed, now_et, set_within
+from math_levels import contract_inputs
+from option_contract import read_chain
+from time_et import (
+    ET,
+    MIN_TIME_TO_EXPIRY_YEARS,
+    YEAR_SECONDS,
+    elapsed,
+    now_et,
+    set_within,
+    time_to_expiry_years,
+)
 
 
 def test_a_wait_for_an_event_answers_whether_it_was_set_and_leaves_no_task_behind():
@@ -46,8 +58,6 @@ def test_dst_offset_differs_summer_vs_winter():
 
 
 def test_time_to_expiry_years_uses_timestamp_elapsed_not_civil_timedelta():
-    from time_et import MIN_TIME_TO_EXPIRY_YEARS, YEAR_SECONDS, time_to_expiry_years
-
     # DST ends 2026-11-01: the elapsed span from Friday to Monday's close is 1 h longer than the
     # civil wall-clock one. Monday's close is the 16:00 ET Schwab's /markets sent for EQO.
     fri = datetime(2026, 10, 30, 10, 30, tzinfo=ET)
@@ -66,12 +76,6 @@ def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
     monthly (Schwab settlementType "A", lastTradingDay the Thursday before) kept gamma all
     expiration Friday after its value was set at the open. One rule, read from each contract:
     real $SPX (A) and SPXW (P) contracts of the same expiration, and a real TSLA (P) one."""
-    import json
-    from pathlib import Path
-
-    from math_levels import contract_inputs
-    from option_contract import read_chain
-
     fx = Path(__file__).parent / "fixtures"
     spx = json.loads((fx / "real_spx_chain_contracts_2026_09_28.json").read_text(encoding="utf-8"))[
         "contracts"

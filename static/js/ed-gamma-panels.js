@@ -162,7 +162,7 @@
     rows.slice().reverse().forEach(function (r) {
       // a strike with no value is unknown: no bar, '-' (never a $0 bar)
       var k = r[0], v = r[1] == null ? null : Number(r[1]);
-      var w = v == null || v === 0 ? 0 : Math.abs(v) / maxAbs * 100, pos = v != null && v >= 0;
+      var s = window.EdShell.strength(v, maxAbs), w = s == null ? 0 : s * 100, pos = v != null && v >= 0;
       bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '"' +
         (opts.attrs ? opts.attrs(r) : '') + '>' +
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +

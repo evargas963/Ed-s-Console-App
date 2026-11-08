@@ -3,8 +3,10 @@ before compression (plain JSON text) is read the same way."""
 
 from __future__ import annotations
 
+import datetime
 import gzip
 import json
+import time
 
 import pytest
 
@@ -49,8 +51,6 @@ def test_decode_malformed_payload_raises():
 
 
 def test_default_str_matches_existing_call_sites_non_json_native_types():
-    import datetime
-
     obj = {"ts": datetime.date(2026, 1, 1)}
     decoded = decode_json_blob(encode_json_blob(obj, default=str))
     assert decoded == {"ts": "2026-01-01"}
@@ -59,8 +59,6 @@ def test_default_str_matches_existing_call_sites_non_json_native_types():
 def test_encode_json_blob_is_deterministic_across_calls():
     """gzip.compress embeds a wall-clock timestamp by default: without mtime=0, the same
     content would compress to different bytes on every call."""
-    import time
-
     obj = {"a": 1, "b": [1, 2, 3]}
     first = encode_json_blob(obj, default=str)
     time.sleep(1.1)  # gzip's mtime field has 1-second resolution
