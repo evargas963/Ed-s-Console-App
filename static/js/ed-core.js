@@ -450,7 +450,6 @@
   // A panel's as-of badge: its label, the served state word (o.state: LIVE, CLOSE, STALE, NOT LIVE,
   // the levels verdict), the served time and the served age text. The word's style follows the word.
   function asOfBadge(o) {
-    o = o || {};
     var cls = 'asof' + (o.state === 'LIVE' ? ' live' : o.state === 'STALE' ? ' stale' : o.state ? ' ref' : '');
     var parts = [];
     if (o.label) parts.push(_escBadge(o.label));
@@ -461,12 +460,13 @@
     var title = o.reason || o.title || o.label;
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
-  // A chain answer's badge: its served scope and the levels verdict served with it; '' with no scope.
+  // A chain answer's badge: its served scope and the levels verdict served with it; '' after a
+  // failed read (null: no answer).
   var CHAIN_SCOPE = { complete_single_expiry: 'complete (ALL)', unavailable: 'unavailable' };
   function chainScopeBadge(d) {
-    var sc = d && d.scope, kind = sc && sc.kind;
-    if (!kind) return '';
-    return asOfBadge({ label: 'vendor · ' + (CHAIN_SCOPE[kind] || kind), state: d.levels_state,
+    if (d === null) return '';
+    var sc = d.scope, kind = sc.kind;
+    return asOfBadge({ label: 'vendor · ' + CHAIN_SCOPE[kind], state: d.levels_state,
       when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason,
       title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') });
   }
@@ -556,7 +556,7 @@
   // real/supported is decided by the backend, which fails closed (state_error / no chain) — nothing
   // is fabricated for an unknown symbol, and no hard-coded allowlist exists here.
   function normSym(raw) {
-    var s = String(raw || '').trim().toUpperCase();
+    var s = raw.trim().toUpperCase();
     return /^[$^]?[A-Z0-9][A-Z0-9.\-\/]{0,11}$/.test(s) ? s : null;
   }
   function removeSymbol(sym) {
@@ -589,7 +589,7 @@
     });
   }
   function setTicker(sym) {
-    state.ticker = (sym || '').toUpperCase();
+    state.ticker = sym.toUpperCase();
     state.key = null; state.display = null;
     _lsSet(TICKER_KEY, state.ticker);
     paintIdentity(state.ticker);
@@ -648,11 +648,11 @@
           _escBadge((e && e.message) || 'expiries unavailable') + '</option>';
       });
   }
-  function setExpiry(v) {
-    var nv = v || null;
+  function setExpiry(v) {   // v: an expiry, or '' -- the select's "All Expirations", no filter
+    var nv = v === '' ? null : v;
     if (nv === state.expiryFilter) return;
     state.expiryFilter = nv;
-    var sel = document.getElementById('expSel'); if (sel) sel.value = nv || '';
+    var sel = document.getElementById('expSel'); if (sel) sel.value = v;
     var ctx = document.getElementById('aiCtxExp');     // the selected option's served label
     if (ctx) ctx.textContent = (sel && nv && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : 'All';
     emit('ed:expiry', { expiry: nv });
@@ -670,7 +670,7 @@
   // A: one selected strike shared across heatmap / profile / dot map / GEX-by-strike / Strike Detail
   function setStrike(strike, expiry) {
     state.selStrike = (strike == null || isNaN(strike)) ? null : Number(strike);
-    state.selExpiry = expiry || null;
+    state.selExpiry = expiry;
     emit('ed:strike', { strike: state.selStrike, expiry: state.selExpiry });
   }
 
@@ -879,7 +879,7 @@
     catch (e) { return; }
     _changes.onopen = refreshWL;     // the list as the daemon keeps it, again after the push reopens
     _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
-    _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
+    _changes.addEventListener('session', function (ev) { paintSession(ev.data, ''); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
       _changes.addEventListener(kind, function () {
         if (kind === 'chain') loadExpiries(state.ticker);
@@ -890,12 +890,13 @@
 
   // market session (RTH / Pre-Market / After-Hours / Closed, or Unknown while Schwab's /markets
   // answer for today is not held), pushed with the changes
+  // label: one of time_et's five session words, or null while the console's push is down
   function paintSession(label, why) {
     var el = document.getElementById('hSession'); if (!el) return;
     var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'],
               'Unknown': ['UNKNOWN', 'unknown'] };
-    var v = m[label] || [(label || '-'), ''];
-    el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
+    var v = label === null ? ['-', ''] : m[label];
+    el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why;
   }
 
   // The push is not delivering: the last quote stays and the chip says so. Nothing polls
