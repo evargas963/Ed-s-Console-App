@@ -1,5 +1,5 @@
-"""The launcher (launch.py): whether a port is in use, against real local listeners on free ports;
-the commit check before a start; and the start and the clean stop of the one program.
+"""The launcher (launch.py): the commit check before a start; and the start and the clean stop of
+the one program, at the ports it wrote in its lock.
 
 Before it starts the program it brings the checkout to origin/main: local changes leave it where
 it is, the check refused; an origin out of reach, or a git that does not answer, leaves the check
@@ -31,20 +31,11 @@ import pytest
 
 import launch
 import time_et
+from app.market_data.schwab.streaming.program_lock import program_ports
 
 windows_only = pytest.mark.skipif(
     sys.platform != "win32", reason="console windows and their Ctrl events are Windows'"
 )
-
-
-def test_a_port_with_a_listener_is_in_use_and_a_free_one_is_not():
-    """The port stays this test's own throughout (bound), so no other process can listen on it."""
-    with socket.socket() as held:
-        held.bind(("127.0.0.1", 0))
-        port = held.getsockname()[1]
-        assert launch.in_use(port) is False
-        held.listen()
-        assert launch.in_use(port) is True
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -100,24 +91,13 @@ def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp
     ), "the start ended on git"
 
 
-def _free_ports(n: int) -> list[int]:
-    """`n` ports the system picked free, released for the program to bind."""
-    held = [socket.socket() for _ in range(n)]
-    try:
-        for s in held:
-            s.bind(("127.0.0.1", 0))
-        return [s.getsockname()[1] for s in held]
-    finally:
-        for s in held:
-            s.close()
-
-
 @windows_only
 def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_it(tmp_path):
     """The real start_capture_daemon.bat and launch.py in a folder of their own, with a virtual
-    environment beside them (no Schwab token, no origin to fetch, ports of their own). `python
-    launch.py` starts the one program in its window, waits for its pages to answer /api/health and
-    opens the default browser at them; run again while it runs, it does not run the commit check
+    environment beside them (no Schwab token, no origin to fetch, ports the system picks as the
+    program binds them). `python launch.py` starts the one program in its window, reads the ports
+    it wrote in its lock, waits for its pages to answer /api/health and opens the default browser
+    at them; run again while it runs, it does not run the commit check
     and opens the browser at the same pages. `python launch.py stop` ends the program, and its
     pages end with it: one program. Induced test condition: the default browser is a Python of
     this test's own (the BROWSER setting Python's webbrowser reads) that writes down the address
@@ -135,19 +115,18 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         "    f.write(sys.argv[1] + '\\n')\n",
         encoding="utf-8",
     )
-    push_port, ui_port, console_port = _free_ports(3)
     env = {
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
         "ED_LIVE_UI_HOST": "127.0.0.1",
-        "ED_LIVE_UI_PORT": str(ui_port),
-        "ED_LIVE_PUSH_PORT": str(push_port),
-        "ED_CONSOLE_PORT": str(console_port),
+        "ED_LIVE_UI_PORT": "0",
+        "ED_LIVE_PUSH_PORT": "0",
+        "ED_CONSOLE_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         "BROWSER": f'"{Path(sys.executable).as_posix()}" "{browser.as_posix()}" %s',
     }
-    pages = f"http://127.0.0.1:{console_port}/"
+    stream_db = tmp_path / "data" / "stream_capture.db"  # the program's lock is beside it
 
     def launcher(*args: str) -> subprocess.CompletedProcess:
         """`python launch.py *args`, its output to files: the program's window inherits the
@@ -182,8 +161,10 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         assert lines[0].startswith("Commit check: unknown: origin could not be fetched"), lines
         assert 'Ed Console: started in its own window ("Ed Capture Daemon").' in lines, lines
         assert lines[-1].startswith("Ed Console: healthy "), lines
+        console_port = launch.wait_for_pages(5.0, stream_db).console
+        pages = f"http://127.0.0.1:{console_port}/"
         assert opened_at() == [pages]
-        assert launch.unhealthy_for(console_port, 5.0) is None
+        assert program_ports(stream_db).console == console_port
         assert launch.running(launch.DAEMON_START, home), "the program the batch started"
         again = launcher()
         assert (again.returncode, again.stdout.splitlines()[0]) == (
@@ -196,7 +177,10 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         assert opened_at() == [pages, pages]
         stopped = launcher("stop")
         assert (stopped.returncode, stopped.stdout) == (0, "Ed Console: stopped\n"), stopped.stderr
-        assert not launch.in_use(console_port), "the pages outlived the program"
+        with socket.socket() as probe:
+            refused = probe.connect_ex(("127.0.0.1", console_port))
+        assert refused, "the pages outlived the program"
+        assert program_ports(stream_db) is None, "the lock outlived the program"
         assert launch.running(launch.DAEMON_START, home) == []
     finally:
         for p in psutil.process_iter(["cmdline"]):

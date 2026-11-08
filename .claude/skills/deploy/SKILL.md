@@ -20,8 +20,8 @@ on the moved file and its replacement and `icacls <new folder> /deny "evarg:(DC)
 4. Start it from outside this session, so an app restart cannot end it:
    `explorer.exe start_ed_console.bat` in the production checkout.
 5. Confirm it came back and runs the merge commit: one program (`Get-CimInstance Win32_Process` with
-   `capture_main` in the command line: the venv's launcher and its interpreter child), `launch.DAEMON_PORT`
-   and `launch.CONSOLE_PORT` answering (`launch.in_use`), `curl -s http://127.0.0.1:8000/api/health`, and
+   `capture_main` in the command line: the venv's launcher and its interpreter child), the ports it
+   holds (`program_lock.program_ports()`), `curl -s http://127.0.0.1:8000/api/health`, and
    `git -C <production> rev-parse --short HEAD` equal to `origin/main`. Show each output.
 6. Deployed means step 5 passed and the screen was checked during market hours. Until then report the
    change as on disk, not deployed.
