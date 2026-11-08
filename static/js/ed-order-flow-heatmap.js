@@ -13,7 +13,7 @@
   function ticker() { return (st().ticker || ''); }
   function stillHeatmap(tk) { return isHeatmap() && ticker() === tk; }
   function fmtCT(ts) {
-    try { return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' }); } catch (e) { return '—'; }
+    try { return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' }); } catch (e) { return '-'; }
   }
 
   var _minutes = 60, _chart = null;

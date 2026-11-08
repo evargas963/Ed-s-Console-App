@@ -17,8 +17,8 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
-  function int(n) { return (n == null || isNaN(n)) ? '—' : String(Math.round(Number(n))); }
+  function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
+  function int(n) { return (n == null || isNaN(n)) ? '-' : String(Math.round(Number(n))); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isFlow() { var s = st(); return s.workspace === 'options' && s.subview === 'flow'; }
 
@@ -69,13 +69,13 @@
     var l1 = plane && plane.feed_health && plane.feed_health.l1;
     if (s === 'SUBSCRIBED' && l1 && l1.state === 'LIVE') return { label: 'ACTIVE', cls: 'live' };
     if (s === 'SUBSCRIBED' && l1) return { label: l1.state, cls: 'stale' };
-    return { label: s || '—', cls: 'stale' };
+    return { label: s || '-', cls: 'stale' };
   }
 
   // The backend's classification string for one canonical key, verbatim — or null when the
   // backend served no classification for it. Never defaulted, never inferred from the key.
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
-  function bool3(v) { return v === true ? 'true' : (v === false ? 'false' : '—'); }
+  function bool3(v) { return v === true ? 'true' : (v === false ? 'false' : '-'); }
 
   function render(h, desired, d) {
     var plane = d.streaming_plane || {};
@@ -116,7 +116,7 @@
       ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
     ];
     var fh = plane.feed_health || {};   // served: the selected contract's three feeds
-    function svc(x) { return x ? (x.state || '—') + (x.age_sec != null ? ' · ' + num(x.age_sec, 1) + 's' : '') : '—'; }
+    function svc(x) { return x ? (x.state || '-') + (x.age_sec != null ? ' · ' + num(x.age_sec, 1) + 's' : '') : '-'; }
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
     // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
@@ -125,12 +125,12 @@
       if (when != null && age != null) return when + ' · ' + age;
       if (when != null) return when;
       if (age != null) return age;
-      return '—';
+      return '-';
     }
     var fresh = [
       ['Book age', whenAge(d.book_time_ct, ages.book_age_sec), 'ages.book_age_sec', bk('ages.book_age_sec')],
       ['Quote age', whenAge(d.quote_time_ct, ages.quote_age_sec), 'ages.quote_age_sec', bk('ages.quote_age_sec')],
-      ['Replay', fh.replay || '—', 'streaming_plane.feed_health.replay', undefined],
+      ['Replay', fh.replay || '-', 'streaming_plane.feed_health.replay', undefined],
       ['L1 upstream', svc(fh.l1), 'streaming_plane.feed_health.l1', undefined],
       ['Book upstream', svc(fh.book), 'streaming_plane.feed_health.book', undefined],
     ];
@@ -142,21 +142,21 @@
       section('Freshness / health', fresh, '') +
       '</div>' +
       '<div class="fl-foot">signed aggressor classification NOT PROVEN — native_aggressor_available=' +
-      bool3(flow.native_aggressor_available) + '; tape_classification=' + esc(flow.tape_classification || '—') +
+      bool3(flow.native_aggressor_available) + '; tape_classification=' + esc(flow.tape_classification || '-') +
       '; no signed buys/sells, CVD, or bull/bear verdict is canonical.</div>';
   }
 
   function header(desired, ss, putCall) {   // putCall: Schwab's CONTRACT_TYPE, served
     var strike = st().selStrike, expiry = st().selExpiry;
     return '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
-      '<span class="fl-sym">' + esc(desired || '—') + '</span>' +
-      '<span class="fl-meta">' + (putCall === 'CALL' ? 'Call' : putCall === 'PUT' ? 'Put' : '—') + (strike != null ? ' · ' + strike : '') + (expiry ? ' · ' + esc(expiry) : '') + '</span></div>' +
+      '<span class="fl-sym">' + esc(desired || '-') + '</span>' +
+      '<span class="fl-meta">' + (putCall === 'CALL' ? 'Call' : putCall === 'PUT' ? 'Put' : '-') + (strike != null ? ' · ' + strike : '') + (expiry ? ' · ' + esc(expiry) : '') + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' + ss.cls + '">' + ss.label + '</span></div></div>';
   }
   function shell(h, desired, badge, msg, x) {
     var cls = badge === 'NONE' ? 'warn' : (badge === 'FAILED' || badge === 'DEGRADED' ? 'stale' : 'warn');
     h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
-      '<span class="fl-sym">' + esc(desired || '—') + '</span></div>' +
+      '<span class="fl-sym">' + esc(desired || '-') + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' + cls + '">' + esc(badge) + '</span></div></div>' +
       '<div class="placeholder"><div class="sm">' + esc(msg) + '</div></div>';
   }
