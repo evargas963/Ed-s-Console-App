@@ -70,7 +70,12 @@ PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
-JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
+#: any literal, as `_literal` reads Python's: a number, a string, an empty array or object, null,
+#: true or false
+JS_LITERAL = (
+    r"(-?\d+(\.\d+)?(?![\w.])|'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\""
+    r"|\[\]|\{\}|null(?!\w)|true(?!\w)|false(?!\w))"
+)
 JS_PATCH = re.compile(
     rf"\|\|\s*{JS_LITERAL}"
     rf"|\?\?\s*{JS_LITERAL}"
