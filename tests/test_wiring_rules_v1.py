@@ -46,6 +46,9 @@ def test_every_message_carries_the_three_rules_and_the_three_questions():
     assert "Everything is repo wide" in said and "every ticker" in said
     assert "Every repair is end to end" in said and "never a patch" in said
     assert "Is it repo wide? Is every link repaired at its source?" in said
-    # operator 2026-11-07: "once i tell you do something, you must do it"; every message is an order
-    assert "This message is ORDER 1: do it; you do not choose." in said
+    # operator 2026-11-07: "once i tell you do something, you must do it"; 2026-11-08: "you must
+    # ask if it's an order and if it is an order then you must immediately tell me if it breaks"
+    assert "This is MESSAGE 1. Ask the operator whether it is an order" in said
+    assert "`MESSAGE 1 READ: ORDER - <what it orders>; BREAKS: <what, or nothing>`" in said
+    assert "`MESSAGE 1 READ: NOT AN ORDER - <why>`" in said
     assert "`ORDER 1 DONE: <evidence>`" in said and "`ORDER 1 PUSHBACK: <reason>`" in said
