@@ -5,24 +5,41 @@ is sent back to the next step.
 The way through is a stop the rules allow: the agent's final message begins
 `WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5).
 A wait on CI is not one: a pull request merges by itself, and the next step starts meanwhile.
+
+Every order is answered (operator 2026-11-07: "once i tell you do something, you must do it. you
+do not get to choose", "you must enforce this rule"): each message he sends is recorded in the
+session's ledger in ORDERS (`record_order`, run by tools/wiring_rules.py on every message), and
+whatever the SHAPE row says, a stop is refused while any order is unanswered. The agent's final
+message answers order n with a line `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>`;
+an answer is kept, so it is given once.
+
+Production runs what main holds (operator 2026-11-07, after Windows Update restarted the machine
+on 2026-11-06 at 20:29 and Ed Console stayed down 25 hours with no one told): a stop is refused,
+whatever SHAPE's row says, while the production checkout (this file's own, where the hooks run) is
+not at its `origin/main` or nothing listens on the console's port, unless the final message begins
+`WAITING ON OPERATOR:` (he may stop it himself). `origin/main` is as last fetched.
+
 From the third refusal in a row the reason sends the agent to the cause and a different approach
 (AGENTS.md Authority); the count is kept per session in COUNTS. Wired by `.claude/settings.json`
 (Stop).
 
     python tools/keep_going.py < payload.json
 Prints Claude Code's `{"decision": "block", "reason": ...}` to refuse the stop; prints nothing to
-let it end. The SHAPE row is read first, so once SHAPE is finished no session is held. The final
+let it end. Once SHAPE is finished, only an unanswered order holds a session. The final
 message is the payload's `last_assistant_message` when Claude Code sends one, else the transcript's
 last assistant entry (a line that is not a JSON object is skipped, so one damaged line never
-decides every later stop). A work list it cannot read, and while SHAPE is open a payload or
-transcript it cannot read, exits 2 with the reason, which also refuses the stop: "cannot judge"
-never reads as "may stop" (tests/test_hook_chain_v1.py).
+decides every later stop). A work list, payload, transcript or ledger it cannot read exits 2
+with the reason, which also refuses the stop: "cannot judge" never reads as "may stop"
+(tests/test_hook_chain_v1.py).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
+import socket
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -74,13 +91,113 @@ def last_message(transcript: Path) -> str:
     )
 
 
-def decide(work_list: str, last: str, in_a_row: int = 1) -> str | None:
+#: one ledger per session: a line per order the operator gave, and a line per order answered
+ORDERS = Path(tempfile.gettempdir()) / "ed_orders"
+#: the agent's answer to order n, with its evidence or reason
+ANSWER = re.compile(r"^ORDER (\d+) (?:DONE|PUSHBACK):[ \t]*\S", re.M)
+
+
+#: a session id as Claude Code sends it, safe as a file name
+SESSION = re.compile(r"[\w-]+")
+
+
+def session(payload: dict) -> str:
+    """The payload's session id as sent; one that is missing or not a plain name raises, so the
+    hook fails closed instead of filing the session under a name of its own."""
+    sid = payload["session_id"]
+    if not isinstance(sid, str) or not SESSION.fullmatch(sid):
+        raise ValueError(sid)
+    return sid
+
+
+def _ledger(payload: dict, orders: Path) -> Path:
+    return orders / f"{session(payload)}.jsonl"
+
+
+def _entries(ledger: Path) -> list[dict]:
+    if not ledger.exists():
+        return []
+    return [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines() if line]
+
+
+def record_order(payload: dict, orders: Path = ORDERS) -> int | None:
+    """Record the operator's message as the session's next order and return its number; None for
+    an event the app sends as a message (`<task-notification>`, `<ci-monitor-event>`), which no
+    one ordered."""
+    said = payload.get("prompt")
+    if not isinstance(said, str) or not said.strip() or said.lstrip().startswith("<"):
+        return None
+    ledger = _ledger(payload, orders)
+    n = sum("order" in e for e in _entries(ledger)) + 1
+    orders.mkdir(exist_ok=True)
+    with ledger.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"n": n, "order": said}) + "\n")
+    return n
+
+
+def unanswered(payload: dict, last: str, orders: Path = ORDERS) -> list[tuple[int, str]]:
+    """The session's orders with no answer, after keeping the answers `last` gives."""
+    ledger = _ledger(payload, orders)
+    entries = _entries(ledger)
+    given = {e["n"]: e["order"] for e in entries if "order" in e}
+    answered = {e["answered"] for e in entries if "answered" in e}
+    new = {int(n) for n in ANSWER.findall(last)} & given.keys() - answered
+    if new:
+        with ledger.open("a", encoding="utf-8") as f:
+            f.writelines(json.dumps({"answered": n}) + "\n" for n in sorted(new))
+    return [(n, text) for n, text in sorted(given.items()) if n not in answered | new]
+
+
+#: the console's port, as launch.py reads it
+CONSOLE_PORT = int(os.environ.get("ED_CONSOLE_PORT", "8000"))
+
+
+def production_wrong(repo: Path = REPO, port: int = CONSOLE_PORT) -> str | None:
+    """Why production is not running main, or None when it is: the checkout at `repo` beside its
+    `origin/main`, or nothing listening on 127.0.0.1 `port`."""
+    head, main = (
+        subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--short", ref],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        for ref in ("HEAD", "origin/main")
+    )
+    if head != main:
+        return f"production's checkout is at {head}, main at {main}: deploy it (the deploy skill)."
+    with socket.socket() as probe:
+        probe.settimeout(2.0)
+        if probe.connect_ex(("127.0.0.1", port)) != 0:
+            return (
+                f"nothing listens on 127.0.0.1:{port}: Ed Console is not running. Find why "
+                "(its log, the machine's boot time), then start it (the deploy skill)."
+            )
+    return None
+
+
+def decide(
+    work_list: str,
+    last: str,
+    in_a_row: int = 1,
+    open_orders: list[tuple[int, str]] = (),
+    production: str | None = None,
+) -> str | None:
     """Why the stop is refused, or None when it may end; `in_a_row` is which refusal in a row this
     would be, and from BEDROCK_AT on the reason sends the agent to the cause, not back to the
-    same attempt."""
-    if not OPEN.search(work_list):
-        return None
+    same attempt. Any unanswered order refuses the stop, whatever the SHAPE row says."""
+    if open_orders:
+        return (
+            "The operator's orders are not answered. Once he tells you to do something, you do it; "
+            "you do not choose. Do each, then end with one line per order: `ORDER n DONE: "
+            "<evidence>`, or `ORDER n PUSHBACK: <reason>` only when it is not allowed or not "
+            "possible.\n" + "\n".join(f"ORDER {n}: {text[:400]}" for n, text in open_orders)
+        )
     if last.lstrip().startswith(WAITING):
+        return None
+    if production is not None:
+        return "Production does not run main: " + production
+    if not OPEN.search(work_list):
         return None
     why = (
         "SHAPE in ACTIVE_PROGRAM.md is IN PROGRESS: take its next step now (AGENTS.md Authority: "
@@ -112,7 +229,7 @@ COUNTS = Path(tempfile.gettempdir()) / "ed_keep_going"
 def in_a_row(payload: dict, counts: Path = COUNTS) -> int:
     """Which refusal in a row this stop would be: 1 after a stop the hook did not refuse, else one
     more than the session's count in `counts`. The count is replaced whole, never half-written."""
-    count = counts / (re.sub(r"[^\w-]", "", str(payload.get("session_id", ""))) or "unknown")
+    count = counts / session(payload)
     active = payload.get("stop_hook_active") is True
     previous = int(count.read_text()) if active and count.exists() else 0
     counts.mkdir(exist_ok=True)
@@ -126,14 +243,21 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
         work_list = WORK_LIST.read_text(encoding="utf-8")
-        if not OPEN.search(work_list):
-            return 0
         said = payload.get("last_assistant_message")
         last = said if isinstance(said, str) else last_message(Path(payload["transcript_path"]))
-        why = decide(work_list, last)
+        orders = unanswered(payload, last)
+        wrong = production_wrong()
+        why = decide(work_list, last, open_orders=orders, production=wrong)
         if why is not None:
-            why = decide(work_list, last, in_a_row(payload))
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+            why = decide(work_list, last, in_a_row(payload), orders, wrong)
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        subprocess.CalledProcessError,
+    ) as e:
         sys.stderr.write(
             f"keep_going cannot judge the stop ({e!r}); keep working and fix the hook\n"
         )
