@@ -5,11 +5,13 @@
       "book_stale": null,
       "quote_age_sec": 1.4100570678710938
     },
+    "book_age_text": null,
     "book_slope": {
       "ask": null,
       "bid": null
     },
     "book_time_ct": null,
+    "book_when_age_text": null,
     "classification": {
       "ages.book_age_sec": "DERIVED",
       "ages.book_stale": "DERIVED",
@@ -100,6 +102,7 @@
     },
     "put_call": "CALL",
     "quote_time_ct": "Fri 10/23 08:32 AM CT",
+    "quote_when_age_text": "Fri 10/23 08:32 AM CT \u00b7 1s",
     "spread_frac": 0.0049382716049381666,
     "spread_pts": 0.009999999999999787,
     "status": "no_book",
@@ -142,11 +145,13 @@
       "book_stale": null,
       "quote_age_sec": 1.410078763961792
     },
+    "book_age_text": null,
     "book_slope": {
       "ask": null,
       "bid": null
     },
     "book_time_ct": null,
+    "book_when_age_text": null,
     "classification": {
       "ages.book_age_sec": "DERIVED",
       "ages.book_stale": "DERIVED",
@@ -237,6 +242,7 @@
     },
     "put_call": "PUT",
     "quote_time_ct": "Fri 10/23 08:32 AM CT",
+    "quote_when_age_text": "Fri 10/23 08:32 AM CT \u00b7 1s",
     "spread_frac": 0.006557377049180334,
     "spread_pts": 0.020000000000000018,
     "status": "no_book",

@@ -32,13 +32,6 @@ const OTHER = 'TSLA  260831P00367500';
 
 // Presentation formatting only (mirrors ed-gamma-flow.js num()/int(): fixed decimals / rounding).
 const fmt = (n, d) => Number(n).toFixed(d);
-function ageText(when, sec) {
-  const age = sec != null ? (Math.round(sec) + 's') : null;
-  if (when != null && age != null) return when + ' · ' + age;
-  if (when != null) return when;
-  if (age != null) return age;
-  return '-';
-}
 const rowV = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .v');
 const rowTag = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .fl-tag');
 
@@ -186,7 +179,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'microprice')).toHaveText(fmt(FIXTURE.microprice, 2));
     await expect(rowV(page, 'depth.1.imbalance')).toHaveText(fmt(FIXTURE.depth['1'].imbalance, 3));
     await expect(rowV(page, 'top_of_book.bid_size')).toHaveText(String(Math.round(FIXTURE.top_of_book.bid_size)));
-    await expect(rowV(page, 'ages.book_age_sec')).toHaveText(ageText(FIXTURE.book_time_ct, FIXTURE.ages.book_age_sec));
+    await expect(rowV(page, 'ages.book_age_sec')).toHaveText(FIXTURE.book_when_age_text);
     // No flow row fell back to the absent-value placeholder.
     for (const k of ['flow.tape_pressure_30s', 'flow.tape_pressure_2m', 'flow.tape_pressure_5m', 'flow.cum_delta_proxy', 'flow.cum_delta_slope', 'flow.top_book_pressure']) {
       await expect(rowV(page, k)).not.toHaveText('-');
@@ -207,7 +200,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
     await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
-    await expect(rowV(page, 'ages.book_age_sec')).toHaveText(ageText(FIXTURE.book_time_ct, FIXTURE.ages.book_age_sec));
+    await expect(rowV(page, 'ages.book_age_sec')).toHaveText(FIXTURE.book_when_age_text);
     await expect(page.locator('#flowBody')).not.toContainText('0.999');
     await expect(page.locator('#flowBody')).not.toContainText('0.888');
     await expect(page.locator('#flowBody')).not.toContainText('-9999');
@@ -287,10 +280,9 @@ test.describe('D — Gamma Flow subview', () => {
     const ctx = makeContext();
     ctx.plane = { feed_health: { l1: { state: 'OFFLINE', age_sec: null }, book: { state: 'OFFLINE', age_sec: null }, replay: 'stale' } };
     ctx.mutate = (d) => {
-      d.quote_time_ct = 'Fri 09/25 06:59 PM CT';
-      d.book_time_ct = 'Fri 09/25 06:59 PM CT';
-      d.ages.book_age_sec = 4;
-      d.ages.quote_age_sec = 4;
+      // as the server stamps a book and quote of 09/25 06:59 PM CT, 4 s old (server._when_age)
+      d.quote_when_age_text = 'Fri 09/25 06:59 PM CT · 4s';
+      d.book_when_age_text = 'Fri 09/25 06:59 PM CT · 4s';
       d.top_outage = 'Schwab LEVELONE_OPTIONS feed down during RTH';
       d.top_feed_label = 'OFFLINE';
     };
