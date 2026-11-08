@@ -6,6 +6,7 @@ from __future__ import annotations
 import live_market_plane as lmp
 import server
 import time_et
+from tests.feed_live_helper import daemon_status
 
 
 def test_a_missing_heartbeat_keeps_the_last_watchlist():
@@ -17,7 +18,7 @@ def test_a_missing_heartbeat_keeps_the_last_watchlist():
         lmp._feed["status"] = None
     try:
         lmp.record_feed_heartbeat(
-            {"ts": now, "schwab_socket_open": True, "watchlist": ["SPY", "TSLA"]}
+            daemon_status(now, schwab_socket_open=True, watchlist=["SPY", "TSLA"])
         )
         live = server.get_watchlist()
         lmp.record_feed_down()
