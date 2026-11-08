@@ -393,14 +393,14 @@ test.describe('Trade Desk renders served values', () => {
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const want = EVENTS.items.filter((it) => it.marker).map((it) => it.key).sort();
-    await expect.poll(async () => ((await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers)) || []).slice().sort()).toEqual(want);
+    await expect.poll(async () => (await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers)).slice().sort()).toEqual(want);
     const key = EVENTS.items[1].key;
     await page.locator('#tdmQueue [data-q="' + key + '"]').click();
     await expect(page.locator('#tdmQueue [data-q="' + key + '"]')).toHaveClass(/sel/);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(key);
     // and the other way: a click on a callout's number on the chart selects its queue entry
     const other = EVENTS.items[2].key;
-    const all = (await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)) || [];
+    const all = await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts);
     const c = all.filter((x) => x.id === other)[0];
     expect(c).toBeTruthy();
     // the three crosses share one bar here; no callout's number covers another's
@@ -408,7 +408,7 @@ test.describe('Trade Desk renders served values', () => {
     // the chart may still be settling its opening view: read the number where it is drawn now, click it
     const box = await page.locator('#tdmChart .tvc-plot').boundingBox();
     await expect.poll(async () => {
-      const now = ((await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)) || []).filter((x) => x.id === other)[0];
+      const now = (await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)).filter((x) => x.id === other)[0];
       await page.mouse.click(box.x + now.x, box.y + now.y);
       return page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected);
     }).toBe(other);
