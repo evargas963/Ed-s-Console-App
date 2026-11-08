@@ -194,10 +194,11 @@ def main() -> int:
         print('Ed Console: started in its own window ("Ed Capture Daemon").')
     started = time_et.elapsed()
     ports = ports_within(START_WAIT_SEC)
-    if ports is None:
-        print(f"Ed Console: it did not open its ports in {START_WAIT_SEC:.0f} s")
-        return 1
-    why = unhealthy_for(ports.console, START_WAIT_SEC - (time_et.elapsed() - started))
+    why = (
+        "it did not open its ports"
+        if ports is None
+        else unhealthy_for(ports.console, START_WAIT_SEC - (time_et.elapsed() - started))
+    )
     if why is not None:
         print(f"Ed Console: its pages did not answer in {START_WAIT_SEC:.0f} s: {why}")
         return 1
