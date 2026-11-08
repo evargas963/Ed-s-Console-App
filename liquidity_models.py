@@ -233,7 +233,6 @@ class SnapshotOutput:
     snapshot_type: SnapshotType
     zones: list[Zone] = field(default_factory=list)
     summary: SnapshotSummary | None = None
-    raw_levels: dict = field(default_factory=dict)  # for debugging/audit
 
 
 @dataclass
