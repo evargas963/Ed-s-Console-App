@@ -21,6 +21,8 @@ class Client:
     def __init__(self) -> None:
         self.kinds: set[str] = set()
         self.wake = asyncio.Event()
+        #: the program is stopping: the page's stream ends (the page reconnects to the next one)
+        self.closed = False
 
 
 def bind(loop: asyncio.AbstractEventLoop) -> None:
@@ -44,6 +46,14 @@ def subscribe(tk: str, c: Client | None = None) -> Client:
 def unsubscribe(tk: str, c: Client) -> None:
     """The page closed (on the event loop)."""
     _open[:] = [(t, x) for t, x in _open if x is not c]
+
+
+def close_all() -> None:
+    """The program is stopping (on the event loop): every open page's stream ends now, so the
+    web server closes without waiting out its graceful timeout."""
+    for _t, c in _open:
+        c.closed = True
+        c.wake.set()
 
 
 def changed(tk: str, kind: str) -> None:

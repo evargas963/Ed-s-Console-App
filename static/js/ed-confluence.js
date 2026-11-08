@@ -172,11 +172,21 @@
     }).join('');
   }
 
-  function heatCell(shown, style, reason, edge) {
+  // a cell's shade: its served number against its column's served peak, by the shell's one
+  // strength rule in the theme's colours; a peak with no size shades as zero
+  function shade(value, peak, heat) {
+    if (value == null) return '';
+    var t = window.EdShell.strength(value, peak);
+    var c = t == null ? heat.zero : window.EdShell.heatFill(value, peak, heat);
+    return ' style="background:rgb(' + c.join(',') + ');color:' + window.EdShell.heatInk(c) +
+      ';font-weight:' + (t > 0.65 ? 750 : 550) + '"';
+  }
+
+  function heatCell(shown, value, peak, heat, reason, edge) {
     var missing = shown == null || shown === '';
     var cls = (edge ? 'edge ' : '') + (missing ? 'missing' : '');
     var title = missing && reason ? ' title="' + esc(reason) + '"' : '';
-    var paint = !missing && style ? ' style="' + esc(style) + '"' : '';
+    var paint = missing ? '' : shade(value, peak, heat);
     return '<td class="' + cls + '"' + title + paint + '>' + (missing ? '-' : esc(shown)) + '</td>';
   }
 
@@ -351,6 +361,7 @@
     }
     var rows = Array.isArray(body.rows) ? body.rows : [];
     var levels = Array.isArray(body.levels) ? body.levels : [];
+    var peaks = body.peaks, heat = window.EdShell.heatColors();   // each column's served scale
     lastRows = rows;
     lastLevels = levels;
     lastSpot = typeof body.spot === 'number' ? body.spot : null;
@@ -400,22 +411,21 @@
       if (row.score_text == null) {
         bodyRows += '<td class="edge missing" title="' + esc(scoreReason) + '">-</td>';
       } else {
-        var paint = row.heat_background ? ' style="' + esc(row.heat_background) + '"' : '';
-        bodyRows += '<td class="edge"' + paint + '>' + scoreShown + '</td>';
+        bodyRows += '<td class="edge"' + shade(row.score, body.ceiling, heat) + '>' + scoreShown + '</td>';
       }
-      bodyRows += heatCell(row.net_gex_text, row.net_style, row.net_reason, false);
-      bodyRows += heatCell(row.oi_text, row.oi_style, row.oi_reason, false);
-      bodyRows += heatCell(row.pc_gex_text, row.pc_gex_style, row.pc_gex_reason, false);
-      bodyRows += heatCell(row.gross_text, row.gross_style, row.gross_reason, true);
-      bodyRows += heatCell(row.dgex_text, null, row.dgex_reason, false);
-      bodyRows += heatCell(row.volume_text, row.volume_style, row.volume_reason, false);
-      bodyRows += heatCell(row.pc_vol_text, row.pc_vol_style, row.pc_vol_reason, false);
-      bodyRows += heatCell(row.vol_oi_text, row.vol_oi_style, row.vol_oi_reason, false);
-      bodyRows += heatCell(row.flow_text, null, row.flow_reason, true);
-      bodyRows += heatCell(row.dex_text, row.dex_style, row.dex_reason, false);
-      bodyRows += heatCell(row.vanna_text, row.vanna_style, row.vanna_reason, false);
-      bodyRows += heatCell(row.iv_text, row.iv_style, row.iv_reason, false);
-      bodyRows += heatCell(row.charm_text, row.charm_style, row.charm_reason, false);
+      bodyRows += heatCell(row.net_gex_text, row.net_gex, peaks.net_gex, heat, row.net_reason, false);
+      bodyRows += heatCell(row.oi_text, row.oi, peaks.oi, heat, row.oi_reason, false);
+      bodyRows += heatCell(row.pc_gex_text, row.pc_gex_lean, peaks.pc_gex_lean, heat, row.pc_gex_reason, false);
+      bodyRows += heatCell(row.gross_text, row.gross, peaks.gross, heat, row.gross_reason, true);
+      bodyRows += heatCell(row.dgex_text, null, null, heat, row.dgex_reason, false);
+      bodyRows += heatCell(row.volume_text, row.volume, peaks.volume, heat, row.volume_reason, false);
+      bodyRows += heatCell(row.pc_vol_text, row.pc_vol_lean, peaks.pc_vol_lean, heat, row.pc_vol_reason, false);
+      bodyRows += heatCell(row.vol_oi_text, row.vol_oi, peaks.vol_oi, heat, row.vol_oi_reason, false);
+      bodyRows += heatCell(row.flow_text, null, null, heat, row.flow_reason, true);
+      bodyRows += heatCell(row.dex_text, row.dex, peaks.dex, heat, row.dex_reason, false);
+      bodyRows += heatCell(row.vanna_text, row.vanna, peaks.vanna, heat, row.vanna_reason, false);
+      bodyRows += heatCell(row.iv_text, row.iv, peaks.iv, heat, row.iv_reason, false);
+      bodyRows += heatCell(row.charm_text, row.charm, peaks.charm, heat, row.charm_reason, false);
       bodyRows += '</tr>';
     });
     var notes = Array.isArray(body.notes) ? body.notes : [];
