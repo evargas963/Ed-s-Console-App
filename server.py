@@ -3127,7 +3127,7 @@ def get_expiries(ticker: str = Query(...)):
                 "reason": terrain_staleness(None, ticker, now=now)["levels_stale_reason"],
             }
         )
-    exps, dte = t.get("expiries") or [], t.get("expiry_dte") or {}
+    exps, dte = t["expiries"], t["expiry_dte"]
     labels = {
         e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
         for e in exps
@@ -3137,13 +3137,7 @@ def get_expiries(ticker: str = Query(...)):
             "expiries": exps,
             "dte": dte,
             "labels": labels,
-            "reason": None
-            if exps
-            else (
-                terrain_staleness(None, ticker, now=now)["levels_stale_reason"]
-                if not t
-                else "no expiry listed in the published chain"
-            ),
+            "reason": None if exps else "no expiry listed in the published chain",
         }
     )
 
