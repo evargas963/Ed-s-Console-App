@@ -96,9 +96,9 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
             ts_utc=_FX["captured_utc"],
         )
     server._publish_levels(tk, captures=cch.last_capture_per_day(db, tk, 2))
-    published = server.terrain_cache_get(tk, _CAPTURED.timestamp()) or {}
+    published = server.published_levels(tk).served()
     full = _levels(compute_terrain("MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED))
     window = _levels(compute_terrain("MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED))
-    got = {k: published.get(k) for k in full}
+    got = {k: published[k] for k in full}
     assert got == full, (got, full)
     assert got != window
