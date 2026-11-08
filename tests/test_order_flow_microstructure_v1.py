@@ -412,9 +412,9 @@ def test_engine_and_route_read_the_same_canonical_state():
 
 def test_top_prices_and_sizes_are_carried_exactly():
     data = {"top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(data)
+    bid, ask = ofe._resolve_bid_ask_prices(data)
     assert (bid, ask) == (0.58, 0.59)
-    assert (bid_leaf, ask_leaf) == ("streaming.BID_PRICE", "streaming.ASK_PRICE")
+    assert ofe._extract_canonical_book(data)["mark"] is None
     assert ofe._compute_top_book_pressure(data) == (11 - 23) / (11 + 23)
     cb = ofe._extract_canonical_book(data)
     assert (cb["bid_size"], cb["ask_size"]) == (11, 23)
@@ -434,7 +434,7 @@ def test_zero_size_is_a_real_value_not_a_fallback_trigger():
 
 def test_no_top_resolves_to_none():
     data = {"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": None}  # tape print only
-    assert ofe._resolve_bid_ask_prices(data) == (None, None, None, None)
+    assert ofe._resolve_bid_ask_prices(data) == (None, None)
     assert ofe._compute_top_book_pressure(data) is None
 
 
@@ -553,10 +553,8 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
             "BOOK_TIME": 1,
         }
     ]
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(
-        {"content": items, "top": {"ask_size": 12}}
-    )
-    assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
+    bid, ask = ofe._resolve_bid_ask_prices({"content": items, "top": {"ask_size": 12}})
+    assert (bid, ask) == (None, None)
 
 
 def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():

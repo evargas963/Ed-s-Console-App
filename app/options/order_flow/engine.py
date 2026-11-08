@@ -198,26 +198,16 @@ def _compute_top_book_pressure(data: dict) -> float | None:
     return (bid_sz - ask_sz) / total
 
 
-def _resolve_bid_ask_prices(
-    data: dict,
-) -> tuple[float | None, float | None, str | None, str | None]:
-    """Level-one BID_PRICE / ASK_PRICE and their leaf labels."""
+def _resolve_bid_ask_prices(data: dict) -> tuple[float | None, float | None]:
+    """Level-one BID_PRICE / ASK_PRICE as Schwab sent them."""
     t = _top(data)
-    bid_p, ask_p = t.get("bid"), t.get("ask")
-    return (
-        bid_p,
-        ask_p,
-        "streaming.BID_PRICE" if bid_p is not None else None,
-        "streaming.ASK_PRICE" if ask_p is not None else None,
-    )
+    return t.get("bid"), t.get("ask")
 
 
-def _resolve_quote_mark(data: dict) -> tuple[float | None, str | None]:
+def _resolve_quote_mark(data: dict) -> float | None:
     """Streamed MARK, the spread-fraction denominator (a MARK of 0 divides nothing)."""
     mark_p = _top(data).get("mark")
-    if mark_p is not None and mark_p > 0:
-        return mark_p, "streaming.MARK"
-    return None, None
+    return mark_p if mark_p is not None and mark_p > 0 else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -270,14 +260,14 @@ def _extract_canonical_book(data: dict) -> dict:
     and sorts both sides, and carries the live top of book (``data["top"]``). Every downstream
     metric reads this result; nothing else re-walks the raw book."""
     snapshot = _latest_book_snapshot(_iter_content(data))
-    bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
+    bid, ask = _resolve_bid_ask_prices(data)
     t = _top(data)
     bid_size = schwab_count(t.get("bid_size"))
     ask_size = schwab_count(t.get("ask_size"))
 
     bid_levels = _sorted_valid_levels(snapshot.pairs("BIDS"), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(snapshot.pairs("ASKS"), descending=False) if snapshot else []
-    mark, mark_leaf = _resolve_quote_mark(data)
+    mark = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,
         "venue": snapshot.service if snapshot else None,
@@ -285,13 +275,10 @@ def _extract_canonical_book(data: dict) -> dict:
         "ask": ask,
         "bid_size": bid_size,
         "ask_size": ask_size,
-        "bid_leaf": bid_leaf,
-        "ask_leaf": ask_leaf,
         "bid_levels": bid_levels,
         "ask_levels": ask_levels,
         "book_time_ms": snapshot.book_time_ms if snapshot else None,
         "mark": mark,
-        "mark_leaf": mark_leaf,
     }
 
 
@@ -461,8 +448,6 @@ def _microstructure_structural(cb: dict) -> dict:
             "n_bid_levels": len(bid_levels),
             "n_ask_levels": len(ask_levels),
             "book_source": cb["venue"] if cb["has_book"] else "unavailable",
-            "top_of_book_bid_leaf": cb["bid_leaf"],
-            "top_of_book_ask_leaf": cb["ask_leaf"],
         },
         "classification": {
             "top_of_book.bid": "NATIVE",
