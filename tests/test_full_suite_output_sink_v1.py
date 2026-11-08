@@ -63,17 +63,22 @@ def _noisy_test_file(tmp_path: Path) -> Path:
     return p
 
 
-def _hermetic_args(rootdir: Path) -> list[str]:
-    """Pin pytest's rootdir to the temp directory that holds the target file: otherwise, with
+def _runner_cmd(*pytest_args: str, rootdir: Path) -> list[str]:
+    """`rootdir` pins pytest's rootdir to the directory that holds the target file: otherwise, with
     the target under %TEMP% and cwd at the repo, pytest takes their common ancestor as rootdir
     and walks %TEMP%, where other xdist workers create and delete their runtime roots."""
-    return ["--rootdir", str(rootdir)]
-
-
-def _runner_cmd(*pytest_args: str, rootdir: Path | None = None) -> list[str]:
     assert NODE, "node is required (the canonical runner is a Node script)"
-    hermetic = _hermetic_args(rootdir) if rootdir is not None else []
-    return [NODE, str(RUNNER), *pytest_args, *hermetic, "-n", "0", "-p", "no:cacheprovider"]
+    return [
+        NODE,
+        str(RUNNER),
+        *pytest_args,
+        "--rootdir",
+        str(rootdir),
+        "-n",
+        "0",
+        "-p",
+        "no:cacheprovider",
+    ]
 
 
 def _spawn_with_non_draining_reader(cmd: list[str], env: dict[str, str]) -> subprocess.Popen:
@@ -167,7 +172,7 @@ def test_failure_exit_code_is_exact_and_the_log_is_retained(tmp_path):
 
 def test_success_is_visible_and_exit_code_zero(tmp_path):
     r = subprocess.run(
-        _runner_cmd("tests/test_time_et_authority.py"),
+        _runner_cmd("tests/test_time_et_authority.py", rootdir=ROOT),
         cwd=str(ROOT),
         env=_child_env(tmp_path / "logs"),
         capture_output=True,
