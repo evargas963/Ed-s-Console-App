@@ -515,8 +515,8 @@
       // Tab reaches it and Enter/Space activates it natively — CSS (:hover/:focus-within/
       // :focus) alone controls its visibility, no mouse required to discover or use it.
       row.innerHTML = '<span class="wl-sym s">' + (_served[sym] ? _served[sym].display : sym) + '</span>' +
-        '<span class="wl-px" data-wlpx="' + sym + '">—</span>' +
-        '<span class="wl-chg" data-wlchg="' + sym + '">—</span>' +
+        '<span class="wl-px" data-wlpx="' + sym + '">-</span>' +
+        '<span class="wl-chg" data-wlchg="' + sym + '">-</span>' +
         '<button class="st-x" data-rm="' + sym + '" aria-label="Remove ' + sym + ' from watchlist">×</button>';
       row.addEventListener('click', function (e) {
         if (e.target.getAttribute('data-rm')) return;
@@ -573,8 +573,8 @@
   }
   function paintNoTicker() {
     var px = document.getElementById('hPx'); if (px) px.textContent = 'CHOOSE A SYMBOL';
-    setFeed('stale', 'NO SYMBOL', '—');
-    paintIdentity('—');
+    setFeed('stale', 'NO SYMBOL', '-');
+    paintIdentity('-');
   }
 
   // ================= ticker store (ONE selected-symbol state across every surface) =================
@@ -675,7 +675,7 @@
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
-  function fmt(n, d) { return (n === null || n === undefined || isNaN(n)) ? '—' : Number(n).toFixed(d === undefined ? 2 : d); }
+  function fmt(n, d) { return (n === null || n === undefined || isNaN(n)) ? '-' : Number(n).toFixed(d === undefined ? 2 : d); }
   function setFeed(cls, label, age, ageTitle) {
     var dot = document.getElementById('hFeedDot'), f = document.getElementById('hFeed'), a = document.getElementById('hAge');
     if (dot) dot.className = 'dot' + (cls ? ' ' + cls : '');
@@ -685,7 +685,7 @@
       a.title = ageTitle == null ? '' : ageTitle;
     }
     var shown = age != null ? age : (a ? a.textContent : '');
-    var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (shown && shown !== '—' ? ' · ' + shown : '');
+    var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (shown && shown !== '-' ? ' · ' + shown : '');
     // Key Levels' Spot is this price: not live, it says so with the reason, the trade time and age
     var spot = document.getElementById('klSpot');
     if (spot) {
@@ -714,26 +714,26 @@
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
     var spot = document.getElementById('klSpot');
-    if (spot) spot.textContent = q.spot_disp == null ? '—' : q.spot_disp;
+    if (spot) spot.textContent = q.spot_disp == null ? '-' : q.spot_disp;
     if (ba) {
       ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
       ba.title = q.quoteTime ? ('quote ' + q.quoteTime) : '';
     }
     // Schwab's two change percents, each labelled: the regular session's and the last price's
-    // (extended hours included). Formatting only; absent reads "—".
+    // (extended hours included). Formatting only; absent reads "-".
     [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular], [chg, 'EXT ', q.chgPct]].forEach(function (c) {
       if (!c[0]) return;
       if (c[2] != null) {
         c[0].textContent = c[1] + (c[2] >= 0 ? '+' : '') + fmt(c[2]) + '%';
         c[0].className = 'chg mono ' + (c[2] >= 0 ? 'pos' : 'neg');
-      } else { c[0].textContent = c[1] + '—'; c[0].className = 'chg mono'; }
+      } else { c[0].textContent = c[1] + '-'; c[0].className = 'chg mono'; }
     });
     setFeed(q.feedCls, q.feedLabel, q.ageLabel, q.ageTitle);
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
     // the same quote_tick event (one producer, two surfaces).
   }
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
-  // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
+  // quote_tick handler (and markWlDegraded). A null field CLEARS to "-" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
   function setWlRow(sym, spot, chgPct, tradeTime) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
@@ -744,7 +744,7 @@
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
       if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
-      else { ce.textContent = '—'; ce.className = 'wl-chg'; }
+      else { ce.textContent = '-'; ce.className = 'wl-chg'; }
     }
   }
   // A silent price push marks the list degraded. The last prices stay.
@@ -792,10 +792,10 @@
     _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() }));
   }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
-  // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
+  // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '-'.
   function paintRecord(w) {
     var el = document.getElementById('hRecord'); if (!el) return;
-    el.textContent = w ? w.line : '—';
+    el.textContent = w ? w.line : '-';
     el.className = w ? 'v ' + w.cls : 'v';
   }
   function openPriceSocket() {
@@ -905,7 +905,7 @@
     var el = document.getElementById('hSession'); if (!el) return;
     var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'],
               'Unknown': ['UNKNOWN', 'unknown'] };
-    var v = m[label] || [(label || '—'), ''];
+    var v = m[label] || [(label || '-'), ''];
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }
 

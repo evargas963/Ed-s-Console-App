@@ -5,19 +5,19 @@
 (function () {
   'use strict';
 
-  function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  function px(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   // Two homes render the SAME canonical /api/levels contract, same function, same host-id
   // resolution pattern -- Options > Gamma > Levels and Liquidity > Levels. Never two renderers
   // for one contract -- see this file's own docstring.
   function activeHostId() {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     if (s.workspace === 'options' && s.subview === 'gamma' && s.view === 'levels') return 'levelsBody';
     if (s.workspace === 'liquidity' && s.subview === 'levels') return 'lvlBody';
     return null;
   }
-  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
+  function ticker() { return window.EdShell.getState().ticker; }
 
   function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
   function loadImpl(tk, signal) {
@@ -35,7 +35,7 @@
   function levelName(r) {
     if (r.label != null && r.label !== '') return r.label;
     if (r.id != null && r.id !== '') return r.id;
-    return '—';
+    return '-';
   }
   function timeHtml(when) {
     if (when == null || when === '') return '';
@@ -43,7 +43,7 @@
   }
   function pairRow(name, nowPrice, nowWhen, sameDay, sameWhen, paired) {
     var cls = paired ? 'lv-row zd-row' : 'lv-row';
-    var third = paired ? px(sameDay) : '—';
+    var third = paired ? px(sameDay) : '-';
     var thirdWhen = paired ? timeHtml(sameWhen) : '';
     return '<tr class="' + cls + '"><td>' + esc(name) + '</td>' +
       '<td class="lv-px">' + px(nowPrice) + timeHtml(nowWhen) + '</td>' +
@@ -86,7 +86,7 @@
     var source = '';
     if (d.spot_source) source = ' · ' + esc(d.spot_source);
     var head = '<div class="lv-head"><span>Levels · gen ' + esc(d.generation) + '</span>' +
-      '<span class="lv-spot">spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
+      '<span class="lv-spot">spot ' + (isFinite(spot) ? spot.toFixed(2) : '-') +
       source + trade + '</span></div>';
     var table = '<table class="lv"><thead><tr><th>Level</th><th>Regular</th><th>0DTE</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table>';
