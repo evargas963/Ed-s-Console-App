@@ -121,14 +121,14 @@
   // is one canonical resolution path shared by first paint and runtime.
   var THEME_ICON = { system: '◐', light: '☀', dark: '☾' };
   function reflectThemeIcon() {
-    var t = window.EdTheme; if (!t) return;
+    var t = window.EdTheme;
     var pref = t.getPref(), ic = document.getElementById('themeIcon'), btn = document.getElementById('themeBtn');
-    if (ic) ic.textContent = THEME_ICON[pref] || '◐';
+    if (ic) ic.textContent = THEME_ICON[pref];
     if (btn) btn.title = 'Theme: ' + pref + ' (resolved ' + t.resolve(pref) + ')';
   }
-  function applyTheme(pref) { if (window.EdTheme) window.EdTheme.setPref(pref); }   // owner persists+applies+dispatches
+  function applyTheme(pref) { window.EdTheme.setPref(pref); }   // owner persists+applies+dispatches
   function cycleTheme() {
-    var cur = (window.EdTheme && window.EdTheme.getPref()) || 'system';
+    var cur = window.EdTheme.getPref();
     applyTheme(cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system');
   }
   document.addEventListener('ed:theme', reflectThemeIcon);   // the control follows the owner's changes
