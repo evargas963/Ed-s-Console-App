@@ -6,12 +6,16 @@ The way through is a stop the rules allow: the agent's final message begins
 `WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5).
 A wait on CI is not one: a pull request merges by itself, and the next step starts meanwhile.
 
-Every order is answered (operator 2026-11-07: "once i tell you do something, you must do it. you
-do not get to choose", "you must enforce this rule"): each message he sends is recorded in the
-session's ledger in ORDERS (`record_order`, run by tools/wiring_rules.py on every message), and
-whatever the SHAPE row says, a stop is refused while any order is unanswered. The agent's final
-message answers order n with a line `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>`;
-an answer is kept, so it is given once.
+Every message is read and every order answered (operator 2026-11-07: "once i tell you do
+something, you must do it. you do not get to choose", "you must enforce this rule"; 2026-11-08:
+"if i send you a message you must ask if it's an order and if it is an order then you must
+immediately tell me if it breaks anything"): each message he sends is recorded as message n in the
+session's ledger in ORDERS (`record_message`, run by tools/wiring_rules.py on every message), and
+whatever the SHAPE row says, a stop is refused while a message is unread or an order unanswered.
+The agent reads message n with a line `MESSAGE n READ: ORDER - <what>; BREAKS: <what it breaks or
+conflicts with, or nothing>` or `MESSAGE n READ: NOT AN ORDER - <why>`, put to him to correct; an
+order is answered with `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>`. A reading and
+an answer are kept, so each is given once. The ledger is the session's, outside the repository.
 
 Production runs what main holds (operator 2026-11-07, after Windows Update restarted the machine
 on 2026-11-06 at 20:29 and Ed Console stayed down 25 hours with no one told): a stop is refused,
@@ -91,8 +95,13 @@ def last_message(transcript: Path) -> str:
     )
 
 
-#: one ledger per session: a line per order the operator gave, and a line per order answered
+#: one ledger per session: a line per message the operator sent, per reading and per answer
 ORDERS = Path(tempfile.gettempdir()) / "ed_orders"
+#: the agent's reading of message n: an order with what it breaks, or not an order with why
+READ = re.compile(
+    r"^MESSAGE (\d+) READ: (?:(ORDER) - [^\n]*?\S[^\n]*?; BREAKS:[ \t]*\S|NOT AN ORDER - [ \t]*\S)",
+    re.M,
+)
 #: the agent's answer to order n, with its evidence or reason
 ANSWER = re.compile(r"^ORDER (\d+) (?:DONE|PUSHBACK):[ \t]*\S", re.M)
 
@@ -120,32 +129,54 @@ def _entries(ledger: Path) -> list[dict]:
     return [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines() if line]
 
 
-def record_order(payload: dict, orders: Path = ORDERS) -> int | None:
-    """Record the operator's message as the session's next order and return its number; None for
-    an event the app sends as a message (`<task-notification>`, `<ci-monitor-event>`), which no
-    one ordered."""
+def record_message(payload: dict, orders: Path = ORDERS) -> int | None:
+    """Record the operator's message as the session's next message and return its number; None
+    for an event the app sends as a message (`<task-notification>`, `<ci-monitor-event>`), which
+    no one sent."""
     said = payload.get("prompt")
     if not isinstance(said, str) or not said.strip() or said.lstrip().startswith("<"):
         return None
     ledger = _ledger(payload, orders)
-    n = sum("order" in e for e in _entries(ledger)) + 1
+    n = sum("message" in e for e in _entries(ledger)) + 1
     orders.mkdir(exist_ok=True)
     with ledger.open("a", encoding="utf-8") as f:
-        f.write(json.dumps({"n": n, "order": said}) + "\n")
+        f.write(json.dumps({"n": n, "message": said}) + "\n")
     return n
 
 
-def unanswered(payload: dict, last: str, orders: Path = ORDERS) -> list[tuple[int, str]]:
-    """The session's orders with no answer, after keeping the answers `last` gives."""
+def standing_orders(payload: dict, orders: Path = ORDERS) -> list[tuple[int, str]]:
+    """The session's messages read as orders, each with its text: what a new message is checked
+    against for a conflict."""
+    entries = _entries(_ledger(payload, orders))
+    given = {e["n"]: e["message"] for e in entries if "message" in e}
+    return [(e["read"], given[e["read"]]) for e in entries if e.get("order") is True]
+
+
+def open_messages(payload: dict, last: str, orders: Path = ORDERS) -> list[tuple[int, str, str]]:
+    """The session's messages not yet read ("read") and its orders not yet answered ("answer"),
+    after keeping the readings and answers `last` gives."""
     ledger = _ledger(payload, orders)
     entries = _entries(ledger)
-    given = {e["n"]: e["order"] for e in entries if "order" in e}
+    given = {e["n"]: e["message"] for e in entries if "message" in e}
+    read = {e["read"]: e["order"] for e in entries if "read" in e}
     answered = {e["answered"] for e in entries if "answered" in e}
-    new = {int(n) for n in ANSWER.findall(last)} & given.keys() - answered
-    if new:
+    new_read = {
+        int(n): order == "ORDER" for n, order in READ.findall(last) if int(n) in given.keys() - read
+    }
+    read |= new_read
+    new_answers = {int(n) for n in ANSWER.findall(last)} & {n for n, o in read.items() if o}
+    new_answers -= answered
+    if new_read or new_answers:
         with ledger.open("a", encoding="utf-8") as f:
-            f.writelines(json.dumps({"answered": n}) + "\n" for n in sorted(new))
-    return [(n, text) for n, text in sorted(given.items()) if n not in answered | new]
+            f.writelines(
+                json.dumps({"read": n, "order": o}) + "\n" for n, o in sorted(new_read.items())
+            )
+            f.writelines(json.dumps({"answered": n}) + "\n" for n in sorted(new_answers))
+    return [
+        (n, text, "read" if n not in read else "answer")
+        for n, text in sorted(given.items())
+        if n not in read or (read[n] and n not in answered | new_answers)
+    ]
 
 
 #: the console's port, as launch.py reads it
@@ -180,18 +211,25 @@ def decide(
     work_list: str,
     last: str,
     in_a_row: int = 1,
-    open_orders: list[tuple[int, str]] = (),
+    open_orders: list[tuple[int, str, str]] = (),
     production: str | None = None,
 ) -> str | None:
     """Why the stop is refused, or None when it may end; `in_a_row` is which refusal in a row this
     would be, and from BEDROCK_AT on the reason sends the agent to the cause, not back to the
-    same attempt. Any unanswered order refuses the stop, whatever the SHAPE row says."""
+    same attempt. An unread message or an unanswered order refuses the stop, whatever the SHAPE
+    row says."""
     if open_orders:
         return (
-            "The operator's orders are not answered. Once he tells you to do something, you do it; "
-            "you do not choose. Do each, then end with one line per order: `ORDER n DONE: "
-            "<evidence>`, or `ORDER n PUSHBACK: <reason>` only when it is not allowed or not "
-            "possible.\n" + "\n".join(f"ORDER {n}: {text[:400]}" for n, text in open_orders)
+            "The operator's messages are not all read and answered. Read each one and put your "
+            "reading to him to correct: `MESSAGE n READ: ORDER - <what it orders>; BREAKS: "
+            "<what it breaks or which earlier order it conflicts with, or nothing>`, or "
+            "`MESSAGE n READ: NOT AN ORDER - <why>`. Once he tells you to do something, you do "
+            "it; you do not choose: answer each order with `ORDER n DONE: <evidence>`, or "
+            "`ORDER n PUSHBACK: <reason>` only when it is not allowed or not possible.\n"
+            + "\n".join(
+                f"{'MESSAGE' if need == 'read' else 'ORDER'} {n}: {text[:400]}"
+                for n, text, need in open_orders
+            )
         )
     if last.lstrip().startswith(WAITING):
         return None
@@ -245,7 +283,7 @@ def main() -> int:
         work_list = WORK_LIST.read_text(encoding="utf-8")
         said = payload.get("last_assistant_message")
         last = said if isinstance(said, str) else last_message(Path(payload["transcript_path"]))
-        orders = unanswered(payload, last)
+        orders = open_messages(payload, last)
         wrong = production_wrong()
         why = decide(work_list, last, open_orders=orders, production=wrong)
         if why is not None:
