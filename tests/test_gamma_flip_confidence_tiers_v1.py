@@ -38,7 +38,7 @@ from math_levels import (
     compute_gamma_profile,
 )
 from option_contract import read_chain
-from terrain_read import build_terrain_read
+from terrain_read import POSTURE_STAND_ASIDE, REGIME_UNAVAILABLE, build_terrain_read
 from time_et import ET
 
 #: the chain here expires 2027-07-16 (a date Schwab's /markets answers); valued a month before
@@ -133,8 +133,6 @@ def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside()
     # so long as any advisory line anywhere contained the phrase. The test's own
     # name promises "stands everything aside", yet posture was never asserted.
     # Pinned to the withheld-state IDENTITIES instead of prose.
-    from terrain_read import POSTURE_STAND_ASIDE, REGIME_UNAVAILABLE
-
     assert read.regime == REGIME_UNAVAILABLE, (
         f"a NARROW chain must withhold the regime entirely, got {read.regime!r}"
     )

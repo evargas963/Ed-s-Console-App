@@ -497,6 +497,11 @@ def _microstructure_structural(cb: dict) -> dict:
     }
 
 
+def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
+    """Seconds from Schwab's BOOK_TIME to `now`; None with no book time."""
+    return None if book_time_ms is None else now - book_time_ms / 1000.0
+
+
 def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None = None) -> dict:
     """Canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds) — the ONE
     producer the engine and the `/api/order-flow/microstructure` route both read. `data.content`
@@ -532,13 +537,13 @@ def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None
     prov["server_received_ts"] = now  # DERIVED (server wall clock at serialization)
     payload.pop("provenance_structural", None)
     payload["provenance"] = prov
-    book_age_sec = now - book_time_ms / 1000.0 if book_time_ms else None
+    age = book_age_sec(book_time_ms, now)
     payload["ages"] = {
-        "book_age_sec": book_age_sec,
-        "quote_age_sec": now - exch_ts if exch_ts else None,
+        "book_age_sec": age,
+        "quote_age_sec": None if exch_ts is None else now - exch_ts,
         # the live rule (live_market_plane.feed_live_for on the book's service), which the caller
         # passes as data["book_live"]; None with no book
-        "book_stale": None if book_age_sec is None else data.get("book_live") is not True,
+        "book_stale": None if age is None else data.get("book_live") is not True,
     }
     return payload
 
