@@ -35,9 +35,8 @@
   }
 
   // ---- theme-aware colour: sign -> green/red, shade -> |value| against the served scale ----
-  var DEFAULT_HEAT = { pos: [35, 192, 107], neg: [229, 72, 77], zero: [18, 26, 37] };  // dark defaults (node/test)
   function _hex(h) {
-    h = String(h || '').trim(); if (h.charAt(0) === '#') h = h.slice(1);
+    h = h.trim(); if (h.charAt(0) === '#') h = h.slice(1);
     if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
     if (h.length < 6) return null;
     var n = parseInt(h.slice(0, 6), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -46,7 +45,6 @@
   function _rgb(c) { return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
   function _lum(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; }
   function cellStyle(n, maxAbs, colors) {
-    colors = colors || DEFAULT_HEAT;
     if (n === null || n === undefined || isNaN(n)) return { bg: 'transparent', fg: 'var(--ed-ink-3)', empty: true };
     var v = Number(n);
     if (v === 0) return { bg: _rgb(colors.zero), fg: 'var(--ed-ink-3)', empty: false };
@@ -56,13 +54,11 @@
     var fg = _lum(mixed) < 140 ? '#f4f7fb' : '#0a0e17';
     return { bg: _rgb(mixed), fg: fg, empty: false, sign: (v > 0 ? 1 : -1) };
   }
-  function readHeatColors() {   // the active theme's heat palette (falls back to dark defaults)
-    try {
-      var cs = getComputedStyle(document.documentElement);
-      var p = _hex(cs.getPropertyValue('--ed-heat-pos')), ng = _hex(cs.getPropertyValue('--ed-heat-neg')), z = _hex(cs.getPropertyValue('--ed-heat-zero'));
-      if (p && ng && z) return { pos: p, neg: ng, zero: z };
-    } catch (e) {}
-    return DEFAULT_HEAT;
+  function readHeatColors() {   // the active theme's heat palette (ed-tokens.css --ed-heat-*)
+    var cs = getComputedStyle(document.documentElement);
+    var p = _hex(cs.getPropertyValue('--ed-heat-pos')), ng = _hex(cs.getPropertyValue('--ed-heat-neg')), z = _hex(cs.getPropertyValue('--ed-heat-zero'));
+    if (!(p && ng && z)) throw new Error('the theme defines no --ed-heat-* palette');
+    return { pos: p, neg: ng, zero: z };
   }
   // the selected measure's value per column: GEX/DEX a value, OI/volume the server's total
   function _measureRow(row, measure) {
