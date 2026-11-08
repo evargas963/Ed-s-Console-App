@@ -1023,11 +1023,13 @@ lines_matching(
     "regex",
     skip_comment=True,
 )
+# history: a date, a work item, a pull request, an incident, or what code once was; "no longer"
+# and "the operator asked" describe today's behavior (a contract no longer held, the pan the
+# person at the screen asked for), so they are not history
 HISTORY = re.compile(
-    r"\b20\d\d-\d\d-\d\d\b|\boperator \d|\boperator ruled|"
-    r"\boperator (?:said|decided|asked)|\bRC-\d+|\bPR ?#?\d+|"
-    r"(?<![\w&])#\d{3,}\b|\bincident\b|\bused to\b|\bno longer\b|"
-    r"\bpreviously\b|\bwas (?:removed|replaced|changed)",
+    r"\b20\d\d-\d\d-\d\d\b|\boperator 20\d\d|\boperator ruled|\bRC-\d+|\bPR ?#?\d+|"
+    r"(?<![\w&])#\d{3,}\b|\bincident\b|\bused to\b|\bpreviously\b|"
+    r"\bwas (?:removed|replaced|changed)",
     re.I,
 )
 for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT]:
