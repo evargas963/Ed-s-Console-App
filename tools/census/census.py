@@ -1603,14 +1603,18 @@ for cat, tool in (
     add(S, cat, "13/LINTERS", tool)
 
 
-def json_findings(cmd, start):
-    """A checker's JSON report, which begins at the first `start` character it prints."""
-    out = run(cmd, cwd=HEAD)  # Stylelint writes its report to stderr
-    return json.JSONDecoder().raw_decode(out[out.index(start) :])[0]
+def json_findings(name, cmd):
+    """A checker's JSON report, written to a file by the checker's own output option: a Node
+    tool's report sent through a pipe can lose its end when the tool exits (seen in CI: html-
+    validate's cut at 15,992 characters). `cmd` holds `{out}` where the report file goes."""
+    report_file = LINT / f"{name}.json"
+    run([str(c).replace("{out}", str(report_file)) for c in cmd], cwd=HEAD)
+    return json.loads(report_file.read_text(encoding="utf-8"))
 
 
 report = json_findings(
-    [exe("eslint"), "--config", CENSUS / "eslint.config.mjs", "-f", "json", "."], "["
+    "eslint",
+    [exe("eslint"), "--config", CENSUS / "eslint.config.mjs", "-f", "json", "-o", "{out}", "."],
 )
 for fr in report:
     for msg in fr["messages"]:
@@ -1629,6 +1633,7 @@ reconcile(
     "eslint recommended",
 )
 report = json_findings(
+    "stylelint",
     [
         exe("stylelint"),
         "static/**/*.css",
@@ -1638,8 +1643,9 @@ report = json_findings(
         CENSUS,
         "-f",
         "json",
+        "-o",
+        "{out}",
     ],
-    "[",
 )
 for fr in report:
     for w in fr["warnings"]:
@@ -1657,15 +1663,15 @@ reconcile(
     "stylelint standard",
 )
 report = json_findings(
+    "html-validate",
     [
         exe("html-validate"),
         "--config",
         CENSUS / "htmlvalidate.config.json",
         "-f",
-        "json",
+        "json={out}",
         *[f for f in FILES if f.endswith(".html")],
     ],
-    "[",
 )
 for fr in report:
     for msg in fr["messages"]:
