@@ -104,6 +104,28 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
   expect(errs).toEqual([]);
 });
 
+test('Liquidity map: a failed request is named, and an empty snapshot shows the served reason', async ({ page }) => {
+  // server.liquidity_snapshot's answer with no price levels published (NO_PRICE_LEVELS_REASON), and
+  // /api/bars1m failing: the map says so for each, never draws a failure as an empty answer
+  const REASON = 'no price levels published for this ticker for the market\'s session yet (they are ' +
+    'built from its 1-minute bars on each new bar and at the console\'s start)';
+  const errs = watchErrors(page);
+  await intercept(page);
+  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ticker: 'SPY', zones: [], reason: REASON }) }));
+  await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 500, body: 'x' }));
+  await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.liqm-zones')).toContainText(REASON);
+  await expect(page.locator('.liqm-empty')).toHaveText('the bars request failed for SPY');
+  await page.unroute('**/api/liquidity-snapshot**');
+  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 500, body: 'x' }));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.liqm-zones')).toContainText('the liquidity snapshot request failed');
+  await expect(page.locator('.liqm-empty')).toHaveText('the liquidity snapshot, bars request failed for SPY');
+  expect(errs).toEqual([]);
+});
+
 test('the liquidity map fits its price scale to the candles; a far zone does not flatten them', async ({ page }) => {
   // 2026-09-29 RTH: SPY's served zones at 750 and 800 joined the auto-fit, the scale ran 735-805
   // and the candles (765) were a flat line
@@ -296,14 +318,9 @@ test.describe('Trade Desk renders served values', () => {
     // 2026-09-28 21:40 ET: after the close /api/levels served an empty by_distance and the chart drew
     // no key level; the spot is now Schwab's last trade at any hour and orders them (by_distance)
     const errs = watchErrors(page);
-    await page.route('**/api/**', (route) => {
-      const url = route.request().url();
-      let body = { available: false };
-      if (url.includes('/api/levels')) body = LEVELS;
-      else if (url.includes('/api/bars1m')) body = BARS;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    });
-    await routeWatchlist(page, ['SPY']);
+    await intercept(page);   // every route answered in its real shape; after the close, nothing crossed
+    await page.route('**/api/desk/events**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, EVENTS, { items: [], cross_counts: { up: 0, down: 0 } })) }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
@@ -315,19 +332,26 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk: a failed request is named on its cards, never told as an empty market', async ({ page }) => {
+    // /api/terrain and the flow bars failing: the options, volatility and flow cards say the
+    // request failed; before, they said no expiry carries open interest and no bars for the symbol
+    const errs = watchErrors(page);
+    await intercept(page);   // every route answered in its real shape, then the two that fail
+    await page.route(/\/api\/terrain\?|\/api\/bars1m\?.*tf=1&/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardOpt .tdm-plot-none')).toHaveText('the terrain request failed');
+    await expect(page.locator('#tdmCardVol .tdm-plot-none')).toHaveText('the terrain request failed');
+    await expect(page.locator('#tdmCardFlow .tdm-plot-none')).toHaveText('the bars request failed');
+    expect(errs).toEqual([]);
+  });
+
   test('Desk: the levels are drawn when they arrive, not held for the event queue', async ({ page }) => {
     // 2026-09-29 14:52 CT, deployed: QQQ's levels answered in 28 ms and were drawn after 1.34 s,
     // when /api/desk/events answered
     const errs = watchErrors(page);
-    await page.route('**/api/**', (route) => {
-      const url = route.request().url();
-      if (url.includes('/api/desk/events')) return;               // the event queue has not answered
-      let body = { available: false };
-      if (url.includes('/api/levels')) body = LEVELS;
-      else if (url.includes('/api/bars1m')) body = BARS;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    });
-    await routeWatchlist(page, ['SPY']);
+    await intercept(page);   // every route answered in its real shape, but the event queue
+    await page.route('**/api/desk/events**', () => {});   // the event queue has not answered
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
@@ -531,17 +555,9 @@ test.describe('Trade Desk renders served values', () => {
   const STOPPED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_levels_at_a_stopped_price_2026_10_22.json'));
   async function routeStopped(page) {
     const terrain = Object.assign({}, TERRAIN, { spot_feed_live: false, spot_not_live_text: STOPPED.spot_not_live_text });
-    await page.route('**/api/**', (route) => {
-      const url = route.request().url();
-      let body = { available: false };
-      if (url.includes('/api/terrain/strikes')) body = STRIKES;
-      else if (url.includes('/api/terrain')) body = terrain;
-      else if (url.includes('/api/levels')) body = STOPPED;
-      else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
-      else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    });
-    await routeWatchlist(page, ['SPY']);
+    await intercept(page);   // every route answered in its real shape, then the stopped price's two
+    await page.route(/\/api\/terrain\?/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(terrain) }));
+    await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STOPPED) }));
   }
 
   test('Right Now: distances from a price that has stopped are marked not live with its time and age', async ({ page }) => {

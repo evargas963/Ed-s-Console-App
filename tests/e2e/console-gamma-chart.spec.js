@@ -136,6 +136,23 @@ test.describe('Options/Gamma Chart subview', () => {
     expect(errors).toEqual([]);
   });
 
+  test('a failed request is named on the chart, never drawn as an empty answer', async ({ page }) => {
+    // /api/terrain failing while the bars and the profile arrive: the flip and the walls are not
+    // drawn and the chart says the terrain request failed; then the bars failing too
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await intercept(page);
+    await page.route(/\/api\/terrain\?/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#chartBody .gchart-empty')).toHaveText('the terrain request failed for SPY');
+    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 500, body: 'x' }));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#chartBody .gchart-empty')).toHaveText('the bars, terrain request failed for SPY');
+    expect(errors).toEqual([]);
+  });
+
   test('the Delta / DEX and Open Interest Chart views draw the served profile of their measure', async ({ page }) => {
     // operator 2026-09-29: "dex has a chart, oi has a chart" -- both views were blank
     await intercept(page);
