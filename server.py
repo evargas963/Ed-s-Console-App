@@ -2408,13 +2408,11 @@ def _legs(legs: tuple | None) -> dict | None:
     return {"call": legs[0], "put": legs[1], "total": legs[0] + legs[1]}
 
 
-def _gamma_surface_cell_fields(bucket: dict | None, syms: dict | None):
+def _gamma_surface_cell_fields(bucket: dict | None, contracts: dict):
     """ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its exposure
     bucket, Schwab's values and the book's computed values exact; a value not known is None (no
     contract listed there, or Schwab sent nothing for it). Returns (gex, dex, vanna, oi, volume,
     contracts)."""
-    syms = syms or {}
-    contracts = {"call": syms.get("call"), "put": syms.get("put")}
     if bucket is None:
         return None, None, None, None, None, contracts
     return (
@@ -2441,9 +2439,9 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
         for e, bs in by_expiry.items()
     }
     exp_dte: dict[str, int | None] = {}
-    # the vendor OSI symbol behind each (strike, expiry) leg, so the browser can ask the stream
-    # for exactly the contracts it is showing
-    symbols_by_expiry: dict[str, dict[float, dict[str, str]]] = {}
+    # the vendor OSI symbol behind each (expiry, strike, side) leg, so the browser can ask the
+    # stream for exactly the contracts it is showing
+    leg_symbol: dict[tuple[str, float, str], str] = {}
     contracts_used = 0
     for c in chain:
         e = c.expiry
@@ -2454,9 +2452,7 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
             d = c.days_to_expiry
             exp_dte[e] = int(d) if d is not None else None
         if c.symbol and c.side is not None and c.strike is not None:
-            symbols_by_expiry.setdefault(e, {}).setdefault(c.strike, {})[c.side.lower()] = str(
-                c.symbol
-            )
+            leg_symbol[(e, c.strike, c.side.lower())] = str(c.symbol)
     total_contracts = len(chain)
     excluded_malformed = total_contracts - contracts_used
     strike_set = {float(k) for ex in per_expiry.values() for k in ex}
@@ -2470,9 +2466,10 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
     for k in strikes:
         row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
         for col in expirations:
-            bucket = per_expiry[col["expiry"]].get(k)  # every column is one of per_expiry's
-            syms = symbols_by_expiry.get(col["expiry"], {}).get(k)
-            gex, dex, vanna, oi, volume, contracts = _gamma_surface_cell_fields(bucket, syms)
+            e = col["expiry"]
+            bucket = per_expiry[e].get(k)  # every column is one of per_expiry's
+            legs = {"call": leg_symbol.get((e, k, "call")), "put": leg_symbol.get((e, k, "put"))}
+            gex, dex, vanna, oi, volume, contracts = _gamma_surface_cell_fields(bucket, legs)
             row.append(gex)
             dex_row.append(dex)
             vanna_row.append(vanna)
@@ -3241,12 +3238,12 @@ def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)
         None
         if surf is None
         else next(
-            (i for i, e in enumerate(surf["expirations"]) if e["expiry"] == resolved_expiry),
-            None,
+            (i for i, e in enumerate(surf["expirations"]) if e["expiry"] == resolved_expiry), None
         )
     )
+    # no surface, or no column for this expiry: unknown (None), each strike drawn "-"
     net_gex_by_strike = (
-        []
+        None
         if col is None
         else [[c["strike"], c["gex"][col]] for c in surf["cells"] if c["gex"][col] is not None]
     )
