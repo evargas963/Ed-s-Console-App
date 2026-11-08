@@ -337,6 +337,29 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk: a failed request is named on its cards, never told as an empty market', async ({ page }) => {
+    // /api/terrain and the flow bars failing: the options, volatility and flow cards say the
+    // request failed; before, they said no expiry carries open interest and no bars for the symbol
+    const errs = watchErrors(page);
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      if (/\/api\/terrain\?/.test(url) || (url.includes('/api/bars1m') && url.includes('tf=1&'))) {
+        return route.fulfill({ status: 500, body: 'x' });
+      }
+      let body = { available: false };
+      if (url.includes('/api/levels')) body = LEVELS;
+      else if (url.includes('/api/bars1m')) body = BARS;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await routeWatchlist(page, ['SPY']);
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardOpt .tdm-plot-none')).toHaveText('the terrain request failed');
+    await expect(page.locator('#tdmCardVol .tdm-plot-none')).toHaveText('the terrain request failed');
+    await expect(page.locator('#tdmCardFlow .tdm-plot-none')).toHaveText('the bars request failed');
+    expect(errs).toEqual([]);
+  });
+
   test('Desk: the levels are drawn when they arrive, not held for the event queue', async ({ page }) => {
     // 2026-09-29 14:52 CT, deployed: QQQ's levels answered in 28 ms and were drawn after 1.34 s,
     // when /api/desk/events answered
