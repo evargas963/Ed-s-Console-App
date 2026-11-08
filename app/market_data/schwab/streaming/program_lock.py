@@ -57,7 +57,7 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
 
 
 def record_ports(fd: int, ports: Ports) -> None:
-    """The ports the program's sockets hold, as the lock's second line (program_ports reads it)."""
+    """Write the ports the program's sockets hold as the lock's second line (program_ports)."""
     os.write(fd, f"{json.dumps(asdict(ports))}\n".encode())
 
 
@@ -69,8 +69,10 @@ def release_owner_lock(fd: int, lock: Path) -> None:
 
 
 def program_ports(db_path: str | Path | None = None) -> Ports | None:
-    """The ports the running program holds (record_ports); None while no running program holds
-    the lock, or while it has not opened its sockets yet."""
+    """Return the ports the running program holds (record_ports).
+
+    None while no running program holds the lock, or while it has not opened its sockets yet.
+    """
     try:
         text = owner_lock_path(db_path).read_text()
     except FileNotFoundError:  # no program holds the lock
@@ -82,7 +84,10 @@ def program_ports(db_path: str | Path | None = None) -> Ports | None:
 
 
 def _holder(text: str) -> int | None:
-    """The pid on the lock's first line, while that process runs; None when the line holds no
-    pid (a program ended between creating the lock and writing it) or its process has ended."""
+    """Return the pid on the lock's first line while that process runs.
+
+    None when the line holds no pid (a program ended between creating the lock and writing it)
+    or its process has ended.
+    """
     head = text.partition("\n")[0]
     return int(head) if head.isdigit() and psutil.pid_exists(int(head)) else None

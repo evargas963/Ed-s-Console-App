@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import shutil
 import site
+import socket
 import subprocess
 import sys
 import time
@@ -160,10 +161,10 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         assert lines[0].startswith("Commit check: unknown: origin could not be fetched"), lines
         assert 'Ed Console: started in its own window ("Ed Capture Daemon").' in lines, lines
         assert lines[-1].startswith("Ed Console: healthy "), lines
-        console_port = program_ports(stream_db).console
+        console_port = launch.wait_for_pages(5.0, stream_db).console
         pages = f"http://127.0.0.1:{console_port}/"
         assert opened_at() == [pages]
-        assert launch.unhealthy_for(console_port, 5.0) is None
+        assert program_ports(stream_db).console == console_port
         assert launch.running(launch.DAEMON_START, home), "the program the batch started"
         again = launcher()
         assert (again.returncode, again.stdout.splitlines()[0]) == (
@@ -176,7 +177,9 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         assert opened_at() == [pages, pages]
         stopped = launcher("stop")
         assert (stopped.returncode, stopped.stdout) == (0, "Ed Console: stopped\n"), stopped.stderr
-        assert launch.unhealthy_for(console_port, 1.0), "the pages outlived the program"
+        with socket.socket() as probe:
+            refused = probe.connect_ex(("127.0.0.1", console_port))
+        assert refused, "the pages outlived the program"
         assert program_ports(stream_db) is None, "the lock outlived the program"
         assert launch.running(launch.DAEMON_START, home) == []
     finally:

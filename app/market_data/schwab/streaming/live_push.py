@@ -97,8 +97,10 @@ async def serve_live_push(
     *,
     stats: dict | None = None,
 ) -> None:
-    """Run the control socket on the listening `sock` until `stop` is set, each request handed
-    to `on_request`. `stats` (mutated) reports clients."""
+    """Run the control socket on the listening `sock` until `stop` is set.
+
+    Each request is handed to `on_request`; `stats` (mutated) reports clients.
+    """
     stats = stats if stats is not None else {}
     stats.update(clients=0)
 

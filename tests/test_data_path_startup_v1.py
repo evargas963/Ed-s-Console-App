@@ -578,7 +578,7 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         )
 
     def lock_naming(port: int) -> Path:
-        """A runtime folder whose lock names the daemon and `port` as its control socket's."""
+        """Make a runtime folder whose lock names the daemon and `port` as its control socket's."""
         runtime = tmp_path / f"lock_naming_{port}"
         (runtime / "data").mkdir(parents=True)
         ports = asdict(Ports(console=port, live_ui=port, live_push=port))

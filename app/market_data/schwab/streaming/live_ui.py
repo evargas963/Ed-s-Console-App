@@ -223,8 +223,10 @@ async def serve_live_ui(
     record_heartbeat=lmp.record_feed_heartbeat,
     clock=time_et.now,
 ) -> None:
-    """Serve the browsers' price socket on the listening `sock` until `stop` is set. Each beat is
-    recorded with `record_heartbeat` (the daemon's own plane)."""
+    """Serve the browsers' price socket on the listening `sock` until `stop` is set.
+
+    Each beat is recorded with `record_heartbeat` (the daemon's own plane).
+    """
     stats = stats if stats is not None else {}
     srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock)
     lmp.add_row_listener(srv.on_row)

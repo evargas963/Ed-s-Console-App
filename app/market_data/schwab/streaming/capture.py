@@ -1138,9 +1138,11 @@ class _PagesServer(uvicorn.Server):
 
 
 async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket) -> None:
-    """The console's pages and routes (server.app) on `sock` in this program until `stop`,
-    reading the daemon's one bus (console_feed.bind_daemon): one program, one copy of every
-    value."""
+    """Serve the console's pages and routes (server.app) on `sock` until `stop`.
+
+    They read the daemon's one bus (console_feed.bind_daemon): one program, one copy of every
+    value.
+    """
     console_feed.bind_daemon(daemon)
     web = _PagesServer(
         uvicorn.Config(
@@ -1319,10 +1321,12 @@ def one_schwab_client(build) -> callable:
 
 
 def open_sockets() -> tuple[socket.socket, socket.socket, socket.socket]:
-    """The program's three listening sockets (the console's pages, the browser's price socket,
-    the local control socket), opened before anything serves them, so the ports they hold are
-    known at once (port 0: the system's pick as it binds, no gap for another program to take it).
-    A port another program holds ends the start here, naming it."""
+    """Open the program's three listening sockets before anything serves them.
+
+    They are the console's pages, the browser's price socket and the local control socket. The
+    ports they hold are known at once (port 0: the system's pick as it binds, no gap for another
+    program to take it). A port another program holds ends the start here, naming it.
+    """
     return (
         socket.create_server((CONSOLE_HOST, CONSOLE_PORT)),
         socket.create_server((LIVE_UI_HOST, LIVE_UI_PORT)),
@@ -1331,10 +1335,13 @@ def open_sockets() -> tuple[socket.socket, socket.socket, socket.socket]:
 
 
 async def run(lock_fd: int) -> int:
-    """The whole daemon: writer, its three sockets, the chain sweep, the market follower and the
-    Schwab connection, each until the stop; one that ends first ends the daemon with an error
-    naming it, which start_capture_daemon.bat restarts. The ports its sockets hold go in its
-    lock (`lock_fd`), where launch.py reads them."""
+    """Run the whole daemon until the stop.
+
+    Its writer, its three sockets, the chain sweep, the market follower and the Schwab connection
+    each run until the stop; one that ends first ends the daemon with an error naming it, which
+    start_capture_daemon.bat restarts. The ports its sockets hold go in its lock (`lock_fd`),
+    where launch.py reads them.
+    """
     pages, prices, control = open_sockets()
     record_ports(
         lock_fd,

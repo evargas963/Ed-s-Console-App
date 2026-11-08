@@ -24,9 +24,16 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def held_ports(tmp_path: Path) -> Ports | None:
-    """The ports the program wrote in its lock (beside its stream database), as launch.py reads
-    them."""
+    """Return the ports the program wrote in its lock, as launch.py reads them."""
     return program_ports(tmp_path / "data" / "stream_capture.db")
+
+
+def answered(tmp_path: Path) -> Ports | TimeoutError:
+    """Return the ports once the program's pages answer, as launch.py waits, or why they did not."""
+    try:
+        return launch.wait_for_pages(30, tmp_path / "data" / "stream_capture.db")
+    except TimeoutError as e:
+        return e
 
 
 def program_env(tmp_path: Path) -> dict:
@@ -94,9 +101,8 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
         while (ports := held_ports(tmp_path)) is None:
             assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
             time.sleep(0.25)
-        pages = ports.console
-        why = launch.unhealthy_for(pages, 30)  # a page request, as the browser makes
-        assert why is None, (why, "".join(lines))
+        answer = answered(tmp_path)  # a page request, as the browser makes
+        assert answer == ports, (answer, "".join(lines))
         os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
         code = program.wait(90)
     finally:
@@ -133,8 +139,8 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
             assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
             time.sleep(0.25)
         pages = ports.console
-        why = launch.unhealthy_for(pages, 30)
-        assert why is None, (why, "".join(lines))
+        answer = answered(tmp_path)
+        assert answer == ports, (answer, "".join(lines))
         page.settimeout(30)
         page.connect(("127.0.0.1", pages))
         page.sendall(b"GET /api/changes?ticker=SPY HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")

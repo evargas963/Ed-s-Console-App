@@ -161,9 +161,11 @@ def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
 
 
 def test_the_lock_holds_the_ports_the_program_opened_while_it_runs(tmp_path):
-    """The program's lock as launch.py reads it (program_ports): no ports until the program has
-    written them, a line not yet whole read as not written, the ports once written, and none
-    once its holder has ended or released the lock."""
+    """Read the program's lock as launch.py reads it (program_ports).
+
+    No ports until the program has written them, a line not yet whole read as not written, the
+    ports once written, and none once its holder has ended or released the lock.
+    """
     db = tmp_path / "stream_capture.db"
     assert pl.program_ports(db) is None  # no program
     fd, lock = pl.acquire_owner_lock(db)

@@ -91,8 +91,10 @@ async def _until(pred, timeout=5.0):
 
 
 def listener() -> tuple[socket.socket, str]:
-    """A listening socket of the test's own, on the port the system picks as it binds (as
-    capture.open_sockets opens the program's), and its address."""
+    """Open a listening socket of the test's own and return it with its address.
+
+    Its port is the system's pick as it binds, as capture.open_sockets opens the program's.
+    """
     sock = socket.create_server(("127.0.0.1", 0))
     return sock, f"ws://127.0.0.1:{sock.getsockname()[1]}"
 

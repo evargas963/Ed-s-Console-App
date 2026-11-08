@@ -117,8 +117,11 @@ def daemon_window(batch: Path) -> list[str]:
 
 
 def ask_daemon_to_stop(port: int) -> None:
-    """The daemon's clean stop, asked on its local control socket at `port` ({"op": "stop"}: it
-    writes what it holds, then exits and start_capture_daemon.bat does not restart it)."""
+    """Ask the daemon for its clean stop on its local control socket at `port`.
+
+    On {"op": "stop"} it writes what it holds, then exits, and start_capture_daemon.bat does not
+    restart it.
+    """
     with connect(f"ws://127.0.0.1:{port}", open_timeout=10) as ws:
         ws.send(json.dumps({"op": "stop"}))
 
@@ -130,15 +133,15 @@ def stop() -> int:
     program = running(DAEMON_START)
     ended = "stopped"
     ports = program_ports()
-    if program and ports is None:
-        log.warning("Ed Console: not asked to stop: it has not opened its ports yet")
-        ended = "ended, not asked by this stop"
-    elif program:
+    if program and ports is not None:
         try:
             ask_daemon_to_stop(ports.live_push)
         except (OSError, WebSocketException) as e:
             log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
             ended = "ended, not asked by this stop"
+    elif program:
+        log.warning("Ed Console: not asked to stop: it has not opened its ports yet")
+        ended = "ended, not asked by this stop"
     _gone, alive = psutil.wait_procs(program, timeout=STOP_WAIT_SEC)
     left = [p.pid for p in program if p in alive]
     print(
@@ -148,38 +151,33 @@ def stop() -> int:
     return 1 if alive or ended != "stopped" else 0
 
 
-def unhealthy_for(port: int, seconds: float) -> str | None:
-    """None once the console on `port` answers /api/health with 200 within `seconds`; else the
-    last answer it gave instead (an error status, a refused connection, a timeout)."""
+def wait_for_pages(seconds: float, db_path: Path | None = None) -> Ports:
+    """Return the program's ports once its pages answer /api/health with 200.
+
+    The ports are the ones it wrote in its lock (program_ports; `db_path` is for tests). Raises
+    TimeoutError when `seconds` pass first, with the last answer: no ports written yet, an error
+    status, a refused connection or a timeout.
+    """
     deadline = time_et.elapsed() + seconds
-    why = f"no answer in {seconds:.0f} s"
+    why = "it has not opened its ports"
     while (left := deadline - time_et.elapsed()) > 0:
-        try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=min(left, 2.0)
-            ) as r:
-                if r.status == 200:
-                    return None
-                why = f"HTTP {r.status}"
-        except OSError as e:
-            why = f"{type(e).__name__}: {e}"
+        ports = program_ports(db_path)
+        if ports is not None:
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{ports.console}/api/health", timeout=min(left, 2.0)
+                ) as r:
+                    if r.status == 200:
+                        return ports
+                    why = f"HTTP {r.status}"
+            except OSError as e:
+                why = f"{type(e).__name__}: {e}"
         time.sleep(min(0.25, max(deadline - time_et.elapsed(), 0)))
-    return why
+    raise TimeoutError(why)
 
 
 #: how long the launcher waits for the program's pages to answer before it says they did not
 START_WAIT_SEC = 180.0
-
-
-def ports_within(seconds: float) -> Ports:
-    """The ports the program holds (program_ports), once it has written them, within `seconds`;
-    TimeoutError when it has not by then."""
-    deadline = time_et.elapsed() + seconds
-    while (ports := program_ports()) is None:
-        if time_et.elapsed() >= deadline:
-            raise TimeoutError("it did not open its ports")
-        time.sleep(0.25)
-    return ports
 
 
 def main() -> int:
@@ -196,12 +194,9 @@ def main() -> int:
         print('Ed Console: started in its own window ("Ed Capture Daemon").')
     started = time_et.elapsed()
     try:
-        ports = ports_within(START_WAIT_SEC)
-        why = unhealthy_for(ports.console, START_WAIT_SEC - (time_et.elapsed() - started))
+        ports = wait_for_pages(START_WAIT_SEC)
     except TimeoutError as e:
-        why = str(e)
-    if why is not None:
-        print(f"Ed Console: its pages did not answer in {START_WAIT_SEC:.0f} s: {why}")
+        print(f"Ed Console: its pages did not answer in {START_WAIT_SEC:.0f} s: {e}")
         return 1
     print(f"Ed Console: healthy {time_et.elapsed() - started:.1f} s after the start.")
     webbrowser.open(f"http://127.0.0.1:{ports.console}/")  # the default browser
