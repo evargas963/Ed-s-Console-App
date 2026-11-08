@@ -32,6 +32,7 @@ def test_the_chain_spot_carries_schwabs_trade_time():
             ),
             "_contract_symbols": frozenset([symbol]),
             "_chain_fetched_ts": 1.0,
+            "_gamma_surface": None,  # levels with no surface, as _publish_levels writes them
         }
     lmp.record_from_level_one_equity(
         tk,

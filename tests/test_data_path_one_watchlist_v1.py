@@ -437,7 +437,8 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         server._terrain_cache[off] = {
             "computed_ts_utc": time_et.now(),
             "spot": 100.0,
-        }  # levels, no surface
+            "_gamma_surface": None,
+        }  # levels, no surface: as _publish_levels writes them
     try:
         lmp.record_feed_heartbeat(
             {"ts": time_et.now(), "schwab_socket_open": True, "watchlist": [on]}
