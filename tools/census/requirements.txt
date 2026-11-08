@@ -1,0 +1,5 @@
+vulture==2.16
+pyright==1.1.414
+yamllint==1.35.1
+actionlint-py==1.7.7.23
+Blinter==1.1.68
