@@ -1426,7 +1426,9 @@ for name, users in imports_of.items():
         )
 for ln in git("worktree", "list").splitlines()[1:]:
     add(S, "worktrees", "housekeeping", "git worktree", ln.split()[0] + " " + ln.split()[-1])
-for ln in git("branch", "--format=%(refname:short) %(committerdate:short)").splitlines():
+for ln in git(
+    "for-each-ref", "refs/heads", "--format=%(refname:short) %(committerdate:short)"
+).splitlines():
     if not ln.startswith("main "):
         add(S, "local branches", "housekeeping", "git branch", ln)
 for ln in git("branch", "-r", "--format=%(refname:short)").splitlines():
