@@ -213,16 +213,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    let pushes = 0;
+    let pushes = 0, firstDrawn;
+    const drawn = new Promise((resolve) => { firstDrawn = resolve; });
     await page.route('**/api/changes**', async (route) => {
       pushes += 1;
-      await new Promise((r) => setTimeout(r, 500));   // after the first render
+      if (pushes === 1) await drawn;   // the push goes once the first surface is on screen, not after a guessed delay
       route.fulfill({ status: 200, contentType: 'text/event-stream',
         body: pushes === 1 ? 'event: levels\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
+    firstDrawn();
     await expect(cell).toHaveText('$2.0K', { timeout: 3000 });
     expect(surfaceCalls).toBeGreaterThanOrEqual(2);
   });
