@@ -14,7 +14,8 @@ from pathlib import Path
 def checkout_path(target: str, base: Path, primary: Path) -> Path | None:
     """`target` resolved (joined to `base` when relative) when it is inside the checkout
     `primary`; None when it is outside it. A path that cannot be resolved raises: the guard that
-    asked cannot decide, and hook_chain refuses an event a guard raises on."""
+    asked cannot decide, and hook_chain refuses an event a guard raises on.
+    """
     path = Path(target)
     resolved = (path if path.is_absolute() else base / path).resolve()
     return resolved if resolved.is_relative_to(primary.resolve()) else None
