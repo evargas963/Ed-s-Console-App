@@ -30,7 +30,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
         return [
             col[side]["state"]
             for cell in surface["cells"]
-            for col, pair in zip(cell.get("stream") or [], cell.get("contracts") or [])
+            for col, pair in zip(cell["stream"], cell["contracts"])  # a published surface's cell
             for side in ("call", "put")
             if col and pair.get(side) == _A
         ]
