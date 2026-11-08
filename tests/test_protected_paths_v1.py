@@ -94,7 +94,7 @@ def test_the_protected_tree_is_guarded_and_backups_is_not():
 
 def test_empty_and_none_commands_do_not_crash():
     assert G.bash_violations("") == []
-    assert G.bash_violations(None) == []  # type: ignore[arg-type]
+    assert G.bash_violations(None) == []
 
 
 @pytest.mark.parametrize(

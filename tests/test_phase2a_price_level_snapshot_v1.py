@@ -43,7 +43,7 @@ def _bar(y, mo, d, h, mi, o, hi, lo, c, v=1000.0):
 
 def _tape():
     """Two prior sessions plus a today session, so window selection is observable."""
-    bars = [
+    return [
         _bar(2026, 10, 1, 10, 0, 100, 110, 90, 100),  # older prior session
         _bar(2026, 10, 1, 14, 0, 100, 101, 99, 100),
         _bar(2026, 10, 2, 10, 0, 96, 105, 95, 97),  # most recent prior session
@@ -53,7 +53,6 @@ def _tape():
         _bar(2026, 10, 5, 9, 50, 105, 107, 104, 106),  # today, post-ORB
         _bar(2026, 10, 5, 11, 0, 106, 108, 105, 107),
     ]
-    return bars
 
 
 #: the tape's two prior sessions as Schwab's daily candles carry them (high, low, close of each

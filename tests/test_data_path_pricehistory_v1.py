@@ -244,7 +244,8 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
             assert atr.weekly == _true_range_mean(
                 _grouped(daily, lambda day: day.isocalendar()[:2])
             ), tk
-            assert atr.monthly is None, tk  # a year captured: not 15 months, so no monthly ATR
+            assert len(months) < 15, tk  # a year captured: ATR(14) of months needs 15
+            assert atr.monthly is None, tk
     finally:
         for tk in ("SPY", "TSLA"):
             server._bars.pop(tk, None)
