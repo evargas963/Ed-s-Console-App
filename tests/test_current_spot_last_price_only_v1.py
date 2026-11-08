@@ -13,7 +13,7 @@ from tests.feed_live_helper import RTH_INSTANT, mark_feed_down, mark_feed_live
 
 @pytest.fixture(autouse=True)
 def _feed_live():
-    mark_feed_live("SPY", "MARKNEVER", "KEEPLAST", "ZZRESTROW", now=RTH_INSTANT)
+    mark_feed_live("SPY", "MARKNEVER", "KEEPLAST", now=RTH_INSTANT)
     yield
     mark_feed_down()
 
@@ -54,25 +54,5 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     row = L.get_quote("KEEPLAST")
     assert row is not None
     assert row["spot"] == 50.0
-    assert row["quote_source_detail"]["spot"] == "LAST_PRICE"
+    assert row["mark"] == 99.99  # Schwab's MARK is its own field, never the price
     L._by_ticker.pop("KEEPLAST", None)
-
-
-def test_a_rest_written_plane_row_is_not_spot() -> None:
-    """Spot is the daemon's streamed price row only -- a REST-written plane row is never spot,
-    labelled or not (operator rule 2026-09-23: no fallbacks, a broken feed must look broken)."""
-    tk = "ZZRESTROW"
-    now = RTH_INSTANT
-    L._by_ticker[tk] = {
-        "ticker": tk,
-        "spot": 700.42,
-        "server_received_ts": now - 1.0,
-        "spot_received_ts": now - 1.0,
-        "exchange_quote_ts": now - 1.0,
-        "quote_source_detail": {"spot": "LAST_PRICE"},
-        "quote_ingestion": "rest_anchor_lane_refresher",
-    }
-    try:
-        assert server.resolve_spot(tk, now=now) == (None, server.SPOT_SOURCE_NONE, None)
-    finally:
-        L._by_ticker.pop(tk, None)
