@@ -35,16 +35,16 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
         server._publish_levels(TK, records, _T - 120.0, chain_spot=(_SPOT, _T), now=_AT)
         cached = _cached()
         strike = round(_CONTRACTS[0]["strikePrice"], 2)
-        row = next(r for r in cached["_per_strike"]["all"] if r[0] == strike)
+        row = next(r for r in cached.snap.per_strike["all"] if r[0] == strike)
         states = [
             col[side]["state"]
-            for cell in cached["_gamma_surface"]["cells"]
+            for cell in cached.gamma_surface["cells"]
             for col, pair in zip(cell.get("stream") or [], cell.get("contracts") or [])
             for side in ("call", "put")
             if col and pair.get(side) == _A
         ]
         assert row[2] >= 999999
-        assert cached["_gamma_surface"]["stream_overlay_contracts"] >= 1
+        assert cached.gamma_surface["stream_overlay_contracts"] >= 1
         assert states and "live" not in states
         assert lmp.feed_live_for(_A, "LEVELONE_OPTIONS", _T) is False
     finally:
