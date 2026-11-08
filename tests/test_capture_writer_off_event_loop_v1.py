@@ -11,51 +11,43 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import threading
 import time
 
-import stream_spine
 import time_et
 from stream_spine import LOG, CaptureWriter, MessageBus, quote_msg
-
-
-class _SlowCommitConn:
-    """A real sqlite3 connection whose commit takes `delay` seconds."""
-
-    def __init__(self, real: sqlite3.Connection, delay: float):
-        self._real = real
-        self._delay = delay
-
-    def execute(self, *a, **k):
-        return self._real.execute(*a, **k)
-
-    def commit(self):
-        time.sleep(self._delay)
-        self._real.commit()
-
-    def close(self):
-        self._real.close()
 
 
 def _quote(i: int) -> dict:
     return quote_msg(symbol="SPY", bid=1.0, ask=1.1, last=1.05, ts_recv=1000.0 + i, src="schwab_l1")
 
 
-def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path, monkeypatch):
-    real_connect = sqlite3.connect
-    main_thread = __import__("threading").get_ident()
+def _hold_the_database(path, seconds: float) -> threading.Thread:
+    """Another connection holds the database's write lock for `seconds` (as a reader of the
+    file, a backup or the daily keep can): every write the writer makes meanwhile waits on it."""
+    held = threading.Event()
 
-    def _connect(path, *a, **k):
-        conn = real_connect(path, *a, **k)
-        # only the writer THREAD's connection is slowed; the control connection is normal
-        if __import__("threading").get_ident() != main_thread:
-            return _SlowCommitConn(conn, 0.6)
-        return conn
+    def hold():
+        other = sqlite3.connect(str(path))
+        try:
+            other.execute("BEGIN EXCLUSIVE")
+            held.set()
+            time.sleep(seconds)
+            other.commit()
+        finally:
+            other.close()
 
-    monkeypatch.setattr(stream_spine.sqlite3, "connect", _connect)
+    t = threading.Thread(target=hold, daemon=True)
+    t.start()
+    held.wait(10)
+    return t
 
+
+def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path):
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=0.05)
     bus = MessageBus()
     sub = bus.subscribe("", policy=LOG)
+    holder = _hold_the_database(tmp_path / "cap.db", 0.6)
 
     async def go():
         stop = asyncio.Event()
@@ -73,26 +65,24 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path, monkeypatch):
         return max(gaps)
 
     worst = asyncio.run(go())
+    holder.join(10)
     assert worst < 0.25, f"the event loop stalled {worst:.2f}s behind a 0.6s commit"
     n = (
-        real_connect(str(tmp_path / "cap.db"))
+        sqlite3.connect(str(tmp_path / "cap.db"))
         .execute("SELECT count(*) FROM stream_quotes_raw")
         .fetchone()[0]
     )
     assert n == 40, "every delivered message must still be written before run() returns"
 
 
-def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path, monkeypatch):
-    import threading
-
+def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path):
     seen: set = set()
-    orig = CaptureWriter.insert
+    insert = CaptureWriter.insert.__code__
 
-    def _spy(self, topic, msg, *, conn=None):
-        seen.add(threading.current_thread().name)
-        return orig(self, topic, msg, conn=conn)
+    def profile(frame, event, _arg):  # the interpreter's profiler: sees calls, changes nothing
+        if event == "call" and frame.f_code is insert:
+            seen.add(threading.current_thread().name)
 
-    monkeypatch.setattr(CaptureWriter, "insert", _spy)
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=5, batch_sec=0.05)
     bus = MessageBus()
     sub = bus.subscribe("", policy=LOG)
@@ -106,5 +96,9 @@ def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path, monkeypatch):
         stop.set()
         await task
 
-    asyncio.run(go())
+    threading.setprofile_all_threads(profile)
+    try:
+        asyncio.run(go())
+    finally:
+        threading.setprofile_all_threads(None)
     assert seen == {"stream-capture-writer"}

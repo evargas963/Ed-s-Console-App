@@ -258,9 +258,10 @@
       // a strike with no GEX value is unknown, not a zero bar
       var k = r[0], gx = r[1], vol = r[2], gy = prior(k);
       var hasGy = gy != null && gx != null;
-      var pos = gx != null && gx >= 0, wToday = gx == null || gx === 0 ? 0 : Math.abs(gx) / maxAbs * 100;
+      var sToday = window.EdShell.strength(gx, maxAbs), sPrior = window.EdShell.strength(gy, maxAbs);
+      var pos = gx != null && gx >= 0, wToday = sToday == null ? 0 : sToday * 100;
       var ghostBar = hasGy
-        ? '<i class="mig-ghost ' + (gy >= 0 ? 'pos' : 'neg') + '" style="width:' + (gy === 0 ? 0 : Math.abs(gy) / maxAbs * 100).toFixed(1) + '%"></i>' : '';
+        ? '<i class="mig-ghost ' + (gy >= 0 ? 'pos' : 'neg') + '" style="width:' + (sPrior == null ? 0 : sPrior * 100).toFixed(1) + '%"></i>' : '';
       var delta = migRow[k] ? migRow[k][3] : null;   // served change
       var deltaHtml = delta == null ? '<span class="mig-delta">-</span>'
         : '<span class="mig-delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '▲' : '▼') + usd(Math.abs(delta)) + '</span>';

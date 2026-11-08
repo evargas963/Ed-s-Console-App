@@ -25,6 +25,29 @@ async function openMatrix(page) {
   await page.goto('/');
 }
 
+test('a cell shades by its value against its column peak, in the theme heat colours', async ({ page }) => {
+  // the straight proportion: the theme's zero toward its negative colour by |value| / peak,
+  // worked out here from the served numbers and the page's own colour tokens
+  const body = served(FRONT);
+  await page.route('**/api/confluence**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) }));
+  await openMatrix(page);
+  const i = body.rows.findIndex((r, n) => n > 0 && r.net_gex != null && r.net_gex < 0);
+  expect(i).toBeGreaterThan(0);
+  const v = body.rows[i].net_gex, peak = body.peaks.net_gex;
+  const cell = page.locator('#cmRows tr[data-i="' + i + '"] td').nth(3);   // strike, distance, score, net
+  await expect(cell).toHaveText(body.rows[i].net_gex_text);
+  const [zero, neg, bg] = await cell.evaluate((el) => {
+    const cs = getComputedStyle(document.documentElement);
+    return [cs.getPropertyValue('--ed-heat-zero'), cs.getPropertyValue('--ed-heat-neg'), getComputedStyle(el).backgroundColor];
+  });
+  const rgb = (h) => { const n = parseInt(h.trim().slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const t = Math.abs(v) / peak, a = rgb(zero), b = rgb(neg);
+  expect(t).toBeGreaterThan(0);
+  expect(t).toBeLessThan(1);
+  expect(bg).toBe('rgb(' + a.map((x, k) => Math.round(x + (b[k] - x) * t)).join(', ') + ')');
+});
+
 test('a price that has stopped marks the spot not live with its time and age', async ({ page }) => {
   // AGENTS rule 5: /api/confluence as the real code serves it on SPY's 2026-10-22 close
   // publication, its 16:39 print the last price and the daemon's connection ended, read at 18:00
