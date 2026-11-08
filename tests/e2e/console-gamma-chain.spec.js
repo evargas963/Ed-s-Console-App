@@ -68,7 +68,7 @@ async function toChain(page) {
 test.describe('D — Gamma Chain subview', () => {
   test.beforeEach(async ({ page }) => {
     await intercept(page);
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('Chain swaps in the ladder + single-expiry disclosure; Gamma restores on switch back', async ({ page }) => {

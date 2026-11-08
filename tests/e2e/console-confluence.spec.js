@@ -18,11 +18,9 @@ function served(expiry) {
 
 async function openMatrix(page) {
   await page.addInitScript(() => {
-    try {
-      localStorage.setItem('ed_ticker', 'MRVL');
-      localStorage.setItem('ed_ws', 'trade-desk');
-      localStorage.setItem('ed_sub', 'confluence');
-    } catch (e) { /* storage unavailable */ }
+    localStorage.setItem('ed_ticker', 'MRVL');
+    localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'confluence');
   });
   await page.goto('/');
 }
@@ -37,11 +35,9 @@ test('a price that has stopped marks the spot not live with its time and age', a
   await page.route('**/api/confluence**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STOPPED) }));
   await page.addInitScript(() => {
-    try {
-      localStorage.setItem('ed_ticker', 'SPY');
-      localStorage.setItem('ed_ws', 'trade-desk');
-      localStorage.setItem('ed_sub', 'confluence');
-    } catch (e) { /* storage unavailable */ }
+    localStorage.setItem('ed_ticker', 'SPY');
+    localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'confluence');
   });
   await page.goto('/');
   expect(STOPPED.spot_not_live_text).toContain('last trade');
@@ -68,7 +64,7 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   const hi = rows[0].strike;
   const lo = rows[rows.length - 1].strike;
   await expect(page.locator('#cmBody')).toContainText(rows[0].score_text);
-  await expect(page.locator('#cmBody')).toContainText('—');
+  await expect(page.locator('#cmBody td', { hasText: /^-$/ }).first()).toBeVisible();
   await expect(page.locator('#cmBody h1')).toHaveCount(0);
   await expect(page.locator('#cmBody')).not.toContainText('Hover a level to trace its price');
   await expect(page.locator('#cmExp')).toHaveValue(FRONT);
