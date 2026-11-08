@@ -20,6 +20,7 @@
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { projectPython } from "./project-python.mjs";
@@ -112,7 +113,11 @@ const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
-  const args = ["-m", "pytest", "-n", "auto", "--dist", "loadfile", "--durations=20", ...process.argv.slice(2)];
+  // One worker per processor the machine has, as CI pins it (.github/workflows/pytest.yml):
+  // xdist's `-n auto` reads fewer.
+  const workers = String(os.availableParallelism());
+  const args = ["-m", "pytest", "-n", workers, "--dist", "loadfile", "--durations=20",
+    ...process.argv.slice(2)];
   const code = runWithFileSink("pytest", projectPython(root), args, {
     logPath: path.join(logDir(), "test_pytest_last.log"),
   });
