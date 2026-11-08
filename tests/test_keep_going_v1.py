@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -51,17 +53,76 @@ def test_a_stop_is_refused_while_shape_is_open_unless_only_the_operator_can_act(
     assert (keep_going.decide(row, last) is None) == stops
 
 
-def _run(payload, temp: Path) -> subprocess.CompletedProcess:
-    """The script the settings wire for Stop, on `payload` as Claude Code sends it, with `temp` as
-    its temp folder, so the counts it keeps stay in the test's own folder."""
-    return subprocess.run(
-        [sys.executable, str(REPO / "tools" / "keep_going.py")],
-        input=payload if isinstance(payload, str) else json.dumps(payload),
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        check=True,
         capture_output=True,
-        text=True,
-        cwd=REPO,
-        env={**os.environ, "TEMP": str(temp), "TMP": str(temp), "TMPDIR": str(temp)},
     )
+
+
+def _production(temp: Path, at_main: bool) -> Path:
+    """A production checkout of the real hook and this repository's work list, committed, its
+    `origin/main` at HEAD; one commit past it when not `at_main`."""
+    prod = temp / ("production" if at_main else "production-behind")
+    if not prod.exists():
+        (prod / "tools").mkdir(parents=True)
+        shutil.copy(REPO / "tools" / "keep_going.py", prod / "tools")
+        shutil.copy(REPO / "ACTIVE_PROGRAM.md", prod)
+        _git(prod, "init", "-q")
+        _git(prod, "add", "tools/keep_going.py", "ACTIVE_PROGRAM.md")
+        _git(prod, "commit", "-q", "-m", "main")
+        _git(prod, "update-ref", "refs/remotes/origin/main", "HEAD")
+        if not at_main:
+            _git(prod, "commit", "-q", "--allow-empty", "-m", "beside main")
+    return prod
+
+
+def _run(
+    payload, temp: Path, *, at_main: bool = True, listening: bool = True
+) -> subprocess.CompletedProcess:
+    """The script the settings wire for Stop, on `payload` as Claude Code sends it, run from a
+    production checkout in `temp` with the console's port pointed at a free port of the test's
+    own (listening unless told not to), and `temp` as its temp folder, so the counts and orders it
+    keeps stay in the test's own folder."""
+    prod = _production(temp, at_main)
+    with socket.socket() as console:
+        console.bind(("127.0.0.1", 0))
+        if listening:
+            console.listen()
+        port = str(console.getsockname()[1])
+        return subprocess.run(
+            [sys.executable, str(prod / "tools" / "keep_going.py")],
+            input=payload if isinstance(payload, str) else json.dumps(payload),
+            capture_output=True,
+            text=True,
+            cwd=prod,
+            env={
+                **os.environ,
+                "TEMP": str(temp),
+                "TMP": str(temp),
+                "TMPDIR": str(temp),
+                "ED_CONSOLE_PORT": port,
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "at_main, listening, why",
+    [
+        (False, True, "production's checkout is at"),
+        (True, False, "Ed Console is not running"),
+    ],
+)
+def test_a_stop_is_refused_while_production_does_not_run_main(at_main, listening, why, tmp_path):
+    """Operator 2026-11-07: Windows Update restarted the machine and Ed Console stayed down 25
+    hours with no one told. A stop is refused, whatever SHAPE says, while production's checkout is
+    not at main or nothing listens on its port; WAITING ON OPERATOR passes (he may stop it)."""
+    said = {"session_id": "p", "last_assistant_message": "SHAPE is finished."}
+    run = _run(said, tmp_path, at_main=at_main, listening=listening)
+    assert run.returncode == 0 and why in json.loads(run.stdout)["reason"], run.stderr
+    waiting = {**said, "last_assistant_message": "WAITING ON OPERATOR: he stopped it."}
+    assert _run(waiting, tmp_path, at_main=at_main, listening=listening).stdout == ""
 
 
 def test_the_settings_run_it_on_stop_and_it_answers_by_this_repositorys_shape_row(tmp_path):

@@ -260,7 +260,11 @@ then the rule binds with no machine check.
   check — ENF-12.
 - Say whether a runtime change is live or on disk until a restart. Deployed means production at the
   merge commit, restarted, and the screen checked during market hours (the `deploy` skill).
-  Enforced by: no machine check — ENF-12.
+  Production runs main at all times (operator 2026-11-07, after a Windows Update restart left Ed
+  Console down 25 hours): enforced by the Stop hook `tools/keep_going.py`, which refuses a stop while
+  the production checkout is not at its `origin/main` or nothing listens on the console's port,
+  unless the message begins `WAITING ON OPERATOR:` (`tests/test_keep_going_v1.py`); the screen
+  check during market hours — no machine check, ENF-12.
 - Never kill a commit hook mid-run. Enforced by: no machine check — ENF-12.
 - Settle code, test and design questions with these rules, the banking analogy, Python's guidelines
   and outside research, and say what was decided and why. Bring the operator what is his:
