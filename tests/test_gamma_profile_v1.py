@@ -14,18 +14,23 @@ from datetime import datetime
 from pathlib import Path
 
 import time_et
+from math_exposure_core import compute_zero_dte_gamma_share
 from math_levels import (
     GAMMA_FLIP_UNAVAILABLE,
     GSF_STATE_BELOW_SUPPORT,
     GSF_STATE_OK,
     GSF_STATE_UNAVAILABLE,
+    _interp_profile_at,
     compute_gamma_flip_v2,
     compute_gamma_profile,
     compute_gamma_support_levels,
+    contract_inputs,
     gamma_at_price,
     gamma_flip_from_profile,
 )
+from math_volatility import compute_25d_risk_reversal
 from option_contract import OptionContract, read_chain, read_contract
+from terrain_engine import compute_terrain
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
 #: own capture time (a live 0DTE, ~3.5 h to Schwab's 16:00 EQO close)
@@ -211,8 +216,6 @@ def test_grc_found_when_cushion_decays_above_spot():
     assert out["grc"] is not None and out["grc"] > 106.0  # beyond the peak/wall
     n_spot = out["n_at_spot"]
     # value at the ceiling is ~phi * N(spot)
-    from math_levels import _interp_profile_at
-
     assert abs(_interp_profile_at(prof, out["grc"]) - 0.5 * n_spot) / n_spot < 0.05
 
 
@@ -239,8 +242,6 @@ def test_unavailable_on_empty_or_bad_inputs():
 def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
     """RC-357: share = sum|0DTE net_gex_1pct| / sum|all net_gex_1pct|; None when the
     full book is empty or has no measurable gamma — never a fabricated 0%."""
-    from math_exposure_core import compute_zero_dte_gamma_share
-
     all_book = {
         700.0: {"net_gex_1pct": 6e9},
         705.0: {"net_gex_1pct": -2e9},
@@ -256,7 +257,6 @@ def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
 def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
     """RC-358: RR = IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out (the published
     fixed tenor; 2026-09-27), tolerance-gated; an unusable wing yields None."""
-    from math_volatility import compute_25d_risk_reversal
 
     def ct(side, delta, iv, dte):
         return read_contract(
@@ -300,9 +300,6 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     Real captures of 2026-10-07: NFLX (10:32 ET; PM) -- on 2026-10-16, 100 contracts with open
     interest and a volatility; on 2027-12-17 and 2028-01-21, 585 with a volatility and 8 sent
     -999 -- and $SPX's AM-settled 2027-12-17 expiry (10:37 ET; 288 with open interest)."""
-    from math_levels import contract_inputs
-    from terrain_engine import compute_terrain
-
     fx = Path(__file__).parent / "fixtures"
     nflx = json.loads(
         (fx / "real_nflx_chain_2026_10_07_three_expiries.json").read_text(encoding="utf-8")
