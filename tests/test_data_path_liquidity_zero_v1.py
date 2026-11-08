@@ -15,7 +15,7 @@ import pytest
 import live_market_plane as lmp
 import server as srv
 from micro_structure import Candle
-from tests.feed_live_helper import price_history
+from tests.feed_live_helper import daemon_status, price_history
 from tests.test_liquidity_snapshot_spot_identity_v1 import _BARS, FRIDAY, TK
 from tests.test_liquidity_snapshot_spot_identity_v1 import published as published
 from time_et import ET
@@ -60,7 +60,7 @@ def _tags_at_zero(body: dict) -> set[str]:
 def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones(published):
     at = FRIDAY.timestamp()
     lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": 0}, received_ts=at)
     resp = srv.liquidity_snapshot(TK, FRIDAY)

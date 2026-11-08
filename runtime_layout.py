@@ -55,27 +55,25 @@ def _default_runtime_root() -> Path:
     dotgit = SOURCE_ROOT / ".git"
     if not dotgit.is_file():
         return SOURCE_ROOT
-    try:
-        marker = dotgit.read_text(encoding="utf-8").strip()
-        if not marker.lower().startswith("gitdir:"):
-            raise ValueError(f"invalid linked-worktree marker: {dotgit}")
-        gitdir = Path(marker.split(":", 1)[1].strip())
-        if not gitdir.is_absolute():
-            gitdir = (SOURCE_ROOT / gitdir).resolve()
-        commondir_file = gitdir / "commondir"
-        if not commondir_file.is_file():
-            raise ValueError(f"linked-worktree commondir missing: {commondir_file}")
-        common_git = (gitdir / commondir_file.read_text(encoding="utf-8").strip()).resolve()
-        if common_git.name != ".git":
-            raise ValueError(f"linked-worktree commondir is not a .git directory: {common_git}")
-        primary = common_git.parent.resolve()
-        if not primary.is_dir():
-            raise ValueError(f"linked-worktree primary root missing: {primary}")
-        return primary
-    except (OSError, ValueError) as exc:
+    why = f"cannot resolve canonical runtime root from linked worktree {SOURCE_ROOT}"
+    marker = dotgit.read_text(encoding="utf-8").strip()  # an OSError names the file itself
+    if not marker.lower().startswith("gitdir:"):
+        raise RuntimeError(f"{why}: invalid linked-worktree marker: {dotgit}")
+    gitdir = Path(marker.split(":", 1)[1].strip())
+    if not gitdir.is_absolute():
+        gitdir = (SOURCE_ROOT / gitdir).resolve()
+    commondir_file = gitdir / "commondir"
+    if not commondir_file.is_file():
+        raise RuntimeError(f"{why}: linked-worktree commondir missing: {commondir_file}")
+    common_git = (gitdir / commondir_file.read_text(encoding="utf-8").strip()).resolve()
+    if common_git.name != ".git":
         raise RuntimeError(
-            f"cannot resolve canonical runtime root from linked worktree {SOURCE_ROOT}: {exc}"
-        ) from exc
+            f"{why}: linked-worktree commondir is not a .git directory: {common_git}"
+        )
+    primary = common_git.parent.resolve()
+    if not primary.is_dir():
+        raise RuntimeError(f"{why}: linked-worktree primary root missing: {primary}")
+    return primary
 
 
 #: Live database, logs and tokens live here. Linked worktrees share the primary root.

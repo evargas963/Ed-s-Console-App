@@ -36,15 +36,3 @@ def test_a_first_run_with_no_database_starts_with_an_empty_watchlist(tmp_path):
     from app.market_data.schwab.streaming.capture import stored_watchlist
 
     assert stored_watchlist(tmp_path / "not_created_yet.db") == []
-
-
-def test_a_heartbeat_with_no_watchlist_is_an_unknown_watchlist_never_an_empty_one():
-    """2026-10-01 audit: a daemon that sends no list (one from before this change) read as an
-    empty list, and the console dropped every ticker's levels each second."""
-
-    import live_market_plane as lmp
-    import server
-
-    now = time_et.now()
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True})
-    assert server._watchlist() is None

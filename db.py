@@ -188,7 +188,7 @@ class EdDB:
         conn = sqlite3.connect(str(self.db_path), timeout=timeout_sec)
         conn.row_factory = sqlite3.Row
         configure_sqlite_connection(conn, busy_timeout_ms=int(timeout_sec * 1000))
-        if not getattr(self, "_bootstrap_sql_guard_suppress", False):
+        if not self._bootstrap_sql_guard_suppress:
             maybe_install_sql_guard_on_connection(conn, self.db_path)
         return conn
 

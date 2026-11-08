@@ -67,7 +67,7 @@ class OrderFlowState:
         if not content_item or not isinstance(content_item, dict):
             return None
         book = read_book(content_item, service)
-        sym = ticker_storage_key(symbol or content_item.get("key"))
+        sym = ticker_storage_key(symbol)
         if book is None or not sym:
             return None
         with self._lock:
@@ -88,7 +88,7 @@ class OrderFlowState:
         receive time in `field_received`; each value is stamped with it."""
         if not content_item or not isinstance(content_item, dict):
             return
-        sym = ticker_storage_key(symbol or content_item.get("key"))
+        sym = ticker_storage_key(symbol)
         if not sym:
             return
         if ts_recv is None:

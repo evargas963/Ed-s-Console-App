@@ -32,10 +32,11 @@ from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
 from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import (
     CRWD,
     MRVL,
@@ -75,7 +76,7 @@ def _chain_spot(tk: str, quote: dict) -> tuple:
     at = quote["ts_recv"]
     lmp.record_from_level_one_equity(tk, quote["native"], received_ts=at)
     lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
     )
     row = live_price_rows.price_row(tk, at)
     return row["spot"], row["trade_ts"]
@@ -86,7 +87,7 @@ def _forget(tk: str) -> None:
         server._terrain_cache.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_heartbeat({"ts": 0.0, "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_heartbeat(daemon_status(0.0, schwab_socket_open=True))
     lmp.record_feed_down()
 
 
@@ -1121,16 +1122,16 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
     ofls.clear_all_live_state()
     try:
         lmp.record_feed_heartbeat(
-            {
-                "ts": after.timestamp(),
-                "schwab_socket_open": True,
-                "held": {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": symbols},
-            }
+            daemon_status(
+                after.timestamp(),
+                schwab_socket_open=True,
+                held={"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": symbols},
+            )
         )
         for m in messages:
             ofs._ingest_pushed(
                 f"optquote.{m['symbol']}",
-                options_quote_msg(
+                verbatim_msg(
                     symbol=m["symbol"], content=m["native"], src=m["src"], ts_recv=m["ts_recv"]
                 ),
             )
@@ -1332,7 +1333,7 @@ def test_an_after_hours_print_keeps_the_close_book():
         assert None not in close_texts
         lmp.record_from_level_one_equity(tk, print_["native"], received_ts=print_["ts_recv"])
         lmp.record_feed_heartbeat(
-            {"ts": at.timestamp(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+            daemon_status(at.timestamp(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
         )
         second_snap = server._publish_levels(tk, now=at)
         second = server.confluence_payload(tk, expiry, at)
@@ -1433,7 +1434,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     live = _QUOTE["native"]["LAST_PRICE"]
     lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
     lmp.record_feed_heartbeat(
-        {"ts": at.timestamp(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        daemon_status(at.timestamp(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
     )
     try:
         server._publish_levels(

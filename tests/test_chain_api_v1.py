@@ -25,7 +25,8 @@ import server as srv
 import time_et
 from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
+from tests.feed_live_helper import daemon_status
 from time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -59,7 +60,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     streamed (symbol, fields, receive time) pushed, and `tk`'s chain published at _AT; the status
     beats at _AT (the publication's time) and again now (the routes' time)."""
     held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
-    lmp.record_feed_heartbeat({"ts": _AT.timestamp(), "schwab_socket_open": True, "held": held})
+    lmp.record_feed_heartbeat(daemon_status(_AT.timestamp(), schwab_socket_open=True, held=held))
     lmp.record_from_level_one_equity(
         tk,
         {"LAST_PRICE": price, "TRADE_TIME_MILLIS": int(fetched_ts * 1000)},
@@ -68,14 +69,14 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     for sym, fields, ts in streamed:
         ofs._ingest_pushed(
             f"optquote.{sym}",
-            options_quote_msg(
+            verbatim_msg(
                 symbol=sym, content={"key": sym, **fields}, src="schwab_options_l1", ts_recv=ts
             ),
         )
     srv._publish_levels(
         tk, read_chain(contracts), fetched_ts, chain_spot=(price, fetched_ts), now=_AT
     )
-    lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": held})
+    lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True, held=held))
 
 
 def _get(**kw):

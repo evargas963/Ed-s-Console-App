@@ -145,9 +145,7 @@
     "exchange_quote_ts": 1792785544.234,
     "n_ask_levels": 7,
     "n_bid_levels": 10,
-    "server_received_ts": 1792807200.0,
-    "top_of_book_ask_leaf": "streaming.ASK_PRICE",
-    "top_of_book_bid_leaf": "streaming.BID_PRICE"
+    "server_received_ts": 1792807200.0
   },
   "quote_time_ct": "Fri 10/23 02:59 PM CT",
   "readout": {

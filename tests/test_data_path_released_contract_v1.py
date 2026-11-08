@@ -17,7 +17,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
 
 _MIX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -43,7 +43,7 @@ def test_a_released_contract_keeps_its_last_bid_and_is_not_streamed():
         )
         ofs._ingest_pushed(
             f"optquote.{_SYM}",
-            options_quote_msg(
+            verbatim_msg(
                 symbol=_SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
             ),
         )
