@@ -313,6 +313,15 @@ then the rule binds with no machine check.
   failed, it is not working" and the rest of the above (`tests/test_keep_going_v1.py`); that a
   stop marked so is one the rules require, and that the next approach differs — no machine check,
   ENF-12.
+- Once the operator tells the agent to do something, it does it; it does not choose whether, when
+  or what instead (operator 2026-11-07: "once i tell you do something, you must do it. you do not
+  get to choose", "this is non negotiable", "you must enforce this rule"). It pushes back only when
+  the thing is not allowed or not possible, and says so with the reason at once. Enforced by:
+  `tools/wiring_rules.py` records every message he sends as a numbered order, and the Stop hook
+  `tools/keep_going.py` refuses to end a turn, whatever SHAPE's row says, while any order lacks a
+  line `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>` (`tests/test_keep_going_v1.py`,
+  `tests/test_wiring_rules_v1.py`); that the evidence is true and a pushback's reason real — the
+  builder's audit (rule 14), no machine check.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. A daemon or console start or clean stop needs no

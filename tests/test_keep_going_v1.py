@@ -190,6 +190,40 @@ def test_the_hook_as_wired_counts_its_refusals_and_an_allowed_stop_writes_no_cou
     assert (run.returncode, run.stdout, count.exists()) == (0, "", False)
 
 
+def test_every_order_holds_the_turn_until_it_is_answered(tmp_path):
+    """Operator 2026-11-07: "once i tell you do something, you must do it ... you must enforce
+    this rule". Each message is an order; a stop is refused until each is answered, SHAPE or not."""
+    s = {"session_id": "orders-1"}
+    first = keep_going.record_order({**s, "prompt": "fix all 13 now"}, tmp_path)
+    second = keep_going.record_order({**s, "prompt": "I NEED A NEW CENSUS TOTAL"}, tmp_path)
+    assert (first, second) == (1, 2)
+    # an event the app sends as a message is no one's order
+    for event in ("<task-notification>done</task-notification>", "<ci-monitor-event>x", "  "):
+        assert keep_going.record_order({**s, "prompt": event}, tmp_path) is None
+    assert keep_going.unanswered(s, "Merged #775.", tmp_path) == [
+        (1, "fix all 13 now"),
+        (2, "I NEED A NEW CENSUS TOTAL"),
+    ]
+    why = keep_going.decide(DONE_ROW, "SHAPE is finished.", open_orders=[(2, "census total")])
+    assert why is not None and "ORDER 2: census total" in why
+    # an answer with nothing after it, mid-line, or for an order never given answers nothing
+    for empty in ("ORDER 1 DONE:", "Note: ORDER 1 DONE: #776", "ORDER 9 DONE: #776"):
+        assert [n for n, _ in keep_going.unanswered(s, empty, tmp_path)] == [1, 2]
+    left = keep_going.unanswered(s, "ORDER 1 DONE: #776, #777 merged", tmp_path)
+    assert left == [(2, "I NEED A NEW CENSUS TOTAL")]
+    # an answer is kept: a later message need not repeat it
+    assert keep_going.unanswered(s, "", tmp_path) == left
+    assert keep_going.unanswered(s, "ORDER 2 PUSHBACK: needs his GitHub setting", tmp_path) == []
+    assert keep_going.decide(DONE_ROW, "", open_orders=[]) is None
+    # another session's orders are its own
+    assert keep_going.unanswered({"session_id": "orders-2"}, "", tmp_path) == []
+
+
+def test_waiting_on_the_operator_does_not_pass_an_unanswered_order():
+    why = keep_going.decide(OPEN_ROW, "WAITING ON OPERATOR: his yes.", open_orders=[(1, "x")])
+    assert why is not None and why.startswith("The operator's orders are not answered")
+
+
 def test_a_subagents_message_is_not_the_agents_final_message(tmp_path):
     waiting = _said("WAITING ON OPERATOR: his yes to a change of a request rate.")
     side = {**_said("Verdict: FAIL."), "isSidechain": True}
