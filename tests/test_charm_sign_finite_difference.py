@@ -165,3 +165,9 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     assert math.isclose(v_pct, v_dec, rel_tol=1e-9), (
         f"vanna at IV 20.0 must be bs_vanna at sigma 0.20; got {v_pct} vs {v_dec}"
     )
+    # IV absent, 0 or negative: schwab_iv_to_sigma gives no sigma, so the contract adds no vanna
+    # (the vanna path checks IV once, there); the same contract at IV 20.0 adds v_pct
+    for bad in (None, 0.0, -5.0):
+        assert schwab_iv_to_sigma(bad) is None, bad
+        per_bad, _ = compute_exposures_by_strike(read_chain([one(bad)]), spot=98.0, now=now)
+        assert per_bad[100.0]["call_vanna"] == 0.0 != v_pct, bad

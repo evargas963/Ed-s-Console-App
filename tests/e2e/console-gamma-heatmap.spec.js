@@ -180,7 +180,7 @@ async function intercept(page) {
 test.describe('Ed Console shell + gamma heatmap', () => {
   test.beforeEach(async ({ page }) => {
     await intercept(page);
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('shell structure: rail has all six workspaces + 3-tier nav', async ({ page }) => {
@@ -213,16 +213,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    let pushes = 0;
+    let pushes = 0, firstDrawn;
+    const drawn = new Promise((resolve) => { firstDrawn = resolve; });
     await page.route('**/api/changes**', async (route) => {
       pushes += 1;
-      await new Promise((r) => setTimeout(r, 500));   // after the first render
+      if (pushes === 1) await drawn;   // the push goes once the first surface is on screen, not after a guessed delay
       route.fulfill({ status: 200, contentType: 'text/event-stream',
         body: pushes === 1 ? 'event: levels\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
+    firstDrawn();
     await expect(cell).toHaveText('$2.0K', { timeout: 3000 });
     expect(surfaceCalls).toBeGreaterThanOrEqual(2);
   });
@@ -1034,14 +1036,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('theme C: SYSTEM resolves to a concrete data-theme (follows the OS at load)', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
-    await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_theme', 'system'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');   // SYSTEM + OS light -> light
   });
 
   test('theme SYSTEM follows LIVE OS changes; explicit ignores them (A-F)', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_theme', 'system'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');     // A: SYSTEM + OS dark -> dark
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
@@ -1091,7 +1093,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('theme: ONE canonical owner (window.EdTheme) drives first-paint AND runtime resolution', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_theme', 'system'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // the owner exists and exposes the resolution API
     expect(await page.evaluate(() => !!(window.EdTheme && window.EdTheme.resolve && window.EdTheme.setPref && window.EdTheme.getPref))).toBe(true);
@@ -1130,7 +1132,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }
     const served = { s: SURFACE };
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served.s) }));
-    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'all'); } catch (e) {} });   // every strike on screen
+    await page.addInitScript(() => { localStorage.setItem('ed_scope', 'all'); });   // every strike on screen
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
     served.s = { available: true, source: 'terrain_live_cache', levels_state: 'LIVE', spot: 600, complete: false,
