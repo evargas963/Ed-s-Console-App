@@ -3168,7 +3168,7 @@ def get_expiries(ticker: str = Query(...)):
         )
     exps, dte = levels.snap.expiries, levels.snap.expiry_dte
     labels = {
-        e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte[e] is not None else "")
+        e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
         for e in exps
     }
     return JSONResponse(
@@ -3711,9 +3711,8 @@ def _inside_move(strike, low, high) -> bool:
 def _ranked_matrices(snap: TerrainSnapshot) -> dict:
     """One ranking of each expiry on this publication. The matrix request reads the expiry it
     shows."""
+    # a snapshot priced without a price holds no book, so it ranks nothing
     books, spot = snap.books, snap.spot
-    if spot is None:
-        return {}
     ranked = {}
     for item in _confluence_expiries(books, snap.expiry_dte):
         chosen = item["expiry"]
@@ -3738,13 +3737,13 @@ def _ranked_matrices(snap: TerrainSnapshot) -> dict:
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     """The ranking stored with the priced chain, for the expiry the operator picks."""
     published = published_levels(tk)
-    live = None if published is None else published.snap
-    if live is None or not live.books or live.spot is None:
+    if published is None or not published.snap.books:  # a snapshot with a book has its price
         return {
             "ticker": tk,
             "available": False,
             "reason": "no priced chain is held for this ticker",
         }
+    live = published.snap
     today = now.strftime("%Y-%m-%d")
     listed = [e for e in _confluence_expiries(live.books, live.expiry_dte) if e["expiry"] >= today]
     if not listed:
@@ -3762,14 +3761,8 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
             else "that expiry did not carry days to expiration"
         )
         return {"ticker": tk, "available": False, "expiries": listed, "reason": reason}
-    stored = published.matrix_by_expiry.get(chosen)  # an expiry with no book has no ranking
-    if stored is None:
-        return {
-            "ticker": tk,
-            "available": False,
-            "expiries": listed,
-            "reason": "that expiry is not on the priced chain",
-        }
+    # the publication ranked every listed expiry with its days to expiration (_ranked_matrices)
+    stored = published.matrix_by_expiry[chosen]
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
     markers = _confluence_markers(live, tk, now, live_spot)
