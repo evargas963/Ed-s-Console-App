@@ -15,7 +15,7 @@ const DARK = Object.fromEntries(
   [...readFileSync(join(ROOT, 'static/css/ed-tokens.css'), 'utf8').split(':root[data-theme="light"]')[0]
     .matchAll(/(--ed-[a-z0-9-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
 const surface = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-const listeners = {};
+const events = new EventTarget();   // the document's events, as a browser dispatches them
 const host = { innerHTML: '', setAttribute: () => {}, removeAttribute: () => {}, querySelector: () => null, querySelectorAll: () => [] };
 const ctx = {
   document: {
@@ -24,7 +24,7 @@ const ctx = {
     querySelectorAll: () => [],
     // the page's served metas: the streaming-state words (none needed for the cell text)
     querySelector: () => ({ getAttribute: () => '{"cell": {}, "column": {}}' }),
-    addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
+    addEventListener: events.addEventListener.bind(events),
   },
   getComputedStyle: () => ({ getPropertyValue: (name) => DARK[name] }),
   fetch: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(surface) }),
@@ -42,7 +42,7 @@ ctx.EdShell = {
 vm.createContext(ctx);
 vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });
 vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'), ctx, { filename: 'ed-gamma.js' });
-(listeners['ed:view'] || []).forEach((fn) => fn({ detail: {} }));
+events.dispatchEvent(new CustomEvent('ed:view', { detail: {} }));   // the shell's view change
 await new Promise((r) => setTimeout(r, 50));
 const cell = /<td class="hcell[^"]*"[^>]*data-strike="([^"]*)" data-expiry="([^"]*)"[^>]*>(.*?)<\/td>/g;
 let m;
