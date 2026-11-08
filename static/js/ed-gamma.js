@@ -135,14 +135,14 @@
     _lastSurface = surface;
     // the table is rebuilt only for a new publication or a new window, else its status refreshes
     var rev = [surface.ticker, surface.surface_seq, view.scope, view.centre, measure,
-      (surface.expirations || []).map(function (e) { return e.expiry; }).join(',')].join('|');
+      surface.expirations.map(function (e) { return e.expiry; }).join(',')].join('|');
     if (rev === _lastRevision && host.querySelector('.heat')) {
       applyStatus(host, surface); applyStrikeHighlight(host);
       return;
     }
     _lastRevision = rev;
     var words = WORDS;
-    var exps = surface.expirations || [], cells = surface.cells || [];
+    var exps = surface.expirations, cells = surface.cells;   // always served (server._surface_view)
     var maxAbs = view.max_abs[measure], heat = readHeatColors();
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
     exps.forEach(function (e, j) {
