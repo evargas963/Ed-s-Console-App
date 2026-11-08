@@ -10,6 +10,10 @@ import { fileURLToPath } from 'url';
 import vm from 'vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// the page's own stylesheet, its default (dark) theme: the first :root block's custom properties
+const DARK = Object.fromEntries(
+  [...readFileSync(join(ROOT, 'static/css/ed-tokens.css'), 'utf8').split(':root[data-theme="light"]')[0]
+    .matchAll(/(--ed-[a-z0-9-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
 const surface = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const events = new EventTarget();   // the document's events, as a browser dispatches them
 const host = { innerHTML: '', setAttribute: () => {}, removeAttribute: () => {}, querySelector: () => null, querySelectorAll: () => [] };
@@ -28,7 +32,7 @@ const ctx = {
     addEventListener: events.addEventListener.bind(events),
   },
   localStorage: { getItem: () => null, setItem: () => {} },
-  getComputedStyle: () => ({ getPropertyValue: () => '' }),
+  getComputedStyle: () => ({ getPropertyValue: (name) => DARK[name] }),
   fetch: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(surface) }),
   AbortController, Promise, JSON, Math, Number, String, Object, Array, Date, isNaN, URL, console,
 };

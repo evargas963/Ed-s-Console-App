@@ -13,6 +13,10 @@ import vm from 'vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
+// the page's own stylesheet, its default (dark) theme: the first :root block's custom properties
+const DARK = Object.fromEntries(
+  [...readFileSync(join(ROOT, 'static/css/ed-tokens.css'), 'utf8').split(':root[data-theme="light"]')[0]
+    .matchAll(/(--ed-[a-z0-9-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
 
 const ctx = {
   document: {
@@ -23,7 +27,7 @@ const ctx = {
     querySelector: () => ({ getAttribute: () => '{"cell": {}, "column": {}}' }),
     addEventListener: () => {},
   },
-  getComputedStyle: () => ({ getPropertyValue: () => '' }),
+  getComputedStyle: () => ({ getPropertyValue: (name) => DARK[name] }),
   AbortController, Promise, JSON, Math, Number, String, Object, Array, Date, isNaN, URL, console,
 };
 ctx.window = ctx;
