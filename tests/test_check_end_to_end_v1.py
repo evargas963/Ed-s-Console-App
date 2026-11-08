@@ -276,6 +276,24 @@ def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch
             "        cleanup(s)\n",
             "an except that swallows the error",
         ),
+        (  # an absence error over more than the one read: a defect in the rest hides in it
+            "server.py",
+            "def spot(path):\n    try:\n        text = path.read_text()\n"
+            "        return parse(text)\n    except FileNotFoundError:\n        return None\n",
+            "an except that swallows the error",
+        ),
+        (  # an absent value replaced by a literal
+            "server.py",
+            "def spot(d):\n    try:\n        return d['k']\n"
+            "    except KeyError:\n        return 0\n",
+            "an except that swallows the error",
+        ),
+        (  # an absence error beside one that is not
+            "server.py",
+            "def spot(s):\n    try:\n        return d[s]\n    except (KeyError, ValueError):\n"
+            "        return None\n",
+            "an except that swallows the error",
+        ),
         (
             "server.py",
             "def spot(s):\n    try:\n        return float(s)\n    except Exception:\n"
@@ -432,6 +450,9 @@ def test_anything_beside_the_port_settings_is_still_refused(tmp_path, line):
         "    return held.setdefault(tk, {})\n",
         # a missing value served as missing
         "def spot(x):\n    if x is None:\n        return None\n    return x or None\n",
+        # a file that may not be there, its absence served as missing (a file's `d.get(k)`)
+        "def spot(path):\n    try:\n        return path.read_text()\n"
+        "    except FileNotFoundError:\n        return None\n",
         # an except that logs and carries on: a retry loop, a failed reprice (the operator's ruling)
         "def loop():\n    while True:\n        try:\n            connect()\n"
         "        except OSError as e:\n"
