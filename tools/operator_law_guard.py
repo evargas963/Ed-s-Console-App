@@ -20,6 +20,10 @@ a heredoc nothing runs are data.
     (`-i`, `-i.bak`, `-ni`, `--in-place`) or by redirecting its output to a file (/dev/null, NUL
     and $null are not files), is refused with what to use instead: the Edit and Write tools. A sed
     that only prints is allowed. A sed script's own `w` command is not detected.
+  * A CHANGE OF FOLDER. The hooks are found relative to the session's folder, so a `cd` that moves
+    it breaks every guard for the rest of the session. `cd`, `chdir`, `pushd`, `popd` and
+    PowerShell's `Set-Location`, `Push-Location`, `Pop-Location` and `sl` are refused in every
+    shell; a command names its folder instead (`git -C`, an absolute path, or `cwd=` in python).
   * UNSEEN COMMANDS (the guards fail closed). What the reader cannot see into is refused, with a
     message to write it plainly: a program built at run time (a `$` or substitution in a bash
     program word, PowerShell `& $x` / `. $x` / `& (...)`, a script block made from text), text piped
@@ -279,6 +283,10 @@ _SED_IN_PLACE = re.compile(r"^(?:-[A-Za-z]*i|--in-place(?:=|$))")
 #: redirects of the statement's output (not 2> / &>, which carry no sed output)
 _OUTPUT = frozenset({">", ">>", ">|", "1>", "1>>", "1>|"})
 _NOT_A_FILE = frozenset({"/dev/null", "nul", "$null"})
+#: every command that changes the shell's folder, in bash, cmd and PowerShell
+_FOLDER_CHANGERS = frozenset(
+    {"cd", "chdir", "pushd", "popd", "set-location", "push-location", "pop-location", "sl"}
+)
 
 
 def _sed_writes(st: Statement) -> list[str]:
@@ -340,6 +348,13 @@ def bash_violations(cmd: str | None, powershell: bool = False) -> list[str]:
             "edit source through a script. Make the change with the Edit tool (or Write for a new "
             "file), one edit at a time. A sed that only prints (sed -n '5p' f, sed 's/a/b/' f) is "
             "allowed."
+        )
+    if any(st.program in _FOLDER_CHANGERS for st in statements):
+        out.append(
+            "ACTION BLOCKED: this changes the shell's folder (cd, pushd, Set-Location or "
+            "Push-Location). The hooks are found from the session's folder, so moving it breaks "
+            "every guard. Name the folder in the command instead: `git -C <path>`, an absolute "
+            "path, or `cwd=` in a python subprocess."
         )
     hidden = list(filter(None, (unseen(st) for st in statements)))
     if hidden:

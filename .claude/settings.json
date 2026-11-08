@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/wiring_rules.py"
+            "command": ".venv/Scripts/python.exe -m tools.wiring_rules"
           }
         ]
       }
