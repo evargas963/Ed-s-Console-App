@@ -64,6 +64,7 @@
   var LEVEL_TITLE_W = 150;   // px along the pane's right edge where the level lines' titles are drawn
   var LEVEL_LABEL_GAP = 18;  // px: a level label's height; closer labels would overlap
   var PROFILE_FRAC = 0.16;   // the volume profile's share of the pane's width, from the left edge
+  var DOT_MAX_R = 19;        // px: a profile dot's radius at full strength
   // event callouts sit in a strip above the candles: rows of numbers (and their labels) from
   // CALLOUT_TOP, CALLOUT_ROW apart, CALLOUT_ROWS rows; the price scale keeps the strip clear
   var CALLOUT_TOP = 50, CALLOUT_ROW = 28, CALLOUT_ROWS = 2, CALLOUT_R = 11;
@@ -110,12 +111,12 @@
         var th = Math.max(1, Math.min(8, isFinite(gap) ? gap * 0.7 : 8)) * vr;
         self.rows.forEach(function (r, i) {
           if (ys[i] == null) return;
-          var y = ys[i] * vr, f = Math.abs(r.value) / mx;
+          var y = ys[i] * vr, f = window.EdShell.strength(r.value, mx);   // unknown: no mark
           c.fillStyle = r.color; c.globalAlpha = 0.85;
-          if (self.style === 'dots') {
-            var rad = (3 + Math.sqrt(f) * 16) * hr;
+          if (f != null && self.style === 'dots') {
+            var rad = DOT_MAX_R * Math.sqrt(f) * hr;   // a dot's area is its strength
             c.beginPath(); c.arc(W - band / 2, y, rad, 0, 2 * Math.PI); c.globalAlpha = 0.55; c.fill();
-          } else {
+          } else if (f != null) {
             c.fillRect(side === 'left' ? 0 : W - f * band, y - th / 2, f * band, th);
           }
           if (self.sel != null && r.price === self.sel) {
@@ -281,10 +282,10 @@
           var y1 = self._series.priceToCoordinate(cell.price + self.step / 2), y2 = self._series.priceToCoordinate(cell.price - self.step / 2);
           if (x == null || y1 == null || y2 == null) return;
           // the served side: BID green, ASK red, EVEN (equal sizes) neutral
-          var dom = cell.side === 'ASK' ? cell.ask : cell.bid;
-          if (dom == null) return;   // a size of 0 is drawn as sent
+          var a = window.EdShell.strength(cell.side === 'ASK' ? cell.ask : cell.bid, h.max_size);
+          if (a == null) return;   // an unknown size, or a book with no size: nothing to draw
           c.fillStyle = cell.side === 'BID' ? self.up : cell.side === 'ASK' ? self.down : self.even;
-          c.globalAlpha = 0.15 + 0.85 * Math.min(1, dom / (h.max_size || 1));
+          c.globalAlpha = a;
           c.fillRect((x - bw / 2) * hr, Math.min(y1, y2) * vr, bw * hr, Math.max(1, Math.abs(y2 - y1)) * vr);
         });
         c.globalAlpha = 1;
