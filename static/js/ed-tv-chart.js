@@ -146,7 +146,7 @@
       return { priceRange: { minValue: Math.min.apply(null, ps), maxValue: Math.max.apply(null, ps) } };
     };
     this.set = function (rows, scale, style, mark) {
-      self.rows = rows || []; self.scale = scale; if (style) self.style = style; self.mark = mark || null; if (self._req) self._req();
+      self.rows = rows; self.scale = scale; if (style) self.style = style; self.mark = mark; if (self._req) self._req();
     };
     this.select = function (price) { self.sel = price; if (self._req) self._req(); };
     // the row nearest a pane point, when the point is inside the profile band
@@ -185,7 +185,7 @@
     this.detached = function () { self._series = null; };
     this.updateAllViews = function () {};
     this.paneViews = function () { return [view]; };
-    this.set = function (zones) { self.zones = (zones || []).filter(function (z) { return isFinite(z.lo) && isFinite(z.hi); }); if (self._req) self._req(); };
+    this.set = function (zones) { self.zones = zones.filter(function (z) { return isFinite(z.lo) && isFinite(z.hi); }); if (self._req) self._req(); };
   }
   // Numbered event callouts, as the reference draws them: in the strip above the candles each
   // event's number in a circle with its boxed label beside it (turned left before the level titles
@@ -349,7 +349,6 @@
   }
 
   function create(host, opts) {
-    opts = opts || {};
     var P = palette();
     host.classList.add('tvc');
     host.innerHTML =
@@ -415,8 +414,9 @@
       crosshairMarkerVisible: false, lineVisible: false, pointMarkersVisible: false });
     var heat = new HeatPrimitive(function () { return chart; }); timeline.attachPrimitive(heat);
 
-    var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], unlabelled: [], nearestN: opts.nearestN || 6,
-      pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerMeta: {}, onMarkerClick: null };
+    var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], unlabelled: [], nearestN: opts.nearestN,
+      pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerMeta: {}, onMarkerClick: null,
+      markerList: [], markersShown: [], markerSel: null, lastBarLabel: null };
 
     // ---- time <-> logical (bars are sorted, time = bar start in epoch seconds) ----
     function barIndexAt(t) {
@@ -556,8 +556,8 @@
       var raw = S.drawKey ? storageGet(S.drawKey) : null, d = null;
       try { d = raw ? JSON.parse(raw) : null; } catch (e) { d = null; }
       if (!d) return;
-      (d.hline || []).forEach(function (p) { addHline(Number(p), false); });
-      draw.lines = (d.trend || []).filter(function (l) { return l && l.a && l.b; });
+      d.hline.forEach(function (p) { addHline(Number(p), false); });
+      draw.lines = d.trend.filter(function (l) { return l && l.a && l.b; });
       draw.redraw();
     }
     S.undo = [];
@@ -638,7 +638,7 @@
       // levels beyond the visible range, pinned at the edge (served order: nearest first)
       function edge(sel, list, arrow) {
         host.querySelector(sel).innerHTML = list.slice(0, 2).map(function (l) {
-          return '<span style="color:' + (l.color || P.ink3) + '">' + arrow + ' ' + esc(l.label || '') + ' ' + l.price.toFixed(2) + '</span>'; }).join('');
+          return '<span style="color:' + l.color + '">' + arrow + ' ' + esc(l.label) + ' ' + l.price.toFixed(2) + '</span>'; }).join('');
       }
       edge('.tvc-edge-top', S.levels.filter(function (l) { return l.price > hi; }), '&#9650;');
       edge('.tvc-edge-bot', S.levels.filter(function (l) { return l.price < lo; }), '&#9660;');
@@ -651,13 +651,13 @@
         if (near) {
           near.n += 1;
           near.line.applyOptions({ title: near.first + ' +' + (near.n - 1) });
-          if (Math.abs(near.y - y) >= 0.5) S.unlabelled.push(candles.createPriceLine({ price: l.price, color: l.color || P.ink3,
-            lineWidth: l.width || 1, lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: false, title: '' }));
+          if (Math.abs(near.y - y) >= 0.5) S.unlabelled.push(candles.createPriceLine({ price: l.price, color: l.color,
+            lineWidth: l.width, lineStyle: l.style, axisLabelVisible: false, title: '' }));
           return;
         }
-        var line = candles.createPriceLine({ price: l.price, color: l.color || P.ink3, lineWidth: l.width || 1,
-          lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: true, title: l.label || '' });
-        labelled.push({ line: line, first: l.label || '', n: 1, y: y });
+        var line = candles.createPriceLine({ price: l.price, color: l.color, lineWidth: l.width,
+          lineStyle: l.style, axisLabelVisible: true, title: l.label });
+        labelled.push({ line: line, first: l.label, n: 1, y: y });
         S.priceLines.push(line);
       });
       if (opts.onLevelsShown) opts.onLevelsShown(pick);
@@ -669,8 +669,7 @@
     // ---- keyboard (TradingView shortcuts), only while this chart is on screen ----
     document.addEventListener('keydown', function (e) {
       if (!host.offsetParent) return;
-      var tag = (e.target && e.target.tagName) || '';
-      if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+      if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
       if (e.altKey && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); resetAll(); }
       else if (e.key === 'Escape') { if (S.tool !== 'cursor') setTool('cursor'); else unpin(); }
       else if (e.altKey && (e.key === 'h' || e.key === 'H')) { e.preventDefault(); setTool('hline'); }
@@ -703,8 +702,8 @@
       // Replace the whole series (ticker or timeframe change).
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
-        S.lastBarLabel = lastBarLabel || null;
-        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
+        S.lastBarLabel = lastBarLabel;
+        S.bars = bars.map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
         S.tf = tf; S.symbol = symbol;
         candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
@@ -741,35 +740,35 @@
       _volPoint: function (b) {
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },
-      setVolume: function (bars) { volume.setData((bars || []).map(api._volPoint)); },
+      setVolume: function (bars) { volume.setData(bars.map(api._volPoint)); },
       // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels?tf=:
       // the value as of the bar's last minute, stamped with the bar's t). Rows are
       // [t, vwap, +1, -1, +2, -2].
       setVwap: function (rows) {
         var cols = [1, 2, 3, 4, 5], out = cols.map(function () { return []; });
-        (rows || []).forEach(function (r) { cols.forEach(function (c, k) { if (r && r[c] != null) out[k].push({ time: r[0], value: r[c] }); }); });
+        rows.forEach(function (r) { cols.forEach(function (c, k) { if (r && r[c] != null) out[k].push({ time: r[0], value: r[c] }); }); });
         vwapLine.setData(out[0]);
         bandLines.forEach(function (s, k) { s.setData(out[k + 1]); });
       },
       setStyle: function (style) { S.style = style === 'line' ? 'line' : 'candles'; paintStyle(); },
       setValueArea: function (val, vah) { band.set(val, vah, alpha(P.warn, 0.10)); },
       // levels: [{id, price, label, color, style, width}]
-      setLevels: function (levels) { S.levels = (levels || []).filter(function (l) { return l && isFinite(l.price); }); paintLevels(true); },
+      setLevels: function (levels) { S.levels = levels.filter(function (l) { return l && isFinite(l.price); }); paintLevels(true); },
       setNearestN: function (n) { S.nearestN = n; paintLevels(true); },
       // markers: [{id, time, price, num, text, color, meta}], drawn as numbered callouts at their
       // bar and price; one with no price or no bar is not drawn; the selected one (selectMarker)
       // is drawn heavier; a click on one calls onClick(meta)
       setMarkers: function (list, onClick) {
-        S.markerList = list || []; S.onMarkerClick = onClick || null;
+        S.markerList = list; S.onMarkerClick = onClick;
         api.selectMarker(S.markerSel);
       },
       selectMarker: function (id) {
         S.markerSel = id; S.markerMeta = {};
         var m = [];
-        (S.markerList || []).forEach(function (x) {
+        S.markerList.forEach(function (x) {
           var i = barIndexAt(Number(x.time)); if (i < 0 || x.price == null) return;
           S.markerMeta[x.id] = x.meta;
-          m.push({ id: x.id, time: S.bars[i].t, price: x.price, num: x.num, text: x.text || '', color: x.color || P.accent2 });
+          m.push({ id: x.id, time: S.bars[i].t, price: x.price, num: x.num, text: x.text, color: x.color });
         });
         m.sort(function (a, b) { return a.time - b.time; });
         callouts.set(m, id);
@@ -817,7 +816,7 @@
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
           heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length,
           levels: S.priceLines.map(function (l) { return l.options().title; }),
-          markers: S.markersShown || [], markerSelected: S.markerSel || null, callouts: callouts.centers,
+          markers: S.markersShown, markerSelected: S.markerSel, callouts: callouts.centers,
           priceTop: candles.coordinateToPrice(0), priceBottom: candles.coordinateToPrice(Math.max(1, plot.clientHeight - 30)) };
       },
       // where a price's profile row is drawn, in page coordinates (tests click it as a user would):
@@ -868,7 +867,6 @@
   // full screen. o: {tf, onTf(tf), styleKey (the viewer's candles/line choice, kept per chart)}.
   // Returns {setTf(tf), slot}: `slot` is where a page adds its own controls.
   function toolbar(el, api, o) {
-    o = o || {};
     var style = o.styleKey ? lsGet(o.styleKey, 'candles') : 'candles';
     var btn = function (attr, title, html, cls) {
       return '<button type="button" class="tvc-tb' + (cls ? ' ' + cls : '') + '" ' + attr + ' title="' + title + '">' + html + '</button>'; };
