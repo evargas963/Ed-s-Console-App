@@ -16,14 +16,20 @@ ANSWER = json.loads(
 )["answer"]
 
 
+#: RFC 8259's value types, by the Python type json.loads gives each
+JSON_TYPE = {
+    type(None): "null",
+    bool: "bool",
+    int: "number",
+    float: "number",
+    str: "string",
+    dict: "object",
+    list: "array",
+}
+
+
 def _json_type(v) -> str:
-    if v is None:
-        return "null"
-    if isinstance(v, bool):
-        return "bool"
-    if isinstance(v, (int, float)):
-        return "number"
-    return {str: "string", dict: "object", list: "array"}[type(v)]
+    return JSON_TYPE[type(v)]
 
 
 def test_every_contract_field_of_a_real_chain_is_one_path_under_its_side():
