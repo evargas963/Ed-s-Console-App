@@ -948,14 +948,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#chartModes .cmode[data-cmode="dotmap"]')).toHaveClass(/on/);
   });
 
-  test('header never paints a quote from a poll: no push -> UNAVAILABLE, not a fallback', async ({ page }) => {
+  test('header never paints a quote from a poll: no push -> -, not a fallback', async ({ page }) => {
     // the price comes only from the daemon's push; the session label from the console's
     await page.routeWebSocket(/:1\/$/, (ws) => ws.close());          // the daemon is down
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
+    await expect(page.locator('#hPx')).toHaveText('-');
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
     await page.waitForTimeout(3500);
-    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
+    await expect(page.locator('#hPx')).toHaveText('-');
     // the daemon is down, so Schwab's /markets answer is not held: the session says UNKNOWN
     await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
   });
@@ -964,7 +964,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
     // (live_price_rows.price_row) straight to the page; the console is not in the path.
     await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
-      chg_pct_regular: 0.4, quote_ingestion: 'schwab_streaming_level_one' })]);
+      chg_pct_regular: 0.4 })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
@@ -1012,7 +1012,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klSpot')).toHaveText('601.23');
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
-    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
+    await expect(page.locator('#hPx')).toHaveText('-');
     await expect(page.locator('#klSpot')).toHaveText('-');
     await expect(page.locator('#hFeed')).toHaveText('WAITING');
   });
