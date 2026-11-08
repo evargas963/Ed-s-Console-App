@@ -110,6 +110,54 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     assert '"GET /api/health' not in text, "a page request is not the window's"
 
 
+def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_path):
+    """A page open on the console (its /api/changes stream, as the browser holds it) when the
+    program stops: the stop ends that stream itself, so the web server closes at once, not after
+    its 10 s graceful timeout, and no stream is cancelled (each was logged as a traceback)."""
+    windows = sys.platform == "win32"
+    env, pages = program_env(tmp_path)
+    program = subprocess.Popen(
+        [sys.executable, *launch.DAEMON_START],
+        cwd=REPO,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
+    )
+    lines: list = []
+    threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
+    page = socket.socket()
+    try:
+        end = time_et.elapsed() + 120
+        while "Live-plane feed started" not in "".join(list(lines)):
+            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
+            time.sleep(0.25)
+        assert launch.unhealthy_for(pages, 30) is None
+        page.settimeout(30)
+        page.connect(("127.0.0.1", pages))
+        page.sendall(b"GET /api/changes?ticker=SPY HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        got = b""
+        while b"event: session" not in got:  # the page's stream is open: its first event
+            chunk = page.recv(4096)
+            assert chunk, got
+            got += chunk
+        asked = time_et.elapsed()
+        os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
+        code = program.wait(90)
+        took = time_et.elapsed() - asked
+    finally:
+        page.close()
+        if program.poll() is None:
+            program.kill()
+            program.wait(30)
+    text = "".join(lines)
+    assert code == capture.EXIT_STOPPED, (code, text)
+    assert "timeout graceful shutdown exceeded" not in text, text
+    assert took < 8.0, f"the stop took {took:.1f} s with a page open"
+
+
 def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
     """In one program the daemon's heartbeat, with the watchlist, is there before the console's
     loop starts: the console says what it needed and that it had it, in well under a second."""
