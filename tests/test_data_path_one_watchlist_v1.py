@@ -55,7 +55,7 @@ async def _until(cond, seconds: float = 15.0) -> None:
 class _Schwab:
     """The local streamer and REST host, and the daemon's client of them as the daemon builds it."""
 
-    def __init__(self, tmp_path, limits=None, data=None):
+    def __init__(self, tmp_path, limits: dict, data: dict):
         self.streamer = LocalStreamer(limits, data)
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
@@ -196,7 +196,7 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
     )
     contracts = flatten_chain_contracts(mrvl["full"])
     symbols = sorted(ct["symbol"] for ct in contracts)
-    schwab = _Schwab(tmp_path)
+    schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     bus = MessageBus()
     daemon = capture.Daemon(bus, HealthRegistry(), ["MRVL"], clock=lambda: mrvl["captured_utc"])
 
@@ -225,7 +225,7 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
 def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(tmp_path):
     """Schwab drops the socket: the daemon logs out, connects again (a new session that holds
     nothing) and asks for everything once again; the frames are taken whole (no size cap)."""
-    schwab = _Schwab(tmp_path)
+    schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
 
     def subs():
@@ -255,7 +255,7 @@ def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(t
 def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
     """A request unanswered for REQUEST_TIMEOUT_SEC means the connection is broken: it ends with
     that reason (Schwab's streamer here takes NYSE_BOOK requests and never answers them)."""
-    schwab = _Schwab(tmp_path)
+    schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     answer = schwab.streamer.answer
     schwab.streamer.answer = lambda req: [] if req["service"] == "NYSE_BOOK" else answer(req)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
@@ -312,7 +312,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
     /quotes request (Schwab quotes it), added, asked for on every equity service and by the
     chain sweep, and stored; ZQZQZ (Schwab names it in errors.invalidSymbols) is not added; TSLA
     removed is asked for no more. The stored list is the daemon's after a restart."""
-    schwab = _Schwab(tmp_path)
+    schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     db = tmp_path / "stream_capture.db"
     bus = MessageBus()
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
