@@ -212,7 +212,7 @@ def test_a_machine_restart_by_a_called_path_an_escaped_word_or_a_command_string_
         f"python -c\"import shutil; shutil.rmtree('{D}/x')\"",
         f"python -Ic \"import shutil; shutil.rmtree('{D}/x')\"",
         f"r\\m -rf {D}/x",
-        f"rm -rf d\\ata/x",
+        "rm -rf d\\ata/x",
         f"wipe(){{ rm -rf {D}/x; }}; wipe",
         f"wipe() {{ rm -rf {D}/x; }}; wipe",
     ],
