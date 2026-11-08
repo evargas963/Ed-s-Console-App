@@ -32,7 +32,9 @@ The shapes:
    - in page code (`.js`, `.mjs`, the scripts of `.html`): `|| <literal>`, `?? <literal>`,
      `||=` / `??=` a literal, an empty `catch`, `.catch(() => <literal>)`.
    An except, if or with is judged when its own first line is added, not when a line is added
-   inside an old one. None stays allowed: it is a missing value served as missing. One running
+   inside an old one. None stays allowed: it is a missing value served as missing, and so is a
+   `try` of one statement whose except names only `FileNotFoundError` and returns None (a file
+   read's form of `d.get(k)`; a dict's `except KeyError` has `.get` and stays refused). One running
    total is allowed, exactly `d[k] = d.get(k, 0) + x` (the same `d` and `k` on both sides, the
    default the number 0, `x` not a literal 0): the sum of nothing is 0, a real value, not a
    missing one filled in. A base plus a change has the same shape (`price[t] = price.get(t, 0)
@@ -69,6 +71,9 @@ SHAPED_SUFFIXES = (".py", ".js", ".mjs", ".html")
 PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
 CATCH_ALL = ("Exception", "BaseException")
+#: the errors whose only meaning is that the file read is not there (_absence_reads); a dict's
+#: absent key has its own form, `d.get(k)`, so `KeyError` is not one
+ABSENT = ("FileNotFoundError",)
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
 #: any literal, as `_literal` reads Python's: a number, a string, an empty array or object, null,
 #: true or false
@@ -391,6 +396,28 @@ def _literal(node: ast.AST) -> bool:
     return False
 
 
+def _absence_reads(tree: ast.AST) -> set[int]:
+    """Return the excepts that serve an absent file as missing.
+
+    Each is in a `try` of one statement, names only ABSENT errors and returns None: the file's
+    form of `d.get(k)`, which a file read has none of.
+    """
+    return {
+        id(h)
+        for t in ast.walk(tree)
+        if isinstance(t, ast.Try) and len(t.body) == 1
+        for h in t.handlers
+        if h.type is not None
+        and all(
+            isinstance(n, ast.Name) and n.id in ABSENT
+            for n in (h.type.elts if isinstance(h.type, ast.Tuple) else [h.type])
+        )
+        and len(h.body) == 1
+        and isinstance(h.body[0], ast.Return)
+        and (h.body[0].value is None or _is_none(h.body[0].value))
+    }
+
+
 def _catches_everything(handler: ast.ExceptHandler) -> bool:
     t = handler.type
     names = t.elts if isinstance(t, ast.Tuple) else [t]
@@ -553,6 +580,7 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
     except SyntaxError as e:
         return [(e.lineno or 1, f"does not parse: {e.msg}")]
     totals = _running_totals(tree) | _port_settings(tree)
+    absences = _absence_reads(tree)
     found: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.ExceptHandler, ast.If, ast.With)):
@@ -563,7 +591,7 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
                     continue
                 if _catches_everything(node):
                     found.append((node.lineno, "an except that catches everything"))
-                if len(node.body) == 1 and _swallows(node.body[0]):
+                if len(node.body) == 1 and _swallows(node.body[0]) and id(node) not in absences:
                     found.append((node.lineno, "an except that swallows the error"))
             elif isinstance(node, ast.If):
                 if (

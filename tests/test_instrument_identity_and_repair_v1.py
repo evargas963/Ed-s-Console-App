@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import server
-from instrument_identity import ticker_storage_key
+from instrument_identity import BROKER_INDEX_BARE_ROOTS, ticker_storage_key
 from tests.feed_live_helper import daemon_bars, stream_daemon_bars
 
 
@@ -59,8 +62,6 @@ def test_ticker_storage_key_vxn_rvx_broker_index_roots():
 def test_index_roots_resolve_to_dollar_form():
     """Typing a bare index root anywhere must reach Schwab in its dollar form — $SPX stayed
     dark for a session because the endpoints skipped this authority."""
-    from instrument_identity import ticker_storage_key
-
     for bare, dollar in (
         ("SPX", "$SPX"),
         ("spx", "$SPX"),
@@ -82,11 +83,6 @@ def test_every_bare_index_root_is_what_schwab_names_an_index_with_dollar():
     names each index only with "$" (instruments symbol-search: assetType INDEX; quoted), knows
     no bare root, and no equity or ETF uses those letters -- so mapping a bare root to its "$"
     form never misroutes, and a root cannot join the list without Schwab's evidence."""
-    import json
-    from pathlib import Path
-
-    from instrument_identity import BROKER_INDEX_BARE_ROOTS
-
     fx = json.loads(
         (
             Path(__file__).parent / "fixtures" / "real_schwab_index_identity_2026_09_28.json"
