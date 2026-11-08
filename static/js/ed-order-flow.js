@@ -70,18 +70,19 @@
   }
 
   function render(h, tk, d) {
-    if (!d || d.status === 'no_book') {
+    if (d.status === 'no_book') {   // a failed read never reaches here: G.show says its words
       h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
         '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
         '<div class="placeholder"><div class="sm">No ' + esc(st().bookVenue) + ' for ' + esc(tk) +
         ' — Schwab has sent no book from this venue for this symbol.</div></div>';
       return;
     }
-    var tob = d.top_of_book || {}, depth = d.depth || {}, ages = d.ages || {}, cls = d.classification || {};
-    var dp = d.depth_pressure || {}, bidLevels = dp.bid || [], askLevels = dp.ask || [];
+    // always served (engine.compute_book_microstructure)
+    var tob = d.top_of_book, depth = d.depth, ages = d.ages, cls = d.classification;
+    var bidLevels = d.depth_pressure.bid, askLevels = d.depth_pressure.ask;
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(cls, k); }
-    var walls = d.wall_candidates || [];
+    var walls = d.wall_candidates;
     var wallSet = {};
     walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
 
@@ -114,7 +115,7 @@
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '-') + ' @ ' + num(w.price) +
           '</span><span class="v">' + int(w.volume) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
-    var deferred = (d.deferred || []).join(' · ');
+    var deferred = d.deferred.join(' · ');
 
     // the book's served word (book_feed_label: LIVE, OFFLINE, NOT LIVE); no book age served reads
     // AGE UNKNOWN, never live
