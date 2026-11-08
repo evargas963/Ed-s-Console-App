@@ -451,15 +451,6 @@ def build_client_from_token(
         raise ConnectionError(e) from e
 
 
-def _parse_callback_port(callback_url: str) -> tuple[str, int]:
-    """Host and port of the callback URL (e.g. https://127.0.0.1:8182); a URL that names neither
-    is refused, never a host or port filled in."""
-    parsed = urlparse(callback_url)
-    if parsed.hostname is None or parsed.port is None:
-        raise ValueError(f"the callback URL names no host or no port: {callback_url!r}")
-    return parsed.hostname, parsed.port
-
-
 def _wait_for_callback_port(host: str, port: int, timeout: float = 5.0) -> bool:
     """Poll until the callback port is accepting connections. Returns True if ready."""
     deadline = time_et.elapsed() + timeout
@@ -498,8 +489,13 @@ def run_login_flow(
             log.warning("OAuth login flow failed", exc_info=True)
             exc_holder.append(e)
 
+    # the callback URL as configured (e.g. https://127.0.0.1:8182): one that names no host or no
+    # port is refused, never a host or port filled in
+    parsed = urlparse(callback_url)
+    host, port = parsed.hostname, parsed.port
+    if host is None or port is None:
+        return False, f"the callback URL names no host or no port: {callback_url!r}"
     try:
-        host, port = _parse_callback_port(callback_url)
         t = threading.Thread(target=_run, daemon=False)
         t.start()
 
