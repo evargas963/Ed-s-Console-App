@@ -699,20 +699,9 @@
   //      No web server is in this path, so no analytics load can delay a price. It is the
   //      ONLY source of the header quote and the watchlist rows (no fallbacks): when it is
   //      not delivering, the header says so -- nothing polls a quote. ----
-  // The source that answered THIS number (quote_ingestion / _quote_authority, on every
-  // payload) shows as a hover tooltip, not new chrome, so a divergence between sources is
-  // diagnosable on the spot the operator is already looking at.
-  var QUOTE_INGESTION_LABEL = {
-    schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
-    rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
-  };
   function paintQuote(q) {
     var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
-    if (px) {
-      px.textContent = q.spot_disp == null ? 'UNAVAILABLE' : q.spot_disp;
-      var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
-      px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
-    }
+    if (px) px.textContent = q.spot_disp == null ? '-' : q.spot_disp;
     var spot = document.getElementById('klSpot');
     if (spot) spot.textContent = q.spot_disp == null ? '-' : q.spot_disp;
     if (ba) {
@@ -856,7 +845,7 @@
         ? ('last trade ' + q.trade_time_ct + (q.trade_age_sec != null ? (' · ' + fmtAge(q.trade_age_sec)) : ''))
         : null;
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
-        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
+        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular,
         quoteTime: q.quote_time_ct,
         feedCls: q.feed_live ? '' : 'stale',
         feedLabel: q.feed_label,
