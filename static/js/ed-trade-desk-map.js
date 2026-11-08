@@ -126,7 +126,7 @@
     document.querySelectorAll('#tdmFamilies [data-famv]').forEach(function (b) { b.textContent = v[b.getAttribute('data-famv')] || ''; });
     // the profile's basis, or why there is none (the value area's served reason)
     var vp = S.levels && S.levels.volume_profile, pn = $('tdmProfNote');
-    var why = ((S.levels && S.levels.families_absent) || []).filter(function (a) { return a.family === 'value_area'; })[0];
+    var why = (S.levels ? S.levels.families_absent : []).filter(function (a) { return a.family === 'value_area'; })[0];
     if (pn) pn.textContent = vp ? vp.basis + (vp.bars_without_volume ? ' · ' + vp.bars_without_volume + ' of ' + vp.bars +
       ' RTH bars sent no volume and are not in it' : '') : why ? 'Volume profile (RTH) not drawn: ' + why.reason : '';
   }
@@ -224,7 +224,7 @@
     ]).then(function (r) {
       if (gen !== S.gen) return;
       S.terrain = r[0]; S.liq = r[1]; S.strikes = r[2]; S.forces = r[3];
-      S.flowBars = r[4] ? r[4].bars || [] : null;
+      S.flowBars = r[4] ? r[4].bars : null;
       paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     });
   }
@@ -251,9 +251,9 @@
       expected_move: [P.stale, 3, 1], gamma: [P.stale, 2, 1] };
     var gamma = { call_wall: ['Call wall', P.up, 0, 2], put_wall: ['Put wall', P.down, 0, 2],
       gamma_flip: ['γ flip', P.accent, 0, 2], max_pain: ['Max pain', P.ink3, 3, 1] };
-    var byId = {}; ((S.levels && S.levels.levels) || []).forEach(function (l) { byId[l.id] = l; });
+    var byId = {}; (S.levels ? S.levels.levels : []).forEach(function (l) { byId[l.id] = l; });
     // served order: nearest the live price first (by_distance); the chart keeps the first N on screen
-    ((S.levels && S.levels.by_distance) || []).forEach(function (id) {
+    (S.levels ? S.levels.by_distance : []).forEach(function (id) {
       var l = byId[id]; if (!l || l.price == null || S.fam[l.family] === 0) return;
       var g = l.family === 'gamma' && gamma[l.id];
       var lean = S.terrain && S.terrain[l.id + '_lean'];   // served: call_wall_lean / put_wall_lean
@@ -265,7 +265,7 @@
     return out;
   }
   function levelPrice(id) {
-    var l = ((S.levels && S.levels.levels) || []).filter(function (x) { return x.id === id; })[0];
+    var l = (S.levels ? S.levels.levels : []).filter(function (x) { return x.id === id; })[0];
     return l && l.price != null ? Number(l.price) : null;
   }
   function pdValueArea() { return { val: levelPrice('PD_VAL'), vah: levelPrice('PD_VAH') }; }
@@ -300,7 +300,7 @@
   }
 
   // ------------------------------------------------------------------ attention queue
-  function queueItems() { return (S.events && S.events.items) || []; }   // served, ordered, numbered
+  function queueItems() { return S.events ? S.events.items : []; }   // served, ordered, numbered
   function paintQueue() {
     var host = $('tdmQueue'); if (!host) return;
     var items = queueItems(); S.queue = items;
@@ -393,7 +393,7 @@
     c = $('tdmCardFlow');
     if (c) {
       var q = S.quotes[st().key], tob = m && m.top_of_book;
-      var cc = (S.events && S.events.cross_counts) || null;   // served for the window
+      var cc = S.events ? S.events.cross_counts : null;   // served for the window
       // Schwab's values with Schwab's trade time; the outage stays beside that time, and the feed state beside them
       state(c, S.pushDown ? S.pushDown : !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : q.feed_label,
         q && q.feed_live && !S.pushDown ? '' : 'warn');
@@ -557,27 +557,32 @@
     paintLiq();
   }
 
+  // what a card says with nothing to draw: not answered yet (undefined), our request failed (null),
+  // the served error, or the served answer holding nothing
+  function noneText(x, what, none) {
+    if (x === undefined) return 'loading…';
+    if (x === null) return 'the ' + what + ' request failed';
+    return x.error ? x.error : none;
+  }
   function paintCardCharts() {
     if (!S.chart) return;
     var P = S.chart.palette(), t = S.terrain, c;
+    var fb = S.flowBars, served = t && !t.error;   // a card draws only an answer
     if ((c = $('tdmCardFlow'))) {
-      var fb = S.flowBars || [];
-      spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
-        colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
+      spark(c, fb ? [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
+        colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }] : [],
         'Volume per 1-minute bar, last hour · green up, red down',
-        S.flowBars === undefined ? 'loading…' : 'no 1-minute bars for this symbol');
+        noneText(fb, 'bars', 'no 1-minute bars for this symbol'));
     }
     if ((c = $('tdmCardOpt'))) {
-      var pcr = (t && t.pcr_by_expiry) || {};
-      spark(c, [{ ys: Object.keys(pcr).map(function (k) { return pcr[k]; }), color: P.research, kind: 'line' }],
+      spark(c, served ? [{ ys: Object.keys(t.pcr_by_expiry).map(function (k) { return t.pcr_by_expiry[k]; }), color: P.research, kind: 'line' }] : [],
         'Put/call open interest by expiry, nearest first',
-        t === undefined ? 'loading…' : (t && t.error) || 'no expiry carries open interest');
+        noneText(t, 'terrain', 'no expiry carries open interest'));
     }
     if ((c = $('tdmCardVol'))) {
-      var iv = (t && t.atm_iv_pct_by_expiry) || {};
-      spark(c, [{ ys: Object.keys(iv).map(function (k) { return iv[k]; }), color: P.accent, kind: 'line' }],
+      spark(c, served ? [{ ys: Object.keys(t.atm_iv_pct_by_expiry).map(function (k) { return t.atm_iv_pct_by_expiry[k]; }), color: P.accent, kind: 'line' }] : [],
         'ATM implied vol by expiry, nearest first',
-        t === undefined ? 'loading…' : (t && t.error) || 'no expiry has both ATM legs priced');
+        noneText(t, 'terrain', 'no expiry has both ATM legs priced'));
     }
   }
 
