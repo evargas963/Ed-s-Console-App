@@ -134,7 +134,7 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         assert row["feed_live"] is True and row["spot_source"] == "streaming_plane"
         assert row["bid"] == pytest.approx(583.40) and row["ask"] == pytest.approx(583.42)
         assert row["trade_ts"] == pytest.approx(now, abs=0.001)  # epoch SECONDS
-        assert 0 <= row["trade_age_sec"] < 2
+        assert row["trade_age_text"] in ("0s", "1s")
         assert "forming_1m" not in row
         # the next trade moves it, pushed on its own (not on the beat)
         t0 = time_et.elapsed()

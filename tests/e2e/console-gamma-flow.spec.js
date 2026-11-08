@@ -266,7 +266,7 @@ test.describe('D — Gamma Flow subview', () => {
 
   test('a held contract whose feed is down reads OFFLINE and keeps the bid', async ({ page }) => {
     const ctx = makeContext();
-    ctx.plane = { feed_health: { l1: { state: 'OFFLINE', age_sec: null }, book: { state: 'OFFLINE', age_sec: null }, replay: 'stale' } };
+    ctx.plane = { feed_health: { l1: { state: 'OFFLINE', text: 'OFFLINE' }, book: { state: 'OFFLINE', text: 'OFFLINE' }, replay: 'stale' } };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('OFFLINE');
@@ -275,7 +275,7 @@ test.describe('D — Gamma Flow subview', () => {
 
   test('a held contract whose option market is closed reads NOT LIVE, not OFFLINE, and keeps the bid', async ({ page }) => {
     const ctx = makeContext();
-    ctx.plane = { feed_health: { l1: { state: 'NOT LIVE', age_sec: null }, book: { state: 'NOT LIVE', age_sec: null }, replay: 'stale' } };
+    ctx.plane = { feed_health: { l1: { state: 'NOT LIVE', text: 'NOT LIVE' }, book: { state: 'NOT LIVE', text: 'NOT LIVE' }, replay: 'stale' } };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');
@@ -284,7 +284,7 @@ test.describe('D — Gamma Flow subview', () => {
 
   test('an offline contract keeps Schwab\'s quote time and book time', async ({ page }) => {
     const ctx = makeContext();
-    ctx.plane = { feed_health: { l1: { state: 'OFFLINE', age_sec: null }, book: { state: 'OFFLINE', age_sec: null }, replay: 'stale' } };
+    ctx.plane = { feed_health: { l1: { state: 'OFFLINE', text: 'OFFLINE' }, book: { state: 'OFFLINE', text: 'OFFLINE' }, replay: 'stale' } };
     ctx.mutate = (d) => {
       d.quote_time_ct = 'Fri 09/25 06:59 PM CT';
       d.book_time_ct = 'Fri 09/25 06:59 PM CT';

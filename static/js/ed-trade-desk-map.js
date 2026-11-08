@@ -706,7 +706,7 @@
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
-        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_sec, q.spot != null ? q.trade_time_ct : null);
+        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_text,q.spot != null ? q.trade_time_ct : null);
         paintCards();   // the Order Flow card's Schwab fields, on every row
       }
     });
