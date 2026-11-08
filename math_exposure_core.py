@@ -7,6 +7,7 @@ from the chain and position structure.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
 
@@ -19,19 +20,34 @@ from time_et import time_to_expiry_years
 SQRT_2PI = math.sqrt(2.0 * math.pi)
 
 
-def _norm_pdf(x: float) -> float:
-    return math.exp(-0.5 * x * x) / SQRT_2PI
+def norm_pdf(x, *, exp=math.exp):
+    """The standard normal density. A number, or a numpy array with exp=np.exp."""
+    return exp(-0.5 * x * x) / SQRT_2PI
+
+
+def d1_vt(spot, strike, t_years, sigma, carry=0.0, *, log=math.log, sqrt=math.sqrt):
+    """THE Black-Scholes d1 and sigma*sqrt(T), with `carry` = r - q (0 unless given). Numbers,
+    or numpy arrays with log=np.log and sqrt=np.sqrt (the gamma profile prices whole chains)."""
+    vt = sigma * sqrt(t_years)
+    return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
+
+
+def _priced_d1(spot, strike, t_years, sigma, carry=0.0) -> tuple[float, float] | None:
+    """d1 and sigma*sqrt(T) for one contract, or None when it cannot be priced (a value that is
+    not positive, or a d1 that is not finite)."""
+    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+        return None
+    d1, vt = d1_vt(spot, strike, t_years, sigma, carry)
+    return (d1, vt) if math.isfinite(d1) else None
 
 
 def bs_gamma(spot: float, strike: float, t_years: float, sigma: float) -> float | None:
     """Black-Scholes gamma per share, r = q = 0. The same gamma the profile sums."""
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+    priced = _priced_d1(spot, strike, t_years, sigma)
+    if priced is None:
         return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
-    if not math.isfinite(d1):
-        return None
-    g = _norm_pdf(d1) / (spot * vt)
+    d1, vt = priced
+    g = norm_pdf(d1) / (spot * vt)
     return g if math.isfinite(g) else None
 
 
@@ -39,12 +55,10 @@ def bs_delta(
     spot: float, strike: float, t_years: float, sigma: float, *, call: bool
 ) -> float | None:
     """Black-Scholes delta per share, r = q = 0. A put is the call delta minus one."""
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+    priced = _priced_d1(spot, strike, t_years, sigma)
+    if priced is None:
         return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + 0.5 * sigma * sigma * t_years) / vt
-    if not math.isfinite(d1):
-        return None
+    d1, _vt = priced
     call_delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
     d = call_delta if call else call_delta - 1.0
     return d if math.isfinite(d) else None
@@ -62,12 +76,12 @@ def bs_vanna(
     Units: delta-change per 1.00 of IV (100 vol points); multiply by 0.01 for per-vol-point
     — the sigma-scaling convention is LOCKED here beside the dealer convention.
     """
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+    priced = _priced_d1(spot, strike, t_years, sigma, rate - div)
+    if priced is None:
         return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + (rate - div + 0.5 * sigma * sigma) * t_years) / vt
+    d1, vt = priced
     d2 = d1 - vt
-    v = -math.exp(-div * t_years) * _norm_pdf(d1) * d2 / sigma
+    v = -math.exp(-div * t_years) * norm_pdf(d1) * d2 / sigma
     return v if math.isfinite(v) else None
 
 
@@ -84,14 +98,14 @@ def bs_charm(
     Identical for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant
     vanishes under differentiation with respect to time.
     """
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
+    priced = _priced_d1(spot, strike, t_years, sigma, rate)
+    if priced is None:
         return None
-    vt = sigma * math.sqrt(t_years)
-    d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / vt
+    d1, vt = priced
     d2 = d1 - vt
     # dDelta/dt (calendar time). Sign verified against a finite-difference
     # derivative of the BS delta.
-    c = -_norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
+    c = -norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
     return c if math.isfinite(c) else None
 
 
@@ -180,8 +194,9 @@ def _strike_bucket(exposures_by_strike: dict[float, dict], strike: float) -> dic
             # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
             # real dollar values. Set explicitly at build; never inferred from values.
             "dollarized": False,
-            "call_oi": None,
-            "put_oi": None,
+            # each leg's sums: 0.0 over no contract; None once a contract's value was not sent
+            "call_oi": 0.0,
+            "put_oi": 0.0,
             "call_oi_mult": 0.0,
             "put_oi_mult": 0.0,
             # NOTE: These are exposure-scaled buckets (gamma*OI*mult, delta*OI*mult)
@@ -201,8 +216,8 @@ def _strike_bucket(exposures_by_strike: dict[float, dict], strike: float) -> dic
             "put_gex_1pct": 0.0,
             "net_gex_1pct": 0.0,
             # traded contracts per leg (Schwab totalVolume)
-            "call_volume": None,
-            "put_volume": None,
+            "call_volume": 0.0,
+            "put_volume": 0.0,
         }
     return exposures_by_strike[strike]
 
@@ -259,18 +274,18 @@ def compute_exposures_by_strike(
         side = c.side
         leg = side.lower()
         vol = c.volume
-        if vol is None:
+        if vol is None:  # not sent: the leg's volume is not known
             b["volume_unreported"] += 1
-        else:
-            k = "call_volume" if side == "CALL" else "put_volume"
-            b[k] = vol if b[k] is None else float(b[k]) + vol
+            b[f"{leg}_volume"] = None
+        elif b[f"{leg}_volume"] is not None:
+            b[f"{leg}_volume"] += vol
 
-        if oi is None:
+        if oi is None:  # not sent: the leg's open interest is not known
             missing += 1
             b["oi_unreported"] += 1
-        else:
-            prev = b[f"{leg}_oi"]
-            b[f"{leg}_oi"] = oi if prev is None else float(prev) + oi
+            b[f"{leg}_oi"] = None
+        elif b[f"{leg}_oi"] is not None:
+            b[f"{leg}_oi"] += oi
 
         mult = c.multiplier
         if oi is None or mult is None:  # the contract's exposure terms are not known
@@ -375,7 +390,7 @@ def exposure_books(
 
 def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]:
     """One book from books over DISJOINT contracts: every leg field a sum of the books' legs (a
-    leg no contract reported stays None: None + x = x), each flag an OR, and each net field
+    sum not known in one book is not known in the merge), each flag an OR, and each net field
     computed from the merged legs by the book's own rule (_finish_bucket). The legs are the same
     sums one compute_exposures_by_strike call over all the contracts gives, up to float addition
     order."""
@@ -392,10 +407,9 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
                 continue
             for k, v in bucket.items():
                 if k in _BUCKET_FLAGS:
-                    cur[k] = cur.get(k, False) or v
-                elif v is not None and not k.startswith("net_"):
-                    c = cur.get(k)
-                    cur[k] = v if c is None else c + v
+                    cur[k] = cur[k] or v
+                elif not k.startswith("net_"):
+                    cur[k] = None if v is None or cur[k] is None else cur[k] + v
     for b in merged.values():
         _finish_bucket(b)
     return merged, _diagnostics(total, used, missing)
@@ -452,29 +466,19 @@ def strike_total_oi(bucket: dict) -> float | None:
 
 def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
     """(call OI, put OI) at one strike when its OI is known (see strike_total_oi), else None.
-    A leg with no positive-OI contract is a KNOWN 0.0 -- every contract there reported OI."""
-    if not isinstance(bucket, dict) or bucket.get("oi_unreported") != 0:
+    A leg with no contract listed is a known 0.0, the sum of none."""
+    if bucket["oi_unreported"] != 0:
         return None
-    legs = []
-    for key in ("call_oi", "put_oi"):
-        if bucket.get(key) is None:
-            legs.append(0.0)  # known: no contract on this leg carried positive OI
-            continue
-        v = bucket_metric(bucket, key)
-        if v is None:  # present but not a finite number -> not known
-            return None
-        legs.append(v)
-    return legs[0], legs[1]
+    return bucket["call_oi"], bucket["put_oi"]
 
 
 def strike_volume_legs(bucket: dict) -> tuple[float, float] | None:
     """(call, put) session volume at one strike when every contract there reported totalVolume
     (0 is a real zero), else None. A leg with no listed contract is a known 0.0. THE one reader:
     GEX-by-Strike rows, heatmap cells and the put/call volume ratio."""
-    if not isinstance(bucket, dict) or bucket.get("volume_unreported") != 0:
+    if bucket["volume_unreported"] != 0:
         return None
-    c, p = bucket.get("call_volume"), bucket.get("put_volume")
-    return (0.0 if c is None else float(c)), (0.0 if p is None else float(p))
+    return bucket["call_volume"], bucket["put_volume"]
 
 
 def strike_total_volume(bucket: dict) -> float | None:
@@ -499,14 +503,22 @@ def book_total_oi(exposures: dict[float, dict]) -> float | None:
     return total
 
 
+def _put_call_ratio(legs: Iterable[tuple[float, float] | None]) -> float | None:
+    """Total put / total call over the book's strikes; None if any strike's legs are unknown or
+    the calls total 0 (an empty book included)."""
+    calls = puts = 0.0
+    for leg in legs:
+        if leg is None:
+            return None
+        calls += leg[0]
+        puts += leg[1]
+    return puts / calls if calls > 0 else None
+
+
 def put_call_oi_ratio(exposures: dict[float, dict]) -> float | None:
     """Total put OI / total call OI of the book -- the positions held; None if any strike's OI is
     unknown or call OI is 0."""
-    legs = [strike_oi_legs(b) for b in exposures.values()]
-    if not legs or None in legs:
-        return None
-    calls = sum(c for c, _ in legs)
-    return sum(p for _, p in legs) / calls if calls > 0 else None
+    return _put_call_ratio(strike_oi_legs(b) for b in exposures.values())
 
 
 def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
@@ -514,11 +526,7 @@ def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
     (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
     None when any contract in the book did not report its volume, or no call traded. A strike with
     no call (or put) contract listed has no volume on that side, not a zero."""
-    legs = [strike_volume_legs(b) for b in (exposures or {}).values()]
-    if not legs or None in legs:
-        return None
-    calls = sum(c for c, _ in legs)
-    return sum(p for _, p in legs) / calls if calls > 0 else None
+    return _put_call_ratio(strike_volume_legs(b) for b in exposures.values())
 
 
 def exposures_have_dollar_gex(exposures: dict[float, dict]) -> bool:

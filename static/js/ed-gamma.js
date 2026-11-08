@@ -34,31 +34,16 @@
     return (measure === 'oi' || measure === 'volume') ? formatCount(n) : formatUsd(n);
   }
 
-  // ---- theme-aware colour: sign -> green/red, shade -> |value| against the served scale ----
-  function _hex(h) {
-    h = h.trim(); if (h.charAt(0) === '#') h = h.slice(1);
-    if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
-    if (h.length < 6) return null;
-    var n = parseInt(h.slice(0, 6), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  }
-  function _mix(a, b, t) { return [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)]; }
+  // ---- theme colour: sign -> green/red, shade -> the shell's one strength rule against the
+  // served scale (EdShell.heatFill) ----
   function _rgb(c) { return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
-  function _lum(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; }
   function cellStyle(n, maxAbs, colors) {
     if (n === null || n === undefined || isNaN(n)) return { bg: 'transparent', fg: 'var(--ed-ink-3)', empty: true };
     var v = Number(n);
     if (v === 0) return { bg: _rgb(colors.zero), fg: 'var(--ed-ink-3)', empty: false };
-    var t = Math.abs(v) / maxAbs;   // the served scale is at least every |value| drawn
-    var intensity = Math.pow(t, 0.34);   // cube-root-ish so small-but-real cells stay visible
-    var mixed = _mix(colors.zero, (v > 0 ? colors.pos : colors.neg), intensity);
-    var fg = _lum(mixed) < 140 ? '#f4f7fb' : '#0a0e17';
-    return { bg: _rgb(mixed), fg: fg, empty: false, sign: (v > 0 ? 1 : -1) };
-  }
-  function readHeatColors() {   // the active theme's heat palette (ed-tokens.css --ed-heat-*)
-    var cs = getComputedStyle(document.documentElement);
-    var p = _hex(cs.getPropertyValue('--ed-heat-pos')), ng = _hex(cs.getPropertyValue('--ed-heat-neg')), z = _hex(cs.getPropertyValue('--ed-heat-zero'));
-    if (!(p && ng && z)) throw new Error('the theme defines no --ed-heat-* palette');
-    return { pos: p, neg: ng, zero: z };
+    var mixed = window.EdShell.heatFill(v, maxAbs, colors);   // the served scale is at least every |value| drawn
+    if (mixed == null) return { bg: 'transparent', fg: 'var(--ed-ink-3)', empty: false };
+    return { bg: _rgb(mixed), fg: window.EdShell.heatInk(mixed), empty: false };
   }
   // the selected measure's value per column: GEX/DEX a value, OI/volume the server's total
   function _measureRow(row, measure) {
@@ -139,7 +124,7 @@
     _lastRevision = rev;
     var words = WORDS;
     var exps = surface.expirations || [], cells = surface.cells || [];
-    var maxAbs = view.max_abs[measure], heat = readHeatColors();
+    var maxAbs = view.max_abs[measure], heat = window.EdShell.heatColors();
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
     exps.forEach(function (e, j) {
       var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
