@@ -127,7 +127,7 @@ def test_the_console_holds_the_answers_before_its_loops_and_its_feed(tmp_path, s
     tables at its start), it holds 0."""
     path = tmp_path / "data" / "stream_capture.db"
     held = _record_answers(path) if store == "answers" else 0
-    env, _pages = program_env(tmp_path)
+    env = program_env(tmp_path)
     waited, fed = "waiting for the capture daemon's heartbeat", "Live-plane feed started"
     text = run_until(env, lambda t: waited in t and fed in t)
     at = text.index(f"Recorded market answers held: {held}")
