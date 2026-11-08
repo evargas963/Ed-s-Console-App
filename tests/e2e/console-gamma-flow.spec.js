@@ -65,7 +65,7 @@ function makeContext() {
 }
 
 async function setup(page, ctx) {
-  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); } catch (e) {} });
+  await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'TSLA'); });
   // FALSIFIER (re-runnable from the tree): ED_FLOW_JS_OVERRIDE=<file> serves that file as
   // ed-gamma-flow.js, so the negative controls can be shown to FAIL against a consumer that reads
   // the old flattened shape / hardcodes tags.

@@ -21,7 +21,7 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['TSLA']);
-  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'heatmap'); } catch (e) {} });
+  await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'heatmap'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   // drawn on the one shared chart (ed-tv-chart.js), every served cell handed to it
   const plot = page.locator('#ofhBody .ofh-plot');
@@ -86,7 +86,7 @@ async function openBook(page, book) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
+  await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 }
 
