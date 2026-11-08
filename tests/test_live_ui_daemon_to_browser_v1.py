@@ -20,22 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
 
 import pytest
+from websockets.asyncio.client import connect
 
 import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus, quote_msg
-
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from tests.test_live_push_channel_v1 import listener
 
 
 @pytest.fixture(autouse=True)
@@ -86,25 +79,21 @@ class _Feed:
 
 
 async def _run(body, feed=None):
-    from websockets.asyncio.client import connect
-
-    port = _free_port()
+    sock, url = listener()
     bus = MessageBus()
     stop = asyncio.Event()
     stats: dict = {}
     feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(
-        live_ui.serve_live_ui(
-            stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats, clock=feed.clock
-        )
+        live_ui.serve_live_ui(stop, sock, heartbeat_fn=feed, stats=stats, clock=feed.clock)
     )
     follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
     end = time_et.elapsed() + 5
-    while not stats.get("listening") and time_et.elapsed() < end:
+    while "clients" not in stats and time_et.elapsed() < end:
         await asyncio.sleep(0.01)
-    assert stats.get("listening")
+    assert "clients" in stats  # serving
     try:
-        async with connect(f"ws://127.0.0.1:{port}") as ws:
+        async with connect(url) as ws:
             await body(bus, ws, feed, stats)
     finally:
         stop.set()

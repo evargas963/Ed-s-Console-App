@@ -18,33 +18,38 @@ from pathlib import Path
 import launch
 import time_et
 from app.market_data.schwab.streaming import capture
+from app.market_data.schwab.streaming.program_lock import Ports, program_ports
 
 REPO = Path(__file__).resolve().parent.parent
 
 
-def free_ports(n: int) -> list[int]:
-    held = [socket.socket() for _ in range(n)]
-    for s in held:
-        s.bind(("127.0.0.1", 0))
-    ports = [s.getsockname()[1] for s in held]
-    for s in held:
-        s.close()
-    return ports
+def held_ports(tmp_path: Path) -> Ports | None:
+    """Return the ports the program wrote in its lock, as launch.py reads them."""
+    return program_ports(tmp_path / "data" / "stream_capture.db")
 
 
-def program_env(tmp_path: Path) -> tuple[dict, int]:
-    """The program's environment on ports of its own, and its pages' port."""
-    push, ui, pages = free_ports(3)
+def answered(tmp_path: Path) -> Ports | TimeoutError:
+    """Return the ports once the program's pages answer, as launch.py waits, or why they did not."""
+    try:
+        return launch.wait_for_pages(30, tmp_path / "data" / "stream_capture.db")
+    except TimeoutError as e:
+        return e
+
+
+def program_env(tmp_path: Path) -> dict:
+    """The program's environment on ports the system picks as it binds them (port 0), which the
+    program writes in its lock (held_ports): a port found free and released before the program
+    binds it can be taken in between, by any other program's outgoing connection among them."""
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}  # its loops start
     env.update(
         ED_RUNTIME_ROOT=str(tmp_path),
-        ED_LIVE_PUSH_PORT=str(push),
-        ED_LIVE_UI_PORT=str(ui),
-        ED_CONSOLE_PORT=str(pages),
+        ED_LIVE_PUSH_PORT="0",
+        ED_LIVE_UI_PORT="0",
+        ED_CONSOLE_PORT="0",
         SCHWAB_TOKEN_PATH=str(tmp_path / "missing_schwab_token.json"),
         PYTHONIOENCODING="utf-8",
     )
-    return env, pages
+    return env
 
 
 def run_until(env: dict, done) -> str:
@@ -78,11 +83,10 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     Windows (Windows sends a console event to another program's group as Ctrl+Break, not
     Ctrl+C; both take the same handler, capture.INTERRUPTS), Ctrl+C's SIGINT elsewhere."""
     windows = sys.platform == "win32"
-    env, pages = program_env(tmp_path)
     program = subprocess.Popen(
         [sys.executable, *launch.DAEMON_START],
         cwd=REPO,
-        env=env,
+        env=program_env(tmp_path),
         text=True,
         encoding="utf-8",
         stdout=subprocess.PIPE,
@@ -93,10 +97,11 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
     try:
         end = time_et.elapsed() + 120
-        while "Live-plane feed started" not in "".join(list(lines)):
+        while (ports := held_ports(tmp_path)) is None:
             assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
             time.sleep(0.25)
-        assert launch.unhealthy_for(pages, 30) is None  # a page request, as the browser makes
+        answer = answered(tmp_path)  # a page request, as the browser makes
+        assert answer == ports, (answer, "".join(lines))
         os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
         code = program.wait(90)
     finally:
@@ -109,10 +114,59 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     assert '"GET /api/health' not in text, "a page request is not the window's"
 
 
+def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_path):
+    """A page open on the console (its /api/changes stream, as the browser holds it) when the
+    program stops: the stop ends that stream itself, so the web server closes at once, not after
+    its 10 s graceful timeout, and no stream is cancelled (each was logged as a traceback)."""
+    windows = sys.platform == "win32"
+    program = subprocess.Popen(
+        [sys.executable, *launch.DAEMON_START],
+        cwd=REPO,
+        env=program_env(tmp_path),
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
+    )
+    lines: list = []
+    threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
+    page = socket.socket()
+    try:
+        end = time_et.elapsed() + 120
+        while (ports := held_ports(tmp_path)) is None:
+            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
+            time.sleep(0.25)
+        pages = ports.console
+        answer = answered(tmp_path)
+        assert answer == ports, (answer, "".join(lines))
+        page.settimeout(30)
+        page.connect(("127.0.0.1", pages))
+        page.sendall(b"GET /api/changes?ticker=SPY HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        got = b""
+        while b"event: session" not in got:  # the page's stream is open: its first event
+            chunk = page.recv(4096)
+            assert chunk, got
+            got += chunk
+        asked = time_et.elapsed()
+        os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
+        code = program.wait(90)
+        took = time_et.elapsed() - asked
+    finally:
+        page.close()
+        if program.poll() is None:
+            program.kill()
+            program.wait(30)
+    text = "".join(lines)
+    assert code == capture.EXIT_STOPPED, (code, text)
+    assert "timeout graceful shutdown exceeded" not in text, text
+    assert took < 8.0, f"the stop took {took:.1f} s with a page open"
+
+
 def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
     """In one program the daemon's heartbeat, with the watchlist, is there before the console's
     loop starts: the console says what it needed and that it had it, in well under a second."""
-    env, _pages = program_env(tmp_path)
+    env = program_env(tmp_path)
     over = "done waiting for the capture daemon's heartbeat (it says what the watchlist is) after"
     fed = "Live-plane feed started (source=the capture daemon's bus, this program)"
     text = run_until(env, lambda t: over in t and fed in t)
