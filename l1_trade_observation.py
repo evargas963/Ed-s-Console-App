@@ -87,42 +87,35 @@ def tick_rule_signed_size(
     return 0.0
 
 
+def _signed_walk(prints: list[dict[str, Any]], cutoff_ms: float | None):
+    """THE one tick-rule walk: each print with a size, traded at or after `cutoff_ms` (every
+    one when None; a print with no trade time cannot be placed after it), as (x, size, signed
+    size or None). x is the trade time in seconds, else the receive index (not a trade id). A
+    print before the window still sets the price the first one in it is signed against."""
+    prev_price: float | None = None
+    for i, p in enumerate(prints):
+        t, price, size = p.get("time_millis"), p.get("price"), p.get("size")
+        in_window = cutoff_ms is None or (t is not None and t >= cutoff_ms)
+        if in_window and size is not None:
+            x = float(i) if t is None else t / 1000.0
+            yield x, size, tick_rule_signed_size(prev_price, price, size)
+        if price is not None:
+            prev_price = price
+
+
 def iter_signed_cum_points(
     prints: list[dict[str, Any]],
     window_sec: float | None = None,
     now_ms: float | None = None,
 ) -> list[tuple[float, float]]:
-    """ONE signed-size walk. x is vendor seconds when present, else receive index.
-
-    Receive index is not a native trade id. Used by CVD and CVD-slope only. With a window, only
-    prints whose trade time is within `window_sec` before `now_ms` count; a print with no time
-    cannot be placed in the window and is left out.
-    """
+    """The cumulative signed size at each print of the walk (_signed_walk), for CVD and its
+    slope; with a window, the prints traded in the `window_sec` before `now_ms`."""
     cutoff = None if window_sec is None else now_ms - int(window_sec * 1000)
     points: list[tuple[float, float]] = []
     cum = 0.0
-    prev_price: float | None = None
-    for i, p in enumerate(prints):
-        t = p.get("time_millis")
-        price = p.get("price")
-        if cutoff is not None and (t is None or t < cutoff):
-            if price is not None:
-                prev_price = price
-            continue
-        size = p.get("size")
-        if size is None:
-            if price is not None:
-                prev_price = price
-            continue
-        signed = tick_rule_signed_size(prev_price, price, size)
+    for x, _size, signed in _signed_walk(prints, cutoff):
         if signed is not None:
             cum += signed
-        if price is not None:
-            prev_price = price
-        if t is not None:
-            x = t / 1000.0
-        else:
-            x = float(i)
         points.append((x, cum))
     return points
 
@@ -152,29 +145,9 @@ def compute_tape_pressure(
     prints: list[dict[str, Any]], window_sec: float, now_ms: float
 ) -> float | None:
     """Tick-rule signed size over total size for the prints traded in the `window_sec` before
-    `now_ms`; None when none traded in it. A print with no trade time is left out."""
-    cutoff_ms = now_ms - int(window_sec * 1000)
-    total_delta = 0.0
-    total_sz = 0
-    prev_price: float | None = None
-    for p in prints:
-        t = p.get("time_millis")
-        price = p.get("price")
-        if t is None or t < cutoff_ms:
-            if price is not None:
-                prev_price = price
-            continue
-        size = p.get("size")
-        if size is None or size <= 0:
-            if price is not None:
-                prev_price = price
-            continue
-        signed = tick_rule_signed_size(prev_price, price, size)
-        if signed is not None:
-            total_delta += signed
-        total_sz += size
-        if price is not None:
-            prev_price = price
+    `now_ms` (_signed_walk); None when none traded in it."""
+    walk = list(_signed_walk(prints, now_ms - int(window_sec * 1000)))
+    total_sz = sum(size for _x, size, _signed in walk)
     if total_sz <= 0:
         return None
-    return total_delta / total_sz
+    return sum(signed for _x, _size, signed in walk if signed is not None) / total_sz
