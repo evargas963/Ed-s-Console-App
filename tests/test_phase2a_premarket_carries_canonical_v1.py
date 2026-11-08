@@ -29,28 +29,22 @@ from time_et import ET
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: canonical level id -> (raw_levels family, key) as the builders publish them.
-_PHASE2A_IDS = {
-    "PDH": ("prev_day", "pdh"),
-    "PDL": ("prev_day", "pdl"),
-    "PDC": ("prev_day", "pdc"),
-    "PD_POC": ("prev_day", "pd_poc"),
-    "PD_VAH": ("prev_day", "pd_vah"),
-    "PD_VAL": ("prev_day", "pd_val"),
-    "OVERNIGHT_HIGH": ("overnight", "overnight_high"),
-    "OVERNIGHT_LOW": ("overnight", "overnight_low"),
-}
+#: the canonical level ids the premarket zones carry
+_PHASE2A_IDS = (
+    "PDH",
+    "PDL",
+    "PDC",
+    "PD_POC",
+    "PD_VAH",
+    "PD_VAL",
+    "OVERNIGHT_HIGH",
+    "OVERNIGHT_LOW",
+)
 
 
 def _published(out) -> dict:
-    """Flatten SnapshotOutput.raw_levels to {canonical_id: value} for the Phase 2A families."""
-    raw = out.raw_levels or {}
-    got = {}
-    for level_id, (fam, key) in _PHASE2A_IDS.items():
-        v = (raw.get(fam) or {}).get(key)
-        if v is not None:
-            got[level_id] = v
-    return got
+    """{canonical id: value} of every level the snapshot's zones carry."""
+    return {s["label"]: s["value"] for z in out.zones for s in z.source_levels}
 
 
 def _bars(session: date, n: int = 120) -> list:
