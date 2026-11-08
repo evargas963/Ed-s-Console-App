@@ -111,7 +111,7 @@
     c.setLevels(lv);
     var spot = liveSpot();
     var tradeTime = (_liveQuote && spot != null) ? _liveQuote.trade_time_ct : null;
-    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null, tradeTime);
+    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_text : null, tradeTime);
     var empty = host.querySelector('.gchart-empty');
     empty.hidden = !failed.length && !!(bars.length || win.length);
     empty.textContent = failed.length ? 'the ' + failed.join(', ') + ' request failed for ' + ticker()

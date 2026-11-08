@@ -442,11 +442,6 @@
     var why = d && d.status === 'unavailable' && d.scope && d.scope.reason;
     return why ? ('chain unavailable — ' + why) : 'no chain for this expiry';
   }
-  function fmtAge(s) {
-    if (s == null || isNaN(s)) return '';
-    s = Math.round(Number(s));
-    return s < 90 ? (s + 's') : s < 5400 ? (Math.round(s / 60) + 'm') : (Math.round(s / 3600) + 'h');
-  }
   // A panel's as-of badge: its label, the served state word (o.state: LIVE, CLOSE, STALE, NOT LIVE,
   // the levels verdict), the served time and the served age text. The word's style follows the word.
   function asOfBadge(o) {
@@ -842,7 +837,7 @@
       _quoteShown = true;
       _tradeShown = q.trade_time_ct != null ? 'last trade ' + q.trade_time_ct : null;
       var trade = q.trade_time_ct != null
-        ? ('last trade ' + q.trade_time_ct + (q.trade_age_sec != null ? (' · ' + fmtAge(q.trade_age_sec)) : ''))
+        ? ('last trade ' + q.trade_time_ct + (q.trade_age_text != null ? (' · ' + q.trade_age_text) : ''))
         : null;
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular,
@@ -1061,7 +1056,7 @@
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     now: function () { return _serverNow; },   // the program's time (s), from its heartbeat; null before the first
     setScope: setScope, getScope: function () { return state.scope; },
-    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText, placeholder: placeholder,
+    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, chainEmptyText: chainEmptyText, placeholder: placeholder,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview, strength: strength, heatColors: heatColors, heatFill: heatFill, heatInk: heatInk };

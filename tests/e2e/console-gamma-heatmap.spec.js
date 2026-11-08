@@ -982,7 +982,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a price that stops arriving stays, and the chip says OFFLINE', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_sec: 4,
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_text: '4s',
       quote_time_ct: '14:00:02 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
@@ -999,7 +999,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a price whose market is not trading reads NOT LIVE in the header and on Key Levels\' Spot', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_sec: 4,
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_text: '4s',
       feed_live: false, feed_label: 'NOT LIVE', outage: "outside Schwab's market hours" })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hFeed')).toHaveText('NOT LIVE');

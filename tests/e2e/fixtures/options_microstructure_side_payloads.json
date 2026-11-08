@@ -109,12 +109,12 @@
     "streaming_plane": {
       "feed_health": {
         "book": {
-          "age_sec": null,
-          "state": "NOT LIVE"
+          "state": "NOT LIVE",
+          "text": "NOT LIVE"
         },
         "l1": {
-          "age_sec": null,
-          "state": "LIVE"
+          "state": "LIVE",
+          "text": "LIVE"
         },
         "replay": "not connected"
       },
@@ -249,12 +249,12 @@
     "streaming_plane": {
       "feed_health": {
         "book": {
-          "age_sec": null,
-          "state": "NOT LIVE"
+          "state": "NOT LIVE",
+          "text": "NOT LIVE"
         },
         "l1": {
-          "age_sec": null,
-          "state": "LIVE"
+          "state": "LIVE",
+          "text": "LIVE"
         },
         "replay": "not connected"
       },
