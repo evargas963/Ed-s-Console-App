@@ -32,8 +32,7 @@ const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1000 }] 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    const tk = (url.match(/[?&]ticker=([^&]+)/) || [])[1] || 'SPY';
-    const dec = decodeURIComponent(tk);
+    const dec = new URL(url).searchParams.get('ticker');   // null on a route that names none
     const spot = dec === 'QQQ' ? 480 : 100;
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = surfaceFor(dec, spot, new URL(url).searchParams.get('expiry'));
