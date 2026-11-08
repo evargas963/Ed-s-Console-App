@@ -311,7 +311,7 @@
     this.cellAt = function (time, price) {
       var h = self.h; if (!h) return null;
       var t = Math.round((time - h.since_ts) / h.bucket_sec);
-      return h.cells.filter(function (c) { return c.t === t && Math.abs(c.price - price) <= self.step / 2; })[0] || null;
+      return h.cells.find(function (c) { return c.t === t && Math.abs(c.price - price) <= self.step / 2; });
     };
   }
   // User trend lines (and the one being placed). Points are {time, price}; x comes from the
