@@ -1246,6 +1246,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ ticker: 'SPY', spot: 583.41, expiry: '2026-09-11', status: 'ok',
+          scope: { kind: 'complete_single_expiry' }, net_gex_by_strike: [], adjusted_deliverable_symbols: [],
           contracts: contractsFor(strike) }),
       });
     });
@@ -1490,7 +1491,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       // empty contracts: Strike Detail has nothing to select and never re-reads the chain
       return route.fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ticker: 'SPY', spot: 583.41, expiry: '2026-09-11', status: 'ok', contracts: [] }),
+        body: JSON.stringify({ ticker: 'SPY', spot: 583.41, expiry: '2026-09-11', status: 'ok',
+          scope: { kind: 'complete_single_expiry' }, net_gex_by_strike: [], adjusted_deliverable_symbols: [],
+          contracts: [] }),
       });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
