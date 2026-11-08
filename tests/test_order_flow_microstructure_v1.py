@@ -511,7 +511,7 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's GAMMA as Schwab
     sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json)."""
     import app.options.order_flow.streaming as ofs
-    from stream_spine import options_quote_msg, quote_msg
+    from stream_spine import quote_msg, verbatim_msg
 
     mix = json.loads(
         (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -530,7 +530,7 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
         )
         ofs._ingest_pushed(
             f"optquote.{opt_sym}",
-            options_quote_msg(
+            verbatim_msg(
                 symbol=opt_sym, content=opt["item"], src="schwab_options_l1", ts_recv=opt["ts_recv"]
             ),
         )

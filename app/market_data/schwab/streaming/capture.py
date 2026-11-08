@@ -92,11 +92,10 @@ from stream_spine import (
     bar_msg,
     book_msg,
     current_key,
-    news_msg,
-    options_quote_msg,
     quote_msg,
     resolve_stream_db_path,
     subscription_msg,
+    verbatim_msg,
 )
 from time_et import (
     ET,
@@ -358,10 +357,8 @@ def _message(service: str, sym: str, item: dict, schwab_ts: int | None) -> tuple
     if service == "CHART_EQUITY":
         flat = {name: item.get(k) for k, name in CHART_FIELDS.items()}
         return kind, bar_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
-    if service == "LEVELONE_OPTIONS":
-        return kind, options_quote_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
-    if service == "NEWS_HEADLINE":
-        return kind, news_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
+    if service in ("LEVELONE_OPTIONS", "NEWS_HEADLINE"):
+        return kind, verbatim_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
     return kind, book_msg(symbol=sym, service=service, content=item, src=src, schwab_ts=schwab_ts)
 
 

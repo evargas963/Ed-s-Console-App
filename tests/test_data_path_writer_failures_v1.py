@@ -40,8 +40,8 @@ from stream_spine import (
     CaptureWriter,
     HealthRegistry,
     MessageBus,
-    options_quote_msg,
     quote_msg,
+    verbatim_msg,
 )
 from tests.schwab_rest_standin import CHAIN, LocalSchwab
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
@@ -150,7 +150,7 @@ def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches
     """INDUCED CONDITION: one captured option quote published with no symbol, so the NOT NULL
     symbol column refuses its row."""
     db = tmp_path / "stream_capture.db"
-    bad = options_quote_msg(
+    bad = verbatim_msg(
         symbol=None,
         content=_EVENTS[0]["content"],
         src="schwab_stream",
@@ -616,7 +616,7 @@ def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp
     record = json.dumps(
         {
             "topic": f"optquote.{_CONTRACT}",
-            "msg": options_quote_msg(
+            "msg": verbatim_msg(
                 symbol=_CONTRACT,
                 content=_EVENTS[0]["content"],
                 src="schwab_stream",
@@ -717,7 +717,7 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
         json.dumps(
             {
                 "topic": f"optquote.{_CONTRACT}",
-                "msg": options_quote_msg(  # DATA_FLOW §2 D4's format
+                "msg": verbatim_msg(  # DATA_FLOW §2 D4's format
                     symbol=_CONTRACT,
                     content=e["content"],
                     src="schwab_stream",
@@ -778,7 +778,7 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
     record = json.dumps(
         {
             "topic": f"optquote.{_CONTRACT}",
-            "msg": options_quote_msg(
+            "msg": verbatim_msg(
                 symbol=_CONTRACT,
                 content=_EVENTS[0]["content"],
                 src="schwab_stream",
@@ -837,7 +837,7 @@ def test_a_found_spill_whose_cut_bytes_were_kept_is_deleted_without_keeping_them
     record = json.dumps(
         {
             "topic": f"optquote.{_CONTRACT}",
-            "msg": options_quote_msg(
+            "msg": verbatim_msg(
                 symbol=_CONTRACT,
                 content=_EVENTS[0]["content"],
                 src="schwab_stream",
@@ -871,7 +871,7 @@ def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
         json.dumps(
             {
                 "topic": f"optquote.{_CONTRACT}",
-                "msg": options_quote_msg(
+                "msg": verbatim_msg(
                     symbol=_CONTRACT,
                     content=e["content"],
                     src="schwab_stream",

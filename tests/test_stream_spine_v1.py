@@ -21,8 +21,8 @@ from stream_spine import (
     MessageBus,
     bar_msg,
     book_msg,
-    options_quote_msg,
     quote_msg,
+    verbatim_msg,
 )
 
 
@@ -226,7 +226,7 @@ def test_options_quote_content_stored_verbatim_never_flattened(tmp_path):
     contract = _CAPTURED["symbol"]
     w.insert(
         f"optquote.{contract}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=contract,
             content=_OPTION_QUOTE["content"],
             src=_OPTION_QUOTE["source"],

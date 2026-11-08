@@ -21,7 +21,7 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.engine import Book, read_book
-from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import HealthRegistry, MessageBus, book_msg, quote_msg, verbatim_msg
 
 _MIX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -35,7 +35,7 @@ def _message(m: dict) -> tuple[str, dict]:
     """One fixture row as the daemon publishes it on its bus."""
     sym, svc, ts = m["item"]["key"], m["service"], m["ts_recv"]
     if svc == "LEVELONE_OPTIONS":
-        return f"optquote.{sym}", options_quote_msg(
+        return f"optquote.{sym}", verbatim_msg(
             symbol=sym, content=m["item"], src="schwab_options_l1", ts_recv=ts
         )
     if svc == "LEVELONE_EQUITIES":

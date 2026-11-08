@@ -30,7 +30,7 @@ import time_et
 from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from option_contract import read_chain
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
 from tests.feed_live_helper import mark_feed_live
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
 from time_et import ET
@@ -255,7 +255,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     _daemon(_AT.timestamp(), [sym])
     ofs._ingest_pushed(
         f"optquote.{sym}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=sym,
             content={"key": sym, "GAMMA": call["gamma"]},
             src="schwab_options_l1",
