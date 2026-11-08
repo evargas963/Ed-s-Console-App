@@ -58,10 +58,10 @@ class LocalStreamer:
     past it, the request is answered twice: code 19 (refusal) and then code 24
     ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them."""
 
-    def __init__(self, limits: dict[str, int] | None = None, data: dict[str, dict] | None = None):
-        self.limits = dict(limits or {})
+    def __init__(self, limits: dict[str, int], data: dict[str, dict]):
+        self.limits = dict(limits)
         #: per service, a data entry Schwab sent, streamed once a SUBS on that service is accepted
-        self.data = dict(data or {})
+        self.data = dict(data)
         self.requests: list = []
         self.answers: list = []
         self.held: dict[str, list[str]] = defaultdict(list)
