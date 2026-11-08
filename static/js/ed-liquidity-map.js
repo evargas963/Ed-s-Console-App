@@ -9,7 +9,7 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function st() { return window.EdShell.getState(); }
   function isMap() { var s = st(); return s.workspace === 'liquidity' && s.subview === 'map'; }
   function ticker() { return (st().ticker || ''); }
@@ -39,7 +39,7 @@
     var tags = (z.source_levels || []).map(function (l) { return esc(l.label) + ' ' + num(l.value); }).join(' · ');
     return '<div class="fl-row"><span class="k">' + esc(z.zone_label) + ' ' + num(z.zone_low) + '–' + num(z.zone_high) + '</span>' +
       '<span class="v">confluence ' + esc(z.confluence_score) + '</span></div>' +
-      '<div class="sm liqm-tags">' + (tags || '—') + (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
+      '<div class="sm liqm-tags">' + (tags || '-') + (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
   }
 
   function render(h, tk, snap, levels, barsD) {

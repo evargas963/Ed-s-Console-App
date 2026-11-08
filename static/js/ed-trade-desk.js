@@ -16,7 +16,7 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function st() { return window.EdShell.getState(); }
   function isRightNow() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
   function ticker() { return (st().ticker || ''); }
@@ -34,7 +34,7 @@
     return window.EdL1SseGuards.readJson(url, signal).catch(function (e) { if (!e.words) throw e; return null; });
   }
   var usd = function (n) {
-    if (n == null || isNaN(n)) return '—';
+    if (n == null || isNaN(n)) return '-';
     var a = Math.abs(n), s = n < 0 ? '-' : '';
     if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(1) + 'B';
     if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(1) + 'M';
@@ -73,10 +73,10 @@
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     var ages = d.ages || {};
     // Schwab's book time stands beside the seconds. The seconds stay when no book time was
-    // sent, and the time stays when the age is missing. Neither sent shows "—".
+    // sent, and the time stays when the age is missing. Neither sent shows "-".
     var bookSec = ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : null;
     var bookWhen = d.book_time_ct != null ? d.book_time_ct : null;
-    var bookAge = '—';
+    var bookAge = '-';
     if (bookWhen != null && bookSec != null) bookAge = bookWhen + ' · ' + bookSec;
     else if (bookWhen != null) bookAge = bookWhen;
     else if (bookSec != null) bookAge = bookSec;
@@ -90,7 +90,7 @@
     // producer of a book's lean (the Desk card shows the same)
     var r5 = d.readout && d.readout.venues[d.venue] && d.readout.venues[d.venue].views['5'];
     var zone = r5 ? r5.zone : null;
-    var heroVal = r5 && r5.pct_text != null ? r5.pct_text : '—';
+    var heroVal = r5 && r5.pct_text != null ? r5.pct_text : '-';
     var heroUnit = zone == null ? '' : r5.side_word.toLowerCase() + ' (' + esc(d.venue) + ', depth 5)';
     var side = zone == null || zone === 'BALANCED' ? null : /BID/.test(zone) ? 'BID' : 'ASK';
     // the served words: the top of book's while it is not live, else the book's (book_feed_label);
@@ -122,15 +122,15 @@
     // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
-      ['Posture', d.posture || '—'], ['Confidence', d.confidence || '—'],
+      ['Posture', d.posture || '-'], ['Confidence', d.confidence || '-'],
       ['Call wall', num(d.call_wall)], ['Put wall', num(d.put_wall)],
       ['Gamma flip', num(d.gamma_flip)],
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       ['Max pain' + (d.max_pain_dte != null ? ' (' + d.max_pain_dte + 'DTE)' : ''), num(d.max_pain)],
       // the heatmap's own dollar formatter: a value under $50K reads as itself, never "0.0M"
-      ['Net GEX @ spot', d.net_gex_at_spot != null ? window.EdGamma.formatUsd(d.net_gex_at_spot) : '—'],
+      ['Net GEX @ spot', d.net_gex_at_spot != null ? window.EdGamma.formatUsd(d.net_gex_at_spot) : '-'],
     ];
-    return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows, d.confidence || null,
+    return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '-', '', 0, rows, d.confidence,
       d.confidence === 'TRUSTED' ? 'live' : 'warn');
   }
 
@@ -139,7 +139,7 @@
   function contextSummary(terrain, snap, levelsD) {
     var lines = [];
     if (terrain) {
-      lines.push(['Regime', (terrain.regime || '—') + (terrain.posture ? ' · ' + terrain.posture : '')]);
+      lines.push(['Regime', (terrain.regime || '-') + (terrain.posture ? ' · ' + terrain.posture : '')]);
       if (terrain.headline) lines.push(['Read', terrain.headline]);
     }
     var zones = (snap && snap.zones) || [], sl = snap && snap.spot_location;   // served
@@ -199,7 +199,7 @@
     }
     if (m && m.busiest && m.busiest.length) {
       out += '<div class="mig-coach"><b>Heaviest option trading at ' + m.busiest.map(function (k) { return num(k, 0); }).join('–') + '</b>' +
-        'That is ' + esc(WALL_WORDS[m.busiest_vs_walls] || '—') + '. Activity fact only — buyer/seller split stays unproven until the ΔOI test.</div>';
+        'That is ' + esc(WALL_WORDS[m.busiest_vs_walls] || '-') + '. Activity fact only — buyer/seller split stays unproven until the ΔOI test.</div>';
     }
     return out;
   }

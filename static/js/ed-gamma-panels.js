@@ -8,7 +8,7 @@
   'use strict';
 
   var usd = window.EdGamma.formatUsd;
-  function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  function px(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
   // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
   function fmtVol(n) {
@@ -58,7 +58,7 @@
       'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
     paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {   // nothing current: no tooltip or colour of the last answer stays
-      ids.forEach(function (id) { txt(id, '—'); var el = document.getElementById(id); if (el) el.style.color = ''; });
+      ids.forEach(function (id) { txt(id, '-'); var el = document.getElementById(id); if (el) el.style.color = ''; });
       txt('klSrc', failed || 'terrain not ready');
       var src0 = document.getElementById('klSrc'); if (src0) { src0.title = ''; src0.style.color = ''; }
       var klb0 = document.getElementById('klBody'); if (klb0) klb0.classList.add('recede');
@@ -79,12 +79,12 @@
     var net = document.getElementById('klNet');
     if (net) {
       var v = d.net_gex_at_spot;
-      net.textContent = (v == null) ? '—' : usd(v);
+      net.textContent = (v == null) ? '-' : usd(v);
       net.style.color = (v == null) ? '' : (v >= 0 ? 'var(--ed-pos-ink)' : 'var(--ed-neg-ink)');
     }
     var reg = document.getElementById('klRegime');
     if (reg) {
-      var rm = REGIME[d.regime] || { t: (d.regime || '—'), c: 'var(--ed-ink-2)' };
+      var rm = REGIME[d.regime] || { t: (d.regime || '-'), c: 'var(--ed-ink-2)' };
       reg.textContent = rm.t; reg.style.color = rm.c;
     }
     // the levels rail recedes while the served levels are STALE
@@ -120,9 +120,9 @@
     var v = ex ? byExp[ex] : (d && d.pcr_all);
     var vv = ex ? byExpVol[ex] : (d && d.pcr_volume_all);
     var scope = ex ? 'exp ' + ex : 'all exp';
-    txt('klPcr', v == null ? '—' : Number(v).toFixed(2));
+    txt('klPcr', v == null ? '-' : Number(v).toFixed(2));
     txt('klPcrScope', 'OI · ' + scope);
-    txt('klPcrVol', vv == null ? '—' : Number(vv).toFixed(2));
+    txt('klPcrVol', vv == null ? '-' : Number(vv).toFixed(2));
     txt('klPcrVolScope', 'volume · ' + scope);
   }
 
@@ -269,8 +269,8 @@
     var call = pick('CALL'), put = pick('PUT');
     txt('sdCtx', px(strike, strike % 1 ? 2 : 0) + (expiry ? ' · ' + esc(expiry.slice(5)) : ''));
     // d2: decimals; none: every digit Schwab sent (its Greeks)
-    function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (d2 == null ? String(v) : v.toFixed(d2)) : esc(v)); }
-    // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "—"; the
+    function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '-' : (typeof v === 'number' ? (d2 == null ? String(v) : v.toFixed(d2)) : esc(v)); }
+    // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "-"; the
     // NET row is this expiry's net GEX at this strike, served on the same /api/chain response --
     // the heatmap's own cell, not GEX-by-Strike's all-expiry total beside one expiry's contracts.
     var net = null;
@@ -281,11 +281,11 @@
     host.innerHTML =
       '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
       '<tr><td class="side c">Call</td><td>' + cell(call, 'openInterest', 0) + '</td><td>' + cell(call, 'totalVolume', 0) +
-      '</td><td>' + cell(call, 'gamma') + '</td><td class="dim">—</td><td>' + cell(call, 'delta') + '</td><td>' + cell(call, 'volatility') + '</td></tr>' +
+      '</td><td>' + cell(call, 'gamma') + '</td><td class="dim">-</td><td>' + cell(call, 'delta') + '</td><td>' + cell(call, 'volatility') + '</td></tr>' +
       '<tr><td class="side p">Put</td><td>' + cell(put, 'openInterest', 0) + '</td><td>' + cell(put, 'totalVolume', 0) +
-      '</td><td>' + cell(put, 'gamma') + '</td><td class="dim">—</td><td>' + cell(put, 'delta') + '</td><td>' + cell(put, 'volatility') + '</td></tr>' +
-      '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
-      (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
+      '</td><td>' + cell(put, 'gamma') + '</td><td class="dim">-</td><td>' + cell(put, 'delta') + '</td><td>' + cell(put, 'volatility') + '</td></tr>' +
+      '<tr class="sd-net"><td class="side">Net</td><td>-</td><td>-</td><td>-</td><td class="' + netCls + '">' +
+      (net == null ? '-' : usd(net)) + '</td><td>-</td><td>-</td></tr>' +
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';
   }
 
@@ -358,9 +358,9 @@
   // tradeTimeInLong), not an ISO date string -- String(...).slice(0,10) on 1789430400000
   // would print the meaningless digit-string "1789430400", not a date.
   function fmtEpochMs(ms) {
-    if (ms == null || isNaN(ms)) return '—';
+    if (ms == null || isNaN(ms)) return '-';
     var d = new Date(Number(ms));
-    if (isNaN(d.getTime())) return '—';
+    if (isNaN(d.getTime())) return '-';
     return d.toISOString().slice(0, 10);
   }
   // ADJUSTED DELIVERABLE: served per contract (Schwab's nonStandard flag, as sent)
@@ -381,10 +381,10 @@
         _flag('ADJUSTED DELIVERABLE', (d.adjusted_deliverable_symbols || []).indexOf(rep.symbol) !== -1),
       ].join('');
       return '<tr><td class="side">' + px(k, k % 1 ? 2 : 0) + '</td>' +
-        '<td>' + (rep.multiplier == null ? '—' : rep.multiplier) + '</td>' +
-        '<td>' + esc(rep.settlementType || '—') + '</td>' +
-        '<td>' + esc(rep.exerciseType || '—') + '</td>' +
-        '<td>' + esc(rep.expirationType || '—') + '</td>' +
+        '<td>' + (rep.multiplier == null ? '-' : rep.multiplier) + '</td>' +
+        '<td>' + esc(rep.settlementType || '-') + '</td>' +
+        '<td>' + esc(rep.exerciseType || '-') + '</td>' +
+        '<td>' + esc(rep.expirationType || '-') + '</td>' +
         '<td>' + fmtEpochMs(rep.lastTradingDay) + '</td>' +
         '<td>' + flags + '</td></tr>';
     }).join('');
@@ -415,11 +415,11 @@
   // every contract of the ticker the daemon streams (its option rule), never a fabricated
   // buy/sell side.
   var OF_CLS_LABEL = { at_bid: 'at bid', at_ask: 'at ask', inside_spread: 'inside',
-    outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '—' };
-  function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(2); }
-  function fmtOfSize(n) { return (n == null || isNaN(n)) ? '—' : String(n); }
+    outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '-' };
+  function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(2); }
+  function fmtOfSize(n) { return (n == null || isNaN(n)) ? '-' : String(n); }
   function fmtOfTime(tsRecv) {
-    if (tsRecv == null) return '—';
+    if (tsRecv == null) return '-';
     var d = new Date(tsRecv * 1000);
     return d.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
   }
@@ -437,21 +437,21 @@
     var body = d.rows.map(function (r) {
       return '<tr>' +
         '<td>' + fmtOfTime(r.ts_recv) + '</td>' +
-        '<td class="of-sym">' + esc(r.symbol || '—') + '</td>' +
-        '<td>' + esc(r.expiry ? r.expiry.slice(5) : '—') + '</td>' +
-        '<td>' + esc(r.type || '—') + '</td>' +
-        '<td>' + (r.strike == null ? '—' : px(r.strike, r.strike % 1 ? 2 : 0)) + '</td>' +
+        '<td class="of-sym">' + esc(r.symbol || '-') + '</td>' +
+        '<td>' + esc(r.expiry ? r.expiry.slice(5) : '-') + '</td>' +
+        '<td>' + esc(r.type || '-') + '</td>' +
+        '<td>' + (r.strike == null ? '-' : px(r.strike, r.strike % 1 ? 2 : 0)) + '</td>' +
         '<td>' + fmtOfPrice(r.bid) + '×' + fmtOfSize(r.bid_size) + '</td>' +
         '<td>' + fmtOfPrice(r.ask) + '×' + fmtOfSize(r.ask_size) + '</td>' +
         '<td>' + fmtOfPrice(r.trade) + '</td>' +
         '<td>' + fmtOfSize(r.size) + '</td>' +
-        '<td>' + (r.premium == null ? '—' : usd(r.premium)) + '</td>' +
+        '<td>' + (r.premium == null ? '-' : usd(r.premium)) + '</td>' +
         '<td>' + fmtVol(r.volume) + '</td>' +
         '<td>' + fmtOfSize(r.oi) + '</td>' +
-        '<td>' + (r.iv == null ? '—' : Number(r.iv).toFixed(1)) + '</td>' +
-        '<td>' + (r.delta == null ? '—' : Number(r.delta).toFixed(3)) + '</td>' +
+        '<td>' + (r.iv == null ? '-' : Number(r.iv).toFixed(1)) + '</td>' +
+        '<td>' + (r.delta == null ? '-' : Number(r.delta).toFixed(3)) + '</td>' +
         '<td><span class="of-cls ' + esc(r.classification || 'unknown') + '">' +
-          esc(OF_CLS_LABEL[r.classification] || '—') + '</span></td></tr>';
+          esc(OF_CLS_LABEL[r.classification] || '-') + '</span></td></tr>';
     }).join('');
     host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
       '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
