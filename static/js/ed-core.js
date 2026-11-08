@@ -771,8 +771,7 @@
   // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
   // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
-    var m = document.querySelector('meta[name="ed-live-ui-port"]');
-    var port = m ? String(m.getAttribute('content') || '') : '';
+    var port = document.querySelector('meta[name="ed-live-ui-port"]').getAttribute('content');
     if (!/^\d+$/.test(port)) return null;
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
   }
