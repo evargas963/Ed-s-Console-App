@@ -19,9 +19,19 @@ agent seam still refuse to move the production checkout.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+from tools.process_lock_guard import (
+    REPO as GUARD_REPO,
+)
+from tools.process_lock_guard import (
+    _primary_worktree_root,
+    prod_checkout_git_move_violations,
+)
+from tools.shell_parse import read
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -83,8 +93,6 @@ print(json.dumps({"armed": armed, "status": status}))
 
 
 def _ci_env() -> dict:
-    import os
-
     env = dict(os.environ)
     env.update(
         {
@@ -106,15 +114,6 @@ def test_the_agent_seam_still_refuses_to_move_the_production_checkout():
     is asserted here rather than assumed: derive the production primary at runtime (never a
     hardcoded operator path) and aim a branch move at it.
     """
-    from tools.process_lock_guard import (
-        REPO as GUARD_REPO,
-    )
-    from tools.process_lock_guard import (
-        _primary_worktree_root,
-        prod_checkout_git_move_violations,
-    )
-    from tools.shell_parse import read
-
     primary = _primary_worktree_root(GUARD_REPO) or GUARD_REPO
     cmd = f'git -C "{primary}" checkout -b feature/should-never-land-here'
     violations = prod_checkout_git_move_violations(read(cmd))
