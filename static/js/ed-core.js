@@ -1027,6 +1027,32 @@
   if (document.readyState === 'complete') init();
   else document.addEventListener('DOMContentLoaded', init);
 
+  // ---- the one intensity rule of every heatmap and bar: how strong a value draws against its
+  // served scale, the straight proportion in [0, 1]; null when the value is unknown or the scale
+  // has no size, which each panel draws as it draws unknown ----
+  function strength(value, scale) {
+    if (value == null || isNaN(value) || !(scale > 0)) return null;
+    return Math.min(1, Math.abs(value) / scale);
+  }
+  function _hex(h) {   // a token's '#rrggbb'
+    var n = parseInt(String(h).trim().slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  // the theme's heat palette (--ed-heat-pos/neg/zero), read once per drawing
+  function heatColors() {
+    var cs = getComputedStyle(document.documentElement);
+    return { pos: _hex(cs.getPropertyValue('--ed-heat-pos')), neg: _hex(cs.getPropertyValue('--ed-heat-neg')),
+      zero: _hex(cs.getPropertyValue('--ed-heat-zero')) };
+  }
+  // a heat cell's colour: the theme's zero toward its positive or negative colour by strength;
+  // null when strength is
+  function heatFill(value, scale, colors) {
+    var t = strength(value, scale); if (t == null) return null;
+    var a = colors.zero, b = value < 0 ? colors.neg : colors.pos;
+    return [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)];
+  }
+  // the text colour that reads on a heat cell's colour: light on dark, dark on light
+  function heatInk(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? '#f4f7fb' : '#0a0e17'; }
+
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, emit: emit,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
@@ -1037,5 +1063,5 @@
     windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText, placeholder: placeholder,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
-    setSubview: setSubview };
+    setSubview: setSubview, strength: strength, heatColors: heatColors, heatFill: heatFill, heatInk: heatInk };
 })();
