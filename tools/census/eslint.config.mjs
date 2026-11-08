@@ -19,7 +19,7 @@ export default [
       "**/*.mjs",
       "**/tests/**/*.js",
       "**/scripts/**/*.js",
-      "**/*.config.*",
+      "**/*.config.{js,mjs,cjs}",
     ],
     languageOptions: {
       ecmaVersion: "latest",

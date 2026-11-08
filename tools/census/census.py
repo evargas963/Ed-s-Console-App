@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tokenize
 from pathlib import Path
 
 import db
@@ -385,24 +386,34 @@ for ln in out.splitlines():
 for ln in run([PY, "-m", "ruff", "format", "--check", ".", "--no-cache"]).splitlines():
     if ln.startswith("Would reformat"):
         add(S, "files ruff format would change", "13", "ruff format", ln)
-lines_matching(
-    [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML", "CSS") and "vendor" not in f],
-    [
-        (r"#\s*noqa", "noqa comments"),
-        (r"#\s*type:\s*ignore", "type: ignore comments"),
-        (r"#\s*fmt:\s*(off|skip)", "format suppressions"),
-        (r"#\s*pragma:\s*no cover", "coverage exclusions"),
-        (r"eslint-disable|@ts-ignore|stylelint-disable", "JS/CSS lint suppressions"),
-        (r"#\s*pyright:\s*ignore", "pyright ignores"),
-        (
-            r"(?:#|//)\s*[a-z]+(?:-[a-z]+)*-ok\b",
-            "exemption markers of hand-built checks (an opt-out the rules forbid)",
-        ),
-    ],
-    S,
-    "locks",
-    "regex",
-)
+# a suppression is a comment: Python's comments as its tokenizer reads them; in the other
+# languages the text after a comment opener on the line
+SUPPRESSIONS = [
+    (r"^#\s*noqa|\s#\s*noqa", "noqa comments"),
+    (r"#\s*type:\s*ignore", "type: ignore comments"),
+    (r"#\s*fmt:\s*(off|skip)", "format suppressions"),
+    (r"#\s*pragma:\s*no cover", "coverage exclusions"),
+    (r"eslint-disable|@ts-ignore|stylelint-disable", "JS/CSS lint suppressions"),
+    (r"#\s*pyright:\s*ignore", "pyright ignores"),
+    (
+        r"[a-z]+(?:-[a-z]+)*-ok\b",
+        "exemption markers of hand-built checks (an opt-out the rules forbid)",
+    ),
+]
+for f in [f for f in ALL_PY if "vendor" not in f]:
+    for tok in tokenize.generate_tokens(io.StringIO(TEXT[f]).readline):
+        if tok.type == tokenize.COMMENT:
+            for pat, cat in SUPPRESSIONS:
+                if re.search(pat, tok.string):
+                    add(S, cat, "locks", "tokenize", f"{f}:{tok.start[0]}: {tok.string[:120]}")
+for f in [
+    f for f in FILES if lang(f) in ("JavaScript", "HTML", "CSS") and "vendor" not in f and f in TEXT
+]:
+    for n, ln in enumerate(TEXT[f].splitlines(), 1):
+        opener = re.search(r"//|/\*|<!--", ln)
+        for pat, cat in SUPPRESSIONS:
+            if opener and re.search(pat, ln[opener.start() :]):
+                add(S, cat, "locks", "regex", f"{f}:{n}: {ln.strip()[:120]}")
 if LINT.exists():
     shutil.rmtree(LINT)
 HEAD.mkdir(parents=True)
@@ -1498,7 +1509,7 @@ for ln in run(
     [
         exe("prettier"),
         "--list-different",
-        "**/*.{js,mjs,css,html,json,md,mdc,yml,yaml,webmanifest}",
+        "**/*.{js,mjs,css,html,json,jsonc,md,mdc,yml,yaml,webmanifest}",
         "!static/vendor/**",
         "!tests/fixtures/**",
         "!**/package-lock.json",
@@ -1603,6 +1614,7 @@ COVERED = (
     ".css",
     ".html",
     ".json",
+    ".jsonc",
     ".webmanifest",
     ".md",
     ".mdc",

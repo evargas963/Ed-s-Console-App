@@ -109,7 +109,6 @@ class ColumnInventory:
     holds for it, None when the column has none."""
 
     name: str
-    declared_type: str
     default_sql: str | None
 
 
@@ -128,7 +127,7 @@ def inventory(db_path: Path) -> tuple[TableInventory, ...]:
     census counts it without writing to it. A file that is not there raises."""
     conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
     try:
-        tables = []
+        tables: list[TableInventory] = []
         for (name,) in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
             "ORDER BY name"
@@ -136,7 +135,7 @@ def inventory(db_path: Path) -> tuple[TableInventory, ...]:
             quoted = name.replace('"', '""')
             (rows,) = conn.execute(f'SELECT count(*) FROM "{quoted}"').fetchone()
             columns = tuple(
-                ColumnInventory(c[1], c[2], c[4])
+                ColumnInventory(c[1], c[4])
                 for c in conn.execute(f'PRAGMA table_info("{quoted}")').fetchall()
             )
             indexes = tuple(

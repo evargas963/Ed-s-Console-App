@@ -76,8 +76,8 @@ def test_a_console_row_is_counted_and_the_sqlite_clock_column_shows_its_default(
     (crosses,) = [t for t in inventory(path) if t.name == "level_crosses"]
 
     assert crosses.rows == 1
-    assert ColumnInventory("created_at", "TEXT", "datetime('now')") in crosses.columns
-    assert ColumnInventory("ticker", "TEXT", None) in crosses.columns
+    assert ColumnInventory("created_at", "datetime('now')") in crosses.columns
+    assert ColumnInventory("ticker", None) in crosses.columns
     assert crosses.indexes == ("idx_cross_ticker_ts",)
 
 
