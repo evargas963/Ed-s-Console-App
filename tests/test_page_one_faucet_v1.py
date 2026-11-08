@@ -96,9 +96,7 @@ def held():
     trade."""
     _publish(_AT.timestamp())
     _daemon(time_et.now())  # live now, as the routes read it
-    with server._terrain_cache_lock:
-        payload = server._terrain_cache[TK]
-    yield payload
+    yield server.published_levels(TK)
     _forget()
 
 
@@ -128,7 +126,7 @@ def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
 
 
 def test_strike_side_sums_split_at_the_live_spot(held):
-    rows = held["_per_strike"]["all"]
+    rows = held.snap.per_strike["all"]
     below = [r for r in rows if r[0] < LIVE]
     above = [r for r in rows if r[0] > LIVE]
     assert below and above, "the real chain has strikes on both sides of the live price"
@@ -140,7 +138,7 @@ def test_strike_side_sums_split_at_the_live_spot(held):
 
 def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
     """Strike Detail's Net row: this expiry's column of the published surface, verbatim."""
-    surf = held["_gamma_surface"]
+    surf = held.gamma_surface
     col = [e["expiry"] for e in surf["expirations"]].index(EXPIRY)
     expected = [[c["strike"], c["gex"][col]] for c in surf["cells"] if c["gex"][col] is not None]
     assert expected, "the real chain yields net GEX cells for its expiry"
@@ -151,7 +149,7 @@ def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
 def test_oi_and_volume_cells_carry_the_served_total(held):
     """The OI/Volume heatmap colours by the cell's served total: Schwab's call OI + put OI at the
     strike, read straight from the chain; the browser adds nothing."""
-    surf = held["_gamma_surface"]
+    surf = held.gamma_surface
     col = [e["expiry"] for e in surf["expirations"]].index(EXPIRY)
     checked = 0
     for c in surf["cells"]:
@@ -243,8 +241,8 @@ def test_the_spot_row_is_served(route):
 def test_put_call_ratios_over_every_expiry_are_served(held):
     """With no expiry selected the Put/Call rows show the whole book, served (the page used to
     pick the first expiry in its list, an expired one on 2026-09-27)."""
-    assert held["pcr_all"] is not None
-    assert held["pcr_all"] == held["pcr_by_expiry"][EXPIRY]  # one expiry: the same book
+    assert held.snap.pcr_all is not None
+    assert held.snap.pcr_all == held.snap.pcr_by_expiry[EXPIRY]  # one expiry: the same book
 
 
 def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
@@ -324,7 +322,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
 
 
 def test_the_largest_gex_strike_is_served(held):
-    rows = held["_per_strike"]["all"]
+    rows = held.snap.per_strike["all"]
     body = json.loads(server.get_terrain_strikes(ticker=TK).body)
     assert body["max_abs_row"] == max(rows, key=lambda r: abs(r[1]))
 

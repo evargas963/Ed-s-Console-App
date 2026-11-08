@@ -1,0 +1,11 @@
+---
+# yamllint's default rules, lines at most 100 columns (AGENTS.md rule 13), and GitHub's `on:` key
+# read as a key, not a yes/no value.
+extends: default
+rules:
+  line-length:
+    max: 100
+  truthy:
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1 # Prettier's own spacing; Prettier owns the format
