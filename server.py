@@ -583,6 +583,12 @@ def _required_ticker(ticker: str | None) -> str:
     return t
 
 
+def unavailable(ticker: str, reason: str, **fields) -> dict:
+    """A route's answer when the value it serves is not held for `ticker`: why, with the
+    route's own `fields`."""
+    return {"ticker": ticker, "available": False, **fields, "reason": reason}
+
+
 # ── THE LEVELS (from the chains the capture daemon fetches) ──────────────────
 @dataclass(frozen=True)
 class PublishedLevels:
@@ -2164,11 +2170,7 @@ def strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, now: f
     method = STRIKE_BAR_METHODS[key]
     levels = published_levels(tk)
     if levels is None:
-        return {
-            "ticker": tk,
-            "available": False,
-            "reason": "no levels published for this ticker yet",
-        }
+        return unavailable(tk, "no levels published for this ticker yet")
     rows = getattr(levels, key)
     spot = resolve_spot(tk, now=now)[0]
     spot_strike = nearest_strike([r[0] for r in rows], spot)
@@ -2254,23 +2256,13 @@ def get_options_tape(
         held = published_levels(tk)
         if held is None:
             return JSONResponse(
-                {
-                    "ticker": tk,
-                    "available": False,
-                    "rows": [],
-                    "reason": "the console holds no chain of this ticker yet",
-                }
+                unavailable(tk, "the console holds no chain of this ticker yet", rows=[])
             )
         symbols = _held_option_symbols_for_ticker(held.contract_symbols, time_et.now())
 
     if not symbols:
         return JSONResponse(
-            {
-                "ticker": tk,
-                "available": False,
-                "rows": [],
-                "reason": "the daemon streams no option contract of this ticker",
-            }
+            unavailable(tk, "the daemon streams no option contract of this ticker", rows=[])
         )
 
     rows: list[dict] = []
@@ -2615,15 +2607,14 @@ def gamma_surface_payload(
         _why = ["the surface is projected when the daemon delivers this ticker's chain"]
     else:
         _why = ["no chain is fetched for this ticker: it is not on the watchlist"]
-    return {
-        "ticker": tk,
-        "symbol": tk,
-        "available": False,
-        "source": "unavailable",
-        "warming": _requested and _warming,
-        "requested": _requested,
-        "reason": " — ".join(r for r in _why if r),
-    }
+    return unavailable(
+        tk,
+        " — ".join(r for r in _why if r),
+        symbol=tk,
+        source="unavailable",
+        warming=_requested and _warming,
+        requested=_requested,
+    )
 
 
 @app.get("/api/terrain")
@@ -3738,16 +3729,12 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     """The ranking stored with the priced chain, for the expiry the operator picks."""
     published = published_levels(tk)
     if published is None or not published.snap.books:  # a snapshot with a book has its price
-        return {
-            "ticker": tk,
-            "available": False,
-            "reason": "no priced chain is held for this ticker",
-        }
+        return unavailable(tk, "no priced chain is held for this ticker")
     live = published.snap
     today = now.strftime("%Y-%m-%d")
     listed = [e for e in _confluence_expiries(live.books, live.expiry_dte) if e["expiry"] >= today]
     if not listed:
-        return {"ticker": tk, "available": False, "reason": "no expiry on this chain is still open"}
+        return unavailable(tk, "no expiry on this chain is still open")
     chosen = expiry
     if not isinstance(chosen, str) or chosen < today:
         live_listed = [e for e in listed if e["dte"] is not None and e["dte"] >= 0]
@@ -3760,7 +3747,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
             if absent
             else "that expiry did not carry days to expiration"
         )
-        return {"ticker": tk, "available": False, "expiries": listed, "reason": reason}
+        return unavailable(tk, reason, expiries=listed)
     # the publication ranked every listed expiry with its days to expiration (_ranked_matrices)
     stored = published.matrix_by_expiry[chosen]
     fetched = published.computed_ts_utc
