@@ -358,15 +358,14 @@ def test_no_lookahead_premarket():
         config=cfg,
     )
     out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
-    assert out.raw_levels.get("prev_day")
-    # No today POC/VAH/VAL in premarket raw: every "poc"-shaped key inside prev_day
-    # must be the pd_-prefixed previous-day form, not an unprefixed today value; each key
-    # is checked inside prev_day itself, so a "today_poc" there is caught.
-    prev_day = out.raw_levels.get("prev_day", {})
-    poc_keys = [k for k in prev_day if "poc" in str(k).lower()]
-    assert poc_keys, "prev_day carries no poc-shaped key at all"
-    assert all(str(k).lower().startswith("pd_") for k in poc_keys), (
-        f"prev_day contains a non-pd_-prefixed poc key: {poc_keys}"
+    labels = {s["label"] for z in out.zones for s in z.source_levels}
+    assert labels & {"PDH", "PDL", "PDC"}
+    # No today POC/VAH/VAL in the premarket zones: every poc-shaped level is the
+    # previous day's PD_ form, never a same-day value.
+    poc_labels = [t for t in labels if "POC" in t]
+    assert poc_labels, "the premarket zones carry no POC at all"
+    assert all(t.startswith("PD_") for t in poc_labels), (
+        f"the premarket zones carry a same-day POC: {poc_labels}"
     )
 
 
