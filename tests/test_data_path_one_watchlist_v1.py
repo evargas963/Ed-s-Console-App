@@ -32,7 +32,9 @@ from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
+from option_contract import read_chain
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
+from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
 
@@ -433,11 +435,8 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
     is not reporting; a chain Schwab refused says Schwab's answer."""
     on, off = "ZZWLON", "ZZWLOFF"
     pages = [push_changes.subscribe(tk) for tk in (on, off)]
-    with server._terrain_cache_lock:
-        server._terrain_cache[off] = {
-            "computed_ts_utc": time_et.now(),
-            "spot": 100.0,
-        }  # levels, no surface
+    # levels, no surface: CRWD's real chain delivered now with no price held
+    server._publish_levels(off, read_chain(CRWD.chain), time_et.now(), chain_spot=(None, None))
     try:
         lmp.record_feed_heartbeat(
             {"ts": time_et.now(), "schwab_socket_open": True, "watchlist": [on]}

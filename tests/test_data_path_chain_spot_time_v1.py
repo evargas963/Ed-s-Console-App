@@ -7,32 +7,22 @@ import json
 import live_market_plane as lmp
 import server as srv
 from option_contract import read_chain
+from tests.real_chains import CRWD
 
 
 def test_the_chain_spot_carries_schwabs_trade_time():
     """The ladder's spot is the daemon's last price, and the time on it is that price's trade
-    time. A feed that is down does not remove either."""
+    time. A feed that is down does not remove either. CRWD's real chain, published by the one
+    producer (_publish_levels) at its capture."""
     tk = "ZZCHAIN"
-    exp = "2026-09-11"
-    symbol = "SPY   260911C00601000"
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
-            "ticker": tk,
-            "spot": 600.0,
-            "expiries": [exp],
-            "_chain": read_chain(
-                [
-                    {
-                        "symbol": symbol,
-                        "putCall": "CALL",
-                        "strikePrice": 601.0,
-                        "expirationDate": exp,
-                    }
-                ]
-            ),
-            "_contract_symbols": frozenset([symbol]),
-            "_chain_fetched_ts": 1.0,
-        }
+    exp = CRWD.chain[0]["expirationDate"][:10]
+    srv._publish_levels(
+        tk,
+        read_chain(CRWD.chain),
+        CRWD.now.timestamp(),
+        chain_spot=(CRWD.spot, CRWD.now.timestamp()),
+        now=CRWD.now,
+    )
     lmp.record_from_level_one_equity(
         tk,
         {"LAST_PRICE": 601.23, "TRADE_TIME_MILLIS": 1790380799830},

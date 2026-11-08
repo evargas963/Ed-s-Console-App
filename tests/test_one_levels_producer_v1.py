@@ -121,9 +121,8 @@ def _put_chain(fetched_ts=_T):
     return _publish(_RECORDS, fetched_ts)
 
 
-def _cached():
-    with server._terrain_cache_lock:
-        return dict(server._terrain_cache[TK])
+def _cached() -> server.PublishedLevels:
+    return server.published_levels(TK)
 
 
 def _drain():
@@ -149,11 +148,11 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation():
     _daemon()
     snap = _put_chain()
     c = _cached()
-    assert c["_per_strike"] is snap.per_strike and c["_vanna_rows"] == server._vanna_rows(snap)
-    assert c["gamma_flip"] == snap.gamma_flip and c["call_wall"] == snap.call_wall
+    assert c.snap.per_strike is snap.per_strike and c.vanna_rows == server._vanna_rows(snap)
+    assert c.snap.gamma_flip == snap.gamma_flip and c.snap.call_wall == snap.call_wall
     full, _ = merge_exposure_books(snap.books.values())
     checked = 0
-    for row in c["_gamma_surface"]["cells"]:  # every strike's cells sum to the levels' book
+    for row in c.gamma_surface["cells"]:  # every strike's cells sum to the levels' book
         total = bucket_metric(full[row["strike"]], "net_gex_1pct")
         if total is not None:
             valued = [g for g in row["gex"] if g is not None]
@@ -166,7 +165,7 @@ def test_published_levels_equal_compute_terrain_on_the_same_inputs():
     _daemon()
     _put_chain()
     expected = compute_terrain(TK, _RECORDS, _SPOT, now=_AT).to_dict()
-    got = _cached()
+    got = _cached().served()
     assert expected["gamma_flip"] is not None, "the chain must price (valued at its capture)"
     for k in (
         "gamma_flip",
@@ -227,9 +226,9 @@ def test_a_pushed_greek_set_prices_the_levels_and_their_time_is_the_push():
     _publish()
     c = _cached()
     pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
-    assert c["_per_strike"] == pushed.per_strike
-    assert c["_per_strike"] != compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
-    assert (c["levels_ts_utc"], c["computed_ts_utc"]) == (_T, _T - 30.0)
+    assert c.snap.per_strike == pushed.per_strike
+    assert c.snap.per_strike != compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
+    assert (c.levels_ts_utc, c.computed_ts_utc) == (_T, _T - 30.0)
 
 
 def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
@@ -247,8 +246,8 @@ def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
         ofs._on_tick_callback = None
     c = _cached()
     pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
-    assert c["_per_strike"] == pushed.per_strike
-    assert c["levels_ts_utc"] == _T
+    assert c.snap.per_strike == pushed.per_strike
+    assert c.levels_ts_utc == _T
 
 
 def test_a_streamed_gamma_alone_does_not_replace_the_chains():
@@ -259,8 +258,8 @@ def test_a_streamed_gamma_alone_does_not_replace_the_chains():
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     c = _cached()
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 1
-    assert c["_per_strike"] == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
+    assert c.gamma_surface["stream_overlay_contracts"] == 1
+    assert c.snap.per_strike == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
@@ -273,7 +272,7 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     _daemon(held=[_A])
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T - 60.0)  # a minute ago
     _publish(chain, _T)
-    surface = _cached()["_gamma_surface"]
+    surface = _cached().gamma_surface
     assert surface["stream_overlay_symbols"] == [_A]  # the stream's volume, the chain newer
     legs = [
         col[side]
@@ -291,9 +290,9 @@ def test_a_streamed_gamma_alone_does_not_apply_before_or_after_the_chain():
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T - 60.0)
     priced = compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
     _put_chain(fetched_ts=_T - 120.0)
-    assert _cached()["_per_strike"] == priced
+    assert _cached().snap.per_strike == priced
     _put_chain(fetched_ts=_T - 30.0)
-    assert _cached()["_per_strike"] == priced
+    assert _cached().snap.per_strike == priced
 
 
 def test_a_streamed_gamma_alone_on_two_contracts_does_not_replace_either():
@@ -301,7 +300,7 @@ def test_a_streamed_gamma_alone_on_two_contracts_does_not_replace_either():
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T)
     _streamed(_B, {"GAMMA": 0.8, "TOTAL_VOLUME": 0}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert _cached()["_per_strike"] == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
+    assert _cached().snap.per_strike == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
 
 
 def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
@@ -311,9 +310,9 @@ def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
     _daemon(held=[])  # the daemon no longer streams A
     _publish()
     c = _cached()
-    assert c["_chain"] is _RECORDS and _RECORDS[0].gamma != 0.9
-    assert c["_gamma_surface"]["stream_overlay_contracts"] == 0
-    assert c["_per_strike"] == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
+    assert c.chain is _RECORDS and _RECORDS[0].gamma != 0.9
+    assert c.gamma_surface["stream_overlay_contracts"] == 0
+    assert c.snap.per_strike == compute_terrain(TK, _RECORDS, _SPOT, now=_AT).per_strike
 
 
 def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
@@ -321,7 +320,7 @@ def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     _streamed(_A, {"TOTAL_VOLUME": 999999}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
-    row = next(r for r in _cached()["_per_strike"]["all"] if r[0] == strike)
+    row = next(r for r in _cached().snap.per_strike["all"] if r[0] == strike)
     assert row[2] >= 999999
 
 
@@ -335,7 +334,7 @@ def test_a_streamed_contracts_volume_is_the_streams_and_its_open_interest_the_ch
     _streamed(_A, {"OPEN_INTEREST": 99999}, _T)
     _publish()
     a = replace(_RECORDS[0], volume=777)
-    assert _cached()["_per_strike"] == (
+    assert _cached().snap.per_strike == (
         compute_terrain(TK, [a, *_RECORDS[1:]], _SPOT, now=_AT).per_strike
     )
 
@@ -345,8 +344,8 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
     _daemon(held=[foreign])
     _streamed(foreign, {"GAMMA": 0.99}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert server._streamed_greeks_for_ticker(_cached()["_contract_symbols"], _T) == {}
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
+    assert server._streamed_greeks_for_ticker(_cached().contract_symbols, _T) == {}
+    assert _cached().gamma_surface["stream_overlay_contracts"] == 0
 
 
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────
@@ -359,25 +358,25 @@ def test_a_reprice_is_at_the_live_price_and_a_new_chain_at_its_own_spot():
     complete."""
     _daemon()
     _put_chain()
-    before = _cached()["_gamma_surface"]
+    before = _cached().gamma_surface
     _daemon(price=_SPOT * 1.02)  # the live price moves
     _publish()
     moved = _cached()
-    assert (moved["spot"], moved["spot_source"], moved["spot_as_of_ts_utc"]) == (
+    assert (moved.snap.spot, moved.spot_source, moved.spot_as_of_ts_utc) == (
         _SPOT * 1.02,
         server.SPOT_SOURCE_PLANE,
         int(_T * 1000) / 1000,  # Schwab's TRADE_TIME_MILLIS
     )
-    assert moved["_gamma_surface"]["spot"] == _SPOT * 1.02
-    assert moved["_gamma_surface"]["cells"] != before["cells"]  # GEX scales with spot
+    assert moved.gamma_surface["spot"] == _SPOT * 1.02
+    assert moved.gamma_surface["cells"] != before["cells"]  # GEX scales with spot
     _publish(
         _RECORDS, _T + 60.0, chain_spot=(_SPOT * 1.01, _T + 55.0)
     )  # the next chain, at its spot
     after = _cached()
-    assert after["_gamma_surface"]["spot"] == _SPOT * 1.01 and after["spot"] == _SPOT * 1.01
-    assert after["spot_as_of_ts_utc"] == _T + 55.0
+    assert after.gamma_surface["spot"] == _SPOT * 1.01 and after.snap.spot == _SPOT * 1.01
+    assert after.spot_as_of_ts_utc == _T + 55.0
     assert (
-        after["_gamma_surface"]["surface_seq"] == before["surface_seq"] + 2
+        after.gamma_surface["surface_seq"] == before["surface_seq"] + 2
     )  # the reprice, then the chain
 
 
@@ -390,7 +389,7 @@ def test_every_ticker_keeps_its_chain_and_heatmap_so_a_switch_shows_at_once():
     _daemon()
     _put_chain()  # published while not viewed
     c = _cached()
-    assert c["_chain"] and c["_gamma_surface"]["cells"]
+    assert c.chain and c.gamma_surface["cells"]
     assert _publish() is not None  # repriced from its kept chain
 
 
@@ -399,7 +398,7 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
     from a live chain served different fields and two labels for the same full chain."""
     _daemon()
     _put_chain()
-    live = _cached()
+    live = _cached().served()
     _publish(
         captures=[
             {
@@ -413,7 +412,7 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
             }
         ]
     )
-    stored = _cached()
+    stored = _cached().served()
     assert {k for k in live if not k.startswith("_")} == {
         k for k in stored if not k.startswith("_")
     }
@@ -442,7 +441,7 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
     _daemon()
     _put_chain(fetched_ts=_T - 600.0)
     _publish()
-    assert _cached()["computed_ts_utc"] == _T - 600.0
+    assert _cached().computed_ts_utc == _T - 600.0
 
 
 def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_no_levels():
@@ -453,7 +452,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     no levels, with its reason."""
     _daemon()
     _put_chain()
-    published = _cached()
+    published = _cached().served()
     _daemon(price=None)  # the price is no longer live
     out = server.get_terrain(ticker=TK)
     for k in ("regime", "net_gex_at_spot", "call_wall", "headline"):
@@ -527,7 +526,7 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
         gate.set()
         _drain()
     assert waiting[0] == server.DELIVERED and waiting[2] == _T + 2
-    assert _cached()["computed_ts_utc"] == _T + 2
+    assert _cached().computed_ts_utc == _T + 2
 
 
 # ── the stored captures: the last session's levels stand, saved and labeled ─────────────────────
@@ -574,8 +573,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
     try:
         assert server._load_stored_levels([tk]) == 1
         _drain()
-        with server._terrain_cache_lock:
-            loaded = dict(server._terrain_cache[tk])
+        loaded = server.published_levels(tk).served()
     finally:
         _forget(tk)
     assert loaded["computed_ts_utc"] == _T
@@ -607,14 +605,13 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
         gate.set()
         _drain()
     try:
-        with server._terrain_cache_lock:
-            held = dict(server._terrain_cache[tk])
+        held = server.published_levels(tk)
     finally:
         _forget(tk)
         with server._chains_waiting_lock:
             server._chains_delivered.discard(tk)
     assert queued == (0 if delivered_first else 1)
-    assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == _T
+    assert held.computed_ts_utc == _T
 
 
 def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
