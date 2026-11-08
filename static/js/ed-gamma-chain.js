@@ -22,7 +22,7 @@
   var _lastScrollContext = null;
 
   function curExpiry() { return window.EdShell.getExpiry(); }
-  function stillChain(tk, exp) { return isChain() && (st().ticker || '') === tk && curExpiry() === exp; }
+  function stillChain(tk, exp) { return isChain() && st().ticker === tk && curExpiry() === exp; }
   // A -> B -> A could let the FIRST A request's response paint over the THIRD (fresh) A
   // request's response. `stillChain` proves the identity (ticker, expiry) still matches NOW,
   // but two requests issued at different times for the identical identity are
@@ -44,8 +44,8 @@
       function (d) { if (current()) render(host, d); },
       function (words) { if (current()) { setSrc(null); window.EdShell.placeholder(host, words); } });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); });
-  function load() { _loader.trigger((st().ticker || '') + '|' + (curExpiry() || '')); }
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker, curExpiry(), signal); });
+  function load() { _loader.trigger(st().ticker + '|' + curExpiry()); }
 
   function render(host, d) {
     setSrc(d);
@@ -114,10 +114,10 @@
         var cell = e.target.closest ? e.target.closest('td') : null;
         if (cell && cell.classList.contains('chn-call') && tr.getAttribute('data-csym')) return selectContract(tr.getAttribute('data-csym'), k, d.expiry);
         if (cell && cell.classList.contains('chn-put') && tr.getAttribute('data-psym')) return selectContract(tr.getAttribute('data-psym'), k, d.expiry);
-        if (window.EdShell) window.EdShell.setStrike(k, d.expiry);   // centre strike -> shared strike only
+        window.EdShell.setStrike(k, d.expiry);   // centre strike -> shared strike only
       });
     });
-    var context = (st().ticker || '') + '|' + (d.expiry || '');
+    var context = st().ticker + '|' + d.expiry;
     var isNewContext = context !== _lastScrollContext;
     _lastScrollContext = context;
     if (isNewContext) {
@@ -129,7 +129,7 @@
   }
 
   function selectContract(symbol, strike, expiry) {
-    if (window.EdShell) window.EdShell.setStrike(strike, expiry);      // exact strike + expiry = shared context
+    window.EdShell.setStrike(strike, expiry);      // exact strike + expiry = shared context
     var host = document.getElementById('chainBody'); if (host) {
       host.querySelectorAll('.chn-selc').forEach(function (n) { n.classList.remove('chn-selc'); });
       host.querySelectorAll('[data-sym="' + (window.CSS && CSS.escape ? CSS.escape(symbol) : symbol) + '"]').forEach(function (n) { n.classList.add('chn-selc'); });

@@ -10,7 +10,7 @@
 
   function st() { return window.EdShell.getState(); }
   function isHeatmap() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'heatmap'; }
-  function ticker() { return (st().ticker || ''); }
+  function ticker() { return st().ticker; }
   function stillHeatmap(tk) { return isHeatmap() && ticker() === tk; }
   function fmtCT(ts) {
     try { return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' }); } catch (e) { return '-'; }
