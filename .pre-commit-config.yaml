@@ -27,3 +27,24 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: no-patch-shapes
+        name: no patch shape on a line this push brings (check_end_to_end, as locks runs it)
+        entry: python -m tools.check_end_to_end --base origin/main
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: no-lost-assertion
+        name: no test assertion lost (check_integrity, as locks runs it)
+        entry: python tools/check_integrity.py --base origin/main
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: no-count-rises
+        name: no locks count rises (check_locks, as locks runs it)
+        entry: python tools/check_locks.py --base origin/main
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
