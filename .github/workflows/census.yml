@@ -8,6 +8,8 @@ name: Census
   pull_request:
   push:
     branches: [main]
+  # run at any time from GitHub's Actions tab
+  workflow_dispatch:
 
 permissions:
   contents: read
