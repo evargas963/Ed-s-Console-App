@@ -3218,9 +3218,9 @@ def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)
             (i for i, e in enumerate(surf["expirations"]) if e["expiry"] == resolved_expiry), None
         )
     )
-    # no surface, or no column for this expiry: no strike has a value, each drawn "-"
+    # no surface, or no column for this expiry: unknown (None), each strike drawn "-"
     net_gex_by_strike = (
-        []
+        None
         if col is None
         else [[c["strike"], c["gex"][col]] for c in surf["cells"] if c["gex"][col] is not None]
     )
