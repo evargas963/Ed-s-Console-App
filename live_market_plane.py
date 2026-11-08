@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from instrument_identity import ticker_storage_key
-from numeric_contract import float_finite_or_none, schwab_count, schwab_number
+from numeric_contract import schwab_count, schwab_number
 from time_et import CLOSED, ET, UNKNOWN, options_open, session_label
 
 #: the services the capture daemon streams the option rule's contracts on
@@ -141,19 +141,8 @@ def record_from_level_one_equity(
         #: LAST_PRICE tick belongs to (candles); never used as the quote time.
         "trade_ts": val("TRADE_TIME_MILLIS"),
         "security_status": val("SECURITY_STATUS"),
-        "quote_time_source": "schwab_streaming_level_one"
-        if quote_ts is not None
-        else "unavailable",
         "server_received_ts": rts,
         "spot_received_ts": snapshot["LAST_PRICE"][1] if "LAST_PRICE" in snapshot else None,
-        "quote_ingestion": "schwab_streaming_level_one",
-        "quote_source_detail": {
-            "spot": "LAST_PRICE",
-            "bid": "BID_PRICE" if bid is not None else None,
-            "ask": "ASK_PRICE" if ask is not None else None,
-            "mid": "schwab_streaming_mark" if mark is not None else "unavailable_missing_mark",
-            "quote_ts": "QUOTE_TIME_MILLIS" if quote_ts is not None else "unavailable",
-        },
     }
     with _lock:
         _by_ticker[t] = out
@@ -183,26 +172,6 @@ def get_quote(ticker: str) -> dict[str, Any] | None:
     with _lock:
         row = _by_ticker.get(t)
         return dict(row) if row else None
-
-
-def plane_row_is_streamed(row: dict) -> bool:
-    """True only for a row the Schwab LEVELONE_EQUITIES stream wrote. Rows the REST
-    refreshers write carry their own quote_ingestion tag and are NOT stream identity."""
-    return (row or {}).get(
-        "quote_ingestion"
-    ) == "schwab_streaming_level_one"  # caps-ok: fail-closed -- no row is not a streamed row
-
-
-def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
-    """True only when this plane row's spot is a native Schwab LAST_PRICE."""
-    if not row or not isinstance(row, dict):
-        return False
-    if float_finite_or_none(row.get("spot")) is None:
-        return False
-    qsd = row.get("quote_source_detail")
-    if not isinstance(qsd, dict):
-        return False
-    return qsd.get("spot") == "LAST_PRICE"
 
 
 #: The daemon sends its status every second; the daemon, and everything it streams, is live
