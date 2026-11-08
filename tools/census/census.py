@@ -212,13 +212,24 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 log.info("census: A")
 S = "A. Code patterns"
 SHAPED = [f for f in FILES if f.endswith(e2e.SHAPED_SUFFIXES) and f in TEXT]
+SWALLOW = re.compile(r"except|swallow|suppress|silenced|thrown away|let pass")
+
+
+def patch_kind(f, line, kind):
+    """A fallback puts an invented value where one is missing; a swallow throws an error away.
+    check_end_to_end gives JS one label for both: a JS line holding a catch is a swallow."""
+    text = kind if f.endswith(".py") else TEXT[f].splitlines()[line - 1]
+    return "swallows" if SWALLOW.search(text) or "catch" in text else "fallbacks"
+
+
 for f in SHAPED:
-    add(S, f"patch shapes: {lang(f)} {area(f)}", "1", "check_end_to_end.shapes")
+    for what in ("fallbacks", "swallows"):
+        add(S, f"{what}: {lang(f)} {area(f)}", "1", "check_end_to_end.shapes")
 for f in SHAPED:
     for line, kind in e2e.shapes(f, TEXT[f]):
         add(
             S,
-            f"patch shapes: {lang(f)} {area(f)}",
+            f"{patch_kind(f, line, kind)}: {lang(f)} {area(f)}",
             "1",
             "check_end_to_end.shapes",
             f"{f}:{line}: {kind}",
@@ -233,11 +244,13 @@ OTHER = {
     "PowerShell": [(r"(?i)-ErrorAction\s+SilentlyContinue", "an error silenced")],
 }
 for f in [f for f in FILES if lang(f) in OTHER and f in TEXT]:
-    add(S, f"patch shapes: {lang(f)} {area(f)}", "1", "regex")
+    for what in ("fallbacks", "swallows"):
+        add(S, f"{what}: {lang(f)} {area(f)}", "1", "regex")
     for n, ln in enumerate(TEXT[f].splitlines(), 1):
         for pat, kind in OTHER[lang(f)]:
             if re.search(pat, ln):
-                add(S, f"patch shapes: {lang(f)} {area(f)}", "1", "regex", f"{f}:{n}: {kind}")
+                what = "swallows" if SWALLOW.search(kind) else "fallbacks"
+                add(S, f"{what}: {lang(f)} {area(f)}", "1", "regex", f"{f}:{n}: {kind}")
 add(S, "text files that are not UTF-8", "13", "git grep -I")
 for f in NOT_UTF8:
     add(S, "text files that are not UTF-8", "13", "git grep -I", f)
@@ -558,12 +571,9 @@ for a in ("product", "tools"):
         "vulture",
     )
 for cat, tool in (
-    ("product modules nothing imports or starts", "ast imports"),
-    ("product modules only tests or tools import", "ast imports"),
     ("page functions nothing calls", "regex"),
     ("CSS custom properties nothing uses", "regex"),
     ("CSS classes no page or script uses", "regex"),
-    ("routes the page never calls", "regex"),
     ("Python packages required that nothing imports, needs or runs", "requirements + pip show"),
     ("JS packages required but never used (check each)", "package.json"),
     ("page files index.html never loads", "regex"),
@@ -641,26 +651,6 @@ ENTRY = {"server.py", "launch.py", "reauth_schwab.py"}
 entry_text = "\n".join(
     TEXT[f] for f in FILES if f.endswith((".bat", ".toml", ".yml", ".mjs", ".ps1")) and f in TEXT
 )
-for f in [f for f in PRODUCT_PY if f not in ENTRY and not f.endswith("__init__.py")]:
-    mod = f[:-3].replace("/", ".")
-    users = {
-        u
-        for name, us in imports_of.items()
-        if name == mod or name.startswith(mod + ".")
-        for u in us
-        if u != f
-    }
-    if not users and mod not in entry_text and Path(f).name not in entry_text:
-        add(S, "product modules nothing imports or starts", "1", "ast imports", f)
-    elif users and all(area(u) != "product" for u in users):
-        add(
-            S,
-            "product modules only tests or tools import",
-            "1",
-            "ast imports",
-            f"{f} <- {', '.join(sorted(users))[:200]}",
-        )
-
 for f in [f for f in PAGE_JS if f in TEXT]:
     for n, ln in enumerate(TEXT[f].splitlines(), 1):
         for m in re.finditer(
@@ -691,18 +681,6 @@ for cls in sorted(set(re.findall(r"\.([a-zA-Z][\w-]*)(?=[\s,:{.\[>+~)])", css_no
     )
     if not built and not re.search(rf"(?<![\w-]){re.escape(cls)}(?![\w-])", markup_js):
         add(S, "CSS classes no page or script uses", "1", "regex", f".{cls}")
-
-for m in re.finditer(r'@app\.(get|post|put|delete|websocket)\("([^"]+)"', TEXT["server.py"]):
-    stem = m.group(2).split("{")[0].rstrip("/")
-    if stem not in ("", "/favicon.ico") and stem not in page_text:
-        tests_naming = sum(1 for f in FILES if area(f) == "tests" and f in TEXT and stem in TEXT[f])
-        add(
-            S,
-            "routes the page never calls",
-            "4",
-            "regex",
-            f"{m.group(1).upper()} {m.group(2)} (tests naming it: {tests_naming})",
-        )
 
 IMPORT_NAME = {
     "python-dotenv": "dotenv",
@@ -1859,6 +1837,293 @@ add(
     "size",
     "git ls-files",
     count=sum(1 for f in FILES if f.endswith(NOT_CODE)),
+)
+
+# =============================================================================================
+# K. WIRING AND NOISE (the first rule: Schwab -> program -> page; every value has one producer;
+# code that serves no route, Schwab field or registered derived value has no job)
+# =============================================================================================
+log.info("census: K")
+S = "K. Wiring and noise"
+METHODS = ("get", "post", "put", "delete", "patch", "websocket")
+routes = []  # (file, line, method, path, function)
+for f in PRODUCT_PY:
+    for node in ast.walk(trees[f]):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            routes += [
+                (f, node.lineno, d.func.attr.upper(), d.args[0].value, node)
+                for d in node.decorator_list
+                if isinstance(d, ast.Call)
+                and isinstance(d.func, ast.Attribute)
+                and d.func.attr in METHODS
+                and d.args
+                and isinstance(d.args[0], ast.Constant)
+                and isinstance(d.args[0].value, str)
+            ]
+add(S, "routes the program serves (reported)", "3", "ast", count=len(routes))
+for cat in (
+    "a route registered twice (one producer)",
+    "routes nothing but tests names (candidates: unneeded)",
+    "a product function more than one route calls (candidates: one producer)",
+):
+    add(S, cat, "3", "ast")
+twice = collections.Counter((m, p) for _f, _n, m, p, _fn in routes)
+for (m, p), n in twice.items():
+    if n > 1:
+        add(S, "a route registered twice (one producer)", "3", "ast", f"{m} {p} ({n} times)")
+CALLERS = {
+    f: TEXT[f]
+    for f in FILES
+    if f in TEXT and area(f) in ("product", "tools") and lang(f) in ("Python", "JavaScript", "HTML")
+}
+CALLERS.update({f: TEXT[f] for f in FILES if f.endswith(".bat") and f in TEXT})
+for f, n, m, p, _fn in routes:
+    if p == "/" or not p.startswith(("/api", "/ws")):
+        continue
+    stem_path = p.split("{")[0]
+    said = re.compile(re.escape(stem_path) + ("" if stem_path.endswith("/") else r"(?![\w-])"))
+    if not any(said.search(t) for c, t in CALLERS.items() if c != f):
+        add(
+            S,
+            "routes nothing but tests names (candidates: unneeded)",
+            "3",
+            "ast",
+            f"{f}:{n} {m} {p}",
+        )
+defined = {
+    node.name
+    for f in PRODUCT_PY
+    for node in ast.walk(trees[f])
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+}
+route_names = {fn.name for *_x, fn in routes}
+by_callee = collections.defaultdict(set)
+for f, n, m, p, fn in routes:
+    for c in ast.walk(fn):
+        if (
+            isinstance(c, ast.Call)
+            and isinstance(c.func, ast.Name)  # `x.get(...)` is a method, not a product function
+            and (name := c.func.id) in defined - route_names
+        ):
+            by_callee[name].add(f"{m} {p}")
+for name, served in sorted(by_callee.items()):
+    if len(served) > 1:
+        add(
+            S,
+            "a product function more than one route calls (candidates: one producer)",
+            "3",
+            "ast",
+            f"{name}: {', '.join(sorted(served))}",
+        )
+
+MODULES = {f.removesuffix(".py").removesuffix("/__init__").replace("/", "."): f for f in PRODUCT_PY}
+ROOTS = ENTRY | {
+    MODULES[m]
+    for f in FILES
+    if f.endswith(".bat") and f in TEXT
+    for m in re.findall(r"-m\s+([\w.]+)", TEXT[f])
+    if m in MODULES
+}
+reached, todo = set(), [f for f in ROOTS if f in trees]
+while todo:
+    f = todo.pop()
+    if f in reached:
+        continue
+    reached.add(f)
+    pkg = f.removesuffix(".py").replace("/", ".").rsplit(".", 1)[0]
+    for node in ast.walk(trees[f]):
+        names = []
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                base = ".".join([*pkg.split(".")[: len(pkg.split(".")) - node.level + 1], base])
+            names = [base, *(f"{base}.{a.name}" for a in node.names)]
+        for name in names:
+            parts = name.strip(".").split(".")
+            todo += [
+                MODULES[".".join(parts[:k])]
+                for k in range(1, len(parts) + 1)
+                if ".".join(parts[:k]) in MODULES
+            ]
+add(
+    S,
+    f"product Python files the program loads, of {len(PRODUCT_PY)} (reported)",
+    "1",
+    "ast imports",
+    count=len(reached & set(PRODUCT_PY)),
+)
+add(S, "product Python files the program never loads (not on the wire)", "1", "ast imports")
+for f in sorted(set(PRODUCT_PY) - reached):
+    add(
+        S,
+        "product Python files the program never loads (not on the wire)",
+        "1",
+        "ast imports",
+        f"{f} ({TEXT[f].count(chr(10))} lines)",
+    )
+GUARDS = sorted(
+    {
+        m
+        for f in FILES
+        if f.startswith(".claude/") and f.endswith(".json") and f in TEXT
+        for m in re.findall(r"tools/[\w/]+\.py", TEXT[f])
+    }
+)
+add(
+    S,
+    "agent guards and hooks, lines: they restrain the agent and serve no screen (reported)",
+    "size",
+    "wc",
+    count=sum(TEXT[g].count("\n") for g in GUARDS if g in TEXT),
+)
+
+WORK_PY = [
+    (r"\bhasattr\(", "a type guessed at run time (`hasattr`)"),
+    (r"except\s*\(?\s*(ImportError|ModuleNotFoundError)", "an import worked around"),
+    (r"\bsys\.platform\b|\bos\.name\s*==", "a platform special case"),
+    (r"\btime\.sleep\(", "timing worked around (`time.sleep`)"),
+]
+WORK_JS = [
+    (r"\?\.", "a missing object read as undefined (`?.`)"),
+    (r"typeof\s+[\w.$]+\s*[!=]==?\s*['\"]undefined['\"]", "a value guessed present (`typeof`)"),
+    (r"\bsetTimeout\([^)]*,\s*\d+\s*\)", "timing worked around (`setTimeout` with a delay)"),
+]
+NAMED = re.compile(
+    r"(?i)(#|//|/\*|\*).*\b(workaround|hack|kludge|temporar(y|ily)|for now|band-?aid|shim|"
+    r"legacy|backward[- ]compat\w*)\b"
+)
+for f in [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML") and f in TEXT]:
+    if "vendor" in f:
+        continue
+    cat = f"workarounds: {lang(f)} {area(f)}"
+    add(S, cat, "1", "regex")
+    pats = WORK_PY if f.endswith(".py") else WORK_JS
+    if area(f) == "tests":
+        pats = [p for p in pats if "timing" not in p[1]]  # tests' sleeps: section E
+    for n, ln in enumerate(TEXT[f].splitlines(), 1):
+        for pat, kind in pats:
+            if re.search(pat, ln):
+                add(S, cat, "1", "regex", f"{f}:{n}: {kind}")
+        if NAMED.search(ln):
+            add(S, cat, "1", "regex", f"{f}:{n}: named a workaround by its author")
+by_line("workarounds: ", "; ")
+
+FEED = ("app/market_data/schwab/", "option_contract.py", "numeric_contract.py")
+DICT_READ = "dict reads with .get outside the Feed (a dict whose keys nothing guarantees; rule 12)"
+add(S, DICT_READ, "12", "ast")
+for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:
+    for node in ast.walk(trees[f]):
+        if (
+            isinstance(node, ast.Call)
+            and called_name(node) == "get"
+            and isinstance(node.func, ast.Attribute)
+        ):
+            add(S, DICT_READ, "12", "ast", f"{f}:{node.lineno}")
+
+out = run(
+    [
+        PY,
+        "-m",
+        "ruff",
+        "check",
+        ".",
+        "--isolated",
+        "--select",
+        "C901",
+        "--config",
+        "lint.mccabe.max-complexity = 0",
+        "--output-format",
+        "concise",
+        "--no-cache",
+        "--exit-zero",
+    ]
+)
+scores = collections.defaultdict(list)
+for ln in out.splitlines():
+    if m := re.match(r"(.+?):(\d+):\d+: C901 `(.+?)` is too complex \((\d+) > 0\)", ln):
+        f = m.group(1).replace("\\", "/")
+        scores[area(f)].append((int(m.group(4)), f"{f}:{m.group(2)} {m.group(3)}"))
+for a, fs in sorted(scores.items()):
+    add(
+        S,
+        f"complexity, McCabe, {a}: total (reported)",
+        "1",
+        "ruff C901",
+        count=sum(s for s, _ in fs),
+    )
+    add(S, f"complexity, McCabe, {a}: functions over 10, ruff's default cap", "1", "ruff C901")
+    for s, it in sorted(fs, reverse=True):
+        if s > 10:
+            add(
+                S,
+                f"complexity, McCabe, {a}: functions over 10, ruff's default cap",
+                "1",
+                "ruff C901",
+                f"{it} ({s})",
+            )
+
+# =============================================================================================
+# L. FLAKY AND BROWSER TESTS (a test that passes and fails on the same code; Playwright's own)
+# =============================================================================================
+log.info("census: L")
+S = "L. Flaky and browser tests"
+FLAKY = "CI workflows that failed and passed on one commit (last 1,000 runs)"
+add(S, FLAKY, "9/15", "gh run list")
+runs = json.loads(
+    run(
+        [
+            "gh",
+            "run",
+            "list",
+            "--limit",
+            "1000",
+            "--json",
+            "headSha,workflowName,conclusion,attempt,databaseId",
+        ],
+        stdout_only=True,
+    )
+)
+seen_runs = collections.defaultdict(set)
+for r in runs:
+    seen_runs[(r["headSha"][:8], r["workflowName"])].add(r["conclusion"])
+    if r["attempt"] > 1 and r["conclusion"] == "success":
+        add(
+            S,
+            FLAKY,
+            "9/15",
+            "gh run list",
+            f"{r['headSha'][:8]} {r['workflowName']}: passed on re-run {r['databaseId']}",
+        )
+for (sha, wf), ends in sorted(seen_runs.items()):
+    if {"success", "failure"} <= ends:
+        add(S, FLAKY, "9/15", "gh run list", f"{sha} {wf}: failed and passed")
+E2E = [f for f in FILES if f.startswith("tests/e2e/") and f.endswith((".js", ".mjs")) and f in TEXT]
+lines_matching(
+    E2E,
+    [
+        (r"waitForTimeout\(", "Playwright: fixed waits (`waitForTimeout`)"),
+        (
+            r"fulfill\(.*(JSON\.stringify\(\s*[\[{]|json:\s*[\[{]|body:\s*['\"`])",
+            "Playwright: hand-built route answers, not captured Schwab data",
+        ),
+        (
+            r"\btest(\.describe)?\.(skip|fixme|fail|only)\(",
+            "Playwright: skipped, expected-fail or only",
+        ),
+    ],
+    S,
+    "9/15",
+    "regex",
+    skip_comment=True,
+)
+lines_matching(
+    [f for f in FILES if Path(f).name.startswith("playwright.config")],
+    [(r"retries:\s*[1-9]", "Playwright: retries (a failure re-run until it passes)")],
+    S,
+    "9/15",
+    "regex",
 )
 
 # =============================================================================================

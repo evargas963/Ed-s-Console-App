@@ -3,6 +3,18 @@
   "decisions": [
     {
       "verdict": "ok",
+      "category": "a product function more than one route calls",
+      "pattern": "^(_required_ticker|ticker_storage_key):",
+      "reason": "reads the route's own input, the ticker asked for; produces no served value"
+    },
+    {
+      "verdict": "ok",
+      "category": "a product function more than one route calls",
+      "pattern": "^ct_label:",
+      "reason": "the one Central Time formatter (AGENTS.md rule 13), not a producer of a value"
+    },
+    {
+      "verdict": "ok",
       "category": "clock taken",
       "pattern": "in (get_\\w+|health|api_\\w+) \\[route\\]",
       "reason": "a route is an entry point (AGENTS.md rule 11)"
