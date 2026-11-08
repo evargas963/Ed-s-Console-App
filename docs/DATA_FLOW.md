@@ -631,7 +631,7 @@ the program.
   colour scale) and `note`: with no live price and no pan the rows are the middle of the chain,
   and the note says so (`WINDOW_NO_PRICE`, drawn on the panel; no row is marked as the price).
   The confluence matrix takes only the rows and the note, which it serves among its `notes`; its
-  colours stay on the whole expiry's scale (`docs/derived_register.md` Heat color).
+  colours stay on the whole expiry's scale, its `peaks` (`docs/derived_register.md` Heat color).
   The heatmap's view (`server._surface_view`) also picks the columns (the selected expiry
   alone; for Auto the nearest unexpired the page fits, `cols`; Wider twice that; All every one;
   an expired column is a past observation, drawn labelled EXPIRED, and with none unexpired Auto
