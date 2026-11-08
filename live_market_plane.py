@@ -290,15 +290,6 @@ def daemon_status(now: float) -> dict[str, Any] | None:
     return feed_now(now).status
 
 
-def held_by_daemon(service: str, now: float) -> frozenset[str]:
-    """The symbols the daemon holds on Schwab `service` at `now`; none while its heartbeat
-    is not current (unknown is never confirmation)."""
-    feed = feed_now(now)
-    if feed.status is None:
-        return frozenset()
-    return feed.held.get(service, frozenset())
-
-
 def not_trading(symbol: str | None, service: str, now: float) -> str | None:
     """Why `symbol`'s values on Schwab `service` are not live at `now`, or None in a valid session
     (time_et.session_label): no valid session, that /markets answer not held, for an option today's
