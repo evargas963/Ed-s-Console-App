@@ -720,7 +720,7 @@ def _schwab_token_creation_ts() -> float | None:
 
 def terrain_staleness(
     computed_ts_utc: float | None,
-    ticker: str | None = None,
+    ticker: str,
     *,
     now: float,
     levels_ts_utc: float | None = None,
@@ -739,9 +739,7 @@ def terrain_staleness(
     option value the levels hold (`levels_ts_utc`: the chain, or a value pushed since) and its
     age."""
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
-    failure = str(
-        _terrain_refresh_last_error.get(ticker_storage_key(ticker) if ticker else "", "") or ""
-    )
+    failure = _terrain_refresh_last_error.get(ticker_storage_key(ticker))
     state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
     age = None if levels_ts_utc is None else now - float(levels_ts_utc)
     return {
@@ -758,7 +756,7 @@ def terrain_staleness(
 
 
 def _levels_state(
-    computed_ts_utc: float | None, ticker: str | None, now: float, failure: str
+    computed_ts_utc: float | None, ticker: str, now: float, failure: str | None
 ) -> tuple[str, str]:
     """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness. While the daemon asks
     Schwab for nothing (its status's `chains_waiting`: a refused sign-in), that is the why."""
