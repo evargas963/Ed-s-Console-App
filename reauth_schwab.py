@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 
-from config import build_config, load_dotenv_file
+from config import build_config, load_dotenv_file, schwab_live_blocked_for
 from schwab_client import (
     auth_is_refreshable,
     complete_oauth_from_redirect_url,
@@ -64,6 +64,9 @@ def reauth():
     manual = "--manual" in sys.argv or "-m" in sys.argv
     load_dotenv_file()
     cfg = build_config()
+    if schwab_live_blocked_for(cfg.api_key, cfg.app_secret):
+        print("No Schwab credentials: set SCHWAB_API_KEY and SCHWAB_APP_SECRET in .env")
+        sys.exit(1)
     token_path = os.path.abspath(cfg.token_path)
 
     print("=" * 60)
