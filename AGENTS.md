@@ -324,9 +324,13 @@ then the rule binds with no machine check.
   or what instead (operator 2026-11-07: "once i tell you do something, you must do it. you do not
   get to choose", "this is non negotiable", "you must enforce this rule"). It pushes back only when
   the thing is not allowed or not possible, and says so with the reason at once. Enforced by:
-  `tools/wiring_rules.py` records every message he sends as a numbered order, and the Stop hook
-  `tools/keep_going.py` refuses to end a turn, whatever SHAPE's row says, while any order lacks a
-  line `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>` (`tests/test_keep_going_v1.py`,
+  `tools/wiring_rules.py` records every message he sends as a numbered message, read by the agent
+  as an order with what it breaks or conflicts with, or as not one, put to him to correct
+  (operator 2026-11-08: "you must ask if it's an order and if it is an order then you must
+  immediately tell me if it breaks anything"), and the Stop hook
+  `tools/keep_going.py` refuses to end a turn, whatever SHAPE's row says, while any message lacks
+  its reading or any order a line `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>`
+  (`tests/test_keep_going_v1.py`,
   `tests/test_wiring_rules_v1.py`); that the evidence is true and a pushback's reason real — the
   builder's audit (rule 14), no machine check.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
