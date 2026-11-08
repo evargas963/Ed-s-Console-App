@@ -3,7 +3,7 @@
 // the producer itself to real data.
 function served(d) {
   const byK = new Map();
-  for (const c of d.contracts || []) {
+  for (const c of d.contracts) {
     const k = Number(c.strikePrice);
     if (!byK.has(k)) byK.set(k, { call: [], put: [] });
     byK.get(k)[String(c.putCall).toUpperCase() === 'PUT' ? 'put' : 'call'].push(c);
