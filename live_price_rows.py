@@ -44,8 +44,7 @@ def _trade_age_sec(trade_ts: float | None, now: float) -> float | None:
 def _spot_of(row: dict[str, Any] | None) -> float | None:
     """A plane row's live price: its Schwab LAST_PRICE as the stream sent it, None while the row
     has none (never received, or sent as not a number)."""
-    streamed = bool(row) and lmp.plane_row_is_streamed(row)
-    return float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
+    return None if row is None else row["spot"]
 
 
 def spot(ticker: str) -> float | None:
@@ -62,11 +61,10 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     tk = ticker_storage_key(ticker)
     label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", now)
     row = lmp.get_quote(tk) if tk else None
-    streamed = bool(row) and lmp.plane_row_is_streamed(row)
     spot = _spot_of(row)
 
     def field(name: str):
-        return row.get(name) if streamed else None
+        return None if row is None else row[name]
 
     trade_ts = field("trade_ts")
     quote_ts = field("exchange_quote_ts")
@@ -101,7 +99,6 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "trade_ts": trade_ts,  # Schwab TRADE_TIME (epoch s)
         "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
         "trade_age_sec": _trade_age_sec(trade_ts, now),
-        "ts_recv": row.get("server_received_ts") if row else None,
-        "quote_ingestion": row.get("quote_ingestion") if row else None,
+        "ts_recv": field("server_received_ts"),
         "server_ts": now,
     }
