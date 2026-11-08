@@ -560,8 +560,8 @@ def exposures_have_dollar_gex(exposures: dict[float, dict]) -> bool:
 def key_level_strikes_with_oi(exposures: dict[float, dict]) -> list[float]:
     """Strikes whose OI is KNOWN and positive (strike_total_oi -- the one reader)."""
     out: list[float] = []
-    for s in sorted(float(k) for k in exposures):
-        tot = strike_total_oi(exposures.get(s, {}))
+    for s, bucket in sorted(exposures.items()):
+        tot = strike_total_oi(bucket)
         if tot is not None and tot > 0:
             out.append(s)
     return out
@@ -600,7 +600,9 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
     }
 
 
-def compute_zero_dte_gamma_share(exposures_all: dict, exposures_0dte: dict) -> float | None:
+def compute_zero_dte_gamma_share(
+    exposures_all: dict[float, dict], exposures_0dte: dict[float, dict]
+) -> float | None:
     """% of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
 
     share = sum(|net_gex_1pct|) over the 0DTE book / sum(|net_gex_1pct|) over the full book,
@@ -622,7 +624,7 @@ def compute_zero_dte_gamma_share(exposures_all: dict, exposures_0dte: dict) -> f
     if total <= 0:
         return None
     zero = 0.0
-    for v in (exposures_0dte or {}).values():
+    for v in exposures_0dte.values():
         x = bucket_metric(v, "net_gex_1pct")
         if x is not None:
             zero += abs(x)
