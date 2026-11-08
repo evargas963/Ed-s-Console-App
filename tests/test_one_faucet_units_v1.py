@@ -44,7 +44,8 @@ def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
     expiry must not create a same-day share (it was pooled into the 0DTE book)."""
     chain, spot = CRWD.chain, CRWD.spot
     base = compute_terrain("CRWD", read_chain(chain), spot, now=CRWD.now).zero_dte_gamma_share_pct
-    top = max(chain, key=lambda c: c.get("gamma") or 0.0)  # a contract that carries gamma
+    # the contract with the most gamma among those Schwab sent a gamma for
+    top = max((c for c in chain if c.get("gamma") is not None), key=lambda c: c["gamma"])
     orphan = {k: v for k, v in top.items() if k not in ("expirationDate", "daysToExpiration")}
     orphan["openInterest"] = 100_000
     assert base == 0.0
