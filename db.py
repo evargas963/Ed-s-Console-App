@@ -103,6 +103,55 @@ class LevelCrossEvent:
     timeframe: str
 
 
+@dataclass(frozen=True)
+class ColumnInventory:
+    """One column as SQLite's table_info reports it. `default_sql` is the DEFAULT clause SQLite
+    holds for it, None when the column has none."""
+
+    name: str
+    default_sql: str | None
+
+
+@dataclass(frozen=True)
+class TableInventory:
+    """One table of a database: its row count, columns and indexes."""
+
+    name: str
+    rows: int
+    columns: tuple[ColumnInventory, ...]
+    indexes: tuple[str, ...]
+
+
+def inventory(db_path: Path) -> tuple[TableInventory, ...]:
+    """Every table of the database at `db_path`, read through a read-only connection, so the
+    census counts it without writing to it. A file that is not there raises."""
+    conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    try:
+        tables: list[TableInventory] = []
+        for (name,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
+            "ORDER BY name"
+        ).fetchall():
+            quoted = name.replace('"', '""')
+            (rows,) = conn.execute(f'SELECT count(*) FROM "{quoted}"').fetchone()
+            columns = tuple(
+                ColumnInventory(c[1], c[4])
+                for c in conn.execute(f'PRAGMA table_info("{quoted}")').fetchall()
+            )
+            indexes = tuple(
+                i
+                for (i,) in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? "
+                    "AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                    (name,),
+                ).fetchall()
+            )
+            tables.append(TableInventory(name, rows, columns, indexes))
+        return tuple(tables)
+    finally:
+        conn.close()
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 # DATABASE MANAGER
 # ════════════════════════════════════════════════════════════════════════════════
