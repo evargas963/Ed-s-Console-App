@@ -239,3 +239,42 @@ def test_a_whole_protected_tree_find_delete_and_cmd_c_are_refused():
         "C:\\Git\\usr\\bin\\rm.exe -rf /tmp/scratch",
     ):
         assert bash_violations(cmd) == [], cmd
+
+
+FOLDER = "changes the shell's folder"
+
+
+@pytest.mark.parametrize(
+    "cmd, powershell",
+    [
+        ("cd tools", False),
+        ("cd /c/x && git status", False),
+        ("git status; cd ..", False),
+        ('for w in a b; do (cd "$w" && git log -1); done', False),
+        ("pushd tools && ls; popd", False),
+        ("chdir C:\\x", False),
+        ('bash -c "cd tools && ls"', False),
+        ("Set-Location C:\\x", True),
+        ("Push-Location C:\\x; git log -1; Pop-Location", True),
+        ("cd C:\\x", True),
+        ("sl C:\\x", True),
+        ("SET-LOCATION C:\\x", True),
+    ],
+)
+def test_every_change_of_folder_is_refused_in_every_shell(cmd, powershell):
+    """The hooks are found from the session's folder; a command that moves it is refused."""
+    assert any(FOLDER in b for b in bash_violations(cmd, powershell=powershell)), cmd
+
+
+@pytest.mark.parametrize(
+    "cmd, powershell",
+    [
+        ("git -C /c/x status", False),
+        ("echo 'cd tools'", False),
+        ('grep -n "cd /d" start_ed_console.bat', False),
+        ("Get-Location", True),
+        ("python -c \"import subprocess; subprocess.run(['git', 'log'], cwd='x')\"", False),
+    ],
+)
+def test_naming_a_folder_without_moving_there_is_allowed(cmd, powershell):
+    assert not any(FOLDER in b for b in bash_violations(cmd, powershell=powershell)), cmd

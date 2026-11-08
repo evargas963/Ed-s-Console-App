@@ -131,7 +131,7 @@
         ' unavailable</div><div class="sm">not in this surface — choose another expiry, or All Expirations</div></div>';
       return;
     }
-    var measure = (window.EdShell && window.EdShell.getMeasure) ? window.EdShell.getMeasure() : 'gex';
+    var measure = window.EdShell.getMeasure();
     _lastSurface = surface;
     // the table is rebuilt only for a new publication or a new window, else its status refreshes
     var rev = [surface.ticker, surface.surface_seq, view.scope, view.centre, measure,
@@ -197,7 +197,7 @@
     if (srow && srow.scrollIntoView) srow.scrollIntoView({ block: 'center' });
     host.querySelectorAll('.hcell').forEach(function (c) {
       c.addEventListener('click', function () {   // the shared selection: every panel follows this strike
-        if (window.EdShell) window.EdShell.setStrike(Number(c.getAttribute('data-strike')), c.getAttribute('data-expiry'));
+        window.EdShell.setStrike(Number(c.getAttribute('data-strike')), c.getAttribute('data-expiry'));
       });
     });
     var firstRow = host.querySelector('tbody tr');
@@ -215,7 +215,7 @@
 
   function applyStrikeHighlight(host) {
     host = host || document.getElementById('heatBody'); if (!host) return;
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    var sel = (window.EdShell.getState()).selStrike;
     host.querySelectorAll('.hcell.sel-strike').forEach(function (n) { n.classList.remove('sel-strike'); });
     if (sel == null) return;
     host.querySelectorAll('.hcell[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('sel-strike'); });
