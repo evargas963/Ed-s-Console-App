@@ -27,6 +27,20 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: compileall
+        name: every Python file compiles (as hardening runs it)
+        entry: python -m compileall -q -x "([\\/](\.venv|venv|node_modules|__pycache__)[\\/])" .
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: one-reader
+        name: one module reads each Schwab field (check_one_reader, as hardening runs it)
+        entry: python -m tools.check_one_reader --base origin/main
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
       - id: no-patch-shapes
         name: no patch shape on a line this push brings (check_end_to_end, as locks runs it)
         entry: python -m tools.check_end_to_end --base origin/main

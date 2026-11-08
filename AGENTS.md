@@ -110,8 +110,9 @@ enfocement instead from now on"). `gh` is allowed by a list and `gh api` only re
 
 Each rule names what enforces it and where it runs. "(in force)" means it runs today: at commit
 (`.pre-commit-config.yaml`: the credential scan, the line-ending check, `ruff check .`, `ruff format
---check .`), at push (the same file: `check_end_to_end`, `check_integrity` and `check_locks` against
-`origin/main`, so a patch or a lost assertion never leaves the machine) or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full` or
+--check .`), at push (the same file: compileall, `check_one_reader`, `check_end_to_end`, `check_integrity`
+and `check_locks` against `origin/main`, so nothing `hardening` or `locks` refuses leaves the
+machine) or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full` or
 `pytest-windows` (`.github/workflows/pytest.yml`) job. "(locks)" means it runs in
 `.github/workflows/locks.yml`, a required job too. "Step N" is the SHAPE step that turns the check on; until
 then the rule binds with no machine check.
