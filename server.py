@@ -676,13 +676,15 @@ _SCHWAB_TOKEN_WARN_DAYS = 5.0
 _SCHWAB_TOKEN_RED_DAYS = 6.0
 
 
-def schwab_token_countdown(creation_ts: float | None, now: float) -> dict:
-    """The token's urgency at `now` from the token file's creation_timestamp."""
+def schwab_token_countdown(token: tuple[float | None, str | None], now: float) -> dict:
+    """The token's urgency at `now` from the token file's creation_timestamp, or, when the file
+    gives none, why (_schwab_token_creation_ts)."""
+    creation_ts, unreadable = token
     if creation_ts is None:
         return {
             "schwab_token_age_days": None,
             "schwab_token_urgency": "unknown",
-            "schwab_token_note": "token file unreadable — collection may be dead",
+            "schwab_token_note": f"{unreadable} — collection may be dead",
         }
     age_days = (now - float(creation_ts)) / 86400.0
     if age_days >= _SCHWAB_TOKEN_RED_DAYS:
@@ -710,13 +712,14 @@ def schwab_token_countdown(creation_ts: float | None, now: float) -> dict:
     }
 
 
-def _schwab_token_creation_ts() -> float | None:
-    """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
+def _schwab_token_creation_ts() -> tuple[float | None, str | None]:
+    """creation_timestamp from schwab_token.json, or None (never a fake age) with why the file
+    gives none, by its error's type, which the screen's note shows (its message names a path)."""
     try:
         raw = json.loads(Path(TOKEN_PATH).read_text(encoding="utf-8"))
-        return float(raw["creation_timestamp"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
+        return float(raw["creation_timestamp"]), None
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return None, f"token file unreadable ({type(e).__name__})"
 
 
 def terrain_staleness(
