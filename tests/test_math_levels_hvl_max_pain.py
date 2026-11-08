@@ -7,7 +7,7 @@ from math_levels import (
 
 def test_compute_max_pain_returns_none_for_sparse_chain():
     assert compute_max_pain({}) is None
-    assert compute_max_pain({100.0: {"call_oi": 10.0, "put_oi": 0.0}}) is None
+    assert compute_max_pain({100.0: {"call_oi": 10.0, "put_oi": 0.0, "oi_unreported": 0}}) is None
 
 
 def test_compute_max_pain_skips_strikes_with_missing_multiplier():

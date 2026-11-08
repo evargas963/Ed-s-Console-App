@@ -180,8 +180,9 @@ def _strike_bucket(exposures_by_strike: dict[float, dict], strike: float) -> dic
             # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
             # real dollar values. Set explicitly at build; never inferred from values.
             "dollarized": False,
-            "call_oi": None,
-            "put_oi": None,
+            # each leg's sums: 0.0 over no contract; None once a contract's value was not sent
+            "call_oi": 0.0,
+            "put_oi": 0.0,
             "call_oi_mult": 0.0,
             "put_oi_mult": 0.0,
             # NOTE: These are exposure-scaled buckets (gamma*OI*mult, delta*OI*mult)
@@ -201,8 +202,8 @@ def _strike_bucket(exposures_by_strike: dict[float, dict], strike: float) -> dic
             "put_gex_1pct": 0.0,
             "net_gex_1pct": 0.0,
             # traded contracts per leg (Schwab totalVolume)
-            "call_volume": None,
-            "put_volume": None,
+            "call_volume": 0.0,
+            "put_volume": 0.0,
         }
     return exposures_by_strike[strike]
 
@@ -259,18 +260,18 @@ def compute_exposures_by_strike(
         side = c.side
         leg = side.lower()
         vol = c.volume
-        if vol is None:
+        if vol is None:  # not sent: the leg's volume is not known
             b["volume_unreported"] += 1
-        else:
-            k = "call_volume" if side == "CALL" else "put_volume"
-            b[k] = vol if b[k] is None else float(b[k]) + vol
+            b[f"{leg}_volume"] = None
+        elif b[f"{leg}_volume"] is not None:
+            b[f"{leg}_volume"] += vol
 
-        if oi is None:
+        if oi is None:  # not sent: the leg's open interest is not known
             missing += 1
             b["oi_unreported"] += 1
-        else:
-            prev = b[f"{leg}_oi"]
-            b[f"{leg}_oi"] = oi if prev is None else float(prev) + oi
+            b[f"{leg}_oi"] = None
+        elif b[f"{leg}_oi"] is not None:
+            b[f"{leg}_oi"] += oi
 
         mult = c.multiplier
         if oi is None or mult is None:  # the contract's exposure terms are not known
@@ -375,7 +376,7 @@ def exposure_books(
 
 def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]:
     """One book from books over DISJOINT contracts: every leg field a sum of the books' legs (a
-    leg no contract reported stays None: None + x = x), each flag an OR, and each net field
+    sum not known in one book is not known in the merge), each flag an OR, and each net field
     computed from the merged legs by the book's own rule (_finish_bucket). The legs are the same
     sums one compute_exposures_by_strike call over all the contracts gives, up to float addition
     order."""
@@ -392,10 +393,9 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
                 continue
             for k, v in bucket.items():
                 if k in _BUCKET_FLAGS:
-                    cur[k] = cur.get(k, False) or v
-                elif v is not None and not k.startswith("net_"):
-                    c = cur.get(k)
-                    cur[k] = v if c is None else c + v
+                    cur[k] = cur[k] or v
+                elif not k.startswith("net_"):
+                    cur[k] = None if v is None or cur[k] is None else cur[k] + v
     for b in merged.values():
         _finish_bucket(b)
     return merged, _diagnostics(total, used, missing)
@@ -452,29 +452,19 @@ def strike_total_oi(bucket: dict) -> float | None:
 
 def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
     """(call OI, put OI) at one strike when its OI is known (see strike_total_oi), else None.
-    A leg with no positive-OI contract is a KNOWN 0.0 -- every contract there reported OI."""
-    if not isinstance(bucket, dict) or bucket.get("oi_unreported") != 0:
+    A leg with no contract listed is a known 0.0, the sum of none."""
+    if bucket["oi_unreported"] != 0:
         return None
-    legs = []
-    for key in ("call_oi", "put_oi"):
-        if bucket.get(key) is None:
-            legs.append(0.0)  # known: no contract on this leg carried positive OI
-            continue
-        v = bucket_metric(bucket, key)
-        if v is None:  # present but not a finite number -> not known
-            return None
-        legs.append(v)
-    return legs[0], legs[1]
+    return bucket["call_oi"], bucket["put_oi"]
 
 
 def strike_volume_legs(bucket: dict) -> tuple[float, float] | None:
     """(call, put) session volume at one strike when every contract there reported totalVolume
     (0 is a real zero), else None. A leg with no listed contract is a known 0.0. THE one reader:
     GEX-by-Strike rows, heatmap cells and the put/call volume ratio."""
-    if not isinstance(bucket, dict) or bucket.get("volume_unreported") != 0:
+    if bucket["volume_unreported"] != 0:
         return None
-    c, p = bucket.get("call_volume"), bucket.get("put_volume")
-    return (0.0 if c is None else float(c)), (0.0 if p is None else float(p))
+    return bucket["call_volume"], bucket["put_volume"]
 
 
 def strike_total_volume(bucket: dict) -> float | None:
