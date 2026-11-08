@@ -1,15 +1,19 @@
 """The operator's five rules, put in front of the agent on every message he sends
 (UserPromptSubmit). Wired by `.claude/settings.json`.
 
-    python tools/wiring_rules.py < payload.json
+    python -m tools.wiring_rules < payload.json
 Prints Claude Code's hook JSON with the rules as `additionalContext`. It refuses nothing: that they
-were applied is the builder's audit (AGENTS.md rule 14).
+were applied is the builder's audit (AGENTS.md rule 14). It also records the message as the
+session's next order (tools/keep_going.record_order), which the Stop hook holds the turn open on
+until the agent answers it.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+
+from tools.keep_going import record_order
 
 RULES = (
     "The operator's five rules (they decide every question):\n"
@@ -28,10 +32,21 @@ RULES = (
     " would a bank do? Is it repo wide? Is every link repaired at its source?"
 )
 
+#: what the agent is told about the message it is reading, when the message is an order
+ORDER = (
+    "\nThis message is ORDER {n}: do it; you do not choose. End the turn with "
+    "`ORDER {n} DONE: <evidence>`, or `ORDER {n} PUSHBACK: <reason>` only when it is not "
+    "allowed or not possible."
+)
+
 
 def main() -> int:
     payload = json.load(sys.stdin)
-    out = {"hookEventName": payload["hook_event_name"], "additionalContext": RULES}
+    said = RULES
+    n = record_order(payload)
+    if n is not None:
+        said += ORDER.format(n=n)
+    out = {"hookEventName": payload["hook_event_name"], "additionalContext": said}
     print(json.dumps({"hookSpecificOutput": out}))
     return 0
 

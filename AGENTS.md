@@ -110,7 +110,9 @@ enfocement instead from now on"). `gh` is allowed by a list and `gh api` only re
 
 Each rule names what enforces it and where it runs. "(in force)" means it runs today: at commit
 (`.pre-commit-config.yaml`: the credential scan, the line-ending check, `ruff check .`, `ruff format
---check .`) or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full` or
+--check .`), at push (the same file: compileall, `check_one_reader`, `check_end_to_end`, `check_integrity`
+and `check_locks` against `origin/main`, so nothing `hardening` or `locks` refuses leaves the
+machine) or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full` or
 `pytest-windows` (`.github/workflows/pytest.yml`) job. "(locks)" means it runs in
 `.github/workflows/locks.yml`, a required job too. "Step N" is the SHAPE step that turns the check on; until
 then the rule binds with no machine check.
@@ -260,7 +262,11 @@ then the rule binds with no machine check.
   check — ENF-12.
 - Say whether a runtime change is live or on disk until a restart. Deployed means production at the
   merge commit, restarted, and the screen checked during market hours (the `deploy` skill).
-  Enforced by: no machine check — ENF-12.
+  Production runs main at all times (operator 2026-11-07, after a Windows Update restart left Ed
+  Console down 25 hours): enforced by the Stop hook `tools/keep_going.py`, which refuses a stop while
+  the production checkout is not at its `origin/main` or nothing listens on the console's port,
+  unless the message begins `WAITING ON OPERATOR:` (`tests/test_keep_going_v1.py`); the screen
+  check during market hours — no machine check, ENF-12.
 - Never kill a commit hook mid-run. Enforced by: no machine check — ENF-12.
 - Settle code, test and design questions with these rules, the banking analogy, Python's guidelines
   and outside research, and say what was decided and why. Bring the operator what is his:
@@ -296,11 +302,11 @@ then the rule binds with no machine check.
   to a change of request rates, limits or settings, CLAUDE.md item 5;
   the next bullet's stop list: his stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive
   data action,
-  a product decision), said in a message that begins `WAITING ON OPERATOR:`; or a wait on CI,
-  every open pull request of the work in CI with Auto-fix on, so the app wakes the session when CI
-  ends, said in a message that begins `WAITING ON CI:` and naming each pull request (operator
-  2026-11-07: "allow the monitor so you can see. you can turn on auto fix ... i want to be able to
-  walk away while you work"; the agent never polls CI itself). From the third
+  a product decision), said in a message that begins `WAITING ON OPERATOR:`. A wait on CI is not
+  a stop: every pull request has auto-merge and Auto-fix on, so it merges by itself or the app wakes
+  the session on a failure, and the next step starts meanwhile (operator 2026-11-07: "i want to be
+  able to walk away while you work"; "you cannot continue stopping"; the agent never polls CI
+  itself). From the third
   refused stop in a row since the operator last wrote, what is being done is suspect (operator
   2026-10-30: "at that point in time i would suspect that what you are doing isn't working"): the
   agent does not try again what already failed, finds the cause down to the line of code or data
@@ -313,6 +319,15 @@ then the rule binds with no machine check.
   failed, it is not working" and the rest of the above (`tests/test_keep_going_v1.py`); that a
   stop marked so is one the rules require, and that the next approach differs — no machine check,
   ENF-12.
+- Once the operator tells the agent to do something, it does it; it does not choose whether, when
+  or what instead (operator 2026-11-07: "once i tell you do something, you must do it. you do not
+  get to choose", "this is non negotiable", "you must enforce this rule"). It pushes back only when
+  the thing is not allowed or not possible, and says so with the reason at once. Enforced by:
+  `tools/wiring_rules.py` records every message he sends as a numbered order, and the Stop hook
+  `tools/keep_going.py` refuses to end a turn, whatever SHAPE's row says, while any order lacks a
+  line `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>` (`tests/test_keep_going_v1.py`,
+  `tests/test_wiring_rules_v1.py`); that the evidence is true and a pushback's reason real — the
+  builder's audit (rule 14), no machine check.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. A daemon or console start or clean stop needs no

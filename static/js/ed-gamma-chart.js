@@ -12,7 +12,7 @@
   var usd = window.EdGamma.formatUsd;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function ctTime(sec) { try { return new Date(sec * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function isChart() {
     var s = st();
     return s.workspace === 'options' && ['gamma', 'dex', 'oi'].indexOf(s.subview) !== -1 && s.view === 'chart';
@@ -120,7 +120,7 @@
   }
   function paintHead(el, bars, win, prof, sd, spot, tradeTime) {
     var n = prof.name;
-    var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
+    var ab = window.EdShell.asOfBadge;
     var lastT = bars.length ? bars[bars.length - 1].t : null;
     var asof = (lastT ? '<span class="asof">price ' + tfLabel() + ' · ' + ctTime(lastT) + ' CT</span>' : '') +
       (sd ? ab({ label: n + ' terrain', state: sd.levels_state, when: sd.levels_time_ct,

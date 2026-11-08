@@ -10,18 +10,18 @@
   var AS_SENT = 'as_sent';
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function isChain() { var s = st(); return s.workspace === 'options' && s.subview === 'chain'; }
 
   function setSrc(d) {
     var el = document.getElementById('chSrc'); if (!el) return;
-    el.innerHTML = (window.EdShell && window.EdShell.chainScopeBadge) ? window.EdShell.chainScopeBadge(d) : '';
+    el.innerHTML = window.EdShell.chainScopeBadge(d);
   }
 
   // auto-scroll to spot only the first time a ticker+expiry is rendered
   var _lastScrollContext = null;
 
-  function curExpiry() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || null; }
+  function curExpiry() { return window.EdShell.getExpiry(); }
   function stillChain(tk, exp) { return isChain() && (st().ticker || '') === tk && curExpiry() === exp; }
   // A -> B -> A could let the FIRST A request's response paint over the THIRD (fresh) A
   // request's response. `stillChain` proves the identity (ticker, expiry) still matches NOW,
@@ -57,7 +57,7 @@
     var desired = window.EdFlow.selected();
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
-    var filterNull = !(window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry());
+    var filterNull = !(window.EdShell.getExpiry());
     var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '-') +
       (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + esc(d.n_strikes) + ' strikes' +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
