@@ -35,7 +35,6 @@
   ];
 
   function state() {
-    if (!window.EdShell) return null;
     return window.EdShell.getState();
   }
 
@@ -59,7 +58,7 @@
 
   function loadImpl(signal) {
     var st = state();
-    if (!st || st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
+    if (st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
     var tk = st.key || st.ticker;
     var box = document.getElementById('cmBody');
     if (!box) return;
@@ -82,7 +81,7 @@
 
   function load() {
     var st = state();
-    if (!st || st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
+    if (st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
     var tk = st.key || st.ticker;
     _loader.trigger((tk == null ? '' : tk) + '|' + (expiry == null ? '' : expiry));
   }

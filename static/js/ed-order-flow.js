@@ -17,7 +17,7 @@
   function int(n) { return (n == null || isNaN(n)) ? '—' : String(Math.round(Number(n))); }
   function st() { return window.EdShell.getState(); }
   function isBook() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'book'; }
-  function ticker() { return (st().ticker || ''); }
+  function ticker() { return st().ticker; }
   function host() { return document.getElementById('obBody'); }
   function stillBook(tk) { return isBook() && ticker() === tk; }
 

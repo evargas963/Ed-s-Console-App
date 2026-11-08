@@ -12,7 +12,7 @@
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function st() { return window.EdShell.getState(); }
   function isMap() { var s = st(); return s.workspace === 'liquidity' && s.subview === 'map'; }
-  function ticker() { return (st().ticker || ''); }
+  function ticker() { return st().ticker; }
   function host() { return document.getElementById('liqmBody'); }
   function stillMap(tk) { return isMap() && ticker() === tk; }
   function fetchJson(url, signal) {
