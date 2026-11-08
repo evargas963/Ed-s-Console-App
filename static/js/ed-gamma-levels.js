@@ -17,7 +17,7 @@
     if (s.workspace === 'liquidity' && s.subview === 'levels') return 'lvlBody';
     return null;
   }
-  function ticker() { return (window.EdShell.getState()).ticker || ''; }
+  function ticker() { return window.EdShell.getState().ticker; }
 
   function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
   function loadImpl(tk, signal) {

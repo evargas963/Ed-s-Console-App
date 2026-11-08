@@ -21,7 +21,7 @@
   // auto-scroll to spot only the first time a ticker+expiry is rendered
   var _lastScrollContext = null;
 
-  function curExpiry() { return (window.EdShell.getExpiry()) || null; }
+  function curExpiry() { return window.EdShell.getExpiry(); }
   function stillChain(tk, exp) { return isChain() && (st().ticker || '') === tk && curExpiry() === exp; }
   // A -> B -> A could let the FIRST A request's response paint over the THIRD (fresh) A
   // request's response. `stillChain` proves the identity (ticker, expiry) still matches NOW,

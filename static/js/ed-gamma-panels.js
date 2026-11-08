@@ -32,7 +32,7 @@
     var s = window.EdShell.getState();
     return s.workspace === 'options' && (s.subview === 'gamma' || s.subview === 'dex' || s.subview === 'oi');
   }
-  function ticker() { return (window.EdShell.getState()).ticker || ''; }
+  function ticker() { return window.EdShell.getState().ticker; }
 
   var REGIME = {
     LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)', tone: 'up' },
@@ -111,12 +111,12 @@
   }
 
   // ---------- Put/Call OI and volume <- /api/terrain pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
-  function expiryFilter() { return (window.EdShell.getExpiry()) || ''; }
+  function expiryFilter() { return window.EdShell.getExpiry(); }
   function paintPcr(d) {
     var byExp = (d && d.pcr_by_expiry) || {};
     var byExpVol = (d && d.pcr_volume_by_expiry) || {};
     // the selected expiry, else the whole book -- both served; the page picks no expiry itself
-    var ex = expiryFilter() || '';
+    var ex = expiryFilter();
     var v = ex ? byExp[ex] : (d && d.pcr_all);
     var vv = ex ? byExpVol[ex] : (d && d.pcr_volume_all);
     var scope = ex ? 'exp ' + ex : 'all exp';
@@ -407,8 +407,7 @@
   // keyed on ticker+expiry: a context change aborts the read in flight (makeCoalescedLoader)
   function loadStructures() {
     if (!inStructures()) return;
-    var exp = (window.EdShell.getExpiry()) || '';
-    _structuresLoader.trigger(ticker() + '|' + exp);
+    _structuresLoader.trigger(ticker() + '|' + window.EdShell.getExpiry());
   }
 
   // ---------- Options Flow tape ------------
