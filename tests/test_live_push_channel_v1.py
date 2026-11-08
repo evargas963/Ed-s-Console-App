@@ -19,17 +19,22 @@ bound with bind_daemon) run on one event loop, as capture.run runs them. These t
 from __future__ import annotations
 
 import asyncio
+import json
+import socket
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
+from websockets.asyncio.client import connect
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import capture, live_push, live_ui
+from calibration.complete_chain_capture import chain_messages
 from stream_spine import (
     LATEST,
     HealthRegistry,
@@ -85,6 +90,15 @@ async def _until(pred, timeout=5.0):
     return False
 
 
+def listener() -> tuple[socket.socket, str]:
+    """Open a listening socket of the test's own and return it with its address.
+
+    Its port is the system's pick as it binds, as capture.open_sockets opens the program's.
+    """
+    sock = socket.create_server(("127.0.0.1", 0))
+    return sock, f"ws://127.0.0.1:{sock.getsockname()[1]}"
+
+
 def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
     beat stamped by `clock`."""
@@ -108,19 +122,18 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
     ui_stats: dict = {}
     daemon = capture.Daemon(bus, HealthRegistry(), [])
     server = asyncio.create_task(
-        live_push.serve_live_push(stop, daemon.console_frame, port=0, stats=stats)
+        live_push.serve_live_push(stop, daemon.console_frame, listener()[0], stats=stats)
     )
     ui = asyncio.create_task(
         live_ui.serve_live_ui(
             stop,
+            listener()[0],
             heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
-            host="127.0.0.1",
-            port=0,
             stats=ui_stats,
         )
     )
     follower = asyncio.create_task(daemon.follow_market(stop))
-    assert await _until(lambda: stats.get("listening") and ui_stats.get("listening"))
+    assert await _until(lambda: "clients" in stats and "clients" in ui_stats)  # both serving
     ofs.bind_daemon(daemon)
     assert ofs.start_order_flow_stream(on_tick_callback=on_tick, on_chain_callback=on_chain)
     try:
@@ -172,13 +185,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     callback, as start_order_flow_stream sets it, sleeps); the feed, live and holding SPY, reads
     live at every sample a route thread takes while it works through them. In regular hours: the
     beats and the reads run from RTH_INSTANT."""
-    import json as _json
-    import threading
-    from pathlib import Path
-
-    from calibration.complete_chain_capture import chain_messages
-
-    contracts = _json.loads(
+    contracts = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(
             encoding="utf-8"
         )
@@ -374,17 +381,15 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
     """A handler blocked waiting for its client's next frame must not keep the daemon's local
     socket open: stopping the daemon with a client attached (launch.py stop's connection, as a
     console's once was) hung forever before the fix."""
-    from websockets.asyncio.client import connect
 
     async def run():
         stop = asyncio.Event()
         stats: dict = {}
-        server = asyncio.create_task(
-            live_push.serve_live_push(stop, [].append, port=0, stats=stats)
-        )
-        assert await _until(lambda: stats.get("listening"))
+        sock, url = listener()
+        server = asyncio.create_task(live_push.serve_live_push(stop, [].append, sock, stats=stats))
+        assert await _until(lambda: "clients" in stats)  # serving
         try:
-            async with connect(stats["listening"]):
+            async with connect(url):
                 assert await _until(lambda: stats["clients"] == 1)
                 stop.set()  # the client still connected
                 await asyncio.wait_for(asyncio.shield(server), timeout=3.0)
