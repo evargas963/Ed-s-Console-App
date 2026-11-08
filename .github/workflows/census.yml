@@ -1,0 +1,93 @@
+---
+# The census of everything in the repository that must reach 0 (tools/census/census.py), on every
+# pull request and on main. On a pull request the base is counted too, by the head's census (one
+# ruler), and the job summary shows before and after; every item is in the artifact.
+name: Census
+
+"on":
+  pull_request:
+  push:
+    branches: [main]
+  # run at any time from GitHub's Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ED_CI_OFFLINE: "1"
+      ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+      SCHWAB_API_KEY: "ci-not-live-placeholder"
+      SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: head
+          fetch-depth: 0 # branches and history are counted
+
+      - name: Check out the base
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: base
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: Install the program's and the census's Python checkers
+        working-directory: head
+        run: >-
+          uv pip install --system -r requirements-dev.txt -r requirements.txt
+          -r tools/census/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: head/tools/census/package-lock.json
+
+      - name: Install the census's checkers for every other language
+        run: npm ci --prefix head/tools/census
+
+      - name: Count the head (after)
+        working-directory: head
+        run: python -m tools.census.census ../census-out/after
+
+      - name: Count the base with the head's census (before)
+        if: github.event_name == 'pull_request'
+        working-directory: head
+        run: python -m tools.census.census ../census-out/before --repo ../base
+
+      - name: Before and after in the job summary
+        if: github.event_name == 'pull_request'
+        working-directory: head
+        run: >-
+          python -m tools.census.compare ../census-out/before/census_*.md
+          ../census-out/after/census_*.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The report in the job summary
+        run: cat census-out/after/census_*.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Every item as an artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: census
+          path: census-out/
