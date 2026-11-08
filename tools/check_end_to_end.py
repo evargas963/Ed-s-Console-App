@@ -392,9 +392,11 @@ def _literal(node: ast.AST) -> bool:
 
 
 def _absence_reads(tree: ast.AST) -> set[int]:
-    """The excepts that serve an absent file as missing: a `try` of one statement whose except
-    names only ABSENT errors and returns None, the file's form of `d.get(k)`, which a file
-    read has none of."""
+    """Return the excepts that serve an absent file as missing.
+
+    Each is in a `try` of one statement, names only ABSENT errors and returns None: the file's
+    form of `d.get(k)`, which a file read has none of.
+    """
     return {
         id(h)
         for t in ast.walk(tree)
