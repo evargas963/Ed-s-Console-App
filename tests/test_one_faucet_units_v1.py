@@ -44,7 +44,8 @@ def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
     expiry must not create a same-day share (it was pooled into the 0DTE book)."""
     chain, spot = CRWD.chain, CRWD.spot
     base = compute_terrain("CRWD", read_chain(chain), spot, now=CRWD.now).zero_dte_gamma_share_pct
-    top = max(chain, key=lambda c: c.get("gamma") or 0.0)  # a contract that carries gamma
+    # the contract with the most gamma among those Schwab sent a gamma for
+    top = max((c for c in chain if c.get("gamma") is not None), key=lambda c: c["gamma"])
     orphan = {k: v for k, v in top.items() if k not in ("expirationDate", "daysToExpiration")}
     orphan["openInterest"] = 100_000
     assert base == 0.0
@@ -86,7 +87,7 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
 
 def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_missing():
     """Both ratios are served (operator 2026-09-27): OI (positions held) and volume (today's
-    trading, Cboe's convention). A strike with no call listed has no call volume, not a zero."""
+    trading, Cboe's convention). A strike with no call listed adds 0 calls: the sum of none."""
     from math_exposure_core import put_call_volume_ratio
 
     book = {
@@ -97,7 +98,7 @@ def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_
     book[105.0]["volume_unreported"] = 1
     assert put_call_volume_ratio(book) is None, "a contract with no volume is not zero volume"
     book[105.0]["volume_unreported"] = 0
-    book[110.0] = {"call_volume": None, "put_volume": 50.0, "volume_unreported": 0}
+    book[110.0] = {"call_volume": 0.0, "put_volume": 50.0, "volume_unreported": 0}
     assert put_call_volume_ratio(book) == pytest.approx(550.0 / 500.0)
 
 
