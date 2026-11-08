@@ -393,6 +393,24 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk: the footer names the bars source only while this ticker has bars', async ({ page }) => {
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      let body = { available: false };
+      if (url.includes('/api/levels')) body = LEVELS;
+      else if (url.includes('/api/bars1m')) body = url.includes('ticker=SPY') ? BARS : { bars: [] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await routeWatchlist(page, ['SPY', 'MU']);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const bars = page.locator('#tdmFoot span', { hasText: 'Bars:' }).locator('b');
+    await expect(bars).toHaveText('streamed 1m bars');
+    await page.evaluate(() => window.EdShell.setTicker('MU'));
+    await expect(page.locator('#tdmChartEmpty')).toContainText('No bars for MU');
+    await expect(bars).toHaveText('-');
+  });
+
   test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
     await intercept(page);
     const opened = [];

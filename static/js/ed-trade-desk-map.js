@@ -189,8 +189,7 @@
         $('tdmChartEmpty').hidden = bars.length > 0;
         $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
           : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
-        paintChartOverlays(); paintQueue(); openView();
-        var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
+        paintChartOverlays(); paintQueue(); openView(); paintFooter();
       } else if (bars.length) {
         S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
       }
@@ -629,7 +628,7 @@
     var host = $('tdmFoot'); if (!host) return;
     var t = S.terrain, m = S.micro, L = S.levels;
     host.innerHTML = [
-      'Bars: <b id="tdmBarsSrc">' + esc(($('tdmBarsSrc') || {}).textContent || '-') + '</b>',
+      'Bars: <b>' + (S.barsAnswered === S.gen && S.bars.length ? 'streamed 1m bars' : '-') + '</b>',
       'Book: <b>' + esc((m && m.provenance && m.provenance.book_source) || '-') + '</b>',
       'Levels: <b>' + esc((L && L.bar_source) || '-') + '</b>',
       'Options: <b>' + esc(t && !t.error ? (t.chain_basis || '-') + ' chain · ' + (t.strikes_used == null ? '-' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + ' contracts' : '-') + '</b>',
