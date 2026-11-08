@@ -1,0 +1,295 @@
+{
+  "about": "Issues no machine counts yet, each found by hand (the 2026-11-06 census, its 50 decisions, the 2026-11-07 database inventory). census.py counts them under 'I. Found by hand'. An item leaves only when it is fixed, or when a count in census.py covers it.",
+  "items": [
+    {
+      "category": "computed value: Schwab sends it",
+      "item": "option mid (bid+ask)/2: Schwab sends option MARK (LEVELONE_OPTIONS field 37), equal in 99.95% (decision 1)"
+    },
+    {
+      "category": "computed value: no screen, no job",
+      "item": "total dealer vanna (decision 2)"
+    },
+    {
+      "category": "computed value: decide show or delete",
+      "item": "share of gamma expiring today, 0DTE (decision 3)"
+    },
+    {
+      "category": "computed value: home-made",
+      "item": "how far the top gamma strike leads the next, Abs gamma lead % (decision 4)"
+    },
+    {
+      "category": "computed value: home-made",
+      "item": "pin score, not even served (decision 5)"
+    },
+    {
+      "category": "computed value: home-made",
+      "item": "pin candidate, empty on 8 of 8 tickers (decision 6)"
+    },
+    {
+      "category": "computed value: decide show or delete",
+      "item": "25-delta risk reversal, needs a true 30-day tenor (decision 7)"
+    },
+    {
+      "category": "computed value: home-made",
+      "item": "wall ranges 68.2% (decision 8)"
+    },
+    {
+      "category": "computed value: home-made",
+      "item": "GSF/GRC half-gamma prices, empty on 6 of 8 (decision 9)"
+    },
+    {
+      "category": "computed value: wrong text",
+      "item": "posture and headline: wrong-side text (decision 10)"
+    },
+    {
+      "category": "computed value: home-made",
+      "item": "the read's lines (decision 11)"
+    },
+    {
+      "category": "computed value: home-made weights",
+      "item": "confluence score per strike: keep as ours or replace (decision 12)"
+    },
+    {
+      "category": "computed value: wrong method",
+      "item": "per-strike IV should use the out-of-money side (decision 13)"
+    },
+    {
+      "category": "computed value: all zero",
+      "item": "score slopes, all 0.00 (decision 14)"
+    },
+    {
+      "category": "computed value: decide show or delete",
+      "item": "spread / mark (decision 15)"
+    },
+    {
+      "category": "computed value: home-made thresholds",
+      "item": "liquidity card smoothing, 10%/70% zones, CHOPPY: register as ours (decision 16)"
+    },
+    {
+      "category": "computed value: no job",
+      "item": "book slope, concentration (decision 17)"
+    },
+    {
+      "category": "computed value: home-made",
+      "item": "book wall candidates 3x median (decision 18)"
+    },
+    {
+      "category": "computed value: one producer",
+      "item": "top-of-book size imbalance (decision 19)"
+    },
+    {
+      "category": "computed value: conflicts with DATA_FLOW §6 item 9",
+      "item": "tape pressure, cumulative delta by tick rule (decision 20)"
+    },
+    {
+      "category": "computed value: conflicts with DATA_FLOW §6 item 9",
+      "item": "options trades at bid/ask/inside by quote rule (decision 21)"
+    },
+    {
+      "category": "computed value: wrong, three producers",
+      "item": "liquidity zones: one producer, typed by side of price (decision 22)"
+    },
+    {
+      "category": "computed value: no job",
+      "item": "zone extra fields except spot_location (decision 23)"
+    },
+    {
+      "category": "computed value: register",
+      "item": "value shift, VWAP vs value: register the 0.2% as ours (decision 24)"
+    },
+    {
+      "category": "computed value: no job",
+      "item": "auction word (decision 25)"
+    },
+    {
+      "category": "substitution, conflicts with first rule",
+      "item": "a reported 0 count replaced by the last count (decision 26)"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "net gamma at spot: book_net_gex vs gamma_at_price vs GSF interpolation"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "front-expiry Black-Scholes gamma/delta (operator-decided, DF §6 item 10: confirm still wanted)"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "daily candle: Schwab daily, chart D roll-up, ATR's today candle"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "bar roll-up: terrain_atr.roll_up and server.aggregate_bars"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "68% value expansion: two copies, ties broken opposite ways"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "linear interpolation: math_levels.py two copies"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "whole-book merge: terrain_engine and server"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "tick-rule walk coded twice in l1_trade_observation.py"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "touch imbalance: book level 1 vs Level 1 sizes"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "nearest strike: 3 rules (lower on tie, lowest above, bisect)"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "ATM IV computed twice"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "max-metric strike: ties broken two ways"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "age text: server, fmtAge, trade-desk age, 4 inline copies"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "page number formatting: 5 copies, different decimals"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "heat color: server linear, page pow(t, 0.34)"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "prior close: stream field 12 and REST"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "net GEX peak always equals HVP or LVP"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "gross gamma (confluence) same as Abs gamma metric"
+    },
+    {
+      "category": "one value, several names",
+      "item": "net_gex_at_spot and flip_diag.gamma_at_spot"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "distance to spot: 4 producers"
+    },
+    {
+      "category": "one value, several producers",
+      "item": "pin: pin_candidate, absolute_gamma_strike, 0DTE Abs gamma"
+    },
+    {
+      "category": "one value, several names",
+      "item": "max_pain_dte equals front expiry_dte"
+    },
+    {
+      "category": "wrong on screen",
+      "item": "the live price is added as a level: +1 to every spot zone's score, label forced to Pivot / value (8 of 8)"
+    },
+    {
+      "category": "wrong on screen",
+      "item": "zone label ignores side of price: SPY Resistance below price, NVDA Support above"
+    },
+    {
+      "category": "wrong on screen",
+      "item": "options_level_count misses ABS_GAMMA, NET_GEX_PEAK, MAX_PAIN"
+    },
+    {
+      "category": "wrong on screen",
+      "item": "zone persistence always 1, first/last_snapshot always live"
+    },
+    {
+      "category": "wrong on screen",
+      "item": "read text 'lower edge, wait at the put wall' with price already below it (SPY, TSLA)"
+    },
+    {
+      "category": "wrong on screen",
+      "item": "key delta strike 5.0 on TSLA and AMD"
+    },
+    {
+      "category": "wrong on screen",
+      "item": "LVP/HVP at chain edges (SPY 800, QQQ 800, AMD 600)"
+    },
+    {
+      "category": "wrong on screen",
+      "item": "book walls out of step with Level 1 (QQQ bid wall above the bid)"
+    },
+    {
+      "category": "name clash",
+      "item": "the liquidity card calls its imbalance bands zones too"
+    },
+    {
+      "category": "register",
+      "item": "derived register has 25 rows; about 89 served derived values are not in it; no test holds it"
+    },
+    {
+      "category": "tests not trusted",
+      "item": "prior-day test passed while checking our close, not Schwab's: every test's expected value needs a source check"
+    },
+    {
+      "category": "clock typed by hand",
+      "item": "9:30 in liquidity_value_engine.py (census D counts it)"
+    },
+    {
+      "category": "clock typed by hand",
+      "item": "index list time_et._INDEX_CLOSE_UNDERLYINGS (operator-decided: confirm)"
+    },
+    {
+      "category": "rounding in calculation",
+      "item": "value area rounds inside liquidity_models 129-131 (rule 5: round only on screen)"
+    },
+    {
+      "category": "Schwab sends it",
+      "item": "weekly and monthly candles, today's candle, isInTheMoney computed by us"
+    },
+    {
+      "category": "slow screen",
+      "item": "/api/health over 1 s in 103 of 677 samples"
+    },
+    {
+      "category": "second reader",
+      "item": "the token file read a second time (server._schwab_token_creation_ts)"
+    },
+    {
+      "category": "Schwab sends it twice",
+      "item": "/chains still sends a streamed contract's open interest, volume and quote fields, which the stream already pushes (STREAM-ONE, rule 3)"
+    },
+    { "category": "too big", "item": "_publish_levels 150 lines, mixed jobs" },
+    { "category": "flaky test", "item": "Liquidity-card browser test" },
+    {
+      "category": "flaky test",
+      "item": "tests/e2e/console-gamma-asof.spec.js:123 on Windows (REVIEW row)"
+    },
+    {
+      "category": "database",
+      "item": "which tables take the 82.8 GB of ed_console.db: not measured"
+    },
+    {
+      "category": "database",
+      "item": "old 113 GB stream_capture file kept aside in data/old_stream_capture_2026-10-13/ (STREAM-DB-SWITCH)"
+    },
+    {
+      "category": "not counted: no checker",
+      "item": "Makefile: no make or checkmake on this machine"
+    },
+    {
+      "category": "needs market",
+      "item": "every watchlist ticker's screen values against Schwab's own numbers"
+    },
+    {
+      "category": "needs market",
+      "item": "live update speed, page refetches per tick (ENF-15), full chain reprice on unchanged inputs"
+    }
+  ]
+}
