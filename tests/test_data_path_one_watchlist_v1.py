@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from websockets.asyncio.client import connect
 
 import live_market_plane as lmp
 import push_changes
@@ -37,6 +38,7 @@ from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_m
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
+from tests.test_live_push_channel_v1 import listener
 
 #: SPY's 2026-11-20 contracts (442) and the price stored with them
 SPY_CHAIN = json.loads(
@@ -286,12 +288,10 @@ def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(capl
     request = {"op": "watchlist", "add": "SPY"}
 
     async def go():
-        from websockets.asyncio.client import connect
-
         stop = asyncio.Event()
-        served = asyncio.create_task(serve_live_push(stop, got.append, port=0, stats=stats))
-        await _until(lambda: stats.get("listening"))  # the port the system picked
-        ws = await connect(stats["listening"], max_size=None)
+        sock, url = listener()
+        served = asyncio.create_task(serve_live_push(stop, got.append, sock, stats=stats))
+        ws = await connect(url, max_size=None)
         try:
             for frame in ("not json", "[1, 2]", json.dumps(request)):
                 await ws.send(frame)

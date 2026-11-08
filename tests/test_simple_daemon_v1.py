@@ -16,6 +16,7 @@ import pytest
 
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
+from app.market_data.schwab.streaming import program_lock as pl
 from tests.real_chains import TSLA
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -141,22 +142,44 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
 
 def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
     db = tmp_path / "stream_capture.db"
-    fd, lock = cap.acquire_owner_lock(db)
+    fd, lock = pl.acquire_owner_lock(db)
     try:
         with pytest.raises(SystemExit) as e:
-            cap.acquire_owner_lock(db)
-        assert e.value.code == cap.EXIT_OWNER_LOCK_HELD
+            pl.acquire_owner_lock(db)
+        assert e.value.code == pl.EXIT_OWNER_LOCK_HELD
     finally:
-        cap.release_owner_lock(fd, lock)
+        pl.release_owner_lock(fd, lock)
     lock.write_text("999999999")  # a pid that is not running
-    fd, lock = cap.acquire_owner_lock(db)
-    cap.release_owner_lock(fd, lock)
+    fd, lock = pl.acquire_owner_lock(db)
+    pl.release_owner_lock(fd, lock)
     assert not lock.exists()
     for left in ("", "not a pid"):  # a daemon ended between creating the lock and writing its pid
         lock.write_text(left)
-        fd, lock = cap.acquire_owner_lock(db)
-        cap.release_owner_lock(fd, lock)
+        fd, lock = pl.acquire_owner_lock(db)
+        pl.release_owner_lock(fd, lock)
         assert not lock.exists()
+
+
+def test_the_lock_holds_the_ports_the_program_opened_while_it_runs(tmp_path):
+    """The program's lock as launch.py reads it (program_ports): no ports until the program has
+    written them, a line not yet whole read as not written, the ports once written, and none
+    once its holder has ended or released the lock."""
+    db = tmp_path / "stream_capture.db"
+    assert pl.program_ports(db) is None  # no program
+    fd, lock = pl.acquire_owner_lock(db)
+    try:
+        assert pl.program_ports(db) is None  # its sockets not opened yet
+        ports = pl.Ports(console=8000, live_ui=8800, live_push=8799)
+        pl.record_ports(fd, ports)
+        assert pl.program_ports(db) == ports
+        whole = lock.read_text()
+        lock.write_text(whole[:-1])  # INDUCED CONDITION: read while the line is being written
+        assert pl.program_ports(db) is None
+        lock.write_text("999999999\n" + whole.partition("\n")[2])  # a holder that has ended
+        assert pl.program_ports(db) is None
+    finally:
+        pl.release_owner_lock(fd, lock)
+    assert pl.program_ports(db) is None
 
 
 def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(tmp_path):

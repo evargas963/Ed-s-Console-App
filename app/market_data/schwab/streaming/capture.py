@@ -53,9 +53,9 @@ import enum
 import json
 import logging
 import logging.handlers
-import os
 import queue
 import signal
+import socket
 import sqlite3
 import sys
 import threading
@@ -63,7 +63,6 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-import psutil
 import uvicorn
 from schwab.streaming import StreamClient
 from websockets.exceptions import ConnectionClosed
@@ -74,8 +73,25 @@ import push_changes
 import runtime_layout
 import server
 import time_et
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
-from app.market_data.schwab.streaming.live_ui import CONSOLE_HOST, CONSOLE_PORT, serve_live_ui
+from app.market_data.schwab.streaming.live_push import (
+    LIVE_PUSH_HOST,
+    LIVE_PUSH_PORT,
+    MARKET_CONTEXT,
+    serve_live_push,
+)
+from app.market_data.schwab.streaming.live_ui import (
+    CONSOLE_HOST,
+    CONSOLE_PORT,
+    LIVE_UI_HOST,
+    LIVE_UI_PORT,
+    serve_live_ui,
+)
+from app.market_data.schwab.streaming.program_lock import (
+    Ports,
+    acquire_owner_lock,
+    record_ports,
+    release_owner_lock,
+)
 from app.options.order_flow import streaming as console_feed
 from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
@@ -95,7 +111,6 @@ from stream_spine import (
     news_msg,
     options_quote_msg,
     quote_msg,
-    resolve_stream_db_path,
     subscription_msg,
 )
 from time_et import (
@@ -975,44 +990,9 @@ class Daemon:
 # ---------------------------------------------------------------------------- process
 
 
-def owner_lock_path(db_path: str | Path | None = None) -> Path:
-    """Beside the stream database, so a worktree and production can never both stream."""
-    return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
-
-
-#: Exit code when another daemon already owns the stream (start_capture_daemon.bat stops its
-#: restart loop on it). 2 is the live-binding refusal (runtime_layout).
-EXIT_OWNER_LOCK_HELD = 3
 #: Exit code of a daemon stopped on request ({"op": "stop"}): start_capture_daemon.bat does not
 #: restart it.
 EXIT_STOPPED = 5
-
-
-def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
-    """Exclusive pidfile: one daemon at a time; a lock left by a dead process is reclaimed."""
-    lock = owner_lock_path(db_path)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    for attempt in (1, 2):
-        try:
-            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode())
-            return fd, lock
-        except FileExistsError:
-            text = lock.read_text().strip()  # the pid this function wrote, or empty if cut short
-            pid = int(text) if text.isdigit() else None
-            if pid is not None and psutil.pid_exists(pid):
-                print(f"FATAL: another capture daemon holds {lock} (pid {pid}).", file=sys.stderr)
-                raise SystemExit(EXIT_OWNER_LOCK_HELD) from None
-            if attempt == 1:
-                lock.unlink(missing_ok=True)
-    raise SystemExit(f"FATAL: could not acquire {lock}")
-
-
-def release_owner_lock(fd: int, lock: Path) -> None:
-    try:
-        os.close(fd)
-    finally:
-        lock.unlink(missing_ok=True)
 
 
 #: days of the daemon's log kept, one file a day (the operator's setting)
@@ -1156,30 +1136,23 @@ class _PagesServer(uvicorn.Server):
     def capture_signals(self):
         yield
 
-    async def startup(self, sockets=None) -> None:
-        """Bind, then say where: the port taken (ED_CONSOLE_PORT=0: the system's pick, so no
-        other program can hold it between a choice and the bind)."""
-        await super().startup(sockets)
-        for srv in self.servers:
-            host, port = srv.sockets[0].getsockname()[:2]
-            log.info("console: serving the pages on http://%s:%s", host, port)
 
-
-async def serve_console(daemon: Daemon, stop: asyncio.Event) -> None:
-    """The console's pages and routes (server.app) in this program until `stop`, reading the
-    daemon's one bus (console_feed.bind_daemon): one program, one copy of every value."""
+async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket) -> None:
+    """The console's pages and routes (server.app) on `sock` in this program until `stop`,
+    reading the daemon's one bus (console_feed.bind_daemon): one program, one copy of every
+    value."""
     console_feed.bind_daemon(daemon)
     web = _PagesServer(
         uvicorn.Config(
             server.app,
-            host=CONSOLE_HOST,
-            port=CONSOLE_PORT,
             timeout_graceful_shutdown=10,
             log_config=None,
             access_log=False,  # each page request is not the window's: PUSH and REQUEST lines are
         )
     )
-    serving = asyncio.create_task(web.serve(), name="console web server")
+    host, port = sock.getsockname()[:2]
+    log.info("console: serving the pages on http://%s:%s", host, port)
+    serving = asyncio.create_task(web.serve(sockets=[sock]), name="console web server")
     await asyncio.wait({serving, asyncio.ensure_future(stop.wait())}, return_when="FIRST_COMPLETED")
     push_changes.close_all()  # each open page's stream ends, so the server need not wait on it
     web.should_exit = True
@@ -1345,10 +1318,32 @@ def one_schwab_client(build) -> callable:
     return schwab_client
 
 
-async def run() -> int:
-    """The whole daemon: writer, the two local sockets, the chain sweep, the market follower and
-    the Schwab connection, each until the stop; one that ends first ends the daemon with an error
-    naming it, which start_capture_daemon.bat restarts."""
+def open_sockets() -> tuple[socket.socket, socket.socket, socket.socket]:
+    """The program's three listening sockets (the console's pages, the browser's price socket,
+    the local control socket), opened before anything serves them, so the ports they hold are
+    known at once (port 0: the system's pick as it binds, no gap for another program to take it).
+    A port another program holds ends the start here, naming it."""
+    return (
+        socket.create_server((CONSOLE_HOST, CONSOLE_PORT)),
+        socket.create_server((LIVE_UI_HOST, LIVE_UI_PORT)),
+        socket.create_server((LIVE_PUSH_HOST, LIVE_PUSH_PORT)),
+    )
+
+
+async def run(lock_fd: int) -> int:
+    """The whole daemon: writer, its three sockets, the chain sweep, the market follower and the
+    Schwab connection, each until the stop; one that ends first ends the daemon with an error
+    naming it, which start_capture_daemon.bat restarts. The ports its sockets hold go in its
+    lock (`lock_fd`), where launch.py reads them."""
+    pages, prices, control = open_sockets()
+    record_ports(
+        lock_fd,
+        Ports(
+            console=pages.getsockname()[1],
+            live_ui=prices.getsockname()[1],
+            live_push=control.getsockname()[1],
+        ),
+    )
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(
@@ -1374,9 +1369,11 @@ async def run() -> int:
         asyncio.create_task(show_stream(bus, stop), name="stream window"),
         asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
-        asyncio.create_task(serve_live_push(stop, daemon.console_frame), name="live push"),
-        asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status), name="live ui"),
-        asyncio.create_task(serve_console(daemon, stop), name="console"),
+        asyncio.create_task(serve_live_push(stop, daemon.console_frame, control), name="live push"),
+        asyncio.create_task(
+            serve_live_ui(stop, prices, heartbeat_fn=daemon.status), name="live ui"
+        ),
+        asyncio.create_task(serve_console(daemon, stop, pages), name="console"),
     ]
     try:
         await asyncio.sleep(0)  # servers subscribe before the first message
@@ -1405,7 +1402,7 @@ def main() -> int:
     _start_log()
     fd, lock = acquire_owner_lock()
     try:
-        return asyncio.run(run())
+        return asyncio.run(run(fd))
     except KeyboardInterrupt:
         log.info("capture daemon: stopped by Ctrl+C in its window")
         return 0

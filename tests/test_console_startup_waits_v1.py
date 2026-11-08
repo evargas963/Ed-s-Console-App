@@ -18,18 +18,21 @@ from pathlib import Path
 import launch
 import time_et
 from app.market_data.schwab.streaming import capture
+from app.market_data.schwab.streaming.program_lock import Ports, program_ports
 
 REPO = Path(__file__).resolve().parent.parent
 
 
-#: the program's own line once its pages listen, naming the port it bound
-SERVING = re.compile(r"console: serving the pages on http://[^:\s]+:(\d+)")
+def held_ports(tmp_path: Path) -> Ports | None:
+    """The ports the program wrote in its lock (beside its stream database), as launch.py reads
+    them."""
+    return program_ports(tmp_path / "data" / "stream_capture.db")
 
 
 def program_env(tmp_path: Path) -> dict:
-    """The program's environment on ports the system picks as it binds them (port 0): a port
-    found free and released before the program binds it can be taken in between, by any other
-    program's outgoing connection among them (they take their local ports from the same range)."""
+    """The program's environment on ports the system picks as it binds them (port 0), which the
+    program writes in its lock (held_ports): a port found free and released before the program
+    binds it can be taken in between, by any other program's outgoing connection among them."""
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}  # its loops start
     env.update(
         ED_RUNTIME_ROOT=str(tmp_path),
@@ -88,10 +91,10 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
     try:
         end = time_et.elapsed() + 120
-        while (serving := SERVING.search("".join(list(lines)))) is None:
+        while (ports := held_ports(tmp_path)) is None:
             assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
             time.sleep(0.25)
-        pages = int(serving.group(1))
+        pages = ports.console
         why = launch.unhealthy_for(pages, 30)  # a page request, as the browser makes
         assert why is None, (why, "".join(lines))
         os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
@@ -126,10 +129,10 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
     page = socket.socket()
     try:
         end = time_et.elapsed() + 120
-        while (serving := SERVING.search("".join(list(lines)))) is None:
+        while (ports := held_ports(tmp_path)) is None:
             assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
             time.sleep(0.25)
-        pages = int(serving.group(1))
+        pages = ports.console
         why = launch.unhealthy_for(pages, 30)
         assert why is None, (why, "".join(lines))
         page.settimeout(30)

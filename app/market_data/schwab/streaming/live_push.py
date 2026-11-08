@@ -27,6 +27,7 @@ import asyncio
 import json
 import logging
 import os
+import socket
 
 from websockets.asyncio.server import serve
 
@@ -92,29 +93,25 @@ async def _serve_client(ws, stats: dict, on_request) -> None:
 async def serve_live_push(
     stop: asyncio.Event,
     on_request,
+    sock: socket.socket,
     *,
-    host: str = LIVE_PUSH_HOST,
-    port: int = LIVE_PUSH_PORT,
     stats: dict | None = None,
 ) -> None:
-    """Run the control socket until `stop` is set, each request handed to `on_request`.
-    `stats` (mutated) reports clients and where it listens."""
+    """Run the control socket on the listening `sock` until `stop` is set, each request handed
+    to `on_request`. `stats` (mutated) reports clients."""
     stats = stats if stats is not None else {}
-    stats.update(clients=0, listening=None)
+    stats.update(clients=0)
 
     async def handler(ws):
         await _serve_client(ws, stats, on_request)
 
     async with serve(
         handler,
-        host,
-        port,
+        sock=sock,
         max_size=None,
         ping_interval=20,
         ping_timeout=20,
         origins=[None],  # no browser: a page always sends an Origin, this program's clients none
-    ) as server:
-        bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
-        stats["listening"] = f"ws://{host}:{bound}"
-        log.info("live push: the control socket listens on ws://%s:%s", host, bound)
+    ):
+        log.info("live push: the control socket listens on ws://%s:%s", *sock.getsockname()[:2])
         await stop.wait()

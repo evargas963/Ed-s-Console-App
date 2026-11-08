@@ -35,6 +35,7 @@ import asyncio
 import json
 import logging
 import os
+import socket
 
 from websockets.asyncio.server import serve
 
@@ -92,7 +93,6 @@ class LiveUiServer:
             rows_sent=0,
             frames_sent=0,
             beat_send_failures=0,
-            listening=None,
             last_send_ms=None,
         )
 
@@ -216,16 +216,15 @@ class LiveUiServer:
 
 async def serve_live_ui(
     stop: asyncio.Event,
+    sock: socket.socket,
     *,
     heartbeat_fn,
-    host: str = LIVE_UI_HOST,
-    port: int = LIVE_UI_PORT,
     stats: dict | None = None,
     record_heartbeat=lmp.record_feed_heartbeat,
     clock=time_et.now,
 ) -> None:
-    """Run until `stop` is set. Each beat is recorded with `record_heartbeat` (the daemon's own
-    plane)."""
+    """Serve the browsers' price socket on the listening `sock` until `stop` is set. Each beat is
+    recorded with `record_heartbeat` (the daemon's own plane)."""
     stats = stats if stats is not None else {}
     srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock)
     lmp.add_row_listener(srv.on_row)
@@ -233,16 +232,15 @@ async def serve_live_ui(
     try:
         async with serve(
             srv.serve_client,
-            host,
-            port,
+            sock=sock,
             max_size=None,
             compression=None,
             ping_interval=20,
             ping_timeout=20,
-        ) as server:
-            bound = server.sockets[0].getsockname()[1]  # the port taken (port 0: the system's pick)
-            stats["listening"] = f"ws://{host}:{bound}"
-            log.info("live ui: serving price rows to browsers on ws://%s:%s", host, bound)
+        ):
+            log.info(
+                "live ui: serving price rows to browsers on ws://%s:%s", *sock.getsockname()[:2]
+            )
             await stop.wait()
     finally:
         for t in tasks:

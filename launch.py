@@ -10,7 +10,8 @@ start stops nothing.
 1. The program, in its own window (start_capture_daemon.bat restarts it). It reads its own .env
    (the Schwab credentials); its log, and /api/health from its heartbeat, say whether Schwab took
    them.
-2. The default browser, at URL, once the program's pages answer healthy (START_WAIT_SEC).
+2. The default browser, at the pages' port the program wrote in its lock (program_ports), once
+   they answer healthy (START_WAIT_SEC).
 
 `python launch.py stop` is the clean stop (stop): the program is asked to stop on its local socket
 and writes what it holds before it exits.
@@ -20,7 +21,6 @@ from __future__ import annotations
 
 import json
 import logging
-import socket
 import subprocess
 import sys
 import time
@@ -33,13 +33,10 @@ from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
 import time_et
-from app.market_data.schwab.streaming.live_push import LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import CONSOLE_PORT
-from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
+from app.market_data.schwab.streaming.program_lock import Ports, program_ports
 
 log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
-URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
 #: what the program runs right after Python (start_capture_daemon.bat's line)
 DAEMON_START = ["-m", "app.market_data.schwab.streaming.capture_main"]
 #: how long a clean stop waits for the program to end
@@ -94,13 +91,6 @@ def _bring(root: Path) -> tuple[str, str, str]:
     )
 
 
-def in_use(port: int) -> bool:
-    """Whether a process on this machine listens on `port`: it takes a connection on 127.0.0.1."""
-    with socket.socket() as probe:
-        probe.settimeout(2.0)
-        return probe.connect_ex(("127.0.0.1", port)) == 0
-
-
 def running(start: list[str], root: Path = ROOT) -> list[psutil.Process]:
     """Return the checkout's processes that run `start` right after their program.
 
@@ -126,9 +116,9 @@ def daemon_window(batch: Path) -> list[str]:
     return ["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)]
 
 
-def ask_daemon_to_stop(port: int = LIVE_PUSH_PORT) -> None:
-    """The daemon's clean stop, asked on its local socket at `port` ({"op": "stop"}: it writes
-    what it holds, then exits and start_capture_daemon.bat does not restart it)."""
+def ask_daemon_to_stop(port: int) -> None:
+    """The daemon's clean stop, asked on its local control socket at `port` ({"op": "stop"}: it
+    writes what it holds, then exits and start_capture_daemon.bat does not restart it)."""
     with connect(f"ws://127.0.0.1:{port}", open_timeout=10) as ws:
         ws.send(json.dumps({"op": "stop"}))
 
@@ -139,9 +129,13 @@ def stop() -> int:
     asked: one that ended when this stop could not ask it is not reported stopped."""
     program = running(DAEMON_START)
     ended = "stopped"
-    if program:
+    ports = program_ports()
+    if program and ports is None:
+        log.warning("Ed Console: not asked to stop: it has not opened its ports yet")
+        ended = "ended, not asked by this stop"
+    elif program:
         try:
-            ask_daemon_to_stop()
+            ask_daemon_to_stop(ports.live_push)
         except (OSError, WebSocketException) as e:
             log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
             ended = "ended, not asked by this stop"
@@ -177,8 +171,17 @@ def unhealthy_for(port: int, seconds: float) -> str | None:
 START_WAIT_SEC = 180.0
 
 
+def ports_within(seconds: float) -> Ports | None:
+    """The ports the program holds (program_ports), once it has written them, within `seconds`;
+    None when it has not by then."""
+    deadline = time_et.elapsed() + seconds
+    while (ports := program_ports()) is None and time_et.elapsed() < deadline:
+        time.sleep(0.25)
+    return ports
+
+
 def main() -> int:
-    if in_use(DAEMON_PORT) or in_use(CONSOLE_PORT):
+    if running(DAEMON_START):
         print("Commit check: not run; Ed Console already runs from this checkout.")
     else:
         check, commit, why = bring_to_origin_main(ROOT)
@@ -190,12 +193,16 @@ def main() -> int:
         subprocess.Popen(daemon_window(ROOT / "start_capture_daemon.bat"), cwd=ROOT)
         print('Ed Console: started in its own window ("Ed Capture Daemon").')
     started = time_et.elapsed()
-    why = unhealthy_for(CONSOLE_PORT, START_WAIT_SEC)
+    ports = ports_within(START_WAIT_SEC)
+    if ports is None:
+        print(f"Ed Console: it did not open its ports in {START_WAIT_SEC:.0f} s")
+        return 1
+    why = unhealthy_for(ports.console, START_WAIT_SEC - (time_et.elapsed() - started))
     if why is not None:
         print(f"Ed Console: its pages did not answer in {START_WAIT_SEC:.0f} s: {why}")
         return 1
     print(f"Ed Console: healthy {time_et.elapsed() - started:.1f} s after the start.")
-    webbrowser.open(URL)  # the default browser
+    webbrowser.open(f"http://127.0.0.1:{ports.console}/")  # the default browser
     return 0
 
 
