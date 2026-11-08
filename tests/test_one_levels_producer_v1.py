@@ -34,6 +34,7 @@ from option_contract import read_chain
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -86,11 +87,11 @@ def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float
     open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's LAST_PRICE in the
     daemon's plane, traded at the capture's time (None: no price)."""
     lmp.record_feed_heartbeat(
-        {
-            "ts": at,
-            "schwab_socket_open": socket_open,
-            "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
-        }
+        daemon_status(
+            at,
+            schwab_socket_open=socket_open,
+            held={"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
+        )
     )
     if price is None:
         lmp._by_ticker.pop(TK, None)

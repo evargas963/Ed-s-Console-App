@@ -16,7 +16,7 @@ import live_market_plane as lmp
 import server as srv
 from liquidity_models import ZONE_DISPLAY, SnapshotType, ZoneType
 from micro_structure import Candle
-from tests.feed_live_helper import daemon_bars
+from tests.feed_live_helper import daemon_bars, daemon_status
 from time_et import ET
 
 TK = "ZZLIQ"
@@ -114,7 +114,7 @@ def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(publish
     last bar's close as the LAST_PRICE Schwab sent."""
     last, at = _BARS[-1]["close"], FRIDAY.timestamp()
     lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [TK]}}
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=at)
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))

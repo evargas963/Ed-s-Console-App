@@ -22,6 +22,7 @@ import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from server import get_options_gamma_surface, ticker_storage_key
+from tests.feed_live_helper import daemon_status
 from time_et import ET
 
 _CRWD = json.loads(
@@ -42,12 +43,12 @@ def _daemon(price: float, at: float, *tickers) -> None:
     each ticker's quote received at `at` (its trade at _AT), in the plane the price row is built
     from."""
     lmp.record_feed_heartbeat(
-        {
-            "ts": at,
-            "schwab_socket_open": True,
-            "watchlist": [_ON],
-            "held": {"LEVELONE_EQUITIES": list(tickers)},
-        }
+        daemon_status(
+            at,
+            schwab_socket_open=True,
+            watchlist=[_ON],
+            held={"LEVELONE_EQUITIES": list(tickers)},
+        )
     )
     for tk in tickers:
         lmp.record_from_level_one_equity(

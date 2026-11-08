@@ -22,6 +22,7 @@ from micro_structure import Candle
 from option_contract import read_chain
 from terrain_engine import WALL_BREACHED, WALL_CONTAINS, compute_terrain, price_relations
 from terrain_read import level_side
+from tests.feed_live_helper import daemon_status
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -305,7 +306,7 @@ def _live_price(tk, last):
     levels are served at)."""
     at = FRIDAY_CLOSE.timestamp()
     lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
     )
     lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=at)
 
@@ -491,7 +492,7 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_lev
     one the daemon captured on Friday 10-02 (its newest SPY message that evening)."""
     at = FRIDAY_CLOSE.timestamp()
     lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [DESK]}}
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [DESK]})
     )
     lmp.record_from_level_one_equity(
         DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151}, received_ts=at

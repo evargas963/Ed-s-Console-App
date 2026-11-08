@@ -33,6 +33,7 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_liv
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
+from tests.feed_live_helper import daemon_status
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
 
@@ -440,7 +441,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         }  # levels, no surface
     try:
         lmp.record_feed_heartbeat(
-            {"ts": time_et.now(), "schwab_socket_open": True, "watchlist": [on]}
+            daemon_status(time_et.now(), schwab_socket_open=True, watchlist=[on])
         )
         d_on, d_off = (json.loads(server.get_options_gamma_surface(tk).body) for tk in (on, off))
         assert (d_on["warming"], d_on["reason"]) == (
@@ -457,7 +458,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             "chain fetch failed (full chain returned HTTP 400)"
         )
         lmp.record_feed_heartbeat(
-            {"ts": time_et.now() - 100, "schwab_socket_open": True, "watchlist": [on]}
+            daemon_status(time_et.now() - 100, schwab_socket_open=True, watchlist=[on])
         )
         silent = json.loads(server.get_options_gamma_surface(off).body)
         assert silent["warming"] is False

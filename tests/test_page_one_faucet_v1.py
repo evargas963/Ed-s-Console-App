@@ -54,11 +54,11 @@ def _daemon(at: float, held_options=()):
     from Schwab's captured quote."""
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
     lmp.record_feed_heartbeat(
-        {
-            "ts": at,
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)},
-        }
+        daemon_status(
+            at,
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)},
+        )
     )
 
 
@@ -226,7 +226,7 @@ def test_the_spot_row_is_served(route):
     )
     lmp.record_from_level_one_equity("SPY", print_["native"], received_ts=print_["ts_recv"])
     lmp.record_feed_heartbeat(
-        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
+        daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     try:
         body = json.loads(route().body)
@@ -300,7 +300,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     )
     at = datetime.fromtimestamp(fx["ts_utc"], ET)
     lmp.record_feed_heartbeat(
-        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}}
+        daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["$SPX"]})
     )
     lmp.record_from_level_one_equity(
         "$SPX",

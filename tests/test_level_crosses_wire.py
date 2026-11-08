@@ -52,11 +52,11 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
         now=SPY_CLOSE.now,
     )
     lmp.record_feed_heartbeat(
-        {
-            "ts": time_et.now() if now is None else now,
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_EQUITIES": [tk]},
-        }
+        daemon_status(
+            time_et.now() if now is None else now,
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": [tk]},
+        )
     )
     with server._terrain_cache_lock:
         return {name: server._terrain_cache[tk][k] for k, name in server.CROSS_LEVELS}
@@ -283,7 +283,7 @@ def stopped_price_answers() -> dict:
     _publish_close()
     msg = SPY_PRINT_A_STRIKE_AWAY
     lmp.record_feed_heartbeat(
-        {"ts": msg["ts_recv"], "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
+        daemon_status(msg["ts_recv"], schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
     lmp.record_feed_down()

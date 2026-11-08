@@ -25,6 +25,7 @@ import live_market_plane as lmp
 import server
 from option_contract import read_chain
 from stream_spine import options_quote_msg
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -55,11 +56,11 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     `ticked` a second before `at`, CRWD's chain published at `at`; the route's coverage of every
     strike, and the published surface."""
     lmp.record_feed_heartbeat(
-        {
-            "ts": at.timestamp(),
-            "schwab_socket_open": socket_open,
-            "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
-        }
+        daemon_status(
+            at.timestamp(),
+            schwab_socket_open=socket_open,
+            held={"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held)},
+        )
     )
     lmp.record_from_level_one_equity(
         TK,
