@@ -41,6 +41,9 @@ def _transcript(tmp_path: Path, *said: str) -> Path:
         ),
         (OPEN_ROW, "  WAITING ON OPERATOR: the same, after leading space.", True),
         (OPEN_ROW, "Done. WAITING ON OPERATOR: not at the start, so not the way through.", False),
+        (OPEN_ROW, "WAITING ON CI: #757, #759 and #760 run with Auto-fix on.", True),
+        (OPEN_ROW, "Merged #758. WAITING ON CI: not at the start, so not the way through.", False),
+        (OPEN_ROW, "Waiting on CI for #757.", False),
         (DONE_ROW, "SHAPE is finished.", True),
     ],
 )
