@@ -414,11 +414,13 @@ def sign_in_problem(inspection: TokenInspectionResult, resolved: str) -> "str | 
     return None
 
 
-def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> SchwabClientState:
+def build_client_from_token(
+    token_path: str, api_key: str | None, app_secret: str | None
+) -> SchwabClientState:
     """Build Schwab client from token file. token_path is normalized to absolute. A file that holds
     no usable sign-in is a state with its reason; a build that fails on one that does raises
     ConnectionError, its cause carried."""
-    if schwab_live_blocked_for(api_key=api_key, app_secret=app_secret):
+    if schwab_live_blocked_for(api_key, app_secret):
         return SchwabClientState(
             ok=False,
             message=(

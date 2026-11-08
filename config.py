@@ -33,57 +33,24 @@ _CI_SCHWAB_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
 )
 
 
-def schwab_credentials_are_ci_placeholders(
-    api_key: str | None = None, app_secret: str | None = None
-) -> bool:
-    """True when Schwab env vars are non-production CI placeholders (not live credentials)."""
-    key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
-    secret = (
-        app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or ""
-    ).strip()
-    if not key or not secret:
-        return False
-    return any(key.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES) and any(
-        secret.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES
-    )
+def schwab_live_blocked_for(api_key: str | None, app_secret: str | None) -> bool:
+    """True when live Schwab cannot work: a credential missing, empty, or a CI placeholder.
 
-
-def schwab_live_blocked_for(
-    *,
-    api_key: str | None = None,
-    app_secret: str | None = None,
-) -> bool:
-    """Block live Schwab when it cannot work: placeholder OR ABSENT credentials.
-
-    ED_CI_OFFLINE with explicit non-placeholder credentials (unit tests) does not block.
-
-    Absent credentials block too (docs/ARCHITECTURE.md "Failure domains"):
-    `schwab_credentials_are_ci_placeholders` returns False for an empty value, so without this
-    check a client would be built with no credentials and the capability would read as live
-    while failing one unauthenticated request at a time. With it, the one fail-closed site,
-    `schwab_client.build_client_from_token`, builds no client and reports the capability
-    unavailable; with no client, no Schwab call can be made, and the rest of the application
-    still starts.
+    The one gate (docs/ARCHITECTURE.md "Failure domains"): `schwab_client.build_client_from_token`
+    builds no client on it, so no Schwab call is made and the rest of the application starts.
     """
-    if schwab_credentials_are_ci_placeholders(api_key, app_secret):
+    if not api_key or not app_secret:
         return True
-    key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
-    secret = (
-        app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or ""
-    ).strip()
-    if not key or not secret:
-        return True
-    offline = os.getenv("ED_CI_OFFLINE", "").strip().lower() in ("1", "true", "yes")
-    if not offline:
-        return False
-    return api_key is None and app_secret is None
+    return any(api_key.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES) and any(
+        app_secret.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES
+    )
 
 
 @dataclass(frozen=True)
 class AppConfig:
     token_path: str  # absolute (token_path())
-    api_key: str
-    app_secret: str
+    api_key: str | None  # None when not set, or in offline mode
+    app_secret: str | None
     callback_url: str
 
 
@@ -99,15 +66,13 @@ def token_path() -> str:
 
 
 def build_config() -> AppConfig:
-    """The Schwab client's configuration (the capture daemon, reauth): its credentials from the
-    environment, empty when absent and then refused at the one gate, `schwab_live_blocked_for()`."""
-    api_key = (os.getenv("SCHWAB_API_KEY") or "").strip()
-    app_secret = (os.getenv("SCHWAB_APP_SECRET") or "").strip()
-    callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL).strip()
-
+    """The Schwab client's configuration (the capture daemon, reauth), the one reader of its
+    credentials: each as the environment holds it, None when not set. Offline (ED_CI_OFFLINE,
+    tests and CI) takes none, so the one gate, `schwab_live_blocked_for`, refuses live Schwab."""
+    offline = os.environ.get("ED_CI_OFFLINE") in ("1", "true", "yes")
     return AppConfig(
         token_path=token_path(),
-        api_key=api_key,
-        app_secret=app_secret,
-        callback_url=callback_url,
+        api_key=None if offline else os.environ.get("SCHWAB_API_KEY"),
+        app_secret=None if offline else os.environ.get("SCHWAB_APP_SECRET"),
+        callback_url=os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL).strip(),
     )
