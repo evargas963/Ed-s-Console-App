@@ -447,16 +447,16 @@ class MessageBus:
         return True
 
     def _chain(self, key: str, topic: str, msg: dict) -> bool:
-        """A chain part (or a failed fetch, which has no parts): the newest fetch of the ticker
-        is kept; once all its parts are in it replaces the current chain whole."""
-        ts, part = msg.get("ts_recv"), msg.get("part")
+        """A chain part (a failed fetch is its one part): the newest fetch of the ticker is kept;
+        once all its parts are in it replaces the current chain whole."""
+        ts = msg["ts_recv"]
         held = self._chains.get(key)
         if held is not None and ts < held[0]:
             return False  # an older fetch: never current
         if held is None or ts > held[0]:
-            held = (ts, {}, msg.get("parts") if part is not None else 1)
+            held = (ts, {}, msg["parts"])
             self._chains[key] = held
-        held[1][part if part is not None else 0] = msg
+        held[1][msg["part"]] = msg
         if len(held[1]) < held[2]:
             return False
         self.current[key] = (topic, [held[1][i] for i in sorted(held[1])])
