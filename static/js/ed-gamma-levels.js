@@ -12,12 +12,12 @@
   // resolution pattern -- Options > Gamma > Levels and Liquidity > Levels. Never two renderers
   // for one contract -- see this file's own docstring.
   function activeHostId() {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     if (s.workspace === 'options' && s.subview === 'gamma' && s.view === 'levels') return 'levelsBody';
     if (s.workspace === 'liquidity' && s.subview === 'levels') return 'lvlBody';
     return null;
   }
-  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
+  function ticker() { return (window.EdShell.getState()).ticker || ''; }
 
   function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
   function loadImpl(tk, signal) {

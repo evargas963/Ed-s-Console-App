@@ -19,7 +19,7 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '—' : String(Math.round(Number(n))); }
-  function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
+  function st() { return window.EdShell.getState(); }
   function isFlow() { var s = st(); return s.workspace === 'options' && s.subview === 'flow'; }
 
   function host() { return document.getElementById('flowBody'); }

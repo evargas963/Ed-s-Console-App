@@ -29,10 +29,10 @@
   // PREVIOUS ticker's spot/flip/wall values) -- every check in this file recognizes all
   // three, exactly like ed-gamma.js's _isGammaFamilySubview.
   function isGamma() {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     return s.workspace === 'options' && (s.subview === 'gamma' || s.subview === 'dex' || s.subview === 'oi');
   }
-  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
+  function ticker() { return (window.EdShell.getState()).ticker || ''; }
 
   var REGIME = {
     LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)', tone: 'up' },
@@ -106,12 +106,12 @@
       src.style.color = d.levels_mark === 'LIVE' ? '' : 'var(--ed-stale)';
       // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
       // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
-      if (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) src.textContent += ' · all-exp';
+      if (window.EdShell.getExpiry()) src.textContent += ' · all-exp';
     }
   }
 
   // ---------- Put/Call OI and volume <- /api/terrain pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
-  function expiryFilter() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || ''; }
+  function expiryFilter() { return (window.EdShell.getExpiry()) || ''; }
   function paintPcr(d) {
     var byExp = (d && d.pcr_by_expiry) || {};
     var byExpVol = (d && d.pcr_volume_by_expiry) || {};
@@ -145,10 +145,8 @@
     var el = document.getElementById('gbsSrc'); if (!el) return;
     if (!d) { el.innerHTML = ''; return; }
     // the levels verdict the server serves (levels_state, its time and age); the badge formats it
-    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: 'terrain', state: d.levels_state, when: d.levels_time_ct,
-          age: d.levels_age_text, reason: d.levels_stale_reason })
-      : '';
+    el.innerHTML = window.EdShell.asOfBadge({ label: 'terrain', state: d.levels_state,
+      when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason });
   }
   // A per-strike bar list (GEX, vanna, charm by strike): the window of `rows` the server sent
   // ([strike, value, ...], ascending), drawn highest strike first, each bar's length its |value|
@@ -200,7 +198,7 @@
       return;
     }
     // /api/terrain/strikes is aggregate across expiries; with one expiry selected, say so
-    var expOn = window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry();
+    var expOn = window.EdShell.getExpiry();
     // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change])
     var chg = {}, mig = d.migration && d.migration.all;
     ((mig && mig.compared && mig.rows) || []).forEach(function (m) { chg[m[0]] = m[3]; });
@@ -218,7 +216,7 @@
   }
   function applyGbsHighlight(host) {
     host = host || document.getElementById('gbsBody'); if (!host) return;
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    var sel = (window.EdShell.getState()).selStrike;
     host.querySelectorAll('.gbs-row.gbs-sel').forEach(function (n) { n.classList.remove('gbs-sel'); });
     if (sel == null) return;
     host.querySelectorAll('.gbs-row[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('gbs-sel'); });
@@ -227,7 +225,7 @@
   // ---------- Strike Detail ----------
   // the workspace expiry filter, else the selected strike's own expiry
   function strikeDetailExpiry() {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     return expiryFilter() || s.selExpiry || null;
   }
   // loadStrike() records the desired (strike, expiry); the loader always fetches the current one
@@ -254,7 +252,7 @@
   }
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
-    el.innerHTML = (window.EdShell && window.EdShell.chainScopeBadge) ? window.EdShell.chainScopeBadge(d) : '';
+    el.innerHTML = window.EdShell.chainScopeBadge(d);
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
@@ -311,7 +309,7 @@
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
   function _mkStrikeBar(kind, endpoint, hostId, srcId) {
     function inSub() {
-      var s = (window.EdShell && window.EdShell.getState()) || {};
+      var s = window.EdShell.getState();
       return s.workspace === 'options' && s.subview === kind;
     }
     function stillCtx(tk) { var host = document.getElementById(hostId); return inSub() && !!host && ticker() === tk; }
@@ -347,13 +345,13 @@
   // surfaces -- one strike per row, both sides, no new computation, no second fetch shape
   // (same /api/chain response Chain and Strike Detail already read).
   function inStructures() {
-    var s = (window.EdShell && window.EdShell.getState()) || {};
+    var s = window.EdShell.getState();
     return s.workspace === 'options' && s.subview === 'structures';
   }
   function stillStructuresCtx(tk, exp) {
     var host = document.getElementById('stBody');
     return inStructures() && !!host && ticker() === tk &&
-      (exp == null || (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) === exp);
+      (exp == null || (window.EdShell.getExpiry()) === exp);
   }
   function _flag(label, on) { return '<span class="st-flag' + (on ? ' on' : '') + '">' + esc(label) + '</span>'; }
   // lastTradingDay is native epoch MILLISECONDS (the same convention as quoteTimeInLong/
@@ -405,11 +403,11 @@
       function (words) { if (stillStructuresCtx(tk, exp)) window.EdShell.placeholder(host, words); });
   }
   var _structuresLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
-    return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); });
+    return loadStructuresImpl(ticker(), (window.EdShell.getExpiry()), signal); });
   // keyed on ticker+expiry: a context change aborts the read in flight (makeCoalescedLoader)
   function loadStructures() {
     if (!inStructures()) return;
-    var exp = (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || '';
+    var exp = (window.EdShell.getExpiry()) || '';
     _structuresLoader.trigger(ticker() + '|' + exp);
   }
 
@@ -482,7 +480,7 @@
     if (e.detail.kind === 'flow') { loadOf(); return; }
     if (e.detail.kind !== 'levels') return;
     loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures();
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
   document.addEventListener('ed:strike', function (e) {
@@ -492,7 +490,7 @@
   });
   document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
     loadLevels(); loadGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
   // Initial hydration comes SOLELY from ed-core.js's deferred ed:ticker/ed:view dispatch --
