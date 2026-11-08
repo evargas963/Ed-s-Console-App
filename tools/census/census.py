@@ -360,7 +360,7 @@ ANSWER = (
     "the same answer built by hand in more than one function: Python product "
     "(dict literals with the same 3+ keys; one producer, rule 3)"
 )
-add(S, FORMULA, "3", "ast: arithmetic of 7+ nodes, names set aside")
+add(S, FORMULA, "3", "ast: arithmetic of 11+ nodes, names set aside")
 add(S, ANSWER, "3", "ast: dict literal key sets")
 formulas = collections.defaultdict(set)
 answers = collections.defaultdict(set)
@@ -370,7 +370,8 @@ for f in PRODUCT_PY:
             continue
         where = f"{f}:{fn.lineno} {fn.name}"
         for n in ast.walk(fn):
-            if isinstance(n, ast.BinOp) and sum(1 for _ in ast.walk(n)) >= 7:
+            # 11 nodes: below it, a time difference or a slice reads alike in unrelated code
+            if isinstance(n, ast.BinOp) and sum(1 for _ in ast.walk(n)) >= 11:
                 shape = ast.dump(_Unnamed().visit(copy.deepcopy(n)), annotate_fields=False)
                 formulas[shape].add(where)
             elif isinstance(n, ast.Dict) and len(n.keys) >= 3:
