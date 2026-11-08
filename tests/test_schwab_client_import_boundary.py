@@ -92,7 +92,7 @@ with TestClient(server.app) as client:
         if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path """
     """and route.path != "/api/changes":
             client.get(route.path, params={"ticker": "SPY", "contract": "SPY   261120C00875000"})
-assert server.terrain_cache_get("SPY", fx["capture_ts_utc"]) is not None, """
+assert server.published_levels("SPY") is not None, """
     """"the daemon's chain was priced"
 """
 )

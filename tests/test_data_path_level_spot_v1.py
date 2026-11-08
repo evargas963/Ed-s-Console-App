@@ -16,13 +16,13 @@ from time_et import ET
 def test_a_down_price_marks_the_levels_and_the_wall_stays():
     """The chain is current, so the levels are not stale. The equity feed is down, so the rail
     is told the price they were built from has stopped. The wall is the last one published
-    (CRWD's real chain). Served in regular hours (RTH_INSTANT)."""
+    (CRWD's real chain, published by the one producer as fetched then, valued at its capture).
+    Served in regular hours (RTH_INSTANT)."""
     tk = "ZZLVSPOT"
     now = RTH_INSTANT
     at = datetime.fromtimestamp(now, ET)
     published = compute_terrain(tk, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now).to_dict()
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = published | {"computed_ts_utc": now}
+    srv._publish_levels(tk, read_chain(CRWD.chain), now, chain_spot=(CRWD.spot, now), now=CRWD.now)
     try:
         down = srv.terrain_answer(tk, at)
         mark_feed_live(tk, now=now)  # the daemon's price row, read at `at`: its verdict LIVE
