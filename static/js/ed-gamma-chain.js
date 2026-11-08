@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  function px(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   var AS_SENT = 'as_sent';
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
@@ -58,13 +58,13 @@
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
     var filterNull = !(window.EdShell.getExpiry());
-    var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '—') +
+    var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '-') +
       (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + esc(d.n_strikes) + ' strikes' +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
-      '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') +
+      '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '-') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') +
       (d.spot_time_ct ? (' · last trade ' + esc(d.spot_time_ct)) : '') + '</span></div>';
     // dg: decimals, or AS_SENT: every digit Schwab sent (its Greeks)
-    function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
+    function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '-' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
     function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
     // No `position:sticky`: the header table is a FROZEN (non-scrolling) sibling of a separate

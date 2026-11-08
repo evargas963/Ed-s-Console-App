@@ -131,7 +131,7 @@
           '<span><span class="sw" style="background:var(--ed-neg)"></span>−' + n + '</span>'
         : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + '</span>') +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
-      '<span>spot ' + (spot == null ? '—' : spot.toFixed(2)) +
+      '<span>spot ' + (spot == null ? '-' : spot.toFixed(2)) +
       (tradeTime ? (' · last trade ' + esc(tradeTime)) : '') + '</span>' +
       (top ? '<span>largest |' + n + '| ' + esc(top[0]) + ' · ' + esc(shown) + '</span>' : '') + '</div>';
   }
