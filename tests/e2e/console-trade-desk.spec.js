@@ -584,6 +584,20 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now: a failed read is named, never told as no book, no levels or no gamma', async ({ page }) => {
+    // the book, the levels and the per-strike reads failing: before, they read "No book yet",
+    // "No levels" and "no per-strike gamma for this symbol yet"
+    const errs = watchErrors(page);
+    await intercept(page);   // every route answered in its real shape, then the three that fail
+    await page.route(/\/api\/(order-flow\/microstructure|levels|terrain\/strikes)\?/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdBody')).toContainText('The book request failed');
+    await expect(page.locator('#tdBody')).toContainText('The levels request failed');
+    await expect(page.locator('#tdMigration')).toContainText('the per-strike request failed');
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now: detect, frame, context and the migration read the served fields', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);

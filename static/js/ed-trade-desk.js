@@ -66,10 +66,13 @@
   }
 
   function detectStage(d) {
-    if (!d || d.status === 'no_book') {
+    if (!d) {   // the read failed: said so, never told as a book Schwab did not send
+      return stage(1, 'td-accent-blue', 'Detect — book microstructure', 'The book request failed', '', 0, [], 'FAILED', 'warn');
+    }
+    if (d.status === 'no_book') {
       return stage(1, 'td-accent-blue', 'Detect — book microstructure', 'No book yet', '', 0, [], 'NO BOOK', 'warn');
     }
-    var tob = d.top_of_book || {}, depth = d.depth || {}, cls = d.classification || {};
+    var tob = d.top_of_book, depth = d.depth, cls = d.classification;   // always served (engine.compute_book_microstructure)
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     var ages = d.ages || {};
     // Schwab's book time stands beside the seconds. The seconds stay when no book time was
@@ -102,11 +105,12 @@
   }
 
   function frameStage(levelsD) {
-    var levels = (levelsD && levelsD.levels) || [];
+    if (!levelsD) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'The levels request failed', '', 0, [], null);
+    var levels = levelsD.levels;   // always served (levels_payload)
     if (!levels.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No levels', '', 0, [], null);
     // served: levels ordered by distance to the live price (by_distance), each with its distance and side
     var byId = {}; levels.forEach(function (r) { byId[r.id] = r; });
-    var sorted = ((levelsD && levelsD.by_distance) || []).map(function (id) { return byId[id]; }).filter(Boolean);
+    var sorted = levelsD.by_distance.map(function (id) { return byId[id]; }).filter(Boolean);
     if (!sorted.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No priced levels', '', 0, [], null);
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
@@ -226,7 +230,7 @@
 
   function migrationSection(strikesD, terrain, spot, tk) {
     if (!strikesD) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
-      '<div class="placeholder"><div class="sm">no per-strike gamma for this symbol yet</div></div></div>';
+      '<div class="placeholder"><div class="sm">the per-strike request failed</div></div></div>';
     var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
     if (!todayAll.length) {
       var why = strikesD.levels_stale_reason;
