@@ -51,7 +51,7 @@ test.describe('ticker / expiry / measure controls', () => {
   test.beforeEach(async ({ page }) => {
     await intercept(page);
     watchlist = await routeWatchlist(page, ['SPY', 'QQQ', 'IWM']);
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
   test('controls are real dropdowns (value is the control, no SYM/EXPIRY/MEASURE chips)', async ({ page }) => {
