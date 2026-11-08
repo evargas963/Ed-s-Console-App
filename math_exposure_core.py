@@ -7,31 +7,50 @@ from the chain and position structure.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from numeric_contract import float_finite_or_none
 from option_contract import OptionContract, streamed_greek_set
 from time_et import time_to_expiry_years
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
 
 # ── Black-Scholes Greeks per share: the one place their formulas live ──
 
 SQRT_2PI = math.sqrt(2.0 * math.pi)
 
 
-def norm_pdf(x, *, exp=math.exp):
+def norm_pdf[Num: (float, NDArray[np.float64])](
+    x: Num, *, exp: Callable[[Num], Num] = math.exp
+) -> Num:
     """The standard normal density. A number, or a numpy array with exp=np.exp."""
     return exp(-0.5 * x * x) / SQRT_2PI
 
 
-def d1_vt(spot, strike, t_years, sigma, carry=0.0, *, log=math.log, sqrt=math.sqrt):
+def d1_vt[Num: (float, NDArray[np.float64])](
+    spot: Num,
+    strike: Num,
+    t_years: Num,
+    sigma: Num,
+    carry: float = 0.0,
+    *,
+    log: Callable[[Num], Num] = math.log,
+    sqrt: Callable[[Num], Num] = math.sqrt,
+) -> tuple[Num, Num]:
     """THE Black-Scholes d1 and sigma*sqrt(T), with `carry` = r - q (0 unless given). Numbers,
-    or numpy arrays with log=np.log and sqrt=np.sqrt (the gamma profile prices whole chains)."""
+    or numpy arrays with log=np.log and sqrt=np.sqrt."""
     vt = sigma * sqrt(t_years)
     return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
 
 
-def _priced_d1(spot, strike, t_years, sigma, carry=0.0) -> tuple[float, float] | None:
+def _priced_d1(
+    spot: float, strike: float, t_years: float, sigma: float, carry: float = 0.0
+) -> tuple[float, float] | None:
     """d1 and sigma*sqrt(T) for one contract, or None when it cannot be priced (a value that is
     not positive, or a d1 that is not finite)."""
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
