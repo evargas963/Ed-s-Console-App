@@ -1476,9 +1476,8 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
     )
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
+    control = socket.create_server(("127.0.0.1", 0))  # bound as the program binds it
+    port = control.getsockname()[1]
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -1486,7 +1485,7 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
         daemon.writer, daemon.stop = writer, stop
         tasks = [
             asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
-            asyncio.create_task(serve_live_push(stop, daemon.console_frame, port=port)),
+            asyncio.create_task(serve_live_push(stop, daemon.console_frame, control)),
         ]
         await _held_past_the_cap(writer, bus, health, daemon)
         await asyncio.to_thread(launch.ask_daemon_to_stop, port)

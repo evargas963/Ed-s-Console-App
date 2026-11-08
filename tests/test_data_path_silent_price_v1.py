@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 
+from websockets.asyncio.client import connect
+
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
@@ -15,6 +17,7 @@ from tests.test_live_push_channel_v1 import (
     _run,
     _spy_trade,
     _until,
+    listener,
 )
 from tests.test_live_push_channel_v1 import (
     feed as feed,
@@ -27,21 +30,19 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     are each logged with what arrived (its first 200 characters), never dropped unseen."""
 
     async def go():
-        from websockets.asyncio.client import connect
-
         stop, stats = asyncio.Event(), {}
+        sock, url = listener()
         ui = asyncio.create_task(
             live_ui.serve_live_ui(
                 stop,
+                sock,
                 heartbeat_fn=_daemon_heartbeat(),
-                host="127.0.0.1",
-                port=0,
                 stats=stats,
                 record_heartbeat=lambda _beat: None,
             )
         )
-        assert await _until(lambda: stats.get("listening"))
-        ws = await connect(stats["listening"], max_size=None)
+        assert await _until(lambda: "clients" in stats)  # serving
+        ws = await connect(url, max_size=None)
         try:
             for frame in (
                 "not json",
