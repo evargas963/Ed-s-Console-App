@@ -30,10 +30,12 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import chain_messages
+from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import LocalStreamer
+from time_et import ET
 
 _FX = Path(__file__).parent / "fixtures"
 _MRVL = json.loads((_FX / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))
@@ -103,7 +105,7 @@ class _Market:
     its bus fed as the chain sweep and the stream feed it."""
 
     def __init__(self, tmp_path, watchlist: list[str], clock):
-        self.streamer = LocalStreamer(capture.OPTION_LIMITS)
+        self.streamer = LocalStreamer(capture.OPTION_LIMITS, data={})
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
         self.bus = MessageBus()
@@ -363,10 +365,14 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], flow=far)
     rule_alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
-    with server._terrain_cache_lock:  # the console holds MRVL's chain
-        server._terrain_cache["MRVL"] = {
-            "_contract_symbols": frozenset(c["symbol"] for c in CHAINS["MRVL"])
-        }
+    # the console holds MRVL's chain, published by the one producer at its capture
+    server._publish_levels(
+        "MRVL",
+        read_chain(CHAINS["MRVL"]),
+        CAPTURED,
+        chain_spot=(PRICES["MRVL"], CAPTURED),
+        now=datetime.fromtimestamp(CAPTURED, ET),
+    )
     held: dict = {}
 
     async def steps(m):

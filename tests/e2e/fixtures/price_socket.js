@@ -10,20 +10,20 @@ function served(s) {
   const key = u.startsWith('$') || !INDEX_ROOTS.has(u) ? u : '$' + u;
   return { requested: s, key: key, display: key.replace(/^\$/, '') };
 }
-function priceRow(ticker, spot, extra) {
+function priceRow(ticker, spot, extra = {}) {
   return Object.assign({ ticker: ticker, spot: spot, spot_disp: spot.toFixed(2), spot_state: 'live',
     feed_live: true, feed_label: 'LIVE', spot_source: 'streaming_plane', server_ts: Date.now() / 1000,
-    trade_age_sec: 1 }, extra || {});
+    trade_age_sec: 1 }, extra);
 }
 // `later`: [{ afterMs, row }], rows sent that long after the subscribe (a push that resumes)
-async function mockPriceSocket(page, rows, later) {
+async function mockPriceSocket(page, rows = [], later = []) {
   await page.routeWebSocket(/:1\/$/, (ws) => {
     ws.onMessage((m) => {
       const req = JSON.parse(String(m));
       if (req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;
       ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
-      (rows || []).forEach((r, i) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [r] })), 300 * i));
-      (later || []).forEach((l) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [l.row] })), l.afterMs));
+      rows.forEach((r, i) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [r] })), 300 * i));
+      later.forEach((l) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [l.row] })), l.afterMs));
     });
   });
 }
