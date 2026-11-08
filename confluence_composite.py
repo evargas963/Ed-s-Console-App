@@ -283,10 +283,10 @@ def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
 
 
 def window_rows(matrix: dict, shown: list[float]) -> list[dict]:
-    """The rows of the ranked strikes `shown`, highest strike first, each coloured on its whole
-    expiry's scale."""
+    """The rows of the ranked strikes `shown`, highest strike first; each cell shades against its
+    whole expiry's peak (the matrix's `peaks`)."""
     ranked = matrix["ranked"]
-    return [_row(strike, ranked[strike], matrix["peaks"]) for strike in sorted(shown, reverse=True)]
+    return [_row(strike, ranked[strike]) for strike in sorted(shown, reverse=True)]
 
 
 def under_strike(price: float, strikes: list[float]) -> float | None:
@@ -352,7 +352,7 @@ def _thousands(n: float | None) -> str | None:
 
 
 def _peak(values) -> float | None:
-    """Largest absolute value on this expiry. The color ramp's own scale, not a score."""
+    """Largest absolute value on this expiry: the column's scale, not a score."""
     peak = None
     for value in values:
         if not isinstance(value, (int, float)):
@@ -363,24 +363,28 @@ def _peak(values) -> float | None:
     return peak
 
 
-def _ramp(value, peak, signed: bool) -> str | None:
-    """Neutral toward red or green. The page paints this string and does not scale it."""
-    if not isinstance(value, (int, float)):
-        return None
-    number = float(value)
-    if number == 0 or not isinstance(peak, (int, float)) or peak == 0:
-        return "background:#111822;font-weight:550"
-    t = abs(number) / float(peak)
-    if t > 1:
-        t = 1.0
-    if signed and number < 0:
-        end = (224, 35, 47)
-    else:
-        end = (9, 166, 67)
-    neutral = (17, 24, 34)
-    channels = [str(int(round(neutral[i] * (1 - t) + end[i] * t))) for i in range(3)]
-    weight = "750" if t > 0.65 else "550"
-    return "background:rgb(" + ",".join(channels) + ");font-weight:" + weight
+#: each shaded column: the row's key for its number and the factor it carries
+SHADED = {
+    "net_gex": "_net_gex",
+    "oi": "OI",
+    "gross": "_gross",
+    "volume": "VOL",
+    "vol_oi": "_vol_oi",
+    "dex": "_dex",
+    "vanna": "_vanna",
+    "iv": "IV",
+    "charm": "_charm",
+}
+#: the put/call columns shade by 1 - put/call: positive call-heavy, negative put-heavy
+LEANS = {"pc_gex_lean": "_pc_gex", "pc_vol_lean": "_pc_vol"}
+
+
+def _shades(factors: dict) -> dict:
+    """The numbers the page shades each column's cell by, against the column's peak."""
+    out = {key: factors[name] for key, name in SHADED.items()}
+    for key, name in LEANS.items():
+        out[key] = None if factors[name] is None else 1 - factors[name]
+    return out
 
 
 def _absent(value, words: str) -> str | None:
@@ -434,17 +438,8 @@ def build_matrix(
         weights,
     )
     cap = ceiling(weights)
-    peaks = {
-        key: _peak(f[key] for f in mags.values())
-        for key in ("_net_gex", "OI", "_gross", "VOL", "_dex", "_vanna", "IV", "_charm", "_vol_oi")
-    }
-    peaks.update(
-        {
-            key: _peak(None if f[key] is None else 1 - f[key] for f in mags.values())
-            for key in ("_pc_gex", "_pc_vol")
-        }
-    )
-    peaks["score"] = cap
+    shades = [_shades(f) for f in mags.values()]
+    peaks = {key: _peak(s[key] for s in shades) for key in (*SHADED, *LEANS)}
     universe_n = sum(
         1 for s in mags if _in_universe({k: v for k, v in mags[s].items() if not k.startswith("_")})
     )
@@ -472,8 +467,9 @@ def build_matrix(
     }
 
 
-def _row(strike: float, ranked: RankedStrike, peaks: dict) -> dict:
-    """One strike's row of the matrix, its colours on the expiry's scales."""
+def _row(strike: float, ranked: RankedStrike) -> dict:
+    """One strike's row of the matrix: each column's text and the number its cell shades by
+    (_shades), against the expiry's peaks."""
     factors, result = ranked.factors, ranked.result
     score = result["score"]
     pc_gex = factors["_pc_gex"]
@@ -481,46 +477,35 @@ def _row(strike: float, ranked: RankedStrike, peaks: dict) -> dict:
     return {
         "strike": strike,
         "strike_text": price_text(strike),
+        **_shades(factors),
         "net_gex_text": _signed_millions(factors["_net_gex"]),
-        "net_style": _ramp(factors["_net_gex"], peaks["_net_gex"], True),
         "net_reason": _absent(factors["_net_gex"], "net gamma is missing"),
         "oi_text": None if factors["OI"] is None else f"{factors['OI']:.0f}",
-        "oi_style": _ramp(factors["OI"], peaks["OI"], False),
         "oi_reason": _absent(factors["OI"], "open interest is missing"),
         "pc_gex_text": _text(pc_gex, 2),
-        "pc_gex_style": _ramp(None if pc_gex is None else 1 - pc_gex, peaks["_pc_gex"], True),
         "pc_gex_reason": _absent(pc_gex, "put/call gamma is missing"),
         "gross_text": _millions(factors["_gross"]),
-        "gross_style": _ramp(factors["_gross"], peaks["_gross"], False),
         "gross_reason": _absent(factors["_gross"], "gross gamma is missing"),
         "dgex_text": None,
         "dgex_reason": DGEX_REASON,
         "volume_text": None if factors["VOL"] is None else f"{factors['VOL']:.0f}",
-        "volume_style": _ramp(factors["VOL"], peaks["VOL"], False),
         "volume_reason": _absent(factors["VOL"], "volume is missing"),
         "pc_vol_text": _text(pc_vol, 2),
-        "pc_vol_style": _ramp(None if pc_vol is None else 1 - pc_vol, peaks["_pc_vol"], True),
         "pc_vol_reason": _absent(pc_vol, "put/call volume is missing"),
         "vol_oi_text": _text(factors["_vol_oi"], 2),
-        "vol_oi_style": _ramp(factors["_vol_oi"], peaks["_vol_oi"], False),
         "vol_oi_reason": _absent(factors["_vol_oi"], "volume/open interest is missing"),
         "flow_text": None,
         "flow_reason": FLOW_REASON,
         "dex_text": _signed_millions(factors["_dex"]),
-        "dex_style": _ramp(factors["_dex"], peaks["_dex"], True),
         "dex_reason": _absent(factors["_dex"], "delta exposure is missing"),
         "vanna_text": _signed_millions(factors["_vanna"]),
-        "vanna_style": _ramp(factors["_vanna"], peaks["_vanna"], True),
         "vanna_reason": _absent(factors["_vanna"], "vanna is missing"),
         "iv_text": _text(factors["IV"], 1),
-        "iv_style": _ramp(factors["IV"], peaks["IV"], False),
         "iv_reason": _absent(factors["IV"], "implied volatility is missing"),
         "charm_text": _signed_thousands(factors["_charm"]),
-        "charm_style": _ramp(factors["_charm"], peaks["_charm"], True),
         "charm_reason": _absent(factors["_charm"], "charm is missing"),
         "score": score,
         "score_text": None if score is None else str(int(round(score))),
-        "heat_background": _ramp(score, peaks["score"], False),
         "missing": result["missing"],
         "contributions": [_factor_row(p) for p in result["contributions"]],
         "factors": [_factor_row(p) for p in result["factors"]],
