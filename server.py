@@ -3382,28 +3382,23 @@ def expiries(ticker: str, now: float) -> dict:
     """Return the ticker's listed expiries at `now`, each with its dropdown label.
 
     `ticker` is the levels' own key ($SPX). The label is MM/DD/YYYY and Schwab's
-    daysToExpiration, as sent; with none listed, the levels' own reason. The page's socket sends
-    it (live_ui, PAGE_PANELS) when the page subscribes on the ticker and on each new chain.
+    daysToExpiration, as sent. Before the ticker's first chain is priced the list is unknown
+    (None), with the levels' own reason; a chain listing none is an empty list with its reason.
+    The page's socket sends it (live_ui, PAGE_PANELS) when the page subscribes on the ticker and
+    on each new chain.
     """
     levels, verdict = terrain_cache_get(ticker, now)
-    if levels is None:
-        return {
-            "expiries": [],
-            "dte": {},
-            "labels": {},
-            "reason": verdict["levels_stale_reason"],
+    exps = dte = labels = None
+    reason = verdict["levels_stale_reason"]
+    if levels is not None:
+        exps, dte = levels.snap.expiries, levels.snap.expiry_dte
+        labels = {
+            e: f"{e[5:7]}/{e[8:10]}/{e[:4]}"
+            + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
+            for e in exps
         }
-    exps, dte = levels.snap.expiries, levels.snap.expiry_dte
-    labels = {
-        e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
-        for e in exps
-    }
-    return {
-        "expiries": exps,
-        "dte": dte,
-        "labels": labels,
-        "reason": None if exps else "no expiry listed in the published chain",
-    }
+        reason = None if exps else "no expiry listed in the published chain"
+    return {"expiries": exps, "dte": dte, "labels": labels, "reason": reason}
 
 
 #: the panels the page's socket sends for the page's selected ticker (live_ui.LiveUiServer):

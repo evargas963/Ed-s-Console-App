@@ -369,7 +369,7 @@ test.describe('expiry dropdown (register P-03): the list on the page\'s socket',
   });
 
   test('a ticker with no chain yet shows the served reason', async ({ page }) => {
-    await open(page, (ws) => answering(ws, { SPY: { expiries: [], labels: {}, reason: 'market closed; no chain capture of this ticker yet' } }));
+    await open(page, (ws) => answering(ws, { SPY: { expiries: null, dte: null, labels: null, reason: 'market closed; no chain capture of this ticker yet' } }));
     await expect(page.locator('#expSel option[disabled]')).toHaveText('market closed; no chain capture of this ticker yet');
   });
 

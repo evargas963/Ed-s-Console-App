@@ -11,8 +11,8 @@ daysToExpiration as sent.
 Proves:
   * a page subscribing on a ticker gets that ticker's list at once, with no GET (the route is
     gone);
-  * a ticker with no chain yet gets an empty list with the levels' own reason, never an empty
-    list alone;
+  * a ticker with no chain yet gets an unknown list (None) with the levels' own reason, never an
+    empty list standing for unknown;
   * a new chain pushes the new list only to the pages on that ticker; two pages on different
     tickers each get only their own;
   * switching ticker sends the new ticker's list at once and stops the old ticker's;
@@ -149,7 +149,7 @@ def test_a_page_gets_its_tickers_list_at_once_with_no_get():
             _assert_lists(await _next_list(ws), A, CRWD)
 
     asyncio.run(_run(body))
-    assert "/api/expiries" not in {getattr(r, "path", None) for r in server.app.routes}
+    assert "/api/expiries" not in {r.path for r in server.app.routes}
 
 
 def test_a_ticker_with_no_chain_yet_reads_unknown_with_the_levels_reason():
@@ -158,7 +158,8 @@ def test_a_ticker_with_no_chain_yet_reads_unknown_with_the_levels_reason():
             await _subscribe(ws, CRWD.ticker)
             frame = await _next_list(ws)
             reason = server.terrain_staleness(None, A, now=time_et.now())["levels_stale_reason"]
-            assert frame["ticker"] == A and frame["expiries"] == [] and frame["labels"] == {}
+            assert frame["ticker"] == A and frame["expiries"] is None and frame["labels"] is None
+            assert frame["dte"] is None
             assert frame["reason"] == reason and reason
 
     asyncio.run(_run(body))
@@ -169,13 +170,13 @@ def test_a_new_chain_reaches_only_the_pages_on_its_ticker():
         async with connect(url) as on_a, connect(url) as on_b:
             await _subscribe(on_a, A)
             await _subscribe(on_b, B)
-            assert (await _next_list(on_a))["expiries"] == []  # no chain of either yet
-            assert (await _next_list(on_b))["expiries"] == []
+            assert (await _next_list(on_a))["expiries"] is None  # no chain of either yet
+            assert (await _next_list(on_b))["expiries"] is None
             await asyncio.to_thread(_publish, CRWD)  # the pricing thread prices A's chain
             _assert_lists(await _next_list(on_a), A, CRWD)
             # nothing for B: a frame owed before B's next subscribe arrives ahead of its answer
             assert _lists(await _subscribe(on_b, B)) == []
-            assert (await _next_list(on_b))["expiries"] == []  # the subscribe's own list
+            assert (await _next_list(on_b))["expiries"] is None  # the subscribe's own list
             await asyncio.to_thread(_publish, MRVL)
             _assert_lists(await _next_list(on_b), B, MRVL)
             assert _lists(await _subscribe(on_a, A)) == []

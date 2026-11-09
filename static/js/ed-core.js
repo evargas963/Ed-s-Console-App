@@ -590,7 +590,8 @@
     paintIdentity(state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
-    forgetExpiries();                 // until the socket sends this ticker's list (subscribePrices)
+    // this ticker's list is not received yet (the socket sends it on the subscribe below): '-'
+    paintExpiries({ expiries: null, labels: null, reason: '-' });
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     // just asked for this ticker: WAITING (not OFFLINE) until PRICE_SILENCE_MS passes with no row
     _priceConnecting = true; clearTimeout(_priceConnectTimer);
@@ -620,33 +621,30 @@
 
   // ---- expiry dropdown: the selected ticker's listed expiries as the program pushes them on the
   // page's socket (an `expiries` frame, server.expiries), at each subscribe and on each new chain;
-  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration) ----
-  function paintExpiries(d) {
-    var sel = document.getElementById('expSel'); if (!sel) return;
-    var exps = d.expiries, labels = d.labels;
-    var opts = '<option value="">All Expirations</option>';
-    exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
-    if (!exps.length && d.reason) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
-    sel.innerHTML = opts;
-    // the expiry chosen before a ticker switch, else the one in force: kept while this list holds
-    // it, else All (honest)
-    var pick = _expiryPick !== null ? _expiryPick : state.expiryFilter;
-    _expiryPick = null;
-    var keep = pick !== null && exps.indexOf(pick) !== -1;
-    sel.value = keep ? pick : '';
-    setExpiry(keep ? pick : '');
-    relabelExpiryDefault();
-  }
-  // An expiry belongs to its ticker. A new ticker's list is not received yet, so its expiry is
-  // unknown: none is in force (no read carries the last ticker's) and none is shown ('-'); the
-  // operator's pick waits for the new list (paintExpiries).
+  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration). An expiry belongs to
+  // its ticker: while the ticker's list is unknown (`expiries` null: not received since a switch,
+  // or no chain priced yet) none is in force, so no read carries another ticker's, and the
+  // operator's pick waits for a known list, which keeps it while it lists it, else All ----
   var _expiryPick = null;
-  function forgetExpiries() {
-    if (state.expiryFilter !== null) _expiryPick = state.expiryFilter;
-    state.expiryFilter = null;
-    var ctx = document.getElementById('aiCtxExp'); if (ctx) ctx.textContent = 'All';
+  function paintExpiries(d) {
+    var exps = d.expiries, labels = d.labels;
+    if (exps === null) {
+      if (state.expiryFilter !== null) _expiryPick = state.expiryFilter;
+      state.expiryFilter = null;
+      var ctx = document.getElementById('aiCtxExp'); if (ctx) ctx.textContent = 'All';
+    }
     var sel = document.getElementById('expSel'); if (!sel) return;
-    sel.innerHTML = '<option value="">All Expirations</option><option value="" disabled>-</option>';
+    var opts = '<option value="">All Expirations</option>';
+    if (exps !== null) exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
+    if (exps === null || !exps.length) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
+    sel.innerHTML = opts;
+    if (exps !== null) {
+      var pick = _expiryPick !== null ? _expiryPick : state.expiryFilter;
+      _expiryPick = null;
+      var keep = pick !== null && exps.indexOf(pick) !== -1;
+      sel.value = keep ? pick : '';
+      setExpiry(keep ? pick : '');
+    }
     relabelExpiryDefault();
   }
   function setExpiry(v) {   // v: an expiry, or '' -- the select's "All Expirations", no filter
