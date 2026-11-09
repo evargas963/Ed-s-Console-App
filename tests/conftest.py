@@ -11,13 +11,19 @@ locked by ``test_build_config_fail_closed_without_secrets``.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import subprocess
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
+
+import live_market_plane
+import push_changes
+from time_et import ET, now, record_markets, session
 
 # Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
 # deterministic, process-private runtime boundary before any application module imports
@@ -82,10 +88,6 @@ def _markets_answers_held():
     answer as the daemon publishes it): each 200 answer captured 2026-10-07 is held through
     the one intake, time_et.record_markets.
     """
-    import json
-
-    from time_et import record_markets
-
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))
@@ -99,17 +101,15 @@ def _live_feed_starts_down():
     for the screen (record_feed_down); this fixture clears them. Tests that need a live price
     mark it (tests/feed_live_helper.py).
     """
-    import live_market_plane as _lmp_feed
-
-    _lmp_feed.record_feed_down()
-    with _lmp_feed._lock:
-        _lmp_feed._feed["held"] = {}
-        _lmp_feed._feed["status"] = None
+    live_market_plane.record_feed_down()
+    with live_market_plane._lock:
+        live_market_plane._feed["held"] = {}
+        live_market_plane._feed["status"] = None
     yield
-    _lmp_feed.record_feed_down()
-    with _lmp_feed._lock:
-        _lmp_feed._feed["held"] = {}
-        _lmp_feed._feed["status"] = None
+    live_market_plane.record_feed_down()
+    with live_market_plane._lock:
+        live_market_plane._feed["held"] = {}
+        live_market_plane._feed["status"] = None
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
@@ -117,8 +117,6 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     held say the market was open (the same answers the code reads, so the test cannot disagree
     with them).
     """
-    from time_et import ET, now, session
-
     start = on_or_before or datetime.fromtimestamp(now(), ET).date()
     day = start
     for _ in range(14):  # the longest market closure gap is far under two weeks
@@ -135,8 +133,6 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
 @pytest.fixture(scope="session")
 def tracked_files() -> list[str]:
     """Every path git tracks."""
-    import subprocess
-
     out = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=Path(__file__).resolve().parent.parent,
@@ -154,8 +150,6 @@ def view(monkeypatch):
     event loop is bound, so a change is recorded for the page but not delivered (another test's
     loop may be closed).
     """
-    import push_changes
-
     monkeypatch.setattr(push_changes, "_open", [])
     monkeypatch.setattr(push_changes, "_loop", None)
 

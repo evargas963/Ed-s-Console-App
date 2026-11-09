@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 import live_market_plane as lmp
+import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from stream_spine import HealthRegistry, MessageBus
@@ -38,8 +39,6 @@ def stream_daemon_bars(rows: list[dict]) -> None:
     daemon received them, through the console's own streamed-bar writer
     (server._write_streamed_bar), so each minute holds Schwab's newest bar for it.
     """
-    import server
-
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
         server._write_streamed_bar(r)
 
@@ -63,8 +62,6 @@ def hold_schwab_daily(symbol: str, under: str | None = None) -> None:
     (real_schwab_daily_spx_2026_10.json, 2024-11-04 through 2026-11-02). The caller pops
     server._daily when done, as it pops server._bars.
     """
-    import server
-
     if symbol == "$SPX":
         sent = json.loads(
             (_FIXTURES / "real_schwab_daily_spx_2026_10.json").read_text(encoding="utf-8")
@@ -76,8 +73,6 @@ def hold_schwab_daily(symbol: str, under: str | None = None) -> None:
 
 def schwab_daily(symbol: str) -> list:
     """`symbol`'s daily candles as the bar writer holds them (hold_schwab_daily), taken out."""
-    import server
-
     hold_schwab_daily(symbol)
     try:
         return list(server._daily[symbol])

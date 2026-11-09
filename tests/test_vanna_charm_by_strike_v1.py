@@ -21,6 +21,8 @@ from pathlib import Path
 import live_market_plane as lmp
 import server
 import time_et
+from math_exposure_core import bucket_metric, compute_exposures_by_strike
+from math_levels import compute_charm_by_strike
 from option_contract import read_chain
 from tests.feed_live_helper import mark_feed_live
 from tests.real_chains import CRWD
@@ -70,9 +72,6 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
 
 def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():
     _put_live_chain()
-    from math_exposure_core import bucket_metric
-    from math_exposure_core import compute_exposures_by_strike as cebs
-
     # Schwab's CRWD quote in the daemon's plane, as the daemon takes it in: its price row
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time_et.now())
     mark_feed_live(TK)
@@ -85,7 +84,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     assert rows, "a real chain must yield at least one vanna row"
 
     # the same chain at the same instant: the published rows are the faucet's own values
-    exposures, _ = cebs(_CONTRACTS, spot=_SPOT, now=CRWD.now)
+    exposures, _ = compute_exposures_by_strike(_CONTRACTS, spot=_SPOT, now=CRWD.now)
     checked = 0
     for k, b in exposures.items():
         expected = bucket_metric(b, "net_vanna")
@@ -99,15 +98,13 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
 
 def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_strike():
     _put_live_chain()
-    from math_levels import compute_charm_by_strike as ccs
-
     body = json.loads(server.get_charm_by_strike(ticker="CRWD", scope="all").body)
     assert body["available"] is True
     rows = {r[0]: r[1] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"
 
     # the same chain at the same instant: the published rows are the faucet's own values
-    per_ch = ccs(_CONTRACTS, _SPOT, now=CRWD.now)
+    per_ch = compute_charm_by_strike(_CONTRACTS, _SPOT, now=CRWD.now)
     checked = 0
     for k, b in per_ch.items():
         if b.get("net_charm") is None:

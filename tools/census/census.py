@@ -264,32 +264,10 @@ add(S, "text files that are not UTF-8", "13", "git grep -I")
 for f in NOT_UTF8:
     add(S, "text files that are not UTF-8", "13", "git grep -I", f)
 for f in ALL_PY:
-    add(S, f"inner imports: {area(f)}", "13", "ruff PLC0415")
     add(S, f"duplicate function groups: {area(f)}", "1", "ast body hash")
 add(S, "second readers of a Schwab field", "3", "tools.check_one_reader --list")
 add(S, "identical files (extra copies)", "1", "git blob")
 add(S, "product modules doing math (target: one Calculators part)", "shape", "ast")
-
-out = run(
-    [
-        PY,
-        "-m",
-        "ruff",
-        "check",
-        ".",
-        "--select",
-        "PLC0415",
-        "--output-format",
-        "concise",
-        "--no-cache",
-        "--exit-zero",
-        "--isolated",
-    ]
-)
-for ln in out.splitlines():
-    if m := re.match(r"(.+?):(\d+):\d+: PLC0415", ln):
-        f = m.group(1).replace("\\", "/")
-        add(S, f"inner imports: {area(f)}", "13", "ruff PLC0415", f"{f}:{m.group(2)}")
 
 for ln in run([PY, "-m", "tools.check_one_reader", "--list"]).splitlines():
     if "modules:" in ln:

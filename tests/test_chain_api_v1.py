@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from starlette.testclient import TestClient
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
@@ -158,8 +159,6 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
 
 
 def test_the_route_answers_over_real_http():
-    from starlette.testclient import TestClient
-
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     with TestClient(srv.app) as client:
         r = client.get("/api/chain", params={"ticker": "TSLA"})

@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
+import server
 import time_et
+from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
 from option_contract import read_chain
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
 from tests.capture_store import store_capture
@@ -87,12 +89,6 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
     daemon writes them in the console's database. STAND-IN (named): Monday's price row, Friday's
     capture price.
     """
-    import server
-    from calibration.complete_chain_capture import (
-        CAPTURE_BASIS,
-        last_capture_per_day,
-    )
-
     db = server.get_db().db_path
     for day in _FX["days"]:
         by_exp: dict = {}

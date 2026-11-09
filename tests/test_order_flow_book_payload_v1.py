@@ -14,7 +14,8 @@ socket open and holding SPY on LEVELONE_EQUITIES and NYSE_BOOK (for the books), 
 LEVELONE_EQUITIES (for tests/e2e/fixtures/price_rows_live.json); no status message is captured.
 
 Regenerate (from the repo root, project .venv):
-  python -c "import tests.test_order_flow_book_payload_v1 as t; t.write_book_e2e_fixture()"
+  python -c "import tests.conftest, tests.test_order_flow_book_payload_v1 as t
+  t.write_book_e2e_fixture()"
 """
 
 from __future__ import annotations
@@ -25,8 +26,16 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
+import live_market_plane as lmp
+import live_price_rows
+import server
 from app.options.order_flow import history
+from app.options.order_flow import streaming as ofs
+from stream_spine import book_msg
+from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import daemon_status
+from time_et import record_markets
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _E2E_FIXTURE = (
@@ -43,12 +52,6 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
     connection up (NOT LIVE, the market closed), or ended after its row arrived (`feed_down`:
     OFFLINE).
     """
-    import app.options.order_flow.state as ofls
-    import live_market_plane as lmp
-    import server
-    from app.options.order_flow import streaming as ofs
-    from stream_spine import book_msg
-
     book = json.loads((_FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
     ]["NYSE_BOOK"]
@@ -102,9 +105,6 @@ def _row_after(ticker: str, messages: list, at: float) -> dict:
     """The daemon's price row for `ticker` at `at` (live_price_rows.price_row) after its real
     messages, the daemon holding it: what the daemon's price socket pushes to the page.
     """
-    import live_market_plane as lmp
-    import live_price_rows
-
     try:
         lmp.record_feed_heartbeat(
             daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [ticker]})
@@ -140,9 +140,6 @@ def write_book_e2e_fixture() -> None:
     """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
     hold them (tests/conftest.py), then the route's payload written to the e2e fixture.
     """
-    from tests.conftest import MARKETS_ANSWERS
-    from time_et import record_markets
-
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))
