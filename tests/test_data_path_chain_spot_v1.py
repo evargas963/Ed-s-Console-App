@@ -26,6 +26,7 @@ from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
+from tests.test_one_levels_producer_v1 import _drain
 
 _QUOTE = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json").read_text(
@@ -46,14 +47,6 @@ def _forget():
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     lmp.record_feed_down()
-
-
-def _drain():
-    while True:
-        server._chain_pricing.submit(lambda: None).result(timeout=60)
-        with server._chains_waiting_lock:
-            if not server._chains_waiting:
-                return
 
 
 def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_capture(tmp_path):
