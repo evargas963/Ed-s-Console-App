@@ -186,7 +186,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
     Not the browser's clock (it counted days in UTC, a day off after 7 PM Central).
     """
-    body = json.loads(server.get_expiries(ticker=TK).body)
+    body = server.expiries(TK, time_et.now())
     assert body["expiries"] == [EXPIRY]
     assert body["dte"] == {EXPIRY: _CONTRACTS[0]["daysToExpiration"]}
     # the dropdown's label is served (the page reformatted the date itself)
@@ -195,7 +195,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
-    body = json.loads(server.get_expiries(ticker="ZZNOLEVELS").body)
+    body = server.expiries("ZZNOLEVELS", time_et.now())
     assert (
         body["expiries"] == []
         and body["reason"]

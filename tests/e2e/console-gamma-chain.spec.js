@@ -7,7 +7,8 @@
  * reconstructed.
  */
 const { test, expect } = require('@playwright/test');
-const { expiriesAnswer } = require('./fixtures/expiries');
+const { pushExpiries } = require('./fixtures/expiries');
+const { expiriesFrame, priceRow, served: servedSymbol } = require('./fixtures/price_socket');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
 const { watchRequests } = require('./fixtures/settled');
@@ -54,9 +55,10 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] },
       views: { all: { centre: 100, note: null, max_abs: 1 } } };
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
-    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-09-11'], {});    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
+  await pushExpiries(page, ['2026-09-11']);
 }
 
 async function toChain(page) {
@@ -240,8 +242,7 @@ test.describe('D — Gamma Chain subview', () => {
     const EXP_A = '2026-09-11', EXP_B = '2026-09-18';
     const symA = occSymbol('SPY', EXP_A, 'CALL', 100);
     const symB = occSymbol('SPY', EXP_B, 'CALL', 200);
-    await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(expiriesAnswer([EXP_A, EXP_B], {})) }));
+    await pushExpiries(page, [EXP_A, EXP_B]);
     await page.route('**/api/chain*', (route) => {
       const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
       const strike = exp === EXP_A ? 100 : 200;   // distinct strike AND distinct symbol per expiry
@@ -283,8 +284,7 @@ test.describe('D — Gamma Chain subview', () => {
     const requests = watchRequests(page);
     let aCallCount = 0, releaseFirstA;
     const firstAHeld = new Promise((r) => { releaseFirstA = r; });
-    await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(expiriesAnswer([EXP_A, EXP_B], {})) }));
+    await pushExpiries(page, [EXP_A, EXP_B]);
     await page.route('**/api/chain*', async (route) => {
       const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
       if (exp === EXP_A) {
@@ -331,30 +331,78 @@ test.describe('D — Gamma Chain subview', () => {
   });
 });
 
-test.describe('expiry dropdown (register P-03)', () => {
-  // it formatted each date on the page, kept "All Expirations" silently on a failed request and
-  // ignored the served reason when none is listed
-  async function withExpiries(page, fulfil) {
+test.describe('expiry dropdown (register P-03): the list on the page\'s socket', () => {
+  // it formatted each date on the page and ignored the served reason when none is listed; the
+  // list is the program's, sent on /ws after each subscribe on the selected ticker and again on
+  // each new chain (server.expiries), and the page asks no route for it
+  const SPY_LIST = { expiries: ['2026-10-16'], labels: { '2026-10-16': '10/16/2026 · 18DTE' }, reason: null };
+  const QQQ_LIST = { expiries: ['2026-10-17'], labels: { '2026-10-17': '10/17/2026 · 19DTE' }, reason: null };
+  const LISTS = { SPY: SPY_LIST, QQQ: QQQ_LIST };
+  // `onSocket(ws, n)`: the stand-in for the program's side of the page's n-th connection
+  async function open(page, onSocket) {
+    const asked = [];
+    page.on('request', (r) => { if (r.url().includes('/api/expiries')) asked.push(r.url()); });
     await page.route('**/api/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
     await routeWatchlist(page, ['SPY']);
-    await page.route('**/api/expiries*', fulfil);
+    let n = 0;
+    await page.routeWebSocket(/\/ws$/, (ws) => onSocket(ws, ++n));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    return asked;
+  }
+  // the program's answer to each subscribe: what each symbol is, then the selected ticker's list
+  function answering(ws, lists) {
+    ws.onMessage((m) => {
+      const req = JSON.parse(String(m));
+      if (req.op !== 'subscribe') return;
+      ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(servedSymbol) }));
+      if (req.ticker && lists[req.ticker]) ws.send(expiriesFrame(req.ticker, lists[req.ticker]));
+    });
+  }
+  function options(page) {
+    return page.locator('#expSel option').evaluateAll((os) => os.map((o) => o.textContent));
   }
 
-  test('each option shows its served label', async ({ page }) => {
-    await withExpiries(page, (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: ['2026-10-16'], labels: { '2026-10-16': '10/16/2026 · 18DTE' } }) }));
+  test('each option shows its served label, at once on the subscribe, with no request', async ({ page }) => {
+    const asked = await open(page, (ws) => answering(ws, LISTS));
     await expect(page.locator('#expSel option[value="2026-10-16"]')).toHaveText('10/16/2026 · 18DTE');
+    expect(asked).toEqual([]);
   });
 
-  test('with none listed, the served reason is shown', async ({ page }) => {
-    await withExpiries(page, (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: [], labels: {}, reason: 'market closed; no chain capture of this ticker yet' }) }));
+  test('a ticker with no chain yet shows the served reason', async ({ page }) => {
+    await open(page, (ws) => answering(ws, { SPY: { expiries: [], labels: {}, reason: 'market closed; no chain capture of this ticker yet' } }));
     await expect(page.locator('#expSel option[disabled]')).toHaveText('market closed; no chain capture of this ticker yet');
   });
 
-  test('a failed request is shown, not hidden', async ({ page }) => {
-    await withExpiries(page, (r) => r.fulfill({ status: 500, body: 'x' }));
-    await expect(page.locator('#expSel option[disabled]')).toHaveText('expiries unavailable: HTTP 500');
+  test('no list received (the socket down): "-", never a list', async ({ page }) => {
+    await open(page, (ws) => ws.close());
+    await expect(page.locator('#expSel option[disabled]')).toHaveText('-');
+    expect(await options(page)).toEqual(['All Expirations', '-']);
+  });
+
+  test('switching ticker shows the new ticker\'s list at once; a list for the ticker left is ignored', async ({ page }) => {
+    let program;
+    await open(page, (ws) => { program = ws; answering(ws, LISTS); });
+    await expect(page.locator('#expSel option[value="2026-10-16"]')).toHaveCount(1);
+    await page.locator('#symInput').fill('QQQ');
+    await page.locator('#symInput').press('Enter');
+    await expect.poll(() => options(page)).toEqual(['All Expirations', '10/17/2026 · 19DTE']);
+    // SPY's next chain, still in flight to a page that has left SPY; then a row of QQQ's, drawn
+    // after it: once the row is on screen, the list before it was read
+    program.send(expiriesFrame('SPY', SPY_LIST));
+    program.send(JSON.stringify({ type: 'quotes', rows: [priceRow('QQQ', 512.34)] }));
+    await expect(page.locator('#hPx')).toContainText('512.34');
+    expect(await options(page)).toEqual(['All Expirations', '10/17/2026 · 19DTE']);
+  });
+
+  test('the socket drops and returns: the list is sent again on the resubscribe', async ({ page }) => {
+    let first;
+    await open(page, (ws, n) => {
+      if (n === 1) { first = ws; answering(ws, LISTS); return; }
+      // the program's list after the drop: the next chain's, so the page shows the one resent
+      answering(ws, { SPY: { expiries: ['2026-10-30'], labels: { '2026-10-30': '10/30/2026 · 23DTE' }, reason: null } });
+    });
+    await expect(page.locator('#expSel option[value="2026-10-16"]')).toHaveCount(1);
+    first.close();
+    await expect.poll(() => options(page)).toEqual(['All Expirations', '10/30/2026 · 23DTE']);
   });
 });

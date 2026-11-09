@@ -104,7 +104,8 @@ def listener() -> tuple[socket.socket, str]:
 async def serve_page_socket(stop: asyncio.Event, sock: socket.socket, prices: dict, **settings):
     """Serve the page's price socket as the program serves it, until `stop`.
 
-    The daemon's side (live_ui.serve_live_ui, `prices` its arguments) and /ws on the program's
+    The daemon's side (live_ui.serve_live_ui, `prices` its arguments, with the program's panels,
+    server.PAGE_PANELS) and /ws on the program's
     web server (capture._PagesServer with capture.PAGES, `settings` over them) on `sock`. The
     console's startup work is not run (lifespan off): the page socket alone.
     """
@@ -113,7 +114,7 @@ async def serve_page_socket(stop: asyncio.Event, sock: socket.socket, prices: di
     )
     serving = asyncio.create_task(web.serve(sockets=[sock]))
     try:
-        await live_ui.serve_live_ui(stop, **prices)
+        await live_ui.serve_live_ui(stop, panels=server.PAGE_PANELS, **prices)
     finally:
         web.should_exit = True
         await serving
@@ -145,13 +146,14 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
     stats: dict = {}
     ui_stats: dict = {}
     daemon = capture.Daemon(bus, HealthRegistry(), [])
-    server = asyncio.create_task(
+    push = asyncio.create_task(
         live_push.serve_live_push(stop, daemon.console_frame, listener()[0], stats=stats)
     )
     ui = asyncio.create_task(
         live_ui.serve_live_ui(
             stop,
             heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
+            panels=server.PAGE_PANELS,
             stats=ui_stats,
         )
     )
@@ -165,7 +167,7 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
         ofs.stop_order_flow_stream()
         ofs.bind_daemon(None)
         stop.set()
-        await asyncio.gather(server, ui, follower, return_exceptions=True)
+        await asyncio.gather(push, ui, follower, return_exceptions=True)
 
 
 def _received(ts):

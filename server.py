@@ -1541,6 +1541,7 @@ def _publish_levels(
     push_changes.changed(tk, push_changes.LEVELS)
     if new_chain:
         push_changes.changed(tk, push_changes.CHAIN)
+        live_ui.changed(tk, "expiries")
     return snap
 
 
@@ -3360,38 +3361,37 @@ async def post_flow_contract(selected: FlowContract):
     return {"ok": True, "contract": contract}
 
 
-@app.get("/api/expiries")
-def get_expiries(ticker: str = Query(...)):
-    """Serve the ticker's listed expiries with each one's dropdown label.
+def expiries(ticker: str, now: float) -> dict:
+    """Return the ticker's listed expiries at `now`, each with its dropdown label.
 
-    The label is MM/DD/YYYY and Schwab's daysToExpiration, as sent; with none, the levels' own
-    reason.
+    `ticker` is the levels' own key ($SPX). The label is MM/DD/YYYY and Schwab's
+    daysToExpiration, as sent; with none listed, the levels' own reason. The page's socket sends
+    it (live_ui, PAGE_PANELS) when the page subscribes on the ticker and on each new chain.
     """
-    ticker = ticker_storage_key(_required_ticker(ticker))  # SPX -> $SPX: the cache's own key
-    now = time_et.now()
     levels, verdict = terrain_cache_get(ticker, now)
     if levels is None:
-        return JSONResponse(
-            {
-                "expiries": [],
-                "dte": {},
-                "labels": {},
-                "reason": verdict["levels_stale_reason"],
-            }
-        )
+        return {
+            "expiries": [],
+            "dte": {},
+            "labels": {},
+            "reason": verdict["levels_stale_reason"],
+        }
     exps, dte = levels.snap.expiries, levels.snap.expiry_dte
     labels = {
         e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
         for e in exps
     }
-    return JSONResponse(
-        {
-            "expiries": exps,
-            "dte": dte,
-            "labels": labels,
-            "reason": None if exps else "no expiry listed in the published chain",
-        }
-    )
+    return {
+        "expiries": exps,
+        "dte": dte,
+        "labels": labels,
+        "reason": None if exps else "no expiry listed in the published chain",
+    }
+
+
+#: the panels the page's socket sends for the page's selected ticker (live_ui.LiveUiServer):
+#: each kind's producer, (ticker, now) -> its body; _publish_levels marks a kind changed
+PAGE_PANELS = {"expiries": expiries}
 
 
 #: /api/chain's reason while no chain of the ticker is held and no chain error is recorded

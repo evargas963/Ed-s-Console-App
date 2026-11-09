@@ -1,4 +1,6 @@
-// /api/expiries as server.get_expiries answers it (server.py): each listed expiry, Schwab's
+const { mockPriceSocket } = require('./price_socket');
+
+// The expiry list as server.expiries produces it for the page's socket: each listed expiry, Schwab's
 // daysToExpiration as sent (`dte`), each expiry's dropdown label (MM/DD/YYYY, then " · <n>DTE"
 // when its days are sent), and a reason only when none is listed.
 function expiriesAnswer(expiries, dte) {
@@ -14,4 +16,8 @@ function expiriesAnswer(expiries, dte) {
     reason: expiries.length ? null : 'no expiry listed in the published chain',
   };
 }
-module.exports = { expiriesAnswer };
+// The page's socket stood in for, sending that list for the selected ticker on each subscribe
+function pushExpiries(page, expiries, dte = {}) {
+  return mockPriceSocket(page, [], [], expiriesAnswer(expiries, dte));
+}
+module.exports = { expiriesAnswer, pushExpiries };

@@ -32,6 +32,7 @@ import pytest
 
 import launch
 import live_market_plane as lmp
+import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import serve_live_push
@@ -78,7 +79,7 @@ def _beat(daemon: capture.Daemon) -> dict:
     The socket sends live_ui's feed beat; the console records it in
     live_market_plane.daemon_status; the console's record is cleared after.
     """
-    beat = LiveUiServer(daemon.status, {}).beat()
+    beat = LiveUiServer(daemon.status, {}, panels=server.PAGE_PANELS).beat()
     try:
         assert lmp.daemon_status(time_et.now())["writer"] == beat["writer"]
     finally:
