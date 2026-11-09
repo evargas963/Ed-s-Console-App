@@ -895,7 +895,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
 
     def ticks():
         while not ticking.is_set():
-            server._on_stream_tick(contracts[0]["symbol"], CRWD.now.timestamp())
+            server._on_stream_tick(contracts[0]["symbol"])
             time.sleep(0)
 
     ticker = threading.Thread(target=ticks, daemon=True)
