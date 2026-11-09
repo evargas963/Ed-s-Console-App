@@ -121,9 +121,9 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
         down = readers()
         limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
         lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
-        live, book_age, b_book = (
+        live, book_text, b_book = (
             readers(),
-            diag(a)["feed_health"]["book"]["age_sec"],
+            diag(a)["feed_health"]["book"]["text"],
             lmp.feed_live_for(b, "OPTIONS_BOOK", now),
         )
         lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
@@ -134,7 +134,8 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
         lmp.record_feed_down()
     assert down == (False, False, "OFFLINE", "NOT STREAMED")
     assert late == (False, False, "OFFLINE", "SUBSCRIBED")
-    assert live == (True, True, "LIVE", "SUBSCRIBED") and book_age == 45.0
+    # the daemon's own report of its last OPTIONS_BOOK message, 45 s, beside the feed's state
+    assert live == (True, True, "LIVE", "SUBSCRIBED") and book_text == "LIVE · 45s"
     assert b_book is False  # B held on L1 only
     assert schwab_down == (False, False, "OFFLINE", "SUBSCRIBED")  # the daemon is up, Schwab is not
 
