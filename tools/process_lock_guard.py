@@ -354,7 +354,7 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
     if tool in _EDIT_TOOLS:
         out.extend(production_checkout_edit_violations(tool_input))
     if tool in BASH_TOOLS:  # one roster (hook_chain.BASH_TOOLS)
-        cmd = tool_input.get("command") or ""
+        cmd = tool_input["command"]  # always sent for a shell tool; missing: refused
         ps = tool == "PowerShell"
         statements = read(cmd, payload_cwd or "", ps)
         # piped commits mask hook failures as exit 0 — block BEFORE it runs.

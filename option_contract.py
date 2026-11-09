@@ -21,8 +21,9 @@ log = logging.getLogger("option_contract")
 
 #: the Greeks the chain carries, each Schwab's stream or quote value
 GREEKS = ("gamma", "delta", "theta", "vega", "rho")
-#: the contract fields Schwab's chain sends rounded, which it cannot change (Schwab Trader API
-#: Support, 2026-10-06, item 6), and its quotes and its LEVELONE_OPTIONS stream send as computed
+#: the contract fields Schwab's chain sends rounded, which it cannot change (Schwab's reply,
+#: docs/schwab/schwab_support_emails_2026_10_06.txt item 6), and its quotes and its
+#: LEVELONE_OPTIONS stream send as computed
 GREEK_FIELDS = (*GREEKS, "volatility")
 #: the fields read into the record; every other field is the listing, shown as sent
 READ = frozenset(

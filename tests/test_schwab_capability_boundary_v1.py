@@ -114,7 +114,12 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     }
 
     now = time_et.now()
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "watchlist": ["SPY", "$SPX"]})
+    lmp.record_feed_heartbeat(
+        {
+            **capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "$SPX"]).status(now),
+            "schwab_socket_open": True,
+        }
+    )
     payload = server.health()
     assert payload["status"] == "ok"
     assert payload["capabilities"] == {"schwab": "AVAILABLE"}

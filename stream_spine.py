@@ -238,7 +238,7 @@ def book_msg(
     }
 
 
-def options_quote_msg(
+def verbatim_msg(
     *,
     symbol: str,
     content: dict,
@@ -246,7 +246,7 @@ def options_quote_msg(
     ts_recv: float | None = None,
     schwab_ts: int | None = None,
 ) -> dict:
-    """optquote.* (LEVELONE_OPTIONS), Schwab's item verbatim."""
+    """optquote.* (LEVELONE_OPTIONS) and news.* (NEWS_HEADLINE), Schwab's item verbatim."""
     return {
         "ts_recv": _now(ts_recv),
         "schwab_ts": schwab_ts,
@@ -283,24 +283,6 @@ def bar_msg(
         "volume": volume,
         "src": src,
         "native": native,
-    }
-
-
-def news_msg(
-    *,
-    symbol: str,
-    content: dict,
-    src: str,
-    ts_recv: float | None = None,
-    schwab_ts: int | None = None,
-) -> dict:
-    """news.* (NEWS_HEADLINE), Schwab's item verbatim."""
-    return {
-        "ts_recv": _now(ts_recv),
-        "schwab_ts": schwab_ts,
-        "symbol": symbol,
-        "content": content,
-        "src": src,
     }
 
 
@@ -933,11 +915,16 @@ class _Spill:
 
     def append(self, record: bytes) -> OSError | None:
         """Append one record; the disk's refusal (OSError) is returned, the file cut back to its
-        whole records."""
+        whole records.
+
+        The file is unbuffered, so a write may take part of the bytes; the rest is written next,
+        as Python's buffered writer does, and a disk that takes no more raises.
+        """
         data = len(record).to_bytes(4, "big") + record
+        left = memoryview(data)
         try:
-            if self.out.write(data) != len(data):
-                raise OSError(f"short write to {self.path}")
+            while left:
+                left = left[self.out.write(left) :]
         except OSError as e:
             self.out.truncate(self.size)  # no partial record stays behind the whole ones
             return e
@@ -1324,7 +1311,7 @@ class CaptureWriter:
         try:
             self._write(q)
         except Exception as e:  # recorded as the writer's death, then raised
-            log.error("stream writer died: %s: %s", type(e).__name__, e)
+            log.exception("stream writer died")
             with self._lock:
                 self.state, self.error, self.error_ts = (
                     WRITER_DEAD,
@@ -1613,14 +1600,12 @@ class CaptureWriter:
         spill.close()
         try:
             os.remove(spill.path)
-        except OSError as e:
-            log.error(
+        except OSError:
+            log.exception(
                 "stream writer: %s written back (%d messages), not deleted, deleted at the next "
-                "start: %s: %s",
+                "start",
                 spill.path,
                 spill.messages,
-                type(e).__name__,
-                e,
             )
             with self._lock:
                 self.left_on_disk.append(spill.left())

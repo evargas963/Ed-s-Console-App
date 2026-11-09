@@ -21,6 +21,7 @@ from micro_structure import Candle
 from option_contract import read_chain
 from tests.feed_live_helper import (
     daemon_bars,
+    daemon_status,
     hold_schwab_daily,
     price_history,
     stream_daemon_bars,
@@ -180,7 +181,9 @@ def test_strikes_payload_carries_server_side_sums():
         C.ticker, read_chain(C.chain), C.now.timestamp(), chain_spot=(C.spot, 1.0), now=C.now
     )
     lmp.record_feed_heartbeat(
-        {"ts": time_et.now(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [C.ticker]}}
+        daemon_status(
+            time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [C.ticker]}
+        )
     )
     lmp.record_from_level_one_equity(
         C.ticker, {"LAST_PRICE": C.spot, "TRADE_TIME_MILLIS": 1000}, received_ts=time_et.now()

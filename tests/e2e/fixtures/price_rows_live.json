@@ -24,7 +24,7 @@
     "spot_source": "streaming_plane",
     "ticker": "$SPX",
     "total_volume": null,
-    "trade_age_sec": 1798.933000087738,
+    "trade_age_text": "30m",
     "trade_time_ct": "Mon 10/19 08:30 AM CT",
     "trade_ts": 1792416601.067,
     "ts_recv": 1792416601.4951808
@@ -54,7 +54,7 @@
     "spot_source": "streaming_plane",
     "ticker": "SPY",
     "total_volume": 29113811.0,
-    "trade_age_sec": 0.7420001029968262,
+    "trade_age_text": "1s",
     "trade_time_ct": "Fri 10/23 02:59 PM CT",
     "trade_ts": 1792785544.258,
     "ts_recv": 1792785544.6394625

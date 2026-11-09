@@ -474,7 +474,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
     await page.evaluate((spot) => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: {
-      ticker: 'SPY', spot: spot, feed_live: false, feed_label: 'OFFLINE', trade_age_sec: 1, trade_time_ct: '14:00:01 CT',
+      ticker: 'SPY', spot: spot, feed_live: false, feed_label: 'OFFLINE', trade_age_text: '1s', trade_time_ct: '14:00:01 CT',
       outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' } })), SPOT);
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart && window.EdTradeDeskMap.state().chart.liveTitle)).toBe('LAST · last trade 14:00:01 CT');
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart && window.EdTradeDeskMap.state().chart.livePrice)).toBe(SPOT);
@@ -494,14 +494,14 @@ test.describe('Trade Desk renders served values', () => {
     const before = barReads.length;
     await page.evaluate((spot) => {
       for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: spot + i / 100,
-        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_age_sec: 1 } }));
+        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_age_text: '1s' } }));
     }, SPOT);
     const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chartState()).livePrice).toBeCloseTo(SPOT + 0.02, 6);
     expect((await chartState()).liveTitle).toBe('LAST · 1s');
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
-      spot_disp: null, feed_live: false, feed_label: 'OFFLINE', trade_age_sec: null } })));
+      spot_disp: null, feed_live: false, feed_label: 'OFFLINE', trade_age_text: null } })));
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);
@@ -584,6 +584,20 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now: a failed read is named, never told as no book, no levels or no gamma', async ({ page }) => {
+    // the book, the levels and the per-strike reads failing: before, they read "No book yet",
+    // "No levels" and "no per-strike gamma for this symbol yet"
+    const errs = watchErrors(page);
+    await intercept(page);   // every route answered in its real shape, then the three that fail
+    await page.route(/\/api\/(order-flow\/microstructure|levels|terrain\/strikes)\?/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdBody')).toContainText('The book request failed');
+    await expect(page.locator('#tdBody')).toContainText('The levels request failed');
+    await expect(page.locator('#tdMigration')).toContainText('the per-strike request failed');
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now: detect, frame, context and the migration read the served fields', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
@@ -611,7 +625,8 @@ test.describe('Trade Desk renders served values', () => {
     await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, MICRO, {
-        book_time_ct: BOOK_TIME, top_outage: 'Schwab NASDAQ_BOOK feed down during RTH', top_feed_label: 'OFFLINE',
+        book_time_ct: BOOK_TIME, book_when_age_text: BOOK_TIME + ' · 1s',
+        top_outage: 'Schwab NASDAQ_BOOK feed down during RTH', top_feed_label: 'OFFLINE',
       })),
     }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');

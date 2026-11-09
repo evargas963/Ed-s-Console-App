@@ -21,7 +21,8 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.engine import Book, read_book
-from stream_spine import HealthRegistry, MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import HealthRegistry, MessageBus, book_msg, quote_msg, verbatim_msg
+from tests.feed_live_helper import daemon_status
 
 _MIX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -35,7 +36,7 @@ def _message(m: dict) -> tuple[str, dict]:
     """One fixture row as the daemon publishes it on its bus."""
     sym, svc, ts = m["item"]["key"], m["service"], m["ts_recv"]
     if svc == "LEVELONE_OPTIONS":
-        return f"optquote.{sym}", options_quote_msg(
+        return f"optquote.{sym}", verbatim_msg(
             symbol=sym, content=m["item"], src="schwab_options_l1", ts_recv=ts
         )
     if svc == "LEVELONE_EQUITIES":
@@ -106,20 +107,20 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
     ofls.clear_all_live_state()
     try:
         lmp.record_feed_heartbeat(
-            {
-                "ts": time_et.now(),
-                "schwab_socket_open": True,
-                "held": {"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []},
-            }
+            daemon_status(
+                time_et.now(),
+                schwab_socket_open=True,
+                held={"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []},
+            )
         )
         ofs._ingest_pushed(*_message(m))
         held = ofls.option_top(sym)
         lmp.record_feed_heartbeat(
-            {
-                "ts": time_et.now(),
-                "schwab_socket_open": True,
-                "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []},
-            }
+            daemon_status(
+                time_et.now(),
+                schwab_socket_open=True,
+                held={"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []},
+            )
         )
         released = ofls.option_top(sym)
     finally:

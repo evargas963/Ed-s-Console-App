@@ -379,7 +379,7 @@ def main() -> int:
         return 2
     if payload.get("tool_name") not in BASH_TOOLS:
         return 0  # file edits carry no shell action to judge
-    cmd = (payload.get("tool_input") or {}).get("command") or ""
+    cmd = payload["tool_input"]["command"]  # always sent for a shell tool; missing: refused
     bad = bash_violations(cmd, powershell=payload.get("tool_name") == "PowerShell")
     if bad:
         sys.stderr.write(

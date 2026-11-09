@@ -309,8 +309,8 @@ def test_no_pool_language_in_rendered_zone_payload():
     zones = _overnight_under_prior_low_zones(session)
     assert zones, "fixture produced no zones — the assertion would be vacuous"
     for z in zones:
-        zt = str(getattr(z.zone_type, "value", z.zone_type))
-        notes = (z.interpretation_notes or "").lower()
+        zt = z.zone_type.value
+        notes = z.interpretation_notes.lower()
         assert "side_liquidity" not in zt, f"zone_type claims a pool: {zt}"
         assert z.zone_class != "liquidity", f"zone_class claims a pool: {z.zone_class}"
         for w in _POOL_WORDS:

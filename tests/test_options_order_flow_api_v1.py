@@ -19,6 +19,7 @@ import time_et
 from app.options.order_flow import streaming as ofs
 from option_contract import read_chain
 from stream_spine import book_msg
+from tests.feed_live_helper import daemon_status
 from tests.real_chains import SPY_0DTE
 
 CONTRACT = "SPY   261005C00774000"
@@ -36,11 +37,11 @@ def _daemon_holds(*services: str, now: float | None = None) -> None:
     """The daemon's heartbeat stamped `now` (the wall clock when not given), holding CONTRACT on
     `services`."""
     lmp.record_feed_heartbeat(
-        {
-            "ts": time_et.now() if now is None else now,
-            "schwab_socket_open": True,
-            "held": {svc: [CONTRACT] for svc in services},
-        }
+        daemon_status(
+            time_et.now() if now is None else now,
+            schwab_socket_open=True,
+            held={svc: [CONTRACT] for svc in services},
+        )
     )
 
 
@@ -91,7 +92,7 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
 
     def holds(*services: str) -> None:
         lmp.record_feed_heartbeat(
-            {"ts": at, "schwab_socket_open": True, "held": {svc: [contract] for svc in services}}
+            daemon_status(at, schwab_socket_open=True, held={svc: [contract] for svc in services})
         )
 
     def served() -> dict:

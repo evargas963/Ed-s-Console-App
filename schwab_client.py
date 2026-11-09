@@ -65,6 +65,10 @@ def _resolve_token_path(token_path: str) -> str:
 TOKEN_REPLACE_ATTEMPTS = 5
 #: the longest a writer of the token file waits for another to finish, in seconds
 TOKEN_LOCK_WAIT_SEC = 10
+
+#: how long the sign-in waits for the browser to return to the local callback (schwab-py's
+#: callback_timeout)
+OAUTH_CALLBACK_TIMEOUT_SEC = 900.0
 #: the session's one connection, kept through a pause (httpx closes an idle one after 5 s): only
 #: Schwab or the network ends it, and then the next request opens another (docs/DATA_FLOW.md §1)
 ONE_CONNECTION = httpx.Limits(max_connections=1, max_keepalive_connections=1, keepalive_expiry=None)
@@ -99,7 +103,6 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
                     fh.flush()
                     os.fsync(fh.fileno())
                 os.replace(tmp, path)
-                return
             except PermissionError as e:
                 Path(tmp).unlink(missing_ok=True)
                 if attempt == TOKEN_REPLACE_ATTEMPTS:
@@ -111,6 +114,8 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
                     e,
                 )
                 time.sleep(0.05 * attempt)
+            else:
+                return
 
 
 def _token_update_func(resolved: str):
@@ -220,7 +225,7 @@ class OneRefreshSession(OAuth2Client):
                         return super().ensure_active_token(self.token)
                     except AuthlibBaseError as e:
                         self._refused = e
-                        log.error("%s", self._refusal_text())
+                        log.exception("%s", self._refusal_text())
             raise SignInRefused(self._refusal_text()) from self._refused
 
     def request(self, method, url, withhold_token=False, **kwargs):
@@ -447,14 +452,6 @@ def build_client_from_token(
         raise ConnectionError(e) from e
 
 
-def _parse_callback_port(callback_url: str) -> tuple[str, int]:
-    """Parse host and port from callback URL (e.g. https://127.0.0.1:8182)."""
-    parsed = urlparse(callback_url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 8182
-    return host, port
-
-
 def _wait_for_callback_port(host: str, port: int, timeout: float = 5.0) -> bool:
     """Poll until the callback port is accepting connections. Returns True if ready."""
     deadline = time_et.elapsed() + timeout
@@ -462,9 +459,10 @@ def _wait_for_callback_port(host: str, port: int, timeout: float = 5.0) -> bool:
         try:
             with socket.create_connection((host, port), timeout=0.5):
                 pass
-            return True
         except OSError:
             time.sleep(0.1)
+        else:
+            return True
     return False
 
 
@@ -487,43 +485,40 @@ def run_login_flow(
                 token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
                 enforce_enums=False,
                 interactive=False,
-                callback_timeout=float(
-                    os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")
-                ),  # caps-ok: OAuth/config timeout only
+                callback_timeout=OAUTH_CALLBACK_TIMEOUT_SEC,
             )
         except BaseException as e:
             log.warning("OAuth login flow failed", exc_info=True)
             exc_holder.append(e)
 
-    try:
-        host, port = _parse_callback_port(callback_url)
-        t = threading.Thread(target=_run, daemon=False)
-        t.start()
+    # the callback URL as configured (e.g. https://127.0.0.1:8182): one that names no host or no
+    # port is refused, never a host or port filled in
+    parsed = urlparse(callback_url)
+    host, port = parsed.hostname, parsed.port
+    if host is None or port is None:
+        return False, f"the callback URL names no host or no port: {callback_url!r}"
+    t = threading.Thread(target=_run, daemon=False)
+    t.start()
 
-        if not _wait_for_callback_port(host, port, timeout=5.0):
-            return False, (
-                f"Callback server on {host}:{port} did not become ready within 5 seconds. "
-                "The browser may have opened before the local listener was ready."
-            )
+    if not _wait_for_callback_port(host, port, timeout=5.0):
+        return False, (
+            f"Callback server on {host}:{port} did not become ready within 5 seconds. "
+            "The browser may have opened before the local listener was ready."
+        )
 
-        t.join()
+    t.join()
 
-        if exc_holder:
-            return False, f"OAuth flow failed: {exc_holder[0]}"
+    if exc_holder:
+        return False, f"OAuth flow failed: {exc_holder[0]}"
 
-        if not os.path.exists(token_path):
-            raise RuntimeError(
-                f"OAuth flow completed but token file was not written: {token_path}. "
-                "The browser may have redirected before the callback was received, "
-                "or there was a silent write failure. Try: python reauth_schwab.py --manual"
-            )
+    if not os.path.exists(token_path):
+        raise RuntimeError(
+            f"OAuth flow completed but token file was not written: {token_path}. "
+            "The browser may have redirected before the callback was received, "
+            "or there was a silent write failure. Try: python reauth_schwab.py --manual"
+        )
 
-        return True, f"Token created: {token_path}"
-    except RuntimeError:
-        raise
-    except Exception as e:
-        log.warning("OAuth login flow failed", exc_info=True)
-        return False, f"OAuth flow failed: {e}"
+    return True, f"Token created: {token_path}"
 
 
 def run_manual_flow(
@@ -542,16 +537,12 @@ def run_manual_flow(
             token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
             enforce_enums=False,
         )
-        if not os.path.exists(token_path):
-            raise RuntimeError(
-                f"Manual flow completed but token file was not written: {token_path}"
-            )
-        return True, f"Token created: {token_path}"
-    except RuntimeError:
-        raise
     except Exception as e:
         log.warning("OAuth manual flow failed", exc_info=True)
         return False, f"OAuth flow failed: {e}"
+    if not os.path.exists(token_path):
+        raise RuntimeError(f"Manual flow completed but token file was not written: {token_path}")
+    return True, f"Token created: {token_path}"
 
 
 def complete_oauth_from_redirect_url(
@@ -566,7 +557,7 @@ def complete_oauth_from_redirect_url(
     Finish OAuth when the browser already redirected but the local callback server
     did not persist the token (common: self-signed cert warning on 127.0.0.1:8182).
     """
-    url = (redirect_url or "").strip()
+    url = redirect_url.strip()
     if not url:
         return False, "Redirect URL is empty."
     parsed = urlparse(url)

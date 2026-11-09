@@ -379,9 +379,7 @@ def _watchlist() -> list[str] | None:
     carries a list is that list; one that carries none is unknown. A late or missing heartbeat
     keeps the list of the last beat."""
     st = lmp.last_beat()
-    if st is None or not isinstance(st.get("watchlist"), list):
-        return None
-    return list(st["watchlist"])
+    return None if st is None else list(st["watchlist"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -575,10 +573,10 @@ def _merged_recent_crosses(ticker: str, n: int) -> list[dict]:
     return merged[:n]
 
 
-def _required_ticker(ticker: str | None) -> str:
+def _required_ticker(ticker: str) -> str:
     """The ticker the caller asked for -- never a default one: every ticker is treated the same.
     Blank -> HTTP 400."""
-    t = str(ticker or "").strip()
+    t = ticker.strip()
     if not t:
         raise HTTPException(status_code=400, detail="ticker is required")
     return t
@@ -676,13 +674,15 @@ _SCHWAB_TOKEN_WARN_DAYS = 5.0
 _SCHWAB_TOKEN_RED_DAYS = 6.0
 
 
-def schwab_token_countdown(creation_ts: float | None, now: float) -> dict:
-    """The token's urgency at `now` from the token file's creation_timestamp."""
+def schwab_token_countdown(token: tuple[float | None, str | None], now: float) -> dict:
+    """The token's urgency at `now` from the token file's creation_timestamp, or, when the file
+    gives none, why (_schwab_token_creation_ts)."""
+    creation_ts, unreadable = token
     if creation_ts is None:
         return {
             "schwab_token_age_days": None,
             "schwab_token_urgency": "unknown",
-            "schwab_token_note": "token file unreadable — collection may be dead",
+            "schwab_token_note": f"{unreadable} — collection may be dead",
         }
     age_days = (now - float(creation_ts)) / 86400.0
     if age_days >= _SCHWAB_TOKEN_RED_DAYS:
@@ -710,18 +710,19 @@ def schwab_token_countdown(creation_ts: float | None, now: float) -> dict:
     }
 
 
-def _schwab_token_creation_ts() -> float | None:
-    """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
+def _schwab_token_creation_ts() -> tuple[float | None, str | None]:
+    """creation_timestamp from schwab_token.json, or None (never a fake age) with why the file
+    gives none, by its error's type, which the screen's note shows (its message names a path)."""
     try:
         raw = json.loads(Path(TOKEN_PATH).read_text(encoding="utf-8"))
-        return float(raw["creation_timestamp"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
+        return float(raw["creation_timestamp"]), None
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return None, f"token file unreadable ({type(e).__name__})"
 
 
 def terrain_staleness(
     computed_ts_utc: float | None,
-    ticker: str | None = None,
+    ticker: str,
     *,
     now: float,
     levels_ts_utc: float | None = None,
@@ -740,9 +741,7 @@ def terrain_staleness(
     option value the levels hold (`levels_ts_utc`: the chain, or a value pushed since) and its
     age."""
     token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
-    failure = str(
-        _terrain_refresh_last_error.get(ticker_storage_key(ticker) if ticker else "", "") or ""
-    )
+    failure = _terrain_refresh_last_error.get(ticker_storage_key(ticker))
     state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
     age = None if levels_ts_utc is None else now - float(levels_ts_utc)
     return {
@@ -759,12 +758,12 @@ def terrain_staleness(
 
 
 def _levels_state(
-    computed_ts_utc: float | None, ticker: str | None, now: float, failure: str
+    computed_ts_utc: float | None, ticker: str, now: float, failure: str | None
 ) -> tuple[str, str]:
     """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness. While the daemon asks
     Schwab for nothing (its status's `chains_waiting`: a refused sign-in), that is the why."""
     status = lmp.daemon_status(now)
-    waiting = status.get("chains_waiting") if status is not None else None
+    waiting = None if status is None else status["chains_waiting"]
     if waiting:
         failure = f"no chain is fetched: {waiting}"
     sep = f" — {failure}" if failure else ""
@@ -779,7 +778,7 @@ def _levels_state(
     # judged against the round the daemon's chain sweep last reported (every watchlist ticker
     # once): a chain's age is its own, and a late heartbeat does not shorten the round
     last = lmp.last_beat()
-    round_sec = last.get("chain_round_sec") if last is not None else None
+    round_sec = None if last is None else last["chain_round_sec"]
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
     # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness;
     # with no round delivered (or no current status) the floor alone.
@@ -1742,14 +1741,14 @@ def _status_line(now: float) -> str:
     with _terrain_cache_lock:
         as_of = [levels.levels_ts_utc for levels in _terrain_cache.values()]
     newest = ct_label(max(as_of)) if as_of else "none"
-    round_sec = (st or {}).get("chain_round_sec")
+    round_sec = None if st is None else st["chain_round_sec"]
     return " | ".join(
         [
             "alive",
             f"session {session_label(datetime.fromtimestamp(now, ET))}",
             "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
             "Schwab socket: "
-            + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
+            + ("open" if st is not None and st["schwab_socket_open"] else "NOT OPEN"),
             prices,
             f"levels: {len(as_of)} tickers, newest as of {newest}",
             _feed_record_state(canonical_stream_db_path(), now),
@@ -2861,13 +2860,27 @@ def api_order_flow_microstructure(
     return JSONResponse(order_flow_microstructure(ticker, venue, time_et.now()))
 
 
+def _when_age(when: str | None, sec: float | None) -> str | None:
+    """A clock's time and its age as the screen shows them ("Fri 09/25 06:59 PM CT · 4s"),
+    either alone when the other is missing; None when both are."""
+    shown = [x for x in (when, None if sec is None else age_text(sec)) if x is not None]
+    return " · ".join(shown) or None
+
+
 def _stamp_book_times(payload: dict) -> None:
-    """Schwab's quote clock and book clock, as the screen shows them. Absent stays absent."""
+    """Schwab's quote clock and book clock, as the screen shows them, each with its age (the
+    engine's `ages`). Absent stays absent."""
     prov = payload.get("provenance")
     quote_ts = prov.get("exchange_quote_ts") if isinstance(prov, dict) else None
     book_ms = prov.get("book_time_ms") if isinstance(prov, dict) else None
     payload["quote_time_ct"] = ct_label(quote_ts) if quote_ts is not None else None
     payload["book_time_ct"] = ct_label(book_ms / 1000.0) if book_ms is not None else None
+    ages = payload["ages"]
+    payload["book_age_text"] = (
+        None if ages["book_age_sec"] is None else age_text(ages["book_age_sec"])
+    )
+    payload["book_when_age_text"] = _when_age(payload["book_time_ct"], ages["book_age_sec"])
+    payload["quote_when_age_text"] = _when_age(payload["quote_time_ct"], ages["quote_age_sec"])
 
 
 def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
@@ -3042,7 +3055,7 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route neither builds
     nor checks that format, it serializes what the console holds for the literal string given.
     A contract symbol is not a ticker."""
-    c = (contract or "").strip()
+    c = contract.strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
     return JSONResponse(options_microstructure(c, time_et.now()))
@@ -3302,9 +3315,7 @@ def health():
     st = lmp.daemon_status(now)
     watchlist = _watchlist()
     capability: dict[str, object] = {
-        "schwab": "AVAILABLE"
-        if st is not None and st.get("schwab_socket_open") is True
-        else "UNAVAILABLE"
+        "schwab": "AVAILABLE" if st is not None and st["schwab_socket_open"] else "UNAVAILABLE"
     }
     if capability["schwab"] == "UNAVAILABLE":
         capability["schwab_reason"] = NO_DAEMON_HEARTBEAT if st is None else st["schwab_down"]
@@ -4078,59 +4089,59 @@ def liquidity_snapshot(ticker: str, now: datetime):
         out = build_live_snapshot(
             ticker_upper, config, canonical=_canon, now=now, extra_levels=extra
         )
-        snapshot_val = out.snapshot_type.value
-        zones_payload = []
-        for z in out.zones:
-            w = z.zone_high - z.zone_low
-            merged = len(z.source_tags)
-            zp = {
-                "zone_type": z.zone_type.value,
-                "zone_label": ZONE_DISPLAY[z.zone_type][0],
-                "zone_side": ZONE_DISPLAY[z.zone_type][1],
-                "zone_class": z.zone_class,
-                "zone_low": z.zone_low,
-                "zone_high": z.zone_high,
-                "zone_mid": z.zone_mid,
-                "zone_width": w,
-                "source_levels": z.source_levels,
-                "source_tags": z.source_tags,
-                "confluence_score": z.confluence_score,
-                "merged_levels_count": merged,
-                "interpretation_notes": z.interpretation_notes,
-                "first_snapshot": snapshot_val,
-                "last_snapshot": snapshot_val,
-                "persistence": 1,
-            }
-            _liquidity_zone_tradeable_fields(zp, spot_for_zones)
-            zones_payload.append(zp)
-        zones_payload.sort(key=lambda x: x["zone_low"])
-        if spot_for_zones is not None:
-            zones_payload.sort(key=lambda x: x["distance_to_spot"])
-        result = {
-            "ticker": out.ticker,
-            "symbol": ticker_upper,
-            "session_date": out.session_date,
-            "snapshot_type": snapshot_val,
-            "zones": zones_payload,
-            "summary": None,
-            "fusion": fusion_status,
-            "spot_used_for_scoring": spot_for_zones,
-            "spot_location": _spot_location(zones_payload, spot_for_zones),
-            # which snapshot generation these level values ARE
-            "level_generation": _canon.generation,
-            "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
-            "level_bar_source": _canon.bar_source,
-        }
-        if out.summary:
-            result["summary"] = {
-                "value_state": out.summary.value_state,
-                "vwap_relation": out.summary.vwap_relation,
-                "auction_interpretation": out.summary.auction_interpretation,
-                "notes": out.summary.notes,
-            }
-        return result
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except HTTPException as e:
         # its own status code (a missing ticker is 400), never re-issued as a bare 500
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
+    snapshot_val = out.snapshot_type.value
+    zones_payload = []
+    for z in out.zones:
+        w = z.zone_high - z.zone_low
+        merged = len(z.source_tags)
+        zp = {
+            "zone_type": z.zone_type.value,
+            "zone_label": ZONE_DISPLAY[z.zone_type][0],
+            "zone_side": ZONE_DISPLAY[z.zone_type][1],
+            "zone_class": z.zone_class,
+            "zone_low": z.zone_low,
+            "zone_high": z.zone_high,
+            "zone_mid": z.zone_mid,
+            "zone_width": w,
+            "source_levels": z.source_levels,
+            "source_tags": z.source_tags,
+            "confluence_score": z.confluence_score,
+            "merged_levels_count": merged,
+            "interpretation_notes": z.interpretation_notes,
+            "first_snapshot": snapshot_val,
+            "last_snapshot": snapshot_val,
+            "persistence": 1,
+        }
+        _liquidity_zone_tradeable_fields(zp, spot_for_zones)
+        zones_payload.append(zp)
+    zones_payload.sort(key=lambda x: x["zone_low"])
+    if spot_for_zones is not None:
+        zones_payload.sort(key=lambda x: x["distance_to_spot"])
+    result = {
+        "ticker": out.ticker,
+        "symbol": ticker_upper,
+        "session_date": out.session_date,
+        "snapshot_type": snapshot_val,
+        "zones": zones_payload,
+        "summary": None,
+        "fusion": fusion_status,
+        "spot_used_for_scoring": spot_for_zones,
+        "spot_location": _spot_location(zones_payload, spot_for_zones),
+        # which snapshot generation these level values ARE
+        "level_generation": _canon.generation,
+        "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
+        "level_bar_source": _canon.bar_source,
+    }
+    if out.summary:
+        result["summary"] = {
+            "value_state": out.summary.value_state,
+            "vwap_relation": out.summary.vwap_relation,
+            "auction_interpretation": out.summary.auction_interpretation,
+            "notes": out.summary.notes,
+        }
+    return result

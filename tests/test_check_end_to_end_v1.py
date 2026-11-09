@@ -244,6 +244,33 @@ def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch
             "function draw(v) { v ??= 0; return v; }\n",
             "a missing value replaced by a literal",
         ),
+        # any literal, as Python's rule reads one: a 0 asked for turned into 6 (the chart's
+        # nearestN, 2026-11-08), a ticker, a divisor, a flag
+        (
+            "static/js/page.js",
+            "var S = { nearestN: opts.nearestN || 6 };\n",
+            "a missing value replaced by a literal",
+        ),
+        (
+            "static/js/page.js",
+            "var tk = m[1] || 'SPY';\n",
+            "a missing value replaced by a literal",
+        ),
+        (
+            "static/js/page.js",
+            "var a = dom / (h.max_size || 1);\n",
+            "a missing value replaced by a literal",
+        ),
+        (
+            "static/js/page.js",
+            'var t = l.label ?? "";\n',
+            "a missing value replaced by a literal",
+        ),
+        (
+            "static/js/page.js",
+            "var on = o.live || false;\n",
+            "a missing value replaced by a literal",
+        ),
         (
             "static/js/page.js",
             "function draw(p) { return p.catch(() => null); }\n",

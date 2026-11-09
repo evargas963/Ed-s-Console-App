@@ -4,6 +4,7 @@ and the SPY 0DTE and CRWD chains (tests/fixtures). Expected values are worked ou
 fixtures themselves."""
 
 import json
+from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
@@ -16,12 +17,13 @@ import time_et
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.engine import _zone, book_readout
 from calibration.complete_chain_capture import CAPTURE_BASIS
-from instrument_identity import ticker_storage_key
+from db import LevelCrossEvent
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
 from option_contract import read_chain
 from terrain_engine import WALL_BREACHED, WALL_CONTAINS, compute_terrain, price_relations
 from terrain_read import level_side
+from tests.feed_live_helper import daemon_status
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -47,42 +49,49 @@ def test_the_book_side_is_served_from_the_real_book():
     assert _zone(readout["views"]["5"]["pct"]) == "OFFER_HEAVY"
 
 
-def _desk_events(monkeypatch, ticker, crosses, now, tf):
-    """/api/desk/events on real crosses, at `now`: the stored crosses loaded as the console's
-    start loads them (server._load_crosses)."""
-    newest_first = sorted(
-        crosses, key=lambda r: r["ts_utc"], reverse=True
-    )  # as db.get_recent_crosses reads
-    monkeypatch.setattr(
-        server.get_db(), "get_recent_crosses", lambda ticker, n=20: newest_first[:n]
+def _desk_events(tk, crosses, now, tf):
+    """The desk's queue at `now` on real crosses: written by the console's own writer under `tk`
+    (a stand-in ticker no other test holds, so it has no live price either), loaded as the
+    console's start loads them. Returns the queue and the rows as stored (their cross ids)."""
+    stored = server.get_db().record_level_crosses(
+        [
+            LevelCrossEvent(
+                **{**{f.name: r[f.name] for f in fields(LevelCrossEvent)}, "ticker": tk}
+            )
+            for r in crosses
+        ]
     )
-    monkeypatch.setattr(server, "_crosses", {})
-    server._load_crosses([ticker_storage_key(ticker)])
-    monkeypatch.setattr(time_et, "now_et", lambda: now)
-    monkeypatch.setattr(server, "now_et", lambda: now)
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (None, "none", None))
-    return json.loads(server.get_desk_events(ticker=ticker, venue="NYSE_BOOK", tf=tf).body)
+    server._crosses.pop(tk, None)
+    server._load_crosses([tk])
+    try:
+        return server.desk_events_payload(tk, "NYSE_BOOK", tf, now), stored
+    finally:
+        server._crosses.pop(tk, None)
 
 
 @pytest.mark.parametrize(
-    "ticker,crosses,now",
+    "tk,crosses,now",
     [
-        ("SPY", "real_spy_level_crosses.json", datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET)),
         (
-            "$SPX",
+            "ZZDESKSPY",
+            "real_spy_level_crosses.json",
+            datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET),
+        ),
+        (
+            "ZZDESKSPX",
             "real_spx_level_crosses_2026_09_25_28.json",
             datetime(2026, 9, 28, 12, 0, tzinfo=time_et.ET),
         ),
     ],
 )
 def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each_level(
-    monkeypatch, ticker, crosses, now
+    tk, crosses, now
 ):
     """Each level cross is the queue's entry as recorded -- its level's price, direction and
     time -- and the chart's few are the newest cross at each level, for the newest DESK_MARKERS
-    levels; a marker and its queue entry are one served item (real SPY and $SPX crosses)."""
-    rows = _load(crosses)["rows"]
-    body = _desk_events(monkeypatch, ticker, rows, now, "D")
+    levels; a marker and its queue entry are one served item (real SPY and $SPX crosses, each
+    under a stand-in ticker)."""
+    body, rows = _desk_events(tk, _load(crosses)["rows"], now, "D")
     items = [it for it in body["items"] if it["dom"] == "LEVELS"]
     assert items
     by_key = {f"x{r['cross_id']}": r for r in rows}
@@ -133,10 +142,6 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     """SPY's level crosses of 2026-10-06 and 10-07 as the console recorded them
     (tests/fixtures/real_spy_level_crosses_2026_10_06_07.json), written by the console's own
     writer and loaded as its start loads them. Stand-in: ticker ZZDESKX carries them."""
-    from dataclasses import fields
-
-    from db import LevelCrossEvent
-
     tk = "ZZDESKX"
     fx = _load("real_spy_level_crosses_2026_10_06_07.json")["rows"]
     server.get_db().record_level_crosses(
@@ -305,7 +310,7 @@ def _live_price(tk, last):
     levels are served at)."""
     at = FRIDAY_CLOSE.timestamp()
     lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [tk]}}
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
     )
     lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=at)
 
@@ -491,7 +496,7 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_lev
     one the daemon captured on Friday 10-02 (its newest SPY message that evening)."""
     at = FRIDAY_CLOSE.timestamp()
     lmp.record_feed_heartbeat(
-        {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [DESK]}}
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [DESK]})
     )
     lmp.record_from_level_one_equity(
         DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151}, received_ts=at

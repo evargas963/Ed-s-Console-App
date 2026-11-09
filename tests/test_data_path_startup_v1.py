@@ -639,13 +639,19 @@ def test_the_stop_reads_no_process_parent(tmp_path):
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
     """The real daemon found while it loads, its ports not opened yet, then ending on its own
     because its live UI's port is held, the code its window restarts on: the stop could not ask
-    it, so it does not read "stopped" and exits 1. Induced test condition: a load held for 6 s."""
+    it, so it does not read "stopped" and exits 1. Induced test condition: the daemon's load is
+    held until the stop has found it and said it could not ask it, however late the stop starts."""
     home, site = tmp_path / "checkout", tmp_path / "site"
     for folder in (home, site):
         folder.mkdir()
     shutil.copy(launch.ROOT / "launch.py", home)
+    asked = tmp_path / "the stop asked"
     (site / "sitecustomize.py").write_text(
-        'import sys, time\nif "-m" in sys.orig_argv:\n    time.sleep(6)\n', encoding="utf-8"
+        "import pathlib, sys, time\n"
+        'if "-m" in sys.orig_argv:\n'
+        f"    while not pathlib.Path({str(asked)!r}).exists():\n"
+        "        time.sleep(0.05)\n",
+        encoding="utf-8",
     )
     with socket.create_server((live_ui.LIVE_UI_HOST, 0)) as held:  # where the daemon binds
         env = {
@@ -667,8 +673,23 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
                 stderr=subprocess.PIPE,
                 text=True,
             )
+            said: list[str] = []
+
+            def take_the_answer():
+                # the stop found the daemon and could not ask it (no ports written yet): the
+                # daemon's load goes on
+                for line in stopping.stderr:
+                    said.append(line)
+                    if "Ed Console: not asked to stop: " in line:
+                        asked.write_text("", encoding="utf-8")
+
+            reader = threading.Thread(target=take_the_answer, daemon=True)
+            reader.start()
             assert daemon.wait(60) == 1  # reaped: the stop sees it gone on Linux too
-            out, err = stopping.communicate(timeout=60)
+            out = stopping.stdout.read()
+            stopping.wait(60)
+            reader.join(60)
+            err = "".join(said)
         finally:
             _end(daemon)
     assert stopping.returncode == 1, (out, err)

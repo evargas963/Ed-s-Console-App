@@ -27,9 +27,13 @@ import time
 from pathlib import Path
 
 import time_et
+from app.market_data.schwab.streaming.capture import stored_watchlist, streaming_fields
+from config import build_config, load_dotenv_file
+from db_authority import canonical_stream_db_path
+from runtime_layout import RUNTIME_ROOT
+from schwab_client import build_client_from_token
 
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
 log = logging.getLogger(__name__)
 
 OUT = REPO / "docs" / "schwab_fields.csv"
@@ -351,11 +355,6 @@ def _read(path: Path) -> dict[str, dict]:
 
 def main() -> int:
     argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args()
-    from config import build_config, load_dotenv_file
-    from db_authority import canonical_stream_db_path
-    from runtime_layout import RUNTIME_ROOT
-    from schwab_client import build_client_from_token
-
     load_dotenv_file(Path(RUNTIME_ROOT) / ".env")
     cfg = build_config()
     state = build_client_from_token(cfg.token_path, cfg.api_key, cfg.app_secret)
@@ -363,8 +362,6 @@ def main() -> int:
         print(state.message)
         return 1
     today = dt.datetime.fromtimestamp(time_et.now()).date().isoformat()
-    from app.market_data.schwab.streaming.capture import stored_watchlist, streaming_fields
-
     roster = [t for t in stored_watchlist(canonical_stream_db_path()) if not t.startswith("$")]
     rest, endpoint_of, status = rest_rows(state.client, roster)
     stream_seen = captured_stream_paths(canonical_stream_db_path())

@@ -27,7 +27,8 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 from option_contract import read_chain
-from stream_spine import options_quote_msg
+from stream_spine import verbatim_msg
+from tests.feed_live_helper import daemon_status
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -73,14 +74,14 @@ def _clean():
 
 def _beat(ts: float, *, socket_open: bool = True, options: list[str] | None = None) -> None:
     lmp.record_feed_heartbeat(
-        {
-            "ts": ts,
-            "schwab_socket_open": socket_open,
-            "held": {
+        daemon_status(
+            ts,
+            schwab_socket_open=socket_open,
+            held={
                 "LEVELONE_EQUITIES": [TK],
                 "LEVELONE_OPTIONS": [SYM] if options is None else options,
             },
-        }
+        )
     )
 
 
@@ -92,7 +93,7 @@ def _states_when_the_status_was_sent(offset: float) -> list[str]:
     row = ofs.price_row(TK, _AT)
     ofs._ingest_pushed(
         f"optquote.{SYM}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
         ),
     )
@@ -145,7 +146,7 @@ def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
     row = ofs.price_row(TK, _AT)
     ofs._ingest_pushed(
         f"optquote.{SYM}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
         ),
     )
@@ -214,7 +215,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
     row = ofs.price_row(TK, _AT)
     ofs._ingest_pushed(
         f"optquote.{SYM}",
-        options_quote_msg(
+        verbatim_msg(
             symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
         ),
     )
@@ -253,16 +254,16 @@ def _et(day: str, hh: int, mm: int = 0) -> float:
 def _all_held(now: float, *tickers: str) -> None:
     """The daemon's status at `now`: the Schwab socket open, every service holding these."""
     lmp.record_feed_heartbeat(
-        {
-            "ts": now,
-            "schwab_socket_open": True,
-            "held": {
+        daemon_status(
+            now,
+            schwab_socket_open=True,
+            held={
                 "LEVELONE_EQUITIES": list(tickers),
                 "NYSE_BOOK": list(tickers),
                 "LEVELONE_OPTIONS": [SYM],
                 "OPTIONS_BOOK": [SYM],
             },
-        }
+        )
     )
 
 

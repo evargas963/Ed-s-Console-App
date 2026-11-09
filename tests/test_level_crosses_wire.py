@@ -19,7 +19,7 @@ from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import clock_from
+from tests.feed_live_helper import clock_from, daemon_status
 from tests.real_chains import (
     SPY_AFTER_HOURS_PRINT,
     SPY_CLOSE,
@@ -54,11 +54,11 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
         now=SPY_CLOSE.now,
     )
     lmp.record_feed_heartbeat(
-        {
-            "ts": time_et.now() if now is None else now,
-            "schwab_socket_open": True,
-            "held": {"LEVELONE_EQUITIES": [tk]},
-        }
+        daemon_status(
+            time_et.now() if now is None else now,
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": [tk]},
+        )
     )
     published = server.published_levels(tk).served()
     return {name: published[k] for k, name in server.CROSS_LEVELS}
@@ -86,7 +86,7 @@ def _forget(tk: str = "SPY") -> None:
     server._last_tick_spot.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_heartbeat({"ts": time_et.now(), "schwab_socket_open": True, "held": {}})
+    lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
     lmp.record_feed_down()
 
 
@@ -284,7 +284,7 @@ def stopped_price_answers() -> dict:
     _publish_close()
     msg = SPY_PRINT_A_STRIKE_AWAY
     lmp.record_feed_heartbeat(
-        {"ts": msg["ts_recv"], "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["SPY"]}}
+        daemon_status(msg["ts_recv"], schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
     lmp.record_feed_down()
