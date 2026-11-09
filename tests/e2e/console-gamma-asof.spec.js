@@ -9,6 +9,7 @@
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { mockPriceSocket, chainAt } = require('./fixtures/price_socket');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
   levels_state: 'LIVE', levels_age_sec: 6, chain_basis: 'full', complete: false,
@@ -36,13 +37,12 @@ function routes(over = {}) {
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       let body = { available: false };
-      if (url.includes('/api/options/gamma-surface')) body = over.surface || SURFACE;
-      else if (url.includes('/api/terrain/strikes')) body = over.strikes || STRIKES;
-      else if (url.includes('/api/terrain')) body = over.terrain || TERRAIN;
-      else if (url.includes('/api/bars1m')) body = BARS;
-      else if (url.includes('/api/chain')) body = over.chain || CHAIN;      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      if (url.includes('/api/bars1m')) body = BARS;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await routeWatchlist(page, ['SPY']);
+    await mockPriceSocket(page, [], [], undefined, { terrain: TERRAIN, strikes: over.strikes || STRIKES,
+      surface: over.surface || SURFACE, chain: chainAt(over.chain || CHAIN) });
   };
 }
 
@@ -61,7 +61,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
   });
 
   test('GEX-by-strike after its option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
-    // /api/terrain/strikes for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
+    // the strikes panel for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
     const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_strikes_at_a_stopped_price_2026_10_22.json'));
     await routes({ strikes: CLOSED })(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -121,7 +121,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
   });
 
   test('a stale terrain generation makes the GEX-by-strike badge read stale (the route\'s own answer)', async ({ page }) => {
-    // /api/terrain/strikes for SPY's 2026-10-22 close publication after the next day's close,
+    // the strikes panel for SPY's 2026-10-22 close publication after the next day's close,
     // 2026-10-23 16:30 ET, no chain fetched since (tests/test_level_crosses_wire.py)
     const STALE = require(path.join(__dirname, '..', 'fixtures', 'real_spy_strikes_after_the_next_close_2026_10_23.json'));
     await routes({ strikes: STALE })(page);

@@ -511,7 +511,7 @@ GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 #: 0.117% at ±10% (~10x) and does not improve at ±15% (0.257%, reference noise).
 #: Read this before quoting any span number: the study's reference chains are NOT the production
 #: terrain chain.
-#: MEASURED against the LIVE fetch (`/api/terrain` flip_diag span_below/above_pct):
+#: MEASURED against the LIVE fetch (the terrain panel's flip_diag span_below/above_pct):
 #:   SPY 29.4% (216 strikes), QQQ 29.5% (216), IWM 29.8% (87), NVDA 21.7% (44), AAPL 29.4%,
 #:   TSLA 25.9%
 #: — every sampled production chain clears this bar with ~3x headroom and reads TRUSTED.

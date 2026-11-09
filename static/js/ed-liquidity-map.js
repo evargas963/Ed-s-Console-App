@@ -2,8 +2,8 @@
    The zones /api/liquidity-snapshot computes (support / resistance / value bands, each with its
    served label, side and confluence score) on the one TradingView-style chart every chart in the
    console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, the toolbar's timeframe),
-   with the prior-day and overnight levels and the live price from /api/levels -- the one level
-   route. The zone list below the chart names each zone's source levels. */
+   with the prior-day and overnight levels and the live price from the levels panel on the page's
+   socket -- the one level producer. The zone list below the chart names each zone's source levels. */
 (function () {
   'use strict';
 
@@ -27,7 +27,7 @@
     if (_chart && h.querySelector('.liqm-plot')) return _chart;
     if (!window.EdTvChart || !window.LightweightCharts) return null;
     h.innerHTML = '<div class="liqm-tb"></div><div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
-      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels and the price from /api/levels and /api/bars1m. The map arranges them; it computes nothing.</div>';
+      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels and the price from the levels panel and /api/bars1m. The map arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector('.liqm-plot'), { nearestN: 99 });
     window.EdTvChart.toolbar(h.querySelector('.liqm-tb'), _chart, { tf: _tf, styleKey: 'ed.liqm.style',
       onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.liqm.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
@@ -41,13 +41,18 @@
       '<div class="sm liqm-tags">' + (tags || '-') + (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
   }
 
-  function render(h, tk, snap, levels, barsD) {
+  function render(h, tk, snap, levelsD, barsD) {
     var c = ensureChart(h); if (!c) return;
     var P = c.palette();
     var side = { support: P.up, resistance: P.down, value: P.ink3 };
-    // each answer as served; a request that failed (null) draws nothing and is named, never drawn as empty
-    var failed = [[snap, 'liquidity snapshot'], [levels, 'levels'], [barsD, 'bars']]
+    // each answer as served; a request that failed (null) draws nothing and is named, never drawn
+    // as empty; the levels panel not received yet draws nothing, and one the program could not
+    // produce says its words
+    var levels = levelsD && levelsD.failed == null ? levelsD : null;
+    var failed = [[snap, 'liquidity snapshot'], [barsD, 'bars']]
       .filter(function (a) { return !a[0]; }).map(function (a) { return a[1]; });
+    var words = failed.length ? ['the ' + failed.join(', ') + ' request failed for ' + tk] : [];
+    if (levelsD && levelsD.failed != null) words.push(levelsD.failed);
     var zones = snap ? snap.zones : [];
     c.setBars(barsD ? barsD.bars : [], barsD ? barsD.tf : _tf, window.EdShell.getState().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
     c.setZones(zones.map(function (z) {
@@ -58,34 +63,51 @@
     var spot = (levels && levels.spot != null) ? Number(levels.spot) : null;
     c.setLivePrice(spot, null, (spot != null && levels.spot_time_ct != null) ? levels.spot_time_ct : null);
     var empty = h.querySelector('.liqm-empty');
-    empty.hidden = !failed.length;
-    empty.textContent = failed.length ? 'the ' + failed.join(', ') + ' request failed for ' + tk : '';
+    empty.hidden = !words.length;
+    empty.textContent = words.join(' · ');
     var none = !snap ? 'the liquidity snapshot request failed' : snap.reason ? esc(snap.reason) : 'no zones for this session yet';
     h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot)</div>' +
       (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">' + none + '</div>') + '</div>';
   }
 
+  // the `levels:liquidity` panel (server.levels) the program sends on the page's socket while the map is
+  // on, at once and each time the levels change; the snapshot and the bars, as last read; each
+  // for the ticker on screen
+  var _levels = null, _read = null;
+  function draw() {
+    var h = host();
+    if (h && isMap() && _read && _read.tk === ticker()) render(h, _read.tk, _read.snap, _levels, _read.bars);
+  }
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillMap(tk)) return;
     return Promise.all([
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf], signal)
     ]).then(function (r) {
-      if (stillMap(tk)) render(h, tk, r[0], r[1], r[2]);
+      if (stillMap(tk)) { _read = { tk: tk, snap: r[0], bars: r[1] }; draw(); }
     }).catch(function (e) {
       if (e && e.name === 'AbortError') return;
-      if (stillMap(tk)) render(h, tk, null, null, null);
+      if (stillMap(tk)) { _read = { tk: tk, snap: null, bars: null }; draw(); }
     });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() { if (isMap()) _loader.trigger(ticker()); }
+  var _levelsTicker = null;
+  function load() {
+    if (!isMap()) { window.EdShell.showPanel('levels:liquidity', null); return; }
+    if (_levelsTicker !== ticker()) { _levelsTicker = ticker(); _levels = null; }
+    window.EdShell.showPanel('levels:liquidity', { tf: '1' });
+    _loader.trigger(ticker());
+  }
 
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'liquidity') load(); });
+    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'liquidity') load(); });
+    document.addEventListener('ed:panel', function (e) {
+      if (e.detail.type !== 'levels:liquidity') return;
+      _levels = e.detail; draw();
+    });
   }
   // read-only view for tests (e2e) -- never a control surface
   window.EdLiquidityMap = { state: function () { return _chart ? _chart.state() : null; } };

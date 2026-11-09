@@ -204,11 +204,10 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
     trade_ts = ofs.price_row("SPY", clock())["trade_ts"]
     try:
-        live = server.terrain_answer("SPY", datetime.fromtimestamp(clock(), ET))
+        live = server.terrain("SPY", clock(), {})
         lmp.record_feed_down()
-        at_et = datetime.fromtimestamp(clock(), ET)
-        at = at_et.timestamp()  # the instant as the route holds it
-        down = server.terrain_answer("SPY", at_et)
+        at = clock()
+        down = server.terrain("SPY", at, {})
         levels = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
         matrix = server.confluence_payload(
@@ -289,11 +288,11 @@ PRICE_MARKED = ("levels", "confluence", "terrain")
 def stopped_price_answers() -> dict:
     """Return the answers the browser tests render (STOPPED_FIXTURES), as the real code serves them.
 
-    /api/levels, /api/confluence (the 2026-10-22 expiry), /api/terrain, /api/terrain/strikes
-    and /api/options/gamma-surface as the real code serves them on SPY's 2026-10-22 close
+    /api/levels, /api/confluence (the 2026-10-22 expiry), the terrain and strikes panels
+    and the heatmap's surface as the real code serves them on SPY's 2026-10-22 close
     publication with SPY's 16:39 print (773.1269) as the last price and the daemon's connection
-    ended, read at the 18:00 print's instant; and /api/terrain/strikes and
-    /api/options/gamma-surface on that same publication after the next day's 16:15 option
+    ended, read at the 18:00 print's instant; and the strikes panel and the
+    surface on that same publication after the next day's 16:15 option
     close (2026-10-23 16:30 ET), no chain fetched since.
     """
     _forget()
@@ -316,7 +315,7 @@ def stopped_price_answers() -> dict:
         bodies = {
             "levels": server.levels_payload("SPY", "1", at),
             "confluence": server.confluence_payload("SPY", "2026-10-22", at),
-            "terrain": server.terrain_answer("SPY", at),
+            "terrain": server.terrain("SPY", at.timestamp(), {}),
             "strikes": server.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
             "surface": surface,
             "strikes_next_close": server.terrain_strikes_payload(

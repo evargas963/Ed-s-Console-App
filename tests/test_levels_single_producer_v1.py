@@ -1,9 +1,8 @@
-"""/api/levels and /api/terrain/strikes: what the level routes serve."""
+"""/api/levels and the strikes panel: what the level routes and panels serve."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import threading
 from datetime import datetime as _dt
 
@@ -175,7 +174,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
 
 
 def test_strikes_payload_carries_server_side_sums():
-    """STRIP server half: /api/terrain/strikes serves today_side_sums against its own spot.
+    """STRIP server half: the strikes panel serves today_side_sums against its own spot.
 
     Computed against the payload's own spot — the one aggregator. SPY's same-day chain
     (tests/real_chains.SPY_0DTE) published by the levels producer at its captured price, the
@@ -194,7 +193,7 @@ def test_strikes_payload_carries_server_side_sums():
         C.ticker, {"LAST_PRICE": C.spot, "TRADE_TIME_MILLIS": 1000}, received_ts=time_et.now()
     )
     try:
-        resp = srv.get_terrain_strikes(ticker=C.ticker)
+        body = srv.strikes(C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(C.ticker, None)
@@ -204,7 +203,7 @@ def test_strikes_payload_carries_server_side_sums():
     book = compute_exposures_by_strike(read_chain(C.chain), spot=C.spot, now=C.now)[0]
     below = [b for k, b in book.items() if k < C.spot]
     above = [b for k, b in book.items() if k > C.spot]
-    ss = json.loads(bytes(resp.body))["today_side_sums"]
+    ss = body["today_side_sums"]
     assert ss["gex_below"] == sum(net_gex_dollars_at_strike(b) for b in below)
     assert ss["gex_above"] == sum(net_gex_dollars_at_strike(b) for b in above)
     assert ss["vol_below"] == sum(strike_total_volume(b) for b in below)

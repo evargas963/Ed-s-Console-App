@@ -31,6 +31,16 @@ chains here (each expirationDate's day, Schwab's daysToExpiration as sent). Prov
   * switching ticker sends the new ticker's list at once and stops the old ticker's;
   * a page that drops and returns gets the list again on its subscribe; a page with no ticker
     gets none.
+
+Then the levels' panels a page shows, each with the parameters its subscribe names (the Vanna and
+Charm tabs, server.vanna_by_strike and charm_by_strike, with their window), the expected rows
+the ones the levels producer published, worked into the window here:
+
+  * a page on the tab gets the panel at once, in the window it asks (a window it cannot draw is
+    unavailable with its words); before the ticker's levels, unavailable with the reason;
+  * new levels reach only the pages showing that panel on that ticker; a switch sends the new
+    ticker's and none of the old; a page that drops and returns gets its panels again;
+  * a producer waiting on the levels' lock (induced) does not stall the beat.
 """
 
 from __future__ import annotations
@@ -39,6 +49,8 @@ import asyncio
 import base64
 import json
 import socket
+import threading
+from dataclasses import replace
 
 import psutil
 import pytest
@@ -584,13 +596,19 @@ async def _serve_panels(body) -> None:
         await asyncio.wait_for(served, 5)
 
 
-async def _select(ws, ticker) -> list[dict]:
-    """Subscribe the page on `ticker`; return the frames up to and including its answer.
+#: the panels a page always shows: the expiry dropdown's list (ed-core.js `_panels`)
+LIST = {"expiries": {}}
 
-    The answer is the `symbols` frame. Every frame the server sent before it is in the list: a
-    frame the page was owed before this subscribe arrives ahead of the answer.
+
+async def _select(ws, ticker, panels=LIST) -> list[dict]:
+    """Subscribe the page on `ticker`, showing `panels`; return the frames up to its answer.
+
+    The answer is the `symbols` frame, included. Every frame the server sent before it is in the
+    list: a frame the page was owed before this subscribe arrives ahead of the answer.
     """
-    await ws.send(json.dumps({"op": "subscribe", "symbols": [], "ticker": ticker}))
+    await ws.send(
+        json.dumps({"op": "subscribe", "symbols": [], "ticker": ticker, "panels": panels})
+    )
     return await _frames_until(ws, lambda m: m["type"] == "symbols")
 
 
@@ -713,5 +731,744 @@ def test_a_page_with_no_ticker_gets_no_list():
             assert _lists(await _select(ws, None)) == []
             await asyncio.to_thread(_publish, CRWD)
             assert _lists(await _select(ws, None)) == []
+
+    asyncio.run(_serve_panels(body))
+
+
+# -- the levels' panels: Vanna and Charm by strike, each in the window the page asks -------------
+
+
+def _kind(frames, kind) -> list[dict]:
+    return [m for m in frames if m["type"] == kind]
+
+
+async def _next(ws, kind) -> dict:
+    return (await _frames_until(ws, lambda m: m["type"] == kind))[-1]
+
+
+def _published_rows(tk, key) -> list:
+    """The rows the levels producer published for `tk` (its vanna_rows or charm_rows)."""
+    return [list(r) for r in getattr(server.published_levels(tk), key)]
+
+
+ALL = {"scope": "all", "centre": None, "shift": 0}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_page_on_the_vanna_and_charm_tabs_gets_each_panel_at_once():
+    _publish(CRWD)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, CRWD.ticker, {**LIST, "vanna": ALL, "charm": ALL})
+            seen = {}
+            while len(seen) < 3:
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert set(seen) == {"expiries", "vanna", "charm"}
+            for frame, key in ((seen["vanna"], "vanna_rows"), (seen["charm"], "charm_rows")):
+                assert frame["ticker"] == A and frame["available"] is True
+                assert frame["rows"] == _published_rows(A, key) and frame["rows"]
+
+    asyncio.run(_serve_panels(body))
+    paths = {r.path for r in server.app.routes}
+    assert not paths & {"/api/options/vanna-by-strike", "/api/options/charm-by-strike"}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_the_panel_is_drawn_in_the_window_its_subscribe_asks():
+    """The operator's pan: 11 rows (Auto) centred two rows past the strike the drag began on."""
+    _publish(MRVL)
+    rows = _published_rows(B, "vanna_rows")
+    strikes = [r[0] for r in rows]
+    assert len(strikes) > 30
+    asked = {"scope": "auto", "centre": strikes[10], "shift": 2}
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, B, {"vanna": asked})
+            frame = await _next(ws, "vanna")
+            assert frame["view"]["centre"] == strikes[12] and frame["scope"] == "auto"
+            assert frame["rows"] == rows[7:18]
+            await _select(ws, B, {"vanna": {**asked, "scope": "most"}})  # one it cannot draw
+            assert await _next(ws, "vanna") == {
+                "type": "vanna",
+                "ticker": B,
+                "available": False,
+                "reason": "scope 'most' is not one of auto, wider, all",
+            }
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_levels_the_panel_is_unavailable_with_its_reason():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, CRWD.ticker, {"vanna": ALL})
+            assert await _next(ws, "vanna") == {
+                "type": "vanna",
+                "ticker": A,
+                "available": False,
+                "reason": "no levels published for this ticker yet",
+            }  # never an empty list of rows standing for it
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_panel_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"vanna": ALL})
+            await _select(on_b, B, {"vanna": ALL})
+            await _select(list_only, A)  # A's page, on a tab with no levels panel
+            for ws in (on_a, on_b):
+                assert (await _next(ws, "vanna"))["available"] is False  # no levels of either yet
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)  # the pricing thread publishes A's levels
+            frame = await _next(on_a, "vanna")
+            assert frame["ticker"] == A and frame["rows"] == _published_rows(A, "vanna_rows")
+            # nothing for B's page, nor for A's page not showing it: a frame owed before the next
+            # subscribe arrives ahead of its answer
+            assert _kind(await _select(on_b, B, {}), "vanna") == []
+            assert _kind(await _select(list_only, A), "vanna") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_switch_sends_the_new_tickers_panel_and_none_of_the_old():
+    _publish(CRWD)
+    _publish(MRVL)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"charm": ALL})
+            assert (await _next(ws, "charm"))["ticker"] == A
+            await _select(ws, B, {"charm": ALL})
+            frame = await _next(ws, "charm")
+            assert frame["ticker"] == B and frame["rows"] == _published_rows(B, "charm_rows")
+            await asyncio.to_thread(_publish, CRWD)  # the ticker the page left
+            assert _kind(await _select(ws, B, {}), "charm") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_page_that_drops_and_returns_gets_its_panels_again():
+    _publish(CRWD)
+
+    async def body(url):
+        for _ in range(2):  # the page, then its reconnect and its subscribe
+            async with connect(url) as ws:
+                await _select(ws, A, {**LIST, "vanna": ALL})
+                assert (await _next(ws, "vanna"))["rows"] == _published_rows(A, "vanna_rows")
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_producer_held_on_the_levels_lock_does_not_stall_the_beat():
+    """The beat keeps going while a panel's producer waits; the panel arrives after.
+
+    Induced condition: the levels' lock held 2.5 s by another thread, as the pricing thread holds
+    it while it publishes; every panel's producer reads it.
+    """
+    _publish(CRWD)
+    release = threading.Event()
+
+    def hold(held: threading.Event) -> None:
+        with server._terrain_cache_lock:
+            held.set()
+            release.wait(5)
+
+    async def body(url):
+        async with connect(url) as ws:
+            held = threading.Event()
+            holder = asyncio.create_task(asyncio.to_thread(hold, held))
+            await asyncio.to_thread(held.wait, 5)
+            await ws.send(
+                json.dumps(
+                    {"op": "subscribe", "symbols": [], "ticker": A, "panels": {"vanna": ALL}}
+                )
+            )
+            beats, end = 0, time_et.elapsed() + 2.5
+            while time_et.elapsed() < end:
+                msg = json.loads(await asyncio.wait_for(ws.recv(), 2.5))
+                assert msg["type"] != "vanna"  # its producer still waits on the lock
+                beats += msg["type"] == "feed"
+            assert beats >= 2, beats
+            release.set()
+            await holder
+            assert (await _next(ws, "vanna"))["rows"] == _published_rows(A, "vanna_rows")
+
+    try:
+        asyncio.run(_serve_panels(body))
+    finally:
+        release.set()
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_producer_that_raises_fails_its_panel_alone_in_words():
+    """The panel says why; the socket stays open, prices and the other panels keep coming.
+
+    Induced condition: CRWD's published levels hold no vanna rows (None), so the vanna producer
+    raises reading them, as a defect in a producer would.
+    """
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        server._terrain_cache[A] = replace(server._terrain_cache[A], vanna_rows=None)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await ws.send(
+                json.dumps(
+                    {
+                        "op": "subscribe",
+                        "symbols": [A],
+                        "ticker": A,
+                        "panels": {**LIST, "vanna": ALL, "charm": ALL},
+                    }
+                )
+            )
+            seen = {}
+            while {"expiries", "vanna", "charm", "feed"} - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert seen["vanna"] == {
+                "type": "vanna",
+                "ticker": A,
+                "failed": "the program could not produce this panel: "
+                "TypeError: 'NoneType' object is not iterable",
+            }
+            assert seen["charm"]["rows"] == _published_rows(A, "charm_rows")
+            assert seen["expiries"]["expiries"] == _expected(CRWD.chain)[0]
+            assert [r["ticker"] for r in seen["feed"]["rows"]] == [A]  # the beat's price rows
+            # the socket is open: the next subscribe is answered, and the failure said again
+            assert _kind(await _select(ws, A, {"vanna": ALL}), "symbols")
+            assert "failed" in await _next(ws, "vanna")
+
+    asyncio.run(_serve_panels(body))
+
+
+# -- the levels themselves: the terrain panel, one per reader (Key Levels, the chart, the desk) ---
+
+#: two readers of the terrain on one page: Key Levels and the Gamma chart (ed-gamma-panels.js,
+#: ed-gamma-chart.js), each its own panel of the one producer
+TERRAIN_READERS = {"terrain:levels": {}, "terrain:chart": {}}
+
+
+def _published_terrain(tk) -> dict:
+    """The levels the producer published for `tk`: what every terrain panel carries."""
+    snap = server.published_levels(tk).snap
+    return {"call_wall": snap.call_wall, "put_wall": snap.put_wall, "gamma_flip": snap.gamma_flip}
+
+
+def _terrain_of(frame) -> dict:
+    return {k: frame[k] for k in ("call_wall", "put_wall", "gamma_flip")}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_terrain_reader_gets_the_published_levels_at_once_with_no_get():
+    _publish(CRWD)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, CRWD.ticker.lower(), {**LIST, **TERRAIN_READERS})
+            seen = {}
+            while set(TERRAIN_READERS) - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            for name in TERRAIN_READERS:
+                assert seen[name]["ticker"] == A and seen[name]["error"] == ""
+                assert _terrain_of(seen[name]) == _published_terrain(A)
+                assert seen[name]["call_wall"] is not None
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/terrain" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_chain_the_terrain_says_why_with_no_level():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"terrain:levels": {}})
+            frame = await _next(ws, "terrain:levels")
+            assert frame["error"].startswith("terrain_not_ready: no chain from the daemon yet")
+            assert frame["regime"] == "UNAVAILABLE"
+            # unknown, never an empty or zero level standing for it
+            assert frame["call_wall"] is None and frame["gamma_flip"] is None
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_terrain_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"terrain:desk": {}})
+            await _select(on_b, B, {"terrain:desk": {}})
+            await _select(list_only, A)  # A's page, on a tab with no levels panel
+            for ws in (on_a, on_b):
+                assert "error" in await _next(ws, "terrain:desk")  # no levels of either yet
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)  # the pricing thread publishes A's levels
+            frame = await _next(on_a, "terrain:desk")
+            assert frame["ticker"] == A and _terrain_of(frame) == _published_terrain(A)
+            assert _kind(await _select(on_b, B, {}), "terrain:desk") == []
+            assert _kind(await _select(list_only, A), "terrain:desk") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_switch_sends_the_new_tickers_terrain_and_none_of_the_old():
+    _publish(CRWD)
+    _publish(MRVL)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"terrain:map": {}})
+            assert (await _next(ws, "terrain:map"))["ticker"] == A
+            await _select(ws, B, {"terrain:map": {}})
+            frame = await _next(ws, "terrain:map")
+            assert frame["ticker"] == B and _terrain_of(frame) == _published_terrain(B)
+            await asyncio.to_thread(_publish, CRWD)  # new levels on the ticker the page left
+            assert _kind(await _select(ws, B, {}), "terrain:map") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_page_that_drops_and_returns_gets_its_terrain_again():
+    _publish(CRWD)
+
+    async def body(url):
+        for _ in range(2):  # the page, then its reconnect and its subscribe
+            async with connect(url) as ws:
+                await _select(ws, A, {**LIST, "terrain:levels": {}})
+                frame = await _next(ws, "terrain:levels")
+                assert _terrain_of(frame) == _published_terrain(A)
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_terrain_producer_that_raises_fails_its_panel_alone_in_words():
+    """The panel says why; the socket stays open and the other panels keep coming.
+
+    Induced condition: CRWD's published snapshot holds a lock where its flip diagnostics go, so
+    the terrain raises copying it, as a defect in its producer would.
+    """
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        held = server._terrain_cache[A]
+        server._terrain_cache[A] = replace(
+            held, snap=replace(held.snap, flip_diag={"lock": threading.Lock()})
+        )
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {**LIST, "terrain:levels": {}, "charm": ALL})
+            seen = {}
+            while {"expiries", "terrain:levels", "charm"} - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert seen["terrain:levels"] == {
+                "type": "terrain:levels",
+                "ticker": A,
+                "failed": "the program could not produce this panel: "
+                "TypeError: cannot pickle '_thread.lock' object",
+            }
+            assert seen["charm"]["rows"] == _published_rows(A, "charm_rows")
+            assert seen["expiries"]["expiries"] == _expected(CRWD.chain)[0]
+            # the socket is open: the next subscribe is answered, and the failure said again
+            assert _kind(await _select(ws, A, {"terrain:levels": {}}), "symbols")
+            assert "failed" in await _next(ws, "terrain:levels")
+
+    asyncio.run(_serve_panels(body))
+
+
+# -- the per-strike rows: the strikes panel, each reader in its own window ----------------------
+
+AUTO = {"scope": "auto", "centre": None, "shift": 0}
+
+
+def _per_strike(tk) -> list:
+    """Today's rows [strike, net GEX $ per 1%, volume] the producer published for `tk`."""
+    return [list(r) for r in server.published_levels(tk).snap.per_strike["all"]]
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_strikes_reader_gets_its_own_window_at_once_with_no_get():
+    """GEX by Strike's Auto window and the chart's All: each the producer's rows for its window."""
+    _publish(MRVL)
+    rows = _per_strike(B)
+    assert len(rows) > 30
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, B, {**LIST, "strikes:gbs": AUTO, "strikes:chart": ALL})
+            seen = {}
+            while {"strikes:gbs", "strikes:chart"} - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert seen["strikes:chart"]["today"]["all"] == rows
+            gbs = seen["strikes:gbs"]["today"]["all"]
+            assert len(gbs) == 11 and gbs == rows[rows.index(gbs[0]) : rows.index(gbs[0]) + 11]
+            assert seen["strikes:gbs"]["scope"] == "auto"
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/terrain/strikes" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_chain_the_strikes_say_why_with_no_row():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"strikes:gbs": AUTO})
+            frame = await _next(ws, "strikes:gbs")
+            assert frame["today"]["all"] == [] and frame["max_abs_row"] is None
+            assert frame["levels_stale_reason"]  # why, never empty rows standing alone
+            await _select(ws, A, {"strikes:gbs": {**AUTO, "shift": "two"}})  # one it cannot draw
+            assert await _next(ws, "strikes:gbs") == {
+                "type": "strikes:gbs",
+                "ticker": A,
+                "available": False,
+                "reason": "shift 'two' is not a whole number of rows",
+            }
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_strikes_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"strikes:migration": ALL})
+            await _select(on_b, B, {"strikes:migration": ALL})
+            await _select(list_only, A)
+            for ws in (on_a, on_b):
+                assert (await _next(ws, "strikes:migration"))["today"]["all"] == []
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)
+            frame = await _next(on_a, "strikes:migration")
+            assert frame["ticker"] == A and frame["today"]["all"] == _per_strike(A)
+            assert _kind(await _select(on_b, B, {}), "strikes:migration") == []
+            assert _kind(await _select(list_only, A), "strikes:migration") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_switch_sends_the_new_tickers_strikes_and_none_of_the_old():
+    _publish(CRWD)
+    _publish(MRVL)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"strikes:desk": ALL})
+            assert (await _next(ws, "strikes:desk"))["ticker"] == A
+            await _select(ws, B, {"strikes:desk": ALL})
+            frame = await _next(ws, "strikes:desk")
+            assert frame["ticker"] == B and frame["today"]["all"] == _per_strike(B)
+            await asyncio.to_thread(_publish, CRWD)
+            assert _kind(await _select(ws, B, {}), "strikes:desk") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_page_that_drops_and_returns_gets_its_strikes_again():
+    _publish(CRWD)
+
+    async def body(url):
+        for _ in range(2):
+            async with connect(url) as ws:
+                await _select(ws, A, {**LIST, "strikes:gbs": ALL})
+                assert (await _next(ws, "strikes:gbs"))["today"]["all"] == _per_strike(A)
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_strikes_producer_that_raises_fails_its_panel_alone_in_words():
+    """Induced condition: CRWD's publication holds no prior day (None), so the strikes raise."""
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        server._terrain_cache[A] = replace(server._terrain_cache[A], prior_strikes=None)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {**LIST, "strikes:gbs": ALL, "terrain:levels": {}})
+            seen = {}
+            while {"expiries", "strikes:gbs", "terrain:levels"} - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert seen["strikes:gbs"] == {
+                "type": "strikes:gbs",
+                "ticker": A,
+                "failed": "the program could not produce this panel: "
+                "TypeError: cannot unpack non-iterable NoneType object",
+            }
+            assert _terrain_of(seen["terrain:levels"]) == _published_terrain(A)
+
+    asyncio.run(_serve_panels(body))
+
+
+# -- the heatmap: the surface panel, in the window the page asks (scope, pan, columns, expiry) ---
+
+HEATMAP = {**ALL, "cols": None, "expiry": None}
+
+
+def _surface_expiries(tk) -> list:
+    """The expiries of the surface the producer published for `tk`, in its column order."""
+    return [e["expiry"] for e in server.published_levels(tk).gamma_surface["expirations"]]
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_the_heatmap_gets_the_published_surface_in_its_window_at_once_with_no_get():
+    _publish(MRVL)
+    exps = _surface_expiries(B)
+    assert len(exps) > 3
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, B, {**LIST, "surface": HEATMAP})
+            frame = await _next(ws, "surface")
+            assert frame["available"] is True and frame["ticker"] == B
+            assert [e["expiry"] for e in frame["expirations"]] == exps
+            await _select(ws, B, {"surface": {**HEATMAP, "expiry": exps[1]}})
+            one = await _next(ws, "surface")
+            assert [e["expiry"] for e in one["expirations"]] == [exps[1]]
+            await _select(ws, B, {"surface": {**HEATMAP, "cols": 0}})  # one it cannot draw
+            assert await _next(ws, "surface") == {
+                "type": "surface",
+                "ticker": B,
+                "available": False,
+                "reason": "cols 0 is not a whole number of columns",
+            }
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/options/gamma-surface" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_chain_the_surface_is_unavailable_with_its_reason():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"surface": HEATMAP})
+            frame = await _next(ws, "surface")
+            assert frame["available"] is False and frame["reason"]  # why, never empty cells
+            assert "cells" not in frame
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_surface_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"surface": HEATMAP})
+            await _select(on_b, B, {"surface": HEATMAP})
+            await _select(list_only, A)
+            for ws in (on_a, on_b):
+                assert (await _next(ws, "surface"))["available"] is False
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)
+            frame = await _next(on_a, "surface")
+            assert frame["ticker"] == A and frame["available"] is True
+            assert [e["expiry"] for e in frame["expirations"]] == _surface_expiries(A)
+            assert _kind(await _select(on_b, B, {}), "surface") == []
+            assert _kind(await _select(list_only, A), "surface") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_switch_and_a_reconnect_send_the_surface_of_the_ticker_on_screen_only():
+    _publish(CRWD)
+    _publish(MRVL)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"surface": HEATMAP})
+            assert (await _next(ws, "surface"))["ticker"] == A
+            await _select(ws, B, {"surface": HEATMAP})
+            assert (await _next(ws, "surface"))["ticker"] == B
+            await asyncio.to_thread(_publish, CRWD)  # new levels on the ticker the page left
+            assert _kind(await _select(ws, B, {}), "surface") == []
+        async with connect(url) as ws:  # the page's reconnect and its subscribe
+            await _select(ws, B, {**LIST, "surface": HEATMAP})
+            assert (await _next(ws, "surface"))["ticker"] == B
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_surface_producer_that_raises_fails_its_panel_alone_in_words():
+    """Induced condition: CRWD's published surface holds no strikes (None), so the window raises."""
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        held = server._terrain_cache[A]
+        surface = {**held.gamma_surface, "strikes": None}
+        server._terrain_cache[A] = replace(held, gamma_surface=surface)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {**LIST, "surface": HEATMAP, "terrain:levels": {}})
+            seen = {}
+            while {"expiries", "surface", "terrain:levels"} - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert set(seen["surface"]) == {"type", "ticker", "failed"}
+            assert seen["surface"]["failed"].startswith(
+                "the program could not produce this panel: TypeError: "
+            )
+            assert _terrain_of(seen["terrain:levels"]) == _published_terrain(A)
+
+    asyncio.run(_serve_panels(body))
+
+
+async def _frames_of(ws, kinds) -> dict:
+    """The next frame of each of `kinds`, by its type."""
+    seen = {}
+    while set(kinds) - set(seen):
+        frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+        seen[frame["type"]] = frame
+    return seen
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_chain_reader_gets_its_own_expiry_at_once_with_no_get():
+    _publish(MRVL)
+    exps = server.published_levels(B).snap.expiries
+    assert len(exps) > 1
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(
+                ws, B, {"chain:ladder": {"expiry": None}, "chain:detail": {"expiry": exps[1]}}
+            )
+            seen = await _frames_of(ws, ("chain:ladder", "chain:detail"))
+            front, second = seen["chain:ladder"], seen["chain:detail"]
+            assert front["ticker"] == B and front["status"] == "ok" and front["expiry"] == exps[0]
+            assert second["status"] == "ok" and second["expiry"] == exps[1]
+            assert front["contracts"] and second["contracts"]
+            assert {c["symbol"] for c in front["contracts"]}.isdisjoint(
+                c["symbol"] for c in second["contracts"]
+            )
+            await _select(ws, B, {"chain:ladder": {}})  # a reader that names no expiry
+            assert (await _next(ws, "chain:ladder"))["status"] == "unavailable"
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/chain" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_chain_the_chain_says_why_with_no_contract():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"chain:ladder": {"expiry": None}})
+            frame = await _next(ws, "chain:ladder")
+            assert frame["status"] == "unavailable" and frame["contracts"] == []
+            assert frame["scope"]["reason"] == server.NO_CHAIN_YET
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_chain_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"chain:ladder": {"expiry": None}})
+            await _select(on_b, B, {"chain:ladder": {"expiry": None}})
+            await _select(list_only, A)
+            for ws in (on_a, on_b):
+                assert (await _next(ws, "chain:ladder"))["status"] == "unavailable"
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)
+            frame = await _next(on_a, "chain:ladder")
+            assert frame["ticker"] == A and frame["status"] == "ok"
+            assert frame["expiry"] == server.published_levels(A).snap.expiries[0]
+            assert _kind(await _select(on_b, B, {}), "chain:ladder") == []
+            assert _kind(await _select(list_only, A), "chain:ladder") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_chain_producer_that_raises_fails_its_panel_alone_in_words():
+    """Induced condition: CRWD's held chain holds a contract that is None, so the chain raises."""
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        held = server._terrain_cache[A]
+        server._terrain_cache[A] = replace(held, chain=[None, *held.chain])
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"chain:ladder": {"expiry": None}, "terrain:levels": {}})
+            seen = await _frames_of(ws, ("chain:ladder", "terrain:levels"))
+            assert set(seen["chain:ladder"]) == {"type", "ticker", "failed"}
+            assert seen["chain:ladder"]["failed"].startswith(
+                "the program could not produce this panel: AttributeError: "
+            )
+            assert _terrain_of(seen["terrain:levels"]) == _published_terrain(A)
+
+    asyncio.run(_serve_panels(body))
+
+
+def _levels_of(frame) -> dict:
+    """The gamma levels a levels panel carries, by id."""
+    return {r["id"]: r["price"] for r in frame["levels"] if r["family"] == "gamma"}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_levels_reader_gets_its_own_timeframe_at_once_with_no_get():
+    _publish(CRWD)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"levels:view": {"tf": "1"}, "levels:map": {"tf": "15"}})
+            seen = await _frames_of(ws, ("levels:view", "levels:map"))
+            assert seen["levels:view"]["tf"] == "1" and seen["levels:map"]["tf"] == "15"
+            for frame in seen.values():
+                assert frame["ticker"] == A
+                assert _levels_of(frame)["call_wall"] == _published_terrain(A)["call_wall"]
+            await _select(ws, A, {"levels:view": {"tf": "2"}})  # a timeframe the chart has not
+            frame = await _next(ws, "levels:view")
+            assert frame["failed"] == (
+                "the program could not produce this panel: ValueError: "
+                "tf '2' is not one of 1, 3, 5, 15, 30, 60, D"
+            )
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/levels" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_price_row_of_the_ticker_sends_its_levels_again_from_that_price():
+    _publish(CRWD)
+    moved = CRWD.spot + 1.25
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"levels:desk": {"tf": "1"}})
+            await _next(ws, "levels:desk")
+            at = time_et.now()
+            lmp.record_from_level_one_equity(
+                A,
+                {"LAST_PRICE": moved, "TRADE_TIME_MILLIS": int(at * 1000)},
+                received_ts=at,
+            )
+            frame = await _next(ws, "levels:desk")
+            assert frame["spot"] == moved
+            lmp.record_from_level_one_equity(  # another ticker's price is not this panel's
+                B,
+                {"LAST_PRICE": MRVL.spot, "TRADE_TIME_MILLIS": int(at * 1000)},
+                received_ts=at,
+            )
+            assert _kind(await _select(ws, A, {"levels:desk": {"tf": "1"}}), "levels:desk") == []
 
     asyncio.run(_serve_panels(body))

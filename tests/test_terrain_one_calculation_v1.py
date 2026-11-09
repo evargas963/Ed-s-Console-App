@@ -1,4 +1,4 @@
-"""compute_terrain computes each value once, and nothing no one reads, to the same last bit.
+"""compute_terrain computes each value once, and nothing no one reads, with the same values.
 
 Real data: SPY's whole chain of 2026-11-09 (12,904 contracts, production's newest complete
 capture, valued at its capture time) and the real CRWD, TSLA and MRVL chains of 2026-10-07
@@ -9,8 +9,11 @@ Calls are counted with Python's own monitoring (sys.monitoring), the code itself
 
 from __future__ import annotations
 
+import gzip
 import json
+import math
 import sys
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -19,43 +22,59 @@ import terrain_engine
 import time_et
 from option_contract import read_chain
 from terrain_engine import compute_terrain
-from tests.terrain_digest import digest, real_terrains
+from tests.terrain_digest import canonical, real_terrains
 from time_et import ET
 
-_SPY = json.loads(
-    (Path(__file__).parent / "fixtures" / "real_spy_full_chain_2026_11_09.json").read_text(
-        encoding="utf-8"
-    )
-)
+_FX = Path(__file__).parent / "fixtures"
+_SPY = json.loads((_FX / "real_spy_full_chain_2026_11_09.json").read_text(encoding="utf-8"))
 
 #: the fields deleted with their producers, read by no code and shown on no screen
-#: (zero_dte_gamma_share_pct, rr_25d, vanna_agg, call_wall_range, put_wall_range), and the schema
-#: version that names the change
-CHANGED = frozenset(
-    {
-        "rr_25d",
-        "zero_dte_gamma_share_pct",
-        "vanna_agg",
-        "call_wall_range",
-        "put_wall_range",
-        "schema_version",
-    }
+#: (zero_dte_gamma_share_pct, rr_25d, vanna_agg, call_wall_range, put_wall_range)
+DELETED = frozenset(
+    {"rr_25d", "zero_dte_gamma_share_pct", "vanna_agg", "call_wall_range", "put_wall_range"}
 )
 
-#: every other field of each real chain's terrain, books, profile and per-strike rows included,
-#: as compute_terrain produced it before (#892's head, 361871f5), digested by
-#: tests/terrain_digest.digest
-BEFORE = {
-    "CRWD": "4d7657a2461f636e70dcaa354786beb78d2430c4bbecaaceed38415248788d94",
-    "TSLA": "89b2cb3ee260d234eb69be1ff390512675046f6b24d11c7902aa8beb565f2153",
-    "MRVL": "ba8ced113c65f8b0d86891f960a5928627bccf7c5799210fff68d625d4a0e983",
-    "SPY": "c73321bc778059894cceaf6030c5f71a2ef4ac18e220a7b5fcaec05edcf1d009",
-}
+#: every field of each real chain's terrain, books, profile and per-strike rows included, as
+#: compute_terrain produced it before its numpy pricing (#895's first commit, on Windows),
+#: written out by tests/terrain_digest.canonical
+BEFORE = json.loads(
+    gzip.decompress((_FX / "real_terrains_before_numpy_2026_11_09.json.gz").read_bytes())
+)["terrains"]
+
+#: a number may differ from what it was only in the last digits of a double: Python's math and
+#: numpy's exp and log, on one platform and another, round their last bit their own way. On
+#: Windows the largest difference measured, every field of every chain, is 0
+REL_TOL, ABS_TOL = 1e-9, 1e-6
 
 
-def test_every_value_is_the_same_to_the_last_bit():
-    """Every field still computed is what it was, every number to its last bit, on each chain."""
-    assert {tk: digest(s, CHANGED) for tk, s in real_terrains().items()} == BEFORE
+def _same(was, now, path: str) -> None:
+    """Assert `now` is `was`: every key, order, None and text the same, every number within tol."""
+    if isinstance(was, list) and len(was) == 2 and was[0] == "f" and isinstance(was[1], str):
+        assert isinstance(now, list) and now[0] == "f", (path, was, now)
+        x, y = float(was[1]), float(now[1])
+        assert (math.isnan(x) and math.isnan(y)) or math.isclose(
+            x, y, rel_tol=REL_TOL, abs_tol=ABS_TOL
+        ), (path, x, y)
+        return
+    if isinstance(was, list) and isinstance(now, list):
+        assert len(was) == len(now), (path, len(was), len(now))
+        for i, (a, b) in enumerate(zip(was, now, strict=True)):
+            _same(a, b, f"{path}/{i}")
+        return
+    assert was == now, (path, was, now)
+
+
+def test_every_value_is_what_it_was():
+    """Every field still computed is what it was before the numpy pricing, on every chain.
+
+    Every key, order, absent value (None stays None: no value is invented, none turned into 0)
+    and text exactly; every number within a double's last digits (REL_TOL, ABS_TOL).
+    """
+    terrains = real_terrains()
+    assert sorted(terrains) == sorted(BEFORE)
+    for tk, snap in terrains.items():
+        now = canonical({k: v for k, v in asdict(snap).items() if k not in DELETED})
+        _same(BEFORE[tk], now, tk)
 
 
 def _calls(codes, run) -> dict[str, int]:
@@ -88,7 +107,7 @@ def test_each_value_is_computed_once_and_nothing_unread_is_computed():
     expiries), the expiries' ATM implied vols twice, and a same-day book merged for a share no
     code read. Now the time to expiry is computed once per expiry and settlement in each place
     that prices (the books, the gamma profile and the charm map), the ATM map once, and the five
-    unread values (CHANGED) are gone from the terrain.
+    unread values (DELETED) are gone from the terrain.
     """
     chain = read_chain(_SPY["chain"])
     expiries = {(c.expiration, c.settlement) for c in chain}
@@ -111,4 +130,4 @@ def test_each_value_is_computed_once_and_nothing_unread_is_computed():
     assert counts["atm_sigma_by_expiry"] == 1, counts
     # the full book, the front expiry's, the <=7 and >7 days' rows and the same-day levels' own
     assert counts["merge_exposure_books"] == 5, counts
-    assert not CHANGED - {"schema_version"} & set(snap.to_dict()), "no unread value served"
+    assert not DELETED & set(snap.to_dict()), "no unread value served"

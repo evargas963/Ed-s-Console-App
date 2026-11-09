@@ -1,13 +1,12 @@
-"""A digest of everything compute_terrain produces, to the last bit of every number.
+"""Everything compute_terrain produces on the real chains, written out exactly.
 
 Every field of the TerrainSnapshot, the heavy maps (books, profile, per-strike rows, charm maps)
 included: dicts as their items in order, a float by its exact repr, a tuple key as a list, so two
-snapshots digest alike only when every value, its key and its order are the same.
+terrains compare alike only when every value, its key and its order compare alike.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
@@ -25,23 +24,17 @@ _SPY = json.loads(
 )
 
 
-def _canonical(v):
+def canonical(v):
+    """Return `v` written out exactly: dicts as [["d", key, value], ...], floats as ["f", repr]."""
     if is_dataclass(v):
-        return _canonical(asdict(v))
+        return canonical(asdict(v))
     if isinstance(v, dict):
-        return [["d", _canonical(k), _canonical(x)] for k, x in v.items()]
+        return [["d", canonical(k), canonical(x)] for k, x in v.items()]
     if isinstance(v, (list, tuple)):
-        return [_canonical(x) for x in v]
+        return [canonical(x) for x in v]
     if isinstance(v, float):
         return ["f", repr(v)]
     return v
-
-
-def digest(snap: TerrainSnapshot, without: frozenset[str] = frozenset()) -> str:
-    """Return the sha256 of every field of `snap` but those named in `without`."""
-    fields = {k: v for k, v in asdict(snap).items() if k not in without}
-    text = json.dumps(_canonical(fields), separators=(",", ":"))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def real_terrains() -> dict[str, TerrainSnapshot]:
