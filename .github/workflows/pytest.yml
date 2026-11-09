@@ -215,14 +215,17 @@ jobs:
           rc=0
           for pass in 1 2 3 4 5 6 7 8 9 10; do
             echo "=== pass $pass starts $(date -u +%H:%M:%S)"
+            pwsh -NoProfile -Command 'while ($true) { Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)`t$($_.Name)`t$($_.CommandLine)" }; Start-Sleep -Milliseconds 500 }' > procs.txt &
+            procs_pid=$!
             MSYS_NO_PATHCONV=1 logman start afdtrace -p Microsoft-Windows-Winsock-AFD 0xffffffffffffffff 0xff -o afd.etl -ets -mode circular -max 512 > /dev/null
             npm run test:e2e || rc=$?
             MSYS_NO_PATHCONV=1 logman stop afdtrace -ets > /dev/null
+            kill $procs_pid 2>/dev/null || true
             if grep -q "failed" logs/test_e2e_last.log; then
               echo "=== pass $pass failed: socket events by process and kind, from Windows' own Winsock trace"
               MSYS_NO_PATHCONV=1 tracerpt afd.etl -o afd.csv -of CSV -y > /dev/null
               head -c 600 afd.csv; echo
-              pwsh -NoProfile -Command '$rows = Import-Csv afd.csv; $col = ($rows[0].PSObject.Properties.Name | Where-Object { $_.Trim() -match "^(PID|Process ID|ProcessId)$" } | Select-Object -First 1); "pid column: [$col] events: $($rows.Count)"; $rows | Where-Object { $_.Type -match "Connected" } | Group-Object $col | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { $raw = $_.Name.Trim(); $id = if ($raw -match "^0x") { [Convert]::ToInt32($raw.Substring(2), 16) } else { [int]$raw }; "connected=$($_.Count) pid $id $((Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction Ignore).CommandLine)" }'
+              pwsh -NoProfile -Command '$rows = Import-Csv afd.csv; $col = ($rows[0].PSObject.Properties.Name | Where-Object { $_.Trim() -match "^(PID|Process ID|ProcessId)$" } | Select-Object -First 1); "pid column: [$col] events: $($rows.Count)"; $rows | Where-Object { $_.Type -match "Connected" } | Group-Object $col | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { $raw = $_.Name.Trim(); $id = if ($raw -match "^0x") { [Convert]::ToInt32($raw.Substring(2), 16) } else { [int]$raw }; $seen = (Select-String -Path procs.txt -Pattern "^$id`t" | Select-Object -First 1).Line; "connected=$($_.Count) pid $id :: $seen" }'
             fi
             rm -f afd.etl afd.csv
             if grep -q "failed" logs/test_e2e_last.log; then
