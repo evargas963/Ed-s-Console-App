@@ -10,7 +10,7 @@ import sqlite3
 import subprocess
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
@@ -86,7 +86,7 @@ from math_exposure_core import (
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from option_contract import GREEK_FIELDS, OptionContract, chain_row, read_chain
+from option_contract import GREEK_FIELDS, OptionContract, chain_row
 from terrain_atr import Atr, compute_atrs, roll_up
 from terrain_engine import (
     PRICE_RELATIONS,
@@ -433,11 +433,7 @@ async def _app_lifespan(_app):
     # The live feed from the capture daemon (the only Schwab client): every streamed equity
     # quote and option greeks/OI/volume quote -> _on_stream_tick, which reprices a viewed
     # ticker; every chain the daemon fetched -> _on_chain, which prices it.
-    start_order_flow_stream(
-        on_tick_callback=_on_stream_tick,
-        on_chain_callback=_on_chain,
-        on_feed_callback=restamp_open_surfaces,
-    )
+    start_order_flow_stream(**FEED_CALLBACKS)
 
     push_changes.bind(asyncio.get_running_loop())
 
@@ -1049,8 +1045,26 @@ STREAM_WORDS = {
     },
 }
 
-#: the last heartbeat the open surfaces were stamped from, so a repeat beat does not republish
-_last_feed_stamp: tuple | None = None
+#: per ticker, the beat its open surface was last stamped from (the socket open, the surface's
+#: contracts the daemon holds, the option market open), so a beat that changes none of them for a
+#: surface does not restamp or republish it
+_last_feed_stamp: dict[str, tuple] = {}
+
+
+def restamp_off_the_loop(now: float) -> None:
+    """Take the daemon's beat (the feed's callback, on the event loop) to the pricing thread.
+
+    The surfaces are stamped where they are priced (_chain_pricing), never on the event loop,
+    whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1).
+    """
+    _chain_pricing.submit(restamp_open_surfaces, now).add_done_callback(_restamp_ended)
+
+
+def _restamp_ended(done: Future) -> None:
+    """Log a restamp that ended on an error, with its traceback; the next beat restamps."""
+    if done.exception() is not None:
+        e = done.exception()
+        log.warning("restamping the surfaces failed: %s", e, exc_info=e)
 
 
 #: the page's socket panels (PAGE_PANELS) read from the published levels and the live price
@@ -1068,46 +1082,44 @@ def restamp_open_surfaces(now: float) -> None:
 
     The last streamed gamma stays. A contract is live by the one live rule on its ticker's own
     option market (live_market_plane.live_symbols): a socket that has closed, a contract the daemon
-    no longer holds and an option market that has closed are not live. The page is told only when
-    that changes.
+    no longer holds and an option market that has closed are not live. A surface is restamped,
+    and the page told, only when that changes for its own contracts. It runs on the pricing
+    thread, the one writer of the levels, so the cache's lock is held only to read and to store.
     """
-    global _last_feed_stamp
     feed = lmp.feed_now(now)
     socket_open = lmp.feed_up(feed)
     held_now = feed.held.get("LEVELONE_OPTIONS", frozenset()) if socket_open else frozenset()
-    at = datetime.fromtimestamp(now, ET)
-    key = (
-        socket_open,
-        held_now,
-        options_open(at),
-    )
-    if key == _last_feed_stamp:
-        return
-    _last_feed_stamp = key
-    bumped: list[str] = []
+    market_open = options_open(datetime.fromtimestamp(now, ET))
     with _terrain_cache_lock:
-        for tk, levels in _terrain_cache.items():
-            surface = levels.gamma_surface
-            if surface is None:  # this ticker's levels hold no surface (no price or no book)
-                continue
-            symbols = [
-                s
-                for cell in surface["cells"]
-                for pair in cell["contracts"]
-                for s in (pair["call"], pair["put"])
-                if s
-            ]
-            streamed = {}
-            for sym in symbols:
-                greeks = get_stream_greeks(sym)
-                if greeks:
-                    streamed[sym] = greeks
-            held = set(symbols) & set(held_now)
-            live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
-            stamped = _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
-            stamped["surface_seq"] = _next_gamma_surface_seq(tk, now)
+        cached = list(_terrain_cache.items())
+    bumped: list[str] = []
+    for tk, levels in cached:
+        surface = levels.gamma_surface
+        if surface is None:  # this ticker's levels hold no surface (no price or no book)
+            continue
+        symbols = [
+            s
+            for cell in surface["cells"]
+            for pair in cell["contracts"]
+            for s in (pair["call"], pair["put"])
+            if s
+        ]
+        held = held_now.intersection(symbols)
+        key = (socket_open, held, market_open)
+        if _last_feed_stamp.get(tk) == key:
+            continue
+        _last_feed_stamp[tk] = key
+        streamed = {}
+        for sym in symbols:
+            greeks = get_stream_greeks(sym)
+            if greeks:
+                streamed[sym] = greeks
+        live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
+        stamped = _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
+        stamped["surface_seq"] = _next_gamma_surface_seq(tk, now)
+        with _terrain_cache_lock:
             _terrain_cache[tk] = replace(levels, gamma_surface=stamped)
-            bumped.append(tk)
+        bumped.append(tk)
     watching = set(push_changes.watched())
     for tk in bumped:
         if tk in watching:
@@ -1763,12 +1775,22 @@ def _price_chain(
             if captures:
                 _publish_levels(tk, captures=captures, now=now)
             return
-        # read here, on the pricing thread: a whole chain, never on the event loop
-        _publish_levels(tk, read_chain(contracts), fetched_ts, chain_spot=spot, now=now)
+        # the chain as the sweep read it, once (complete_chain_capture.chain_messages)
+        _publish_levels(tk, contracts, fetched_ts, chain_spot=spot, now=now)
         _terrain_refresh_last_error.pop(tk, None)
     except Exception as e:  # kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
         log.warning("pricing the chain of %s failed: %s", tk, e, exc_info=True)
+
+
+#: what the console takes from the daemon's bus (start_order_flow_stream, at startup): each
+#: streamed tick, each chain the daemon fetched, and each beat of the daemon's status, the last
+#: restamped on the pricing thread
+FEED_CALLBACKS = {
+    "on_tick_callback": _on_stream_tick,
+    "on_chain_callback": _on_chain,
+    "on_feed_callback": restamp_off_the_loop,
+}
 
 
 STATUS_EVERY_SEC = 60.0

@@ -27,6 +27,7 @@ import server
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
+from option_contract import read_chain
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.schwab_rest_standin import CHAIN, QUOTES, SPY_QUOTES, LocalSchwab
@@ -140,7 +141,8 @@ def test_a_chain_reaches_the_console_whole_in_parts():
     assert [m["part"] for _t, m in published] == [0, 1, 2, 3, 4]  # 2,432 contracts
     ((tk, contracts, ts, reason, spot),) = _assembled(published)
     assert (tk, ts, reason, spot) == ("MRVL", _ts("2026-09-30 15:31:57"), None, (None, None))
-    assert sorted(c["symbol"] for c in contracts) == sorted(c["symbol"] for c in _MRVL)
+    assert sorted(c.symbol for c in contracts) == sorted(c["symbol"] for c in _MRVL)
+    assert contracts == read_chain(_MRVL), "each contract as read once, in order"
 
 
 def test_a_chain_missing_a_part_is_never_priced_and_says_why():
@@ -384,7 +386,7 @@ def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in():
     assert [m["part"] for m in late_record] == list(range(late_record[0]["parts"]))
     ((tk, contracts, _ts_, reason, _spot),) = _assembled([(late_topic, m) for m in late_record])
     assert tk == "MRVL" and reason is None
-    assert sorted(c["symbol"] for c in contracts) == sorted(c["symbol"] for c in _MRVL)
+    assert sorted(c.symbol for c in contracts) == sorted(c["symbol"] for c in _MRVL)
 
 
 def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
