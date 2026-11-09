@@ -101,7 +101,8 @@ def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
     forbidden there, or None if it is an allowed production operation (its subcommand and
     arguments classified). ALLOWED on production: reads/fetch; `git merge|pull --ff-only
     origin/main` (the merge-then-fast-forward update, invariant #5); `git checkout|switch main`
-    (return to main); `git checkout -- <path>` file-restore (left to the destructive-git rail)."""
+    (return to main); `git checkout -- <path>` file-restore (left to the destructive-git rail).
+    """
     sub, args = git_subcommand(words)
     if not sub:
         return None
@@ -159,7 +160,8 @@ def prod_checkout_git_move_violations(statements: list[Statement]) -> list[str]:
     primary: a harmless leading `git status` (or a `git -C <dev-worktree>`) cannot launder a
     later checkout/switch/branch/commit/merge/reset aimed at the primary. A verb that would move
     HEAD off main, create/re-point a branch, or write history in the primary BLOCKs; dev
-    worktrees are unconstrained. Refused at the moment of the command. Not subject-disableable."""
+    worktrees are unconstrained. Refused at the moment of the command. Not subject-disableable.
+    """
     primary = _primary_worktree_root(REPO) or REPO
     primary_norm = normalize_repo(primary)
     out: list[str] = []
@@ -203,7 +205,8 @@ def _writes_main(words: tuple[str, ...]) -> bool:
 
 def main_ref_write_violations(statements: list[Statement]) -> list[str]:
     """A git command that writes refs/heads/main, from any checkout: every checkout shares the
-    branch the production checkout runs, so the checkout a command runs in cannot protect it."""
+    branch the production checkout runs, so the checkout a command runs in cannot protect it.
+    """
     return [
         f"MAIN_REF_LOCK: `{st.text}` writes refs/heads/main, the branch the production "
         f"checkout runs, shared by every checkout. main moves only by a PR merged on GitHub, "
@@ -219,7 +222,8 @@ def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> 
     own root (a worktree nested at `<primary>/.claude/worktrees/<name>` owns its files). From the
     production checkout itself: any of its files (`live_file`). The topology is file logic
     only (`_primary_worktree_root`); a target that cannot be placed raises, and hook_chain refuses
-    the event."""
+    the event.
+    """
     primary = _primary_worktree_root(repo) or repo
     out: list[str] = []
     for key in _EDIT_TARGET_KEYS:
@@ -240,7 +244,8 @@ def _shell_write_dest_paths(st: Statement) -> list[str]:
     (e.g. `printf x > static/index.html`, `echo x > static/app.js`), PLUS the material
     file-mutating verbs cp/mv/install/rsync/ln/tee/sed -i/perl -i/truncate/dd of=. The caller
     keeps those inside the production primary; an in-place edit there is refused whichever of its
-    operands (a sed script among them) names the file."""
+    operands (a sed script among them) names the file.
+    """
     dests: list[str] = st.writes
     verb = st.program
     if not verb:
@@ -307,7 +312,8 @@ def _ps_write_dest_paths(st: Statement) -> list[str]:
     """Destination path a PowerShell write cmdlet targets in one statement, named or positional.
 
     A documented limit: a destination built from a bare `$variable` (no literal path token) is
-    not resolvable by this or any static table."""
+    not resolvable by this or any static table.
+    """
     verb = st.program
     dest_flag = _PS_DEST_PARAM.get(verb)
     if not dest_flag:

@@ -50,7 +50,8 @@ def changed_paths(staged: bool, base: str | None = None) -> list[tuple[str, str]
     """(path before, path after) of each file modified against HEAD: staged for pre-commit,
     worktree for --measure; with `base`, each file a pull request changes against it. A renamed
     file pairs its old path with its new one, so a rename cannot carry a reflow past the check;
-    names are read NUL-separated, never quoted. None when git could not list them."""
+    names are read NUL-separated, never quoted. None when git could not list them.
+    """
     args = ["diff", "--name-status", "-z", "-M", "--diff-filter=ACMR"]
     if base:
         args.append(f"{base}...HEAD")

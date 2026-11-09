@@ -168,7 +168,8 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
     """ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what
     it asked for, and kept its own list of index roots. The daemon answers each subscribe with
     each asked-for symbol's key (what its rows carry) and display name, from instrument_identity,
-    for an index typed bare or with "$", an ETF and a single name alike."""
+    for an index typed bare or with "$", an ETF and a single name alike.
+    """
 
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX", "$VIX", "spy", "MU"]}))
@@ -188,7 +189,8 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
 
 def test_an_index_typed_bare_is_served_under_its_storage_key():
     """The operator types "SPX"; Schwab keys "$SPX". The subscription goes through
-    ticker_storage_key, so the typed form gets the index's rows. In regular hours (_RTH)."""
+    ticker_storage_key, so the typed form gets the index's rows. In regular hours (_RTH).
+    """
     clock = _clock_from(_RTH)
 
     async def body(bus, ws, feed, stats):
@@ -215,7 +217,8 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
     bid stand, and the row reads OFFLINE and names the outage, the market open or closed. Before
     the socket closes the row is LIVE in regular hours and NOT LIVE at 22:00, the market closed.
-    The server's clock runs from `start` so the session is that hour, and time still passes."""
+    The server's clock runs from `start` so the session is that hour, and time still passes.
+    """
     clock = _clock_from(start)
 
     async def body(bus, ws, feed, stats):
@@ -250,7 +253,8 @@ def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
 
 def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
     """A browser that is behind gets the newest value of each symbol, never a stale backlog
-    (latest-value-per-symbol per client)."""
+    (latest-value-per-symbol per client).
+    """
 
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
