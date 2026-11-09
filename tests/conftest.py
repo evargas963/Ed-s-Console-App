@@ -23,6 +23,7 @@ import pytest
 
 import live_market_plane
 import push_changes
+from db_authority import canonical_console_db_path, canonical_stream_db_path
 from time_et import ET, now, record_markets, session
 
 # Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
@@ -64,8 +65,6 @@ def pytest_configure(config) -> None:
     """The import-time runtime boundary holds in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
     assert "ED_CONSOLE_DB" not in os.environ  # RC-534: no ambient console-DB override
-    from db_authority import canonical_console_db_path, canonical_stream_db_path
-
     assert _PYTEST_RUNTIME_ROOT in canonical_console_db_path().parents
     assert _PYTEST_RUNTIME_ROOT in canonical_stream_db_path().parents
 
