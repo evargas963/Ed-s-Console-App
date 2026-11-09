@@ -156,37 +156,30 @@ class ZoneType(str, Enum):
     """
     Canonical zone types for structure/value mapping.
 
-    The extremes are named for what they are, geometrically: the LOW extreme of the prior
-    session / overnight window, or the HIGH one. No name claims a mechanism (resting stop
+    The extreme is named for what it is, geometrically: the LOW extreme of the prior
+    session / overnight window. No name claims a mechanism (resting stop
     orders pooling beyond an extreme): no stop-cluster detector, touch study or forward test
     has measured one. If stop-cluster levels are ever built and proven, they earn their own type.
 
-    Taxonomy: low_extreme | support_liquidity | pivot_value | breakdown_trigger |
-    breakout_trigger | resistance_liquidity | high_extreme
+    Taxonomy: low_extreme | support_liquidity | pivot_value | resistance_liquidity
     """
 
     LOW_EXTREME = "low_extreme"
     SUPPORT_LIQUIDITY = "support_liquidity"
     PIVOT_VALUE = "pivot_value"
-    BREAKDOWN_TRIGGER = "breakdown_trigger"
-    BREAKOUT_TRIGGER = "breakout_trigger"
     RESISTANCE_LIQUIDITY = "resistance_liquidity"
-    HIGH_EXTREME = "high_extreme"
 
 
 def zone_class_for_type(zone_type: ZoneType) -> str:
-    """Return zone_class from zone_type: structure | trigger | value.
+    """Return zone_class from zone_type: structure | value.
 
     There is no `liquidity` class: no zone in this taxonomy is a measured liquidity pool, and a
     class is read as a category of evidence.
     """
     _class_map = {
         ZoneType.LOW_EXTREME: "structure",
-        ZoneType.HIGH_EXTREME: "structure",
         ZoneType.SUPPORT_LIQUIDITY: "structure",
         ZoneType.RESISTANCE_LIQUIDITY: "structure",
-        ZoneType.BREAKDOWN_TRIGGER: "trigger",
-        ZoneType.BREAKOUT_TRIGGER: "trigger",
         ZoneType.PIVOT_VALUE: "value",
     }
     return _class_map[zone_type]
@@ -197,11 +190,8 @@ def zone_class_for_type(zone_type: ZoneType) -> str:
 ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
     ZoneType.LOW_EXTREME: ("Low extreme", "support"),
     ZoneType.SUPPORT_LIQUIDITY: ("Support", "support"),
-    ZoneType.BREAKDOWN_TRIGGER: ("Breakdown trigger", "support"),
     ZoneType.PIVOT_VALUE: ("Pivot / value", "value"),
-    ZoneType.BREAKOUT_TRIGGER: ("Breakout trigger", "resistance"),
     ZoneType.RESISTANCE_LIQUIDITY: ("Resistance", "resistance"),
-    ZoneType.HIGH_EXTREME: ("High extreme", "resistance"),
 }
 
 
