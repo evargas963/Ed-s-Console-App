@@ -90,7 +90,11 @@ def test_a_failed_round_is_logged_and_the_next_round_runs(caplog):
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(capture.record_feed_status(daemon, stop, every=0.01))
-        await asyncio.sleep(0.1)
+        # the round after the failed one has read the stream; a round runs with no pause in it,
+        # so it has ended when this looks
+        deadline = time_et.elapsed() + 10
+        while daemon.stream.reads < 2 and time_et.elapsed() < deadline:
+            await asyncio.sleep(0.01)
         stop.set()
         await task
 

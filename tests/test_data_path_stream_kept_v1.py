@@ -370,8 +370,7 @@ def test_every_message_a_round_has_taken_counts_as_held_until_it_is_written(tmp_
 
     The lock is the database's. The writer takes what is queued into its round and waits up to
     timeout_sec on the round's first row. While it waits, the header's held count is every one of
-    them, queued or taken, and once the lock is let go every one is written. The 0.2 s pause lets
-    the last hand-over and the round's take (microseconds) finish well inside the 5 s wait.
+    them, queued or taken, and once the lock is let go every one is written.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, timeout_sec=5.0)
@@ -384,8 +383,15 @@ def test_every_message_a_round_has_taken_counts_as_held_until_it_is_written(tmp_
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
-        await _until(lambda: sub.queue.empty() and writer.status()["queue_depth"] < sent)
-        await asyncio.sleep(0.2)
+        # every message handed over, a round taking them (it waits on the lock), and none of
+        # them between the queue and the round
+        await _until(
+            lambda: (
+                sub.queue.empty()
+                and writer.status()["queue_depth"] < sent
+                and writer.status()["held"] == sent
+            )
+        )
         during = writer.status()
         holder.execute("COMMIT")
         await _until(lambda: writer.status()["rows_written"] == sent)

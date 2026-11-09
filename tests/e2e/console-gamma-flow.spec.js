@@ -26,6 +26,7 @@ const SPY_CALL = 'SPY   261023C00761000';
 const SPY_PUT = 'SPY   261023P00762000';
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { watchRequests } = require('./fixtures/settled');
 
 const SELECTED = FIXTURE.contract;                         // 'TSLA  260831C00367500'
 const OTHER = 'TSLA  260831P00367500';
@@ -77,9 +78,13 @@ async function setup(page, ctx) {
     if (url.includes('/api/order-flow/options-microstructure')) {
       ctx.microGets++;
       const body = JSON.stringify(ctx.sides ? SIDES[new URL(url).searchParams.get('contract')] : microFor(ctx.plane, ctx.mutate));
-      if (ctx.hangMicro) {
+      if (ctx.hangMicro) {   // held until releaseMicro(), which answers every one held
         return new Promise((resolve) => {
-          ctx.releaseMicro = () => resolve(route.fulfill({ status: 200, contentType: 'application/json', body }));
+          const earlier = ctx.releaseMicro;
+          ctx.releaseMicro = () => {
+            if (earlier) earlier();
+            resolve(route.fulfill({ status: 200, contentType: 'application/json', body }));
+          };
         });
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body });
@@ -322,6 +327,7 @@ test.describe('D — Gamma Flow subview', () => {
     // contract's ACTIVE badge under the NEW ticker. A response is current only while its contract
     // is still the selected one.
     const ctx = makeContext(); await setup(page, ctx);
+    const requests = watchRequests(page);
     ctx.hangMicro = true;
     await selectCallAndOpenFlow(page);
     await expect.poll(() => ctx.microGets).toBeGreaterThanOrEqual(1);   // the fetch is in flight, hanging
@@ -334,7 +340,7 @@ test.describe('D — Gamma Flow subview', () => {
     // A single, non-retrying snapshot right after the release catches a transient bad paint.
     ctx.hangMicro = false;
     if (ctx.releaseMicro) ctx.releaseMicro();
-    await page.waitForTimeout(150);   // let any (incorrect) late-render attempt land
+    await requests.settled();   // the page is done with the released answer (or cut it short)
     const html = await page.locator('#flowBody').innerHTML();
     expect(html).not.toContain('ACTIVE');
     expect(html).not.toContain(SELECTED);

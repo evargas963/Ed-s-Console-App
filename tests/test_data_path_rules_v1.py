@@ -14,7 +14,6 @@ import json
 import sqlite3
 import sys
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -300,7 +299,9 @@ def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(t
         h = capture._publisher("LEVELONE_OPTIONS", bus, health)
         for e in _EVENTS:
             h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
-        await asyncio.sleep(0.3)
+        deadline = time_et.elapsed() + 10  # written while the writer runs, before any stop
+        while writer.status()["rows_written"] < len(_EVENTS) and time_et.elapsed() < deadline:
+            await asyncio.sleep(0.01)
         stop.set()
         await task
 
@@ -768,14 +769,12 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
     )
     client = schwab.client(tmp_path)
     stop = threading.Event()
-    worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
-    worker.start()
-    deadline = time_et.elapsed() + 10
-    while len(delivered) < 2 and time_et.elapsed() < deadline:
-        time.sleep(0.02)
-    time.sleep(1.0)  # nothing more is asked
-    stop.set()
-    worker.join(10)
+    # the passes of the sweep's thread (ChainSweep.work), until one asks for nothing, and the
+    # next: nothing more is asked
+    for _ in range(PASSES):
+        if not sweep.step(lambda: client, stop):
+            break
+    assert not sweep.step(lambda: client, stop)
     asked = [r[1]["fromDate"] for r in schwab.requests if r[0] == chains]
     with sqlite3.connect(db) as conn:
         stored = sorted(

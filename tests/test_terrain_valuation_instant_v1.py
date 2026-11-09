@@ -10,7 +10,6 @@ Real data: TSLA's complete 2026-10-09 chain captured 2026-10-07 12:32 ET (tests/
 
 from __future__ import annotations
 
-import time
 from datetime import datetime, timedelta
 
 from option_contract import read_chain
@@ -29,11 +28,11 @@ def test_the_same_chain_at_the_same_instant_gives_the_same_vanna():
     chain, expiry, spot = _real_chain()
     now = expiry - timedelta(days=1)
     a = compute_terrain("TSLA", chain, spot, now=now).vanna_agg
-    time.sleep(1.5)
     b = compute_terrain("TSLA", chain, spot, now=now).vanna_agg
     assert a is not None and a == b, (a, b)
     # a replayed chain is priced at ITS instant: before the fix, a stored chain whose expiry had
-    # passed by the wall clock got T <= 0 for every contract and read as zero vanna
+    # passed by the wall clock got T <= 0 for every contract and read as zero vanna. The chain's
+    # expiry is past by the wall clock, so any read of the clock in place of `now` shows here.
     assert a["net_vanna_shares_per_volpt"] != 0, a
 
 
