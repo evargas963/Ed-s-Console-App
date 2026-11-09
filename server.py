@@ -4089,59 +4089,59 @@ def liquidity_snapshot(ticker: str, now: datetime):
         out = build_live_snapshot(
             ticker_upper, config, canonical=_canon, now=now, extra_levels=extra
         )
-        snapshot_val = out.snapshot_type.value
-        zones_payload = []
-        for z in out.zones:
-            w = z.zone_high - z.zone_low
-            merged = len(z.source_tags)
-            zp = {
-                "zone_type": z.zone_type.value,
-                "zone_label": ZONE_DISPLAY[z.zone_type][0],
-                "zone_side": ZONE_DISPLAY[z.zone_type][1],
-                "zone_class": z.zone_class,
-                "zone_low": z.zone_low,
-                "zone_high": z.zone_high,
-                "zone_mid": z.zone_mid,
-                "zone_width": w,
-                "source_levels": z.source_levels,
-                "source_tags": z.source_tags,
-                "confluence_score": z.confluence_score,
-                "merged_levels_count": merged,
-                "interpretation_notes": z.interpretation_notes,
-                "first_snapshot": snapshot_val,
-                "last_snapshot": snapshot_val,
-                "persistence": 1,
-            }
-            _liquidity_zone_tradeable_fields(zp, spot_for_zones)
-            zones_payload.append(zp)
-        zones_payload.sort(key=lambda x: x["zone_low"])
-        if spot_for_zones is not None:
-            zones_payload.sort(key=lambda x: x["distance_to_spot"])
-        result = {
-            "ticker": out.ticker,
-            "symbol": ticker_upper,
-            "session_date": out.session_date,
-            "snapshot_type": snapshot_val,
-            "zones": zones_payload,
-            "summary": None,
-            "fusion": fusion_status,
-            "spot_used_for_scoring": spot_for_zones,
-            "spot_location": _spot_location(zones_payload, spot_for_zones),
-            # which snapshot generation these level values ARE
-            "level_generation": _canon.generation,
-            "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
-            "level_bar_source": _canon.bar_source,
-        }
-        if out.summary:
-            result["summary"] = {
-                "value_state": out.summary.value_state,
-                "vwap_relation": out.summary.vwap_relation,
-                "auction_interpretation": out.summary.auction_interpretation,
-                "notes": out.summary.notes,
-            }
-        return result
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except HTTPException as e:
         # its own status code (a missing ticker is 400), never re-issued as a bare 500
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
+    snapshot_val = out.snapshot_type.value
+    zones_payload = []
+    for z in out.zones:
+        w = z.zone_high - z.zone_low
+        merged = len(z.source_tags)
+        zp = {
+            "zone_type": z.zone_type.value,
+            "zone_label": ZONE_DISPLAY[z.zone_type][0],
+            "zone_side": ZONE_DISPLAY[z.zone_type][1],
+            "zone_class": z.zone_class,
+            "zone_low": z.zone_low,
+            "zone_high": z.zone_high,
+            "zone_mid": z.zone_mid,
+            "zone_width": w,
+            "source_levels": z.source_levels,
+            "source_tags": z.source_tags,
+            "confluence_score": z.confluence_score,
+            "merged_levels_count": merged,
+            "interpretation_notes": z.interpretation_notes,
+            "first_snapshot": snapshot_val,
+            "last_snapshot": snapshot_val,
+            "persistence": 1,
+        }
+        _liquidity_zone_tradeable_fields(zp, spot_for_zones)
+        zones_payload.append(zp)
+    zones_payload.sort(key=lambda x: x["zone_low"])
+    if spot_for_zones is not None:
+        zones_payload.sort(key=lambda x: x["distance_to_spot"])
+    result = {
+        "ticker": out.ticker,
+        "symbol": ticker_upper,
+        "session_date": out.session_date,
+        "snapshot_type": snapshot_val,
+        "zones": zones_payload,
+        "summary": None,
+        "fusion": fusion_status,
+        "spot_used_for_scoring": spot_for_zones,
+        "spot_location": _spot_location(zones_payload, spot_for_zones),
+        # which snapshot generation these level values ARE
+        "level_generation": _canon.generation,
+        "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
+        "level_bar_source": _canon.bar_source,
+    }
+    if out.summary:
+        result["summary"] = {
+            "value_state": out.summary.value_state,
+            "vwap_relation": out.summary.vwap_relation,
+            "auction_interpretation": out.summary.auction_interpretation,
+            "notes": out.summary.notes,
+        }
+    return result

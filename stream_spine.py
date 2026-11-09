@@ -915,11 +915,16 @@ class _Spill:
 
     def append(self, record: bytes) -> OSError | None:
         """Append one record; the disk's refusal (OSError) is returned, the file cut back to its
-        whole records."""
+        whole records.
+
+        The file is unbuffered, so a write may take part of the bytes; the rest is written next,
+        as Python's buffered writer does, and a disk that takes no more raises.
+        """
         data = len(record).to_bytes(4, "big") + record
+        left = memoryview(data)
         try:
-            if self.out.write(data) != len(data):
-                raise OSError(f"short write to {self.path}")
+            while left:
+                left = left[self.out.write(left) :]
         except OSError as e:
             self.out.truncate(self.size)  # no partial record stays behind the whole ones
             return e
@@ -1306,7 +1311,7 @@ class CaptureWriter:
         try:
             self._write(q)
         except Exception as e:  # recorded as the writer's death, then raised
-            log.error("stream writer died: %s: %s", type(e).__name__, e)
+            log.exception("stream writer died: %s: %s", type(e).__name__, e)
             with self._lock:
                 self.state, self.error, self.error_ts = (
                     WRITER_DEAD,
@@ -1596,7 +1601,7 @@ class CaptureWriter:
         try:
             os.remove(spill.path)
         except OSError as e:
-            log.error(
+            log.exception(
                 "stream writer: %s written back (%d messages), not deleted, deleted at the next "
                 "start: %s: %s",
                 spill.path,
