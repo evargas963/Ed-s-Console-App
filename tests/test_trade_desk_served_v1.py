@@ -325,6 +325,7 @@ def _priced(tk, chain, spot, ts_utc):
                 "contracts": read_chain(chain),
             }
         ],
+        now=datetime.fromtimestamp(ts_utc, time_et.ET),
     )
     return server.published_levels(tk).served()
 

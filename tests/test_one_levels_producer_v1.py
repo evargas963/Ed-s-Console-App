@@ -727,3 +727,15 @@ def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_g
     finally:
         ofs._on_tick_callback = None
     assert hits == ([(m["item"]["key"], m["ts_recv"])] if with_greek else [])
+
+
+def test_a_delivered_chain_is_priced_at_the_pricing_jobs_own_instant():
+    """The pricing job's instant is the one the levels carry: the producer reads no clock.
+
+    CRWD's real chain delivered with its spot and priced by the job (server._price_chain) at the
+    capture's own time: the heatmap's stamp is that instant, never the wall clock read deep
+    inside the producer.
+    """
+    server._price_chain(TK, server.DELIVERED, _CONTRACTS, _T, (_SPOT, _T), _AT)
+    surface = server.published_levels(TK).gamma_surface
+    assert surface["stream_overlay_computed_ts_utc"] == _T

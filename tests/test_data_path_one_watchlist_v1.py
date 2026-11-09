@@ -456,7 +456,14 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
     on, off = "ZZWLON", "ZZWLOFF"
     pages = [push_changes.subscribe(tk) for tk in (on, off)]
     # levels, no surface: CRWD's real chain delivered now with no price held
-    server._publish_levels(off, read_chain(CRWD.chain), time_et.now(), chain_spot=(None, None))
+    delivered = time_et.now()
+    server._publish_levels(
+        off,
+        read_chain(CRWD.chain),
+        delivered,
+        chain_spot=(None, None),
+        now=datetime.fromtimestamp(delivered, ET),
+    )
     try:
         lmp.record_feed_heartbeat(
             daemon_status(time_et.now(), schwab_socket_open=True, watchlist=[on])
