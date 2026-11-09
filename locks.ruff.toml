@@ -27,6 +27,10 @@ select = [
 ignore = [
     "B004", "B006", "B007", "B011", "B028", "B905", "B912", "E711", "E712", "E731",
     "UP042",
+    # TRY003 is not an except that hides what failed: it asks that a built-in exception's
+    # message (`ValueError(f"... {x!r}")`, as Python's own library raises them) move into a new
+    # class, a style of one plugin that adds a class per message and fixes nothing
+    "TRY003",
 ]
 
 [lint.mccabe]
