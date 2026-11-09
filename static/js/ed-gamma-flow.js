@@ -19,8 +19,7 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '-' : String(Math.round(Number(n))); }
-  function st() { return window.EdShell.getState(); }
-  function isFlow() { var s = st(); return s.workspace === 'options' && s.subview === 'flow'; }
+  function isFlow() { var s = window.EdShell.getState(); return s.workspace === 'options' && s.subview === 'flow'; }
 
   function host() { return document.getElementById('flowBody'); }
 
@@ -78,14 +77,15 @@
   function bool3(v) { return v === true ? 'true' : (v === false ? 'false' : '-'); }
 
   function render(h, desired, d) {
-    var plane = d.streaming_plane || {};
+    // each always served: streaming_plane (server.options_microstructure), the book
+    // (engine.compute_book_microstructure) and the ONE flow block (live_payload.flow_block)
+    var plane = d.streaming_plane;
     var ss = subState(plane);
-    var tob = d.top_of_book || {};
-    var depth = d.depth || {};
-    var ages = d.ages || {};
-    var flow = d.flow || {};                        // the ONE flow block (never flattened)
-    var bookCls = d.classification || {};           // engine's book/microstructure classification
-    var flowCls = flow.classification || {};        // live_payload's flow classification
+    var tob = d.top_of_book;
+    var depth = d.depth;
+    var flow = d.flow;                              // the ONE flow block (never flattened)
+    var bookCls = d.classification;                 // engine's book/microstructure classification
+    var flowCls = flow.classification;              // live_payload's flow classification
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(bookCls, k); }
     function fk(k) { return classOf(flowCls, k); }
@@ -116,23 +116,15 @@
       ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
     ];
     var fh = plane.feed_health || {};   // served: the selected contract's three feeds
-    function svc(x) { return x ? (x.state || '-') + (x.age_sec != null ? ' · ' + num(x.age_sec, 1) + 's' : '') : '-'; }
     var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
-    // Book/quote ages are the payload's own `ages` block (engine-stamped, classified); feed health
+    // Book/quote ages are served as text from the engine's `ages` block (classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
-    function whenAge(when, sec) {
-      var age = sec != null ? (Math.round(sec) + 's') : null;
-      if (when != null && age != null) return when + ' · ' + age;
-      if (when != null) return when;
-      if (age != null) return age;
-      return '-';
-    }
     var fresh = [
-      ['Book age', whenAge(d.book_time_ct, ages.book_age_sec), 'ages.book_age_sec', bk('ages.book_age_sec')],
-      ['Quote age', whenAge(d.quote_time_ct, ages.quote_age_sec), 'ages.quote_age_sec', bk('ages.quote_age_sec')],
+      ['Book age', d.book_when_age_text == null ? '-' : d.book_when_age_text, 'ages.book_age_sec', bk('ages.book_age_sec')],
+      ['Quote age', d.quote_when_age_text == null ? '-' : d.quote_when_age_text, 'ages.quote_age_sec', bk('ages.quote_age_sec')],
       ['Replay', fh.replay || '-', 'streaming_plane.feed_health.replay', undefined],
-      ['L1 upstream', svc(fh.l1), 'streaming_plane.feed_health.l1', undefined],
-      ['Book upstream', svc(fh.book), 'streaming_plane.feed_health.book', undefined],
+      ['L1 upstream', fh.l1 ? fh.l1.text : '-', 'streaming_plane.feed_health.l1', undefined],
+      ['Book upstream', fh.book ? fh.book.text : '-', 'streaming_plane.feed_health.book', undefined],
     ];
     h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
@@ -147,7 +139,7 @@
   }
 
   function header(desired, ss, putCall) {   // putCall: Schwab's CONTRACT_TYPE, served
-    var strike = st().selStrike, expiry = st().selExpiry;
+    var strike = window.EdShell.getState().selStrike, expiry = window.EdShell.getState().selExpiry;
     return '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
       '<span class="fl-sym">' + esc(desired || '-') + '</span>' +
       '<span class="fl-meta">' + (putCall === 'CALL' ? 'Call' : putCall === 'PUT' ? 'Put' : '-') + (strike != null ? ' · ' + strike : '') + (expiry ? ' · ' + esc(expiry) : '') + '</span></div>' +

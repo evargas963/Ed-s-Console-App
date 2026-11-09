@@ -15,9 +15,8 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '-' : String(Math.round(Number(n))); }
-  function st() { return window.EdShell.getState(); }
-  function isBook() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'book'; }
-  function ticker() { return st().ticker; }
+  function isBook() { var s = window.EdShell.getState(); return s.workspace === 'order-flow' && s.subview === 'book'; }
+  function ticker() { return window.EdShell.getState().ticker; }
   function host() { return document.getElementById('obBody'); }
   function stillBook(tk) { return isBook() && ticker() === tk; }
 
@@ -25,7 +24,7 @@
     var h = host();
     if (!h || !stillBook(tk)) return;
     var G = window.EdL1SseGuards;
-    return G.show(G.readJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
+    return G.show(G.readJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue, signal),
       '/api/order-flow/microstructure',
       function (d) { if (stillBook(tk)) render(h, tk, d); },
       function (words) { if (stillBook(tk)) window.EdShell.placeholder(h, words); });
@@ -70,18 +69,19 @@
   }
 
   function render(h, tk, d) {
-    if (!d || d.status === 'no_book') {
+    if (d.status === 'no_book') {   // a failed read never reaches here: G.show says its words
       h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
         '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
-        '<div class="placeholder"><div class="sm">No ' + esc(st().bookVenue) + ' for ' + esc(tk) +
+        '<div class="placeholder"><div class="sm">No ' + esc(window.EdShell.getState().bookVenue) + ' for ' + esc(tk) +
         ' — Schwab has sent no book from this venue for this symbol.</div></div>';
       return;
     }
-    var tob = d.top_of_book || {}, depth = d.depth || {}, ages = d.ages || {}, cls = d.classification || {};
-    var dp = d.depth_pressure || {}, bidLevels = dp.bid || [], askLevels = dp.ask || [];
+    // always served (engine.compute_book_microstructure)
+    var tob = d.top_of_book, depth = d.depth, ages = d.ages, cls = d.classification;
+    var bidLevels = d.depth_pressure.bid, askLevels = d.depth_pressure.ask;
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(cls, k); }
-    var walls = d.wall_candidates || [];
+    var walls = d.wall_candidates;
     var wallSet = {};
     walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
 
@@ -99,22 +99,15 @@
       ['Bid total (5)', int(dep(5, 'bid_total')), bk('depth.*.bid_total')],
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
-    function whenAge(when, sec) {
-      var age = sec != null ? (Math.round(sec) + 's') : null;
-      if (when != null && age != null) return when + ' · ' + age;
-      if (when != null) return when;
-      if (age != null) return age;
-      return '-';
-    }
     var fresh = [
-      ['Book age', whenAge(d.book_time_ct, ages.book_age_sec), bk('ages.book_age_sec')],
-      ['Quote age', whenAge(d.quote_time_ct, ages.quote_age_sec), bk('ages.quote_age_sec')],
+      ['Book age', d.book_when_age_text == null ? '-' : d.book_when_age_text, bk('ages.book_age_sec')],
+      ['Quote age', d.quote_when_age_text == null ? '-' : d.quote_when_age_text, bk('ages.quote_age_sec')],
     ];
     var wallsHtml = walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '-') + ' @ ' + num(w.price) +
           '</span><span class="v">' + int(w.volume) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
-    var deferred = (d.deferred || []).join(' · ');
+    var deferred = d.deferred.join(' · ');
 
     // the book's served word (book_feed_label: LIVE, OFFLINE, NOT LIVE); no book age served reads
     // AGE UNKNOWN, never live

@@ -52,14 +52,6 @@
     if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
     return String(Math.round(a));
   }
-  function age(sec) {
-    if (sec == null || isNaN(sec)) return '-';
-    sec = Math.max(0, Number(sec));
-    if (sec < 90) return Math.round(sec) + 's';
-    if (sec < 5400) return Math.round(sec / 60) + 'm';
-    if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
-    return Math.round(sec / 86400) + 'd';
-  }
   // a value computed from the live price, marked when that price is not live (served price_mark)
   function notLive(d) { return d && d.spot_not_live_text ? ' · ' + d.spot_not_live_text : ''; }
   // Schwab's book time stands beside the age words. A book that is not live keeps that
@@ -81,11 +73,10 @@
     var today = now != null && CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date(now * 1000));
     return (today ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
   }
-  function st() { return window.EdShell.getState(); }
-  function onDesk() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'desk'; }
+  function onDesk() { var s = window.EdShell.getState(); return s.workspace === 'trade-desk' && s.subview === 'desk'; }
   // the instrument's served display name (the daemon's answer, EdShell state.display); as typed
   // until it arrives
-  function shown() { return st().display || S.ticker; }
+  function shown() { return window.EdShell.getState().display || S.ticker; }
   function $(id) { return document.getElementById(id); }
   function fetchJson(url) {
     return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
@@ -209,7 +200,7 @@
     }
     return Promise.all([
       fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(tf)).then(take('levels')),
-      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(tf)).then(take('events'))
+      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + window.EdShell.getState().bookVenue + '&tf=' + encodeURIComponent(tf)).then(take('events'))
     ]);
   }
   // the symbol's option terrain, zones, strikes, forces and the Order Flow card's hour of bars
@@ -237,7 +228,7 @@
   }
   function loadFast() {
     var tk = S.ticker, gen = S.gen;
-    return fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue).then(function (d) {
+    return fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue).then(function (d) {
       if (gen !== S.gen) return;
       S.micro = d; paintCards(); paintTrust(); paintQueue(); paintAgreement(); paintFooter();
     });
@@ -392,7 +383,7 @@
     // book and the level crosses. Schwab sends no trade side, so none is claimed.
     c = $('tdmCardFlow');
     if (c) {
-      var q = S.quotes[st().key], tob = m && m.top_of_book;
+      var q = S.quotes[window.EdShell.getState().key], tob = m && m.top_of_book;
       var cc = S.events ? S.events.cross_counts : null;   // served for the window
       // Schwab's values with Schwab's trade time; the outage stays beside that time, and the feed state beside them
       state(c, S.pushDown ? S.pushDown : !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : q.feed_label,
@@ -454,7 +445,7 @@
   // word, sentence and flag is the server's; the card picks the venue and depth to show and places
   // the dots, bars and lines on its boxes.
   var LIQ_NAME = { NYSE_BOOK: 'NYSE', NASDAQ_BOOK: 'Nasdaq', COMPOSITE: 'Composite' };
-  function liqKey() { return S.liqVenue === 'COMPOSITE' ? 'COMPOSITE' : st().bookVenue; }
+  function liqKey() { return S.liqVenue === 'COMPOSITE' ? 'COMPOSITE' : window.EdShell.getState().bookVenue; }
   // a served side's colour: bids green, offers red, balanced gold
   function liqTone(zone) { return !zone ? '' : zone === 'BALANCED' ? 'bal' : /BID/.test(zone) ? 'bid' : 'ask'; }
   // left = 50% + pct × 0.45 on a strip whose centre is 0
@@ -610,14 +601,14 @@
   function pill(lbl, val, cls, title) { return '<span class="tdm-pill ' + (cls || '') + '" title="' + esc(title || '') + '"><i></i>' + esc(lbl) + ' <b>' + esc(val) + '</b></span>'; }
   function paintTrust() {
     var host = $('tdmTrust'); if (!host) return;
-    var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
+    var q = S.quotes[window.EdShell.getState().key], t = S.terrain, m = S.micro, L = S.levels;
     var h = '';
     h += S.pushDown ? pill('PRICE', S.pushDown, 'bad', 'daemon price socket')
       : q ? pill('PRICE', q.feed_label, q.feed_live ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
-      : pill('BOOK', bookAgeLabel(m, m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? m.book_feed_label : 'AGE UNKNOWN'),
-          m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
+      : pill('BOOK', bookAgeLabel(m, m.ages.book_stale === false ? m.book_age_text : m.ages.book_stale ? m.book_feed_label : 'AGE UNKNOWN'),
+          m.ages.book_stale === false ? 'ok' : 'bad');
     // the session levels snapshot's served time and age
     var levelWord = L && L.snapshot_age_text != null ? L.snapshot_age_text : '-';
     var levelWhen = (L && L.snapshot_time_ct != null) ? L.snapshot_time_ct : null;
@@ -667,7 +658,7 @@
     if (!onDesk()) return;
     buildToolbar();
     if (!ensureChart()) return;
-    var tk = st().ticker;
+    var tk = window.EdShell.getState().ticker;
     if (!tk) return;
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
@@ -700,13 +691,13 @@
     });
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
-      if (q.ticker === st().key) S.pushDown = null;   // the selected price's own row ends it, as in the header
+      if (q.ticker === window.EdShell.getState().key) S.pushDown = null;   // the selected price's own row ends it, as in the header
       S.quotes[q.ticker] = q;
       if (!onDesk()) return;
       paintHeader();
-      if (q.ticker === st().key) {
+      if (q.ticker === window.EdShell.getState().key) {
         paintTrust();
-        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_sec, q.spot != null ? q.trade_time_ct : null);
+        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_text,q.spot != null ? q.trade_time_ct : null);
         paintCards();   // the Order Flow card's Schwab fields, on every row
       }
     });

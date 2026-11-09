@@ -44,8 +44,6 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
     for attempt in (1, 2):
         try:
             fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, f"{os.getpid()}\n".encode())
-            return fd, lock
         except FileExistsError:
             pid = _holder(lock.read_text())
             if pid is not None:
@@ -53,6 +51,9 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
                 raise SystemExit(EXIT_OWNER_LOCK_HELD) from None
             if attempt == 1:
                 lock.unlink(missing_ok=True)
+        else:
+            os.write(fd, f"{os.getpid()}\n".encode())
+            return fd, lock
     raise SystemExit(f"FATAL: could not acquire {lock}")
 
 
