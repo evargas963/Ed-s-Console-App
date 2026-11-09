@@ -78,11 +78,10 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
 def test_a_silent_daemon_keeps_the_last_price():
     """The daemon's price push goes quiet between beats.
 
-    The last price stays, and the feed is not live while the beat is missing.
+    The last price stays, and the feed is not live while the beat is missing. The row and the
+    feed are read at the time asked (`now`): now, with a beat just taken, and once the last beat
+    is past the live limit with no beat after it.
     """
-    age, beat = lmp.FEED_HEARTBEAT_MAX_AGE_SEC, live_ui.HEARTBEAT_SEC
-    lmp.FEED_HEARTBEAT_MAX_AGE_SEC = 0.15
-    live_ui.HEARTBEAT_SEC = 0.4
     missing: list = []
     quiet: list = []
 
@@ -90,19 +89,15 @@ def test_a_silent_daemon_keeps_the_last_price():
         assert not web.server_state.connections  # the console reads the bus: no socket client
         bus.publish("quote.SPY", _spy_trade(501.0, time_et.now()))
         assert await _until(lambda: ofs.price_row("SPY", time_et.now())["spot"] == 501.0)
-        end = time_et.elapsed() + 1.2
-        while time_et.elapsed() < end:
-            row = ofs.price_row("SPY", time_et.now())
+        assert await _until(lambda: lmp.daemon_status(time_et.now()) is not None)  # a beat taken
+        now = time_et.now()
+        for at in (now, now + lmp.FEED_HEARTBEAT_MAX_AGE_SEC + live_ui.HEARTBEAT_SEC):
+            row = ofs.price_row("SPY", at)
             if row["spot"] != 501.0:
                 missing.append(row)
-            if not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time_et.now()):
-                quiet.append(True)
-            await asyncio.sleep(0.02)
+            if not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", at):
+                quiet.append(at)
 
-    try:
-        asyncio.run(_run(body))
-    finally:
-        lmp.FEED_HEARTBEAT_MAX_AGE_SEC = age
-        live_ui.HEARTBEAT_SEC = beat
+    asyncio.run(_run(body))
     assert missing == []
     assert quiet

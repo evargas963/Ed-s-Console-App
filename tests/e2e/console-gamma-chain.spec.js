@@ -10,6 +10,7 @@ const { test, expect } = require('@playwright/test');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { watchRequests } = require('./fixtures/settled');
 
 function ct(side, strike, sym, oi, vol, iv, delta, expDate) {
   return { putCall: side, strikePrice: strike, symbol: sym, openInterest: oi, totalVolume: vol,
@@ -144,6 +145,7 @@ test.describe('D — Gamma Chain subview', () => {
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
 
     const headBox = () => page.locator('.chn-headtbl').boundingBox();
+    const scrollTop = () => page.locator('#chainScroll').evaluate((el) => el.scrollTop);
     const before = await headBox();
     expect(before).toBeTruthy();
 
@@ -151,7 +153,7 @@ test.describe('D — Gamma Chain subview', () => {
     // element, exercising the same input path a real trackpad/mouse produces.
     await page.locator('#chainScroll').hover();
     await page.mouse.wheel(0, 1200);
-    await page.waitForTimeout(100);
+    await expect.poll(scrollTop).toBeGreaterThan(0);   // the wheel has scrolled the body
     const duringScroll = await headBox();
 
     // Fire a background refresh (same context) WHILE scrolled, with genuinely changed data,
@@ -161,8 +163,9 @@ test.describe('D — Gamma Chain subview', () => {
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
     const afterRefresh = await headBox();
 
+    const bottom = await page.locator('#chainScroll').evaluate((el) => el.scrollHeight - el.clientHeight);
     await page.mouse.wheel(0, 2000);
-    await page.waitForTimeout(100);
+    await expect.poll(scrollTop).toBe(bottom);   // 2000 px more takes the body to its end
     const afterMoreScroll = await headBox();
 
     // Exact equality: a frozen (non-scrolling) header cannot move by even one pixel, at any
@@ -277,7 +280,9 @@ test.describe('D — Gamma Chain subview', () => {
     const EXP_A = '2026-09-11', EXP_B = '2026-09-18';
     const symA1 = occSymbol('SPY', EXP_A, 'CALL', 111);
     const symA2 = occSymbol('SPY', EXP_A, 'CALL', 333);
-    let aCallCount = 0;
+    const requests = watchRequests(page);
+    let aCallCount = 0, releaseFirstA;
+    const firstAHeld = new Promise((r) => { releaseFirstA = r; });
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(expiriesAnswer([EXP_A, EXP_B], {})) }));
     await page.route('**/api/chain*', async (route) => {
@@ -285,9 +290,9 @@ test.describe('D — Gamma Chain subview', () => {
       if (exp === EXP_A) {
         aCallCount += 1;
         if (aCallCount === 1) {
-          // The FIRST A request is held -- resolves LATE, after the return-to-A request
+          // The FIRST A request is held -- answered LATE, once the return-to-A request
           // below has already resolved and painted the correct, newer value.
-          await new Promise((r) => setTimeout(r, 900));
+          await firstAHeld;
           const body = { ticker: 'SPY', spot: 111, expiry: EXP_A, status: 'ok',
             scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
             contracts: [ct('CALL', 111, symA1, 1, 1, 1, 0.1, EXP_A)] };
@@ -303,17 +308,21 @@ test.describe('D — Gamma Chain subview', () => {
         contracts: [ct('CALL', 222, occSymbol('SPY', EXP_B, 'CALL', 222), 1, 1, 1, 0.1, EXP_B)] };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
     });
-    await toChain(page);   // fires the first, held A request
-    await expect(page.locator('#chainBody .chn-head')).toContainText(EXP_A);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#subnav .tab', { hasText: 'Chain' }).click();   // fires the first, held A request
+    await expect.poll(() => aCallCount).toBe(1);                          // it is in flight, unanswered
 
     await page.locator('#expSel').selectOption(EXP_B);
     await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('222');
 
     await page.locator('#expSel').selectOption(EXP_A);   // fires the second, fast A request
     await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('333');
+    await expect(page.locator('#chainBody .chn-head')).toContainText(EXP_A);
 
-    // Wait past the FIRST A request's deliberate 900ms delay.
-    await page.waitForTimeout(1300);
+    // The held FIRST A response goes now, after the newer A painted; the page is done with it
+    // (answered or cut short).
+    releaseFirstA();
+    await requests.settled();
 
     // Non-retrying snapshot: the held, stale first-A response must not have overwritten 333.
     const strikeText = await page.locator('#chainBody tbody tr td.k').textContent();
