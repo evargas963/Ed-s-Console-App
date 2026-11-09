@@ -104,7 +104,7 @@ async def _run(body, feed=None):
         await asyncio.wait_for(asyncio.gather(server, follower, return_exceptions=True), 5)
 
 
-async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
+async def _next_row(ws, sym, pred=lambda _r: True, timeout=3.0):
     end = time_et.elapsed() + timeout
     while time_et.elapsed() < end:
         msg = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time_et.elapsed())))
@@ -118,7 +118,7 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
     """In regular hours: the server's clock runs from _RTH."""
     clock = _clock_from(_RTH)
 
-    async def body(bus, ws, feed, stats):
+    async def body(bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
         now = clock()
         bus.publish("quote.SPY", _trade("SPY", 583.41, now))
@@ -140,7 +140,7 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
 
 
 def test_an_unsubscribed_symbol_is_never_sent():
-    async def body(bus, ws, feed, stats):
+    async def body(bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.AAPL", _trade("AAPL", 230.0, time_et.now()))
         bus.publish("quote.SPY", _trade("SPY", 583.0, time_et.now()))
@@ -158,7 +158,7 @@ def test_an_unsubscribed_symbol_is_never_sent():
 
 
 def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
-    async def body(bus, ws, feed, stats):
+    async def body(bus, ws, _feed, _stats):
         bus.publish("quote.AAPL", _trade("AAPL", 230.5, time_et.now()))
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
@@ -177,7 +177,7 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
     for an index typed bare or with "$", an ETF and a single name alike.
     """
 
-    async def body(bus, ws, feed, stats):
+    async def body(_bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX", "$VIX", "spy", "MU"]}))
         first = json.loads(await asyncio.wait_for(ws.recv(), 2))
         assert first == {
@@ -201,7 +201,7 @@ def test_an_index_typed_bare_is_served_under_its_storage_key():
     """
     clock = _clock_from(_RTH)
 
-    async def body(bus, ws, feed, stats):
+    async def body(bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX"]}))
         bus.publish("quote.$SPX", _trade("$SPX", 6512.25, clock()))
         _, row = await _next_row(ws, "$SPX", lambda r: r["spot"] == 6512.25)
@@ -231,7 +231,7 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     """
     clock = _clock_from(start)
 
-    async def body(bus, ws, feed, stats):
+    async def body(bus, ws, feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.SPY", _trade("SPY", 583.41, clock()))
         _, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
@@ -252,7 +252,7 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
 def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
     clock = _clock_from(_CLOSED)
 
-    async def body(bus, ws, feed, stats):
+    async def body(bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["TSLA"]}))
         bus.publish("quote.TSLA", _trade("TSLA", 400.0, clock()))
         msg, row = await _next_row(ws, "TSLA", lambda r: r["spot"] == 400.0)
@@ -319,7 +319,7 @@ def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
     Latest-value-per-symbol per client.
     """
 
-    async def body(bus, ws, feed, stats):
+    async def body(bus, ws, _feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
         await _next_row(ws, "SPY")  # the (empty) snapshot
         for i in range(500):
@@ -335,7 +335,7 @@ def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
 
 
 def test_shutdown_is_not_held_up_by_a_connected_browser():
-    async def body(bus, ws, feed, stats):
+    async def body(_bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         await _next_row(ws, "SPY")
 

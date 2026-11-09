@@ -5,6 +5,7 @@
 // console's watchlist routes (fixtures/watchlist.js).
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { watchRequests } = require('./fixtures/settled');
 
 // one beat as the program sends it, the daemon's status reduced to its time and its watchlist
 // (null: none); `ts` on the program's clock, now unless given
@@ -12,21 +13,31 @@ function feed(list, ts = Date.now() / 1000) {
   return JSON.stringify({ type: 'feed', feed: list === null ? null : { ts: ts, watchlist: list } });
 }
 
+// Every frame sent on `socket` before this one has been taken by the page: a beat with no status,
+// sent last, is answered on the page by its notice (the page's clock held, so no timer of the
+// page replaces or clears it).
+async function taken(page, socket) {
+  socket.send(feed(null));
+  await expect(page.locator('#wlMsg')).toHaveText('the capture daemon is not reporting');
+}
+
 test('the rail fills from the first beat on the socket, and nothing asks for the list', async ({ page }) => {
+  const requests = watchRequests(page);
   const gets = [];
   page.on('request', (r) => { if (r.url().includes('/api/watchlist') && r.method() === 'GET') gets.push(r.url()); });
   await page.routeWebSocket(/\/ws$/, (ws) => ws.send(feed(['SPY', 'QQQ'])));
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'QQQ']);
-  await page.waitForTimeout(1500);
+  await requests.settled();
   expect(gets).toEqual([]);
 });
 
 test('before a beat has carried a list, the rail reads "-", never an empty list', async ({ page }) => {
+  await page.clock.install();   // the page's timers run when the test moves its time
   await page.routeWebSocket(/\/ws$/, () => {});          // open, no beat yet
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.wl-empty')).toHaveText('-');
-  await page.waitForTimeout(1500);
+  await page.clock.runFor(3000);                          // every page timer due in 3 s has run
   await expect(page.locator('.wl-empty')).toHaveText('-');
   await expect(page.locator('.wl-row')).toHaveCount(0);
 });
@@ -46,6 +57,7 @@ test('a change the daemon makes reaches the rail with the next beat; an add here
 test('a beat built before an add, arriving after its answer, does not take the added ticker away', async ({ page }) => {
   // the program's clock: the add's record at 1002; a beat built at 1001 still carries the old list
   let socket;
+  await page.clock.install();
   await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(feed(['SPY'], 1000)); });
   await page.route('**/api/watchlist', (route) => route.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify({ ok: true, op: 'added', ticker: 'AMD', tickers: ['SPY', 'AMD'], ts: 1002, status: 200, answer: {} }) }));
@@ -54,7 +66,7 @@ test('a beat built before an add, arriving after its answer, does not take the a
   await page.evaluate(() => window.EdShell.addSymbol('AMD'));
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'AMD']);
   socket.send(feed(['SPY'], 1001));                       // late: built before the add
-  await page.waitForTimeout(500);
+  await taken(page, socket);
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'AMD']);
   socket.send(feed(['SPY', 'AMD', 'MU'], 1003));          // built after it: taken
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'AMD', 'MU']);
@@ -93,15 +105,13 @@ test('the socket drops: the rail stands marked; it returns: the new connection\'
 });
 
 test('the same list on every beat leaves the rail as drawn (no redraw, no flicker)', async ({ page }) => {
-  await page.routeWebSocket(/\/ws$/, (ws) => {
-    ws.send(feed(['SPY', 'QQQ']));
-    const timer = setInterval(() => ws.send(feed(['SPY', 'QQQ'])), 200);
-    timer.unref();
-    ws.onClose(() => clearInterval(timer));
-  });
+  let socket;
+  await page.clock.install();
+  await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(feed(['SPY', 'QQQ'])); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'QQQ']);
   await page.evaluate(() => { document.querySelector('.wl-row').dataset.drawn = 'first'; });
-  await page.waitForTimeout(1500);                        // seven beats of the same list
+  for (let beat = 0; beat < 7; beat += 1) socket.send(feed(['SPY', 'QQQ']));   // seven beats, the same list
+  await taken(page, socket);
   await expect(page.locator('.wl-row').first()).toHaveAttribute('data-drawn', 'first');
 });

@@ -148,20 +148,26 @@ const CHAIN = {
 const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
+// The page's requests, watched until its work runs out (tests/e2e/fixtures/settled.js).
+const { watchRequests } = require('./fixtures/settled');
 
-// the console pushes one `levels` change for `ticker` after `delayMs`; reconnects get the session
 // One levels push on `ticker`'s change stream, held until the test calls the returned release():
-// the push lands where the test says, however long the page took to get there.
+// the push lands where the test says, however long the page took to get there. release() returns
+// a promise settled once the push has been handed to the browser (or its stream was gone). Each
+// reconnect after it gets the session, its stream held open a second as the console holds one.
 async function routeOneLevelsPush(page, ticker = 'SPY') {
-  let pushes = 0, release;
+  let pushes = 0, release, handed;
   const held = new Promise((r) => { release = r; });
+  const sent = new Promise((r) => { handed = r; });
   await page.route(`**/api/changes?ticker=${ticker}**`, async (route) => {
     pushes += 1;
-    await (pushes === 1 ? held : new Promise((r) => setTimeout(r, 1000)));
-    route.fulfill({ status: 200, contentType: 'text/event-stream',
-      body: pushes === 1 ? `event: levels\ndata: ${ticker}\n\n` : 'event: session\ndata: RTH\n\n' });
+    const first = pushes === 1;
+    await (first ? held : new Promise((r) => setTimeout(r, 1000)));
+    const answered = route.fulfill({ status: 200, contentType: 'text/event-stream',
+      body: first ? `event: levels\ndata: ${ticker}\n\n` : 'event: session\ndata: RTH\n\n' });
+    if (first) answered.then(handed, handed);   // the stream gone: its refusal is the answer
   });
-  return release;
+  return () => { release(); return sent; };
 }
 
 async function intercept(page) {
@@ -232,7 +238,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a burst of pushes faster than the round trip converges the display live, not only once the pushes stop (2026-09-13 controlled reproduction)', async ({ page }) => {
-    // pushes every 500 ms against a 750 ms round trip: the display must keep converging
+    // pushes faster than a 750 ms round trip: the display must keep converging
+    const requests = watchRequests(page);
     let call = 0;
     await page.route('**/api/options/gamma-surface**', async (route) => {
       call += 1;
@@ -251,16 +258,19 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');   // the initial render (call 1)
 
-    // The measured cadence: a push every 500ms (inside the 750ms round trip) for 3s -- long
-    // enough that several pushes land while a fetch is still outstanding, exactly the
-    // condition that live-locked the old generation-counter guard. The mid-burst read below
+    // Six pushes, each landing while a read is outstanding (inside the 750ms round trip) --
+    // exactly the condition that live-locked the old generation-counter guard. Each push after
+    // the first goes once a read has begun since the push before it, so the burst runs at the
+    // round trip's pace however slow the machine is. The mid-burst read below
     // is a single instantaneous DOM snapshot (`textContent()`, no auto-retry) taken WHILE
     // traffic is still arriving -- unlike `expect(...).not.toHaveText(...)`, which polls for
     // up to its own timeout and would eventually pass even under the live-lock once the
     // final, unopposed push resolves after traffic quiets. A snapshot mid-burst is the only
     // way to actually distinguish "frozen through the whole burst" from "kept converging".
+    let atPush = call;
     for (let i = 0; i < 6; i++) {
-      await page.waitForTimeout(500);
+      if (i > 0) await expect.poll(() => call).toBeGreaterThan(atPush);   // a read began since the last push
+      atPush = call;
       await page.evaluate(() => document.dispatchEvent(
         new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
       if (i === 2) {
@@ -278,7 +288,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // request counter) names the exact value the surface last settled on, whatever the real
     // coalescing schedule produced -- the claim under test is convergence and correctness,
     // not a specific call count.
-    await page.waitForTimeout(2200);   // generous settle margin: >= 2 round trips
+    await requests.settled();   // every read the burst made has landed, the trailing one included
     const finalText = await cell.textContent();
     expect(finalText).toBe('$' + call.toFixed(1) + 'K');
   });
@@ -291,6 +301,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // ticker the operator has already left kept the newly-selected ticker waiting
     // indefinitely. Fixed by keying the loader on ticker and aborting the abandoned
     // request the instant a different one is wanted (l1_sse_guards.js:makeCoalescedLoader).
+    const requests = watchRequests(page);
     let releaseSpy;
     const spyGate = new Promise((r) => { releaseSpy = r; });
     await page.route('**/api/options/gamma-surface**', async (route) => {
@@ -316,12 +327,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveText('$9.0K', { timeout: 3000 });
     // Releasing the hung SPY response now must never resurrect it under AAPL's label.
     releaseSpy();
-    await page.waitForTimeout(300);
+    await requests.settled();   // the page is done with SPY's answer (or cut it short)
     await expect(cell).toHaveText('$9.0K');
   });
 
   test('Strike Detail keeps following the workspace expiry filter after a selection, never reverting on refresh (2026-09-13, independent-review finding)', async ({ page }) => {
     // select under Sept 18, filter to Sept 25, then a levels push: chain reads 18 -> 25 -> 25
+    const requests = watchRequests(page);
     const chainExpiryRequests = [];
     await page.route('**/api/chain**', (route) => {
       const url = new URL(route.request().url());
@@ -334,7 +346,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.evaluate(() => window.EdShell.setExpiry('2026-09-25'));
     await expect.poll(() => chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-25');
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
-    await page.waitForTimeout(200);
+    await requests.settled();   // every read the push made has gone out and landed
     expect(chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-25');
   });
 
@@ -342,6 +354,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // Independent-review finding (2026-09-13), REPRODUCED: _lastSurface used to survive an
     // unavailable render untouched, so a LATER presentation-only event (ed:theme here; also
     // ed:expiry/ed:scope) reused it as if still current -- repainting the stale AVAILABLE data.
+    const requests = watchRequests(page);
     let available = true;
     await page.route('**/api/options/gamma-surface**', (route) => {
       const body = available
@@ -359,7 +372,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
     // a theme toggle must not repaint the old cell: one non-retrying DOM snapshot
     await page.evaluate(() => window.EdShell.setTheme('dark'));
-    await page.waitForTimeout(150);
+    await requests.settled();   // the theme change's work, and any read it made, has run
     const html = await page.locator('#heatBody').innerHTML();
     expect(html).not.toContain('$1.0K');
     expect(html).toContain('Gamma surface unavailable');
@@ -951,10 +964,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('header never paints a quote from a poll: no push -> -, not a fallback', async ({ page }) => {
     // the price comes only from the daemon's push; the session label from the console's
     await page.routeWebSocket(/\/ws$/, (ws) => ws.close());          // the daemon is down
+    await page.clock.install();   // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('-');
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
-    await page.waitForTimeout(3500);
+    await page.clock.runFor(3500);   // past the 3 s silence limit and every reconnect due in it
     await expect(page.locator('#hPx')).toHaveText('-');
     // the daemon is down, so Schwab's /markets answer is not held: the session says UNKNOWN
     await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
@@ -1228,6 +1242,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // SPY's strike 586 chain read is held; the ticker switches to QQQ (its surface read held, so
     // no new strike is selected); then SPY's answer arrives and Strike Detail stays reset
     // (ed-gamma-panels.js: resetStrikeDetailForTickerChange and stillStrikeCtx's ticker check).
+    const requests = watchRequests(page);
     let chainCalls = 0;
     let releaseChain = null;
     function contractsFor(strike) {
@@ -1243,7 +1258,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/chain**', async (route) => {
       chainCalls += 1;
       const strike = chainCalls === 1 ? 583 : 586;   // first select resolves immediately; second is delayed
-      if (chainCalls > 1) await new Promise((resolve) => { releaseChain = resolve; });
+      if (chainCalls > 1) {   // held until releaseChain(), which answers every one held
+        await new Promise((resolve) => {
+          const earlier = releaseChain;
+          releaseChain = () => { if (earlier) earlier(); resolve(); };
+        });
+      }
       route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ ticker: 'SPY', spot: 583.41, expiry: '2026-09-11', status: 'ok',
@@ -1269,7 +1289,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
     // now deliver the stale (586, SPY) response
     releaseChain(undefined);
-    await page.waitForTimeout(300);   // let any (incorrect) render attempt land
+    // the page is done with the stale answer (or cut it short); QQQ's surface read is never answered
+    await requests.settled((r) => new URL(r.url()).pathname === '/api/chain');
 
     // Strike Detail must still show the reset placeholder, not SPY's stale 586 table
     await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
@@ -1332,6 +1353,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // only avoided colliding because of a script-load-order coincidence. Now there is exactly
     // one (ed-core.js's dispatch, deferred to DOMContentLoaded) -- proven here by counting
     // calls to endpoints owned by DIFFERENT modules across the initial render.
+    const requests = watchRequests(page);
     const counts = {};
     // fallback() (not continue()) chains to the next-registered handler -- here, intercept()'s
     // own catch-all from beforeEach, which actually fulfills with mock data. continue() would
@@ -1347,15 +1369,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/chain**', track('chain'));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
-    // Give any accidental second trigger (a stray immediate self-call racing the deferred
-    // dispatch) a real chance to land before asserting the count stayed at exactly one.
-    await page.waitForTimeout(300);
+    // Any accidental second trigger (a stray immediate self-call racing the deferred
+    // dispatch) has made its read by the time the page's reads have all landed.
+    await requests.settled();
     for (const path of ['gamma-surface', 'terrain-strikes', 'terrain', 'tape', 'chain']) {
       expect(counts[path], `${path} must hydrate exactly once on cold start`).toBe(1);
     }
   });
 
   test('one levels push refetches only levels-derived endpoints, not unrelated ones', async ({ page }) => {
+    const requests = watchRequests(page);
     let gammaCalls = 0, strikesCalls = 0, terrainCalls = 0;
     const unrelated = { tape: 0, chain: 0 };
     // fallback() (not continue()) -- see the identical note in the cold-start test above.
@@ -1370,18 +1393,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // clear the auto-selected strike (Strike Detail reads /api/chain on a levels push) and let
     // the selection's own tape load (after its demand is accepted) finish
     await page.evaluate(() => window.EdShell.setStrike(null));
-    await page.waitForTimeout(650);
+    await requests.settled();
     const beforeUnrelated = Object.assign({}, unrelated);
     const gammaBefore = gammaCalls, strikesBefore = strikesCalls, terrainBefore = terrainCalls;
     push();                           // lands after the baseline
     await expect.poll(() => gammaCalls).toBeGreaterThan(gammaBefore);
     await expect.poll(() => strikesCalls).toBeGreaterThan(strikesBefore);
     await expect.poll(() => terrainCalls).toBeGreaterThan(terrainBefore);
+    await requests.settled();   // every read the push made has gone out
     expect(unrelated).toEqual(beforeUnrelated);
   });
 
   test('two panels reacting to the same push for the same endpoint make one network call', async ({ page }) => {
     // Chart view: the chart's GEX profile and the GEX-by-strike rail both read /api/terrain/strikes
+    const requests = watchRequests(page);
     let strikesCalls = 0;
     await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
     const push = await routeOneLevelsPush(page);
@@ -1389,15 +1414,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('.hcell').first()).toBeVisible();
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#chartBody .gchart-plot canvas').first()).toBeVisible();
-    await page.waitForTimeout(200);   // let the view-switch's own hydration settle
+    await requests.settled();   // the view switch's own hydration has landed
     const before = strikesCalls;
     push();
     await expect.poll(() => strikesCalls - before).toBeGreaterThan(0);
-    await page.waitForTimeout(500);   // a second call would have been made by now
+    await requests.settled();   // every read the push made has gone out and landed
     expect(strikesCalls - before).toBe(1);
   });
 
   test('one levels push with a strike selected fetches each levels endpoint exactly once', async ({ page }) => {
+    const requests = watchRequests(page);
     let gammaCalls = 0, strikesCalls = 0, chainCalls = 0, terrainCalls = 0;
     await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
     await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
@@ -1406,12 +1432,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
-    await page.waitForTimeout(200);   // let cold-start hydration (including auto-select) settle
+    await requests.settled();   // cold-start hydration (including auto-select) has landed
     const before = { gamma: gammaCalls, strikes: strikesCalls, chain: chainCalls, terrain: terrainCalls };
     push();
     await expect.poll(() => Math.min(gammaCalls - before.gamma, strikesCalls - before.strikes,
       chainCalls - before.chain, terrainCalls - before.terrain)).toBeGreaterThan(0);
-    await page.waitForTimeout(500);   // a second call would have been made by now
+    await requests.settled();   // every read the push made has gone out and landed
     expect(gammaCalls - before.gamma).toBe(1);
     expect(strikesCalls - before.strikes).toBe(1);
     expect(chainCalls - before.chain).toBe(1);
@@ -1486,6 +1512,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('the Chain view does not reload on levels pushes while inactive, and hydrates once on entry', async ({ page }) => {
+    const requests = watchRequests(page);
     let chainCalls = 0;
     await page.route('**/api/chain**', (route) => {
       chainCalls += 1;
@@ -1504,13 +1531,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     for (let i = 0; i < 4; i++) {
       await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     }
-    await page.waitForTimeout(200);
+    await requests.settled();   // every read the pushes made has gone out and landed
     expect(chainCalls).toBe(afterLoad);   // zero extra chain fetches while Chain was never viewed
     // Entering the Chain view for the first time hydrates it exactly once.
     await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
     await expect.poll(() => chainCalls).toBeGreaterThan(afterLoad);
     const afterEntry = chainCalls;
-    await page.waitForTimeout(200);
+    await requests.settled();   // every read the entry made has gone out and landed
     expect(chainCalls).toBe(afterEntry);   // exactly one hydration on entry, not a burst
   });
 
@@ -1531,6 +1558,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('no page timer reads /api: a minute with no push makes no request', async ({ page }) => {
+    const requests = watchRequests(page);
     await page.clock.install();
     const reads = [];
     page.on('request', (r) => {
@@ -1539,14 +1567,15 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
-    await page.waitForTimeout(300);   // hydration settles
+    await requests.settled();   // hydration has landed
     const settled = reads.length;
     await page.clock.fastForward(60000);
-    await page.waitForTimeout(300);
+    await requests.settled();   // and every read a timer would have made
     expect(reads.slice(settled)).toEqual([]);
   });
 
   test('a late push on the PREVIOUS ticker\'s connection never paints the new ticker\'s cells', async ({ page }) => {
+    const requests = watchRequests(page);
     let seq = 0;
     await page.route('**/api/options/gamma-surface**', (route) => {
       const url = route.request().url();
@@ -1567,8 +1596,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveText('$1.0K');   // SPY's own value
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(cell).toHaveText('$9.0K');   // QQQ's own value, before SPY's push lands
-    push();
-    await page.waitForTimeout(500);
+    await push();
+    await requests.settled();   // any read the push made has landed
     await expect(cell).toHaveText('$9.0K');   // SPY's push on its closed connection changed nothing
   });
 });

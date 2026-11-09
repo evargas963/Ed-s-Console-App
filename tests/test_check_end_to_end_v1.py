@@ -439,7 +439,6 @@ _PORT = "import os\n\nPORT = int({line})\n"
     "line",
     [
         'os.environ.get("ED_CONSOLE_PORT", "8000")',
-        'os.environ.get("ED_LIVE_PUSH_PORT", "8799")',
     ],
 )
 def test_the_programs_port_settings_are_not_a_missing_value_filled_in(tmp_path, line):
@@ -457,6 +456,7 @@ def test_the_programs_port_settings_are_not_a_missing_value_filled_in(tmp_path, 
         'os.environ.get("ED_OTHER_PORT", "8000")',
         'os.environ.get("SCHWAB_API_KEY", "8000")',
         'os.environ.get("ED_LIVE_UI_PORT", "8800")',  # the page's socket moved to the pages' port
+        'os.environ.get("ED_LIVE_PUSH_PORT", "8799")',  # the stop is a named event, no port
         # a default that is not a whole number written as text
         'os.environ.get("ED_CONSOLE_PORT", 8000)',
         'os.environ.get("ED_CONSOLE_PORT", "")',

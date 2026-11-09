@@ -7,6 +7,7 @@ const { test, expect } = require('@playwright/test');
 const {
   READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP, intercept, watchErrors,
 } = require('./fixtures/trade_desk');
+const { watchRequests } = require('./fixtures/settled');
 
 test.describe('Desk: the Liquidity card draws the served order-imbalance readout', () => {
   async function openDesk(page, body, keep) {
@@ -66,7 +67,11 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
       await expect(card(page).locator('.liq-body')).toContainText(t);
     }
     await openDesk(page, READOUT_LIVE);
-    const look = await card(page).locator('.liq-sent').evaluate((e) => {
+    await expect(card(page).locator('.liq-sent')).toHaveText(LIVE_COMP.views.weighted.sentence);   // the readout is drawn
+    // found and read in one task of the page: a repaint replaces the card's body, and a node it
+    // took out has no computed style
+    const look = await page.evaluate(() => {
+      const e = document.querySelector('#tdmCardLiq .liq-sent');
       const s = getComputedStyle(e), probe = document.createElement('i');
       probe.style.color = 'var(--ed-ink)';   // the brightest ink the console has
       document.body.appendChild(probe);
@@ -151,9 +156,10 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
   test('the composite is one read of one venue: no second book request', async ({ page }) => {
     const reads = [];
     page.on('request', (r) => { if (r.url().includes('/api/order-flow/microstructure')) reads.push(r.url()); });
+    const requests = watchRequests(page);
     await openDesk(page, READOUT_LIVE);
     await expect(card(page).locator('.liq-pct')).toHaveText(LIVE_COMP.views.weighted.pct_text);
-    await page.waitForTimeout(500);
+    await requests.settled();   // every read the load made has gone out and landed
     expect(reads.length).toBe(1);
     expect(reads[0]).toContain('venue=NYSE_BOOK');
   });
@@ -235,20 +241,25 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     const errs = watchErrors(page);
     const reads = [];
     page.on('request', (r) => { if (r.url().includes('/api/order-flow/microstructure')) reads.push(r.url()); });
+    const requests = watchRequests(page);
+    await page.clock.install();   // the page's held second runs on the test's time
     await openDesk(page, READOUT_LIVE);
     await expect(card(page).locator('.liq-pct')).toHaveText(LIVE_COMP.views.weighted.pct_text);
-    await page.waitForTimeout(1200);
+    await requests.settled();
+    // the page's time stops here; the load's held second ends, and nothing runs until it moves
+    await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1200);
     const before = await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints);
     const n0 = reads.length;
     await page.evaluate(() => { for (let i = 0; i < 5; i++) document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })); });
     await expect.poll(() => reads.length).toBe(n0 + 5);
-    await page.waitForTimeout(400);
+    await requests.settled();   // the five answers have landed, all inside one second of page time
     // five answers inside a second: one paint now, at most one more when the second is up
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints)).toBeLessThanOrEqual(before + 1);
-    await page.waitForTimeout(1000);
+    await page.clock.runFor(1000);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints)).toBeLessThanOrEqual(before + 2);
     const n1 = reads.length;
-    await page.waitForTimeout(2500);
+    await page.clock.runFor(2500);
+    await requests.settled();
     expect(reads.length).toBe(n1);   // no push, no read
     expect(errs).toEqual([]);
   });

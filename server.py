@@ -407,7 +407,7 @@ def _watchlist() -> list[str] | None:
 
 
 @asynccontextmanager
-async def _app_lifespan(app):
+async def _app_lifespan(_app):
     """Startup and shutdown.
 
     The live-binding check, the signal handlers, the recorded market sessions, the levels loop,
@@ -457,6 +457,9 @@ async def _app_lifespan(app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
+#: the price server the page's socket serves while the program serves prices
+#: (live_ui.serve_live_ui), None before and after
+app.state.prices = None
 
 
 class _RevalidateStaticFiles(StaticFiles):
@@ -3017,7 +3020,7 @@ async def get_changes(ticker: str = Query(...)):
                 if not kinds:
                     yield f"event: session\ndata: {session_label(now_et())}\n\n"
         finally:
-            push_changes.unsubscribe(t, client)
+            push_changes.unsubscribe(client)
 
     return StreamingResponse(
         event_generator(),
