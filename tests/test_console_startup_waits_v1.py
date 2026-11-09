@@ -1,7 +1,10 @@
-"""The program's start, as its window shows it: the console says what it waits for (the daemon's
-heartbeat, which says what the watchlist is) and for how long, then that the wait is over. The
-real program (capture_main: the daemon and the console's pages in one process) on ports of its own,
-with no Schwab token (Schwab is not reached)."""
+"""The program's start, as its window shows it.
+
+The console says what it waits for (the daemon's heartbeat, which says what the watchlist is)
+and for how long, then that the wait is over. The real program (capture_main: the daemon and
+the console's pages in one process) on ports of its own, with no Schwab token (Schwab is not
+reached).
+"""
 
 from __future__ import annotations
 
@@ -37,9 +40,12 @@ def answered(tmp_path: Path) -> Ports | TimeoutError:
 
 
 def program_env(tmp_path: Path) -> dict:
-    """The program's environment on ports the system picks as it binds them (port 0), which the
-    program writes in its lock (held_ports): a port found free and released before the program
-    binds it can be taken in between, by any other program's outgoing connection among them."""
+    """Return the program's environment on ports the system picks as it binds them (port 0).
+
+    The program writes them in its lock (held_ports): a port found free and released before
+    the program binds it can be taken in between, by any other program's outgoing connection
+    among them.
+    """
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}  # its loops start
     env.update(
         ED_RUNTIME_ROOT=str(tmp_path),
@@ -76,11 +82,13 @@ def run_until(env: dict, done) -> str:
 
 
 def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
-    """Ctrl+C or Ctrl+Break in the program's window asks for its one clean stop, as
-    `launch.py stop` does: it says so, writes what it holds, and exits EXIT_STOPPED, which its
+    """Ctrl+C or Ctrl+Break in the program's window asks for its one clean stop.
+
+    As `launch.py stop` does: it says so, writes what it holds, and exits EXIT_STOPPED, which its
     window does not restart. The real program in a process group of its own, sent Ctrl+Break on
     Windows (Windows sends a console event to another program's group as Ctrl+Break, not
-    Ctrl+C; both take the same handler, capture.INTERRUPTS), Ctrl+C's SIGINT elsewhere."""
+    Ctrl+C; both take the same handler, capture.INTERRUPTS), Ctrl+C's SIGINT elsewhere.
+    """
     windows = sys.platform == "win32"
     program = subprocess.Popen(
         [sys.executable, *launch.DAEMON_START],
@@ -114,9 +122,12 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
 
 
 def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_path):
-    """A page open on the console (its /api/changes stream, as the browser holds it) when the
-    program stops: the stop ends that stream itself, so the web server closes at once, not after
-    its 10 s graceful timeout, and no stream is cancelled (each was logged as a traceback)."""
+    """A page open on the console when the program stops: the stop ends its stream itself.
+
+    The page's /api/changes stream, as the browser holds it: the stop ends that stream itself,
+    so the web server closes at once, not after its 10 s graceful timeout, and no stream is
+    cancelled (each was logged as a traceback).
+    """
     windows = sys.platform == "win32"
     program = subprocess.Popen(
         [sys.executable, *launch.DAEMON_START],
@@ -163,8 +174,11 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
 
 
 def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
-    """In one program the daemon's heartbeat, with the watchlist, is there before the console's
-    loop starts: the console says what it needed and that it had it, in well under a second."""
+    """In one program the daemon's heartbeat, with the watchlist, is there before the loop starts.
+
+    Before the console's loop starts: the console says what it needed and that it had it, in
+    well under a second.
+    """
     env = program_env(tmp_path)
     over = "done waiting for the capture daemon's heartbeat (it says what the watchlist is) after"
     fed = "Live-plane feed started (source=the capture daemon's bus, this program)"

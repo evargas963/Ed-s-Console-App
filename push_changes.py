@@ -36,8 +36,10 @@ def watched() -> list[str]:
 
 
 def subscribe(tk: str, c: Client | None = None) -> Client:
-    """A page opened on `tk` (on the event loop), as connection `c` (a new one when not given:
-    a caller that must close it whatever happens creates it first).
+    """Record a page opened on `tk` (on the event loop), as connection `c`.
+
+    A new connection when not given: a caller that must close it whatever happens creates it
+    first.
     """
     c = Client() if c is None else c
     _open.append((tk, c))
@@ -45,13 +47,15 @@ def subscribe(tk: str, c: Client | None = None) -> Client:
 
 
 def unsubscribe(tk: str, c: Client) -> None:
-    """The page closed (on the event loop)."""
+    """Record that the page closed (on the event loop)."""
     _open[:] = [(t, x) for t, x in _open if x is not c]
 
 
 def close_all() -> None:
-    """The program is stopping (on the event loop): every open page's stream ends now, so the
-    web server closes without waiting out its graceful timeout.
+    """Record that the program is stopping (on the event loop).
+
+    Every open page's stream ends now, so the web server closes without waiting out its
+    graceful timeout.
     """
     for _t, c in _open:
         c.closed = True
@@ -72,7 +76,7 @@ def _mark(tk: str, kind: str) -> None:
 
 
 async def next_changes(c: Client, timeout: float) -> set[str]:
-    """The kinds changed since the last call; empty after `timeout` seconds with none."""
+    """Return the kinds changed since the last call; empty after `timeout` seconds with none."""
     if not await time_et.set_within(c.wake, timeout):
         return set()
     c.wake.clear()

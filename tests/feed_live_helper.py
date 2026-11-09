@@ -20,33 +20,40 @@ _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def daemon_status(now: float, **staged) -> dict:
-    """A capture daemon's status at `now` as the daemon builds it (capture.Daemon.status: every
-    key it sends), with the `staged` keys set: the socket, the symbols held, the watchlist.
+    """Return a capture daemon's status at `now` as the daemon builds it.
+
+    The daemon builds it in capture.Daemon.status: every key it sends, with the `staged` keys
+    set: the socket, the symbols held, the watchlist.
     """
     return {**capture.Daemon(MessageBus(), HealthRegistry(), []).status(now), **staged}
 
 
 def daemon_bars(name: str, *symbols: str) -> list[dict]:
-    """The capture daemon's recorded receipts of Schwab's CHART_EQUITY bars in fixture `name`
-    (tests/fixtures/real_daemon_bars_*.json), of `symbols` (every symbol when none is named).
+    """Return the capture daemon's recorded receipts of Schwab's CHART_EQUITY bars.
+
+    They are read from fixture `name` (tests/fixtures/real_daemon_bars_*.json), of `symbols`
+    (every symbol when none is named).
     """
     rows = json.loads((_FIXTURES / name).read_text(encoding="utf-8"))["rows"]
     return [r for r in rows if not symbols or r["symbol"] in symbols]
 
 
 def stream_daemon_bars(rows: list[dict]) -> None:
-    """What the capture daemon pushes of Schwab's bars: each captured receipt, in the order the
-    daemon received them, through the console's own streamed-bar writer
-    (server._write_streamed_bar), so each minute holds Schwab's newest bar for it.
+    """Push Schwab's bars as the capture daemon does.
+
+    Each captured receipt goes, in the order the daemon received them, through the console's own
+    streamed-bar writer (server._write_streamed_bar), so each minute holds Schwab's newest bar for
+    it.
     """
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
         server._write_streamed_bar(r)
 
 
 def price_history(symbol: str, series: str) -> dict:
-    """Schwab's captured /pricehistory answer for `symbol`'s `series` ("1m", "15m", "1d")
-    (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json): {params, status, date, sent_utc,
-    answered_utc, body}.
+    """Schwab's captured /pricehistory answer for `symbol`'s `series` ("1m", "15m", "1d").
+
+    Read from tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json: {params, status, date,
+    sent_utc, answered_utc, body}.
     """
     fx = json.loads(
         (_FIXTURES / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(encoding="utf-8")
@@ -55,10 +62,11 @@ def price_history(symbol: str, series: str) -> dict:
 
 
 def hold_schwab_daily(symbol: str, under: str | None = None) -> None:
-    """What the daemon pushes of `symbol`'s daily candles, through the console's own writer
-    (server._write_price_history), held under ticker `under` (default `symbol`): Schwab's
-    recorded /pricehistory daily answer, SPY's and TSLA's of 2026-10-07
-    (real_pricehistory_spy_tsla_2026_10_07.json), $SPX's of 2026-11-03
+    """Push `symbol`'s daily candles as the daemon does.
+
+    They go through the console's own writer (server._write_price_history), held under ticker
+    `under` (default `symbol`): Schwab's recorded /pricehistory daily answer, SPY's and TSLA's of
+    2026-10-07 (real_pricehistory_spy_tsla_2026_10_07.json), $SPX's of 2026-11-03
     (real_schwab_daily_spx_2026_10.json, 2024-11-04 through 2026-11-02). The caller pops
     server._daily when done, as it pops server._bars.
     """
@@ -87,16 +95,18 @@ RTH_INSTANT = 1790780400.0
 
 
 def clock_from(start: float):
-    """A clock running from `start`, time still passing: what a test hands the code it calls as
-    `now`.
+    """Return a clock running from `start`, time still passing.
+
+    It is what a test hands the code it calls as `now`.
     """
     began = time_et.elapsed()
     return lambda: start + time_et.elapsed() - began
 
 
 def mark_feed_live(*tickers: str, now: float | None = None) -> None:
-    """The daemon's heartbeat stamped `now` (the wall clock when not given), holding `tickers` on
-    LEVELONE_EQUITIES.
+    """Record the daemon's heartbeat stamped `now`, holding `tickers` on LEVELONE_EQUITIES.
+
+    `now` is the wall clock when not given.
     """
     lmp.record_feed_heartbeat(
         daemon_status(

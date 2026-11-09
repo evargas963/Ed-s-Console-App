@@ -100,8 +100,10 @@ def test_no_daily_candle_before_the_session_leaves_the_prior_day_absent():
 
 
 def test_the_prior_value_area_is_estimated_from_that_sessions_regular_bars_only():
-    """The POC and value area are ours (Schwab sends no volume profile), from the prior session's
-    390 regular 1-minute bars, none before its open or after its close.
+    """The POC and value area are ours (Schwab sends no volume profile).
+
+    They come from the prior session's 390 regular 1-minute bars, none before its open or after
+    its close.
     """
     daily, minutes = _held("SPY")
     out = get_previous_day_levels(

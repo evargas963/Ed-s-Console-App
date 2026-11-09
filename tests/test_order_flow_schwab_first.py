@@ -6,8 +6,10 @@ from app.options.order_flow.engine import _compute_top_book_pressure
 
 
 def test_rest_quote_blocks_never_stand_in_for_streamed_l1():
-    """2026-09-24: REST quote / extended / regular / chain-underlying and the book's top level
-    no longer stand in for a missing streamed BID/ASK/MARK/size.
+    """REST quote blocks never stand in for streamed level one.
+
+    2026-09-24: REST quote / extended / regular / chain-underlying and the book's top level no
+    longer stand in for a missing streamed BID/ASK/MARK/size.
     """
     rest = {
         "quote": {"bidPrice": 1.0, "askPrice": 1.1, "mark": 1.05, "bidSize": 5, "askSize": 5},

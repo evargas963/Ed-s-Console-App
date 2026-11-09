@@ -1,5 +1,6 @@
-"""RC-UI-1 — run Node assertions for the Options/Gamma heatmap presentation helpers
-(static/js/ed-gamma.js), and confirm the canonical surface route is registered.
+"""RC-UI-1 — run Node assertions for the Options/Gamma heatmap presentation helpers.
+
+The helpers are static/js/ed-gamma.js; also confirm the canonical surface route is registered.
 """
 
 from __future__ import annotations

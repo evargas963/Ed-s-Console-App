@@ -60,7 +60,7 @@ _FORWARDED = {
 
 
 def is_forwarded(topic: str, msg) -> bool:
-    """A record that came from Schwab (a chain: its parts)."""
+    """Tell whether a record came from Schwab (a chain: its parts)."""
     if isinstance(msg, list) and msg:
         msg = msg[0]
     if not isinstance(msg, dict):
@@ -72,8 +72,10 @@ def is_forwarded(topic: str, msg) -> bool:
 
 
 async def _serve_client(ws, stats: dict, on_request) -> None:
-    """Each frame of one connection handed to `on_request` (capture.Daemon.console_frame), until
-    the connection closes. A frame that is not a JSON object is logged with what arrived.
+    """Hand each frame of one connection to `on_request`, until the connection closes.
+
+    `on_request` is capture.Daemon.console_frame. A frame that is not a JSON object is logged
+    with what arrived.
     """
     stats["clients"] += 1
     try:

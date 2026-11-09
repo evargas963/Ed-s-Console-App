@@ -7,8 +7,10 @@ from app.options.order_flow.state import OrderFlowState
 
 
 def test_a_print_keeps_every_digit_of_size():
-    """LAST_SIZE is the count Schwab sent. Cutting it to a whole number happens on the screen,
-    and the signed size on the tape is that same count (each message through the live state).
+    """LAST_SIZE is the count Schwab sent.
+
+    Cutting it to a whole number happens on the screen, and the signed size on the tape is that
+    same count (each message through the live state).
     """
     first = {"key": "SIZE", "LAST_PRICE": 10.0, "LAST_SIZE": 1.0, "TRADE_TIME_MILLIS": 1}
     second = {"key": "SIZE", "LAST_PRICE": 11.0, "LAST_SIZE": 10.6, "TRADE_TIME_MILLIS": 2}

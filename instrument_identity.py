@@ -1,6 +1,8 @@
 """
-Canonical ticker key: Schwab's own symbol, the key of every value the console holds and every
-row the capture daemon records (stream_capture.db).
+Canonical ticker key: Schwab's own symbol.
+
+It is the key of every value the console holds and every row the capture daemon records
+(stream_capture.db).
 
 Policy (Repair v1):
 - Equity-style symbols: uppercase alphanumeric, e.g. `spy` -> `SPY`.
@@ -26,8 +28,9 @@ BROKER_INDEX_BARE_ROOTS: frozenset[str] = frozenset(
 
 def ticker_storage_key(ticker: str) -> str:
     """
-    Normalize user/JSON ticker to Schwab's symbol, the key the console and the capture
-    daemon's record use.
+    Normalize user/JSON ticker to Schwab's symbol.
+
+    It is the key the console and the capture daemon's record use.
     """
     t = ticker.strip()
     if not t:
@@ -44,8 +47,9 @@ def ticker_storage_key(ticker: str) -> str:
 
 
 def display_symbol(key: str) -> str:
-    """How the screen names the instrument whose storage key is `key` ("$SPX" -> "SPX"): the one
-    display form, served with the key so the page never re-derives either.
+    """Return how the screen names the instrument whose storage key is `key` ("$SPX" -> "SPX").
+
+    It is the one display form, served with the key so the page never re-derives either.
     """
     return key[1:] if key.startswith("$") else key
 

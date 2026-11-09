@@ -1,5 +1,6 @@
-"""The capture daemon's log (capture.DailyLog): every line, with its wall time, in the file of its
-own day; the newest LOG_DAYS_KEPT days kept. No file is renamed, so the day changes while another
+"""The capture daemon's log (capture.DailyLog): every line, with its wall time, in its day's file.
+
+The newest LOG_DAYS_KEPT days are kept. No file is renamed, so the day changes while another
 process holds the day's file open (Windows refuses to rename a file another process holds open).
 
 STAND-IN: a second Python process holding the day's file open, as a log viewer or a second
@@ -64,6 +65,7 @@ def test_the_day_changes_while_another_process_holds_the_log_open(tmp_path):
 
 def test_a_days_file_the_disk_will_not_open_never_raises_where_the_daemon_logs(tmp_path):
     """INDUCED CONDITION: a folder where the new day's file would be, so the disk will not open it.
+
     A line that day does not raise at the call that logged it (logging's own error report takes
     it); once the folder is gone the next line opens the day's file.
     """
@@ -86,8 +88,9 @@ def test_a_days_file_the_disk_will_not_open_never_raises_where_the_daemon_logs(t
 
 
 def test_the_newest_45_days_are_kept(tmp_path):
-    """50 earlier days' files beside the log; at the next day's first line the 45 newest stay,
-    the new day's among them.
+    """50 earlier days' files beside the log; at the next day's first line the 45 newest stay.
+
+    The new day's is among them.
     """
     days = [date(2026, 8, 1) + timedelta(days=i) for i in range(50)]
     for d in days:
@@ -103,8 +106,9 @@ def test_the_newest_45_days_are_kept(tmp_path):
 
 
 def test_the_daemons_log_has_every_line_with_its_wall_time(tmp_path):
-    """The daemon's log as it starts it (_start_log), under a runtime root of its own: a line
-    reaches the day's file under <runtime>/logs, beginning with its date and time.
+    """The daemon's log as it starts it (_start_log), under a runtime root of its own.
+
+    A line reaches the day's file under <runtime>/logs, beginning with its date and time.
     """
     script = (
         "from app.market_data.schwab.streaming import capture; capture._start_log(); "
@@ -124,11 +128,12 @@ def test_the_daemons_log_has_every_line_with_its_wall_time(tmp_path):
 
 
 def test_a_window_that_holds_its_writes_never_stops_the_daemon(tmp_path):
-    """Measured 2026-11-05 05:17 to 07:07 CT: text selected in the daemon's window held every
-    write to it, and the daemon stopped inside its next log line (its event loop and its chain
-    thread, a token refresh with them). Here the window holds every write for good: each line is
-    logged at once and reaches the day's file. STAND-IN: the window, an error output whose
-    write never returns.
+    """Measured 2026-11-05 05:17 to 07:07 CT: text selected in the window held every write.
+
+    Text selected in the daemon's window held every write to it, and the daemon stopped inside
+    its next log line (its event loop and its chain thread, a token refresh with them). Here
+    the window holds every write for good: each line is logged at once and reaches the day's
+    file. STAND-IN: the window, an error output whose write never returns.
     """
     script = (
         "import os, sys, threading, time\n"
@@ -164,8 +169,10 @@ def test_a_window_that_holds_its_writes_never_stops_the_daemon(tmp_path):
 
 
 def test_a_window_line_reaches_the_window_and_not_the_days_file(tmp_path):
-    """What Schwab streamed is recorded in stream_capture.db; the window's line of it is not
-    written a second time in the day's file, and every other line still is.
+    """What Schwab streamed is recorded in stream_capture.db.
+
+    The window's line of it is not written a second time in the day's file, and every other
+    line still is.
     """
     script = (
         "import logging\n"
@@ -192,9 +199,10 @@ def test_a_window_line_reaches_the_window_and_not_the_days_file(tmp_path):
 
 
 def test_every_window_line_reaches_the_window_before_the_program_ends(tmp_path):
-    """The window's lines are printed by a thread of their own from a queue: a program that
-    ends the moment it has logged still prints every line it logged, in order (the last lines
-    of a clean stop included).
+    """The window's lines are printed by a thread of their own from a queue.
+
+    A program that ends the moment it has logged still prints every line it logged, in order
+    (the last lines of a clean stop included).
     """
     script = (
         "from app.market_data.schwab.streaming import capture\n"
@@ -216,9 +224,10 @@ def test_every_window_line_reaches_the_window_before_the_program_ends(tmp_path):
 
 
 def test_the_window_shows_each_second_what_schwab_streamed(caplog):
-    """Real LEVELONE and book messages Schwab sent (2026-10-05 14:00 CT) through the daemon's
-    receive handler: the window's line per service gives the messages, the symbols they came
-    for, and the newest message as Schwab sent it.
+    """Real LEVELONE and book messages Schwab sent (2026-10-05 14:00 CT) through the handler.
+
+    Through the daemon's receive handler: the window's line per service gives the messages, the
+    symbols they came for, and the newest message as Schwab sent it.
     """
     mix = json.loads((REPO / "tests/fixtures/real_stream_mix_2026_10_05_1400ct.json").read_text())
     messages = mix["messages"][:400]

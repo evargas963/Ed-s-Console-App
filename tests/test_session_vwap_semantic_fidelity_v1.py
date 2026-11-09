@@ -1,5 +1,7 @@
-"""Session VWAP semantic fidelity — RTH availability, inside the regular session Schwab's
-/markets sent (tests/conftest.py holds the answers captured 2026-10-07).
+"""Session VWAP semantic fidelity — RTH availability.
+
+Inside the regular session Schwab's /markets sent (tests/conftest.py holds the answers captured
+2026-10-07).
 """
 
 from __future__ import annotations
@@ -30,8 +32,9 @@ def _rth_bar(day: date, minutes_after_open: int, close: float, volume: float = 1
 
 
 def test_first_positive_volume_rth_bar_produces_session_vwap() -> None:
-    """After the first valid +volume RTH bar, canonical session VWAP exists (the rule names no
-    ticker).
+    """After the first valid +volume RTH bar, canonical session VWAP exists.
+
+    The rule names no ticker.
     """
     bars = bars_from_candles([_rth_bar(FRIDAY, 0, 100.0, volume=2_500.0)])
     assert compute_session_vwap_series(bars, FRIDAY), "VWAP absent after the first +volume RTH bar"

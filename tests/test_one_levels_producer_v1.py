@@ -1,7 +1,9 @@
-"""One producer for a ticker's levels, per-strike rows and gamma-surface grid: _publish_levels
-prices the chain once (overlaid with the streamed values Schwab sent after it, at the current spot)
-and publishes all three together, so no second producer can show a different number (question 2:
-the screen shows it correctly and promptly; question 3: each value is the one computation's).
+"""One producer for a ticker's levels, per-strike rows and gamma-surface grid.
+
+_publish_levels prices the chain once (overlaid with the streamed values Schwab sent after it, at
+the current spot) and publishes all three together, so no second producer can show a different
+number (question 2: the screen shows it correctly and promptly; question 3: each value is the one
+computation's).
 
 Through the real code: the daemon's status (live_market_plane.record_feed_heartbeat), its pushed
 option messages applied by the console (streaming._ingest_pushed), its price row built from the
@@ -58,8 +60,10 @@ _MIX = json.loads((_FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(enc
 
 @pytest.fixture(autouse=True)
 def _clean():
-    """This test's state only: no page of its own open, no daemon status, no streamed value, no
-    price row, no levels of TK; the console's push delivers to no event loop.
+    """Reset to this test's state only.
+
+    No page of its own open, no daemon status, no streamed value, no price row, no levels of TK;
+    the console's push delivers to no event loop.
     """
     pages: list = []
     push_changes.bind(None)
@@ -81,14 +85,15 @@ def _clean():
 
 
 def _view(pages: list, tk: str = TK) -> None:
-    """A page opens on `tk` (its /api/changes connection)."""
+    """Open a page on `tk` (its /api/changes connection)."""
     pages.append((tk, push_changes.subscribe(tk)))
 
 
 def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float = _T) -> None:
-    """The daemon's status at `at` (the chain's publication time unless given): Schwab's socket
-    open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's LAST_PRICE in the
-    daemon's plane, traded at the capture's time (None: no price).
+    """Set the daemon's status at `at` (the chain's publication time unless given).
+
+    Schwab's socket open, TK held on LEVELONE_EQUITIES and `held` on LEVELONE_OPTIONS; and TK's
+    LAST_PRICE in the daemon's plane, traded at the capture's time (None: no price).
     """
     lmp.record_feed_heartbeat(
         daemon_status(
@@ -185,8 +190,9 @@ def test_published_levels_equal_compute_terrain_on_the_same_inputs():
 
 
 def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal_fields():
-    """2026-09-26: the payload carried the snapshot object and /api/terrain served the whole
-    entry -- HTTP 500 for every published ticker, and the kept chain on every poll.
+    """2026-09-26: the payload carried the snapshot object and /api/terrain served the whole entry.
+
+    HTTP 500 for every published ticker, and the kept chain on every poll.
     """
     _daemon()
     snap = _put_chain()
@@ -221,9 +227,10 @@ def _as_pushed(record):
 
 
 def test_a_pushed_greek_set_prices_the_levels_and_their_time_is_the_push():
-    """Schwab pushed every Greek of a streamed contract after the chain: the levels are priced
-    with the pushed values (the pushed field is its one producer), not the chain's, and the
-    levels' time is the push's; the chain's time stays the chain's.
+    """Schwab pushed every Greek of a streamed contract after the chain.
+
+    The levels are priced with the pushed values (the pushed field is its one producer), not the
+    chain's, and the levels' time is the push's; the chain's time stays the chain's.
     """
     _daemon(held=[_A])
     _put_chain(fetched_ts=_T - 30.0)
@@ -237,7 +244,9 @@ def test_a_pushed_greek_set_prices_the_levels_and_their_time_is_the_push():
 
 
 def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
-    """Schwab -> the levels, with no page open on the ticker: a LEVELONE_OPTIONS message the
+    """Schwab -> the levels, with no page open on the ticker.
+
+    A LEVELONE_OPTIONS message the
     daemon pushed reaches the console's feed (streaming._ingest_pushed), whose tick queues the
     ticker's reprice as of the message's receive time, and the levels the pricing thread
     publishes carry the pushed Greeks.
@@ -257,7 +266,9 @@ def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
 
 
 def test_a_streamed_gamma_alone_does_not_replace_the_chains():
-    """A streamed contract's Greeks are the stream's as one set: a gamma alone (the stream has not
+    """A streamed contract's Greeks are the stream's as one set.
+
+    A gamma alone (the stream has not
     sent the other five) leaves the chain's, which the sweep asked /quotes for; the contract's
     volume is the stream's (the same 0 the chain carries here).
     """
@@ -270,8 +281,10 @@ def test_a_streamed_gamma_alone_does_not_replace_the_chains():
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
-    """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download made all 200 heatmap
-    legs flip between live and stale while the feed stayed live. A leg's state is the feed's
+    """ONE-05 (measured live 2026-09-28, MU 15:46 ET): chain downloads flipped heatmap legs.
+
+    Each chain download made all 200 heatmap legs flip between live and stale while the feed
+    stayed live. A leg's state is the feed's
     (live while the daemon holds the contract); its volume is the stream's, whichever arrived
     last.
     """
@@ -333,7 +346,9 @@ def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
 
 
 def test_a_streamed_contracts_volume_is_the_streams_and_its_open_interest_the_chains():
-    """One producer per field, whichever arrived last: a streamed contract's volume is the
+    """One producer per field, whichever arrived last.
+
+    A streamed contract's volume is the
     stream's even when the chain came after it, and its open interest is the chain's even when
     the stream sent one after the chain (the stream does not send it for every contract).
     """
@@ -361,10 +376,11 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
 
 
 def test_a_reprice_is_at_the_live_price_and_a_new_chain_at_its_own_spot():
-    """The live price is the key (operator 2026-11-06, replacing 2026-10-23's one spot per chain):
-    a reprice of the kept chain on a tick is at the live price Schwab sent (resolve_spot), with its
-    trade time; the next chain is priced at its own spot, Schwab's LAST_PRICE when it was
-    complete.
+    """The live price is the key.
+
+    Operator 2026-11-06, replacing 2026-10-23's one spot per chain: a reprice of the kept chain
+    on a tick is at the live price Schwab sent (resolve_spot), with its trade time; the next
+    chain is priced at its own spot, Schwab's LAST_PRICE when it was complete.
     """
     _daemon()
     _put_chain()
@@ -394,7 +410,9 @@ def test_a_reprice_is_at_the_live_price_and_a_new_chain_at_its_own_spot():
 
 
 def test_every_ticker_keeps_its_chain_and_heatmap_so_a_switch_shows_at_once():
-    """2026-10-01, operator: "when i switch tickers the heatmap doesnt render right away". Every
+    """2026-10-01, operator: "when i switch tickers the heatmap doesnt render right away".
+
+    Every
     ticker's publication keeps its chain and its heatmap, viewed or not.
     """
     _daemon()
@@ -405,8 +423,10 @@ def test_every_ticker_keeps_its_chain_and_heatmap_so_a_switch_shows_at_once():
 
 
 def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
-    """2026-09-28 audit: a publication from a stored capture (startup, a closed market) and one
-    from a live chain served different fields and two labels for the same full chain.
+    """2026-09-28 audit: a stored-capture publication and a live-chain one served different fields.
+
+    A publication from a stored capture (startup, a closed market) and one from a live chain
+    served different fields and two labels for the same full chain.
     """
     _daemon()
     _put_chain()
@@ -432,8 +452,9 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
 
 
 def test_vanna_and_charm_by_strike_read_the_published_snapshot():
-    """Valued in the chain's own session (2026-10-07 12:00 ET): its 2026-10-16 expiry still has
-    time value, which charm needs.
+    """Valued in the chain's own session (2026-10-07 12:00 ET).
+
+    Its 2026-10-16 expiry still has time value, which charm needs.
     """
     valued = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
     _daemon(at=valued.timestamp())  # live when the chain is published
@@ -449,7 +470,9 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
 
 
 def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
-    """Levels are as of the chain they come from: repricing a kept chain on a tick must not make
+    """Levels are as of the chain they come from.
+
+    Repricing a kept chain on a tick must not make
     them newer, or a chain that stops arriving would never show as stale.
     """
     _daemon()
@@ -459,11 +482,12 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
 
 
 def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_no_levels():
-    """/api/terrain serves the levels exactly as the producer published them, none recomputed per
-    request, the price they were computed at named `priced_at_spot` with its source and time, and
-    `spot` the live price. Every relation of the price to the levels is at the live price: with
-    none, each is unknown, never the publication's. A chain the daemon delivered with no spot has
-    no levels, with its reason.
+    """/api/terrain serves the levels exactly as the producer published them.
+
+    None recomputed per request, the price they were computed at named `priced_at_spot` with its
+    source and time, and `spot` the live price. Every relation of the price to the levels is at
+    the live price: with none, each is unknown, never the publication's. A chain the daemon
+    delivered with no spot has no levels, with its reason.
     """
     _daemon()
     _put_chain()
@@ -492,8 +516,9 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
 
 
 def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
-    """Measured 2026-09-26: with gamma at spot unknown, the regime read UNAVAILABLE while the
-    headline said "Short gamma -- trend regime. Follow breaks" -- advice from nothing.
+    """Measured 2026-09-26: with gamma at spot unknown, the regime read UNAVAILABLE.
+
+    Meanwhile the headline said "Short gamma -- trend regime. Follow breaks" -- advice from nothing.
     """
     r = build_terrain_read(
         spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=None
@@ -508,9 +533,10 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
 def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_burst_is_one_reprice(
     _clean,
 ):
-    """A streamed tick on a viewed ticker, an equity quote or one of its options, queues one
-    reprice of its kept chain; every tick that arrives while it waits is in that one reprice,
-    which is as of the newest tick's receive time.
+    """A streamed tick on a viewed ticker queues one reprice of its kept chain.
+
+    The tick is an equity quote or one of its options. Every tick that arrives while it waits is
+    in that one reprice, which is as of the newest tick's receive time.
     """
     _daemon()
     _put_chain()
@@ -529,8 +555,10 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
 
 
 def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
-    """2026-10-01 audit: the pricing queue had no bound -- a sweep faster than pricing grew it
-    without end. One chain per ticker waits; a newer one replaces it.
+    """2026-10-01 audit: the pricing queue had no bound.
+
+    A sweep faster than pricing grew it without end. One chain per ticker waits; a newer one
+    replaces it.
     """
     gate = _busy()
     try:
@@ -572,9 +600,11 @@ def _forget(*tickers):
 
 
 def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
-    """DATA_FLOW decision 7: after a restart, a weekend or the close, each watchlist ticker's
-    newest full chain capture is priced once with Schwab's underlying price from that capture,
-    valued and dated at the capture's time. A row that is not a full chain is never loaded.
+    """DATA_FLOW decision 7: after a restart, a weekend or the close, stored captures are priced.
+
+    Each watchlist ticker's newest full chain capture is priced once with Schwab's underlying
+    price from that capture, valued and dated at the capture's time. A row that is not a full
+    chain is never loaded.
     """
     tk = "ZZCAPSTART"
     _store(tk, _T)
@@ -603,9 +633,11 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
 
 @pytest.mark.parametrize("delivered_first", [True, False])
 def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
-    """The startup load queues a ticker's stored capture only when the daemon has delivered no
-    chain for it: delivered first, the capture is not queued; queued first and still waiting, the
-    delivered chain replaces it. Either way the delivered chain is what is held.
+    """The startup load queues a ticker's stored capture only when no chain was delivered for it.
+
+    Only when the daemon has delivered no chain for it: delivered first, the capture is not
+    queued; queued first and still waiting, the delivered chain replaces it. Either way the
+    delivered chain is what is held.
     """
     tk = f"ZZCAPDELIV{int(delivered_first)}"
     _store(tk, _T - 86400)
@@ -633,8 +665,9 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
 
 
 def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
-    """The startup load queues every watchlist ticker's stored captures at once; a chain the
-    daemon delivers meanwhile is priced ahead of them, not behind the load.
+    """The startup load queues every watchlist ticker's stored captures at once.
+
+    A chain the daemon delivers meanwhile is priced ahead of them, not behind the load.
     """
     stored = ("ZZCAPWAITA", "ZZCAPWAITB")
     for tk in stored:
@@ -659,9 +692,10 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
 
 
 def _real_option(with_greek: bool) -> dict:
-    """A real LEVELONE_OPTIONS message (2026-10-05 14:00 CT) carrying a value the levels use
-    (a streamed contract's volume or its Greeks; its open interest is the chain's), or none of
-    them.
+    """Return a real LEVELONE_OPTIONS message (2026-10-05 14:00 CT).
+
+    It carries a value the levels use (a streamed contract's volume or its Greeks; its open
+    interest is the chain's), or none of them.
     """
     used = {"TOTAL_VOLUME", "GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY"}
     return next(

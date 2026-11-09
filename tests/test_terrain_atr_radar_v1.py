@@ -21,8 +21,10 @@ import server as srv
 
 
 def test_bars1m_endpoint_serves_canonical_bars_shape():
-    """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows from the console's
-    1-minute bars in memory (server._bars: price_bars_1m loaded at startup, then each streamed bar).
+    """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows.
+
+    The rows come from the console's 1-minute bars in memory (server._bars: price_bars_1m loaded
+    at startup, then each streamed bar).
 
     TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
     get_bars1m is a plain sync handler taking only Query params and returning a
@@ -61,8 +63,9 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
 
 
 def test_terrain_strikes_endpoint_shape_and_scopes():
-    """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
-    expiry scopes for today + prior capture, sorted by strike, read-only.
+    """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three expiry scopes.
+
+    For today + prior capture, sorted by strike, read-only.
     """
     client = TestClient(srv.app)
     r = client.get("/api/terrain/strikes?ticker=SPY")

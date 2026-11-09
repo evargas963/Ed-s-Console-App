@@ -23,8 +23,9 @@ def test_schwab_client_imports_without_constructing_live_client() -> None:
 
 
 def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path) -> None:
-    """Explicit live-looking credentials (ED_CI_OFFLINE does not block explicit ones) and no
-    token file: no client, and the reason names the missing file.
+    """Explicit live-looking credentials and no token file: no client.
+
+    ED_CI_OFFLINE does not block explicit ones. The reason names the missing file.
     """
     state = schwab_client.build_client_from_token(
         str(tmp_path / "missing_token.json"),
@@ -37,9 +38,10 @@ def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path)
 
 
 def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
-    """With no Schwab credentials the configuration still builds, and the one gate
-    (`schwab_live_blocked_for`, which `build_client_from_token` refuses on) builds no client: no
-    live Schwab without credentials (docs/ARCHITECTURE.md "Failure domains"). Run in a fresh
+    """With no Schwab credentials the configuration builds, and the one gate builds no client.
+
+    The one gate is `schwab_live_blocked_for`, which `build_client_from_token` refuses on: no live
+    Schwab without credentials (docs/ARCHITECTURE.md "Failure domains"). Run in a fresh
     interpreter whose environment has no Schwab credential.
     """
     code = (
@@ -102,12 +104,14 @@ assert server.published_levels("SPY") is not None, """
 
 
 def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
-    """The capture daemon is the only Schwab client (DATA_FLOW decision 1). The console started in
-    a fresh interpreter with what a live client would use (a token file and credentials that are
-    not placeholders), every one of its GET routes asked for a ticker, and a chain the daemon
-    fetched priced through it: nothing leaves for Schwab. Its only way out is HTTPS_PROXY, a local
-    socket that records every connection. Before 2026-10-01 the console fetched every board
-    ticker's chain itself (the 429s of that day came from it and the daemon asking at once).
+    """The capture daemon is the only Schwab client (DATA_FLOW decision 1).
+
+    The console started in a fresh interpreter with what a live client would use (a token file and
+    credentials that are not placeholders), every one of its GET routes asked for a ticker, and a
+    chain the daemon fetched priced through it: nothing leaves for Schwab. Its only way out is
+    HTTPS_PROXY, a local socket that records every connection. Before 2026-10-01 the console
+    fetched every board ticker's chain itself (the 429s of that day came from it and the daemon
+    asking at once).
     """
     proxy = socket.socket()
     proxy.bind(("127.0.0.1", 0))

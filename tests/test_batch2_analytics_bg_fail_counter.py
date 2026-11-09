@@ -9,8 +9,9 @@ import server as srv
 
 
 def test_api_build_exposes_git_sha():
-    """git_sha is the process's startup identity; the checkout's HEAD now is served apart, under
-    repository_state_now.repo_head_now (read here from the checkout with git).
+    """git_sha is the process's startup identity; the checkout's HEAD now is served apart.
+
+    Served under repository_state_now.repo_head_now (read here from the checkout with git).
     """
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"],
