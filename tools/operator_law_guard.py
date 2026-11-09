@@ -105,7 +105,8 @@ def _protected(arg: str) -> bool:
 
 def _python_violation(code: str) -> bool:
     """A call that deletes, moves or overwrites a path inside a protected tree. Code that does not
-    parse cannot run, so it removes nothing."""
+    parse cannot run, so it removes nothing.
+    """
     tree = parse_python(code)
     if tree is None:
         return False
@@ -132,7 +133,8 @@ def _python_violation(code: str) -> bool:
 def _destroys_protected(st: Statement) -> bool:
     """The statement deletes, moves, overwrites or unprotects a file under data/. A python's
     `-c` code and the stdin text it reads are parsed as Python. A copy INTO a protected tree is a
-    restore and stays legal."""
+    restore and stays legal.
+    """
     name, args = st.program, list(st.words[1:])
     paths = [a for a in args if not a.startswith("-")]
     if name in _SHELL_REMOVERS and any(_protected(a) or _TREE_ROOT.search(a) for a in paths):
@@ -171,7 +173,8 @@ def _blind_stage(st: Statement) -> bool:
 
 def _disables_a_lock(st: Statement) -> bool:
     """Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
-    pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`)."""
+    pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`).
+    """
     git_globals, sub, args = git_parts(st.words)
     skip = next(
         (e.split("=", 1)[1] for e in st.env if re.match(r"(?:\$env:)?skip=", e, re.I)), None
@@ -291,7 +294,8 @@ _FOLDER_CHANGERS = frozenset(
 
 def _sed_writes(st: Statement) -> list[str]:
     """How a sed statement writes a file; empty for any other statement or a sed that only
-    prints."""
+    prints.
+    """
     if st.program != "sed":
         return []
     flag = next((a for a in st.words[1:] if _SED_IN_PLACE.match(a)), None)
@@ -305,7 +309,8 @@ def _sed_writes(st: Statement) -> list[str]:
 def bash_violations(cmd: str | None, powershell: bool = False) -> list[str]:
     """Every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
     Applicability is per rule, never an early return (a foreign-repository target
-    exempts nothing host-wide); no rule reads a repository."""
+    exempts nothing host-wide); no rule reads a repository.
+    """
     statements = read(cmd or "", powershell=powershell)
     out: list[str] = []
     if any(_blind_stage(st) for st in statements):

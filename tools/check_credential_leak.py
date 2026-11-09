@@ -97,7 +97,8 @@ def _git(root: Path, *args: str, given: bytes | None = None) -> bytes:
 
 def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[str]:
     """Every secret or operator-home path on a line `root`'s staged diff adds (with `base`, a line
-    any commit in `base..HEAD` adds)."""
+    any commit in `base..HEAD` adds).
+    """
     text = _added_text(root, base)
     hits: list[str] = []
     current_file = "?"

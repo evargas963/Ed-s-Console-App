@@ -32,7 +32,8 @@ from time_et import (
 
 def _daily_candle(d: date, high: float, low: float, close: float) -> Candle:
     """A session's daily candle as Schwab dates it (midnight ET), from the regular bars the test
-    places in it."""
+    places in it.
+    """
     # institutional-synthetic-ok: the session is the test's own placed bars
     ts = datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
     return Candle(ts=ts, open=low, high=high, low=low, close=close, volume=1000.0)
@@ -91,7 +92,8 @@ def test_volume_profile_flat_bar_puts_all_volume_at_one_price():
 def test_volume_profile_distributes_a_wide_bar_across_its_range():
     """One wide bar's volume belongs across [low, high], not at
     (H+L+C)/3. With a single bar the distributed profile is FLAT, so every spanned price ties —
-    while the dump puts 100% of it in one bin at the typical price."""
+    while the dump puts 100% of it in one bin at the typical price.
+    """
     bars = [{"high": 101.0, "low": 100.0, "close": 100.9, "volume": 10100.0}]
     p = volume_profile(bars, value_area_pct=0.70)
     vah, val = p.vah, p.val
@@ -111,7 +113,8 @@ def test_volume_profile_distributes_a_wide_bar_across_its_range():
 def test_volume_profile_poc_is_the_price_most_bars_traded_through():
     """Hand-worked: three bars all span 100.00-100.04; a fourth spans 100.03-100.07. Every bar
     covers 100.03-100.04, so those two bins carry the most volume and the POC must land there.
-    The typical-price dump cannot find it — no bar's (H+L+C)/3 lands on 100.03/100.04."""
+    The typical-price dump cannot find it — no bar's (H+L+C)/3 lands on 100.03/100.04.
+    """
     bars = [
         {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
         {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
@@ -132,7 +135,8 @@ def test_volume_profile_poc_is_the_price_most_bars_traded_through():
 
 def test_volume_profile_rejects_nan_and_nonpositive_volume():
     """A NaN bin key poisons every comparison after it, and a zero-volume bar contributes
-    nothing — absence must read as absence rather than a fabricated level."""
+    nothing — absence must read as absence rather than a fabricated level.
+    """
     nan = float("nan")
     bars = [
         {"high": nan, "low": 100.0, "close": 100.0, "volume": 900.0},
@@ -149,7 +153,8 @@ def test_volume_profile_rejects_nan_and_nonpositive_volume():
 
 def test_volume_profile_wide_bar_stays_bounded_and_distributed():
     """A pathological range against a 0.01 tick must not allocate unbounded bins, and must
-    still SPREAD — the bound is a work cap, never a licence to dump."""
+    still SPREAD — the bound is a work cap, never a licence to dump.
+    """
     bars = [{"high": 10000.0, "low": 0.01, "close": 5000.0, "volume": 1e6}]
     p = volume_profile(bars, value_area_pct=0.70)
     assert p is not None
@@ -175,13 +180,15 @@ def _bar(
 def _overnight(bars: list, session_date: date, prior: date | None) -> dict:
     """The engine's overnight range as its producer gets it: bars normalized once, from the close
     of the prior session `prior` (the date of Schwab's newest daily candle before the session,
-    liquidity_value_engine.prior_session)."""
+    liquidity_value_engine.prior_session).
+    """
     return get_overnight_levels(bars_from_candles(bars), session_date, prior)
 
 
 def test_overnight_window_monday_reaches_back_to_friday():
     """Monday's overnight starts at FRIDAY's 16:00 close (the prior session), not at Sunday,
-    which has no close and no bars: Friday's post-16:00 tape is in OVERNIGHT_HIGH/LOW."""
+    which has no close and no bars: Friday's post-16:00 tape is in OVERNIGHT_HIGH/LOW.
+    """
     friday, monday = date(2026, 10, 2), date(2026, 10, 5)  # sessions Schwab's /markets sent
     bars = [
         _bar(friday, 10, 0, 100.0, 99.0),  # Friday RTH — establishes the prior session
@@ -218,7 +225,8 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
     (Schwab's /markets: 2026-11-26 closed), Friday's overnight must reach back to WEDNESDAY's
     16:00 and include the Thursday bars in between — the interval is continuous, not two
     hand-picked calendar dates. Schwab sends no daily candle for the closed day, so the prior
-    session is Wednesday's."""
+    session is Wednesday's.
+    """
     wed, thu, fri = date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)
     bars = [
         _bar(wed, 10, 0, 100.0, 99.0),  # Wednesday RTH — the real prior session
@@ -247,7 +255,8 @@ def test_overnight_empty_is_empty_never_fabricated():
 
 def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
     """Fail-closed: with no prior RTH session in the buffer the interval has no start, so only
-    this session's pre-open is used — never widened into a guess that sweeps older days."""
+    this session's pre-open is used — never widened into a guess that sweeps older days.
+    """
     tuesday = date(2026, 10, 6)
     bars = [
         _bar(date(2026, 10, 5), 20, 0, 300.0, 290.0),  # prior-day AFTER hours, no RTH anywhere
@@ -266,7 +275,8 @@ _POOL_WORDS = ("liquidity", "pool", "sweep", "stop hunt", "stop-hunt", "magnet")
 def _overnight_under_prior_low_bars(session_date: date) -> list:
     """Bars that drive the taxonomy branch: a prior session, an overnight leg that undercuts
     the prior low, and an RTH open — the shape a pool label would claim as 'sell-side
-    liquidity'."""
+    liquidity'.
+    """
     prev = date.fromordinal(session_date.toordinal() - 1)
     return [
         _bar(prev, 10, 0, 105.0, 100.0, close=104.0),
@@ -291,7 +301,8 @@ def _overnight_under_prior_low_zones(session_date: date):
 
 def test_no_pool_language_in_rendered_zone_payload():
     """Behaviour-bound: build the snapshot for an overnight leg under the prior low and assert
-    no operator-facing field claims a pool."""
+    no operator-facing field claims a pool.
+    """
     session = date(2026, 10, 6)  # a Tuesday: its prior session is the day before
     zones = _overnight_under_prior_low_zones(session)
     assert zones, "fixture produced no zones — the assertion would be vacuous"

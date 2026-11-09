@@ -67,7 +67,8 @@ def _msys_to_windows(path: str) -> str:
 
 def normalize_repo(path) -> str:
     """Repository identity: absolute, forward slashes, case-folded on Windows (a drive letter
-    spelled upper- or lower-case is one repository)."""
+    spelled upper- or lower-case is one repository).
+    """
     try:
         p = Path(_msys_to_windows(str(path))).expanduser().resolve()
     except (OSError, ValueError, RuntimeError):
@@ -78,7 +79,8 @@ def normalize_repo(path) -> str:
 
 def repo_root_of(path) -> str:
     """Normalized root of the git repository containing `path`, or "" when there is none. Reads the
-    filesystem only: a PreToolUse hook runs on every command, so no `git` subprocess here."""
+    filesystem only: a PreToolUse hook runs on every command, so no `git` subprocess here.
+    """
     try:
         p = Path(_msys_to_windows(str(path))).expanduser()
         if not p.exists():
@@ -106,7 +108,8 @@ def _join_dir(base: str, path: str) -> str:
 
 def program_name(token: str) -> str:
     """The program a command word runs, however it is spelled, on every OS:
-    `C:\\Git\\cmd\\git.exe`, `/usr/bin/git` and `Git.EXE` are all `git`."""
+    `C:\\Git\\cmd\\git.exe`, `/usr/bin/git` and `Git.EXE` are all `git`.
+    """
     return PureWindowsPath(token.strip("\"'")).name.lower().removesuffix(".exe")
 
 
@@ -116,7 +119,8 @@ class Statement:
     its redirects as (operator, target); its heredoc body (None without one); its leading
     assignments; the directory it runs in ("" when unknown); the statement a pipe takes its input
     from (None when it is not piped); whether it was read as PowerShell (a `pwsh -Command` string
-    inside a bash command is)."""
+    inside a bash command is).
+    """
 
     words: tuple[str, ...]
     raw: tuple[str, ...]
@@ -139,7 +143,8 @@ class Statement:
     def stdin(self) -> str | None:
         """The text it reads on stdin when the command itself holds it: its heredoc or <<< string,
         or what a pipe hands it from echo/printf/Write-Output, a printed PowerShell string or a
-        cat heredoc; None otherwise."""
+        cat heredoc; None otherwise.
+        """
         if self.heredoc is not None:
             return self.heredoc
         strings = [t for op, t in self.redirects if op.endswith("<<<")]
@@ -157,13 +162,15 @@ class Statement:
     @property
     def writes(self) -> list[str]:
         """The files its redirects write: `>`, `>>`, `N>`, `>|`, `&>` (not an fd dup like
-        `2>&1`)."""
+        `2>&1`).
+        """
         return [t for op, t in self.redirects if _WRITE_REDIRECT.fullmatch(op)]
 
 
 def read(cmd: str, cwd: str = "", powershell: bool = False) -> list[Statement]:
     """Every statement `cmd` runs, in order; `cwd` is the directory it starts in; `powershell`
-    reads it as PowerShell (the PowerShell tool), else as bash."""
+    reads it as PowerShell (the PowerShell tool), else as bash.
+    """
     return _read(cmd, {"cwd": cwd, "last": None, "ps": powershell}, None)
 
 
@@ -226,7 +233,8 @@ class _Lexer:
 
     def close(self, i: int, opener: str = "(", closer: str = ")") -> int:
         """Index of the `closer` matching an `opener` just before `i`, past quotes and heredoc
-        bodies; len(s) if none."""
+        bodies; len(s) if none.
+        """
         s, depth, tags = self.s, 1, []
         while i < len(s):
             c = s[i]
@@ -254,13 +262,15 @@ class _Lexer:
 
     def arith_end(self, i: int) -> int | None:
         """At `((` (i on the first): the index of the first `)` of the `))` closing bash
-        arithmetic; None when the parentheses are nested subshells, `((a); b)`."""
+        arithmetic; None when the parentheses are nested subshells, `((a); b)`.
+        """
         k = self.close(i + 2)
         return k if self.s[k + 1 : k + 2] == ")" else None
 
     def single(self, i: int, value: list[str]) -> int:
         """The inside of a single-quoted string opened before `i` (`''` is a quote in PowerShell);
-        returns the index past its close."""
+        returns the index past its close.
+        """
         s = self.s
         while True:
             j = s.find("'", i)
@@ -276,7 +286,8 @@ class _Lexer:
 
     def ansi(self, i: int, value: list[str]) -> int:
         """The inside of bash's $'...' opened before `i`, where a backslash escapes; returns the
-        index past its close."""
+        index past its close.
+        """
         s = self.s
         while i < len(s) and s[i] != "'":
             value.append(s[i + 1 : i + 2] if s[i] == "\\" else s[i])
@@ -285,7 +296,8 @@ class _Lexer:
 
     def double(self, i: int, value: list[str], nested: list[str]) -> int:
         """The inside of a double-quoted string opened before `i`; returns the index past its
-        close."""
+        close.
+        """
         s = self.s
         while i < len(s):
             c = s[i]
@@ -309,7 +321,8 @@ class _Lexer:
 
     def substitution(self, i: int, value: list[str], nested: list[str]) -> int:
         """At `$(` / `@(` (i on the sigil): the text joins the word and its command `nested`;
-        `$(( ))` is arithmetic and runs nothing. Returns the index past it."""
+        `$(( ))` is arithmetic and runs nothing. Returns the index past it.
+        """
         j = self.close(i + 2)
         inner = self.s[i + 2 : j]
         if not (self.s[i] == "$" and inner.startswith("(")):
@@ -328,7 +341,8 @@ class _Lexer:
 
     def substituted(self, text: str) -> list[str]:
         """The commands substituted inside `text`, a ( ) or ${ } within a word (`a=($(x))`) or bash
-        arithmetic, its own ( ) included (`(( ($(x)) > 0 ))`)."""
+        arithmetic, its own ( ) included (`(( ($(x)) > 0 ))`).
+        """
         out: list[str] = []
         for t in _Lexer(text, self.ps).tokens():
             if t[0] in ("w", "redir"):
@@ -399,7 +413,8 @@ class _Lexer:
 
     def tokens(self) -> list[list]:
         """["w", _Word], ["op", separator], ["redir", operator, _Word, heredoc body],
-        ["group", text], ["arith", the commands substituted in it]."""
+        ["group", text], ["arith", the commands substituted in it].
+        """
         s, tokens, pending, fresh, called, i = self.s, [], [], True, "", 0
         while i < len(s):
             c = s[i]
@@ -623,7 +638,8 @@ IEX = frozenset({"iex", "invoke-expression"})
 
 def pwsh_option(args, name: str) -> int | None:
     """The index of PowerShell option `name` among `args`, spelled as any prefix of it
-    (`-c`, `-com`, `-Command`); None when it is absent."""
+    (`-c`, `-com`, `-Command`); None when it is absent.
+    """
     return next((i for i, a in enumerate(args) if len(a) > 1 and name.startswith(a.lower())), None)
 
 
@@ -638,7 +654,8 @@ _EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 
 def _read(s: str, ctx: dict, upstream: Statement | None) -> list[Statement]:
     """The statements of `s`. `ctx` holds the directory in effect, the last statement read (the
-    input of a pipe that follows a group) and whether `s` is PowerShell."""
+    input of a pipe that follows a group) and whether `s` is PowerShell.
+    """
     out: list[Statement] = []
     words: list[_Word] = []
     redirs: list[list] = []
@@ -704,7 +721,8 @@ def _skip_options(vals: list[str], i: int, takes) -> int:
 
 def _skip_wrapper(vals: list[str], i: int) -> int | None:
     """The index past wrapper `vals[i]` and its options (timeout's duration too; a runner's options
-    on both sides of its `run`); None for a runner whose subcommand is not `run`."""
+    on both sides of its `run`); None for a runner whose subcommand is not `run`.
+    """
     name = program_name(vals[i])
     if name in _RUNNERS:
         j = _skip_options(vals, i + 1, _RUNNERS[name])
@@ -826,7 +844,8 @@ _STDIN_FILES = ("-", "/dev/stdin")
 
 def _pwsh_command(args) -> int | None:
     """The index of pwsh's command-string option: -Command (any prefix) or -CommandWithArgs /
-    -cwa."""
+    -cwa.
+    """
     k = pwsh_option(args, "-command")
     return (
         k
@@ -844,7 +863,8 @@ def _pwsh_command(args) -> int | None:
 
 def python_code(st: Statement) -> list[str]:
     """The program text a python statement runs: its -c code (`-c code`, `-ccode`, `-Ic code`),
-    or the stdin text it reads as its program."""
+    or the stdin text it reads as its program.
+    """
     args, i = list(st.words[1:]), 0
     while i < len(args):
         a = args[i]
@@ -860,7 +880,8 @@ def python_code(st: Statement) -> list[str]:
 
 def reads_stdin(st: Statement) -> bool:
     """Whether a shell, cmd, PowerShell, python or node statement takes its program from stdin: no
-    command string (-c, /c, -Command, -e) and no script file, or `-` / `/dev/stdin` in its place."""
+    command string (-c, /c, -Command, -e) and no script file, or `-` / `/dev/stdin` in its place.
+    """
     name, args = st.program, list(st.words[1:])
     if PYTHON.fullmatch(name):
         i = 0
@@ -911,7 +932,8 @@ def unseen(st: Statement) -> str:
     substitution anywhere in a bash program word: `$cmd`, `./$cmd`, `g$(echo h)`; in PowerShell
     `& $x`, `. $x`, `& (...)`, where a bare `$x...` is an expression, or a script block made from
     text), text piped into a shell, cmd or node (python has its own ban), a PowerShell
-    -EncodedCommand, Invoke-Expression. The guards refuse a statement this names."""
+    -EncodedCommand, Invoke-Expression. The guards refuse a statement this names.
+    """
     if not st.words:  # an assignment or a redirect alone runs no program
         return ""
     name, args, first = st.program, st.words[1:], st.words[0]
@@ -943,7 +965,8 @@ def unseen(st: Statement) -> str:
 def parse_python(code: str) -> ast.Module | None:
     """The syntax tree of python source, or None when Python could not compile it either: a
     syntax error, a null byte or an unencodable character (ValueError), or nesting too deep for
-    the parser (MemoryError, RecursionError)."""
+    the parser (MemoryError, RecursionError).
+    """
     try:
         return ast.parse(code)
     except (SyntaxError, ValueError, MemoryError, RecursionError):
@@ -952,7 +975,8 @@ def parse_python(code: str) -> ast.Module | None:
 
 def _python_shell_commands(code: str) -> list[str]:
     """The literal commands a python program hands a shell (`os.system('git reset --hard')`,
-    `subprocess.run(['git', 'reset', '--hard'])`); code that does not parse runs nothing."""
+    `subprocess.run(['git', 'reset', '--hard'])`); code that does not parse runs nothing.
+    """
     tree = parse_python(code)
     if tree is None:
         return []
@@ -1009,7 +1033,8 @@ _GIT_GLOBAL_WITH_ARG = frozenset(
 
 def git_parts(words) -> tuple[list[str], str, list[str]]:
     """(global options, subcommand, its arguments) of a git statement's words (`-C <path>` takes
-    a separate value); ([], "", []) when the words run no git subcommand."""
+    a separate value); ([], "", []) when the words run no git subcommand.
+    """
     if not words or program_name(words[0]) != "git":
         return [], "", []
     rest = list(words[1:])

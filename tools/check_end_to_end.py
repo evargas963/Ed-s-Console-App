@@ -109,7 +109,8 @@ def _git(root: Path, *args: str, errors: str = "strict") -> str:
 
 def pr_files(root: Path, base: str, kinds: str) -> list[str]:
     """The paths the PR changes in the ways `kinds` names (git's --diff-filter letters), each as
-    written (NUL-separated, never quoted), a rename read as its deletion and its addition."""
+    written (NUL-separated, never quoted), a rename read as its deletion and its addition.
+    """
     out = _git(
         root,
         "diff",
@@ -124,7 +125,8 @@ def pr_files(root: Path, base: str, kinds: str) -> list[str]:
 
 def _diff_path(header: str) -> str:
     """The path of a diff's `+++ ` header: git C-quotes a name holding a quote, backslash or
-    non-ASCII character, and ends one holding a space with a tab."""
+    non-ASCII character, and ends one holding a space with a tab.
+    """
     name = header.removesuffix("\t")
     if name.startswith('"'):
         try:
@@ -136,7 +138,8 @@ def _diff_path(header: str) -> str:
 
 def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
     """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff; a moved
-    file adds every line it holds."""
+    file adds every line it holds.
+    """
     out: dict[str, set[int]] = {}
     path: str | None = None
     header = (
@@ -192,7 +195,8 @@ CODE_TREE_SUFFIXES = (".py", ".js", ".mjs")
 def _python_code(source: str) -> str | None:
     """The module's code with its comments and docstrings set aside (its syntax tree), or None when
     it does not parse or declares an encoding other than UTF-8 (imported, its strings would read
-    otherwise than this tree)."""
+    otherwise than this tree).
+    """
     try:
         encoding, _ = tokenize.detect_encoding(io.BytesIO(source.encode("utf-8")).readline)
         tree = ast.parse(source)
@@ -214,7 +218,8 @@ def _python_code(source: str) -> str | None:
 
 def _js_code(text: str, module: bool = False) -> str | None:
     """Page code's syntax tree, comments and positions set aside (Babel, through js_code_tree.js);
-    None when it does not parse or Node cannot run it, which counts as changed."""
+    None when it does not parse or Node cannot run it, which counts as changed.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / ("code.mjs" if module else "code.js")
         src.write_bytes(text.encode("utf-8"))  # as written: no line ending translated
@@ -233,7 +238,8 @@ def _js_code(text: str, module: bool = False) -> str | None:
 
 def code_tree(path: str, text: str) -> str | None:
     """`path`'s code, comments and docstrings set aside: Python's syntax tree, or page code's syntax
-    tree; None when it cannot be read or `path` is not one of CODE_TREE_SUFFIXES."""
+    tree; None when it cannot be read or `path` is not one of CODE_TREE_SUFFIXES.
+    """
     if path.endswith(".py"):
         return _python_code(text)
     if path.endswith((".js", ".mjs")):
@@ -295,7 +301,8 @@ RUFF_CONFIGS = ("pyproject.toml", "ruff.toml", ".ruff.toml")
 def tools_fix_is_safe(root: Path, base: str) -> bool:
     """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
     the base's Python: unsafe fixes not on, none forced safe, no import required of every file, no
-    per-file target version, the same target versions."""
+    per-file target version, the same target versions.
+    """
     try:
         _git(root, "diff", "--quiet", "HEAD", "--", "pyproject.toml")  # the tree is the commit's
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:pyproject.toml")
@@ -318,7 +325,8 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
 def tool_fixed(root: Path, path: str, text: str) -> str | None:
     """`text` as the repository's standard tools leave it: ruff's safe fixes with the repository's
     pyproject.toml, then `ruff format`, as the commit hook runs them; None when either cannot run on
-    it (its callers first check that the configuration takes only safe fixes: tools_fix_is_safe)."""
+    it (its callers first check that the configuration takes only safe fixes: tools_fix_is_safe).
+    """
     out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
     for args in (
         ["check", "--fix", "--no-unsafe-fixes", "--exit-zero", "--quiet"],
@@ -347,7 +355,8 @@ def code_identical(root: Path, base: str, path: str) -> bool:
     committed pyproject.toml when tools_fix_is_safe, reproduces the PR's file from the base's): such
     a change has nothing for a test to fail on, so it needs none. A file new to the PR, renamed,
     deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read is not
-    that."""
+    that.
+    """
     try:
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
         new = pr_source(root, path)
@@ -372,7 +381,8 @@ def behavior_change(root: Path, base: str, path: str) -> bool:
 
 def deleted_product(root: Path, base: str) -> list[str]:
     """The product files the PR deletes, a file moved away included: removing code is a change of
-    it, whatever called it."""
+    it, whatever called it.
+    """
     return [f for f in pr_files(root, base, "D") if is_product(f)]
 
 
@@ -436,7 +446,8 @@ def _none_check(test: ast.AST) -> bool:
 def _reports(handler: ast.ExceptHandler) -> bool:
     """At any depth of its own body, the except has a log call as a statement of its own, or a
     raise that is bare or carries a cause (`from e`, not `from None`): not a patch. A def or
-    class inside it does not run when the error does, so it is not read."""
+    class inside it does not run when the error does, so it is not read.
+    """
     stack: list[ast.AST] = list(handler.body)
     while stack:
         n = stack.pop()
@@ -517,7 +528,8 @@ def _zero_literal(node: ast.expr) -> bool:
 def _running_totals(tree: ast.AST) -> set[int]:
     """The `.get` calls of running totals, `d[k] = d.get(k, 0) + x`: the same mapping and key on
     both sides, the default the number 0 (an int or float, never a bool), and `x` not a literal
-    zero or empty value (`d.get(k, 0) + 0` writes a filled-in 0)."""
+    zero or empty value (`d.get(k, 0) + 0` writes a filled-in 0).
+    """
     out = set()
     for n in ast.walk(tree):
         if not (
@@ -552,7 +564,8 @@ PORT_SETTINGS = frozenset({"ED_CONSOLE_PORT", "ED_LIVE_UI_PORT", "ED_LIVE_PUSH_P
 
 def _port_settings(tree: ast.AST) -> set[int]:
     """The `.get` calls that read a port setting, exactly `os.environ.get("<name>", "<digits>")`
-    with the name one of PORT_SETTINGS."""
+    with the name one of PORT_SETTINGS.
+    """
     return {
         id(n)
         for n in ast.walk(tree)

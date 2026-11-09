@@ -19,7 +19,8 @@ _WHEN = 1790380799830  # Fri 09/25 06:59 PM CT
 
 def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
     """QUOTE_TIME and BOOK_TIME are on the book the page paints. A feed that stops does not
-    remove them, and the last bid stays."""
+    remove them, and the last bid stays.
+    """
     mark_feed_live(_TK)
     lmp.record_from_level_one_equity(
         _TK,
@@ -74,7 +75,8 @@ def test_the_book_age_is_read_from_schwabs_book_time_as_sent():
     seconds from its BOOK_TIME to now, the one age (engine.book_age_sec) the microstructure and
     the Liquidity card both serve. INDUCED CONDITION: the same message with BOOK_TIME 0. Schwab's
     0 is a value (rule 2), so the age is from 0; it was served as no age here while the card
-    served one."""
+    served one.
+    """
     rows = json.loads((_FX / "real_spy_books_2026_11_02.json").read_text(encoding="utf-8"))
     ts_recv, service, sent = next(r for r in rows["rows"] if r[1] == "NYSE_BOOK")
     assert service == "NYSE_BOOK"

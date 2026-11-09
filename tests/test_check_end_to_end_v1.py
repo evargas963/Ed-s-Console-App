@@ -1,7 +1,8 @@
 """tools/check_end_to_end.py (AGENTS.md rule 1) on real git repositories: each patch shape a pull
 request adds is refused and named; a change with none, a missing value served as missing, a
 container started empty and an old block with a line added inside it pass. What counts as a change
-of product code is read by its code, not its comments."""
+of product code is read by its code, not its comments.
+"""
 
 from __future__ import annotations
 
@@ -401,7 +402,8 @@ _TOTAL = "def total(rows):\n    sizes = {}\n    for price, size in rows:\n      
 def test_a_running_total_is_not_a_missing_value_filled_in(tmp_path, line):
     """The shares summed at each price of a book (PR #722): `sizes.get(price, 0)` is the sum of
     nothing, a real 0. The operator's spec v2 of 2026-11-03 amends the check openly for this one
-    construct."""
+    construct.
+    """
     assert _found(tmp_path, {"server.py": _TOTAL.replace("{line}", line)}) == []
 
 
@@ -441,7 +443,8 @@ _PORT = "import os\n\nPORT = int({line})\n"
 )
 def test_the_programs_port_settings_are_not_a_missing_value_filled_in(tmp_path, line):
     """The program's own port, with its written default, which a test points elsewhere: the
-    operator's amendment of 2026-11-05 ("it needs to be extremely narrow")."""
+    operator's amendment of 2026-11-05 ("it needs to be extremely narrow").
+    """
     assert _found(tmp_path, {"launch.py": _PORT.replace("{line}", line)}) == []
 
 
@@ -524,7 +527,8 @@ def test_a_line_added_inside_an_old_block_does_not_charge_the_block_to_the_pr(tm
 
 def test_a_change_to_comments_and_docstrings_only_is_not_a_product_change(tmp_path):
     """The same code once comments and docstrings are set aside: nothing for a path test to
-    cover."""
+    cover.
+    """
     root = _repo(
         tmp_path,
         {
@@ -555,15 +559,17 @@ OLD_STYLE = (
 
 
 def _tool_fixed(root: Path, text: str, config: str = RUFF_UP) -> str | None:
-    """ruff's safe fix and format of `text` with `config` in the repository, as a PR's author
-    runs them."""
+    """Ruff's safe fix and format of `text` with `config` in the repository, as a PR's author
+    runs them.
+    """
     (root / "pyproject.toml").write_text(config, encoding="utf-8")
     return cee.tool_fixed(root, "server.py", text)
 
 
 def test_a_change_the_standard_tools_make_alone_is_not_a_product_change(tmp_path):
     """A PR that turns on ruff's UP rules and takes ruff's own fix: ruff check --fix and ruff format
-    on the base file give the PR's file exactly, so it is not a product change."""
+    on the base file give the PR's file exactly, so it is not a product change.
+    """
     root = _repo(tmp_path, {**TOOLS_BASE, "server.py": OLD_STYLE})
     fixed = _tool_fixed(root, OLD_STYLE)
     assert fixed is not None and "float | None" in fixed and fixed != OLD_STYLE
@@ -584,7 +590,8 @@ def test_an_import_the_prs_ruff_settings_require_is_a_product_change(tmp_path):
 
 def test_the_tools_fix_keeps_a_files_crlf_line_endings_as_they_are(tmp_path):
     """Some product files are CRLF; the text goes to ruff and back as bytes, so no line ending is
-    doubled or dropped (on Windows a text pipe turned each CRLF into CR CR LF)."""
+    doubled or dropped (on Windows a text pipe turned each CRLF into CR CR LF).
+    """
     root = _repo(tmp_path, TOOLS_BASE)
     fixed = _tool_fixed(root, OLD_STYLE.replace("\n", "\r\n"))
     assert fixed is not None and "\r\r" not in fixed and fixed.count("\r\n") == fixed.count("\n")
@@ -605,8 +612,9 @@ STR_ENUM = 'from enum import Enum\n\n\nclass Zone(str, Enum):\n    LOW = "low"\n
 
 
 def _unsafe_rewrite(text: str) -> str:
-    """ruff's own unsafe UP042 fix of `text`, then `ruff format`: the rewrite the operator allows
-    no one to take, as ruff writes it."""
+    """Ruff's own unsafe UP042 fix of `text`, then `ruff format`: the rewrite the operator allows
+    no one to take, as ruff writes it.
+    """
     out = text.encode("utf-8")
     for args in (
         ["check", "--fix", "--unsafe-fixes", "--exit-zero", "--quiet", "--select", "UP042"],
@@ -634,7 +642,8 @@ def test_a_fix_ruff_marks_unsafe_is_a_product_change_whatever_the_prs_config_ask
     """A PR whose own pyproject.toml turns ruff's unsafe fixes on, marks one safe, or reaches
     another file that does (`extend`), and commits the unsafe rewrite of `(str, Enum)` to
     `StrEnum`, which changes what str() of a member is: the check judges ruff's own resolved
-    settings, so the rewrite is a product change that needs its test."""
+    settings, so the rewrite is a product change that needs its test.
+    """
     rewritten = _unsafe_rewrite(STR_ENUM)
     assert "StrEnum)" in rewritten
     extra = tmp_path / "extra.toml"
@@ -672,7 +681,8 @@ def test_settings_that_take_an_unsafe_fix_are_refused_whatever_file_the_change_t
 
 def test_a_fix_made_for_another_python_than_the_bases_is_a_product_change(tmp_path):
     """A fix ruff calls safe is safe for its target Python only: on 3.14 an annotation is not
-    evaluated, so ruff unquotes a forward reference that 3.13, the base's, evaluates at import."""
+    evaluated, so ruff unquotes a forward reference that 3.13, the base's, evaluates at import.
+    """
     forward = 'def f() -> "Later":\n    return None\n\n\nclass Later:\n    pass\n'
     per_file = RUFF_BASE + 'per-file-target-version = {"server.py" = "py314"}\n'
     for base, pr in (
@@ -749,7 +759,8 @@ def test_a_code_change_a_comment_reader_could_miss_is_a_product_change(
     tmp_path, path, before, after
 ):
     """The pairs differ in code, though a reader that guesses comments from characters reads them
-    the same: each is a change of product code."""
+    the same: each is a change of product code.
+    """
     root = _repo(tmp_path, {**BASE, path: before})
     _commit(root, {path: after})
     assert _changed(root) == [path]
@@ -757,7 +768,8 @@ def test_a_code_change_a_comment_reader_could_miss_is_a_product_change(
 
 def test_every_python_and_page_code_file_in_the_repo_is_read():
     """Every .py, .js and .mjs product file of this repository reads (code_tree is not None), so a
-    cleanup of its comments is judged by its code, never refused as unreadable."""
+    cleanup of its comments is judged by its code, never refused as unreadable.
+    """
     root = Path(__file__).resolve().parent.parent
     files = subprocess.run(
         ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True
@@ -817,7 +829,8 @@ def test_a_product_file_whose_name_git_quotes_is_still_read(tmp_path, path):
 @pytest.mark.parametrize("path", ["static/js/page.js", "static/js/my page.js", "static/js/café.js"])
 def test_a_patch_after_a_line_starting_with_plus_plus_is_still_refused_at_its_line(tmp_path, path):
     """An added `++ x;` reads in the diff as `+++ x;`: it is a line of the file, not a file header,
-    and every name git quotes or ends with a tab is read back as written."""
+    and every name git quotes or ends with a tab is read back as written.
+    """
     root = _repo(tmp_path, {**BASE, path: "var x = 0;\nvar a = 1;\nvar b = 2;\n"})
     _commit(
         root, {**REAL_TEST, path: "var x = 0;\n++ x;\nvar a = 1;\nvar b = 2;\nvar y = v || 0;\n"}
@@ -829,7 +842,8 @@ def test_a_patch_after_a_line_starting_with_plus_plus_is_still_refused_at_its_li
 
 def test_a_name_git_quotes_with_raw_characters_is_still_read(tmp_path):
     """With the repository's core.quotePath off, git would put a name's non-ASCII characters inside
-    its quotes as they are; the checker asks git for escapes, so the name reads back exactly."""
+    its quotes as they are; the checker asks git for escapes, so the name reads back exactly.
+    """
     path = 'static/js/a"é.js'
     root = _repo(tmp_path, BASE)
     _git_in(root, "config", "core.quotePath", "false")
@@ -881,7 +895,8 @@ def test_a_file_name_that_is_not_utf8_fails_the_check_itself(tmp_path):
 
 def test_a_patch_moved_into_product_code_is_refused_at_its_line(tmp_path):
     """A file moved from outside product paths into them brings every line it holds into product
-    code, so its patch shapes are refused there, edited or not."""
+    code, so its patch shapes are refused there, edited or not.
+    """
     root = _repo(
         tmp_path, {**BASE, "tools/helper.py": "try:\n    x()\nexcept Exception:\n    pass\n"}
     )
@@ -911,7 +926,8 @@ def test_a_product_file_replaced_by_a_link_is_a_change(tmp_path):
 
 def test_crlf_page_code_reaches_the_reader_as_written(tmp_path):
     """A template literal's line breaks are the shown string: CRLF against two line feeds is a
-    change."""
+    change.
+    """
     root = _repo(tmp_path, BASE)
     (root / "static/js/page.js").write_bytes(b"var s = `a\r\nb`;\r\n")
     _git_in(root, "commit", "-q", "-am", "crlf")
@@ -922,7 +938,7 @@ def test_crlf_page_code_reaches_the_reader_as_written(tmp_path):
 
 
 def test_a_patch_after_a_unicode_line_separator_is_refused_at_its_line(tmp_path):
-    """git numbers lines by line feed alone; a U+2028 inside a string does not start a line."""
+    """Git numbers lines by line feed alone; a U+2028 inside a string does not start a line."""
     root = _repo(tmp_path, {**BASE, "server.py": 'T = "a b"\n'})
     _commit(root, {"server.py": 'T = "a b"\nx = y or 0\n'})
     assert cee.violations(root, "main") == [
@@ -948,7 +964,8 @@ def test_a_file_that_is_not_utf8_fails_the_check_itself(tmp_path):
 
 def test_a_ruff_in_the_change_does_not_run_in_the_judge(tmp_path):
     """Run from the base with the head as its working directory: a head's `ruff.py` answering for
-    ruff would be head code inside the judge."""
+    ruff would be head code inside the judge.
+    """
     root = _repo(tmp_path, BASE)
     (root / "ruff.py").write_text("raise SystemExit('ran the head')\n", encoding="utf-8")
     (root / "pyproject.toml").write_text("", encoding="utf-8")

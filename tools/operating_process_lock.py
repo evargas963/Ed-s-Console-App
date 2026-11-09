@@ -141,7 +141,8 @@ def commit_pipe_violations(cmd: str, powershell: bool = False) -> list[str]:
     the FILTER's exit code and truncates hook output, so a failed commit reads as exit 0.
     Commits run UNPIPED;
     long hooks go to a background task whose full output is read back. Escape:
-    '# pipe-ok: <reason>' (operator-reviewed). A `|` inside a quoted -m message is not a pipe."""
+    '# pipe-ok: <reason>' (operator-reviewed). A `|` inside a quoted -m message is not a pipe.
+    """
     if not cmd or "# pipe-ok:" in cmd:
         return []
     for st in read(cmd, powershell=powershell):

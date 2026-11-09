@@ -59,7 +59,8 @@ _NAMES = re.compile(
 
 def _printed(st: Statement) -> bool:
     """Whether a PowerShell statement's program word is a quoted phrase or a here-string: a string
-    PowerShell prints, not a program (bash runs a quoted program path)."""
+    PowerShell prints, not a program (bash runs a quoted program path).
+    """
     raw0 = st.raw[0]
     return st.powershell and (
         raw0[:2] in ("@'", '@"')
@@ -73,7 +74,8 @@ def _printed(st: Statement) -> bool:
 
 def _kills(st: Statement) -> bool:
     """Whether the statement `st` ends a process from outside: a stopper, a .Kill() call, wmic's
-    delete or terminate, CIM/WMI's Terminate, a removed process object."""
+    delete or terminate, CIM/WMI's Terminate, a removed process object.
+    """
     name = st.program
     args = [a.lower() for a in st.words[1:]]
     if name in STOPPERS or any(
@@ -96,7 +98,8 @@ def _targets(st: Statement, upstream: list[str] | None) -> tuple[list[psutil.Pro
     (a stopper's bare ids and names among them), or that the listing piped straight into it
     names (`upstream`, its words as written: Get-Process, Get-CimInstance ...); and whether it
     also reaches processes chosen only when it runs: a target held in a variable ($ids,
-    $_.ProcessId), a pipe from anything but a listing (a filter), or none named at all."""
+    $_.ProcessId), a pipe from anything but a listing (a filter), or none named at all.
+    """
     text = st.text
     later = any(t.startswith("$") for t in st.words[1:] if upstream is None) or (
         upstream is not None and program_name(upstream[0]) not in LISTINGS
@@ -137,7 +140,8 @@ def _production(proc: psutil.Process) -> bool | None:
     """Whether `proc` is the daemon, the console or launch.py: its command line carries one of
     their marks and it runs in the production checkout (runtime_layout.RUNTIME_ROOT, which every
     worktree resolves to; a worktree's test console is not production). None when either cannot
-    be read."""
+    be read.
+    """
     try:
         line, cwd = " ".join(proc.cmdline()).lower(), Path(proc.cwd()).resolve()
     except psutil.NoSuchProcess:
