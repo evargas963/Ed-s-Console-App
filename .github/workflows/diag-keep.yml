@@ -50,7 +50,7 @@ jobs:
             while ((Get-Date) -lt $end) { $fs.Position = $r.Next(8192) * 4096; $fs.Write($b, 0, 4096) }
             $fs.Close()
           }
-          $jobs = 1..4 | ForEach-Object { Start-Job $churn -ArgumentList "$env:TEMP\churn$_.bin", 900 }
+          $jobs = 1..32 | ForEach-Object { Start-Job $churn -ArgumentList "$env:TEMP\churn$_.bin", 900 }
           Start-Sleep 5
           foreach ($i in 1..3) {
             "== forced C $i $(Get-Date -Format T)"
@@ -68,6 +68,7 @@ jobs:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: |
+          set +e +o pipefail
           for i in 1 2 3; do
             echo "== suite on D $i $(date +%T)"
             python -m pytest -n "$(nproc)" --dist loadfile -q -p no:cacheprovider -m "not alone" \
