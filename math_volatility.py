@@ -5,6 +5,7 @@ math_volatility.py
 
 from __future__ import annotations
 
+from micro_structure import Candle
 from option_contract import OptionContract
 
 # ── 25-delta risk reversal (skew steepness) ──────────────────────────────────
@@ -63,7 +64,7 @@ def compute_25d_risk_reversal(contracts: list[OptionContract]) -> dict | None:
 # ── ATR (Average True Range) ────────────────────────────────────────────────
 
 
-def compute_atr(candles: list, *, period: int = 14) -> float | None:
+def compute_atr(candles: list[Candle], *, period: int = 14) -> float | None:
     """
     Average True Range from OHLC candles.
 
@@ -72,7 +73,7 @@ def compute_atr(candles: list, *, period: int = 14) -> float | None:
         ATR = SMA(TR, period)
 
     Args:
-        candles:  list of candle objects/dicts with o/h/l/c or open/high/low/close
+        candles:  Schwab's candles, oldest first
         period:   ATR lookback period (default 14)
 
     Returns ATR in price points, or None if insufficient data.
@@ -80,25 +81,15 @@ def compute_atr(candles: list, *, period: int = 14) -> float | None:
     if not candles or len(candles) < period + 1:
         return None
 
-    def _get(candle, *keys):
-        for k in keys:
-            v = getattr(candle, k, None) if not isinstance(candle, dict) else candle.get(k)
-            if v is not None:
-                return float(v)
-        return None
-
     trs = []
     prev_close = None
     for candle in candles:
-        h = _get(candle, "h", "high")
-        lo = _get(candle, "l", "low")
-        c = _get(candle, "c", "close")
-
+        h, lo = candle.high, candle.low
         if prev_close is not None:
             tr = max(h - lo, abs(h - prev_close), abs(lo - prev_close))
             trs.append(tr)
 
-        prev_close = c
+        prev_close = candle.close
 
     if len(trs) < period:
         return None

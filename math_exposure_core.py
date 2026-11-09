@@ -408,14 +408,14 @@ def exposure_books(
     spot: float | None,
     now: datetime,
     product: str = "EQO",
-) -> dict[tuple[str, float | None], tuple[dict[float, dict], ExposureDiagnostics]]:
+) -> dict[tuple[str | None, float | None], tuple[dict[float, dict], ExposureDiagnostics]]:
     """Run compute_exposures_by_strike once per (expiry, days to expiry) group.
 
     Every contract is
     priced once; any subset of expiries is then a merge_exposure_books of its groups (the full
     book, 0DTE, the front expiry, <=7 / >7 days).
     """
-    groups: dict[tuple[str, float | None], list] = {}
+    groups: dict[tuple[str | None, float | None], list] = {}
     for c in contracts:
         groups.setdefault((c.expiry, c.days_to_expiry), []).append(c)
     return {

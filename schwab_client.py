@@ -630,7 +630,7 @@ def safe_get_chain(
 ):
     # `strike_range` (e.g. "ALL", every strike) and `strike_count` (N strikes around the price)
     # are different selections; a count can leave strikes out, so a given range is sent alone.
-    kwargs = {"include_underlying_quote": True}
+    kwargs: dict[str, object] = {"include_underlying_quote": True}
     if strike_range is not None:
         kwargs["strike_range"] = strike_range
     elif strike_count is not None:
