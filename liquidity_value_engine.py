@@ -976,10 +976,10 @@ def build_price_level_snapshot(
     sess_window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"
 
     if not bars_norm:
-        for fam in ("vwap", "opening_range", "overnight", "value_area"):
-            families_absent.append(
-                {"family": fam, "reason": f"no bars available (source {bar_source})"}
-            )
+        families_absent.extend(
+            {"family": fam, "reason": f"no bars available (source {bar_source})"}
+            for fam in ("vwap", "opening_range", "overnight", "value_area")
+        )
         return PriceLevelSnapshot(
             ticker=tk,
             session_date=session_date,
