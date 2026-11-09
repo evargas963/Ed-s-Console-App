@@ -1,8 +1,10 @@
-"""Schwab's streamer, played by a local WebSocket server, for tests that run the capture daemon's
-connection (capture.Daemon.run) through the real schwab-py StreamClient: it logs in (Schwab's
-REST user preferences point schwab-py at it, tests/schwab_rest_standin.py) and answers each
-request as Schwab does, in its response frame (docs/schwab/schwab_streamer_api.pdf: service,
-command, requestid, timestamp, content {code, msg}).
+"""Schwab's streamer, played by a local WebSocket server.
+
+It serves tests that run the capture daemon's connection (capture.Daemon.run) through the real
+schwab-py StreamClient: it logs in (Schwab's REST user preferences point schwab-py at it,
+tests/schwab_rest_standin.py) and answers each request as Schwab does, in its response frame
+(docs/schwab/schwab_streamer_api.pdf: service, command, requestid, timestamp, content {code,
+msg}).
 
 Real data: Schwab's answers to an ADD past LEVELONE_OPTIONS' 3,000 symbols, as the daemon logged
 them on 2026-10-07 04:40:39 (logs/stream_capture.log): code 19 "You've reached the maximum number of
@@ -53,7 +55,9 @@ def refusal(service: str, limit: int, discarded: int) -> str:
 
 
 class LocalStreamer:
-    """The streamer on 127.0.0.1 (`url`). Each request it receives is kept (`requests`), with the
+    """The streamer on 127.0.0.1 (`url`).
+
+    Each request it receives is kept (`requests`), with the
     frames it answered (`answers`). SUBS/ADD hold the keys asked for up to `limits[service]`;
     past it, the request is answered twice: code 19 (refusal) and then code 24
     ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them.
@@ -94,7 +98,8 @@ class LocalStreamer:
                 if (
                     req["command"] == "LOGOUT"
                 ):  # "Streamer will close the connection" (Streamer API §1)
-                    return await ws.close()
+                    await ws.close()
+                    return
                 if (
                     req["command"] == "SUBS"
                     and req["service"] in self.data

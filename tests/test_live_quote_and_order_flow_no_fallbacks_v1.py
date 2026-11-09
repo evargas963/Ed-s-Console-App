@@ -28,8 +28,10 @@ def test_plane_change_percent_is_schwab_net_change_percent():
 
 
 def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_it():
-    """SPY's values as Schwab sent them on 2026-09-28: pre-market, NET_CHANGE_PERCENT only
-    (extended hours included); in the session, REGULAR_MARKET_CHANGE_PERCENT with every trade.
+    """SPY's values as Schwab sent them on 2026-09-28.
+
+    Pre-market, NET_CHANGE_PERCENT only (extended hours included); in the session,
+    REGULAR_MARKET_CHANGE_PERCENT with every trade.
     """
     lmp.record_from_level_one_equity(
         "ZZREG",

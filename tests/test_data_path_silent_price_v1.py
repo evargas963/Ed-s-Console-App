@@ -23,10 +23,11 @@ from tests.test_live_push_channel_v1 import (
 
 
 def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
-    """The daemon's price socket reads every page frame: one that is not JSON (text or binary),
-    one that is not a subscribe request with a list of symbols, and a symbol in it that is not a
-    string, or is blank, are each logged with what arrived (its first 200 characters), never
-    dropped unseen, and the page is still served.
+    """The daemon's price socket reads every page frame.
+
+    One that is not JSON (text or binary), one that is not a subscribe request with a list of
+    symbols, and a symbol in it that is not a string, or is blank, are each logged with what
+    arrived (its first 200 characters), never dropped unseen, and the page is still served.
     """
 
     async def go():
@@ -73,8 +74,9 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
 
 
 def test_a_silent_daemon_keeps_the_last_price(feed):
-    """The daemon's price push goes quiet between beats. The last price stays, and the feed is
-    not live while the beat is missing.
+    """The daemon's price push goes quiet between beats.
+
+    The last price stays, and the feed is not live while the beat is missing.
     """
     age, beat = lmp.FEED_HEARTBEAT_MAX_AGE_SEC, live_ui.HEARTBEAT_SEC
     lmp.FEED_HEARTBEAT_MAX_AGE_SEC = 0.15

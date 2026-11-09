@@ -1,5 +1,6 @@
-"""DATA_FLOW decision 6: starting the console's database (EdDB) leaves every schema object it
-finds as it was, and every row of every table.
+"""DATA_FLOW decision 6: starting the console's database (EdDB) leaves everything as it was.
+
+It leaves every schema object it finds as it was, and every row of every table.
 
 The database here holds session_log, confluence_log and news_events (with their indexes), each
 with the schema it had when the console wrote it. news_events holds a

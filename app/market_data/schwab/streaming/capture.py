@@ -202,8 +202,10 @@ ADDED, REMOVED, INVALID, NOT_CHECKED, ON_LIST, NOT_ON_LIST = (
 
 
 def stored_watchlist(db_path: str | Path) -> list[str]:
-    """The watchlist as the newest stored record holds it (stream_watchlist, written by the
-    daemon's writer), read once at startup; empty when none was ever stored.
+    """Return the watchlist as the newest stored record holds it, read once at startup.
+
+    The record is stream_watchlist, written by the daemon's writer; the watchlist is empty
+    when none was ever stored.
     """
     if not Path(db_path).is_file():
         return []
@@ -228,9 +230,10 @@ def watchlist_message(
     status: int | None = None,
     answer=None,
 ) -> tuple[str, dict]:
-    """The watchlist after one request as its bus record: the whole list, what happened to
-    `ticker` (`op`), the console's request id, and Schwab's /quotes answer to the check (an add)
-    with its HTTP status, as sent.
+    """Return the watchlist after one request as its bus record.
+
+    The record holds the whole list, what happened to `ticker` (`op`), the console's request
+    id, and Schwab's /quotes answer to the check (an add) with its HTTP status, as sent.
     """
     return WATCHLIST_TOPIC, {
         "src": WATCHLIST_SRC,
@@ -245,9 +248,10 @@ def watchlist_message(
 
 
 def check_ticker(client, ticker: str) -> tuple[bool, int, object]:
-    """One /quotes request for `ticker`: (Schwab quotes it, its status, its answer as sent). A
-    ticker Schwab names in errors.invalidSymbols, or does not quote, or an answer other than 200,
-    is not a ticker Schwab answers for.
+    """One /quotes request for `ticker`: (Schwab quotes it, its status, its answer as sent).
+
+    A ticker Schwab names in errors.invalidSymbols, or does not quote, or an answer other than
+    200, is not a ticker Schwab answers for.
     """
     resp = safe_get_quotes(client, [ticker])
     try:
@@ -282,8 +286,9 @@ def split_request(symbols: list[str], max_bytes: int = MAX_REQUEST_BYTES) -> lis
 
 
 def by_gamma(contracts: list[OptionContract], price: float, now: float) -> tuple[str, ...]:
-    """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`: highest
-    Schwab gamma first, as sent (one Schwab sent none of, or as -999, ranked last); of equal
+    """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`.
+
+    Highest Schwab gamma first, as sent (one Schwab sent none of, or as -999, ranked last); of equal
     gammas the nearest expiration, then the strike nearest `price` (the lower of two equally
     near), calls before puts. A contract has expired once now passes its
     expirationDate and is left out (it stays in the records; it is never streamed); so is one
@@ -316,9 +321,11 @@ STRIKES_SAVED = 5
 def strike_ladders(
     contracts: list[OptionContract],
 ) -> list[tuple[float, list[float], dict[float, list[str]]]]:
-    """A chain's expirations, soonest first: (expiration time, its listed strikes ascending, each
-    strike's contract symbols). A contract whose strike or expiration is not a number, or that
-    has no symbol to stream, is left out (rule 2).
+    """Return a chain's expirations, soonest first.
+
+    Each is (expiration time, its listed strikes ascending, each strike's contract symbols). A
+    contract whose strike or expiration is not a number, or that has no symbol to stream, is
+    left out (rule 2).
     """
     by: dict[float, dict[float, list[str]]] = {}
     for c in contracts:
@@ -328,9 +335,11 @@ def strike_ladders(
 
 
 def saved_window(ladders: list, price: float, now: float) -> frozenset[str]:
-    """The contracts recorded of one ticker: its soonest expiration not passed at `now` (today's
-    when one is listed, else the nearest), at the strike nearest `price` (the lower of two equally
-    near) and the STRIKES_SAVED listed strikes each side of it.
+    """Return the contracts recorded of one ticker.
+
+    They are its soonest expiration not passed at `now` (today's when one is listed, else the
+    nearest), at the strike nearest `price` (the lower of two equally near) and the
+    STRIKES_SAVED listed strikes each side of it.
     """
     for expires, strikes, symbols in ladders:
         if expires > now:
@@ -360,7 +369,7 @@ SERVICE_TOPIC = {
 
 
 def _current_key(service: str, sym: str) -> str:
-    """The bus's current-record key of `sym` on `service` (stream_spine.current_key)."""
+    """Return the bus's current-record key of `sym` on `service` (stream_spine.current_key)."""
     kind, src = SERVICE_TOPIC[service]
     return current_key(f"{kind}.{sym}", {"service": service, "src": src})
 
@@ -380,8 +389,10 @@ def _message(service: str, sym: str, item: dict, schwab_ts: int | None) -> tuple
 
 
 def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
-    """schwab-py handler for one service: every item -> the bus, with the timestamp Schwab put on
-    the frame. The service counts as alive only when a frame delivered data, not merely arrived.
+    """schwab-py handler for one service: every item -> the bus.
+
+    Each item goes with the timestamp Schwab put on the frame. The service counts as alive only
+    when a frame delivered data, not merely arrived.
     """
 
     def handler(msg: dict) -> None:
@@ -400,9 +411,10 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
 
 
 class _RawHandler:
-    """schwab-py handler shape for a service it has no helper for (NEWS_HEADLINE). schwab-py
-    calls label_message on every handler of every frame; without it the call raises and the rest
-    of the frame -- prices included -- is dropped ("skipped a frame").
+    """schwab-py handler shape for a service it has no helper for (NEWS_HEADLINE).
+
+    schwab-py calls label_message on every handler of every frame; without it the call raises
+    and the rest of the frame -- prices included -- is dropped ("skipped a frame").
     """
 
     def __init__(self, fn) -> None:
@@ -427,8 +439,10 @@ def streaming_fields() -> dict[str, list[str]]:
 
 
 def _open_stream(client):
-    """schwab-py's StreamClient, recording the time of every frame Schwab sends -- data,
-    responses and Schwab's heartbeats alike. That one timestamp is the liveness test.
+    """Open schwab-py's StreamClient, recording the time of every frame Schwab sends.
+
+    Data, responses and Schwab's heartbeats alike are timed. That one timestamp is the liveness
+    test.
     """
     stream = StreamClient(client)
     stream.last_frame_ts = time_et.now()
@@ -444,8 +458,10 @@ def _open_stream(client):
 
 
 def _dispatch(stream, msg: dict) -> None:
-    """A frame's data and notifications to the services' handlers, as schwab-py's
-    handle_message hands them (Schwab's heartbeats carry nothing to hand).
+    """Hand a frame's data and notifications to the services' handlers.
+
+    They are handed as schwab-py's handle_message hands them (Schwab's heartbeats carry nothing
+    to hand).
     """
     for d in msg["data"] if "data" in msg else []:
         for handler in stream._handlers[d["service"]] if d["service"] in stream._handlers else []:
@@ -468,14 +484,14 @@ class _Sent:
 
 
 def _request_ended(task: asyncio.Future) -> None:
-    """A watchlist request's end: one that ended on an error is logged with its traceback."""
+    """Handle a watchlist request's end: one that ended on an error is logged with its traceback."""
     if not task.cancelled() and task.exception() is not None:
         e = task.exception()
         log.error("watchlist request: ended on %s: %s", type(e).__name__, e, exc_info=e)
 
 
 def _connection_lost(e: BaseException) -> bool:
-    """The socket itself is gone (as opposed to Schwab refusing one request)."""
+    """Tell whether the socket itself is gone (as opposed to Schwab refusing one request)."""
     return isinstance(e, (ConnectionClosed, ConnectionError, OSError, asyncio.IncompleteReadError))
 
 
@@ -534,8 +550,10 @@ class Daemon:
         self._down_since: float | None = None
 
     def wanted(self) -> dict[str, frozenset[str]]:
-        """What Schwab is asked for, per service: every watchlist ticker on each equity service,
-        the market context on MARKET_CONTEXT_SERVICES, and the option contracts the rule picked.
+        """Return what Schwab is asked for, per service.
+
+        That is every watchlist ticker on each equity service, the market context on
+        MARKET_CONTEXT_SERVICES, and the option contracts the rule picked.
         """
         out = {svc: frozenset(self.watchlist) for svc in EQUITY_SERVICES}
         for svc in MARKET_CONTEXT_SERVICES:
@@ -544,10 +562,11 @@ class Daemon:
         return out
 
     def ask(self) -> None:
-        """Queue, once, what this connection has not asked Schwab for: per service, UNSUBS what
-        left, then SUBS (its first request) or ADD what came. What is asked is never asked again
-        on this connection, whatever Schwab answers. Nothing is queued while no connection is
-        open: a connection asks for everything when it opens.
+        """Queue, once, what this connection has not asked Schwab for.
+
+        Per service, UNSUBS what left, then SUBS (its first request) or ADD what came. What is
+        asked is never asked again on this connection, whatever Schwab answers. Nothing is
+        queued while no connection is open: a connection asks for everything when it opens.
         """
         if self.stream is None:
             return
@@ -562,14 +581,16 @@ class Daemon:
         self.wake.set()
 
     def pick_options(self) -> None:
-        """The option rule, every watchlist ticker the same, run when a ticker's chain is put in
-        the rule's order (_rank), on a watchlist change and on the Flow panel's selection. The
-        contract selected on the Flow panel streams on both option services when a watchlist
-        ticker's chain lists it, not expired; what is left of Schwab's limit on each option
-        service (OPTION_LIMITS) is split evenly across the watchlist, and a ticker's share on each
-        is the first of its contracts in the rule's order (by_gamma). A ticker without a chain and
-        a price yet has none. When the picked contracts change, the difference is asked once (ask:
-        one UNSUBS and one ADD per service).
+        """Run the option rule, every watchlist ticker the same.
+
+        It runs when a ticker's chain is put in the rule's order (_rank), on a watchlist change
+        and on the Flow panel's selection. The contract selected on the Flow panel streams on
+        both option services when a watchlist ticker's chain lists it, not expired; what is
+        left of Schwab's limit on each option service (OPTION_LIMITS) is split evenly across the
+        watchlist, and a ticker's share on each is the first of its contracts in the rule's
+        order (by_gamma). A ticker without a chain and a price yet has none. When the picked
+        contracts change, the difference is asked once (ask: one UNSUBS and one ADD per
+        service).
         """
         ranked = [self._ranked[tk] for tk in self.watchlist if tk in self._ranked]
         flow = frozenset(c for c in [self.flow_contract] if any(c in r for r in ranked))
@@ -596,16 +617,18 @@ class Daemon:
         self.ask()
 
     def _keep_options(self) -> None:
-        """The option contracts recorded (saved_options): each ticker's window and the Flow
-        panel's.
+        """Set the option contracts recorded (saved_options).
+
+        They are each ticker's window and the Flow panel's.
         """
         self.saved_options = frozenset(c for c in [self.flow_contract] if c is not None).union(
             *self._windows.values()
         )
 
     def _place(self, ticker: str, now: float) -> None:
-        """`ticker`'s recorded window (saved_window) at its live price and `now`; while its row has
-        no price, the window it has.
+        """Place `ticker`'s recorded window (saved_window) at its live price and `now`.
+
+        While its row has no price, the window it has stands.
         """
         price = live_price_rows.spot(ticker)
         if price is not None and ticker in self._ladders:
@@ -615,8 +638,10 @@ class Daemon:
                 self._keep_options()
 
     def saves(self, topic: str, msg: dict) -> bool:
-        """Whether the writer records a bus message (CaptureWriter.saves): an option quote or an
-        option book only for a contract in saved_options; every other message.
+        """Tell whether the writer records a bus message (CaptureWriter.saves).
+
+        It records an option quote or an option book only for a contract in saved_options;
+        every other message always.
         """
         option = topic.startswith("optquote.") or (
             topic.startswith("book.") and msg["service"] == "OPTIONS_BOOK"
@@ -624,8 +649,10 @@ class Daemon:
         return not option or msg["symbol"] in self.saved_options
 
     def _rank(self, ticker: str, now: float) -> None:
-        """`ticker`'s waiting chain put in the rule's order (by_gamma) at its live price and `now`,
-        and the pick redone; while its row has no price, the chain waits and the order stands.
+        """Put `ticker`'s waiting chain in the rule's order (by_gamma) and redo the pick.
+
+        The order is taken at its live price and `now`; while its row has no price, the chain
+        waits and the order stands.
         """
         price = live_price_rows.spot(ticker)
         if price is not None:
@@ -634,8 +661,10 @@ class Daemon:
             self.pick_options()
 
     def _took_quote(self, sym: str, msg: dict) -> None:
-        """One equity quote's current record on the bus into the plane, each field at the receive
-        time of the message that carried it, and its price row to the option rule (_took_row).
+        """Take one equity quote's current record on the bus into the plane.
+
+        Each field is taken at the receive time of the message that carried it, and its price
+        row goes to the option rule (_took_row).
         """
         if lmp.record_from_level_one_equity(
             sym,
@@ -646,8 +675,9 @@ class Daemon:
             self._took_row(ticker_storage_key(sym))
 
     def _took_row(self, ticker: str) -> None:
-        """`ticker`'s price row published: a watchlist ticker's waiting chain is ordered and its
-        window placed at the price.
+        """Act on `ticker`'s price row published.
+
+        A watchlist ticker's waiting chain is ordered and its window placed at the price.
         """
         if ticker in self.watchlist:
             now = self.clock()
@@ -656,8 +686,9 @@ class Daemon:
             self._place(ticker, now)
 
     def _took_chain(self, ticker: str, record: list) -> None:
-        """A watchlist ticker's newest whole chain on the bus (its parts), ordered at its live
-        price. A failed fetch carries no contracts and changes nothing.
+        """Order a watchlist ticker's newest whole chain on the bus (its parts) at its live price.
+
+        A failed fetch carries no contracts and changes nothing.
         """
         if ticker in self.watchlist and all("contracts" in part for part in record):
             now = self.clock()
@@ -667,9 +698,10 @@ class Daemon:
             self._place(ticker, now)
 
     async def follow_market(self, stop: asyncio.Event) -> None:
-        """Until `stop`, or a follower's end: each equity quote into the plane, whose rows the
-        browsers and the option rule read (_took_quote), and each ticker's newest whole chain into
-        the option rule (_took_chain).
+        """Follow the market until `stop`, or a follower's end.
+
+        Each equity quote goes into the plane, whose rows the browsers and the option rule read
+        (_took_quote), and each ticker's newest whole chain into the option rule (_took_chain).
         """
 
         async def follow(prefix: str, take) -> None:
@@ -696,9 +728,10 @@ class Daemon:
             task.result()  # a follower's error, raised for run to name
 
     def console_frame(self, req: dict) -> None:
-        """A request from the console in this program: a watchlist request ({"op": "watchlist"},
-        answered on the bus) or the contract selected on the Flow panel ({"op": "flow_contract",
-        "contract": symbol or null}).
+        """Act on a request from the console in this program.
+
+        It is a watchlist request ({"op": "watchlist"}, answered on the bus) or the contract
+        selected on the Flow panel ({"op": "flow_contract", "contract": symbol or null}).
         """
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
@@ -710,30 +743,34 @@ class Daemon:
             self._keep_options()
 
     async def watchlist_request(self, req: dict) -> None:
-        """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
-        answered with the watchlist record (watchlist_message), which the writer stores and the
-        console receives. An added ticker is checked first with one /quotes request (check_ticker)
-        and added only when Schwab quotes it; on the list, Schwab is asked for it at once on every
-        service and by the chain sweep, and a removed one is asked for no more.
+        """Act on one add or removal from the console.
+
+        The request is {"op": "watchlist", "action", "ticker", "id"}, answered with the
+        watchlist record (watchlist_message), which the writer stores and the console receives.
+        An added ticker is checked first with one /quotes request (check_ticker) and added only
+        when Schwab quotes it; on the list, Schwab is asked for it at once on every service and
+        by the chain sweep, and a removed one is asked for no more.
         """
         ticker, rid = ticker_storage_key(str(req["ticker"])), req["id"]
         status = answer = None
         if req["action"] == "remove":
             if ticker not in self.watchlist:
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(
                         self.watchlist, op=NOT_ON_LIST, ticker=ticker, request_id=rid
                     )
                 )
+                return
             self.watchlist, op = [t for t in self.watchlist if t != ticker], REMOVED
             for held in (self._chains, self._ranked, self._ladders, self._windows):
                 held.pop(ticker, None)  # added again, it waits for its next chain
             self._keep_options()
         else:
             if ticker in self.watchlist:
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(self.watchlist, op=ON_LIST, ticker=ticker, request_id=rid)
                 )
+                return
             try:
                 quoted, status, answer = await asyncio.to_thread(
                     check_ticker, self.schwab_client(), ticker
@@ -742,7 +779,7 @@ class Daemon:
                 log.warning(
                     "watchlist: %s not checked: %s: %s", ticker, type(e).__name__, e, exc_info=True
                 )
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(
                         self.watchlist,
                         op=NOT_CHECKED,
@@ -751,6 +788,7 @@ class Daemon:
                         answer=f"{type(e).__name__}: {e}",
                     )
                 )
+                return
             if not quoted:
                 log.warning(
                     "watchlist: %s not added: Schwab's /quotes answered %s: %s",
@@ -758,7 +796,7 @@ class Daemon:
                     status,
                     json.dumps(answer),
                 )
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(
                         self.watchlist,
                         op=INVALID,
@@ -768,10 +806,12 @@ class Daemon:
                         answer=answer,
                     )
                 )
+                return
             if ticker in self.watchlist:  # added by another request during the check
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(self.watchlist, op=ON_LIST, ticker=ticker, request_id=rid)
                 )
+                return
             self.watchlist, op = [*self.watchlist, ticker], ADDED
         log.info("watchlist: %s %s; the list: %s", ticker, op, ",".join(self.watchlist))
         if self.chains is not None:
@@ -785,8 +825,10 @@ class Daemon:
         )
 
     def option_record(self, symbol: str) -> tuple[str, dict] | None:
-        """`symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record), while this
-        connection holds it on LEVELONE_OPTIONS; None otherwise (the chain sweep reads each
+        """Return `symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record).
+
+        It is returned while this connection holds it on LEVELONE_OPTIONS; None otherwise (the
+        chain sweep reads each
         contract's Greeks from it, and asks the quotes endpoint for every contract it returns None
         for: a record left from a connection that ended is not held).
         """
@@ -794,7 +836,10 @@ class Daemon:
         return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
     def status(self, now: float) -> dict:
-        """What the console and browsers are told every second (live_ui's beat), at `now`."""
+        """Return what the console and browsers are told every second (live_ui's beat).
+
+        It is taken at `now`.
+        """
         return {
             "ts": now,
             # open while a stream exists and Schwab sent a frame within DEAD_SEC
@@ -810,9 +855,10 @@ class Daemon:
         }
 
     async def send_requests(self) -> None:
-        """Send every queued request, each split under Schwab's message limit, without waiting
-        for an answer: the reader matches each answer to its request (answered). A SUBS replaces
-        all a service holds, so only its first part is SUBS and the rest are ADD.
+        """Send every queued request, each split under Schwab's message limit.
+
+        Nothing waits for an answer: the reader matches each answer to its request (answered).
+        A SUBS replaces all a service holds, so only its first part is SUBS and the rest are ADD.
         """
         while self._requests:
             svc, first, symbols = self._requests.pop(0)
@@ -827,10 +873,11 @@ class Daemon:
                 log.info("%s %s sent: %d symbols, requestid %d", svc, cmd, len(chunk), rid)
 
     def answered(self, response: dict) -> None:
-        """One answer from Schwab (an entry of a frame's `response`), matched to its request by
-        its requestid: logged and recorded (stream_subscriptions) exactly as Schwab sent it. A
-        first answer of code 0 changes what is held; a later answer to the same request is
-        recorded as its own.
+        """Take one answer from Schwab (an entry of a frame's `response`).
+
+        It is matched to its request by its requestid, logged and recorded
+        (stream_subscriptions) exactly as Schwab sent it. A first answer of code 0 changes what
+        is held; a later answer to the same request is recorded as its own.
         """
         rid = int(response["requestid"])
         sent = self._sent.get(rid)
@@ -916,10 +963,11 @@ class Daemon:
                 )
 
     async def read_for(self, seconds: float) -> None:
-        """Handle Schwab's frames for `seconds`, or until a request is waiting: each answer to
-        its request (answered), the data to the services' handlers. One task does both reading
-        and sending, and it alone reads, so every answer reaches it (websockets' recv is safe to
-        cancel, so ending early never loses a frame).
+        """Handle Schwab's frames for `seconds`, or until a request is waiting.
+
+        Each answer goes to its request (answered), the data to the services' handlers. One
+        task does both reading and sending, and it alone reads, so every answer reaches it
+        (websockets' recv is safe to cancel, so ending early never loses a frame).
         """
         end = time_et.elapsed() + seconds
         while (left := end - time_et.elapsed()) > 0 and not self.wake.is_set():
@@ -951,9 +999,10 @@ class Daemon:
                 )
 
     async def run_connection(self, client, stop: asyncio.Event) -> None:
-        """One connection's life: ask for everything once, then send what is queued and read --
-        until it dies or stop is set. A request Schwab has not answered in REQUEST_TIMEOUT_SEC
-        means the connection is broken.
+        """Run one connection's life until it dies or stop is set.
+
+        Ask for everything once, then send what is queued and read. A request Schwab has not
+        answered in REQUEST_TIMEOUT_SEC means the connection is broken.
         """
         await self.connect(client)
         try:
@@ -979,8 +1028,10 @@ class Daemon:
             await self.disconnect()
 
     async def run(self, schwab_client, stop: asyncio.Event) -> None:
-        """Connect, and reconnect with backoff whenever the connection ends, until stop, on the
-        daemon's one Schwab client (`schwab_client()`), which also makes the watchlist's checks.
+        """Connect, and reconnect with backoff whenever the connection ends, until stop.
+
+        It runs on the daemon's one Schwab client (`schwab_client()`), which also makes the
+        watchlist's checks.
         """
         self.schwab_client = schwab_client
         failures = 0
@@ -1016,13 +1067,14 @@ LOG_DAYS_KEPT = 45
 
 
 class DailyLog(logging.StreamHandler):
-    """The daemon's log in `folder`, one file a day (runtime_layout.daemon_log_path), by each
-    line's own time: the first
-    line of a day opens that day's file, then the files past the newest LOG_DAYS_KEPT are deleted.
-    No file is renamed, so another process holding one open never stops a line; a file it cannot
-    delete (held open) is logged and tried again the next day. A day's file the disk will not open
-    goes to logging's own error report (handleError, as any failed line does), never to the code
-    that logged; the next line tries it again.
+    """The daemon's log in `folder`, one file a day (runtime_layout.daemon_log_path).
+
+    Days go by each line's own time: the first line of a day opens that day's file, then the
+    files past the newest LOG_DAYS_KEPT are deleted. No file is renamed, so another process
+    holding one open never stops a line; a file it cannot delete (held open) is logged and tried
+    again the next day. A day's file the disk will not open goes to logging's own error report
+    (handleError, as any failed line does), never to the code that logged; the next line tries
+    it again.
     """
 
     def __init__(self, folder: Path):
@@ -1063,9 +1115,11 @@ class DailyLog(logging.StreamHandler):
 
 
 def stop_on_interrupt(stop: asyncio.Event, loop: asyncio.AbstractEventLoop) -> None:
-    """Ctrl+C (or Ctrl+Break) in the program's window asks for its one clean stop, the one
-    `launch.py stop` asks for (stop_on_request): everything held is written, then it exits
-    EXIT_STOPPED and its window closes. A second press ends it at once (KeyboardInterrupt, main).
+    """Make Ctrl+C (or Ctrl+Break) in the program's window ask for its one clean stop.
+
+    It is the one `launch.py stop` asks for (stop_on_request): everything held is written, then
+    it exits EXIT_STOPPED and its window closes. A second press ends it at once
+    (KeyboardInterrupt, main).
     """
 
     def interrupted(_signum, _frame) -> None:
@@ -1135,10 +1189,11 @@ FEED_STATUS_EVERY_SEC = 60.0
 async def record_feed_status(
     daemon: Daemon, stop: asyncio.Event, every: float = FEED_STATUS_EVERY_SEC
 ) -> None:
-    """Every `every` seconds (once a minute), per Schwab feed: checked at X (the same X for every
-    feed), is the socket open, when Schwab last sent anything, how many symbols are subscribed, and
-    when this feed last carried data -- so a quiet feed and a dead one read differently in the
-    database.
+    """Record every `every` seconds (once a minute) the status of each Schwab feed.
+
+    Per feed: checked at X (the same X for every feed), is the socket open, when Schwab last
+    sent anything, how many symbols are subscribed, and when this feed last carried data -- so a
+    quiet feed and a dead one read differently in the database.
     """
     while True:
         now = time_et.now()
@@ -1165,7 +1220,9 @@ async def record_feed_status(
 
 
 class _PagesServer(uvicorn.Server):
-    """The console's web server inside this program. The program's interrupt handler
+    """The console's web server inside this program.
+
+    The program's interrupt handler
     (INTERRUPTS) is the one stop, so the server takes no signal of its own: uvicorn's would stop
     the pages first and wait out every open page before the program heard it.
     """
@@ -1189,11 +1246,10 @@ PAGES = {
 
 
 async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket) -> None:
-    """Serve the console's pages and routes (server.app) and the page's socket on `sock` until
-    `stop`.
+    """Serve the console's pages and routes (server.app) and the page's socket until `stop`.
 
-    They read the daemon's one bus (console_feed.bind_daemon): one program, one copy of every
-    value.
+    The page's socket is on `sock`. They read the daemon's one bus (console_feed.bind_daemon):
+    one program, one copy of every value.
     """
     console_feed.bind_daemon(daemon)
     web = _PagesServer(uvicorn.Config(server.app, **PAGES))
@@ -1221,8 +1277,10 @@ STREAM_ITEM = {
 
 
 def pushed_fields(item: dict) -> str:
-    """One pushed Schwab item, readable on one line: each field Schwab sent in it, a single value
-    as sent, a list (a book's levels) as how many it holds.
+    """Return one pushed Schwab item, readable on one line.
+
+    Each field Schwab sent in it is shown, a single value as sent, a list (a book's levels) as
+    how many it holds.
     """
     return ", ".join(
         f"{k} [{len(v)}]" if isinstance(v, list) else f"{k} {v}"
@@ -1232,7 +1290,9 @@ def pushed_fields(item: dict) -> str:
 
 
 async def show_stream(bus: MessageBus, stop: asyncio.Event, every: float = 1.0) -> None:
-    """The daemon's window, every `every` seconds: per Schwab service, the messages Schwab pushed
+    """Show the stream in the daemon's window, every `every` seconds.
+
+    Per Schwab service: the messages Schwab pushed
     (PUSH: none of it was asked for; the REQUEST lines are the REST calls), how many symbols they
     came for, and the newest one's fields as Schwab sent them (pushed_fields), so the operator
     can watch what the stream carries.
@@ -1276,7 +1336,9 @@ KEEP_EVERY_SEC = 60.0
 
 
 async def keep_sessions(daemon: Daemon, stop: asyncio.Event) -> None:
-    """Once after each close of the last option market (time_et.options_closed_at), the writer
+    """Keep the newest SESSIONS_KEPT sessions, once after each close of the last option market.
+
+    Once after each close of the last option market (time_et.options_closed_at), the writer
     removes every row received before the newest SESSIONS_KEPT sessions began
     (time_et.sessions_since, from Schwab's /markets answers; CaptureWriter.prune). While today's
     market is unknown or open, or fewer sessions are held, nothing is removed: never on a
@@ -1310,7 +1372,7 @@ async def keep_sessions(daemon: Daemon, stop: asyncio.Event) -> None:
 
 
 def _worker_ended(worker: asyncio.Future) -> None:
-    """The chain sweep's end: one that ended on an error is logged with its traceback."""
+    """Handle the chain sweep's end: one that ended on an error is logged with its traceback."""
     if not worker.cancelled() and worker.exception() is not None:
         e = worker.exception()
         log.error("chain sweep: ended on %s: %s", type(e).__name__, e, exc_info=e)
@@ -1319,9 +1381,11 @@ def _worker_ended(worker: asyncio.Future) -> None:
 async def run_chains(
     daemon: Daemon, db_path, schwab_client, stop: asyncio.Event, *, failures: CaptureWriter
 ) -> None:
-    """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own thread, so the
-    stream never waits on a chain; each chain part is published on the event loop, and the bus
-    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). The sweep reads
+    """Run the chain sweep (calibration.complete_chain_capture.ChainSweep) on its own thread.
+
+    So the stream never waits on a chain; each chain part is published on the event loop, and
+    the bus keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). The sweep
+    reads
     each option's LEVELONE_OPTIONS record from the bus for its Greeks. A chain whose history write
     fails is kept by `failures`, the daemon's writer (its failures ride the heartbeat). A sweep
     that ends on an error is logged with it (_worker_ended): its thread has no error output of
@@ -1349,11 +1413,13 @@ async def run_chains(
 
 
 def one_schwab_client(build) -> callable:
-    """The daemon's one Schwab client, for the stream and every chain request, as a function
-    that returns it: built (`build()`, a SchwabClientState) when first asked for, then kept for
-    the daemon's life. Its session is the one owner of the token: it refreshes it (one refresh
-    at a time, schwab_client.OneRefreshSession) and writes it to the token file. A build that
-    fails raises, and the next ask builds again; a built client is never replaced.
+    """Return the daemon's one Schwab client, for the stream and every chain request.
+
+    It comes as a function that returns it: built (`build()`, a SchwabClientState) when first
+    asked for, then kept for the daemon's life. Its session is the one owner of the token: it
+    refreshes it (one refresh at a time, schwab_client.OneRefreshSession) and writes it to the
+    token file. A build that fails raises, and the next ask builds again; a built client is
+    never replaced.
     """
     built: list = []
     building = threading.Lock()

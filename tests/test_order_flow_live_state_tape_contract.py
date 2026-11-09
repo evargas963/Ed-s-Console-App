@@ -1,5 +1,6 @@
-"""app.options.order_flow.state must preserve a genuinely-missing last-trade size as
-missing, not coerce it to zero -- downstream order-flow consumers need to tell
+"""app.options.order_flow.state must preserve a genuinely-missing last-trade size as missing.
+
+It must not coerce it to zero -- downstream order-flow consumers need to tell
 "no size reported" apart from "size was zero".
 """
 

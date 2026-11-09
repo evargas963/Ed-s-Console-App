@@ -1,6 +1,8 @@
-"""The Flow panel's contract (/api/order-flow/options-microstructure), Schwab to the screen, through
-the real code: the daemon's pushed messages applied by the console (streaming._ingest_pushed), the
-daemon's status (live_market_plane.record_feed_heartbeat), the route.
+"""The Flow panel's contract (/api/order-flow/options-microstructure), Schwab to the screen.
+
+Through the real code: the daemon's pushed messages applied by the console
+(streaming._ingest_pushed), the daemon's status (live_market_plane.record_feed_heartbeat), the
+route.
 
 Real data: every message of SPY 2026-10-05 774 call received 2026-10-05 14:00:00-14:00:03 CT, as
 Schwab sent them (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json: four OPTIONS_BOOK
@@ -34,8 +36,9 @@ BOOKS = [
 
 
 def _daemon_holds(*services: str, now: float | None = None) -> None:
-    """The daemon's heartbeat stamped `now` (the wall clock when not given), holding CONTRACT on
-    `services`.
+    """Record the daemon's heartbeat stamped `now`, holding CONTRACT on `services`.
+
+    `now` is the wall clock when not given.
     """
     lmp.record_feed_heartbeat(
         daemon_status(
@@ -51,8 +54,9 @@ def _route() -> dict:
 
 
 def test_the_flow_panel_shows_schwabs_newest_option_book_as_sent():
-    """Each OPTIONS_BOOK message the daemon pushes reaches the Flow panel: its top level's sizes
-    are Schwab's newest book's, as sent.
+    """Each OPTIONS_BOOK message the daemon pushes reaches the Flow panel.
+
+    Its top level's sizes are Schwab's newest book's, as sent.
     """
     ofls.clear_all_live_state()
     _daemon_holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
@@ -86,10 +90,11 @@ def test_with_no_book_from_schwab_the_flow_panel_says_so():
 
 
 def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
-    """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
-    does not, and when its status is gone (a daemon that stopped reporting holds nothing). A
-    contract of SPY's 2026-10-07 0DTE chain, served at that chain's capture (12:32 ET, the option
-    market open).
+    """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; else NOT STREAMED.
+
+    NOT STREAMED when it does not, and when its status is gone (a daemon that stopped reporting
+    holds nothing). A contract of SPY's 2026-10-07 0DTE chain, served at that chain's capture
+    (12:32 ET, the option market open).
     """
     contract, at = SPY_0DTE.chain[0]["symbol"], SPY_0DTE.now.timestamp()
 

@@ -38,7 +38,7 @@ _FORWARDED = {
 
 
 def is_forwarded(topic: str, msg) -> bool:
-    """A record that came from Schwab (a chain: its parts)."""
+    """Tell whether a record came from Schwab (a chain: its parts)."""
     if isinstance(msg, list) and msg:
         msg = msg[0]
     if not isinstance(msg, dict):

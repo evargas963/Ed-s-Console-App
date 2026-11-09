@@ -1,4 +1,5 @@
 """An AM-settled contract past the year Schwab's /markets answers runs to Schwab's expirationDate.
+
 $SPX's 2027-12-17 expiry, captured 2026-10-07 10:37 ET, 288 contracts with open interest.
 """
 

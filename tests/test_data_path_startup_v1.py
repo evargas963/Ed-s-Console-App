@@ -1,7 +1,10 @@
-"""The capture daemon's start, Schwab to the screen: its window closes when its batch ends, and the
+"""The capture daemon's start, Schwab to the screen.
+
+Its window closes when its batch ends, and the
 stop takes only this checkout's processes; why Schwab is not connected reaches the daemon's log and
 /api/health on its heartbeat; a module that fails to load, and a chain sweep thread that ends on an
-error, leave their reason in the daemon's log."""
+error, leave their reason in the daemon's log.
+"""
 
 from __future__ import annotations
 
@@ -71,9 +74,10 @@ async def _until(cond, limit: float = 10.0) -> None:
 
 
 def test_a_page_is_refused_while_the_program_serves_no_prices():
-    """The program's web server answers the page's price socket (/ws) only while the program
-    serves prices (live_ui.serve_live_ui): a page that comes before is refused, and its reconnect
-    keeps its schedule, never served rows nobody produces.
+    """The program's web server answers the page's price socket (/ws) only while it serves prices.
+
+    The program serves prices in live_ui.serve_live_ui: a page that comes before is refused, and
+    its reconnect keeps its schedule, never served rows nobody produces.
     """
 
     async def go():
@@ -98,9 +102,11 @@ def test_a_page_is_refused_while_the_program_serves_no_prices():
     sys.platform != "win32", reason="the daemon's window is a Windows console window"
 )
 def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
-    """The launcher's command for the daemon's window (launch.daemon_window) runs the batch in a
-    window of its own; when the batch ends (the daemon stopped on request), the window's cmd ends
-    too, so no empty window stays open."""
+    """The launcher's command for the daemon's window runs the batch in a window of its own.
+
+    The command is launch.daemon_window. When the batch ends (the daemon stopped on request),
+    the window's cmd ends too, so no empty window stays open.
+    """
     window_pid = tmp_path / "window.pid"
     bat = tmp_path / "daemon.bat"
     bat.write_text(
@@ -130,13 +136,16 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
 )
 def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
-    """The real start_capture_daemon.bat in a folder of its own, with launch.py and a virtual
-    environment beside it, starts the real daemon in its window (no Schwab token, ports of its
-    own). The stop finds it by launch.DAEMON_START and ends it, exit 0, and the batch does not
-    restart it. A batch line apart from DAEMON_START would read "not running", leaving it up.
-    The daemon has an error output, its window, where an error while it loads shows (operator
-    2026-11-04: "i would rather run capture main on python instead of pythonw"; under pythonw it
-    had none): induced, a sitecustomize notes it for each process by its id."""
+    """The real start_capture_daemon.bat in a folder of its own starts the real daemon.
+
+    With launch.py and a virtual environment beside it, it starts the real daemon in its window
+    (no Schwab token, ports of its own). The stop finds it by launch.DAEMON_START and ends it,
+    exit 0, and the batch does not restart it. A batch line apart from DAEMON_START would read
+    "not running", leaving it up. The daemon has an error output, its window, where an error
+    while it loads shows (operator 2026-11-04: "i would rather run capture main on python
+    instead of pythonw"; under pythonw it had none): induced, a sitecustomize notes it for each
+    process by its id.
+    """
     home = tmp_path / "checkout"
     home.mkdir()
     for name in ("launch.py", "start_capture_daemon.bat"):
@@ -210,11 +219,14 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
-    """launch.stop finds the program by launch.running: of two processes started the same way, the
+    """launch.stop finds the program by launch.running.
+
+    Of two processes started the same way, the
     one started in this checkout's folder (as its batch is) is found, and the one started in
     another folder (another checkout's program, a test's) is not, so the stop never waits on it
     instead of this one. Induced test condition: two sleeping Pythons started by a script of this
-    test's own."""
+    test's own.
+    """
     start = ["-c", f"import time; time.sleep(60)  # {os.getpid()}-{uuid.uuid4().hex}"]
     ours, theirs = (
         subprocess.Popen([sys.executable, *start], cwd=cwd) for cwd in (launch.ROOT, tmp_path)
@@ -240,9 +252,12 @@ def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
 
 
 def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
-    """A forced thread error: the sweep's client raises an error the sweep does not catch (one
+    """A forced thread error ends the sweep's thread and run_chains, logged with its traceback.
+
+    The sweep's client raises an error the sweep does not catch (one
     not an Exception), its thread ends, the daemon's log has it with its traceback, and
-    run_chains ends with it, before any stop (run then ends the daemon)."""
+    run_chains ends with it, before any stop (run then ends the daemon).
+    """
 
     class ForcedThreadError(BaseException):
         pass
@@ -278,8 +293,10 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
 
 
 def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
-    """Induced condition: SPY's same-day chain captured 2026-09-22 with one contract replaced by
-    text, not a contract, so reading the chain raises. follow_market ends on that error."""
+    """Induced condition: SPY's 2026-09-22 same-day chain with one contract replaced by text.
+
+    Text, not a contract, so reading the chain raises. follow_market ends on that error.
+    """
     fixture = json.loads(
         (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
     )
@@ -301,10 +318,12 @@ def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
 
 
 def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
-    """Induced condition: SPY's same-day chain captured 2026-09-22 with one contract's symbol taken
-    out, on the daemon's bus. The strike ladders the daemon records from hold every other contract
+    """Induced condition: SPY's 2026-09-22 same-day chain with one contract's symbol taken out.
+
+    On the daemon's bus. The strike ladders the daemon records from hold every other contract
     and no blank symbol (rule 2: no symbol is no contract to stream or record), and
-    follow_market keeps running."""
+    follow_market keeps running.
+    """
     fixture = json.loads(
         (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
     )
@@ -338,10 +357,12 @@ def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
 
 
 def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price(tmp_path):
-    """Induced condition: SPY's same-day chain captured 2026-09-22 16:46 UTC, at that time, with one
-    contract's putCall taken out, arriving before SPY has a price. When SPY's price comes the option
-    rule orders the chain without it (rule 2: no side is no contract to stream), and
-    follow_market keeps running."""
+    """Induced condition: SPY's 2026-09-22 same-day chain with one contract's putCall taken out.
+
+    Captured 16:46 UTC, at that time, arriving before SPY has a price. When SPY's price comes
+    the option rule orders the chain without it (rule 2: no side is no contract to stream), and
+    follow_market keeps running.
+    """
     fixture = json.loads(
         (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
     )
@@ -389,9 +410,11 @@ def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price(tmp_p
 
 
 def test_a_plane_row_listener_that_fails_ends_the_market_follower():
-    """Induced condition: a row listener that raises, added through the plane's own
-    add_row_listener. SPY's price (its 2026-09-22 capture's) reaches the plane: follow_market ends
-    on the listener's error instead of the plane swallowing it."""
+    """Induced condition: a row listener that raises, added through the plane's own listener API.
+
+    Added through add_row_listener. SPY's price (its 2026-09-22 capture's) reaches the plane:
+    follow_market ends on the listener's error instead of the plane swallowing it.
+    """
     fixture = json.loads(
         (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
     )
@@ -428,10 +451,12 @@ def test_a_plane_row_listener_that_fails_ends_the_market_follower():
 
 
 def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, caplog):
-    """The daemon's one client, built by the real builder from a token file that does not exist:
-    the connection fails; the daemon's log has why, with its traceback, and its heartbeat, taken
+    """The daemon's one client, built by the real builder from a token file that does not exist.
+
+    The connection fails; the daemon's log has why, with its traceback, and its heartbeat, taken
     from the daemon's price socket as the console takes it, gives /api/health the same words with
-    since when."""
+    since when.
+    """
     schwab_client = capture.one_schwab_client(
         lambda: build_client_from_token(
             str(tmp_path / "missing_token.json"), "LiveLookingKey", "LiveLookingSecret"
@@ -483,15 +508,18 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
 def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_stop_is_not_held(
     caplog,
 ):
-    """The daemon's price socket (serve_live_ui, its heartbeat the daemon's own status, at /ws on
-    the program's web server) and two real browser sockets: one reads every frame, one stops
+    """The daemon's price socket and two real browser sockets, one of which stops reading.
+
+    The price socket is serve_live_ui, its heartbeat the daemon's own status, at /ws on the
+    program's web server. Of the two real browser sockets, one reads every frame, one stops
     reading once its one-message queue is full. The one that stopped reading is found once (its
     buffers full for HEARTBEAT_SEC, so its beat is not taken), dropped (its connection aborted by
     live_ui.PageSocket: a close frame cannot be written to a browser that does not read), and its
     handler ends; the reading browser takes each of the next four beats in time (no other beat
     fails); the daemon's stop ends the server with no error. Induced test condition: each beat
     carries a 2 MB pad, so the stalled socket's buffers fill in seconds (the real status, a few
-    KB, takes far longer)."""
+    KB, takes far longer).
+    """
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
 
     async def go():
@@ -549,14 +577,16 @@ def _end(process: subprocess.Popen) -> None:
 
 
 def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
-    """The real daemon as its batch runs it, in a folder of its own with launch.py beside it, so
-    the stop reaches nothing else; no Schwab token, ports the system picks as it binds them.
+    """The real daemon as its batch runs it, in a folder of its own with launch.py beside it.
+
+    So the stop reaches nothing else; no Schwab token, ports the system picks as it binds them.
     Another checkout's stop leaves it alone. A stop from a runtime where no program made its stop
     request (no lock, or a lock whose holder has ended), so another runtime's, cannot ask it: it
     says so and that the daemon is still running, exit 1. A page on the daemon's own pages' port,
     /ws, is answered with what it subscribed to and takes the daemon's beat; a stop in the
     daemon's runtime, that page connected, ends the daemon and the page's socket with it, exit 0.
-    Induced test condition: the runtime folders a stop reads, of the test's own."""
+    Induced test condition: the runtime folders a stop reads, of the test's own.
+    """
     home, other = tmp_path / "checkout", tmp_path / "other_checkout"
     for folder in (home, other):
         folder.mkdir()
@@ -632,9 +662,12 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
 
 
 def test_the_stop_reads_no_process_parent(tmp_path):
-    """A stop in a checkout where nothing runs answers at once though reading a process's parent
-    is slow, as psutil's is on Windows (one snapshot of every process per parent): the scan asks
-    no parent. Induced test condition: each parent read held for 1 s."""
+    """A stop in a checkout where nothing runs answers at once.
+
+    It does so though reading a process's parent is slow, as psutil's is on Windows (one
+    snapshot of every process per parent): the scan asks no parent. Induced test condition: each
+    parent read held for 1 s.
+    """
     home, slow = tmp_path / "checkout", tmp_path / "slow"
     for folder in (home, slow):
         folder.mkdir()
@@ -658,10 +691,12 @@ def test_the_stop_reads_no_process_parent(tmp_path):
 
 
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
-    """The real daemon found while it loads, its stop request not made yet, then ending on its own
-    because its pages' port is held, the code its window restarts on: the stop could not ask
+    """The real daemon found while it loads, its stop request not made yet, then ending on its own.
+
+    It ends because its pages' port is held, the code its window restarts on: the stop could not ask
     it, so it does not read "stopped" and exits 1. Induced test condition: the daemon's load is
-    held until the stop has found it and said it could not ask it, however late the stop starts."""
+    held until the stop has found it and said it could not ask it, however late the stop starts.
+    """
     home, site = tmp_path / "checkout", tmp_path / "site"
     for folder in (home, site):
         folder.mkdir()
@@ -718,8 +753,11 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
 
 
 def test_a_process_that_only_names_the_console_is_not_the_console():
-    """A shell and Pythons in the checkout that name the program (Ed Console, capture_main), in
-    their text or as an argument of their own, as a process search does, are not taken for it."""
+    """A shell and Pythons in the checkout that name the program are not taken for it.
+
+    They name it (Ed Console, capture_main) in their text or as an argument of their own, as a
+    process search does.
+    """
     named = launch.DAEMON_START[-1]
     wait = ["cmd", "/c", f"ping -n 30 127.0.0.1 >nul & rem {named}"]
     if sys.platform != "win32":
@@ -781,10 +819,13 @@ def test_a_module_that_fails_to_load_shows_its_reason_in_the_daemons_window(tmp_
 def test_a_daemon_whose_pages_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(
     tmp_path,
 ):
-    """Another socket holds the pages' port (the page's price socket's too): the daemon, run as
+    """Another socket holds the pages' port (the page's price socket's too).
+
+    The daemon, run as
     its window runs it, ends as it opens its sockets, with the bind's error naming the port in its
     log and an exit code its window restarts on (not EXIT_STOPPED), instead of running with no
-    browser served."""
+    browser served.
+    """
     with socket.create_server((live_ui.CONSOLE_HOST, 0)) as held:  # where the daemon binds
         port = held.getsockname()[1]
         env = {
@@ -809,14 +850,17 @@ def test_a_daemon_whose_pages_port_is_held_ends_at_once_with_why_and_its_window_
 
 
 def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks():
-    """At a console start, the stored captures of the tickers the daemon has not delivered yet are
-    priced while a page views a ticker whose options stream. Through the real code, on Schwab's
+    """At a console start, stored captures are priced while a page views a streamed ticker.
+
+    The stored captures of the tickers the daemon has not delivered yet are priced while a page
+    views a ticker whose options stream. Through the real code, on Schwab's
     captures (tests/real_chains.py): CRWD's chain delivered and priced, a page open on it
     (push_changes); MRVL's and NFLX's captures stored as the daemon writes them (one row per
     expiry, at each capture's time) and queued by the startup load. Induced test condition: one
     of CRWD's contracts ticks back to back (_on_stream_tick, a reprice on each), so a tick lands
     during every pricing. Both stored captures are priced within 10 s, and CRWD is repriced
-    meanwhile."""
+    meanwhile.
+    """
     tk, stored = "CRWD", (MRVL, NFLX)
     names = tuple(c.ticker for c in stored)
     contracts = [dict(ct) for ct in CRWD.chain]
@@ -895,16 +939,21 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
 
 
 def test_a_database_path_under_backups_is_refused_as_any_other_non_canonical_path(tmp_path):
-    """No database backups are kept (operator 2026-10-10): a path under backups/db/ is no class
-    of its own. The console's database (db.EdDB) refuses it as it refuses every path but the
-    canonical one, named unknown."""
+    """No database backups are kept (operator 2026-10-10).
+
+    A path under backups/db/ is no class of its own. The console's database (db.EdDB) refuses it
+    as it refuses every path but the canonical one, named unknown.
+    """
     with pytest.raises(ValueError, match=r"classification=unknown"):
         db.EdDB(tmp_path / "backups" / "db" / "ed_console.db", allow_noncanonical=False)
 
 
 def test_the_console_database_starts_without_the_former_ticker_board(tmp_path):
-    """One watchlist, kept by the daemon (#486): the console's database (db.EdDB) creates only
-    the level crosses at its start, never the former ticker board's logging_universe."""
+    """One watchlist, kept by the daemon (#486).
+
+    The console's database (db.EdDB) creates only the level crosses at its start, never the
+    former ticker board's logging_universe.
+    """
     path = tmp_path / "ed_console.db"
     db.EdDB(path, allow_noncanonical=True)
     with sqlite3.connect(path) as conn:

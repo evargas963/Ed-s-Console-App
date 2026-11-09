@@ -1,6 +1,8 @@
-"""tools/keep_going.py, the Stop hook (AGENTS.md Authority): while the SHAPE row is IN PROGRESS a
-stop is refused unless the agent's final message begins `WAITING ON OPERATOR:`. Run as the settings
-wire it, on a session transcript in Claude Code's JSON-lines form.
+"""tools/keep_going.py, the Stop hook (AGENTS.md Authority).
+
+While the SHAPE row is IN PROGRESS a stop is refused unless the agent's final message begins
+`WAITING ON OPERATOR:`. Run as the settings wire it, on a session transcript in Claude Code's
+JSON-lines form.
 """
 
 from __future__ import annotations
@@ -63,8 +65,9 @@ def _git(repo: Path, *args: str) -> None:
 
 
 def _production(temp: Path, at_main: bool) -> Path:
-    """A production checkout of the real hook and this repository's work list, committed, its
-    `origin/main` at HEAD; one commit past it when not `at_main`.
+    """Make a production checkout of the real hook and this repository's work list, committed.
+
+    Its `origin/main` at HEAD; one commit past it when not `at_main`.
     """
     prod = temp / ("production" if at_main else "production-behind")
     if not prod.exists():
@@ -83,10 +86,11 @@ def _production(temp: Path, at_main: bool) -> Path:
 def _run(
     payload, temp: Path, *, at_main: bool = True, listening: bool = True
 ) -> subprocess.CompletedProcess:
-    """The script the settings wire for Stop, on `payload` as Claude Code sends it, run from a
-    production checkout in `temp` with the console's port pointed at a free port of the test's
-    own (listening unless told not to), and `temp` as its temp folder, so the counts and orders it
-    keeps stay in the test's own folder.
+    """Run the script the settings wire for Stop, on `payload` as Claude Code sends it.
+
+    Run from a production checkout in `temp` with the console's port pointed at a free port of
+    the test's own (listening unless told not to), and `temp` as its temp folder, so the counts
+    and orders it keeps stay in the test's own folder.
     """
     prod = _production(temp, at_main)
     with socket.socket() as console:
@@ -118,9 +122,11 @@ def _run(
     ],
 )
 def test_a_stop_is_refused_while_production_does_not_run_main(at_main, listening, why, tmp_path):
-    """Operator 2026-11-07: Windows Update restarted the machine and Ed Console stayed down 25
-    hours with no one told. A stop is refused, whatever SHAPE says, while production's checkout is
-    not at main or nothing listens on its port; WAITING ON OPERATOR passes (he may stop it).
+    """Operator 2026-11-07: Windows Update restarted the machine and Ed Console stayed down.
+
+    It stayed down 25 hours with no one told. A stop is refused, whatever SHAPE says, while
+    production's checkout is not at main or nothing listens on its port; WAITING ON OPERATOR
+    passes (he may stop it).
     """
     said = {"session_id": "p", "last_assistant_message": "SHAPE is finished."}
     run = _run(said, tmp_path, at_main=at_main, listening=listening)
@@ -130,8 +136,9 @@ def test_a_stop_is_refused_while_production_does_not_run_main(at_main, listening
 
 
 def test_the_settings_run_it_on_stop_and_it_answers_by_this_repositorys_shape_row(tmp_path):
-    """The command `.claude/settings.json` wires for Stop, run on a payload in Claude Code's form:
-    it refuses the stop with the reason while this repository's SHAPE row is open, and lets it end
+    """The command `.claude/settings.json` wires for Stop, run on a payload in Claude Code's form.
+
+    It refuses the stop with the reason while this repository's SHAPE row is open, and lets it end
     once it is not.
     """
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
@@ -168,9 +175,11 @@ TOOL_ONLY = {"type": "assistant", "message": {"content": [{"type": "tool_use", "
 
 
 def test_the_final_message_is_the_last_assistant_entry_and_a_bad_line_never_decides(tmp_path):
-    """A turn that ends on a tool call has no final text, so an earlier WAITING message does not
-    stand in for it; a line that is not a JSON object (damaged, or `null`) is skipped, so one bad
-    line never refuses every later stop; the payload's own final message wins when it is sent.
+    """A turn that ends on a tool call has no final text.
+
+    So an earlier WAITING message does not stand in for it; a line that is not a JSON object
+    (damaged, or `null`) is skipped, so one bad line never refuses every later stop; the
+    payload's own final message wins when it is sent.
     """
     waiting = _said("WAITING ON OPERATOR: his yes to a change of a request rate.")
     assert keep_going.last_message(_entries(tmp_path, waiting, TOOL_ONLY)) == ""
@@ -193,8 +202,9 @@ def test_the_final_message_is_the_last_assistant_entry_and_a_bad_line_never_deci
 
 
 def test_a_payload_it_cannot_read_refuses_the_stop_with_the_reason(tmp_path):
-    """Not JSON refuses always; a payload without a transcript refuses while SHAPE is open (the row
-    is read first, so once SHAPE is finished it holds no session).
+    """Not JSON refuses always; a payload without a transcript refuses while SHAPE is open.
+
+    The row is read first, so once SHAPE is finished it holds no session.
     """
     run = _run("not json", tmp_path)
     assert run.returncode == 2 and "cannot judge the stop" in run.stderr
@@ -208,9 +218,11 @@ def test_a_payload_it_cannot_read_refuses_the_stop_with_the_reason(tmp_path):
 
 
 def test_from_the_third_refusal_in_a_row_the_reason_sends_the_agent_to_bedrock(tmp_path):
-    """Refused stops in a row mean the work may not be working (AGENTS.md Authority); from the third
-    the reason says so and sends the agent to the cause and a different approach, still working. A
-    stop the hook did not refuse (`stop_hook_active` false) starts the count again.
+    """Refused stops in a row mean the work may not be working (AGENTS.md Authority).
+
+    From the third the reason says so and sends the agent to the cause and a different approach,
+    still working. A stop the hook did not refuse (`stop_hook_active` false) starts the count
+    again.
     """
     counts = [
         keep_going.in_a_row({"session_id": "s-1", "stop_hook_active": active}, tmp_path)
@@ -229,8 +241,10 @@ def test_from_the_third_refusal_in_a_row_the_reason_sends_the_agent_to_bedrock(t
 
 
 def test_the_hook_as_wired_counts_its_refusals_and_an_allowed_stop_writes_no_count(tmp_path):
-    """Run as the settings wire it: three refused stops of one session reach the bedrock reason on
-    the third; a stop marked WAITING ON OPERATOR is let through and leaves no count.
+    """Run as the settings wire it: three refused stops reach the bedrock reason on the third.
+
+    The three are of one session; a stop marked WAITING ON OPERATOR is let through and leaves no
+    count.
     """
     if not keep_going.OPEN.search((REPO / "ACTIVE_PROGRAM.md").read_text(encoding="utf-8")):
         pytest.skip("SHAPE is finished: the hook refuses no stop")
@@ -262,7 +276,9 @@ def test_the_hook_as_wired_counts_its_refusals_and_an_allowed_stop_writes_no_cou
 
 
 def test_every_message_is_read_and_every_order_answered_before_the_turn_ends(tmp_path):
-    """Operator 2026-11-07: "once i tell you do something, you must do it ... you must enforce
+    """A stop is refused until each message is read and each order answered.
+
+    Operator 2026-11-07: "once i tell you do something, you must do it ... you must enforce
     this rule"; 2026-11-08: "you must ask if it's an order and if it is an order then you must
     immediately tell me if it breaks anything". A stop is refused until each message is read, and
     each read as an order is answered, SHAPE or not.

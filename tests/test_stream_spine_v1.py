@@ -1,5 +1,7 @@
-"""The spine's contracts: the current record before delivery, LATEST readers, and the writer's
-refusal of the console's database.
+"""The spine's contracts.
+
+The current record before delivery, LATEST readers, and the writer's refusal of the console's
+database.
 """
 
 from __future__ import annotations
@@ -117,8 +119,9 @@ def test_writer_batches_into_stream_capture_db(tmp_path):
 
 
 def test_quote_native_content_stored_with_field_fidelity(tmp_path):
-    """The daemon's flattened columns cannot carry BID_TIME_MILLIS / REGULAR_MARKET_
-    CHANGE_PERCENT — fields the live-plane hydrator needs. `native` must round-trip
+    """The daemon's flattened columns cannot carry fields the live-plane hydrator needs.
+
+    Those are BID_TIME_MILLIS / REGULAR_MARKET_CHANGE_PERCENT. `native` must round-trip
     losslessly through the same INSERT the flattened columns use.
     """
     db = tmp_path / "stream_capture.db"
@@ -138,8 +141,9 @@ def test_quote_native_content_stored_with_field_fidelity(tmp_path):
 
 
 def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
-    """Quote producers that pass no native dict (tests) — must stay NULL,
-    never an empty-dict placeholder that would misrepresent 'no data' as 'measured empty'.
+    """Quote producers that pass no native dict (tests) — must stay NULL.
+
+    Never an empty-dict placeholder that would misrepresent 'no data' as 'measured empty'.
     """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -149,7 +153,8 @@ def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
 
 
 def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
-    """A daemon restart against a DB written without the native_json column must not crash —
+    """A daemon restart against a DB written without the native_json column must not crash.
+
     ALTER TABLE ADD COLUMN is idempotent forward migration, not a fresh-DB assumption.
     """
     db = tmp_path / "stream_capture.db"
@@ -173,8 +178,9 @@ def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
 
 
 def test_book_content_stored_verbatim_never_flattened(tmp_path):
-    """Schwab's SPY NASDAQ_BOOK message as the capture daemon stored it
-    (tests/fixtures/real_spy_nyse_nasdaq_books.json).
+    """Schwab's SPY NASDAQ_BOOK message as the capture daemon stored it.
+
+    From tests/fixtures/real_spy_nyse_nasdaq_books.json.
     """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -203,8 +209,9 @@ def test_book_content_stored_verbatim_never_flattened(tmp_path):
 
 
 def test_book_msg_with_no_content_is_not_inserted(tmp_path):
-    """insert() on kind 'book' with no content must not write a row that get_content_for_symbol
-    would then treat as a valid empty book snapshot.
+    """insert() on kind 'book' with no content must not write a row.
+
+    get_content_for_symbol would then treat such a row as a valid empty book snapshot.
     """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -257,8 +264,9 @@ def test_options_quote_with_no_content_is_not_inserted(tmp_path):
 
 
 def test_options_book_reuses_the_generic_book_table_by_service(tmp_path):
-    """OPTIONS_BOOK needs no new table — stream_book_raw is already service-discriminated
-    (NASDAQ_BOOK/NYSE_BOOK/OPTIONS_BOOK all coexist by `service` value).
+    """OPTIONS_BOOK needs no new table — stream_book_raw is already service-discriminated.
+
+    NASDAQ_BOOK/NYSE_BOOK/OPTIONS_BOOK all coexist by `service` value.
     """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -327,8 +335,9 @@ def test_writer_refuses_the_consoles_database_through_a_relative_path():
 
 
 def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
-    """A schema setup that fails after the connect closes the SQLite connection it opened: no
-    connection is left for the collector, which Python 3.13 reports ("unclosed database"). The
+    """A schema setup that fails after the connect closes the SQLite connection it opened.
+
+    No connection is left for the collector, which Python 3.13 reports ("unclosed database"). The
     writer runs in a Python of its own, so no other code's connection can be counted. INDUCED
     CONDITION: the database file holds bytes that are not a database, so SQLite connects and the
     first statement fails.
@@ -366,8 +375,10 @@ def test_db_path_a_resolves_the_canonical_default():
 
 
 def _in_own_python(code: str, **env: str) -> subprocess.CompletedProcess:
-    """`code` run in a Python of its own from the repository, with `env` added to this process's
-    environment (the test runtime root tests/conftest.py sets included).
+    """`code` run in a Python of its own from the repository.
+
+    With `env` added to this process's environment (the test runtime root tests/conftest.py sets
+    included).
     """
     return subprocess.run(
         [sys.executable, "-c", code],
@@ -398,8 +409,9 @@ def test_db_path_c_reader_test_default_is_explicit(tmp_path):
 
 
 def test_db_path_d_capture_writer_default_is_its_runtime_roots_stream_database(tmp_path):
-    """A writer given no path writes the stream database of the runtime root its process was
-    started with (ED_RUNTIME_ROOT, runtime_layout).
+    """A writer given no path writes the stream database of its process's runtime root.
+
+    The runtime root its process was started with (ED_RUNTIME_ROOT, runtime_layout).
     """
     root = tmp_path / "runtime"
     done = _in_own_python(
@@ -417,8 +429,9 @@ def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):
 
 
 def test_production_stream_daemon_exposes_no_database_path_switch(tmp_path):
-    """The daemon started with a database path refuses it and exits 2 before it starts: no
-    log, no owner lock, no connection.
+    """The daemon started with a database path refuses it and exits 2 before it starts.
+
+    No log, no owner lock, no connection.
     """
     done = _in_own_python(
         "import sys\n"

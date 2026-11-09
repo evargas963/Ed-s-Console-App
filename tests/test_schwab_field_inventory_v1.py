@@ -1,6 +1,7 @@
-"""The field inventory reads Schwab's answer as sent: on a real /chains answer every contract
-field is one path under its side, the expiry and strike keys are `*`, and every value's JSON
-type is named (null included).
+"""The field inventory reads Schwab's answer as sent.
+
+On a real /chains answer every contract field is one path under its side, the expiry and strike
+keys are `*`, and every value's JSON type is named (null included).
 """
 
 from __future__ import annotations

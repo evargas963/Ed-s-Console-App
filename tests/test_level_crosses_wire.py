@@ -1,5 +1,7 @@
-"""Level crosses: found at the live price on each streamed equity quote (server._on_stream_tick,
-terrain_read.crossed), stored by EdDB.record_level_crosses, read back by get_recent_crosses.
+"""Level crosses: found at the live price on each streamed equity quote, stored, read back.
+
+Found by server._on_stream_tick, terrain_read.crossed; stored by EdDB.record_level_crosses;
+read back by get_recent_crosses.
 
 Real data: SPY's 2026-10-22 close capture published at the price Schwab sent in it (764.04), then
 SPY's LEVELONE_EQUITIES prints after it, in the order the daemon received them: 764.00 at
@@ -43,8 +45,9 @@ BETWEEN = {"Call g-Wall", "Gamma Flip", "Max Pain", "Put d-Wall"}
 
 
 def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
-    """SPY's 2026-10-22 close publication, and the daemon's heartbeat holding `tk` stamped `now`
-    (the wall clock when not given).
+    """Publish SPY's 2026-10-22 close, and the daemon's heartbeat holding `tk` stamped `now`.
+
+    `now` is the wall clock when not given.
     """
     server._publish_levels(
         tk,
@@ -77,8 +80,10 @@ def _stored(tk: str) -> list:
 
 
 def _print(msg: dict, tk: str = "SPY") -> list:
-    """One SPY LEVELONE_EQUITIES message as the daemon received it into its plane; the quote's
-    tick reaches the console. Returns the crosses it stored (on the pricing thread).
+    """Take one SPY LEVELONE_EQUITIES message as the daemon received it into its plane.
+
+    The quote's tick reaches the console. Returns the crosses it stored (on the pricing
+    thread).
     """
     lmp.record_from_level_one_equity(tk, msg["native"], received_ts=msg["ts_recv"])
     before = {c["cross_id"] for c in _stored(tk)}
@@ -104,11 +109,13 @@ def _named(rows: list) -> dict:
 
 
 def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prints():
-    """The levels are the close capture's, published at 764.04. The 16:33 print (764.00), the
-    ticker's first, is the price the next is checked from and crosses nothing; from it, the put
-    wall and the net-gamma peak (764) are left, not crossed. The 16:39 print (773.1269) crosses
-    upward each level between the two prints; the 18:00 print (764.27) crosses each of them back
-    down, a reversal stored at once. No chain was published in between.
+    """The levels are the close capture's, published at 764.04.
+
+    The 16:33 print (764.00), the ticker's first, is the price the next is checked from and
+    crosses nothing; from it, the put wall and the net-gamma peak (764) are left, not crossed.
+    The 16:39 print (773.1269) crosses upward each level between the two prints; the 18:00
+    print (764.27) crosses each of them back down, a reversal stored at once. No chain was
+    published in between.
     """
     _forget()
     levels = _publish_close()
@@ -131,10 +138,12 @@ def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prin
 
 
 def test_a_restart_holds_back_the_cross_its_last_minute_stored():
-    """Induced condition: the console restarts (its held crosses and last price forgotten) a moment
-    after storing the 16:39 crosses, and the same prints arrive again. The crosses stored in the
-    last minute are read from the database before the hold-back decides, so none is stored twice.
-    The ticker ZZRESTART carries SPY's chain and prints, so no other test's SPY rows count.
+    """Induced condition: the console restarts a moment after storing the 16:39 crosses.
+
+    Its held crosses and last price are forgotten, and the same prints arrive again. The
+    crosses stored in the last minute are read from the database before the hold-back decides,
+    so none is stored twice. The ticker ZZRESTART carries SPY's chain and prints, so no other
+    test's SPY rows count.
     """
     tk = "ZZRESTART"
     _forget(tk)
@@ -182,10 +191,11 @@ def test_the_levels_side_of_a_print_on_a_level_is_at():
 
 
 def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_age():
-    """The 16:39 print (773.1269) is past the call wall. While the feed delivers it, the wall's
-    state and each level's distance are live. When the daemon's connection ends, they stand,
-    marked not live, with the print's trade time and its age (AGENTS rule 5). Judged from the
-    print's receipt on, in that After-Hours session.
+    """The 16:39 print (773.1269) is past the call wall.
+
+    While the feed delivers it, the wall's state and each level's distance are live. When the
+    daemon's connection ends, they stand, marked not live, with the print's trade time and its
+    age (AGENTS rule 5). Judged from the print's receipt on, in that After-Hours session.
     """
     msg = SPY_PRINT_A_STRIKE_AWAY
     clock = clock_from(msg["ts_recv"])
@@ -226,11 +236,13 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
 
 
 def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_again():
-    """Each not-live age keeps counting: SPY's levels are its close values (its chain fetched after
-    its own 16:15 option close: CLOSE), so while its last price (the 16:39 print) is live a page
-    open on SPY is told by the levels loop's minute (server.refresh_not_live_pages) to read its
-    levels again, and once the daemon's connection ends too, every minute. Judged from the print's
-    receipt on, in that After-Hours session.
+    """Each not-live age keeps counting.
+
+    SPY's levels are its close values (its chain fetched after its own 16:15 option close:
+    CLOSE), so while its last price (the 16:39 print) is live a page open on SPY is told by the
+    levels loop's minute (server.refresh_not_live_pages) to read its levels again, and once the
+    daemon's connection ends too, every minute. Judged from the print's receipt on, in that
+    After-Hours session.
     """
     msg = SPY_PRINT_A_STRIKE_AWAY
     clock = clock_from(msg["ts_recv"])
@@ -275,12 +287,14 @@ PRICE_MARKED = ("levels", "confluence", "terrain")
 
 
 def stopped_price_answers() -> dict:
-    """/api/levels, /api/confluence (the 2026-10-22 expiry), /api/terrain, /api/terrain/strikes and
-    /api/options/gamma-surface as the real code serves them on SPY's 2026-10-22 close publication
-    with SPY's 16:39 print (773.1269) as the last price and the daemon's connection ended, read at
-    the 18:00 print's instant; and /api/terrain/strikes and /api/options/gamma-surface on that same
-    publication after the next day's 16:15 option close (2026-10-23 16:30 ET), no chain fetched
-    since: the answers the browser tests render (STOPPED_FIXTURES).
+    """Return the answers the browser tests render (STOPPED_FIXTURES), as the real code serves them.
+
+    /api/levels, /api/confluence (the 2026-10-22 expiry), /api/terrain, /api/terrain/strikes
+    and /api/options/gamma-surface as the real code serves them on SPY's 2026-10-22 close
+    publication with SPY's 16:39 print (773.1269) as the last price and the daemon's connection
+    ended, read at the 18:00 print's instant; and /api/terrain/strikes and
+    /api/options/gamma-surface on that same publication after the next day's 16:15 option
+    close (2026-10-23 16:30 ET), no chain fetched since.
     """
     _forget()
     _publish_close()
@@ -316,9 +330,11 @@ def stopped_price_answers() -> dict:
 
 
 def write_stopped_e2e_fixtures() -> None:
-    """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
-    hold them (tests/conftest.py, imported first for the tests' environment), then each route's
-    answer written to its browser fixture (STOPPED_FIXTURES):
+    """Regeneration utility (never called by a test).
+
+    Schwab's /markets answers held as the tests hold them (tests/conftest.py, imported first for
+    the tests' environment), then each route's answer written to its browser fixture
+    (STOPPED_FIXTURES):
     python -c "import tests.conftest, tests.test_level_crosses_wire as t
     t.write_stopped_e2e_fixtures()"
     """
@@ -332,10 +348,11 @@ def write_stopped_e2e_fixtures() -> None:
 
 
 def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
-    """The browser tests' answers are these routes', on captured data: kept equal to them. SPY's
-    chain was fetched at 16:17 ET, after its own 16:15 option close, so at 18:00 its levels are the
-    close values: CLOSE on every route. The next day after its close, with no chain fetched since,
-    they are STALE.
+    """The browser tests' answers are these routes', on captured data: kept equal to them.
+
+    SPY's chain was fetched at 16:17 ET, after its own 16:15 option close, so at 18:00 its
+    levels are the close values: CLOSE on every route. The next day after its close, with no
+    chain fetched since, they are STALE.
     """
     served = stopped_price_answers()
     for route, name in STOPPED_FIXTURES.items():
@@ -381,9 +398,11 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
 
 
 def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Path) -> None:
-    """Induced condition: the second of the 16:39 print's crosses is refused (a level value the
-    table does not take). Neither is stored, and the refusal reaches the caller, which logs it and
-    holds neither, so the database and the console's memory stay the same.
+    """Induced condition: the second of the 16:39 print's crosses is refused.
+
+    It is a level value the table does not take. Neither is stored, and the refusal reaches the
+    caller, which logs it and holds neither, so the database and the console's memory stay the
+    same.
     """
     edb = EdDB(tmp_path / "level_crosses.db")
 
@@ -408,6 +427,7 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
 
 def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
     """RC-88: one price crossing a strike where several levels sit is stored as one row per level.
+
     The one reader (server._merged_recent_crosses) serves one event per (time, value, direction)
     that names every level. Real SPY rows, tests/fixtures/real_spy_level_crosses.json (newest
     first, as the database returns them): 400 rows, 243 events, up to 6 levels on one event, held

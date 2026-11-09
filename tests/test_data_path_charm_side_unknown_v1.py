@@ -1,6 +1,7 @@
-"""A side's charm with a contract not known is unknown, never the sum of the rest. NFLX's captured
-calls of 2027-12-17 and 2028-01-21 at $3: Schwab sent their volatility as -999, open interest
-known.
+"""A side's charm with a contract not known is unknown, never the sum of the rest.
+
+NFLX's captured calls of 2027-12-17 and 2028-01-21 at $3: Schwab sent their volatility as -999,
+open interest known.
 """
 
 from __future__ import annotations
@@ -32,8 +33,10 @@ def test_an_expired_contract_with_no_volatility_has_no_charm_left():
 
 
 def test_a_live_contract_with_no_time_to_expiry_leaves_its_side_unknown():
-    """$SPX's AM-settled 2027-12-17 contracts on 2027-01-04, a date within the year of it that the
-    held /markets answers do not reach: not known to have settled, so not known, never left out.
+    """$SPX's AM-settled 2027-12-17 contracts on 2027-01-04 are not known, never left out.
+
+    2027-01-04 is a date within the year of it that the held /markets answers do not reach: not
+    known to have settled, so not known, never left out.
     """
     fx = json.loads(
         (
@@ -48,8 +51,9 @@ def test_a_live_contract_with_no_time_to_expiry_leaves_its_side_unknown():
 
 
 def test_a_contract_past_its_date_with_no_session_held_has_settled():
-    """$SPX's AM-settled 2027-12-17 contracts on 2028-02-01: no /markets answer is held, and the
-    date has passed.
+    """$SPX's AM-settled 2027-12-17 contracts on 2028-02-01.
+
+    No /markets answer is held, and the date has passed.
     """
     fx = json.loads(
         (
@@ -92,8 +96,10 @@ def test_a_contract_with_no_readable_date_leaves_its_side_unknown_in_the_terrain
 
 
 def test_a_forces_side_with_a_strike_not_known_has_no_total():
-    """NFLX's whole book, its $3 strike below the price not known: no total, never the sum of the
-    rest. Induced test condition: one chain stored as two captures on typed days.
+    """NFLX's whole book, its $3 strike below the price not known: no total.
+
+    Never the sum of the rest. Induced test condition: one chain stored as two captures on typed
+    days.
     """
     prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
     caps = [
@@ -114,8 +120,10 @@ def test_a_forces_side_with_a_strike_not_known_has_no_total():
 
 
 def test_a_forces_side_with_no_strike_at_all_has_no_total():
-    """SPY's 0DTE chain priced at its 787.5169 print, above every strike: nothing is above the
-    price, so no total, not a 0. Induced test condition: the print and chain are of other days.
+    """SPY's 0DTE chain priced at its 787.5169 print, above every strike.
+
+    Nothing is above the price, so no total, not a 0. Induced test condition: the print and chain
+    are of other days.
     """
     spot = 787.5169
     prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
@@ -160,8 +168,9 @@ def test_a_forces_dex_side_with_a_strike_not_known_has_no_total():
 
 
 def test_a_forces_oi_side_with_a_strike_not_known_has_no_total():
-    """Induced test condition: the older capture's $5 contracts with openInterest removed, none
-    being captured unreported on two days.
+    """Induced test condition: the older capture's $5 contracts with openInterest removed.
+
+    None being captured unreported on two days.
     """
     prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
     older = [
@@ -183,9 +192,11 @@ def test_a_forces_oi_side_with_a_strike_not_known_has_no_total():
 
 
 def test_a_strike_that_left_the_chain_counts_for_what_it_held():
-    """TSLA's closing captures of 2026-10-28 and 2026-10-29, at the strikes the 2026-10-28 expiry
-    alone listed and the six nearest the price: ΔOI is each side's Schwab total on one day less the
-    other's, so the open interest that expired leaves the side.
+    """TSLA's closing captures of 2026-10-28 and 2026-10-29.
+
+    At the strikes the 2026-10-28 expiry alone listed and the six nearest the price: ΔOI is each
+    side's Schwab total on one day less the other's, so the open interest that expired leaves the
+    side.
     """
     fx = json.loads(
         (

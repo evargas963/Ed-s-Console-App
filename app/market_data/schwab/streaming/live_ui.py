@@ -56,9 +56,10 @@ HEARTBEAT_SEC = 1.0
 
 
 class PageSocket(WebSocketsSansIOProtocol):
-    """uvicorn's WebSocket protocol for the program's web server, with a page that stops reading
-    dropped: its connection aborted, because a close frame cannot reach a page that does not read
-    and asyncio's close waits for the bytes it never takes.
+    """uvicorn's WebSocket protocol for the program's web server.
+
+    A page that stops reading is dropped: its connection aborted, because a close frame cannot
+    reach a page that does not read and asyncio's close waits for the bytes it never takes.
 
     A page has stopped reading when asyncio's flow control keeps writing paused (its buffers full)
     for HEARTBEAT_SEC, or when it does not answer uvicorn's keepalive ping in time.
@@ -135,9 +136,11 @@ class LiveUiServer:
                 c.wake.set()
 
     def beat(self) -> dict:
-        """The daemon's whole status (Schwab socket, symbols held and refused per service, the
-        watchlist, health), recorded here and sent with every beat: the console's one record of
-        it."""
+        """Return the daemon's whole status, recorded here and sent with every beat.
+
+        The status covers the Schwab socket, symbols held and refused per service, the watchlist
+        and health; this is the console's one record of it.
+        """
         hb = self.heartbeat_fn(self.clock())
         self.record_heartbeat(hb)
         return hb
@@ -241,7 +244,7 @@ class LiveUiServer:
 
 
 async def page_socket(ws: WebSocket) -> None:
-    """The page's socket, /ws on the program's web server (server.app).
+    """Serve the page's socket, /ws on the program's web server (server.app).
 
     Served while the program serves prices (serve_live_ui, the app's state `prices`); refused
     before and after, and the page's reconnect keeps its schedule.

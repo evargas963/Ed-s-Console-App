@@ -1,7 +1,8 @@
-"""The per-strike panels, Schwab to the screen, at the time asked: a captured chain published by the
-levels producer, and every per-strike panel's answer (GEX by strike, the chart's DEX and OI, vanna,
-charm) at that time is windowed around Schwab's price, whatever the wall clock says (AGENTS.md: a
-function that depends on the clock takes `now`).
+"""The per-strike panels, Schwab to the screen, at the time asked.
+
+A captured chain published by the levels producer, and every per-strike panel's answer (GEX by
+strike, the chart's DEX and OI, vanna, charm) at that time is windowed around Schwab's price,
+whatever the wall clock says (AGENTS.md: a function that depends on the clock takes `now`).
 
 Real data: CRWD's 2026-10-16 expiry, every strike, captured 2026-10-07 10:38:40 ET
 (tests/real_chains.py CRWD), and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00

@@ -1,7 +1,8 @@
-"""Real option chains the capture daemon captured on 2026-10-07 (production complete_chain_captures,
-read-only), each with Schwab's underlying price in the capture and the instant it was captured --
-the valuation instant a test prices it at (`now`), inside the sessions Schwab's /markets answers
-(tests/conftest.py).
+"""Real option chains the capture daemon captured on 2026-10-07.
+
+From production complete_chain_captures, read-only; each with Schwab's underlying price in the
+capture and the instant it was captured -- the valuation instant a test prices it at (`now`),
+inside the sessions Schwab's /markets answers (tests/conftest.py).
 
 SPY_0DTE: SPY's same-day expiry (2026-10-07) at 12:32:07 ET, the 20 strikes nearest the price.
 CRWD:     CRWD's 2026-10-16 expiry, every strike (strike_range=ALL), at 10:38:40 ET.

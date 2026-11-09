@@ -1,7 +1,8 @@
-"""The quote per ticker, from Schwab's streamed LEVEL_ONE_EQUITY rows
-(`record_from_level_one_equity`): each field the last value Schwab sent, at any hour, and
-whether the symbol's values are live now (`live_state`): the feed delivers it and its market
-trades.
+"""The quote per ticker, from Schwab's streamed LEVEL_ONE_EQUITY rows.
+
+The rows are taken by `record_from_level_one_equity`: each field the last value Schwab sent, at
+any hour, and whether the symbol's values are live now (`live_state`): the feed delivers it and
+its market trades.
 """
 
 from __future__ import annotations
@@ -77,6 +78,7 @@ def record_from_level_one_equity(
 ) -> bool:
     """
     Ingest one Schwab streaming LEVELONE_EQUITIES content item into the plane.
+
     Returns True when a plane row was (re)published.
 
     Per-field state (see _fields_by_ticker): each field present in the message replaces
@@ -147,7 +149,7 @@ def record_from_level_one_equity(
     }
     with _lock:
         _by_ticker[t] = out
-    for fn in list(_row_listeners):
+    for fn in _row_listeners:
         fn(t)
     return True
 
@@ -186,9 +188,10 @@ _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
-    """Apply one daemon heartbeat (capture.Daemon.status, live_ui's beat), judged by the time the
-    daemon stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
-    (docs/DATA_FLOW.md §2 D5).
+    """Apply one daemon heartbeat (capture.Daemon.status, live_ui's beat).
+
+    It is judged by the time the daemon stamped it (`ts`), never by when it arrived: a status that
+    waited is as old as it is (docs/DATA_FLOW.md §2 D5).
     """
     held = {
         svc: frozenset(ticker_storage_key(s) for s in syms) for svc, syms in msg["held"].items()
@@ -198,7 +201,8 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
 
 
 def record_feed_down() -> None:
-    """The connection to the daemon ended: nothing is live until a heartbeat arrives.
+    """Record that the connection to the daemon ended: nothing is live until a heartbeat arrives.
+
     The latest beat stays (last_beat), so the last streamed values still price.
     """
     with _lock:
@@ -206,9 +210,10 @@ def record_feed_down() -> None:
 
 
 def last_beat() -> dict[str, Any] | None:
-    """The latest status the daemon sent, current or not; None until one arrives. What it
-    reported stands while a beat is late or missing (its watchlist, its last round of chains);
-    whether it is live is daemon_status's.
+    """Return the latest status the daemon sent, current or not; None until one arrives.
+
+    What it reported stands while a beat is late or missing (its watchlist, its last round of
+    chains); whether it is live is daemon_status's.
     """
     with _lock:
         return _feed["status"]
@@ -216,9 +221,10 @@ def last_beat() -> dict[str, Any] | None:
 
 @dataclass(frozen=True)
 class FeedNow:
-    """One read of the daemon's heartbeat at a time. `status` is None when that beat is not
-    current. `held` is the symbols on the latest beat: they stand when that beat is missing
-    or too old. A beat stamped after `now` contributes neither.
+    """One read of the daemon's heartbeat at a time.
+
+    `status` is None when that beat is not current. `held` is the symbols on the latest beat: they
+    stand when that beat is missing or too old. A beat stamped after `now` contributes neither.
     """
 
     status: dict[str, Any] | None
@@ -226,9 +232,11 @@ class FeedNow:
 
 
 def feed_now(now: float) -> FeedNow:
-    """The daemon's heartbeat at `now`, read once. Current only when its stamp is not older
-    than FEED_HEARTBEAT_MAX_AGE_SEC. A stamp after `now` is a later moment, not this one.
-    A beat that is missing or too old is not live, and the symbols it last named still stand.
+    """Read the daemon's heartbeat at `now`, once.
+
+    Current only when its stamp is not older than FEED_HEARTBEAT_MAX_AGE_SEC. A stamp after `now`
+    is a later moment, not this one. A beat that is missing or too old is not live, and the symbols
+    it last named still stand.
     """
     with _lock:
         rx, status, held = _feed["rx"], _feed["status"], dict(_feed["held"])
@@ -257,15 +265,16 @@ def live_on(feed: FeedNow, symbol: str, service: str) -> bool:
 
 
 def daemon_status(now: float) -> dict[str, Any] | None:
-    """The daemon's latest status while its heartbeat is current at `now`, else None."""
+    """Return the daemon's latest status while its heartbeat is current at `now`, else None."""
     return feed_now(now).status
 
 
 def not_trading(symbol: str, service: str, now: float) -> str | None:
-    """Why `symbol`'s values on Schwab `service` are not live at `now`, or None in a valid session
-    (time_et.session_label): no valid session, that /markets answer not held, for an option today's
-    option markets closed (time_et.options_open), or for a stock or an index Schwab's own
-    SECURITY_STATUS for it Closed or Halted.
+    """Why `symbol`'s values on Schwab `service` are not live at `now`, or None in a valid session.
+
+    The session is time_et.session_label's. Why: no valid session, that /markets answer not held,
+    for an option today's option markets closed (time_et.options_open), or for a stock or an index
+    Schwab's own SECURITY_STATUS for it Closed or Halted.
     """
     at = datetime.fromtimestamp(now, ET)
     session = session_label(at)
@@ -282,10 +291,12 @@ def not_trading(symbol: str, service: str, now: float) -> str | None:
 
 
 def live_state(symbol: str, service: str, now: float) -> tuple[str, str | None]:
-    """THE live rule, for every streamed value: `symbol`'s state on Schwab `service` at `now` and
-    why it is not live (docs/DATA_FLOW.md §2 D5). LIVE while it is updating: the daemon's heartbeat
-    current (feed_now) reporting the Schwab socket open, the symbol held on that service, and a
-    valid session (not_trading). OFFLINE while the feed itself is down; NOT LIVE while the feed is
+    """Apply THE live rule, for every streamed value.
+
+    Return `symbol`'s state on Schwab `service` at `now` and why it is not live
+    (docs/DATA_FLOW.md §2 D5). LIVE while it is updating: the daemon's heartbeat current
+    (feed_now) reporting the Schwab socket open, the symbol held on that service, and a valid
+    session (not_trading). OFFLINE while the feed itself is down; NOT LIVE while the feed is
     up and this symbol is not held or no session is valid. The last values stand either way.
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
@@ -296,8 +307,9 @@ def live_state(symbol: str, service: str, now: float) -> tuple[str, str | None]:
 
 
 def live_symbols(feed: FeedNow, symbols, service: str, now: float) -> set[str]:
-    """The `symbols` live on Schwab `service` at `now` by the live rule, judged on one read of
-    the heartbeat (`feed`).
+    """Return the `symbols` live on Schwab `service` at `now` by the live rule.
+
+    They are judged on one read of the heartbeat (`feed`).
     """
     return {s for s in symbols if _judge(feed, s, service, now)[0] == LIVE}
 

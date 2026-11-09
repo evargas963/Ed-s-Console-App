@@ -1,7 +1,8 @@
-"""The Trade Desk computes nothing (P1-3, PR B): every value it shows is served. Real data only:
-Schwab's SPY 1-minute bars (2026-09-24/25), SPY level crosses (2026-09-09..25), a TSLA NASDAQ book
-and the SPY 0DTE and CRWD chains (tests/fixtures). Expected values are worked out here from the
-fixtures themselves.
+"""The Trade Desk computes nothing (P1-3, PR B): every value it shows is served.
+
+Real data only: Schwab's SPY 1-minute bars (2026-09-24/25), SPY level crosses (2026-09-09..25), a
+TSLA NASDAQ book and the SPY 0DTE and CRWD chains (tests/fixtures). Expected values are worked
+out here from the fixtures themselves.
 """
 
 import json
@@ -69,9 +70,11 @@ def test_the_book_side_is_served_from_the_real_book():
 
 
 def _desk_events(tk, crosses, now, tf):
-    """The desk's queue at `now` on real crosses: written by the console's own writer under `tk`
-    (a stand-in ticker no other test holds, so it has no live price either), loaded as the
-    console's start loads them. Returns the queue and the rows as stored (their cross ids).
+    """Build the desk's queue at `now` on real crosses.
+
+    Written by the console's own writer under `tk` (a stand-in ticker no other test holds, so it
+    has no live price either), loaded as the console's start loads them. Returns the queue and
+    the rows as stored (their cross ids).
     """
     stored = server.get_db().record_level_crosses(
         [
@@ -107,10 +110,11 @@ def _desk_events(tk, crosses, now, tf):
 def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each_level(
     tk, crosses, now
 ):
-    """Each level cross is the queue's entry as recorded -- its level's price, direction and
-    time -- and the chart's few are the newest cross at each level, for the newest DESK_MARKERS
-    levels; a marker and its queue entry are one served item (real SPY and $SPX crosses, each
-    under a stand-in ticker).
+    """Each level cross is the queue's entry as recorded; the chart draws the newest per level.
+
+    Its level's price, direction and time -- and the chart's few are the newest cross at each
+    level, for the newest DESK_MARKERS levels; a marker and its queue entry are one served item
+    (real SPY and $SPX crosses, each under a stand-in ticker).
     """
     body, rows = _desk_events(tk, _load(crosses)["rows"], now, "D")
     items = [it for it in body["items"] if it["dom"] == "LEVELS"]
@@ -135,8 +139,9 @@ _WED_EVENING = datetime(2026, 10, 7, 18, 0, tzinfo=time_et.ET)
 
 
 def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live():
-    """Operator 2026-09-29: a stale or premarket book item shows its actual observation time and
-    never appears live. The queue's size walls were stamped with the console's receive time and
+    """Operator 2026-09-29: a stale or premarket book item shows its actual observation time.
+
+    It never appears live. The queue's size walls were stamped with the console's receive time and
     read the same whether or not the book was live. Real TSLA NASDAQ book (its own BOOK_TIME),
     applied by the console's own intake as the daemon pushes it; Schwab's feed is down.
     """
@@ -159,8 +164,9 @@ def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live()
 
 
 def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
-    """SPY's level crosses of 2026-10-06 and 10-07 as the console recorded them
-    (tests/fixtures/real_spy_level_crosses_2026_10_06_07.json), written by the console's own
+    """SPY's level crosses of 2026-10-06 and 10-07 as the console recorded them.
+
+    From tests/fixtures/real_spy_level_crosses_2026_10_06_07.json, written by the console's own
     writer and loaded as its start loads them. Stand-in: ticker ZZDESKX carries them.
     """
     tk = "ZZDESKX"
@@ -198,8 +204,10 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
 
 
 def _spy_close_at(msg):
-    """SPY's 2026-10-22 close capture published at Schwab's price in it (764.04), and every
-    relation of a real SPY print after it (`msg`, as the daemon received it) to those levels.
+    """SPY's 2026-10-22 close capture published at Schwab's price in it (764.04).
+
+    And every relation of a real SPY print after it (`msg`, as the daemon received it) to those
+    levels.
     """
     published = compute_terrain(
         "SPY", read_chain(SPY_CLOSE.chain), SPY_CLOSE.spot, now=SPY_CLOSE.now
@@ -220,8 +228,9 @@ def test_the_flip_side_is_the_live_prices():
 
 
 def test_a_breached_wall_says_where_the_live_price_is():
-    """The 16:39 print (773.1269) is past the call wall 765; the 16:33 print (764.00) is on the
-    put wall 764, which contains nothing there.
+    """The 16:39 print (773.1269) is past the call wall 765.
+
+    The 16:33 print (764.00) is on the put wall 764, which contains nothing there.
     """
     out = _spy_close_at(SPY_PRINT_A_STRIKE_AWAY)
     assert (
@@ -243,9 +252,10 @@ def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip():
 
 
 def test_one_strike_holding_both_walls_is_two_sided():
-    """The two-sided case is a worked example (no captured chain has one strike holding both
-    walls; ACTIVE_PROGRAM STAND-INS); the earned lean is SPY's close walls (764, 765) at its 18:00
-    print (764.27).
+    """The two-sided case is a worked example.
+
+    No captured chain has one strike holding both walls (ACTIVE_PROGRAM STAND-INS); the earned
+    lean is SPY's close walls (764, 765) at its 18:00 print (764.27).
     """
     price = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
     assert wall_lean(770.0, 770.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == (
@@ -269,9 +279,11 @@ FRIDAY_CLOSE = datetime(2026, 10, 2, 16, 5, tzinfo=time_et.ET)
 
 
 def _spy_bars() -> list:
-    """Schwab's SPY 1-minute bars of Thursday 2026-10-01 and Friday 10-02, from its /pricehistory
-    answer of 2026-10-07 (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json), every candle
-    of those two ET days.
+    """Schwab's SPY 1-minute bars of Thursday 2026-10-01 and Friday 10-02.
+
+    From its /pricehistory answer of 2026-10-07
+    (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json), every candle of those two ET
+    days.
     """
     days = {"2026-10-01", "2026-10-02"}
     return [
@@ -299,7 +311,7 @@ def _forget(tk):
 
 
 def _priced(tk, chain, spot, ts_utc):
-    """The chain priced as the console prices a stored capture (at its own time and spot)."""
+    """Price the chain as the console prices a stored capture (at its own time and spot)."""
     server._publish_levels(
         tk,
         captures=[
@@ -318,8 +330,9 @@ def _priced(tk, chain, spot, ts_utc):
 
 
 def _live_price(tk, last):
-    """Schwab's LAST_PRICE in the daemon's plane, its feed live at FRIDAY_CLOSE (the time the
-    levels are served at).
+    """Schwab's LAST_PRICE in the daemon's plane, its feed live at FRIDAY_CLOSE.
+
+    FRIDAY_CLOSE is the time the levels are served at.
     """
     at = FRIDAY_CLOSE.timestamp()
     lmp.record_feed_heartbeat(
@@ -330,9 +343,11 @@ def _live_price(tk, last):
 
 @pytest.fixture
 def spy_levels():
-    """ZZDESK's levels served after Friday's close: the SPY 0DTE chain priced at its capture
-    time (tests/real_chains.py), the SPY bars published by the bar writer, and the last bar's close
-    as Schwab's LAST_PRICE (stand-in). Returns (spot, terrain, serve(tf)).
+    """ZZDESK's levels served after Friday's close.
+
+    The SPY 0DTE chain priced at its capture time (tests/real_chains.py), the SPY bars published
+    by the bar writer, and the last bar's close as Schwab's LAST_PRICE (stand-in). Returns
+    (spot, terrain, serve(tf)).
     """
     bars = _spy_bars()
     _forget(DESK)
@@ -382,8 +397,9 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
 
 
 def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
-    """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day
-    out.
+    """The SPY capture lists only the 0DTE expiry.
+
+    The terrain's one-day move needs one a day out.
     """
     _spot, terrain, serve = spy_levels
     assert terrain.get("implied_1d_move") is None
@@ -395,8 +411,10 @@ def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
 
 
 def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
-    """Real CRWD chain (expiries a day and more out), priced at 2026-09-02 12:00 ET, the capture
-    day its source names (stand-in: the hour). Stand-in: its capture spot as Schwab's LAST_PRICE.
+    """Real CRWD chain (expiries a day and more out), priced at 2026-09-02 12:00 ET.
+
+    That is the capture day its source names (stand-in: the hour). Stand-in: its capture spot as
+    Schwab's LAST_PRICE.
     """
     fx = _load("real_crwd_complete_chain_quarter.json")
     spot = float(fx["spot"])
@@ -417,8 +435,10 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
 
 
 def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
-    """The proximity strip printed raw ids (OVERNIGHT_HIGH, PD_VAH) and the chart kept its own
-    short-name table; both names are served now, from one table (LEVEL_NAMES).
+    """Both level names are served now, from one table (LEVEL_NAMES).
+
+    The proximity strip printed raw ids (OVERNIGHT_HIGH, PD_VAH) and the chart kept its own
+    short-name table.
     """
     _spot, _terrain, serve = spy_levels
     body = serve()
@@ -442,8 +462,10 @@ def test_vwap_is_served_per_chart_bar(spy_levels):
 
 
 def test_levels_are_served_in_ladder_order_with_distance(spy_levels):
-    """The levels panel and the Trade Desk used to sort levels, measure distance to spot and apply
-    the 0.15% near-spot rule in the page. Real SPY 1-minute bars (2026-10-01 and 02).
+    """The levels panel and the Trade Desk used to sort and measure levels in the page.
+
+    They sorted levels, measured distance to spot and applied the 0.15% near-spot rule in the
+    page. Real SPY 1-minute bars (2026-10-01 and 02).
     """
     spot, _terrain, serve = spy_levels
     body = serve()
@@ -459,10 +481,12 @@ def test_levels_are_served_in_ladder_order_with_distance(spy_levels):
 
 
 def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
-    """The Trade Desk reference draws the session's volume profile at the chart's left edge
-    (2026-09-28). The profile was built for the value area and dropped; /api/levels serves that
-    same profile: its POC/VAH/VAL are the served TODAY_ levels, its bins hold every RTH bar's
-    volume, and each bin says whether it is inside the value area. Real SPY 1-minute bars.
+    """The Trade Desk reference draws the session's volume profile at the chart's left edge.
+
+    That is as of 2026-09-28. The profile was built for the value area and dropped; /api/levels
+    serves that same profile: its POC/VAH/VAL are the served TODAY_ levels, its bins hold every
+    RTH bar's volume, and each bin says whether it is inside the value area. Real SPY 1-minute
+    bars.
     """
     _spot, _terrain, serve = spy_levels
     body = serve()
@@ -503,7 +527,8 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
 
 
 def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_levels):
-    """Monday 2026-09-28 21:40 ET: the Trade Desk chart drew no key level at all after the close --
+    """Monday 2026-09-28 21:40 ET: the Trade Desk chart drew no key level at all after the close.
+
     /api/levels served 30 SPY levels and an empty by_distance, because it was measured only from a
     live price. The spot is Schwab's last trade at any hour (operator 2026-10-01: "we use what
     schwab gives us and we display it"): the levels are ordered, and their distance measured, from
@@ -527,9 +552,10 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_lev
 
 
 def test_the_desk_window_is_schwabs_last_session_open_and_its_words_are_served():
-    """Register P-15: the page kept its own copy of the lookback words; the window's session start
-    was a hard-coded 9:30 with a 24-hour stand-in when no session was found. The open is the one
-    Schwab's /markets sent (tests/conftest.py).
+    """Register P-15: the page kept its own copy of the lookback words.
+
+    The window's session start was a hard-coded 9:30 with a 24-hour stand-in when no session was
+    found. The open is the one Schwab's /markets sent (tests/conftest.py).
     """
     sat = datetime(2026, 10, 3, 11, 0, tzinfo=ET)  # Saturday: Friday's open
     assert (

@@ -1,5 +1,6 @@
-"""Page-side one faucet: every value on the console page has one server producer
-(question 2: the screen shows it correctly; question 3: each value the one computation's).
+"""Page-side one faucet: every value on the console page has one server producer.
+
+Question 2: the screen shows it correctly; question 3: each value the one computation's.
 
 One spot on every screen: each route that serves `spot` serves the live price at response time
 (resolve_spot, the rule the header's price row uses); a value computed at another price names that
@@ -50,8 +51,9 @@ _AT = CRWD.now
 
 
 def _daemon(at: float, held_options=()):
-    """The daemon's heartbeat at `at`, holding TK and `held_options`, and its price row for TK made
-    from Schwab's captured quote.
+    """Record the daemon's heartbeat at `at`, holding TK and `held_options`, and its price row.
+
+    The price row for TK is made from Schwab's captured quote.
     """
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
     lmp.record_feed_heartbeat(
@@ -64,7 +66,7 @@ def _daemon(at: float, held_options=()):
 
 
 def _publish(fetched_ts: float):
-    """The chain published as the stored capture it is, at the price Schwab sent with it."""
+    """Publish the chain as the stored capture it is, at the price Schwab sent with it."""
     server._publish_levels(
         TK,
         captures=[
@@ -93,8 +95,9 @@ def _forget():
 
 @pytest.fixture
 def held():
-    """CRWD's chain published at the price Schwab sent with it; the live price is Schwab's last
-    trade.
+    """CRWD's chain published at the price Schwab sent with it.
+
+    The live price is Schwab's last trade.
     """
     _publish(_AT.timestamp())
     _daemon(time_et.now())  # live now, as the routes read it
@@ -103,8 +106,9 @@ def held():
 
 
 def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
-    """Every GET route that answers a ticker, found from the app, each answering this request: a
-    route that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
+    """Every GET route that answers a ticker, found from the app, each answering this request.
+
+    A route that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
     payload was computed at.
     """
     client = TestClient(server.app)
@@ -150,8 +154,10 @@ def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
 
 
 def test_oi_and_volume_cells_carry_the_served_total(held):
-    """The OI/Volume heatmap colours by the cell's served total: Schwab's call OI + put OI at the
-    strike, read straight from the chain; the browser adds nothing.
+    """The OI/Volume heatmap colours by the cell's served total.
+
+    Schwab's call OI + put OI at the strike, read straight from the chain; the browser adds
+    nothing.
     """
     surf = held.gamma_surface
     col = [e["expiry"] for e in surf["expirations"]].index(EXPIRY)
@@ -174,8 +180,9 @@ def test_a_book_with_no_age_is_not_reported_fresh():
 
 
 def test_days_to_expiry_are_schwabs_as_sent(held):
-    """The expiry dropdown's DTE: Schwab's daysToExpiration from the chain, not the browser's
-    clock (it counted days in UTC, a day off after 7 PM Central).
+    """The expiry dropdown's DTE: Schwab's daysToExpiration from the chain.
+
+    Not the browser's clock (it counted days in UTC, a day off after 7 PM Central).
     """
     body = json.loads(server.get_expiries(ticker=TK).body)
     assert body["expiries"] == [EXPIRY]
@@ -204,8 +211,9 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     ids=["chain", "gamma-surface", "terrain-strikes"],
 )
 def test_the_spot_row_is_served(route):
-    """The row every panel marks as spot: the listed strike nearest the live price, served (it
-    was worked out in six places in the page). SPY's 2026-10-22 close capture, published at the
+    """The row every panel marks as spot: the listed strike nearest the live price, served.
+
+    It was worked out in six places in the page. SPY's 2026-10-22 close capture, published at the
     price Schwab sent in it (764.04), and SPY's first print after it a strike away (16:39:03 ET,
     LAST_PRICE 773.1269, as the daemon received it): the row is the live price's strike.
     """
@@ -245,16 +253,18 @@ def test_the_spot_row_is_served(route):
 
 
 def test_put_call_ratios_over_every_expiry_are_served(held):
-    """With no expiry selected the Put/Call rows show the whole book, served (the page used to
-    pick the first expiry in its list, an expired one on 2026-09-27).
+    """With no expiry selected the Put/Call rows show the whole book, served.
+
+    The page used to pick the first expiry in its list, an expired one on 2026-09-27.
     """
     assert held.snap.pcr_all is not None
     assert held.snap.pcr_all == held.snap.pcr_by_expiry[EXPIRY]  # one expiry: the same book
 
 
 def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
-    """Column streaming status and a cell's age come from the server's own stream states; the
-    front column is the nearest unexpired expiry. One call streaming (its update 2 s before the
+    """Column streaming status and a cell's age come from the server's own stream states.
+
+    The front column is the nearest unexpired expiry. One call streaming (its update 2 s before the
     publication, carrying the gamma Schwab sent for it): the column is partly streaming and the
     cell's age is 2 s.
     """
@@ -294,7 +304,9 @@ def test_chain_flags_are_served(held):
 
 
 def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_be():
-    """TICK-03 (2026-09-28 audit): the page's ADJUSTED DELIVERABLE flag was our own rule, which
+    """An index option is not flagged adjusted; only Schwab's nonStandard would be.
+
+    TICK-03 (2026-09-28 audit): the page's ADJUSTED DELIVERABLE flag was our own rule, which
     compared Schwab's deliverable symbol "$SPX" with the ticker stripped of its "$" -- so every
     $SPX and $VIX contract read adjusted, while Schwab's own nonStandard flag was false on all 43
     board tickers. The flag is Schwab's, as sent: real $SPX contracts
@@ -337,10 +349,11 @@ def test_the_largest_gex_strike_is_served(held):
 
 
 def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
-    """Sunday 2026-09-27: the daemon held SPY's last trade (Friday 18:59:59 CT), replayed as it
-    captured it (stream_quotes_raw). Operator, 2026-10-01: "From Schwab's mouth to our UI's ears.
-    Period." -- no live/closed verdict by our clock: the row serves Schwab's last price as the
-    spot with Schwab's trade time, and every consumer reads it.
+    """Sunday 2026-09-27: the daemon held SPY's last trade (Friday 18:59:59 CT).
+
+    It is replayed as it captured it (stream_quotes_raw). Operator, 2026-10-01: "From Schwab's
+    mouth to our UI's ears. Period." -- no live/closed verdict by our clock: the row serves
+    Schwab's last price as the spot with Schwab's trade time, and every consumer reads it.
     """
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity(

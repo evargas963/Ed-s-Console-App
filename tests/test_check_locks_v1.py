@@ -22,7 +22,7 @@ def _git(repo: Path, *args: str) -> None:
 
 
 def _repo(tmp_path: Path) -> Path:
-    """A repository on main with the locks' rules, one module and one work row."""
+    """Make a repository on main with the locks' rules, one module and one work row."""
     repo = tmp_path / "repo"
     repo.mkdir()
     shutil.copy(ROOT / check_locks.RULES, repo)

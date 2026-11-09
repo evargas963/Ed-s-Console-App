@@ -1,6 +1,7 @@
-"""The heatmap the server serves is the one the page draws (question 2: the screen shows it
-correctly): the strike rows of the scope around the price (or the panned centre), the columns the
-page fits, the row at the price and each measure's colour scale.
+"""The heatmap the server serves is the one the page draws.
+
+Question 2: the screen shows it correctly. The strike rows of the scope around the price (or the
+panned centre), the columns the page fits, the row at the price and each measure's colour scale.
 
 Through the real code: the daemon's status and price row as the console holds them, the levels
 producer (server._publish_levels), the heatmap's and the per-strike panels' answers at a time
@@ -42,8 +43,9 @@ _AT = datetime(2026, 10, 1, 12, 0, tzinfo=ET)  # the captures' day, before every
 
 
 def _price(spot):
-    """The daemon's status at _AT (Schwab's socket open, SPY held) and SPY's price row (None: no
-    price).
+    """Return the daemon's status at _AT (Schwab's socket open, SPY held) and SPY's price row.
+
+    The price row is None with no price.
     """
     lmp.record_feed_heartbeat(
         daemon_status(_AT.timestamp(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
@@ -85,7 +87,7 @@ def _heat(at=_AT, **kw):
 
 
 def _strikes(scope):
-    """The per-strike panels' answer at the captures' day, centred on the price."""
+    """Return the per-strike panels' answer at the captures' day, centred on the price."""
     return server.terrain_strikes_payload(TK, scope, None, 0, _AT.timestamp())
 
 
@@ -144,8 +146,9 @@ def test_the_view_serves_each_measures_colour_scale_of_the_cells_drawn():
 
 
 def test_a_new_publication_serves_the_new_number():
-    """The number moves: a publication with a changed value serves that value, as a new
-    publication (surface_seq), so the page redraws it.
+    """The number moves: a publication with a changed value serves that value.
+
+    As a new publication (surface_seq), so the page redraws it.
     """
     first = _heat(scope="all")
     target = next(
@@ -168,8 +171,9 @@ def test_a_new_publication_serves_the_new_number():
 
 
 def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
-    """No price and no pan: the rows are the middle of the chain, served with the reason (no row
-    is marked as the price), on the heatmap and on every per-strike panel.
+    """No price and no pan: the rows are the middle of the chain, served with the reason.
+
+    No row is marked as the price, on the heatmap and on every per-strike panel.
     """
     _price(None)
     d = _heat()
@@ -184,7 +188,9 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
 
 
 def test_expired_columns_are_drawn_labelled_and_never_counted():
-    """On 2026-10-15 the 10-14 column has expired: Auto draws the unexpired columns, Wider and All
+    """On 2026-10-15 the 10-14 column has expired.
+
+    Auto draws the unexpired columns, Wider and All
     draw it labelled, and its cells are not counted in the coverage; alone, its chip says
     EXPIRED.
     """
@@ -206,7 +212,9 @@ def test_expired_columns_are_drawn_labelled_and_never_counted():
 
 
 def test_every_per_strike_panel_is_served_its_window_and_scale():
-    """GEX by strike (today: all, near, far), the chart's DEX and OI, the migration's scale with the
+    """Each per-strike list is the scope's rows around the price or the pan, scaled to its max.
+
+    GEX by strike (today: all, near, far), the chart's DEX and OI, the migration's scale with the
     prior day, vanna and charm: each list is the scope's rows around the price or the pan, with
     the largest |value| drawn as its scale.
     """

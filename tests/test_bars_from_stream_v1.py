@@ -1,8 +1,9 @@
-"""Bars come from Schwab: its 1-minute price history (/pricehistory, which the capture daemon asks
-for each ET date) and its streamed CHART_EQUITY 1-minute bars, which the daemon records
-(stream_capture.db stream_bars_raw) and forwards. The console keeps them in memory (server._bars:
-the history, each pushed bar on top); every live reader reads memory. Only completed bars are
-served. A minute Schwab sent neither way stays missing.
+"""Bars come from Schwab: its 1-minute price history and its streamed CHART_EQUITY 1-minute bars.
+
+The price history is /pricehistory, which the capture daemon asks for each ET date; the streamed
+bars the daemon records (stream_capture.db stream_bars_raw) and forwards. The console keeps them
+in memory (server._bars: the history, each pushed bar on top); every live reader reads memory.
+Only completed bars are served. A minute Schwab sent neither way stays missing.
 """
 
 from __future__ import annotations
@@ -103,9 +104,10 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
 
 @pytest.mark.alone
 def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_priced_alongside():
-    """The console prices option chains in the interpreter that takes and serves the bars. Schwab's
-    SPY and TSLA 1-minute price history as /pricehistory answered it at 2026-10-07 09:57 UTC (10
-    days, extended hours: ~11,000 candles each), taken by the bar writer
+    """The console prices option chains in the interpreter that takes and serves the bars.
+
+    Schwab's SPY and TSLA 1-minute price history as /pricehistory answered it at 2026-10-07
+    09:57 UTC (10 days, extended hours: ~11,000 candles each), taken by the bar writer
     (server._write_streamed_bars, as the daemon pushes it) beside a busy pure-Python thread: each
     minute is Schwab's candle with every field as sent, the pre-market and after-hours minutes
     included, in well under a second.

@@ -96,13 +96,14 @@ def logs_dir() -> Path:
 
 
 def daemon_log_path(folder: Path, day: date) -> Path:
-    """The capture daemon's log file for `day` (local date) in `folder`."""
+    """Return the capture daemon's log file for `day` (local date) in `folder`."""
     return folder / f"stream_capture.{day:%Y-%m-%d}.log"
 
 
 def live_binding_error(source: Path | None = None, runtime: Path | None = None) -> str | None:
-    """Why THIS checkout may not run a LIVE process (the console server, the capture daemon)
-    against the runtime root -- or None when it may.
+    """Return why THIS checkout may not run a LIVE process against the runtime root.
+
+    A LIVE process is the console server or the capture daemon; None is returned when it may.
 
     A linked worktree resolves its runtime to the primary checkout (above), so a worktree can
     never become a second production data root; that must not let unmerged code run as the

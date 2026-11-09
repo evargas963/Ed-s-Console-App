@@ -85,8 +85,10 @@ def listener() -> tuple[socket.socket, str]:
 
 
 def program_web(**settings) -> capture._PagesServer:
-    """The program's web server (capture._PagesServer with capture.PAGES, `settings` over them)
-    with the console's startup work not run (lifespan off): its page socket, /ws, alone.
+    """Return the program's web server with the console's startup work not run (lifespan off).
+
+    It is capture._PagesServer with capture.PAGES, `settings` over them: its page socket, /ws,
+    alone.
     """
     return capture._PagesServer(
         uvicorn.Config(server.app, **{**capture.PAGES, "lifespan": "off", **settings})
@@ -96,9 +98,10 @@ def program_web(**settings) -> capture._PagesServer:
 async def serve_page_socket(
     stop: asyncio.Event, sock: socket.socket, prices: dict, web=None, **settings
 ):
-    """The page's price socket as the program serves it, until `stop`: the daemon's side
-    (live_ui.serve_live_ui, `prices` its arguments) and /ws on the program's web server (`web`, a
-    test's to watch, or program_web with `settings`) on `sock`.
+    """Serve the page's price socket as the program serves it, until `stop`.
+
+    The daemon's side (live_ui.serve_live_ui, `prices` its arguments) and /ws on the program's
+    web server (`web`, a test's to watch, or program_web with `settings`) on `sock`.
     """
     web = web if web is not None else program_web(**settings)
     serving = asyncio.create_task(web.serve(sockets=[sock]))
@@ -110,8 +113,9 @@ async def serve_page_socket(
 
 
 def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
-    """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
-    beat stamped by `clock`.
+    """Return what capture.py's heartbeat reports for a session holding `held`.
+
+    Held on LEVELONE_EQUITIES, each beat stamped by `clock`.
     """
     return lambda _now: {
         "ts": clock(),
@@ -122,11 +126,13 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
 
 
 async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
-    """The daemon on one bus, as capture.run runs it -- the program's web server and its browser
-    price socket (serve_page_socket), whose beat records the daemon's status (the one program's
-    one plane), and its market follower feeding the plane -- with the console's real feed started
-    on the same loop, bound to that daemon (start_order_flow_stream, with the tick and chain
-    callbacks the console passes it). `body` takes the bus and the web server.
+    """Run the daemon on one bus, as capture.run runs it, with the console's real feed.
+
+    The program's web server and its browser price socket (serve_page_socket), whose beat records
+    the daemon's status (the one program's one plane), and its market follower feeding the plane
+    -- with the console's real feed started on the same loop, bound to that daemon
+    (start_order_flow_stream, with the tick and chain callbacks the console passes it). `body`
+    takes the bus and the web server.
     """
     bus = MessageBus()
     stop = asyncio.Event()
@@ -158,8 +164,9 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
 
 
 def _received(ts):
-    """The console applied SPY's trade that the daemon received at `ts`: it is on SPY's tape
-    with that receive time.
+    """Check the console applied SPY's trade that the daemon received at `ts`.
+
+    It is on SPY's tape with that receive time.
     """
     return lambda: any(
         r.get("server_received_ts") == ts for r in ofls.get_content_for_symbol("SPY")
@@ -167,10 +174,11 @@ def _received(ts):
 
 
 def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
-    """Real daemon -> real console feed, one program. Live only while the daemon's status beats,
-    the Schwab socket is open and the daemon holds the symbol; once the program stops, its last
-    status is past the live limit and the feed is down. In regular hours: the beats and the reads
-    run from RTH_INSTANT.
+    """Real daemon -> real console feed, one program.
+
+    Live only while the daemon's status beats, the Schwab socket is open and the daemon holds
+    the symbol; once the program stops, its last status is past the live limit and the feed is
+    down. In regular hours: the beats and the reads run from RTH_INSTANT.
     """
     clock = clock_from(RTH_INSTANT)
 
@@ -192,13 +200,15 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
 
 
 def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_chains(feed):
-    """Measured 2026-10-02 after the close: the console spent 79% of its event loop decoding
-    chain parts and read 25 of 60 one-second samples of DELL as "feed down" on a healthy feed,
-    the daemon's status waiting behind the chains. 300 chains arrive at once and each takes the
-    console 20 ms to apply on its event loop (a named stand-in for pricing it: the console's chain
-    callback, as start_order_flow_stream sets it, sleeps); the feed, live and holding SPY, reads
-    live at every sample a route thread takes while it works through them. In regular hours: the
-    beats and the reads run from RTH_INSTANT.
+    """Measured 2026-10-02 after the close: chains held the loop and a live feed read down.
+
+    The console spent 79% of its event loop decoding chain parts and read 25 of 60 one-second
+    samples of DELL as "feed down" on a healthy feed, the daemon's status waiting behind the
+    chains. 300 chains arrive at once and each takes the console 20 ms to apply on its event
+    loop (a named stand-in for pricing it: the console's chain callback, as
+    start_order_flow_stream sets it, sleeps); the feed, live and holding SPY, reads live at every
+    sample a route thread takes while it works through them. In regular hours: the beats and the
+    reads run from RTH_INSTANT.
     """
     contracts = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(
@@ -249,10 +259,12 @@ def test_a_closed_schwab_socket_is_not_live(feed):
 
 
 def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
-    """Neither the message nor any value it carried: what the console applies, and the SPY record
-    a second reader of the daemon's bus takes as the console's _bus_loop does (a LATEST
-    subscription, Schwab's records only by live_push.is_forwarded), hold only what Schwab sent
-    (here, no CLOSE_PRICE and no 1.05 -- only the non-Schwab message carried them).
+    """Neither the message nor any value it carried is forwarded.
+
+    What the console applies, and the SPY record a second reader of the daemon's bus takes as
+    the console's _bus_loop does (a LATEST subscription, Schwab's records only by
+    live_push.is_forwarded), hold only what Schwab sent (here, no CLOSE_PRICE and no 1.05 --
+    only the non-Schwab message carried them).
     """
 
     async def body(bus, web):
@@ -352,8 +364,9 @@ def test_the_live_loop_never_opens_the_capture_database(feed):
 
 
 def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(feed, caplog):
-    """With no daemon in the program the console's feed does not start, says why in one line, and
-    nothing is served: a Schwab message on a bus no daemon of this program holds is not applied.
+    """With no daemon in the program the console's feed does not start, and says why in one line.
+
+    Nothing is served: a Schwab message on a bus no daemon of this program holds is not applied.
     Once the daemon is bound (capture.serve_console, before the web server starts), the feed
     starts and the daemon's next message is applied with its own receive time.
     """
@@ -395,11 +408,12 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
 
 
 def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
-    """Schwab LEVELONE sends only changed fields. A console whose feed starts after a trade and a
-    later bid/ask tick gets the bus's current record (docs/DATA_FLOW.md §2 D3): the trade's fields
-    and the bid/ask together, each stamped with the receive time the daemon gave the message
-    that carried it -- the trade is not lost behind the later bid/ask-only tick, nor re-dated
-    to it.
+    """Schwab LEVELONE sends only changed fields.
+
+    A console whose feed starts after a trade and a later bid/ask tick gets the bus's current
+    record (docs/DATA_FLOW.md §2 D3): the trade's fields and the bid/ask together, each stamped
+    with the receive time the daemon gave the message that carried it -- the trade is not lost
+    behind the later bid/ask-only tick, nor re-dated to it.
     """
 
     async def run():

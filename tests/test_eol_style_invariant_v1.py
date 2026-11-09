@@ -20,7 +20,7 @@ TOOL = REPO / "tools" / "check_eol_style_invariant.py"
 
 @pytest.fixture()
 def repo(tmp_path):
-    """A real git repo with one LF file and one CRLF file already committed."""
+    """Build a real git repo with one LF file and one CRLF file already committed."""
     root = tmp_path / "eolrepo"
     root.mkdir()
 
@@ -44,8 +44,10 @@ def repo(tmp_path):
 
 
 def _patch_tool_repo(root: Path):
-    """The tool resolves REPO from its own location; run it with cwd inside the scratch
-    repo and point it there via git's own discovery by copying it in.
+    """Copy the tool into the scratch repo, so git's own discovery points REPO there.
+
+    The tool resolves REPO from its own location; run it with cwd inside the scratch repo and
+    point it there via git's own discovery by copying it in.
     """
     dest = root / "tools"
     dest.mkdir(exist_ok=True)
@@ -115,8 +117,9 @@ def test_crlf_file_edited_as_crlf_passes_and_flipped_to_lf_fails(repo):
 
 
 def test_a_reflow_a_pull_request_commits_is_refused_against_its_base(repo):
-    """CI runs the check on the pull request's commits (`--base`): a commit made where the
-    pre-commit hook does not run is still read.
+    """CI runs the check on the pull request's commits (`--base`).
+
+    A commit made where the pre-commit hook does not run is still read.
     """
     root, git = repo
     git("branch", "base")
@@ -184,8 +187,10 @@ def test_binary_files_are_exempt(repo):
 
 
 def test_a_pinned_path_may_differ_on_disk_without_being_a_violation(repo):
-    """`text eol=lf` means git normalises into the blob, so worktree CRLF is the
-    CONFIGURED state, not a flip. .claude/settings.json lives exactly here.
+    """`text eol=lf` means git normalises into the blob.
+
+    So worktree CRLF is the CONFIGURED state, not a flip. .claude/settings.json lives exactly
+    here.
     """
     root, git = repo
     (root / ".gitattributes").write_bytes(b"pinned.json text eol=lf\n")
@@ -201,9 +206,10 @@ def test_a_pinned_path_may_differ_on_disk_without_being_a_violation(repo):
 
 
 def test_a_pinned_path_with_a_real_content_change_is_silent(repo):
-    """A pinned path with a REAL content change is in `git diff --name-only`'s changed list,
-    so the lock judges it; it must compare git's normalised bytes, not the raw disk bytes,
-    or it fires on a correctly configured file.
+    """A pinned path with a REAL content change is in `git diff --name-only`'s changed list.
+
+    So the lock judges it; it must compare git's normalised bytes, not the raw disk bytes, or it
+    fires on a correctly configured file.
     """
     root, git = repo
     (root / ".gitattributes").write_bytes(b"pinned.json text eol=lf\n")
@@ -223,9 +229,10 @@ def test_a_pinned_path_with_a_real_content_change_is_silent(repo):
 
 
 def test_a_blob_that_violates_its_own_pin_can_be_repaired(repo):
-    """The pin binds on BOTH sides of the comparison: a path pinned `eol=lf` whose HEAD blob
-    is CRLF is compared normalised against normalised, so the commit that restores the pin
-    passes instead of reading as a PURE EOL REFLOW.
+    """The pin binds on BOTH sides of the comparison.
+
+    A path pinned `eol=lf` whose HEAD blob is CRLF is compared normalised against normalised, so
+    the commit that restores the pin passes instead of reading as a PURE EOL REFLOW.
 
     Planted by committing CRLF with NO pin, then adding the pin — how a blob comes to violate
     one: the file did not move, the pattern did.

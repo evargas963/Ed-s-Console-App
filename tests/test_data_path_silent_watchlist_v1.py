@@ -1,5 +1,6 @@
-"""Schwab -> the watchlist. A missing daemon heartbeat keeps the last list and says it is not
-live.
+"""Schwab -> the watchlist.
+
+A missing daemon heartbeat keeps the last list and says it is not live.
 """
 
 from __future__ import annotations
@@ -11,8 +12,9 @@ from tests.feed_live_helper import daemon_status
 
 
 def test_a_missing_heartbeat_keeps_the_last_watchlist():
-    """The daemon reported SPY and TSLA, then the heartbeat is gone: the watchlist route still
-    serves those tickers and says the list is not live.
+    """The daemon reported SPY and TSLA, then the heartbeat is gone.
+
+    The watchlist route still serves those tickers and says the list is not live.
     """
     now = time_et.now()
     lmp.record_feed_down()

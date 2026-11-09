@@ -1,6 +1,7 @@
-"""Ed Console's launcher: start_ed_console.bat runs it with the project's .venv Python. Ed Console
-is one program (capture_main): the Schwab connection, the recording and the console's pages. Its
-start stops nothing.
+"""Ed Console's launcher: start_ed_console.bat runs it with the project's .venv Python.
+
+Ed Console is one program (capture_main): the Schwab connection, the recording and the console's
+pages. Its start stops nothing.
 
 0. With it not running, the checkout brought to origin/main (bring_to_origin_main), so it starts
    from the newest merged commit: moved, it runs the new launch.py as its child and ends with it.
@@ -49,12 +50,13 @@ COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = (
 
 
 def bring_to_origin_main(root: Path) -> tuple[str, str | None, str]:
-    """The checkout at `root` brought to origin/main: (what the check found, the commit it is at,
-    None when git could not say, why). It fetches origin and fast-forwards main. COMMIT_CURRENT:
-    at origin/main. COMMIT_MOVED: fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git
-    itself not answering (absent, hung);
-    COMMIT_REFUSED: not on main, local changes, or a history split from origin/main; nothing is
-    moved.
+    """Bring the checkout at `root` to origin/main.
+
+    Return (what the check found, the commit it is at, None when git could not say, why). It
+    fetches origin and fast-forwards main. COMMIT_CURRENT: at origin/main. COMMIT_MOVED:
+    fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git itself not answering (absent,
+    hung); COMMIT_REFUSED: not on main, local changes, or a history split from origin/main;
+    nothing is moved.
     """
     try:
         return _bring(root)
@@ -109,19 +111,22 @@ def running(start: list[str], root: Path = ROOT) -> list[psutil.Process]:
 
 
 def daemon_window(batch: Path) -> list[str]:
-    """The command that runs `batch` (start_capture_daemon.bat) in a minimized window of its own
-    titled "Ed Capture Daemon", under `cmd /c` so the window closes when the batch ends (`start`
-    given a batch file runs it under `cmd /K`, which keeps the window open).
+    """Return the command that runs `batch` (start_capture_daemon.bat) in a minimized window.
+
+    The window is its own, titled "Ed Capture Daemon", under `cmd /c` so the window closes when
+    the batch ends (`start` given a batch file runs it under `cmd /K`, which keeps the window
+    open).
     """
     return ["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)]
 
 
 def stop() -> int:
-    """The clean stop of the program: its stop request set (program_lock.ask_to_stop), it writes
-    what it holds and exits, and start_capture_daemon.bat does not restart it; the Schwab
-    connection, the recording and the console's pages end together. Waits up to STOP_WAIT_SEC; 0
-    when it ended after being asked: one that ended when this stop could not ask it (it had made
-    no request to set) is not reported stopped.
+    """Stop the program cleanly: set its stop request (program_lock.ask_to_stop).
+
+    It writes what it holds and exits, and start_capture_daemon.bat does not restart it; the
+    Schwab connection, the recording and the console's pages end together. Waits up to
+    STOP_WAIT_SEC; 0 when it ended after being asked: one that ended when this stop could not ask
+    it (it had made no request to set) is not reported stopped.
     """
     program = running(DAEMON_START)
     ended = "stopped"

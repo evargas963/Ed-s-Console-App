@@ -18,7 +18,7 @@ READ = (
 
 
 def _countdown(token_path: Path) -> dict:
-    """The countdown in a fresh interpreter whose token file is `token_path`."""
+    """Read the countdown in a fresh interpreter whose token file is `token_path`."""
     env = {**os.environ, "SCHWAB_TOKEN_PATH": str(token_path)}
     done = subprocess.run(
         [sys.executable, "-c", READ],

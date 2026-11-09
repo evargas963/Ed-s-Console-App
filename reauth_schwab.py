@@ -1,5 +1,5 @@
-"""
-Schwab OAuth reauth script.
+"""Schwab OAuth reauth script.
+
 Run: python reauth_schwab.py  (or: python -m reauth_schwab)
 
 1. Deletes the existing token file (if present)
@@ -131,45 +131,27 @@ def reauth():
             else "Opening browser for Schwab login (waiting for callback server)..."
         )
     )
-    try:
-        ok, msg = flow_fn(
-            api_key=cfg.api_key,
-            app_secret=cfg.app_secret,
-            callback_url=cfg.callback_url,
-            token_path=token_path,
+    ok, msg = flow_fn(
+        api_key=cfg.api_key,
+        app_secret=cfg.app_secret,
+        callback_url=cfg.callback_url,
+        token_path=token_path,
+    )
+    if ok:
+        print(f"\nSUCCESS: Token written to {token_path}")
+        print(
+            "No restart: the capture daemon takes it at once if Schwab refused the old "
+            "sign-in, else when its token next comes due (within about 30 minutes)."
         )
-        if ok:
-            print(f"\nSUCCESS: Token written to {token_path}")
-            print(
-                "No restart: the capture daemon takes it at once if Schwab refused the old "
-                "sign-in, else when its token next comes due (within about 30 minutes)."
-            )
-            _print_post_reauth_validation(token_path)
-        else:
-            print(f"\nFAILURE: {msg}")
-            if not manual:
-                print("\nIf you saw the callback page but no token was created:")
-                print("  - Did you click through the browser's certificate warning?")
-                print("  - Try: python reauth_schwab.py --manual  (avoids cert issue)")
-            print("  - Check that your Schwab app's callback URL exactly matches:")
-            print(f"    {cfg.callback_url}")
-            sys.exit(1)
-    except RuntimeError as e:
-        print(f"\nFAILURE: {e}")
+        _print_post_reauth_validation(token_path)
+    else:
+        print(f"\nFAILURE: {msg}")
         if not manual:
             print("\nIf you saw the callback page but no token was created:")
             print("  - Did you click through the browser's certificate warning?")
             print("  - Try: python reauth_schwab.py --manual  (avoids cert issue)")
         print("  - Check that your Schwab app's callback URL exactly matches:")
         print(f"    {cfg.callback_url}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\nFAILURE: {e}")
-        log.exception("reauth failed")
-        if not manual:
-            print("\nIf you completed login and got a callback page:")
-            print("  The browser must ACCEPT the self-signed cert to reach the local server.")
-            print("  Or run: python reauth_schwab.py --manual  (no local server needed)")
         sys.exit(1)
 
 

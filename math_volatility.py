@@ -1,6 +1,6 @@
-"""
+"""Volatility-derived transforms: the 25-delta risk reversal and the average true range.
+
 math_volatility.py
-Volatility-derived transforms: the 25-delta risk reversal and the average true range.
 """
 
 from __future__ import annotations
@@ -15,9 +15,10 @@ RR25_DELTA_TOL = 0.10
 
 
 def compute_25d_risk_reversal(contracts: list[OptionContract]) -> dict | None:
-    """IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out, in vol points
-    (the fixed ~30-day tenor the published risk reversal uses -- SpotGamma; the front expiry is
-    often a same-day one, whose skew is hours wide).
+    """IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out, in vol points.
+
+    The expiry nearest 30 days out is the fixed ~30-day tenor the published risk reversal uses
+    -- SpotGamma; the front expiry is often a same-day one, whose skew is hours wide.
 
     The skew-steepness read: SPX-typical is −2..−4 (puts richer); deterioration toward
     −6 and beyond = the put bid building — the same-session confirm for a Gamma Support

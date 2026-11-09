@@ -1,5 +1,7 @@
-"""The Key Delta Strike through the terrain, on six captured chains: a strike with one side's delta
-not known has no total, as total_gex_dollars_at_strike leaves one with a side's gamma not known.
+"""The Key Delta Strike through the terrain, on six captured chains.
+
+A strike with one side's delta not known has no total, as total_gex_dollars_at_strike leaves one
+with a side's gamma not known.
 """
 
 from __future__ import annotations
@@ -16,8 +18,10 @@ from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, TSLA
     "held", [CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, TSLA], ids=lambda h: h.ticker
 )
 def test_a_strike_with_one_sides_delta_not_known_is_not_the_key_delta_strike(held):
-    """Induced test condition: Schwab's no-value code on the delta of the smaller side at the
-    chain's key strike, its gamma and volatility as sent. No captured chain holds that alone.
+    """Induced test condition: Schwab's no-value code on the smaller side's delta at the key strike.
+
+    The delta of the smaller side at the chain's key strike, its gamma and volatility as sent.
+    No captured chain holds that alone.
     """
     records = read_chain(held.chain)
     key = compute_terrain(held.ticker, records, held.spot, now=held.now).key_delta_strike
