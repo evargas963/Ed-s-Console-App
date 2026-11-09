@@ -1438,23 +1438,19 @@ class CaptureWriter:
         unread = (bool(self._spills) and self._spills[0].read_at < self._spills[0].size) or bool(
             self._prune
         )
-        try:
-            item = q.get(
-                timeout=0.001
-                if unread
-                else max(self.batch_sec - (time_et.elapsed() - last_commit), 0.01)
-            )
-        except queue.Empty:
-            item = False
-        stopping = stopping or item is None
-        incoming = [item] if item else []
-        while not stopping:
+        timeout = 0.001 if unread else max(self.batch_sec - (time_et.elapsed() - last_commit), 0.01)
+        incoming: list = []
+        block = True  # the first is waited for; after it, only what is already queued
+        while block or not stopping:
             try:
-                item = q.get_nowait()
+                item = q.get(block=block, timeout=timeout)
             except queue.Empty:
-                break
-            stopping = item is None
-            incoming += [item] if item else []
+                if not block:
+                    break
+            else:
+                stopping = stopping or item is None
+                incoming += [item] if item else []
+            block = False
         return incoming, stopping
 
     def _store_round(self, conn: sqlite3.Connection) -> None:
