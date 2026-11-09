@@ -2,6 +2,7 @@
    Key Levels rail  <- GET /api/terrain      (canonical levels SSOT)
    GEX by Strike    <- GET /api/terrain/strikes  (per-strike net_gex_1pct$)
    Strike Detail    <- GET /api/chain         (vendor per-contract OI/vol/greeks)
+   Vanna / Charm    <- the page's socket      (the `vanna` / `charm` panels, per-strike net)
    No trading semantics are computed here. Bar scaling is visual normalisation over the
    already-computed displayed values; distances/positions are formatting only. */
 (function () {
@@ -305,12 +306,14 @@
   }
 
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
-  function _mkStrikeBar(kind, endpoint, hostId, srcId) {
+  // The program sends the panel on the page's socket (server.vanna_by_strike, charm_by_strike)
+  // while its tab is on, for the window it asks (the scope and its pan), at once and on each
+  // change of the levels; nothing received yet for the ticker on screen is '-'.
+  function _mkStrikeBar(kind, hostId, srcId) {
     function inSub() {
       var s = window.EdShell.getState();
       return s.workspace === 'options' && s.subview === kind;
     }
-    function stillCtx(tk) { var host = document.getElementById(hostId); return inSub() && !!host && ticker() === tk; }
     var pan = window.EdShell.newPan(), panTicker = null;
     function renderIt(host, d) {
       var src = document.getElementById(srcId); if (src) src.textContent = '';
@@ -318,23 +321,24 @@
         host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(d.reason) + '</div></div>';
         return;
       }
-      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, load, { top: '' });
+      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, { top: '' });
     }
-    function impl(tk, signal) {
+    function ask() {
+      if (!inSub()) { window.EdShell.showPanel(kind, null); return; }
+      if (panTicker !== ticker()) {   // a new ticker: its own window, and nothing of the last one's
+        pan.centre = null; pan.shift = 0; panTicker = ticker();
+        var host = document.getElementById(hostId); if (host) window.EdShell.placeholder(host, '-');
+      }
+      window.EdShell.showPanel(kind, window.EdShell.windowParams(pan));
+    }
+    document.addEventListener('ed:panel', function (e) {
       var host = document.getElementById(hostId);
-      if (!stillCtx(tk)) return;
-      if (panTicker !== tk) { pan.centre = null; pan.shift = 0; panTicker = tk; }
-      var G = window.EdL1SseGuards;
-      return G.show(G.readJson(endpoint + '?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(pan), signal), endpoint,
-        function (d) { if (stillCtx(tk)) renderIt(host, d); },
-        function (words) { if (stillCtx(tk)) renderIt(host, { available: false, reason: words }); });
-    }
-    var loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return impl(ticker(), signal); });
-    function load() { if (inSub()) loader.trigger(ticker()); }
-    return load;
+      if (e.detail.type === kind && host && inSub()) renderIt(host, e.detail);
+    });
+    return ask;
   }
-  var loadVanna = _mkStrikeBar('vanna', '/api/options/vanna-by-strike', 'vnBody', 'vnSrc');
-  var loadCharm = _mkStrikeBar('charm', '/api/options/charm-by-strike', 'chmBody', 'chmSrc');
+  var loadVanna = _mkStrikeBar('vanna', 'vnBody', 'vnSrc');
+  var loadCharm = _mkStrikeBar('charm', 'chmBody', 'chmSrc');
 
   // ---------- Structures — contract-safety metadata ------
   // /api/chain fields (multiplier/nonStandard/deliverables/settlementType/
@@ -475,7 +479,7 @@
   document.addEventListener('ed:changed', function (e) {
     if (e.detail.kind === 'flow') { loadOf(); return; }
     if (e.detail.kind !== 'levels') return;
-    loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures();
+    loadLevels(); loadGbs(); loadStructures();
     var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });

@@ -10,20 +10,24 @@ The page's socket is /ws on the program's own web server (server.app, page_socke
 address the page talks to. A page that stops reading is dropped (PageSocket).
 
 Protocol (JSON text frames):
-  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...],   (replaces the set and the
-              "ticker": "SPY"}                                      page's selected ticker, or
-                                                                     null for none)
+  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...],   (replaces the set, the
+              "ticker": "SPY",                                      page's selected ticker (null
+              "panels": {"expiries": {}, "vanna": {"scope": ...}}}  for none) and the panels it
+                                                                     shows, each with its own
+                                                                     parameters)
   server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
                                                                      what each asked-for symbol
                                                                      is -- "SPX" is key "$SPX",
                                                                      shown "SPX")
   server  -> {"type": "quotes", "rows": [price_row, ...]}            (snapshot on subscribe,
                                                                      then every change)
-  server  -> {"type": <kind>, "ticker": key, ...body}                (each panel of the selected
-                                                                     ticker, its producer's body
-                                                                     (`panels`, server.PAGE_
-                                                                     PANELS): on subscribe, then
-                                                                     each time it changes)
+  server  -> {"type": <kind>, "ticker": key, ...body}                (each panel the page shows of
+                                                                     the selected ticker, its
+                                                                     producer's body (`panels`,
+                                                                     server.PAGE_PANELS) for the
+                                                                     page's parameters: on
+                                                                     subscribe, then each time it
+                                                                     changes)
   server  -> {"type": "feed", "feed": {...}, "rows": [...]}           (every HEARTBEAT_SEC:
                                                                      the daemon's whole status
                                                                      and a fresh row per symbol,
@@ -100,7 +104,7 @@ class PageSocket(WebSocketsSansIOProtocol):
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "ticker", "panels", "wake")
+    __slots__ = ("ws", "symbols", "pending", "identity", "ticker", "shown", "panels", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
@@ -108,6 +112,7 @@ class _Client:
         self.pending: set[str] = set()  # symbols changed since the last send
         self.identity: list[dict] | None = None  # the last subscribe's answer, not yet sent
         self.ticker: str | None = None  # the page's selected ticker (its key); None: none
+        self.shown: dict[str, dict] = {}  # each panel the page shows: its parameters
         self.panels: set[str] = set()  # the selected ticker's panels changed since the last send
         self.wake = asyncio.Event()
 
@@ -126,7 +131,7 @@ class LiveUiServer:
         panels: dict,
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
-        self.panels = panels  # each panel's producer, (ticker, now) -> its body
+        self.panels = panels  # each panel's producer, (ticker, now, parameters) -> its body
         self.clock = clock  # the time each row is finished at, and each beat
         self.record_heartbeat = (
             record_heartbeat  # where the daemon keeps its own record of each beat
@@ -151,9 +156,9 @@ class LiveUiServer:
                 c.wake.set()
 
     def mark_changed(self, ticker: str, kind: str) -> None:
-        """Mark panel `kind` changed for every browser whose selected ticker is `ticker`."""
+        """Mark panel `kind` changed for every browser showing it for its selected `ticker`."""
         for c in self.clients:
-            if c.ticker == ticker:
+            if c.ticker == ticker and kind in c.shown:
                 c.panels.add(kind)
                 c.wake.set()
 
@@ -186,9 +191,13 @@ class LiveUiServer:
                 await self._send(c, {"type": "symbols", "symbols": identity})
             now = self.clock()
             kinds, c.panels = c.panels, set()
-            for kind in sorted(kinds):
-                body = self.panels[kind](c.ticker, now)
-                await self._send(c, {"type": kind, "ticker": c.ticker, **body})
+            for kind in sorted(kinds & c.shown.keys()):
+                # on a worker thread, as a route's read ran: a producer that reads a lock the
+                # pricing thread holds, or works a while, never holds the beat or another page
+                ticker, params = c.ticker, c.shown[kind]
+                body = await asyncio.to_thread(self.panels[kind], ticker, now, params)
+                await self._send(c, {"type": kind, "ticker": ticker, **body})
+            now = self.clock()
             syms, c.pending = c.pending, set()
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
@@ -221,13 +230,32 @@ class LiveUiServer:
             c.symbols = frozenset(keys)
             c.identity = identity  # what each asked-for symbol is, before its rows
             c.pending = set(keys)  # snapshot: the current row for each, now
-            selected = req.get("ticker")
+            selected, shown = req.get("ticker"), req.get("panels", {})
             c.ticker = None
-            c.panels = set()
+            c.shown = {}
             if isinstance(selected, str) and selected.strip():
                 c.ticker = ticker_storage_key(selected)
-                c.panels = set(self.panels)  # snapshot: each panel's current body, now
+                c.shown = self._shown(shown)
+            c.panels = set(c.shown)  # snapshot: each shown panel's current body, now
             c.wake.set()
+
+    def _shown(self, shown) -> dict[str, dict]:
+        """Return the panels a subscribe names that the program has, each with its parameters."""
+        if not isinstance(shown, dict):
+            log.warning("live ui: a subscribe's panels not an object: %.200r", shown)
+            return {}
+        out = {}
+        for kind, params in shown.items():
+            if kind in self.panels and isinstance(params, dict):
+                out[kind] = params
+            else:
+                log.warning(
+                    "live ui: a subscribed panel unknown, or its parameters not an object: "
+                    "%.200r %.200r",
+                    kind,
+                    params,
+                )
+        return out
 
     async def serve_client(self, ws) -> None:
         c = _Client(ws)
@@ -275,15 +303,16 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
-def changed(state, ticker: str, kind: str) -> None:
-    """Mark panel `kind` of `ticker` (its key) changed for the pages on it.
+def changed(state, ticker: str, *kinds: str) -> None:
+    """Mark panels `kinds` of `ticker` (its key) changed for the pages showing them.
 
     While the program serves the pages (`state.prices`, the web server's app state); callable
     from any thread: the pricing thread's producer calls it.
     """
     prices = state.prices
     if prices is not None:
-        prices.loop.call_soon_threadsafe(prices.mark_changed, ticker, kind)
+        for kind in kinds:
+            prices.loop.call_soon_threadsafe(prices.mark_changed, ticker, kind)
 
 
 async def page_socket(ws: WebSocket) -> None:
@@ -314,7 +343,8 @@ async def serve_live_ui(
 
     The price server is the web server's app `state.prices` while it serves, None before and
     after. Each beat is recorded with `record_heartbeat` (the daemon's own plane); `panels` are
-    the selected ticker's panels (server.PAGE_PANELS). The pages' connections end with the
+    the selected ticker's panels (server.PAGE_PANELS), each kind's producer
+    (ticker, now, parameters) -> its body. The pages' connections end with the
     program's web server (capture.serve_console).
     """
     stats = stats if stats is not None else {}

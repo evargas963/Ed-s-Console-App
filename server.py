@@ -1112,6 +1112,16 @@ STREAM_WORDS = {
 _last_feed_stamp: tuple | None = None
 
 
+#: the page's socket panels (PAGE_PANELS) read from the published levels and the live price
+LEVELS_PANELS = ("vanna", "charm")
+
+
+def _levels_changed(tk: str) -> None:
+    """Tell the pages on `tk` (its key) that its levels changed: the change push and the socket."""
+    push_changes.changed(tk, push_changes.LEVELS)
+    live_ui.changed(app.state, tk, *LEVELS_PANELS)
+
+
 def restamp_open_surfaces(now: float) -> None:
     """Mark every cached heatmap from the daemon's heartbeat at `now`, without repricing.
 
@@ -1160,7 +1170,7 @@ def restamp_open_surfaces(now: float) -> None:
     watching = set(push_changes.watched())
     for tk in bumped:
         if tk in watching:
-            push_changes.changed(tk, push_changes.LEVELS)
+            _levels_changed(tk)
 
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
@@ -1553,7 +1563,7 @@ def _publish_levels(
     )
     with _terrain_cache_lock:
         _terrain_cache[tk] = levels
-    push_changes.changed(tk, push_changes.LEVELS)
+    _levels_changed(tk)
     if new_chain:
         push_changes.changed(tk, push_changes.CHAIN)
         live_ui.changed(app.state, tk, "expiries")
@@ -1638,7 +1648,7 @@ def _log_level_crosses(
             held = _held_crosses(tk)
             held.extend(logged)
             del held[:-CROSSES_KEPT]
-        push_changes.changed(tk, push_changes.LEVELS)
+        _levels_changed(tk)
 
 
 def _vanna_rows(snap: TerrainSnapshot) -> list:
@@ -1920,7 +1930,7 @@ def refresh_not_live_pages(now: float) -> None:
         if price_state(tk, now)[0] != lmp.LIVE or (
             levels is not None and verdict["levels_state"] != lmp.LIVE
         ):
-            push_changes.changed(tk, push_changes.LEVELS)
+            _levels_changed(tk)
 
 
 def _terrain_loop() -> None:
@@ -2351,51 +2361,48 @@ def strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, now: f
     }
 
 
-@app.get("/api/options/vanna-by-strike")
-def get_vanna_by_strike(
-    ticker: str = Query(...),
-    scope: ScopeQuery = "auto",
-    centre: CentreQuery = None,
-    shift: ShiftQuery = 0,
-):
-    """Per-strike dealer VANNA exposure from the published levels.
+def _window_asked(params: dict) -> tuple[str, float | None, int] | str:
+    """Return the window a page's panel parameters ask for: (scope, centre, shift).
+
+    The scope is one of SCOPES (default auto), the centre a strike or None (follow the price),
+    the shift a whole number of rows (default 0). Parameters that ask for none of these: the
+    words saying which.
+    """
+    scope, centre, shift = params.get("scope", "auto"), params.get("centre"), params.get("shift", 0)
+    if scope not in SCOPES:
+        return f"scope {scope!r} is not one of {', '.join(SCOPES)}"
+    if centre is not None and (isinstance(centre, bool) or not isinstance(centre, int | float)):
+        return f"centre {centre!r} is not a strike"
+    if isinstance(shift, bool) or not isinstance(shift, int):
+        return f"shift {shift!r} is not a whole number of rows"
+    return scope, centre, shift
+
+
+def _strike_bars(key: str, tk: str, now: float, params: dict) -> dict:
+    """Return the per-strike bar panel `key` of `tk` at `now` in the window `params` ask for."""
+    window = _window_asked(params)
+    if isinstance(window, str):
+        return unavailable(tk, window)
+    return strike_bar_payload(tk, key, *window, now)
+
+
+def vanna_by_strike(ticker: str, now: float, params: dict) -> dict:
+    """Return the per-strike dealer VANNA exposure of the published levels (the Vanna panel).
 
     net_vanna = call_vanna - put_vanna, aggregated across every expiry; no per-expiry surface yet.
+    `ticker` is the levels' own key; `params` the panel's window (_window_asked).
     """
-    return JSONResponse(
-        strike_bar_payload(
-            ticker_storage_key(_required_ticker(ticker)),
-            "vanna_rows",
-            scope,
-            centre,
-            shift,
-            time_et.now(),
-        )
-    )
+    return _strike_bars("vanna_rows", ticker, now, params)
 
 
-@app.get("/api/options/charm-by-strike")
-def get_charm_by_strike(
-    ticker: str = Query(...),
-    scope: ScopeQuery = "auto",
-    centre: CentreQuery = None,
-    shift: ShiftQuery = 0,
-):
-    """Per-strike dealer CHARM exposure from the published levels' charm map.
+def charm_by_strike(ticker: str, now: float, params: dict) -> dict:
+    """Return the per-strike dealer CHARM exposure of the published levels' charm map.
 
     The map is the charm walls' own: net_charm = call_charm - put_charm per strike,
-    delta-shares/day.
+    delta-shares/day (the Charm panel). `ticker` is the levels' own key; `params` the panel's
+    window (_window_asked).
     """
-    return JSONResponse(
-        strike_bar_payload(
-            ticker_storage_key(_required_ticker(ticker)),
-            "charm_rows",
-            scope,
-            centre,
-            shift,
-            time_et.now(),
-        )
-    )
+    return _strike_bars("charm_rows", ticker, now, params)
 
 
 @app.get("/api/options/tape")
@@ -3376,10 +3383,11 @@ async def post_flow_contract(selected: FlowContract):
     return {"ok": True, "contract": contract}
 
 
-def expiries(ticker: str, now: float) -> dict:
+def expiries(ticker: str, now: float, _params: dict) -> dict:
     """Return the ticker's listed expiries at `now`, each with its dropdown texts.
 
-    `ticker` is the levels' own key ($SPX). Each expiry's label is its date, MM/DD/YYYY, and its
+    `ticker` is the levels' own key ($SPX); the list takes no parameters. Each expiry's label is
+    its date, MM/DD/YYYY, and its
     `dte_text` Schwab's daysToExpiration as sent (18DTE), None when Schwab sent none. Before the
     ticker's first chain is priced the list is unknown (None), with the levels' own reason; a
     chain listing none is an empty list with its reason. The page's socket sends it (live_ui,
@@ -3403,8 +3411,9 @@ def expiries(ticker: str, now: float) -> dict:
 
 
 #: the panels the page's socket sends for the page's selected ticker (live_ui.LiveUiServer):
-#: each kind's producer, (ticker, now) -> its body; _publish_levels marks a kind changed
-PAGE_PANELS = {"expiries": expiries}
+#: each kind's producer, (ticker, now, the page's parameters) -> its body; _publish_levels marks
+#: the expiry list changed on each new chain, and _levels_changed the levels' panels
+PAGE_PANELS = {"expiries": expiries, "vanna": vanna_by_strike, "charm": charm_by_strike}
 
 
 #: /api/chain's reason while no chain of the ticker is held and no chain error is recorded
@@ -3725,7 +3734,7 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
         log.warning("price levels for %s not built: %s", tk, e, exc_info=True)
         return
     if snap is not before:  # the same object when its bars did not change
-        push_changes.changed(tk, push_changes.LEVELS)
+        _levels_changed(tk)
 
 
 def _publish_missing_price_levels(tickers, now: datetime) -> None:

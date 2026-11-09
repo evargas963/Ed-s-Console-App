@@ -389,8 +389,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     { name: 'the levels view', host: '#levelsBody', route: '/api/levels', view: 'levels' },
     { name: 'the chain', host: '#chainBody', route: '/api/chain', sub: 'chain' },
     { name: 'Structures', host: '#stBody', route: '/api/chain', sub: 'structures' },
-    { name: 'the vanna bars', host: '#vnBody', route: '/api/options/vanna-by-strike', sub: 'vanna' },
-    { name: 'the charm bars', host: '#chmBody', route: '/api/options/charm-by-strike', sub: 'charm' },
     { name: 'the flow panel', host: '#flowBody', route: '/api/order-flow/options-microstructure', sub: 'flow',
       contract: 'SPY   260911C00583000' },
     { name: 'the order-flow book', host: '#obBody', route: '/api/order-flow/microstructure', ws: 'order-flow', sub: 'book' },

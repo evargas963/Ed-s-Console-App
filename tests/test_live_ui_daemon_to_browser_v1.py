@@ -30,6 +30,16 @@ chains here (each expirationDate's day, Schwab's daysToExpiration as sent). Prov
   * switching ticker sends the new ticker's list at once and stops the old ticker's;
   * a page that drops and returns gets the list again on its subscribe; a page with no ticker
     gets none.
+
+Then the levels' panels a page shows, each with the parameters its subscribe names (the Vanna and
+Charm tabs, server.vanna_by_strike and charm_by_strike, with their window), the expected rows
+the ones the levels producer published, worked into the window here:
+
+  * a page on the tab gets the panel at once, in the window it asks (a window it cannot draw is
+    unavailable with its words); before the ticker's levels, unavailable with the reason;
+  * new levels reach only the pages showing that panel on that ticker; a switch sends the new
+    ticker's and none of the old; a page that drops and returns gets its panels again;
+  * a producer waiting on the levels' lock (induced) does not stall the beat.
 """
 
 from __future__ import annotations
@@ -38,6 +48,7 @@ import asyncio
 import base64
 import json
 import socket
+import threading
 
 import psutil
 import pytest
@@ -531,13 +542,19 @@ async def _serve_panels(body) -> None:
         await asyncio.wait_for(served, 5)
 
 
-async def _select(ws, ticker) -> list[dict]:
-    """Subscribe the page on `ticker`; return the frames up to and including its answer.
+#: the panels a page always shows: the expiry dropdown's list (ed-core.js `_panels`)
+LIST = {"expiries": {}}
 
-    The answer is the `symbols` frame. Every frame the server sent before it is in the list: a
-    frame the page was owed before this subscribe arrives ahead of the answer.
+
+async def _select(ws, ticker, panels=LIST) -> list[dict]:
+    """Subscribe the page on `ticker`, showing `panels`; return the frames up to its answer.
+
+    The answer is the `symbols` frame, included. Every frame the server sent before it is in the
+    list: a frame the page was owed before this subscribe arrives ahead of the answer.
     """
-    await ws.send(json.dumps({"op": "subscribe", "symbols": [], "ticker": ticker}))
+    await ws.send(
+        json.dumps({"op": "subscribe", "symbols": [], "ticker": ticker, "panels": panels})
+    )
     return await _frames_until(ws, lambda m: m["type"] == "symbols")
 
 
@@ -662,3 +679,177 @@ def test_a_page_with_no_ticker_gets_no_list():
             assert _lists(await _select(ws, None)) == []
 
     asyncio.run(_serve_panels(body))
+
+
+# -- the levels' panels: Vanna and Charm by strike, each in the window the page asks -------------
+
+
+def _kind(frames, kind) -> list[dict]:
+    return [m for m in frames if m["type"] == kind]
+
+
+async def _next(ws, kind) -> dict:
+    return (await _frames_until(ws, lambda m: m["type"] == kind))[-1]
+
+
+def _published_rows(tk, key) -> list:
+    """The rows the levels producer published for `tk` (its vanna_rows or charm_rows)."""
+    return [list(r) for r in getattr(server.published_levels(tk), key)]
+
+
+ALL = {"scope": "all", "centre": None, "shift": 0}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_page_on_the_vanna_and_charm_tabs_gets_each_panel_at_once():
+    _publish(CRWD)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, CRWD.ticker, {**LIST, "vanna": ALL, "charm": ALL})
+            seen = {}
+            while len(seen) < 3:
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert set(seen) == {"expiries", "vanna", "charm"}
+            for frame, key in ((seen["vanna"], "vanna_rows"), (seen["charm"], "charm_rows")):
+                assert frame["ticker"] == A and frame["available"] is True
+                assert frame["rows"] == _published_rows(A, key) and frame["rows"]
+
+    asyncio.run(_serve_panels(body))
+    paths = {r.path for r in server.app.routes}
+    assert not paths & {"/api/options/vanna-by-strike", "/api/options/charm-by-strike"}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_the_panel_is_drawn_in_the_window_its_subscribe_asks():
+    """The operator's pan: 11 rows (Auto) centred two rows past the strike the drag began on."""
+    _publish(MRVL)
+    rows = _published_rows(B, "vanna_rows")
+    strikes = [r[0] for r in rows]
+    assert len(strikes) > 30
+    asked = {"scope": "auto", "centre": strikes[10], "shift": 2}
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, B, {"vanna": asked})
+            frame = await _next(ws, "vanna")
+            assert frame["view"]["centre"] == strikes[12] and frame["scope"] == "auto"
+            assert frame["rows"] == rows[7:18]
+            await _select(ws, B, {"vanna": {**asked, "scope": "most"}})  # one it cannot draw
+            assert await _next(ws, "vanna") == {
+                "type": "vanna",
+                "ticker": B,
+                "available": False,
+                "reason": "scope 'most' is not one of auto, wider, all",
+            }
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_levels_the_panel_is_unavailable_with_its_reason():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, CRWD.ticker, {"vanna": ALL})
+            assert await _next(ws, "vanna") == {
+                "type": "vanna",
+                "ticker": A,
+                "available": False,
+                "reason": "no levels published for this ticker yet",
+            }  # never an empty list of rows standing for it
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_panel_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"vanna": ALL})
+            await _select(on_b, B, {"vanna": ALL})
+            await _select(list_only, A)  # A's page, on a tab with no levels panel
+            for ws in (on_a, on_b):
+                assert (await _next(ws, "vanna"))["available"] is False  # no levels of either yet
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)  # the pricing thread publishes A's levels
+            frame = await _next(on_a, "vanna")
+            assert frame["ticker"] == A and frame["rows"] == _published_rows(A, "vanna_rows")
+            # nothing for B's page, nor for A's page not showing it: a frame owed before the next
+            # subscribe arrives ahead of its answer
+            assert _kind(await _select(on_b, B, {}), "vanna") == []
+            assert _kind(await _select(list_only, A), "vanna") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_switch_sends_the_new_tickers_panel_and_none_of_the_old():
+    _publish(CRWD)
+    _publish(MRVL)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"charm": ALL})
+            assert (await _next(ws, "charm"))["ticker"] == A
+            await _select(ws, B, {"charm": ALL})
+            frame = await _next(ws, "charm")
+            assert frame["ticker"] == B and frame["rows"] == _published_rows(B, "charm_rows")
+            await asyncio.to_thread(_publish, CRWD)  # the ticker the page left
+            assert _kind(await _select(ws, B, {}), "charm") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_page_that_drops_and_returns_gets_its_panels_again():
+    _publish(CRWD)
+
+    async def body(url):
+        for _ in range(2):  # the page, then its reconnect and its subscribe
+            async with connect(url) as ws:
+                await _select(ws, A, {**LIST, "vanna": ALL})
+                assert (await _next(ws, "vanna"))["rows"] == _published_rows(A, "vanna_rows")
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_producer_held_on_the_levels_lock_does_not_stall_the_beat():
+    """The beat keeps going while a panel's producer waits; the panel arrives after.
+
+    Induced condition: the levels' lock held 2.5 s by another thread, as the pricing thread holds
+    it while it publishes; every panel's producer reads it.
+    """
+    _publish(CRWD)
+    release = threading.Event()
+
+    def hold(held: threading.Event) -> None:
+        with server._terrain_cache_lock:
+            held.set()
+            release.wait(5)
+
+    async def body(url):
+        async with connect(url) as ws:
+            held = threading.Event()
+            holder = asyncio.create_task(asyncio.to_thread(hold, held))
+            await asyncio.to_thread(held.wait, 5)
+            await ws.send(
+                json.dumps(
+                    {"op": "subscribe", "symbols": [], "ticker": A, "panels": {"vanna": ALL}}
+                )
+            )
+            beats, end = 0, time_et.elapsed() + 2.5
+            while time_et.elapsed() < end:
+                msg = json.loads(await asyncio.wait_for(ws.recv(), 2.5))
+                assert msg["type"] != "vanna"  # its producer still waits on the lock
+                beats += msg["type"] == "feed"
+            assert beats >= 2, beats
+            release.set()
+            await holder
+            assert (await _next(ws, "vanna"))["rows"] == _published_rows(A, "vanna_rows")
+
+    try:
+        asyncio.run(_serve_panels(body))
+    finally:
+        release.set()

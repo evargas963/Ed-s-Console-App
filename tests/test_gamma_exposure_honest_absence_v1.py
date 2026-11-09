@@ -8,9 +8,9 @@ that showed a reported 0 as absent); a genuinely netted zero shows 0.
 from __future__ import annotations
 
 import copy
-import json
 
 import server
+import time_et
 from math_exposure_core import compute_exposures_by_strike, exposure_books
 from option_contract import read_chain
 from server import project_gamma_surface
@@ -96,7 +96,7 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes():
         now=CRWD.now,
     )
     try:
-        body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
+        body = server.vanna_by_strike(tk, time_et.now(), {})
         assert body["rows"] == [], f"a chain with no reported OI yields no rows: {body['rows']}"
         # no rows is shown absent with its reason, the one rule for the vanna and charm panels
         assert body["available"] is False and body["reason"]
