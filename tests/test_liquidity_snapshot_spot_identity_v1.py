@@ -8,83 +8,22 @@ them, valued on Friday 2026-10-02 at 15:00 ET. Stand-in: ticker ZZLIQ carries th
 from __future__ import annotations
 
 import json
-from datetime import datetime
 
 import pytest
 
-import liquidity_value_engine as lve
 import live_market_plane as lmp
 import server as srv
 from liquidity_models import ZONE_DISPLAY, SnapshotType, ZoneType
-from micro_structure import Candle
-from tests.feed_live_helper import daemon_bars, daemon_status
-from time_et import ET
-
-TK = "ZZLIQ"
-FRIDAY = datetime(2026, 10, 2, 15, 0, tzinfo=ET)
-
-
-def _newest_per_minute() -> list:
-    newest = {}
-    for r in sorted(
-        daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY"),
-        key=lambda r: r["ts_recv"],
-    ):
-        newest[r["bar_start_ms"]] = r
-    return [
-        {
-            "timestamp": ms,
-            "open": r["open"],
-            "high": r["high"],
-            "low": r["low"],
-            "close": r["close"],
-            "volume": r["volume"],
-        }
-        for ms, r in sorted(newest.items())
-    ]
-
-
-_BARS = [b for b in _newest_per_minute() if b["timestamp"] / 1000 < FRIDAY.timestamp()]
-
-
-@pytest.fixture
-def published():
-    """The SPY bars to 15:00 ET on Friday in the console's memory and the levels published from
-    them; nothing of the stand-in ticker is left behind.
-    """
-
-    def forget():
-        srv._bars.pop(TK, None)
-        with lmp._lock:
-            lmp._by_ticker.pop(TK, None)
-            lmp._fields_by_ticker.pop(TK, None)
-        for key in [k for k in lve._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
-            del lve._MATERIALIZED_SNAPSHOTS[key]
-
-    forget()
-    for b in _BARS:
-        if b["timestamp"] / 1000 < FRIDAY.timestamp():
-            srv._keep_bar(
-                TK,
-                Candle(
-                    ts=b["timestamp"] / 1000,
-                    open=b["open"],
-                    high=b["high"],
-                    low=b["low"],
-                    close=b["close"],
-                    volume=b["volume"],
-                ),
-            )
-    srv._publish_price_levels(TK, FRIDAY)
-    yield
-    forget()
+from tests.feed_live_helper import daemon_status
+from tests.liquidity_friday import FRIDAY, TK, friday_bars
 
 
 def _body(resp):
     return json.loads(resp.body) if hasattr(resp, "body") else resp
 
 
-def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(published):
+@pytest.mark.usefixtures("published")
+def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached():
     """With no live spot, spot_used_for_scoring is null, never the VWAP under the "spot" name:
     absence stays absence. Schwab has sent no price for the ticker here.
     """
@@ -95,7 +34,8 @@ def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(publ
     assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
 
 
-def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path(published):
+@pytest.mark.usefixtures("published")
+def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path():
     """The real zones of the real levels: with no spot, distance and inside-zone are absent --
     not a crash, not a fabricated distance, never VWAP standing in for the spot.
     """
@@ -112,12 +52,13 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path(p
         assert (z["zone_label"], z["zone_side"]) == ZONE_DISPLAY[ZoneType(z["zone_type"])]
 
 
-def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(published):
+@pytest.mark.usefixtures("published")
+def test_spot_used_for_scoring_reports_the_real_live_spot_when_available():
     """The positive control: Schwab's LAST_PRICE, through the daemon's price row to the console
     (resolve_spot, the one spot authority), is reported as spot_used_for_scoring. Stand-in: the
     last bar's close as the LAST_PRICE Schwab sent.
     """
-    last, at = _BARS[-1]["close"], FRIDAY.timestamp()
+    last, at = friday_bars()[-1]["close"], FRIDAY.timestamp()
     lmp.record_feed_heartbeat(
         daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )

@@ -109,7 +109,7 @@ def _sweep(tmp_path, schwab, clock):
         lambda topic, msg: published.append((topic, msg)),
         clock=clock,
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed=lambda _symbol: None,
     )
     client = schwab.client(tmp_path)
     return sweep, published, (lambda: client)

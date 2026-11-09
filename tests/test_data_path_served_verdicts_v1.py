@@ -276,7 +276,7 @@ def _told(tk: str, at: datetime) -> set:
             server.refresh_not_live_pages(at.timestamp())
             return await push_changes.next_changes(page, 0.3)
         finally:
-            push_changes.unsubscribe(tk, page)
+            push_changes.unsubscribe(page)
             push_changes.bind(None)
 
     return asyncio.run(run())

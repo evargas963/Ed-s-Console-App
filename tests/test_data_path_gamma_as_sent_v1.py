@@ -63,7 +63,8 @@ def published():
         server._terrain_cache.pop("NVDA", None)
 
 
-def test_the_chain_serves_every_gamma_as_schwab_sent_it(published):
+@pytest.mark.usefixtures("published")
+def test_the_chain_serves_every_gamma_as_schwab_sent_it():
     body = json.loads(bytes(server.get_chain(ticker="NVDA", expiry=NVDA["expiry"]).body))
     served = {c["symbol"]: c["gamma"] for c in body["contracts"]}
     sent = {k["symbol"]: k["gamma"] for k in NVDA["contracts"]}
@@ -71,7 +72,8 @@ def test_the_chain_serves_every_gamma_as_schwab_sent_it(published):
     assert served == sent
 
 
-def test_the_heatmap_cell_of_a_large_gamma_has_its_gex(published):
+@pytest.mark.usefixtures("published")
+def test_the_heatmap_cell_of_a_large_gamma_has_its_gex():
     body = json.loads(
         bytes(
             server.get_options_gamma_surface(

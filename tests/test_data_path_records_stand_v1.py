@@ -35,10 +35,10 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
     sweep = ChainSweep(
         db,
         ["SPY"],
-        lambda topic, msg: None,
+        lambda _topic, _msg: None,
         clock=lambda: _IN_WINDOW,
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed=lambda _symbol: None,
     )
     client = schwab.client(tmp_path)
     try:

@@ -467,7 +467,7 @@ def _classify_value_state_and_vwap_relation(
     return value_state, vwap_relation, auction_interp
 
 
-def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
+def _classify_live_cluster(tags: list[str]) -> tuple[ZoneType, str]:
     """Map clustered level tags to zone type + note (live / fused playbook)."""
     ts = " ".join(tags)
     opt_markers = (
@@ -632,7 +632,7 @@ def build_live_snapshot(
 
     zones: list[Zone] = []
     for lo, hi, mid, tags, source_pairs in clusters:
-        zt, notes = _classify_live_cluster(tags, orb)
+        zt, notes = _classify_live_cluster(tags)
         sl = [{"label": t, "value": p} for p, t in source_pairs]
         zones.append(
             Zone(

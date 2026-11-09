@@ -93,7 +93,7 @@ class _Turns(threading.Event):
         super().__init__()
         self.left = n
 
-    def wait(self, timeout=None):
+    def wait(self, _timeout=None):
         self.left -= 1
         if self.left <= 0:
             self.set()
@@ -105,10 +105,10 @@ def _sweep(tmp_path):
     return cch.ChainSweep(
         tmp_path / "ed_console.db",
         ["SPY"],
-        lambda topic, msg: None,
+        lambda _topic, _msg: None,
         clock=lambda: _AFTER_THE_CLOSE,
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed=lambda _symbol: None,
     )
 
 

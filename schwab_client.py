@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import override
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -123,7 +124,7 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
 def _token_update_func(resolved: str):
     """schwab-py token_write_func: every refresh goes through write_token_file_atomically."""
 
-    def update_token(t, *args, **kwargs):
+    def update_token(t, *_args, **_kwargs):
         write_token_file_atomically(resolved, t)
         log.info(
             "schwab token refreshed and written; Schwab's expires_in: %s s",
@@ -219,6 +220,7 @@ class OneRefreshSession(OAuth2Client):
         self._unread: str | None = None  # the token file's read failure last logged
         self._seen: tuple | None = None  # the token file as last looked at (id, time, size)
 
+    @override
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
             if self._refused is None and not self.token.is_expired(leeway=self.leeway):

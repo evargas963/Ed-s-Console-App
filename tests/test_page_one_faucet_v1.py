@@ -102,7 +102,8 @@ def held():
     _forget()
 
 
-def test_every_route_serves_the_live_spot_and_names_the_computed_one(held):
+@pytest.mark.usefixtures("held")
+def test_every_route_serves_the_live_spot_and_names_the_computed_one():
     """Every GET route that answers a ticker, found from the app, each answering this request: a
     route that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
     payload was computed at.
@@ -173,7 +174,8 @@ def test_a_book_with_no_age_is_not_reported_fresh():
     assert out["ages"]["book_age_sec"] is None and out["ages"]["book_stale"] is None
 
 
-def test_days_to_expiry_are_schwabs_as_sent(held):
+@pytest.mark.usefixtures("held")
+def test_days_to_expiry_are_schwabs_as_sent():
     """The expiry dropdown's DTE: Schwab's daysToExpiration from the chain, not the browser's
     clock (it counted days in UTC, a day off after 7 PM Central).
     """
@@ -285,7 +287,8 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     assert [e["expiry"] for e in body["expirations"] if e["front"]] == [EXPIRY]
 
 
-def test_chain_flags_are_served(held):
+@pytest.mark.usefixtures("held")
+def test_chain_flags_are_served():
     """ADJUSTED DELIVERABLE and duplicate contracts: served flags, not page rules."""
     body = json.loads(server.get_chain(ticker=TK, expiry=EXPIRY).body)
     plain = [c["symbol"] for c in _CONTRACTS if len(c.get("optionDeliverablesList") or []) == 1]

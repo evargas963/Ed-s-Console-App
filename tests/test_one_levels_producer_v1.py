@@ -70,8 +70,8 @@ def _clean():
     with server._chains_waiting_lock:
         server._chains_delivered.discard(TK)
     yield pages
-    for tk, page in pages:
-        push_changes.unsubscribe(tk, page)
+    for _tk, page in pages:
+        push_changes.unsubscribe(page)
     ofls.clear_all_live_state()
     lmp.record_feed_down()
     lmp._by_ticker.pop(TK, None)

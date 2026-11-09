@@ -424,7 +424,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
                 server.refresh_not_live_pages(at)
                 return await push_changes.next_changes(page, 0.3)
             finally:
-                push_changes.unsubscribe("$SPX", page)
+                push_changes.unsubscribe(page)
                 push_changes.bind(None)
 
         assert asyncio.run(told()) == {push_changes.LEVELS}

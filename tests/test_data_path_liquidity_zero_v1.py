@@ -17,8 +17,7 @@ import live_market_plane as lmp
 import server as srv
 from micro_structure import Candle
 from tests.feed_live_helper import daemon_status, price_history
-from tests.test_liquidity_snapshot_spot_identity_v1 import _BARS, FRIDAY, TK
-from tests.test_liquidity_snapshot_spot_identity_v1 import published as published
+from tests.liquidity_friday import FRIDAY, TK, friday_bars
 from time_et import ET
 
 BEFORE_OPEN = FRIDAY.replace(hour=8)
@@ -33,7 +32,7 @@ def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> d
     with every price 0 but the bar at `keep`.
     """
     srv._bars.pop(TK, None)
-    for b in _BARS:
+    for b in friday_bars():
         ts = b["timestamp"] / 1000
         if ts >= at.timestamp():
             continue
@@ -59,7 +58,8 @@ def _tags_at_zero(body: dict) -> set[str]:
     return {t for z in body["zones"] if z["zone_low"] == 0 for t in z["source_tags"]}
 
 
-def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones(published):
+@pytest.mark.usefixtures("published")
+def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones():
     at = FRIDAY.timestamp()
     lmp.record_feed_heartbeat(
         daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
@@ -73,7 +73,8 @@ def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones(published):
     assert "SPOT_LIVE" in tags, tags
 
 
-def test_every_level_at_zero_stands_in_the_live_zones(published):
+@pytest.mark.usefixtures("published")
+def test_every_level_at_zero_stands_in_the_live_zones():
     assert _tags_at_zero(_snapshot(BOTH, FRIDAY)) >= {
         "PDH",
         "PD_VAH",
@@ -94,7 +95,8 @@ def test_every_level_at_zero_stands_in_the_live_zones(published):
     }
 
 
-def test_every_level_at_zero_stands_in_the_zones_before_the_open(published):
+@pytest.mark.usefixtures("published")
+def test_every_level_at_zero_stands_in_the_zones_before_the_open():
     assert _tags_at_zero(_snapshot(BOTH, BEFORE_OPEN)) >= {
         "PDH",
         "PD_VAH",
@@ -107,6 +109,7 @@ def test_every_level_at_zero_stands_in_the_zones_before_the_open(published):
     }
 
 
+@pytest.mark.usefixtures("published")
 @pytest.mark.parametrize(
     ("zero_days", "value_state", "vwap_relation"),
     [
@@ -115,18 +118,17 @@ def test_every_level_at_zero_stands_in_the_zones_before_the_open(published):
         (BOTH, "unchanged", "at_value"),
     ],
 )
-def test_a_value_area_at_zero_is_compared_as_a_price(
-    published, zero_days, value_state, vwap_relation
-):
+def test_a_value_area_at_zero_is_compared_as_a_price(zero_days, value_state, vwap_relation):
     summary = _snapshot(zero_days, FRIDAY)["summary"]
     assert (summary["value_state"], summary["vwap_relation"]) == (value_state, vwap_relation)
 
 
-def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value(published):
+@pytest.mark.usefixtures("published")
+def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value():
     """Friday's bars at 0 but its last, which keeps its prices: the POC is 0, VWAP above it. The
     browser tests draw this answer (tests/e2e/console-trade-desk.spec.js).
     """
-    last = max(b["timestamp"] for b in _BARS) / 1000
+    last = max(b["timestamp"] for b in friday_bars()) / 1000
     body = _snapshot(FRIDAY_ON, FRIDAY, keep=last)
     summary = body["summary"]
     assert (summary["value_state"], summary["vwap_relation"]) == ("shifted_lower", "above_value")

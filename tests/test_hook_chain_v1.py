@@ -187,7 +187,7 @@ def test_every_wired_executable_refuses_an_unreadable_payload():
         assert "ModuleNotFoundError" not in r.stderr, f"{rel} never read the payload: {r.stderr}"
 
 
-def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running(capsys):
+def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running():
     assert run_chain(json.dumps({"tool_name": "Bash"}), ("tools.zz_no_such_guard_zz",)) == 2
     r = _chain(
         bash("git reset --hard", cwd=ROOT),

@@ -60,7 +60,7 @@ os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
 
 
-def pytest_configure(config) -> None:
+def pytest_configure() -> None:
     """The import-time runtime boundary holds in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
     assert "ED_CONSOLE_DB" not in os.environ  # RC-534: no ambient console-DB override

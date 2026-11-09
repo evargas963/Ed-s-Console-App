@@ -53,7 +53,7 @@ def fetched(tmp_path):
             lambda t, m: published.append((t, m)),
             clock=lambda: _SWEEP_AT,
             failures=CaptureWriter(tmp_path / "stream_capture.db"),
-            streamed=lambda symbol: None,
+            streamed=lambda _symbol: None,
         )
         client = schwab.client(tmp_path)
         try:

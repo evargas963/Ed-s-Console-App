@@ -467,7 +467,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         sweep = ChainSweep(
             db,
             ["SPY"],
-            lambda topic, msg: published.append(msg),
+            lambda _topic, msg: published.append(msg),
             clock=lambda: _IN_WINDOW,
             failures=daemon.writer,
             streamed=daemon.option_record,

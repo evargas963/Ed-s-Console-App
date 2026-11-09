@@ -455,7 +455,7 @@ class _Swept:
         self.delivered: list[float] = []
         self.schwab = LocalSchwab()
 
-        def publish(topic, msg):
+        def publish(_topic, msg):
             if "contracts" in msg and msg["part"] == 0:
                 self.chains.append(msg["ticker"])
                 self.delivered.append(msg["ts_recv"])
@@ -466,7 +466,7 @@ class _Swept:
             publish,
             clock=lambda: self.clock["now"],
             failures=CaptureWriter(tmp_path / "stream_capture.db"),
-            streamed=lambda symbol: None,
+            streamed=lambda _symbol: None,
         )
         self.client = self.schwab.client(tmp_path)
         self.stop = threading.Event()
@@ -718,14 +718,14 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
             else _et("2026-10-07 16:10")
         )
 
-    def publish(topic, msg):
+    def publish(_topic, msg):
         if "contracts" in msg and msg["part"] == 0:
             delivered.append(msg["ts_recv"])
 
     db = tmp_path / "ed_console.db"
     writer = CaptureWriter(tmp_path / "stream_capture.db")
     sweep = ChainSweep(
-        db, ["SPY"], publish, clock=clock, failures=writer, streamed=lambda symbol: None
+        db, ["SPY"], publish, clock=clock, failures=writer, streamed=lambda _symbol: None
     )
     client = schwab.client(tmp_path)
     stop = threading.Event()
@@ -1267,9 +1267,9 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
     sweep = ChainSweep(
         tmp_path / "ed_console.db",
         ["AAA", "BBB", "CCC", "DDD", "EEE"],
-        lambda topic, msg: failed.append(msg["failed"]),
+        lambda _topic, msg: failed.append(msg["failed"]),
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed=lambda _symbol: None,
     )
     halt = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
@@ -1301,10 +1301,10 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
     sweep = ChainSweep(
         tmp_path / "ed_console.db",
         ["AAA", "BBB"],
-        lambda topic, msg: published.append(msg),
+        lambda _topic, msg: published.append(msg),
         clock=lambda: now,
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed=lambda _symbol: None,
     )
     client = schwab.client(tmp_path)
     try:

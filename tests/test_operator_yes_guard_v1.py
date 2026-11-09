@@ -173,7 +173,8 @@ def test_killing_a_process_of_no_production_passes(kill, procs):
         "Stop-Process -Id $p.ProcessId -Force",
     ],
 )
-def test_killing_the_python_image_with_production_in_it_is_refused(cmd, procs):
+@pytest.mark.usefixtures("procs")
+def test_killing_the_python_image_with_production_in_it_is_refused(cmd):
     assert _decide(cmd) == guard.DENY
 
 
@@ -185,12 +186,14 @@ def test_killing_the_python_image_with_production_in_it_is_refused(cmd, procs):
         "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
     ],
 )
-def test_a_kill_whose_targets_are_chosen_when_it_runs_asks_while_production_runs(cmd, procs):
+@pytest.mark.usefixtures("procs")
+def test_a_kill_whose_targets_are_chosen_when_it_runs_asks_while_production_runs(cmd):
     """Its targets cannot be read before it runs: it may reach the daemon or the console."""
     assert _decide(cmd) == guard.ASK
 
 
-def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs):
+@pytest.mark.usefixtures("procs")
+def test_a_kill_inside_a_merge_is_judged_as_a_kill_too():
     """Every check runs on every statement and the strictest answer wins."""
     hidden = "gh pr merge 5 --subject (Get-Process python).Kill()"
     assert guard.decide(_shell(hidden, "PowerShell"))[0] == guard.DENY
@@ -215,7 +218,8 @@ def test_a_kill_inside_a_merge_is_judged_as_a_kill_too(procs):
         assert guard.decide(_shell(run, "PowerShell"))[0] == guard.DENY, run
 
 
-def test_a_kill_names_every_ask_reason_that_applies(procs):
+@pytest.mark.usefixtures("procs")
+def test_a_kill_names_every_ask_reason_that_applies():
     """A target whose command line cannot be read and one chosen when it runs: both reasons."""
     unreadable = 4 if os.name == "nt" else 1  # the System process; init
     answer, reasons = guard.decide(_shell(f"Stop-Process -Id {unreadable} -Name $n", "PowerShell"))
@@ -400,7 +404,8 @@ def test_the_test_changed_below_is_on_main():
         _shell("python - <<'EOF'\nprint('gh pr merge 1')\nEOF"),
     ],
 )
-def test_everything_else_passes_at_any_hour(payload, procs):
+@pytest.mark.usefixtures("procs")
+def test_everything_else_passes_at_any_hour(payload):
     assert guard.decide(payload) == (guard.PASS, [])
 
 

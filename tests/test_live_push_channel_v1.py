@@ -174,7 +174,8 @@ def _received(ts):
     )
 
 
-def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
+@pytest.mark.usefixtures("feed")
+def test_the_daemon_heartbeat_decides_liveness_end_to_end():
     """Real daemon -> real console feed, one program. Live only while the daemon's status beats,
     the Schwab socket is open and the daemon holds the symbol; once the program stops, its last
     status is past the live limit and the feed is down. In regular hours: the beats and the reads
@@ -199,7 +200,8 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
     assert lmp.daemon_status(now) is None
 
 
-def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_chains(feed):
+@pytest.mark.usefixtures("feed")
+def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_chains():
     """Measured 2026-10-02 after the close: the console spent 79% of its event loop decoding
     chain parts and read 25 of 60 one-second samples of DELL as "feed down" on a healthy feed,
     the daemon's status waiting behind the chains. 300 chains arrive at once and each takes the
@@ -222,7 +224,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
             samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
             time.sleep(0.05)
 
-    async def body(bus, stats):
+    async def body(bus, _stats):
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         for i in range(300):
             for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time_et.now(), None, None):
@@ -244,7 +246,8 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     )
 
 
-def test_a_closed_schwab_socket_is_not_live(feed):
+@pytest.mark.usefixtures("feed")
+def test_a_closed_schwab_socket_is_not_live():
     async def body(bus, stats):
         assert stats["clients"] == 0  # the console reads the bus: no copy over the socket
         ts = time_et.now()
@@ -256,7 +259,8 @@ def test_a_closed_schwab_socket_is_not_live(feed):
     asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
 
 
-def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
+@pytest.mark.usefixtures("feed")
+def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded():
     """Neither the message nor any value it carried: what the console applies, and the SPY record
     a second reader of the daemon's bus takes as the console's _bus_loop does (a LATEST
     subscription, Schwab's records only by live_push.is_forwarded), hold only what Schwab sent
@@ -298,7 +302,8 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
     asyncio.run(_run(body))
 
 
-def test_option_l1_and_book_update_the_contract_and_report_greeks(feed):
+@pytest.mark.usefixtures("feed")
+def test_option_l1_and_book_update_the_contract_and_report_greeks():
     """The console's tick callback, as start_order_flow_stream sets it, records each tick."""
     seen: list = []
 
@@ -343,7 +348,8 @@ sys.addaudithook(
 )
 
 
-def test_the_live_loop_never_opens_the_capture_database(feed):
+@pytest.mark.usefixtures("feed")
+def test_the_live_loop_never_opens_the_capture_database():
     async def body(bus, stats):
         assert stats["clients"] == 0  # the console reads the bus: no copy over the socket
         ts = time_et.now()
@@ -359,7 +365,8 @@ def test_the_live_loop_never_opens_the_capture_database(feed):
     assert _OPENED == [], f"the live feed opened a database: {_OPENED}"
 
 
-def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(feed, caplog):
+@pytest.mark.usefixtures("feed")
+def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(caplog):
     """With no daemon in the program the console's feed does not start, says why in one line, and
     nothing is served: a Schwab message on a bus no daemon of this program holds is not applied.
     Once the daemon is bound (capture.serve_console, before the web server starts), the feed
@@ -402,7 +409,8 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
     )
 
 
-def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
+@pytest.mark.usefixtures("feed")
+def test_daemon_shutdown_is_not_held_up_by_a_connected_console():
     """A handler blocked waiting for its client's next frame must not keep the daemon's local
     socket open: stopping the daemon with a client attached (launch.py stop's connection, as a
     console's once was) hung forever before the fix.
@@ -427,7 +435,8 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
     asyncio.run(run())
 
 
-def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
+@pytest.mark.usefixtures("feed")
+def test_a_late_console_gets_the_current_record_with_each_fields_own_time():
     """Schwab LEVELONE sends only changed fields. A console whose feed starts after a trade and a
     later bid/ask tick gets the bus's current record (docs/DATA_FLOW.md §2 D3): the trade's fields
     and the bid/ask together, each stamped with the receive time the daemon gave the message
