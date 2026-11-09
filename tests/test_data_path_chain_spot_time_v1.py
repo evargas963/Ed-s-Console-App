@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
-
 import live_market_plane as lmp
 import server as srv
+import time_et
 from option_contract import read_chain
 from tests.real_chains import CRWD
 
@@ -28,7 +27,7 @@ def test_the_chain_spot_carries_schwabs_trade_time():
         received_ts=1790380799.83,
     )
     try:
-        body = json.loads(bytes(srv.get_chain(ticker=tk, expiry=exp).body))
+        body = srv.chain(tk, time_et.now(), {"expiry": exp})
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)

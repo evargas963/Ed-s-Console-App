@@ -14,8 +14,8 @@
        axis resets it, Alt+R resets everything, the wheel over the plot zooms time.
      - the crosshair follows the mouse; the readout BOX appears only on click (pinned, with a
        close control) -- never a hover tooltip.
-   Every number drawn here is the server's (bars from /api/bars1m, levels from /api/levels +
-   /api/terrain). Choosing WHICH levels to draw (the nearest few inside the visible range) and
+   Every number drawn here is the server's (bars from /api/bars1m, levels from the levels panel +
+   the terrain panel). Choosing WHICH levels to draw (the nearest few inside the visible range) and
    placing a 1m series point on the bar that contains it are presentation, not computation. */
 (function () {
   'use strict';
@@ -742,7 +742,7 @@
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },
       setVolume: function (bars) { volume.setData(bars.map(api._volPoint)); },
-      // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels?tf=:
+      // VWAP + bands, one point per bar, served for the chart's timeframe (the levels panel's tf:
       // the value as of the bar's last minute, stamped with the bar's t). Rows are
       // [t, vwap, +1, -1, +2, -2].
       setVwap: function (rows) {

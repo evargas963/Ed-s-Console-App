@@ -428,10 +428,18 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
     )
 
 
+#: the heatmap's window as the page asks it: Auto, following the price, every column
+_HEATMAP = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
+
+
+def _surface(tk) -> dict:
+    return server.gamma_surface(tk, time_et.now(), _HEATMAP)
+
+
 def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so_first():
     """The gamma surface's reason for a ticker with no surface.
 
-    From server.get_options_gamma_surface: on the watchlist it warms (its chain is coming); off
+    From server.gamma_surface: on the watchlist it warms (its chain is coming); off
     it, it says it is not on the watchlist; with the daemon's heartbeat late, the last list still
     stands and the reason says the daemon is not reporting; a chain Schwab refused says Schwab's
     answer.
@@ -451,7 +459,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         lmp.record_feed_heartbeat(
             daemon_status(time_et.now(), schwab_socket_open=True, watchlist=[on])
         )
-        d_on, d_off = (json.loads(server.get_options_gamma_surface(tk).body) for tk in (on, off))
+        d_on, d_off = (_surface(tk) for tk in (on, off))
         assert (d_on["warming"], d_on["reason"]) == (
             True,
             "no terrain snapshot has been computed yet",
@@ -461,14 +469,14 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             "no chain is fetched for this ticker: it is not on the watchlist",
         )
         server._on_chain(on, None, time_et.now(), "full chain returned HTTP 400", None)
-        assert json.loads(server.get_options_gamma_surface(on).body)["reason"] == (
+        assert _surface(on)["reason"] == (
             "no terrain snapshot has been computed yet — "
             "chain fetch failed (full chain returned HTTP 400)"
         )
         lmp.record_feed_heartbeat(
             daemon_status(time_et.now() - 100, schwab_socket_open=True, watchlist=[on])
         )
-        silent = json.loads(server.get_options_gamma_surface(off).body)
+        silent = _surface(off)
         assert silent["warming"] is False
         assert silent["reason"].startswith(
             "the capture daemon is not reporting (no current heartbeat)"

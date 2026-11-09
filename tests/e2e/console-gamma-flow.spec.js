@@ -89,17 +89,17 @@ async function setup(page, ctx) {
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body });
     }
-    let body = { available: false };
-    if (url.includes('/api/chain')) body = served(chain(ctx));
-    else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'TSLA', available: true, spot: 367, source: 'terrain_live_cache', levels_state: 'LIVE', expirations: [{ expiry: '2026-08-31', dte: 2 }], strikes: [367.5], cells: [{ strike: 367.5, gex: [1] }],
-      view: { centre: 367.5, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } };
-    else if (url.includes('/api/terrain/strikes')) body = { spot: 367, levels_state: 'LIVE', today: { all: [[367.5, 1, 1]] },
-      views: { all: { centre: 367.5, note: null, max_abs: 1 } } };
-    else if (url.includes('/api/terrain')) body = { spot: 367, gamma_flip: 366, levels_state: 'LIVE', levels_mark: 'LIVE' };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ available: false }) });
   });
   await routeWatchlist(page, ['TSLA']);
-  await pushExpiries(page, ['2026-08-31']);
+  await pushExpiries(page, ['2026-08-31'], undefined, {
+    chain: () => served(chain(ctx)),
+    terrain: { spot: 367, gamma_flip: 366, levels_state: 'LIVE', levels_mark: 'LIVE' },
+    strikes: { spot: 367, levels_state: 'LIVE', today: { all: [[367.5, 1, 1]] }, views: { all: { centre: 367.5, note: null, max_abs: 1 } } },
+    surface: { ticker: 'TSLA', available: true, spot: 367, source: 'terrain_live_cache', levels_state: 'LIVE',
+      expirations: [{ expiry: '2026-08-31', dte: 2 }], strikes: [367.5], cells: [{ strike: 367.5, gex: [1] }],
+      view: { centre: 367.5, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } },
+  });
 }
 
 async function selectCallAndOpenFlow(page) {

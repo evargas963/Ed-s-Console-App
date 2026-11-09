@@ -1,4 +1,4 @@
-"""GET /api/chain: one expiry of the full chain the daemon delivered (strike_range=ALL).
+"""The chain panel: one expiry of the full chain the daemon delivered (strike_range=ALL).
 
 Every Schwab field as sent. A newer streamed open interest or volume replaces the chain's.
 Gamma, delta, and volatility stay the chain's, as the sweep took them.
@@ -18,7 +18,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from starlette.testclient import TestClient
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
@@ -84,8 +83,9 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True, held=held))
 
 
-def _get(**kw):
-    return json.loads(srv.get_chain(**{"expiry": None, **kw}).body)
+def _get(ticker, expiry=None):
+    """The chain panel for `ticker` (as typed) at `expiry` (None: the front one), now."""
+    return srv.chain(srv.ticker_storage_key(ticker), time_et.now(), {"expiry": expiry})
 
 
 def test_no_held_chain_is_unavailable_with_its_reason():
@@ -162,8 +162,9 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
     assert body["stream_overlay_contracts"] == 1
 
 
-def test_the_route_answers_over_real_http():
+def test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it():
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
-    with TestClient(srv.app) as client:
-        r = client.get("/api/chain", params={"ticker": "TSLA"})
-    assert r.status_code == 200 and r.json()["expiry"] == _TSLA_EXPIRY
+    body = _get(ticker="TSLA")
+    assert json.loads(json.dumps(body)) == body and body["expiry"] == _TSLA_EXPIRY
+    assert "/api/chain" not in {r.path for r in srv.app.routes}
+    assert srv.PAGE_PANELS["chain"] is srv.chain

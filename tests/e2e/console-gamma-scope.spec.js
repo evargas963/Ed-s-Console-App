@@ -8,6 +8,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { mockPriceSocket } = require('./fixtures/price_socket');
 const { watchRequests } = require('./fixtures/settled');
 
 // spot 100, 41 strikes 80..120; the stand-in's window per scope, as the server serves it
@@ -30,27 +31,27 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, fron
     { strike: 101, gex: [-264500], spot: false }],
   view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 
-async function intercept(page, asked) {
+// the page's socket sends `panels` (a test may change one before the page opens); the strikes
+// panel is the window per scope each reader asks, its scope noted in `asked`
+async function intercept(page, asked, panels) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
-    if (url.includes('/api/options/gamma-surface')) body = SURFACE;
-    else if (url.includes('/api/terrain/strikes')) {
-      const scope = new URL(url).searchParams.get('scope');
-      asked.push(scope);
-      body = strikesFor(scope);
-    } else if (url.includes('/api/terrain')) body = TERRAIN;
-    else if (url.includes('/api/bars1m')) body = BARS;
+    if (url.includes('/api/bars1m')) body = BARS;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
+  panels.terrain = TERRAIN;
+  panels.surface = SURFACE;
+  panels.strikes = (key, params) => { asked.push(params.scope); return strikesFor(params.scope); };
+  return mockPriceSocket(page, [], [], undefined, panels);
 }
 
 test.describe('the Gamma presentation scope', () => {
-  let asked;
+  let asked, panels, sock;
   test.beforeEach(async ({ page }) => {
-    asked = [];
-    await intercept(page, asked);
+    asked = []; panels = {};
+    sock = await intercept(page, asked, panels);
     // each Playwright test gets a fresh context (localStorage already empty), so we only seed the
     // ticker — NOT localStorage.clear(), which would re-run on reload and wipe the persisted scope.
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
@@ -76,9 +77,8 @@ test.describe('the Gamma presentation scope', () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     const rows = [[99, -90000, 1000], [100, null, null], [101, 264500, 1000]];
-    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign(strikesFor('auto'), { today: { all: rows }, views: { all: { centre: 100, max_abs: 264500 } },
-        max_abs_row: [101, 264500, 1000] })) }));
+    panels.strikes = Object.assign(strikesFor('auto'), { today: { all: rows }, views: { all: { centre: 100, max_abs: 264500 } },
+      max_abs_row: [101, 264500, 1000] });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const row = page.locator('#gbsBody .gbs-row[data-strike="100"]');
     await expect(row.locator('.gbs-v')).toHaveText('-');
@@ -116,16 +116,20 @@ test.describe('the Gamma presentation scope', () => {
   });
 
   test('a drag that ends while a read is in flight settles where the drag ended', async ({ page }) => {
-    // a read answered mid-drag must not reset the pan, or the read held behind it asks for the
-    // earlier window and the drag snaps back
+    // a panel answered mid-drag must not reset the pan, or the window asked after it is the
+    // earlier one and the drag snaps back
     const requests = watchRequests(page);
-    const reads = [];
-    await page.route('**/api/terrain/strikes**', async (route) => {
-      const q = new URL(route.request().url()).searchParams;
-      reads.push({ centre: q.get('centre'), shift: q.get('shift') });
-      if (q.get('centre') != null) await new Promise((r) => setTimeout(r, 400));   // a slow answer
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(strikesFor(q.get('scope'))) });
-    });
+    // a slow answer: a panned window's panel is sent 400 ms after it is asked, for the window
+    // the page then shows
+    let late = false;
+    panels.strikes = (key, params) => {
+      if (params.centre == null || late) return strikesFor(params.scope);
+      setTimeout(() => { late = true; sock.changed('strikes'); late = false; }, 400);
+      return undefined;
+    };
+    // the window GEX by Strike asks on each subscribe
+    const asks = () => sock.subscribes.map((s) => s.panels['strikes:gbs']).filter(Boolean)
+      .map((w) => ({ centre: w.centre, shift: w.shift }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const label = page.locator('#gbsBody .gbs-row.spot .gbs-k');      // the row at the price, in view
     await expect(label).toBeVisible();
@@ -135,9 +139,10 @@ test.describe('the Gamma presentation scope', () => {
     await page.mouse.down();
     for (let i = 1; i <= 3; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * rowH);
     await page.mouse.up();
-    await expect.poll(() => reads[reads.length - 1], { timeout: 5000 }).toEqual({ centre: '100', shift: '3' });
+    await expect.poll(() => asks().pop(), { timeout: 5000 }).toEqual({ centre: 100, shift: 3 });
     await requests.settled();                                        // every held read has run
-    expect(reads[reads.length - 1]).toEqual({ centre: '100', shift: '3' });
+    await page.waitForTimeout(600);                                  // and the slow panels have been sent
+    expect(asks().pop()).toEqual({ centre: 100, shift: 3 });
   });
 
   test('the scope choice persists across reloads (ed_scope)', async ({ page }) => {

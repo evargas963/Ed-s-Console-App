@@ -5,6 +5,7 @@
 // the route's answers for SPY's real books (tests/test_liquidity_readout_v1.py).
 const path = require('path');
 const { routeWatchlist } = require('./watchlist');
+const { mockPriceSocket } = require('./price_socket');
 
 const CROSSES = require(path.join(__dirname, '..', '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
@@ -59,14 +60,18 @@ const BARS = { ticker: 'SPY', tf: '30', bars: [{ t: 1790343000, o: 770, h: 772, 
   last_bar: { t: 1790343660, label: 'Fri 09/25 09:21 AM CT' } };
 const HEAT = require(path.join(__dirname, 'book_heatmap_payload.json'));
 
+// the panels the page's socket sends the page intercept last set up (a test changes one before
+// the page opens, or sends it again with the returned socket's `changed`)
+let panels;
+function deskPanels() { return panels; }
+// the page's socket sending those panels and the pushed price `rows` (mockPriceSocket)
+function deskSocket(page, rows = [], later = []) { return mockPriceSocket(page, rows, later, undefined, panels); }
+
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/desk/events')) body = Object.assign({}, EVENTS, { tf: new URL(url).searchParams.get('tf') });
-    else if (url.includes('/api/terrain/strikes')) body = STRIKES;
-    else if (url.includes('/api/terrain')) body = TERRAIN;
-    else if (url.includes('/api/levels')) body = LEVELS;
     else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
     else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
     else if (url.includes('/api/bars1m')) body = BARS;
@@ -74,6 +79,13 @@ async function intercept(page) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
+  panels = { terrain: TERRAIN, strikes: STRIKES, levels: levelsAt(LEVELS) };
+  return deskSocket(page);
+}
+// The levels panel's stand-in for `body`: the program answers each reader's timeframe with the
+// levels in it (server.levels), a function of (key, params) or the same body for every one
+function levelsAt(body) {
+  return (key, params) => Object.assign({}, typeof body === 'function' ? body(key, params) : body, { tf: params.tf });
 }
 
 function watchErrors(page) {
@@ -85,5 +97,5 @@ function watchErrors(page) {
 
 module.exports = {
   CROSSES, EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP,
-  MICRO, LIQ, STRIKES, BARS, HEAT, intercept, watchErrors,
+  MICRO, LIQ, STRIKES, BARS, HEAT, intercept, watchErrors, deskPanels, deskSocket, levelsAt,
 };
