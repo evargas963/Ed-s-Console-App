@@ -115,7 +115,8 @@ def _folder(p: psutil.Process) -> Path | None:
     """Return the folder process `p` runs in, or None when it cannot be read or has ended."""
     try:
         return Path(p.cwd()).resolve()
-    except psutil.Error:
+    except psutil.Error as e:
+        log.warning("Ed Console: pid %s runs the program; its folder is unknown: %r", p.pid, e)
         return None
 
 
