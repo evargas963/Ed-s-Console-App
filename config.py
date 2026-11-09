@@ -5,7 +5,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from runtime_layout import RUNTIME_ROOT
+from runtime_layout import runtime_root
 
 _ROOT = Path(__file__).resolve().parent
 
@@ -64,7 +64,7 @@ def token_path() -> str:
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:
         return os.path.abspath(env_token)
-    return os.path.abspath(os.path.join(str(RUNTIME_ROOT), "schwab_token.json"))
+    return os.path.abspath(os.path.join(str(runtime_root()), "schwab_token.json"))
 
 
 def build_config() -> AppConfig:

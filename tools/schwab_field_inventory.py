@@ -30,7 +30,7 @@ import time_et
 from app.market_data.schwab.streaming.capture import stored_watchlist, streaming_fields
 from config import build_config, load_dotenv_file
 from db_authority import canonical_stream_db_path
-from runtime_layout import RUNTIME_ROOT
+from runtime_layout import runtime_root
 from schwab_client import build_client_from_token
 
 REPO = Path(__file__).resolve().parent.parent
@@ -362,7 +362,7 @@ def _read(path: Path) -> dict[str, dict]:
 
 def main() -> int:
     argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args()
-    load_dotenv_file(Path(RUNTIME_ROOT) / ".env")
+    load_dotenv_file(runtime_root() / ".env")
     cfg = build_config()
     state = build_client_from_token(cfg.token_path, cfg.api_key, cfg.app_secret)
     if not state.ok:
