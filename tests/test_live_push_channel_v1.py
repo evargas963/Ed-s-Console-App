@@ -1,11 +1,10 @@
 """Daemon -> console in one program, end to end, with no database in the live path.
 
-The REAL daemon (capture.Daemon on a real stream_spine.MessageBus, its market follower, its
-browser price socket live_ui.serve_live_ui, whose beat records the daemon's status, and the
-program's web server with its control route, /control, streaming.control_socket) and the REAL
-console feed (app.options.order_flow.streaming.start_order_flow_stream: _bus_loop reading the
-daemon's bus, bound with bind_daemon) run on one event loop, as capture.run runs them. These tests
-prove:
+The REAL daemon (capture.Daemon on a real stream_spine.MessageBus, its market follower, and its
+browser price socket live_ui.serve_live_ui on the program's web server, whose beat records the
+daemon's status) and the REAL console feed
+(app.options.order_flow.streaming.start_order_flow_stream: _bus_loop reading the daemon's bus,
+bound with bind_daemon) run on one event loop, as capture.run runs them. These tests prove:
 
   * a Schwab message published on the daemon's bus reaches the console's live planes with its
     OWN receive time (never the time the console processed it);
@@ -13,34 +12,23 @@ prove:
     not);
   * a console that starts late first takes the bus's current records, then each that changes;
   * the live loop never opens the capture database;
-  * with no daemon in the program nothing is served, and the feed starts once one is bound;
-  * the program's control route does not hold its stop behind a connected client, takes a stop
-    while it serves, logs a frame it cannot read with what arrived, and refuses a browser,
-    another machine and a program with no daemon.
+  * with no daemon in the program nothing is served, and the feed starts once one is bound.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
-import logging
 import socket
 import sys
 import threading
 import time
 from pathlib import Path
 
-import pytest
 import uvicorn
-from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
-from websockets.asyncio.client import connect
-from websockets.exceptions import InvalidStatus
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
-import launch
 import live_market_plane as lmp
 import server
 import time_et
@@ -98,19 +86,21 @@ def listener() -> tuple[socket.socket, str]:
 
 def program_web(**settings) -> capture._PagesServer:
     """The program's web server (capture._PagesServer with capture.PAGES, `settings` over them)
-    with the console's startup work not run (lifespan off): its sockets, /ws and /control, alone.
+    with the console's startup work not run (lifespan off): its page socket, /ws, alone.
     """
     return capture._PagesServer(
         uvicorn.Config(server.app, **{**capture.PAGES, "lifespan": "off", **settings})
     )
 
 
-async def serve_page_socket(stop: asyncio.Event, sock: socket.socket, prices: dict, **settings):
+async def serve_page_socket(
+    stop: asyncio.Event, sock: socket.socket, prices: dict, web=None, **settings
+):
     """The page's price socket as the program serves it, until `stop`: the daemon's side
-    (live_ui.serve_live_ui, `prices` its arguments) and /ws on the program's web server
-    (program_web, `settings`) on `sock`.
+    (live_ui.serve_live_ui, `prices` its arguments) and /ws on the program's web server (`web`, a
+    test's to watch, or program_web with `settings`) on `sock`.
     """
-    web = program_web(**settings)
+    web = web if web is not None else program_web(**settings)
     serving = asyncio.create_task(web.serve(sockets=[sock]))
     try:
         await live_ui.serve_live_ui(stop, state=server.app.state, **prices)
@@ -131,29 +121,9 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
     }
 
 
-@contextlib.asynccontextmanager
-async def program_routes(daemon):
-    """The program's web server (program_web) serving on a socket of the test's own, with
-    `daemon` its app's state `daemon` as capture.serve_console sets it (None: no daemon). Yields
-    the server and its port; the server ends on exit, as serve_console ends it on the program's
-    stop.
-    """
-    sock, _url = listener()
-    web = program_web()
-    server.app.state.daemon = daemon
-    serving = asyncio.create_task(web.serve(sockets=[sock]))
-    try:
-        assert await _until(lambda: web.started)  # serving
-        yield web, sock.getsockname()[1]
-    finally:
-        web.should_exit = True
-        await serving
-        server.app.state.daemon = None
-
-
 async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
-    """The daemon on one bus, as capture.run runs it -- the program's web server with its control
-    route, its browser price socket, whose beat records the daemon's status (the one program's
+    """The daemon on one bus, as capture.run runs it -- the program's web server and its browser
+    price socket (serve_page_socket), whose beat records the daemon's status (the one program's
     one plane), and its market follower feeding the plane -- with the console's real feed started
     on the same loop, bound to that daemon (start_order_flow_stream, with the tick and chain
     callbacks the console passes it). `body` takes the bus and the web server.
@@ -162,26 +132,29 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
     stop = asyncio.Event()
     ui_stats: dict = {}
     daemon = capture.Daemon(bus, HealthRegistry(), [])
-    ofs.bind_daemon(daemon)  # as capture.serve_console binds it
-    async with program_routes(daemon) as (web, _port):
-        ui = asyncio.create_task(
-            live_ui.serve_live_ui(
-                stop,
-                state=server.app.state,
-                heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
-                stats=ui_stats,
-            )
+    web = program_web()
+    ui = asyncio.create_task(
+        serve_page_socket(
+            stop,
+            listener()[0],
+            {
+                "heartbeat_fn": heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
+                "stats": ui_stats,
+            },
+            web=web,
         )
-        follower = asyncio.create_task(daemon.follow_market(stop))
-        assert await _until(lambda: "clients" in ui_stats)  # both serving
-        assert ofs.start_order_flow_stream(on_tick_callback=on_tick, on_chain_callback=on_chain)
-        try:
-            await body(bus, web)
-        finally:
-            ofs.stop_order_flow_stream()
-            ofs.bind_daemon(None)
-            stop.set()
-            await asyncio.gather(ui, follower, return_exceptions=True)
+    )
+    follower = asyncio.create_task(daemon.follow_market(stop))
+    assert await _until(lambda: web.started and "clients" in ui_stats)  # both serving
+    ofs.bind_daemon(daemon)  # as capture.serve_console binds it
+    assert ofs.start_order_flow_stream(on_tick_callback=on_tick, on_chain_callback=on_chain)
+    try:
+        await body(bus, web)
+    finally:
+        ofs.stop_order_flow_stream()
+        ofs.bind_daemon(None)
+        stop.set()
+        await asyncio.gather(ui, follower, return_exceptions=True)
 
 
 def _received(ts):
@@ -419,145 +392,6 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
         ofls.get_content_for_symbol("ZZZNOTS") == []
         and ofls.get_content_for_symbol("ZZZNOPE") == []
     )
-
-
-def _stoppable_daemon() -> capture.Daemon:
-    """A daemon whose stop is set by {"op": "stop"} (capture.Daemon.console_frame), as capture.run
-    gives it one.
-    """
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
-    daemon.stop = asyncio.Event()
-    return daemon
-
-
-def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
-    """A handler blocked waiting for its client's next frame must not keep the program's control
-    route open: the program's stop asked on it (launch.py stop's connection, as a console's once
-    was) with that client still attached ends the web server at once, well within uvicorn's
-    graceful wait (capture.PAGES, after which it would cancel the handler), and closes the
-    client's connection.
-    """
-    daemon = _stoppable_daemon()
-
-    async def run():
-        control = None
-        try:
-            async with program_routes(daemon) as (web, port):
-                control = await connect(f"ws://127.0.0.1:{port}/control")
-                assert await _until(lambda: len(web.server_state.connections) == 1)
-                await control.send(json.dumps({"op": "stop"}))
-                assert await _until(daemon.stop.is_set)  # the client still connected
-                started = time_et.elapsed()
-            # program_routes ended the server, as capture.serve_console ends it on the stop
-            took = time_et.elapsed() - started
-            await asyncio.wait_for(control.wait_closed(), timeout=3.0)
-        finally:
-            if control is not None:
-                await control.close()
-        return web, took
-
-    web, took = asyncio.run(run())
-    assert not web.server_state.connections
-    assert took < capture.PAGES["timeout_graceful_shutdown"], f"the stop waited {took:.1f} s"
-
-
-def test_a_stop_reaches_the_daemon_while_the_program_serves():
-    """launch.ask_daemon_to_stop, the real one, at the port the program serves on: its
-    {"op": "stop"} goes over /control to the daemon, whose stop is set (capture.run then ends
-    every task), and the stop's connection is closed by launch.py, so the server holds none.
-    """
-    daemon = _stoppable_daemon()
-
-    async def run():
-        async with program_routes(daemon) as (web, port):
-            await asyncio.to_thread(launch.ask_daemon_to_stop, port)
-            assert await _until(daemon.stop.is_set)
-            assert await _until(lambda: not web.server_state.connections)
-
-    asyncio.run(run())
-
-
-def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
-    """The program's control route reads every frame a client sends (launch.py stop's is one): one
-    that is not JSON, or JSON that is not an object, is logged with what arrived, never dropped
-    unseen; a request after it (the stop) still reaches the daemon.
-    """
-    daemon = _stoppable_daemon()
-
-    async def go():
-        async with (
-            program_routes(daemon) as (_web, port),
-            connect(f"ws://127.0.0.1:{port}/control", max_size=None) as ws,
-        ):
-            for frame in ("not json", "[1, 2]", json.dumps({"op": "stop"})):
-                await ws.send(frame)
-            assert await _until(daemon.stop.is_set)
-
-    with caplog.at_level(logging.WARNING, logger=server.log.name):
-        asyncio.run(go())
-    warned = [r.getMessage() for r in caplog.records if r.name == server.log.name]
-    assert daemon.stop.is_set()
-    assert any("'not json'" in m for m in warned), warned
-    assert any("'[1, 2]'" in m for m in warned), warned
-
-
-def test_a_web_page_cannot_reach_the_daemons_local_socket():
-    """`launch.py stop` sends no Origin and connects; a browser always sends one, and a page on
-    any site is refused (403) before it asks the daemon anything (to stop). Induced test
-    condition: a client sending the Origin a page's browser would."""
-    daemon = _stoppable_daemon()
-
-    async def go():
-        async with program_routes(daemon) as (_web, port):
-            url = f"ws://127.0.0.1:{port}/control"
-            async with connect(url):
-                pass
-            with pytest.raises(InvalidStatus) as refused:
-                async with connect(url, origin="https://example.com") as page:
-                    await page.send(json.dumps({"op": "stop"}))
-        return refused.value.response.status_code
-
-    assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
-    assert not daemon.stop.is_set()
-
-
-def test_the_control_route_is_refused_while_no_daemon_is_bound():
-    """A program whose web server serves with no daemon in its app's state (before
-    capture.serve_console sets it, after it ends; the browser tests' console) refuses /control
-    (403) before it opens: nothing is handed a stop no daemon would take.
-    """
-
-    async def go():
-        async with program_routes(None) as (_web, port):
-            with pytest.raises(InvalidStatus) as refused:
-                async with connect(f"ws://127.0.0.1:{port}/control"):
-                    pass
-        return refused.value.response.status_code
-
-    assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
-
-
-def test_another_machine_cannot_reach_the_control_route():
-    """The control route answers this PC's own address alone (server.CONTROL_CLIENT), as the old
-    control socket did by listening on 127.0.0.1 only, though the program's port listens on every
-    address for the pages: a client on another machine is refused before it opens, and the same
-    request from this PC is taken. Induced test condition: the client's address, set by
-    Starlette's TestClient, which runs the route through the app's own ASGI handling.
-    """
-    daemon = _stoppable_daemon()
-    server.app.state.daemon = daemon  # as capture.serve_console sets it
-    try:
-        elsewhere = TestClient(server.app, client=("192.168.1.20", 50000))
-        with pytest.raises(WebSocketDisconnect) as refused, elsewhere.websocket_connect("/control"):
-            pass
-        with TestClient(server.app, client=(server.CONTROL_CLIENT, 50000)).websocket_connect(
-            "/control"
-        ) as control:
-            control.send_text(json.dumps({"op": "stop"}))
-    finally:
-        server.app.state.daemon = None
-    assert refused.value.code == 1000  # closed before accept: 403 to a real client
-    assert daemon.stop.is_set()
 
 
 def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):

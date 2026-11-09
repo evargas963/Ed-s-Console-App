@@ -82,6 +82,7 @@ from app.market_data.schwab.streaming.live_ui import (
 )
 from app.market_data.schwab.streaming.program_lock import (
     Ports,
+    StopRequest,
     acquire_owner_lock,
     record_ports,
     release_owner_lock,
@@ -516,7 +517,6 @@ class Daemon:
         self.saved_options: frozenset[str] = frozenset()
         self.chains = None  # the ChainSweep: its round time, its tickers
         self.writer = None  # the CaptureWriter: its state rides the heartbeat
-        self.stop: asyncio.Event | None = None  # the daemon's stop (run); a stop request sets it
         self.schwab_client = None  # the daemon's one Schwab client (run): the checks
         #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
         self.asked: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
@@ -695,12 +695,9 @@ class Daemon:
             task.result()  # a follower's error, raised for run to name
 
     def console_frame(self, req: dict) -> None:
-        """A request from the console in this program, or a frame on the program's control route
-        (/control, server.control_socket, launch.py's stop): a watchlist request
-        ({"op": "watchlist"}, answered on the bus), the contract selected on the Flow panel
-        ({"op": "flow_contract", "contract": symbol or null}), or the clean stop ({"op": "stop"},
-        launch.py stop): every task ends, the writer writes what it holds (to the spill files
-        while the database refuses writes), and the daemon exits EXIT_STOPPED.
+        """A request from the console in this program: a watchlist request ({"op": "watchlist"},
+        answered on the bus) or the contract selected on the Flow panel ({"op": "flow_contract",
+        "contract": symbol or null}).
         """
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
@@ -710,9 +707,6 @@ class Daemon:
             log.info("flow contract: %s", self.flow_contract)
             self.pick_options()
             self._keep_options()
-        elif req["op"] == "stop":
-            log.info("capture daemon: stop requested on its control route")
-            self.stop.set()
 
     async def watchlist_request(self, req: dict) -> None:
         """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
@@ -1011,8 +1005,8 @@ class Daemon:
 # ---------------------------------------------------------------------------- process
 
 
-#: Exit code of a daemon stopped on request ({"op": "stop"}): start_capture_daemon.bat does not
-#: restart it.
+#: Exit code of a daemon stopped on request (launch.py stop, Ctrl+C in its window):
+#: start_capture_daemon.bat does not restart it.
 EXIT_STOPPED = 5
 
 
@@ -1069,8 +1063,8 @@ class DailyLog(logging.StreamHandler):
 
 def stop_on_interrupt(stop: asyncio.Event, loop: asyncio.AbstractEventLoop) -> None:
     """Ctrl+C (or Ctrl+Break) in the program's window asks for its one clean stop, the one
-    `launch.py stop` asks for: everything held is written, then it exits EXIT_STOPPED and its
-    window closes. A second press ends it at once (KeyboardInterrupt, main).
+    `launch.py stop` asks for (stop_on_request): everything held is written, then it exits
+    EXIT_STOPPED and its window closes. A second press ends it at once (KeyboardInterrupt, main).
     """
 
     def interrupted(_signum, _frame) -> None:
@@ -1081,6 +1075,24 @@ def stop_on_interrupt(stop: asyncio.Event, loop: asyncio.AbstractEventLoop) -> N
 
     for sig in INTERRUPTS:
         signal.signal(sig, interrupted)
+
+
+#: how long the stop request's waiter waits at a time (stop_on_request)
+STOP_WAIT_SEC = 0.25
+
+
+async def stop_on_request(stop: asyncio.Event, request: StopRequest) -> None:
+    """The one waiter on the program's stop request (program_lock.StopRequest, which launch.py
+    stop sets): once asked, it sets the program's one stop, the one Ctrl+C sets, so everything
+    held is written and the program exits EXIT_STOPPED.
+
+    It waits on its own thread, STOP_WAIT_SEC at a time, so a stop from anywhere else ends it
+    within that; a request asked twice stops it once.
+    """
+    while not stop.is_set():
+        if await asyncio.to_thread(request.wait, STOP_WAIT_SEC):
+            log.info("capture daemon: stop requested (launch.py stop)")
+            stop.set()
 
 
 #: the window's interrupts: Ctrl+C, and Ctrl+Break where Windows has it
@@ -1175,15 +1187,13 @@ PAGES = {
 
 
 async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket) -> None:
-    """Serve the console's pages and routes (server.app), the page's socket and the control route
-    on `sock` until `stop`.
+    """Serve the console's pages and routes (server.app) and the page's socket on `sock` until
+    `stop`.
 
     They read the daemon's one bus (console_feed.bind_daemon): one program, one copy of every
-    value. The control route's frames go to the daemon, the app's state `daemon` while the server
-    serves. The open connections end with the server: uvicorn closes each socket as it shuts down.
+    value.
     """
     console_feed.bind_daemon(daemon)
-    server.app.state.daemon = daemon
     web = _PagesServer(uvicorn.Config(server.app, **PAGES))
     host, port = sock.getsockname()[:2]
     log.info("console: serving the pages on http://%s:%s", host, port)
@@ -1192,7 +1202,6 @@ async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket
     push_changes.close_all()  # each open page's stream ends, so the server need not wait on it
     web.should_exit = True
     await serving
-    server.app.state.daemon = None
 
 
 #: the daemon's window alone (_start_log), never its log file
@@ -1362,22 +1371,22 @@ def one_schwab_client(build) -> callable:
 def open_sockets() -> socket.socket:
     """Open the program's one listening socket before anything serves it.
 
-    It serves the console's pages, the page's price socket (/ws) and the control route
-    (/control), on the port ED_CONSOLE_PORT names, read as it opens (a test's program: a free
-    port of its own). The port it holds is known at once (port 0: the system's pick as it binds,
-    no gap for another program to take it). A port another program holds ends the start here,
-    naming it.
+    It serves the console's pages and the page's price socket (/ws), on the port ED_CONSOLE_PORT
+    names, read as it opens (a test's program: a free port of its own). The port it holds is
+    known at once (port 0: the system's pick as it binds, no gap for another program to take it).
+    A port another program holds ends the start here, naming it.
     """
     return socket.create_server((CONSOLE_HOST, int(os.environ.get("ED_CONSOLE_PORT", "8000"))))
 
 
-async def run(lock_fd: int) -> int:
-    """Run the whole daemon until the stop.
+async def run(lock_fd: int, request: StopRequest) -> int:
+    """Run the whole daemon until the stop: Ctrl+C in its window (stop_on_interrupt) or its stop
+    `request` set by launch.py stop (stop_on_request).
 
-    Its writer, its web server, the price rows' beat, the chain sweep, the market follower and the
-    Schwab connection each run until the stop; one that ends first ends the daemon with an error
-    naming it, which start_capture_daemon.bat restarts. The port its socket holds goes in its lock
-    (`lock_fd`), where launch.py reads it.
+    Its writer, its web server, the price rows' beat, the chain sweep, the market follower, the
+    stop request's waiter and the Schwab connection each run until the stop; one that ends first
+    ends the daemon with an error naming it, which start_capture_daemon.bat restarts. The port
+    its socket holds goes in its lock (`lock_fd`), where launch.py reads it.
     """
     pages = open_sockets()
     record_ports(lock_fd, Ports(console=pages.getsockname()[1]))
@@ -1394,7 +1403,7 @@ async def run(lock_fd: int) -> int:
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
-    daemon.writer, daemon.stop = writer, stop
+    daemon.writer = writer
     writer.saves = daemon.saves
     wsub = bus.subscribe("", policy=LOG)  # the record of every message
     tasks = [
@@ -1410,6 +1419,7 @@ async def run(lock_fd: int) -> int:
             serve_live_ui(stop, state=server.app.state, heartbeat_fn=daemon.status), name="live ui"
         ),
         asyncio.create_task(serve_console(daemon, stop, pages), name="console"),
+        asyncio.create_task(stop_on_request(stop, request), name="stop request"),
     ]
     try:
         await asyncio.sleep(0)  # servers subscribe before the first message
@@ -1436,14 +1446,18 @@ def main() -> int:
         print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
         return 2
     _start_log()
-    fd, lock = acquire_owner_lock()
+    request = StopRequest()  # before the lock: a program the lock names can always be asked
     try:
-        return asyncio.run(run(fd))
-    except KeyboardInterrupt:
-        log.info("capture daemon: stopped by Ctrl+C in its window")
-        return 0
-    except BaseException:
-        log.exception("capture daemon: ended by an error")
-        raise
+        fd, lock = acquire_owner_lock()
+        try:
+            return asyncio.run(run(fd, request))
+        except KeyboardInterrupt:
+            log.info("capture daemon: stopped by Ctrl+C in its window")
+            return 0
+        except BaseException:
+            log.exception("capture daemon: ended by an error")
+            raise
+        finally:
+            release_owner_lock(fd, lock)
     finally:
-        release_owner_lock(fd, lock)
+        request.close()

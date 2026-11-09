@@ -13,13 +13,13 @@ start stops nothing.
 2. The default browser, at the pages' port the program wrote in its lock (program_ports), once
    they answer healthy (START_WAIT_SEC).
 
-`python launch.py stop` is the clean stop (stop): the program is asked to stop on its control route
-(/control on its port) and writes what it holds before it exits.
+`python launch.py stop` is the clean stop (stop): the program is asked to stop by its stop request
+(program_lock.ask_to_stop: a named event of this user's session on Windows) and writes what it
+holds before it exits.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 import sys
@@ -29,11 +29,9 @@ import webbrowser
 from pathlib import Path
 
 import psutil
-from websockets.exceptions import WebSocketException
-from websockets.sync.client import connect
 
 import time_et
-from app.market_data.schwab.streaming.program_lock import Ports, program_ports
+from app.market_data.schwab.streaming.program_lock import Ports, ask_to_stop, program_ports
 
 log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
@@ -118,33 +116,21 @@ def daemon_window(batch: Path) -> list[str]:
     return ["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)]
 
 
-def ask_daemon_to_stop(port: int) -> None:
-    """Ask the daemon for its clean stop on its control route, /control on its port `port`.
-
-    On {"op": "stop"} it writes what it holds, then exits, and start_capture_daemon.bat does not
-    restart it.
-    """
-    with connect(f"ws://127.0.0.1:{port}/control", open_timeout=10) as ws:
-        ws.send(json.dumps({"op": "stop"}))
-
-
 def stop() -> int:
-    """The clean stop of the program (ask_daemon_to_stop): the Schwab connection, the recording
-    and the console's pages end together. Waits up to STOP_WAIT_SEC; 0 when it ended after being
-    asked: one that ended when this stop could not ask it is not reported stopped.
+    """The clean stop of the program: its stop request set (program_lock.ask_to_stop), it writes
+    what it holds and exits, and start_capture_daemon.bat does not restart it; the Schwab
+    connection, the recording and the console's pages end together. Waits up to STOP_WAIT_SEC; 0
+    when it ended after being asked: one that ended when this stop could not ask it (it had made
+    no request to set) is not reported stopped.
     """
     program = running(DAEMON_START)
     ended = "stopped"
-    ports = program_ports()
-    if program and ports is not None:
+    if program:
         try:
-            ask_daemon_to_stop(ports.console)
-        except (OSError, WebSocketException) as e:
+            ask_to_stop()
+        except OSError as e:
             log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
             ended = "ended, not asked by this stop"
-    elif program:
-        log.warning("Ed Console: not asked to stop: it has not opened its ports yet")
-        ended = "ended, not asked by this stop"
     _gone, alive = psutil.wait_procs(program, timeout=STOP_WAIT_SEC)
     left = [p.pid for p in program if p in alive]
     print(

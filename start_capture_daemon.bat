@@ -2,7 +2,7 @@
 title Ed Capture Daemon
 cd /d "%~dp0"
 REM Ed Console, one program: the ONE Schwab streaming connection, the recording, the console's pages
-REM and every live price (:8000, the page's prices at /ws; /control: launch.py stop). Started by launch.py
+REM and every live price (:8000, the page's prices at /ws; stopped by a named event). Started by launch.py
 REM (start_ed_console.bat), which brings the
 REM checkout to origin/main first; it reads its own .env (the Schwab credentials). Its output goes
 REM to logs\stream_capture.<date>.log and to this window; an error before its modules load shows in this window (python). If it exits it is restarted here after 5 s -- except when

@@ -49,8 +49,8 @@ os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
 # set — RC-534 resolves the token canonically under ED_RUNTIME_ROOT (a path with no token in
 # the private root, so still offline), and runtime_layout's own tests require it unset.
 os.environ["ED_CI_OFFLINE"] = "1"
-# A test program's console pages (with the page's price socket, /ws, and the control route,
-# /control) on a port the system picks, never production's 8000
+# A test program's console pages (with the page's price socket, /ws) on a port the system picks,
+# never production's 8000
 os.environ["ED_CONSOLE_PORT"] = "0"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"

@@ -47,9 +47,9 @@ from instrument_identity import display_symbol, ticker_storage_key
 
 log = logging.getLogger(__name__)
 
-#: The console's pages and routes (server.app), the page's socket (/ws) and the control route
-#: (/control), served by the program on every address: the page is served to whatever address
-#: the operator opened it on (its port: capture.open_sockets)
+#: The console's pages and routes (server.app) and the page's socket (/ws), served by the program
+#: on every address: the page is served to whatever address the operator opened it on (its port:
+#: capture.open_sockets)
 CONSOLE_HOST = "0.0.0.0"
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0

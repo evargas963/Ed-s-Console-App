@@ -27,11 +27,16 @@ from pathlib import Path
 
 import pytest
 
-import launch
 import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
+from app.market_data.schwab.streaming.program_lock import (
+    StopRequest,
+    acquire_owner_lock,
+    ask_to_stop,
+    release_owner_lock,
+)
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import (
     LOG,
@@ -43,7 +48,6 @@ from stream_spine import (
 )
 from tests.schwab_rest_standin import CHAIN, LocalSchwab
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
-from tests.test_live_push_channel_v1 import program_routes
 
 _IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
 _TSLA = json.loads(
@@ -1495,12 +1499,12 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
 
 
 def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_ends(tmp_path):
-    """The daemon's clean stop (launch.py stop): {"op": "stop"} sent by launch.ask_daemon_to_stop
-    to the program's control route on its web server's port, the daemon bound as the program
-    binds it, INDUCED CONDITION: while another connection holds the stream database's write lock
-    and the captured option quotes are held in memory and the spill file. The daemon's stop is
-    set, the writer it ends returns, and every quote is on disk in spill files beside the
-    database.
+    """The daemon's clean stop (launch.py stop): its stop request, made as capture.main makes it
+    (program_lock.StopRequest, beside the lock it takes), set by launch.py's own call
+    (program_lock.ask_to_stop) and taken by the program's one waiter (capture.stop_on_request),
+    INDUCED CONDITION: while another connection holds the stream database's write lock and the
+    captured option quotes are held in memory and the spill file. The daemon's stop is set, the
+    writer it ends returns, and every quote is on disk in spill files beside the database.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(
@@ -1508,21 +1512,27 @@ def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_en
     )
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
+    request = StopRequest(db)
+    fd, lock = acquire_owner_lock(db)
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         daemon = capture.Daemon(bus, health)
-        daemon.writer, daemon.stop = writer, stop
-        writing = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        async with program_routes(daemon) as (_web, port):
-            await _held_past_the_cap(writer, bus, health, daemon)
-            await asyncio.to_thread(launch.ask_daemon_to_stop, port)
-            await asyncio.wait_for(writing, timeout=30)
+        daemon.writer = writer
+        tasks = [
+            asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
+            asyncio.create_task(capture.stop_on_request(stop, request)),
+        ]
+        await _held_past_the_cap(writer, bus, health, daemon)
+        await asyncio.to_thread(ask_to_stop, db)
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=30)
         return stop.is_set()
 
     try:
         stopped = asyncio.run(go())
     finally:
+        release_owner_lock(fd, lock)
+        request.close()
         holder.execute("COMMIT")
         holder.close()
     left = writer.status()["left_on_disk"]

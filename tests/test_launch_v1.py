@@ -7,7 +7,7 @@ unknown, never passed. It starts either way (RC-512).
 
 The program (capture_main: the Schwab connection, the recording and the console's pages) runs in
 its own window from start_capture_daemon.bat; the launcher waits for its pages to answer and opens
-the browser at them, and launch.py stop asks it to stop on its control route (/control).
+the browser at them, and launch.py stop asks it to stop by its stop request (a named event).
 
 STAND-INS: local git repositories for GitHub's origin and the production checkout; a folder of
 its own holding launch.py, the batch and a virtual environment, as the production checkout does;

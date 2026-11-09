@@ -551,21 +551,18 @@ def _end(process: subprocess.Popen) -> None:
 def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
     """The real daemon as its batch runs it, in a folder of its own with launch.py beside it, so
     the stop reaches nothing else; no Schwab token, ports the system picks as it binds them.
-    Another checkout's stop leaves it alone. A stop that cannot ask it, its lock naming a port
-    nothing serves or one that closes at once, says so and that the daemon is still running, exit
-    1. A page on the daemon's own pages' port, /ws, is answered with what it subscribed to and
-    takes the daemon's beat; a stop on /control at the port the daemon wrote in its lock, that
-    page and another control connection open, ends the daemon and both sockets with it, exit 0.
-    Induced test condition: the lock a stop reads, in a runtime folder of its own, names the
-    daemon and the port."""
+    Another checkout's stop leaves it alone. A stop from a runtime where no program made its stop
+    request (no lock, or a lock whose holder has ended), so another runtime's, cannot ask it: it
+    says so and that the daemon is still running, exit 1. A page on the daemon's own pages' port,
+    /ws, is answered with what it subscribed to and takes the daemon's beat; a stop in the
+    daemon's runtime, that page connected, ends the daemon and the page's socket with it, exit 0.
+    Induced test condition: the runtime folders a stop reads, of the test's own."""
     home, other = tmp_path / "checkout", tmp_path / "other_checkout"
     for folder in (home, other):
         folder.mkdir()
         shutil.copy(launch.ROOT / "launch.py", folder)
-    nothing = socket.socket()
-    nothing.bind(("127.0.0.1", 0))  # held, never listening: a connection to it is refused
-    closing = socket.create_server(("127.0.0.1", 0))
-    threading.Thread(target=lambda: closing.accept()[0].close(), daemon=True).start()
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait(30)
     env = {
         **os.environ,
         "PYTHONPATH": str(launch.ROOT),
@@ -584,14 +581,12 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
             text=True,
         )
 
-    def lock_naming(port: int) -> Path:
-        """Make a runtime folder whose lock names the daemon and `port` as its port."""
-        runtime = tmp_path / f"lock_naming_{port}"
+    def runtime_holding(lock: str | None) -> Path:
+        """Make a runtime folder of its own holding `lock` as its lock (None: no lock)."""
+        runtime = tmp_path / f"runtime_{uuid.uuid4().hex}"
         (runtime / "data").mkdir(parents=True)
-        ports = asdict(Ports(console=port))
-        (runtime / "data" / "stream_capture.lock").write_text(
-            f"{daemon.pid}\n{json.dumps(ports)}\n", encoding="utf-8"
-        )
+        if lock is not None:
+            (runtime / "data" / "stream_capture.lock").write_text(lock, encoding="utf-8")
         return runtime
 
     try:
@@ -603,7 +598,8 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         out, err = elsewhere.communicate(timeout=60)
         assert (elsewhere.returncode, out) == (0, "Ed Console: not running\n"), err
         assert daemon.poll() is None
-        not_asked = [stop(home, lock_naming(s.getsockname()[1])) for s in (nothing, closing)]
+        ended_holder = f"{gone.pid}\n{json.dumps(asdict(Ports(console=1)))}\n"
+        not_asked = [stop(home, runtime_holding(lock)) for lock in (None, ended_holder)]
         for p in not_asked:
             out, err = p.communicate(timeout=90)
             assert p.returncode == 1, (out, err)
@@ -613,17 +609,13 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
 
         async def page_through_the_stop():
             # unread frames queue without bound, so the page still reads the program's close
-            async with (
-                connect(f"ws://127.0.0.1:{console}/ws", max_queue=None) as page,
-                connect(f"ws://127.0.0.1:{console}/control") as held,  # left open by a client
-            ):
+            async with connect(f"ws://127.0.0.1:{console}/ws", max_queue=None) as page:
                 await page.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
                 frames = [json.loads(await asyncio.wait_for(page.recv(), 30))]
                 while frames[-1]["type"] != "feed":
                     frames.append(json.loads(await asyncio.wait_for(page.recv(), 30)))
                 stopping = stop(home)
                 await asyncio.wait_for(page.wait_closed(), 60)
-                await asyncio.wait_for(held.wait_closed(), 60)
             return frames, stopping
 
         frames, stopping = asyncio.run(page_through_the_stop())
@@ -636,8 +628,6 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         out, err = stopping.communicate(timeout=60)
         assert (stopping.returncode, out) == (0, "Ed Console: stopped\n"), err
     finally:
-        nothing.close()
-        closing.close()
         _end(daemon)
 
 
@@ -668,7 +658,7 @@ def test_the_stop_reads_no_process_parent(tmp_path):
 
 
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
-    """The real daemon found while it loads, its ports not opened yet, then ending on its own
+    """The real daemon found while it loads, its stop request not made yet, then ending on its own
     because its pages' port is held, the code its window restarts on: the stop could not ask
     it, so it does not read "stopped" and exits 1. Induced test condition: the daemon's load is
     held until the stop has found it and said it could not ask it, however late the stop starts."""
@@ -706,7 +696,7 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
             said: list[str] = []
 
             def take_the_answer():
-                # the stop found the daemon and could not ask it (no ports written yet): the
+                # the stop found the daemon and could not ask it (no stop request yet): the
                 # daemon's load goes on
                 for line in stopping.stderr:
                     said.append(line)
