@@ -175,9 +175,10 @@ class LocalSchwab:
                 url = urlparse(self.path)
                 query = {k: v[0] for k, v in parse_qs(url.query).items()}
                 if outer.edge:
-                    return self._edge(url.path, query, started)
+                    self._edge(url.path, query, started)
+                    return
                 if self.headers.get("Authorization") in {f"Bearer {a}" for a in outer.expired}:
-                    return self._send(
+                    self._send(
                         url.path,
                         query,
                         started,
@@ -186,6 +187,7 @@ class LocalSchwab:
                         b"",
                         (("WWW-Authenticate", INVALID_TOKEN),),
                     )
+                    return
                 status, body = outer.answer(url.path, query)
                 self._send(
                     url.path,
@@ -200,7 +202,8 @@ class LocalSchwab:
                 started = time_et.elapsed()
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 if outer.token == "edge":
-                    return self._edge(TOKEN, {}, started)
+                    self._edge(TOKEN, {}, started)
+                    return
                 refused = outer.token == "refuses"
                 self._send(
                     TOKEN,

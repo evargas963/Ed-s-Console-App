@@ -663,9 +663,10 @@ class ChainSweep:
         try:
             resp = safe_get_quotes(schwab_client(), [ct["symbol"] for _chain, ct in batch])
             if resp.status_code != 200:
-                return self.fail(
+                self.fail(
                     chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}"
                 )
+                return
             answer = resp.json()
             errors = answer.pop("errors") if "errors" in answer else {}
             named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
@@ -678,7 +679,8 @@ class ChainSweep:
                 e,
                 exc_info=True,
             )
-            return self.fail(chains, f"{type(e).__name__}: {e}")
+            self.fail(chains, f"{type(e).__name__}: {e}")
+            return
         if errors:
             log.warning(
                 "quotes for %d contracts: Schwab named %d invalid, which have no Greeks: %s",

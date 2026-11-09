@@ -766,20 +766,22 @@ class Daemon:
         status = answer = None
         if req["action"] == "remove":
             if ticker not in self.watchlist:
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(
                         self.watchlist, op=NOT_ON_LIST, ticker=ticker, request_id=rid
                     )
                 )
+                return
             self.watchlist, op = [t for t in self.watchlist if t != ticker], REMOVED
             for held in (self._chains, self._ranked, self._ladders, self._windows):
                 held.pop(ticker, None)  # added again, it waits for its next chain
             self._keep_options()
         else:
             if ticker in self.watchlist:
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(self.watchlist, op=ON_LIST, ticker=ticker, request_id=rid)
                 )
+                return
             try:
                 quoted, status, answer = await asyncio.to_thread(
                     check_ticker, self.schwab_client(), ticker
@@ -788,7 +790,7 @@ class Daemon:
                 log.warning(
                     "watchlist: %s not checked: %s: %s", ticker, type(e).__name__, e, exc_info=True
                 )
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(
                         self.watchlist,
                         op=NOT_CHECKED,
@@ -797,6 +799,7 @@ class Daemon:
                         answer=f"{type(e).__name__}: {e}",
                     )
                 )
+                return
             if not quoted:
                 log.warning(
                     "watchlist: %s not added: Schwab's /quotes answered %s: %s",
@@ -804,7 +807,7 @@ class Daemon:
                     status,
                     json.dumps(answer),
                 )
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(
                         self.watchlist,
                         op=INVALID,
@@ -814,10 +817,12 @@ class Daemon:
                         answer=answer,
                     )
                 )
+                return
             if ticker in self.watchlist:  # added by another request during the check
-                return self.bus.publish(
+                self.bus.publish(
                     *watchlist_message(self.watchlist, op=ON_LIST, ticker=ticker, request_id=rid)
                 )
+                return
             self.watchlist, op = [*self.watchlist, ticker], ADDED
         log.info("watchlist: %s %s; the list: %s", ticker, op, ",".join(self.watchlist))
         if self.chains is not None:

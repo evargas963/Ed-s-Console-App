@@ -149,7 +149,7 @@ def record_from_level_one_equity(
     }
     with _lock:
         _by_ticker[t] = out
-    for fn in list(_row_listeners):
+    for fn in _row_listeners:
         fn(t)
     return True
 
