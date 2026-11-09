@@ -80,7 +80,8 @@ def _git(cwd: Path, *args: str) -> None:
 
 def _checkout_with_the_wired_guards(root: Path) -> Path:
     """A scratch checkout carrying THIS tree's guard modules, so the chain is driven from a
-    checkout whose git topology the test CONSTRUCTS instead of inheriting the machine's."""
+    checkout whose git topology the test CONSTRUCTS instead of inheriting the machine's.
+    """
     (root / "tools").mkdir(parents=True)
     for rel in _GUARD_MODULES:
         shutil.copy(ROOT / "tools" / rel, root / "tools" / rel)
@@ -90,7 +91,8 @@ def _checkout_with_the_wired_guards(root: Path) -> Path:
 def _primary_and_linked(tmp_path: Path) -> tuple[Path, Path]:
     """The two topologies the guards distinguish, built by git itself: a PRIMARY checkout
     (`.git` is a directory — a CI clone, the production desk) and a LINKED worktree created
-    from it (`.git` is a file naming the primary's gitdir — a developer's worktree)."""
+    from it (`.git` is a file naming the primary's gitdir — a developer's worktree).
+    """
     primary = _checkout_with_the_wired_guards(tmp_path / "primary")
     _git(primary, "init", "-q", "-b", "main")
     _git(primary, "add", "tools")
@@ -132,7 +134,8 @@ def test_no_guard_named_is_refused_not_passed():
 def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
     """The guards run before a tool on both hosts, through the one executor, with one roster; the
     Stop hook and the operator's rules on every message (tests/test_wiring_rules_v1.py) are the
-    other things wired."""
+    other things wired.
+    """
     wired = _wired_commands()
     guards = wired["PreToolUse"] + wired["preToolUse"]
     commands = [c for cmds in wired.values() for c in cmds]
@@ -154,7 +157,8 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
 
 def test_every_wired_executable_refuses_an_unreadable_payload():
     """'Cannot judge' and 'judged clean' must not share an exit code — measured for
-    every executable the wiring names, not a hand list."""
+    every executable the wiring names, not a hand list.
+    """
     members = {
         t
         for cmds in _wired_commands().values()
@@ -219,7 +223,8 @@ def test_a_member_block_reaches_the_host_with_the_members_stderr_and_the_judge_b
 
 def test_1_a_blocked_mutation_has_zero_effect_on_the_next_event(tmp_path):
     """Attempt a blocked destructive command, then an ordinary edit and an ordinary read:
-    both are judged on their own payload; nothing the block did is visible to them."""
+    both are judged on their own payload; nothing the block did is visible to them.
+    """
     blocked = _chain(bash("git reset --hard HEAD~1", cwd=ROOT))
     assert blocked.returncode == 2 and "RESET_GUARD" in blocked.stderr
     after_edit = _chain(edit(tmp_path / "scratch.py"))
@@ -230,7 +235,8 @@ def test_1_a_blocked_mutation_has_zero_effect_on_the_next_event(tmp_path):
 
 def test_2_a_nonexistent_worktree_in_a_blocked_command_has_zero_future_effect(tmp_path):
     """The exact poisoning shape: a refused command naming a worktree that does not exist.
-    The next events must not mention it, demand it, or refuse anything because of it."""
+    The next events must not mention it, demand it, or refuse anything because of it.
+    """
     ghost = tmp_path / "EdWebConsole-does-not-exist"
     blocked = _chain(bash(f'git -C "{ghost}" reset --hard && git branch -D main', cwd=ROOT))
     assert blocked.returncode == 2, blocked.stderr
@@ -259,7 +265,8 @@ def test_3_read_only_actions_establish_nothing_and_pass():
 def test_4b_a_shell_payload_without_its_command_is_refused_never_read_as_empty():
     """Claude Code always sends a shell tool's `command`. Each guard reads it as sent, so one
     missing raises and the chain refuses (2); before, `or ""` judged it an empty command and let
-    it through (fails open)."""
+    it through (fails open).
+    """
     for tool in ("Bash", "PowerShell"):
         for tool_input in ({}, {"description": "no command"}):
             r = _chain(
@@ -313,7 +320,8 @@ def test_5b_a_worktree_nested_inside_the_primary_edits_its_own_files_and_never_t
     tmp_path,
 ):
     """Claude's worktrees live at `<primary>/.claude/worktrees/<name>`, under the primary's root:
-    their own files are theirs, the primary's app code stays refused from them."""
+    their own files are theirs, the primary's app code stays refused from them.
+    """
     primary, _ = _primary_and_linked(tmp_path)
     nested = primary / ".claude" / "worktrees" / "nested"
     _git(primary, "worktree", "add", "-q", str(nested), "-b", "nested")
@@ -385,7 +393,8 @@ def test_6_a_dev_worktree_commits_freely_production_refuses_moves_and_masked_for
 
 def test_6b_a_linked_worktree_cannot_write_main_the_branch_production_runs(tmp_path):
     """Every checkout shares refs/heads/main, so the production checkout's lock cannot protect
-    it by judging only commands run there. The commands are judged, never run."""
+    it by judging only commands run there. The commands are judged, never run.
+    """
     primary, linked = _primary_and_linked(tmp_path)
     for command in (
         "git update-ref refs/heads/main HEAD",
@@ -427,7 +436,8 @@ def test_6c_a_linked_worktree_still_deletes_and_moves_its_own_branches(tmp_path)
 
 def test_7_the_session_checkout_judges_and_says_so_no_other_tree_is_ever_chosen(tmp_path):
     """There is no delegation path: a copy of the chain in another checkout judges its own
-    session and names itself; this checkout's run never names another tree."""
+    session and names itself; this checkout's run never names another tree.
+    """
     other = _checkout_with_the_wired_guards(tmp_path / "other-checkout")
     _git(other, "init", "-q", "-b", "main")
     here = _chain(bash("git reset --hard"))

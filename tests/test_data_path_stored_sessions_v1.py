@@ -1,6 +1,7 @@
 """A restart prices the stored chains on Schwab's stored /markets answers. $SPX's AM-settled monthly
 contracts of 2026-10-16 as captured 2026-09-28, and Schwab's answers of 2026-10-07 as the daemon
-stores them, in a fresh console process, which holds no answer when it starts."""
+stores them, in a fresh console process, which holds no answer when it starts.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +34,8 @@ def _record_answers(path: Path) -> int:
     """Schwab's answers as the daemon's writer stores them, each with a later time; before them,
     inserted last, an older answer for the expiry with no option session (induced test condition:
     two answers for one date, as the daemon's asks of two days are, the older cut). Returns how
-    many are 200s."""
+    many are 200s.
+    """
     path.parent.mkdir(parents=True)
     rows = [(n + 1.0, d, a["status"], a["body"]) for n, (d, a) in enumerate(ANSWERS.items())]
     day = json.loads(ANSWERS[EXPIRY]["body"])
@@ -87,7 +89,6 @@ def _env(tmp_path: Path) -> dict:
         **os.environ,
         "ED_RUNTIME_ROOT": str(tmp_path),
         "ED_LIVE_PUSH_PORT": "1",
-        "ED_LIVE_UI_PORT": "1",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_schwab_token.json"),
         "PYTHONIOENCODING": "utf-8",
     }
@@ -124,7 +125,8 @@ def test_the_console_holds_the_answers_before_its_loops_and_its_feed(tmp_path, s
     """The real program (capture_main: the daemon and the console's pages in one process), its
     window as Ed sees it, with no Schwab token: the answers the daemon recorded are held before the
     console's loop and its feed start; with none recorded yet (the program's writer makes the
-    tables at its start), it holds 0."""
+    tables at its start), it holds 0.
+    """
     path = tmp_path / "data" / "stream_capture.db"
     held = _record_answers(path) if store == "answers" else 0
     env = program_env(tmp_path)

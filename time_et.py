@@ -29,7 +29,8 @@ def ct_label(ts_utc: float) -> str:
 
 def age_text(sec: float) -> str:
     """An age as the screen shows it: "45s", "12m", "3h", "2d". A negative age (a time after the
-    console's clock) shows as negative, never as 0."""
+    console's clock) shows as negative, never as 0.
+    """
     sec = float(sec)
     if sec < 90:
         return f"{round(sec)}s"
@@ -66,7 +67,8 @@ def elapsed() -> float:
 
 async def set_within(event: asyncio.Event, seconds: float) -> bool:
     """Wait up to `seconds` for `event`; True when it is set. An asyncio Event takes no timeout of
-    its own, and asyncio.wait reports one as its answer, not as an error."""
+    its own, and asyncio.wait reports one as its answer, not as an error.
+    """
     waiter = asyncio.ensure_future(event.wait())
     try:
         await asyncio.wait({waiter}, timeout=seconds)
@@ -106,7 +108,8 @@ def option_close_product(ticker: str) -> str:
     """The option market whose regular close is this ticker's option close.
 
     An index Schwab names with "$", and SPY, QQQ and IWM, stop at the index close.
-    Every other ticker stops at the equity-option close."""
+    Every other ticker stops at the equity-option close.
+    """
     t = ticker.strip().upper()
     if t.startswith("$") or t in _INDEX_CLOSE_UNDERLYINGS:
         return INDEX_OPTIONS
@@ -121,7 +124,8 @@ class Session:
     """One market date as Schwab's /markets answered it: whether the stock market is open, each
     stock-market window it sent as (start, end) in ET, each option market's regular windows
     (`options`: product -> windows), and every window of any option market, its pre-market and
-    post-market included (`option_hours`). A closed date has no windows."""
+    post-market included (`option_hours`). A closed date has no windows.
+    """
 
     day: str
     is_open: bool
@@ -161,7 +165,8 @@ def record_markets(answer: dict) -> Session:
     """Schwab's 200 answer to GET /markets?markets=equity,option for one date, as sent: its
     equity entry (product EQ on a market day; "equity", isOpen false and no hours on a closed
     one) and its option entries (EQO and IND; "option" on a closed day) are that date's sessions
-    from here on."""
+    from here on.
+    """
     (eq,) = answer["equity"].values()
     hours = _hours(eq)
     s = Session(
@@ -196,7 +201,8 @@ def session_label(now: datetime) -> str:
     """The stock market's session at `now`: PRE_MARKET, RTH or AFTER_HOURS inside the window
     Schwab sent for today, CLOSED outside them (and on a day Schwab says is closed), UNKNOWN when
     Schwab's answer for today is not held. A valid session is live; with none the last values
-    stand. What Schwab streams is shown and recorded whatever it says."""
+    stand. What Schwab streams is shown and recorded whatever it says.
+    """
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return UNKNOWN
@@ -218,7 +224,8 @@ def auction(now: datetime) -> str | None:
     """OPEN_AUCTION in the AUCTION_OPEN before today's regular window as Schwab sent it opens,
     CLOSE_AUCTION in the AUCTION_CLOSE before it ends (13:00 ET on an early close), NO_AUCTION
     otherwise and on a day Schwab says is closed; None when Schwab's answer for today is not
-    held."""
+    held.
+    """
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return None
@@ -234,7 +241,8 @@ def auction(now: datetime) -> str | None:
 
 def options_opened(now: datetime) -> datetime | None:
     """When the option markets' day starts on `now`'s date: the first window Schwab sent, its
-    pre-market included; None when it sent none or its answer is not held."""
+    pre-market included; None when it sent none or its answer is not held.
+    """
     s = session(now.astimezone(ET).date().isoformat())
     return min((start for start, _end in s.option_hours), default=None) if s else None
 
@@ -242,7 +250,8 @@ def options_opened(now: datetime) -> datetime | None:
 def options_open(now: datetime) -> bool | None:
     """Whether `now` is inside a window Schwab sent for any option market, as sent: what the chain
     sweep, the levels and an option's live mark follow; None when Schwab's answer for today is not
-    held. option_market_open keeps the regular windows for the close values."""
+    held. option_market_open keeps the regular windows for the close values.
+    """
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return None
@@ -253,7 +262,8 @@ def option_market_open(now: datetime, product: str | None = None) -> bool | None
     """Whether option market `product` (EQO, IND), or any option market
     when none is named (the last, IND, runs to 16:15 ET), is in a regular window Schwab sent for
     today. False outside its windows and all day on a day Schwab says is closed; None when Schwab's
-    answer for today is not held."""
+    answer for today is not held.
+    """
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
         return None
@@ -267,7 +277,8 @@ def option_market_open(now: datetime, product: str | None = None) -> bool | None
 
 def options_closed_at(now: datetime, product: str | None = None) -> datetime | None:
     """The end of the newest regular window that has ended by `now`, among the answers held, of
-    option market `product`, or of any option market when none is named; None when none has."""
+    option market `product`, or of any option market when none is named; None when none has.
+    """
     ended = [
         end
         for s in _sessions.values()
@@ -285,7 +296,8 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
     instant; a gap between two windows counts as closed), that close, so the close numbers stand.
     While it is open, before it opens, on a day with no window, and on a date whose session is not
     held, it is `now`: the time to each expiry runs on the clock, and a day with no session has no
-    same-day close."""
+    same-day close.
+    """
     if option_market_open(now, product) is not False:
         return now
     closed = options_closed_at(now, product)
@@ -299,7 +311,8 @@ def valuation_instant(now: datetime, product: str = EQUITY_OPTIONS) -> datetime:
 def closed_since(now: datetime) -> datetime | None:
     """While the stock market is CLOSED at `now` (session_label): when it closed, the end of the
     newest window Schwab sent that has ended. None while a session is open or unknown, and when no
-    answer held has a window that has ended."""
+    answer held has a window that has ended.
+    """
     if session_label(now) != CLOSED:
         return None
     ended = [
@@ -314,13 +327,15 @@ def closed_since(now: datetime) -> datetime | None:
 def market_session_date(now: datetime) -> date:
     """The session the market's values belong to at `now` (ET): today's while a session is open
     (Pre-Market, RTH, After-Hours) or unknown, the newest session's while Closed, whose values
-    stand until the next session opens (docs/DATA_FLOW.md §2 D5)."""
+    stand until the next session opens (docs/DATA_FLOW.md §2 D5).
+    """
     return (closed_since(now) or now).astimezone(ET).date()
 
 
 def last_open(now: datetime) -> datetime | None:
     """The start of the newest regular session Schwab sent that has begun by `now`; None: none
-    held."""
+    held.
+    """
     begun = [start for s in _sessions.values() for start, _end in s.regular if start <= now]
     return max(begun) if begun else None
 
@@ -328,7 +343,8 @@ def last_open(now: datetime) -> datetime | None:
 def sessions_since(now: datetime, n: int) -> datetime | None:
     """The start (00:00 ET) of the `n`th newest date Schwab's /markets says the market was open
     whose regular session has begun by `now`, so the newest `n` sessions run from it; None when
-    fewer than `n` such dates are held."""
+    fewer than `n` such dates are held.
+    """
     begun = sorted(
         s.day
         for s in _sessions.values()
@@ -377,7 +393,8 @@ def time_to_expiry_years(
     0.0 after settlement: no time is left. None when the time left is not known: an AM-settled
     contract within the year /markets answers whose date it has not, a date it answers with no
     regular option session, and an expirationDate without its time. At the settlement instant the
-    10-minute floor guards the exact-expiry singularity."""
+    10-minute floor guards the exact-expiry singularity.
+    """
     s = session(str(expiration_date)[:10])
     if s is None:
         if len(str(expiration_date)) <= 10:

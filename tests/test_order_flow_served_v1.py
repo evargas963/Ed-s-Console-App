@@ -1,7 +1,8 @@
 """Order flow computes nothing in the page (P1-3, PR C): the book heatmap's default window, each
 cell's dominant side and the colour scale's top are served; so is an option contract's put/call
 (Schwab's CONTRACT_TYPE). Book rows are real TSLA NASDAQ_BOOK messages
-(tests/fixtures/real_tsla_book_rows.json)."""
+(tests/fixtures/real_tsla_book_rows.json).
+"""
 
 import json
 from pathlib import Path
@@ -26,7 +27,8 @@ _FX = json.loads(
 def _books(rows) -> RecentBooks:
     """A fresh store fed each captured (ts_recv, venue, book message) as the console's intake
     does: each message read by the one reader (engine.read_book), a message with no book not
-    recorded."""
+    recorded.
+    """
     books = RecentBooks()
     for ts, svc, nat in rows:
         book = read_book(nat, svc)
@@ -48,7 +50,8 @@ def _sizes(c):
 
 def test_each_cell_carries_its_dominant_side_and_the_scale_top(heat):
     """A side Schwab sent no level for at a price is absent (None), never 0; the cell's side is
-    the one Schwab sent, or the larger of the two."""
+    the one Schwab sent, or the larger of the two.
+    """
     one_sided = 0
     for c in heat["cells"]:
         b, a = c["bid"], c["ask"]
@@ -90,7 +93,8 @@ def test_put_call_is_schwabs_contract_type():
 def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_close_snapshots():
     """After the close Schwab keeps sending empty book snapshots (measured 2026-09-27: SPY's latest
     NASDAQ_BOOK message is {"key": "SPY", "BOOK_TIME": ..., "BIDS": [], "ASKS": []}); anchoring the
-    window on those left the heatmap blank all weekend."""
+    window on those left the heatmap blank all weekend.
+    """
     last = _FX["rows"][-1][0]
     empties = [
         (

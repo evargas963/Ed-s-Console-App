@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from starlette.testclient import TestClient
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
@@ -58,7 +59,8 @@ def _clean():
 def _hold(tk, contracts, fetched_ts, price, streamed=()):
     """The daemon's status (Schwab's socket open, `tk` and the `streamed` contracts held), each
     streamed (symbol, fields, receive time) pushed, and `tk`'s chain published at _AT; the status
-    beats at _AT (the publication's time) and again now (the routes' time)."""
+    beats at _AT (the publication's time) and again now (the routes' time).
+    """
     held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
     lmp.record_feed_heartbeat(daemon_status(_AT.timestamp(), schwab_socket_open=True, held=held))
     lmp.record_from_level_one_equity(
@@ -133,7 +135,8 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
 def test_a_later_streamed_gamma_does_not_replace_the_quote():
     """A streamed contract's volume is the stream's, even one streamed before the chain. Gamma
     stays the chain's, as the sweep took it: a gamma streamed after the chain does not replace
-    it. Open interest is the chain's."""
+    it. Open interest is the chain's.
+    """
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]
     volume, gamma = target["totalVolume"] + 4321, target["gamma"] + 0.05
@@ -156,8 +159,6 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
 
 
 def test_the_route_answers_over_real_http():
-    from starlette.testclient import TestClient
-
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     with TestClient(srv.app) as client:
         r = client.get("/api/chain", params={"ticker": "TSLA"})

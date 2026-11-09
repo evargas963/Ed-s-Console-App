@@ -22,7 +22,8 @@ from app.options.order_flow.state import OrderFlowState
 
 def _tape(sym: str, *rows, state=None) -> list:
     """Each (price, size, trade time) as one LEVELONE message, pushed through the live state (or
-    `state`) in receive order: the content the engine reads."""
+    `state`) in receive order: the content the engine reads.
+    """
     st = live_state._LIVE_STATE if state is None else state
     st.clear_symbol(sym)
     for i, (price, size, trade_ms) in enumerate(rows):

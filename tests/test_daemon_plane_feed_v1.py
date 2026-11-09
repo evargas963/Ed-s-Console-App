@@ -16,9 +16,11 @@ from pathlib import Path
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import server
 import time_et
 from app.options.order_flow.engine import read_book
 from stream_spine import book_msg, quote_msg
+from tests.feed_live_helper import RTH_INSTANT, daemon_status
 
 
 def _reset(tmp_path):
@@ -76,7 +78,8 @@ def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
 def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):
     """A real SPY NASDAQ_BOOK message (tests/fixtures/real_spy_nyse_nasdaq_books.json) through the
     real ingest: the console holds the book as engine.read_book reads it, every level Schwab sent
-    with its price and size."""
+    with its price and size.
+    """
     _reset(tmp_path)
     fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_nyse_nasdaq_books.json"
     content = json.loads(fx.read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
@@ -91,12 +94,8 @@ def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):
 def test_each_venue_serves_only_its_own_book(tmp_path):
     """Real SPY NYSE_BOOK and NASDAQ_BOOK messages (tests/fixtures/real_spy_nyse_nasdaq_books.json)
     through the real ingest: each venue's route answer is that venue's book, never the newest
-    of the two."""
-    import json
-    from pathlib import Path
-
-    import server
-
+    of the two.
+    """
     _reset(tmp_path)
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
@@ -128,13 +127,8 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     however old its last change (these real books are days old), at any hour: no clock of ours
     judges it (operator 2026-10-01, "From Schwab's mouth to our UI's ears. Period."). Real SPY
     books (tests/fixtures/real_spy_nyse_nasdaq_books.json), judged in regular hours
-    (RTH_INSTANT)."""
-    import json
-    from pathlib import Path
-
-    import server
-    from tests.feed_live_helper import RTH_INSTANT, daemon_status
-
+    (RTH_INSTANT).
+    """
     _reset(tmp_path)
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
@@ -170,7 +164,8 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
 
 def test_each_symbol_lands_in_its_own_state_only(tmp_path):
     """Every roster symbol is applied, each into its OWN state: a QQQ tick must never appear in
-    SPY's."""
+    SPY's.
+    """
     _reset(tmp_path)
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time_et.now())
 

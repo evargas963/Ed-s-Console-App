@@ -1,5 +1,6 @@
-"""Operating-process mechanical lock: two predicates, one owner each, consumed by
-tools/process_lock_guard.py at PreToolUse.
+"""Operating-process mechanical lock: two predicates, one owner each.
+
+They are consumed by tools/process_lock_guard.py at PreToolUse.
 
   (a) tree-destructive git — THE one owner of that class, universal hard forms included;
   (b) pipe-masked commits.
@@ -50,7 +51,7 @@ PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
 
 
 def _hard(sub: str, args: list[str]) -> bool:
-    """A git subcommand that discards work whatever it names."""
+    """Return whether a git subcommand discards work whatever it names."""
     return (
         (sub == "reset" and "--hard" in args)
         or (sub == "checkout" and args[:1] == ["--"] and len(args) > 1)
@@ -68,7 +69,7 @@ def _hard(sub: str, args: list[str]) -> bool:
 
 
 def _safe(sub: str, args: list[str]) -> bool:
-    """A form of the class that cannot reach the index or the worktree, or only reads."""
+    """Return whether a form of the class cannot reach the index or worktree, or only reads."""
     first = args[0] if args else ""
     return (
         (sub == "reset" and first == "--soft")
@@ -79,7 +80,7 @@ def _safe(sub: str, args: list[str]) -> bool:
 
 
 def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
-    """The CLASS rule for ONE statement: a chain cannot launder a later wipe."""
+    """Apply the CLASS rule to ONE statement, so a chain cannot launder a later wipe."""
     sub, args = git_subcommand(words)
     if not (
         sub in ("reset", "restore", "clean") or (sub == "checkout" and "--" in args[:-1])
@@ -100,7 +101,7 @@ def _reset_class_violation(words: tuple[str, ...]) -> list[str]:
 
 
 def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
-    """The reset guard: BLOCK tree-destructive git — the ONE owner of that question.
+    """Apply the reset guard: BLOCK tree-destructive git — the ONE owner of that question.
 
     Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
     `clean -f`, `push --force`/`-f`, every `stash` but `stash list`) discard work whatever they
@@ -137,12 +138,13 @@ _MASKING_FILTERS = frozenset(
 
 
 def commit_pipe_violations(cmd: str, powershell: bool = False) -> list[str]:
-    """A `git commit` piped into a filter (tail/head/grep/Out-Null/...) reports
-    the FILTER's exit code and truncates hook output, so a failed commit reads as exit 0.
-    Commits run UNPIPED;
-    long hooks go to a background task whose full output is read back. Escape:
-    '# pipe-ok: <reason>' (operator-reviewed). A `|` inside a quoted -m message is not a pipe."""
-    if not cmd or "# pipe-ok:" in cmd:
+    """Return the refusal of a `git commit` piped into a filter (tail/head/grep/Out-Null/...).
+
+    Such a commit reports the FILTER's exit code and truncates hook output, so a failed commit
+    reads as exit 0. Commits run UNPIPED; long hooks go to a background task whose full output is
+    read back. A `|` inside a quoted -m message is not a pipe.
+    """
+    if not cmd:
         return []
     for st in read(cmd, powershell=powershell):
         up = st.upstream if st.program in _MASKING_FILTERS else None
@@ -153,6 +155,6 @@ def commit_pipe_violations(cmd: str, powershell: bool = False) -> list[str]:
                 "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
                 "code replaces the commit's and hook failures vanish. Run the "
                 "commit UNPIPED (background task for long hooks), then verify via "
-                "`git show --stat`. Escape: '# pipe-ok: <reason>'."
+                "`git show --stat`."
             ]
     return []

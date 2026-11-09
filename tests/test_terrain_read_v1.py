@@ -54,7 +54,8 @@ def test_below_flip_is_short_gamma_and_follows() -> None:
 
 def test_regime_is_the_signed_gamma_at_spot_only() -> None:
     """T-07 (2026-09-24): no spot-vs-flip fallback. No signed gamma, or exactly zero (spot
-    AT the flip), is no regime -- not a side picked from the flip."""
+    AT the flip), is no regime -- not a side picked from the flip.
+    """
     for g in (None, 0.0):
         r = build_terrain_read(
             spot=750.0,
@@ -81,7 +82,8 @@ def test_missing_inputs_fail_closed() -> None:
 def test_a_missing_wall_reads_as_a_dash_and_a_known_one_as_its_price():
     """CRWD's chain captured 2026-10-07 (tests/real_chains.py), valued at its capture: its flip, put
     wall and gamma at spot as the levels producer computed them. Induced: the call wall withheld.
-    The box line shows the put wall at two decimals and the missing call wall as "-", no word."""
+    The box line shows the put wall at two decimals and the missing call wall as "-", no word.
+    """
     snap = compute_terrain(CRWD.ticker, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
     r = build_terrain_read(
         spot=CRWD.spot,
@@ -103,7 +105,8 @@ def test_the_regime_is_read_by_one_rule_for_every_instrument():
     a single name alike; a single name's regime was once withheld (SIGN-DEMOTION) and the
     argument that carried the ticker in stayed behind, dead. Real Schwab chains
     (tests/real_chains.py), each valued at its own capture: SPY's 0DTE chain is too narrow for the
-    sign (withheld, the coverage rule); CRWD's complete chain is trusted (issued)."""
+    sign (withheld, the coverage rule); CRWD's complete chain is trusted (issued).
+    """
     got = {}
     for real in (SPY_0DTE, CRWD):
         tk = real.ticker

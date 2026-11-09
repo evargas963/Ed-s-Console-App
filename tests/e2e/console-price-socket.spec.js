@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test');
 test('a price-socket frame that is not JSON is an error on the page, never dropped in silence', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.routeWebSocket(/:1\/$/, (ws) => { ws.onMessage(() => ws.send('not json')); });
+  await page.routeWebSocket(/\/ws$/, (ws) => { ws.onMessage(() => ws.send('not json')); });
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect.poll(() => errors.length).toBeGreaterThan(0);

@@ -10,6 +10,7 @@ from math_exposure_core import (
     pick_volatility_point_strikes,
 )
 from option_contract import read_chain
+from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain, price_relations
 from tests.real_chains import SPY_0DTE
 
 _SPY = read_chain(SPY_0DTE.chain)
@@ -80,9 +81,8 @@ def test_volatility_points_are_signed_extremes_on_real_chain():
 def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     """Real seam: compute_terrain (the /api/terrain producer) on the real SPY chain
     must serve schema v2 with net_gex_at_spot ≡ flip_diag.gamma_at_spot and the new
-    levels agreeing with their pickers — the UI renders these fields directly."""
-    from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain, price_relations
-
+    levels agreeing with their pickers — the UI renders these fields directly.
+    """
     snap = compute_terrain("SPY", _SPY, SPY_0DTE.spot, now=SPY_0DTE.now)
     d = (
         snap.to_dict() | price_relations(snap.to_dict(), SPY_0DTE.spot).to_dict()

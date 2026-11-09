@@ -1,5 +1,6 @@
 """tools/check_integrity.py on throwaway repositories: what a change may not take from its tests.
-The inputs are the shapes the check judges, not market data."""
+The inputs are the shapes the check judges, not market data.
+"""
 
 from __future__ import annotations
 
@@ -96,7 +97,8 @@ def test_a_test_moved_to_another_file_with_its_assertions_passes(repo):
 
 def test_a_test_deleted_beside_a_new_one_sharing_a_line_is_not_judged(repo):
     """One shared assertion does not make a new test the old one renamed, so a deletion beside a
-    new test passes."""
+    new test passes.
+    """
     _write(repo, "tests/test_gone.py", "def test_gone():\n    assert 3 == 3\n    assert 4 == 4\n")
     _commit(repo)
     _git(repo, "branch", "-f", "main")

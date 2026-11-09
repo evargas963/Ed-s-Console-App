@@ -8,16 +8,26 @@
 
 from __future__ import annotations
 
+import json
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import live_market_plane as lmp
+import live_price_rows
+import push_changes
+import schwab_client as sc
+import server as srv
 import time_et
-from tests.feed_live_helper import RTH_INSTANT
+from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
 
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
 
 def _token_file(tmp_path):
     """A token file in schwab-py's shape (the stand-in for schwab_token.json), valid for an hour."""
-    import json
-
     tok = tmp_path / "schwab_token.json"
     tok.write_text(
         json.dumps(
@@ -39,32 +49,22 @@ def _token_file(tmp_path):
 def test_every_token_refresh_writes_atomically(tmp_path):
     """The client we build refreshes through OUR writer (temp + replace), never open(path, 'w')
     in place (audit of #280: the atomic helper had no production caller). A replace puts a new
-    file at the path (its file id changes); a write in place keeps the same file."""
-    import json
-    import os as _os
-
-    import schwab_client as sc
-
+    file at the path (its file id changes); a write in place keeps the same file.
+    """
     tok = _token_file(tmp_path)
     client = sc.client_from_token_file_atomic(str(tok), "k", "s")
     assert client.session.token["access_token"] == "a"
-    before = _os.stat(tok).st_ino
+    before = os.stat(tok).st_ino
     client.session.update_token({"access_token": "b", "refresh_token": "r"})  # a refresh
     assert json.loads(tok.read_text())["token"]["access_token"] == "b"
-    assert _os.stat(tok).st_ino != before, "the refresh must land via os.replace"
+    assert os.stat(tok).st_ino != before, "the refresh must land via os.replace"
 
 
 def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
     """Operator 2026-10-06: chains and quotes one request at a time on one connection. The
     client the daemon builds, asked for 20 requests at once from 20 threads, sends them one at a
-    time (the server never holds two) over one connection (one client port)."""
-    import threading
-    import time
-    from concurrent.futures import ThreadPoolExecutor
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    import schwab_client as sc
-
+    time (the server never holds two) over one connection (one client port).
+    """
     n = 20
     lock = threading.Lock()
     seen = {"open": 0, "most": 0, "ports": set()}
@@ -88,16 +88,16 @@ def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
         def log_message(self, *a):
             pass
 
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), Held)
-    srv.daemon_threads = True
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Held)
+    httpd.daemon_threads = True
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
         client = sc.client_from_token_file_atomic(str(_token_file(tmp_path)), "k", "s")
-        url = f"http://127.0.0.1:{srv.server_address[1]}/"
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/"
         with ThreadPoolExecutor(max_workers=n) as pool:
             codes = list(pool.map(lambda _: client.session.get(url).status_code, range(n)))
     finally:
-        srv.shutdown()
+        httpd.shutdown()
     assert codes == [200] * n
     assert seen["most"] == 1, f"{seen['most']} requests at once"
     assert len(seen["ports"]) == 1, f"{len(seen['ports'])} connections"
@@ -107,8 +107,6 @@ def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
 
 
 def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
-    import server as srv
-
     t0 = 1_700_000_100.0  # a 5-minute boundary: 1_700_000_100 % 300 == 100? use floor
     base = t0 - (t0 % 300)
     m = [
@@ -128,8 +126,6 @@ def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
 
 
 def test_daily_roll_up_is_keyed_on_the_et_trading_date():
-    import server as srv
-
     # 2026-09-24 19:59 ET and 20:01 ET are the same ET date; 00:01 ET next day is not
     d1a, d1b, d2 = 1_790_294_340.0, 1_790_294_460.0, 1_790_308_860.0
     out = srv.aggregate_bars(
@@ -144,11 +140,6 @@ def test_daily_roll_up_is_keyed_on_the_et_trading_date():
 
 
 def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
-    import live_market_plane as lmp
-    import live_price_rows
-    import server as srv
-    from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
-
     now = RTH_INSTANT  # regular hours: the market trades
     mark_feed_live("ZZQF", now=now)
     lmp.record_from_level_one_equity(
@@ -169,12 +160,8 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
 def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
     """Every ticker's levels follow what Schwab pushes, not only the one on screen: a tick queues
     a reprice of its ticker as of its receive time, whether a page shows it or not (a page open
-    on one, the pricing thread held while the ticks arrive, the queue read as it stands)."""
-    import threading
-
-    import push_changes
-    import server as srv
-
+    on one, the pricing thread held while the ticks arrive, the queue read as it stands).
+    """
     loop = push_changes._loop
     push_changes.bind(None)
     page = push_changes.subscribe("ZZVIEW")

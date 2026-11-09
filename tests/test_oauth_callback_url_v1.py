@@ -1,5 +1,6 @@
 """The sign-in's callback URL is taken as configured: one that names no port is refused with
-that reason, never a host or port filled in."""
+that reason, never a host or port filled in.
+"""
 
 from __future__ import annotations
 

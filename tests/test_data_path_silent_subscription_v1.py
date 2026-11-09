@@ -10,7 +10,8 @@ from tests.feed_live_helper import RTH_INSTANT
 def test_a_missing_heartbeat_keeps_the_last_subscription():
     """The last beat held the contract. When that beat is gone the contract is still the one the
     daemon held, and the feed is down. The page says OFFLINE. It does not say the daemon
-    released the contract. Judged in regular hours, the option market open (RTH_INSTANT)."""
+    released the contract. Judged in regular hours, the option market open (RTH_INSTANT).
+    """
     now = RTH_INSTANT
     lmp.record_feed_heartbeat(
         {

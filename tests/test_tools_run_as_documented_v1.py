@@ -3,7 +3,8 @@ repository root or from `tools`: run that way, Python puts `tools/` on the impor
 root, and the import fails before the tool starts. tools/cpu_load.py and
 tools/schwab_field_inventory.py were documented so after both came to import time_et, and the
 flaky-test procedure ran its suites with no load at all (2026-11-07). A tool that needs the root
-is run with `python -m tools.<name>`."""
+is run with `python -m tools.<name>`.
+"""
 
 from __future__ import annotations
 

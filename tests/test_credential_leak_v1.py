@@ -16,7 +16,8 @@ HOME = f"path = 'C:/{USERS}/someone/secret.json'\n"
 
 def _staged(root, files, config=()):
     """A new repository at `root` with `files` ({path: text}, written byte for byte) staged, as the
-    hook finds it; `config` is (key, value) pairs set in that repository first."""
+    hook finds it; `config` is (key, value) pairs set in that repository first.
+    """
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     for key, value in config:
         subprocess.run(["git", "config", key, value], cwd=root, check=True)
@@ -82,7 +83,7 @@ def test_a_secret_in_a_file_git_quotes_after_another_file_is_refused(tmp_path):
 def test_a_carriage_return_inside_an_added_line_neither_hides_a_secret_nor_starts_a_header(
     tmp_path,
 ):
-    """git ends a line only at a line feed; a lone carriage return is text of the line."""
+    """Git ends a line only at a line feed; a lone carriage return is text of the line."""
     root = _staged(
         tmp_path,
         {
@@ -129,7 +130,8 @@ def test_a_name_windows_cannot_hold_is_read_under_its_own_name(tmp_path, path):
 
 def test_a_file_name_that_is_not_utf8_is_not_a_clean_diff(tmp_path):
     """A header that cannot be read names no file, so nothing after it was scanned under its name:
-    the diff is unread, never clean."""
+    the diff is unread, never clean.
+    """
     root = _staged_as(_staged(tmp_path, {}), b"a\xff.py", SECRET)
     with pytest.raises(DiffUnreadable, match="could not be read"):
         find_credential_leaks(root)
@@ -193,7 +195,8 @@ def test_clean_addition_passes(tmp_path):
 def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
     """CI runs the scanner on each commit of the pull request (`--base`): a commit made where the
     pre-commit hook does not run (GitHub's editor, a skipped hook) is still read, and so is a
-    secret a later commit removes again, since the merge publishes every commit."""
+    secret a later commit removes again, since the merge publishes every commit.
+    """
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
     git = lambda *a: subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],
@@ -215,7 +218,8 @@ def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
 
 def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
     """A conflict resolved in a merge commit (GitHub's web conflict editor runs no hook) is read for
-    what the resolution adds; the lines main brings in through the merge are not the PR's."""
+    what the resolution adds; the lines main brings in through the merge are not the PR's.
+    """
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
     git = lambda *a: subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],

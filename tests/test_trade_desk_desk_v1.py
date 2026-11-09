@@ -73,7 +73,8 @@ def test_equity_microstructure_serves_the_engines_tick_rule_flow_labelled_proxy(
 def test_every_shipped_page_script_parses():
     """Measured 2026-09-25: a Python-side edit un-escaped an apostrophe inside a single-quoted
     JS string in ed-trade-desk-map.js -- a syntax error that would have stopped the whole Desk
-    page from loading, and no Python test noticed. Every script the console serves must parse."""
+    page from loading, and no Python test noticed. Every script the console serves must parse.
+    """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")

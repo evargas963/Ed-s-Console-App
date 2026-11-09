@@ -78,7 +78,8 @@ def token_file_lock(token_path: str) -> FileLock:
     """The token file's lock (beside it, `.lock`), held by one writer at a time across processes:
     the daemon's session from its look at the file to its write, a sign-in being saved,
     tools/schwab_field_inventory.py's client. One lock per path within a process, which its
-    holder takes again without waiting."""
+    holder takes again without waiting.
+    """
     return FileLock(
         _resolve_token_path(token_path) + ".lock", is_singleton=True, timeout=TOKEN_LOCK_WAIT_SEC
     )
@@ -91,7 +92,8 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
     The token writer: every Schwab client this repo builds refreshes through it
     (client_from_token_file_atomic) and every sign-in is saved by it (the OAuth exchange).
     schwab-py's own writer rewrites the file in place, so a reader in another process could
-    load a torn token."""
+    load a torn token.
+    """
     path = Path(_resolve_token_path(token_path))
     path.parent.mkdir(parents=True, exist_ok=True)
     with token_file_lock(str(path)):
@@ -155,7 +157,8 @@ def log_request(response: httpx.Response) -> None:
     symbols, and the expiration or market date asked for), the status, and when it was sent and
     answered. An answer that is not a success also carries Schwab's body and headers as sent; the
     token endpoint's body (it holds tokens) and the request's headers (the bearer token) never
-    are."""
+    are.
+    """
     response.read()
     answered = time_et.now()
     req = response.request
@@ -191,7 +194,8 @@ def log_request(response: httpx.Response) -> None:
 
 class SignInRefused(Exception):
     """Schwab refused the sign-in (the refresh token: expired, revoked, invalid). Nothing is sent
-    to Schwab until a new sign-in is saved to the token file (python reauth_schwab.py)."""
+    to Schwab until a new sign-in is saved to the token file (python reauth_schwab.py).
+    """
 
 
 class OneRefreshSession(OAuth2Client):
@@ -204,7 +208,8 @@ class OneRefreshSession(OAuth2Client):
     reauth_schwab.py's; no restart), holding the file's lock, so none is saved during the refresh
     and none is written over. Once Schwab refuses a refresh (authlib raises on Schwab's answer; a
     network failure or Schwab's edge page is not one), every request raises SignInRefused and
-    nothing is sent, until a new sign-in is saved."""
+    nothing is sent, until a new sign-in is saved.
+    """
 
     def __init__(self, *args, token_file: str, metadata, **kwargs):
         super().__init__(*args, **kwargs)
@@ -249,7 +254,8 @@ class OneRefreshSession(OAuth2Client):
 
     def refusal(self) -> "str | None":
         """Why this session holds no sign-in Schwab accepts, with what to run, else None; while
-        refused, a new one saved to the token file is taken first."""
+        refused, a new one saved to the token file is taken first.
+        """
         with self._refresh_lock:
             if self._refused is not None:
                 with token_file_lock(self._token_file):
@@ -266,7 +272,8 @@ class OneRefreshSession(OAuth2Client):
         """Take the sign-in saved to the token file when it is a new one (a creation time not the
         one held): its token and creation time, the streamer's too. A file unchanged since the
         last look is not read again. One that holds no usable sign-in (sign_in_problem) is logged
-        once."""
+        once.
+        """
         seen = None
         try:
             st = os.stat(self._token_file)
@@ -311,7 +318,8 @@ def client_from_token_file_atomic(
     it, with four differences: every token refresh is written atomically (schwab-py's writer
     rewrites the file in place), the token is refreshed by one request at a time
     (OneRefreshSession), the session holds one connection, and every request is logged once
-    (request_sent, log_request)."""
+    (request_sent, log_request).
+    """
     resolved = _resolve_token_path(token_path)
     with token_file_lock(resolved):  # a sign-in being saved: read once it is
         metadata = auth.TokenMetadata.from_loaded_token(
@@ -397,7 +405,8 @@ def auth_is_refreshable(inspection: TokenInspectionResult) -> bool:
 
 def sign_in_problem(inspection: TokenInspectionResult, resolved: str) -> "str | None":
     """Why `resolved` holds no sign-in a client can use, or None when it does. The one rule for a
-    client built from the file and for a sign-in saved while a client runs."""
+    client built from the file and for a sign-in saved while a client runs.
+    """
     if not inspection.file_exists:
         return f"Token file not found: {resolved}. {inspection.message}"
     if not inspection.json_valid:
@@ -424,7 +433,8 @@ def build_client_from_token(
 ) -> SchwabClientState:
     """Build Schwab client from token file. token_path is normalized to absolute. A file that holds
     no usable sign-in is a state with its reason; a build that fails on one that does raises
-    ConnectionError, its cause carried."""
+    ConnectionError, its cause carried.
+    """
     if schwab_live_blocked_for(api_key, app_secret):
         return SchwabClientState(
             ok=False,
@@ -613,7 +623,8 @@ def safe_get_chain(
 def option_expiries(client, ticker: str, today: date):
     """Schwab's expiration chain (/marketdata/v1/expirationchain) for `ticker`: (its expiries
     from `today` on, option_contract.listed_expiries, its response). The expiries are None when
-    Schwab does not answer 200."""
+    Schwab does not answer 200.
+    """
     resp = client.get_option_expiration_chain(ticker)
     if resp.status_code != 200:
         return None, resp
@@ -622,7 +633,8 @@ def option_expiries(client, ticker: str, today: date):
 
 def safe_get_quotes(client, symbols: "list[str]"):
     """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`, the quote
-    fields only; Schwab's response."""
+    fields only; Schwab's response.
+    """
     return client.get_quotes(symbols, fields=["quote"])
 
 

@@ -43,9 +43,7 @@ def program_env(tmp_path: Path) -> dict:
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}  # its loops start
     env.update(
         ED_RUNTIME_ROOT=str(tmp_path),
-        ED_LIVE_UI_HOST="127.0.0.1",
         ED_LIVE_PUSH_PORT="0",
-        ED_LIVE_UI_PORT="0",
         ED_CONSOLE_PORT="0",
         SCHWAB_TOKEN_PATH=str(tmp_path / "missing_schwab_token.json"),
         PYTHONIOENCODING="utf-8",

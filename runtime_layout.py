@@ -15,9 +15,9 @@ worktree resolves runtime state to its primary worktree by reading Git's own ``.
 select a linked source worktree.
 
 This module imports nothing from `tools/` or `governance/`: it is on the runtime path and
-governance does not decide whether the desk may run. It reads the environment only: an
-`ED_RUNTIME_ROOT` in `.env` reaches it when an entry point loads `.env` (config.load_dotenv_file)
-before importing it.
+governance does not decide whether the desk may run. It reads the environment when asked
+(runtime_root), never at import: an `ED_RUNTIME_ROOT` in `.env` reaches it once an entry point
+has loaded `.env` (config.load_dotenv_file), whatever was imported first.
 """
 
 from __future__ import annotations
@@ -76,18 +76,23 @@ def _default_runtime_root() -> Path:
     return primary
 
 
-#: Live database, logs and tokens live here. Linked worktrees share the primary root.
-RUNTIME_ROOT: Path = _dir_from_env("ED_RUNTIME_ROOT", _default_runtime_root())
+def runtime_root() -> Path:
+    """Return where the live database, logs and token live, as the environment says now.
+
+    Linked worktrees share the primary root. Read on each call, so an entry point that loads
+    `.env` and a test that sets ED_RUNTIME_ROOT need not do it before this module is imported.
+    """
+    return _dir_from_env("ED_RUNTIME_ROOT", _default_runtime_root())
 
 
 def data_dir() -> Path:
     """`<runtime>/data` — the live SQLite database and its siblings."""
-    return RUNTIME_ROOT / "data"
+    return runtime_root() / "data"
 
 
 def logs_dir() -> Path:
     """`<runtime>/logs` — the server log sink and other process logs."""
-    return RUNTIME_ROOT / "logs"
+    return runtime_root() / "logs"
 
 
 def daemon_log_path(folder: Path, day: date) -> Path:
@@ -95,9 +100,7 @@ def daemon_log_path(folder: Path, day: date) -> Path:
     return folder / f"stream_capture.{day:%Y-%m-%d}.log"
 
 
-def live_binding_error(
-    source_root: Path | None = None, runtime_root: Path | None = None
-) -> str | None:
+def live_binding_error(source: Path | None = None, runtime: Path | None = None) -> str | None:
     """Why THIS checkout may not run a LIVE process (the console server, the capture daemon)
     against the runtime root -- or None when it may.
 
@@ -108,9 +111,10 @@ def live_binding_error(
     Allowed: the runtime root IS this checkout (production running itself), or the runtime
     root is a dedicated directory that is not a git checkout (an explicit ED_RUNTIME_ROOT
     sandbox, the test and e2e runtime roots). Refused: the runtime root is ANOTHER checkout.
-    Reading tools and tests are unaffected -- only live processes call this."""
-    src = (source_root or SOURCE_ROOT).resolve()
-    rt = (runtime_root or RUNTIME_ROOT).resolve()
+    Reading tools and tests are unaffected -- only live processes call this.
+    """
+    src = (source or SOURCE_ROOT).resolve()
+    rt = (runtime or runtime_root()).resolve()
     if rt == src:
         return None
     if (rt / ".git").exists():

@@ -30,7 +30,7 @@ import time_et
 from app.market_data.schwab.streaming.capture import stored_watchlist, streaming_fields
 from config import build_config, load_dotenv_file
 from db_authority import canonical_stream_db_path
-from runtime_layout import RUNTIME_ROOT
+from runtime_layout import runtime_root
 from schwab_client import build_client_from_token
 
 REPO = Path(__file__).resolve().parent.parent
@@ -92,7 +92,10 @@ def paths(obj, prefix: str, out: dict[str, str]) -> None:
 
 
 def chain_paths(body: dict, out: dict[str, str]) -> None:
-    """A chain's expiry and strike keys are data: chains.callExpDateMap.*.<contract field>."""
+    """Add a chain's paths to `out`, its expiry and strike keys read as data.
+
+    The form is chains.callExpDateMap.*.<contract field>.
+    """
     paths({k: v for k, v in body.items() if not k.endswith("ExpDateMap")}, "chains", out)
     for side in ("callExpDateMap", "putExpDateMap"):
         if side not in body:  # a spread strategy answers with monthlyStrategyList instead
@@ -131,8 +134,10 @@ def _paced(call):
 def rest_rows(
     c, roster: list[str]
 ) -> tuple[dict[tuple[str, str], set[str]], dict[str, str], dict[str, object]]:
-    """({(path, type): variants}, {path: endpoint}, {call: status}). Every endpoint, with every
-    option it takes; the widest date range each accepts."""
+    """Return ({(path, type): variants}, {path: endpoint}, {call: status}).
+
+    Every endpoint is called, with every option it takes; the widest date range each accepts.
+    """
     now = dt.datetime.fromtimestamp(time_et.now())
     today = now.date()
     P, M = c.Instrument.Projection, c.Movers
@@ -320,8 +325,10 @@ def rest_rows(
 
 
 def captured_stream_paths(db: Path) -> dict[tuple[str, str], set[str]]:
-    """Every path the daemon received (the newest 20,000 messages of each table), as
-    streaming.content.*.<path>, the form the stream's content items take."""
+    """Return every path the daemon received (the newest 20,000 messages of each table).
+
+    Each is written as streaming.content.*.<path>, the form the stream's content items take.
+    """
     tables = {
         "stream_quotes_raw": "LEVELONE_EQUITIES",
         "stream_options_quotes_raw": "LEVELONE_OPTIONS",
@@ -355,7 +362,7 @@ def _read(path: Path) -> dict[str, dict]:
 
 def main() -> int:
     argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args()
-    load_dotenv_file(Path(RUNTIME_ROOT) / ".env")
+    load_dotenv_file(runtime_root() / ".env")
     cfg = build_config()
     state = build_client_from_token(cfg.token_path, cfg.api_key, cfg.app_secret)
     if not state.ok:

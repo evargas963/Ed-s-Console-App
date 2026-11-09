@@ -1,9 +1,9 @@
 """Prices straight from the capture daemon to the browser (live_ui.py), end to end.
 
 The REAL daemon-side server (serve_live_ui, its plane fed from a real stream_spine.MessageBus by
-the daemon's follow_market) and a REAL
-WebSocket client standing in for the browser, over a real local socket. No console process,
-no database. Proves:
+the daemon's follow_market), served at /ws by the program's real web server (server.app on
+uvicorn with capture.PAGES), and a REAL WebSocket client standing in for the browser, over a
+real local socket. No console startup work, no database. Proves:
 
   * a subscribed symbol gets its current row at once, then a row for every Schwab change;
   * the row is the one producer's row (live_price_rows.price_row): spot, feed verdict,
@@ -19,8 +19,11 @@ no database. Proves:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import socket
 
+import psutil
 import pytest
 from websockets.asyncio.client import connect
 
@@ -28,7 +31,7 @@ import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from stream_spine import HealthRegistry, MessageBus, quote_msg
-from tests.test_live_push_channel_v1 import listener
+from tests.test_live_push_channel_v1 import listener, serve_page_socket
 
 
 @pytest.fixture(autouse=True)
@@ -85,7 +88,7 @@ async def _run(body, feed=None):
     stats: dict = {}
     feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(
-        live_ui.serve_live_ui(stop, sock, heartbeat_fn=feed, stats=stats, clock=feed.clock)
+        serve_page_socket(stop, sock, {"heartbeat_fn": feed, "stats": stats, "clock": feed.clock})
     )
     follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
     end = time_et.elapsed() + 5
@@ -93,7 +96,7 @@ async def _run(body, feed=None):
         await asyncio.sleep(0.01)
     assert "clients" in stats  # serving
     try:
-        async with connect(url) as ws:
+        async with connect(f"{url}/ws") as ws:
             await body(bus, ws, feed, stats)
     finally:
         stop.set()
@@ -168,7 +171,8 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
     """ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what
     it asked for, and kept its own list of index roots. The daemon answers each subscribe with
     each asked-for symbol's key (what its rows carry) and display name, from instrument_identity,
-    for an index typed bare or with "$", an ETF and a single name alike."""
+    for an index typed bare or with "$", an ETF and a single name alike.
+    """
 
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX", "$VIX", "spy", "MU"]}))
@@ -188,7 +192,8 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
 
 def test_an_index_typed_bare_is_served_under_its_storage_key():
     """The operator types "SPX"; Schwab keys "$SPX". The subscription goes through
-    ticker_storage_key, so the typed form gets the index's rows. In regular hours (_RTH)."""
+    ticker_storage_key, so the typed form gets the index's rows. In regular hours (_RTH).
+    """
     clock = _clock_from(_RTH)
 
     async def body(bus, ws, feed, stats):
@@ -215,7 +220,8 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
     bid stand, and the row reads OFFLINE and names the outage, the market open or closed. Before
     the socket closes the row is LIVE in regular hours and NOT LIVE at 22:00, the market closed.
-    The server's clock runs from `start` so the session is that hour, and time still passes."""
+    The server's clock runs from `start` so the session is that hour, and time still passes.
+    """
     clock = _clock_from(start)
 
     async def body(bus, ws, feed, stats):
@@ -250,7 +256,8 @@ def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
 
 def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
     """A browser that is behind gets the newest value of each symbol, never a stale backlog
-    (latest-value-per-symbol per client)."""
+    (latest-value-per-symbol per client).
+    """
 
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
@@ -275,3 +282,150 @@ def test_shutdown_is_not_held_up_by_a_connected_browser():
     t0 = time_et.elapsed()
     asyncio.run(_run(body))
     assert time_et.elapsed() - t0 < 5
+
+
+def test_a_page_before_the_first_schwab_quote_reads_no_price_until_one_comes():
+    """A page that subscribes before the daemon holds any quote for its symbol is answered at
+    once with the row as it is: no price ("-" on the page), never a filler; Schwab's first quote
+    then reaches it.
+    """
+
+    async def body(bus, ws, _feed, _stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+        assert json.loads(await asyncio.wait_for(ws.recv(), 2))["type"] == "symbols"
+        msg, row = await _next_row(ws, "SPY")
+        assert msg["type"] == "quotes"
+        assert (row["spot"], row["spot_disp"], row["bid"], row["ask"]) == (None, None, None, None)
+        bus.publish("quote.SPY", _trade("SPY", 583.41, time_et.now()))
+        _, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
+        assert row["spot_disp"] == "583.41"
+
+    asyncio.run(_run(body))
+
+
+def test_a_page_that_goes_away_mid_send_ends_only_its_own_connection():
+    """One page's connection is cut (no close) while rows are being pushed to it: its handler
+    ends, and the other page keeps its rows and its beats.
+    """
+
+    async def body(bus, ws, _feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+        await _next_row(ws, "SPY")
+        url = f"ws://127.0.0.1:{ws.remote_address[1]}/ws"
+        gone = await connect(url)
+        await gone.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+        await asyncio.wait_for(gone.recv(), 2)
+        assert stats["clients"] == 2
+        for i in range(200):
+            bus.publish("quote.SPY", _trade("SPY", 500 + i / 100, time_et.now()))
+            if i == 100:
+                gone.transport.abort()  # the page's side of the connection cut mid-burst
+            await asyncio.sleep(0)
+        _, row = await _next_row(ws, "SPY", lambda r: r["spot"] == pytest.approx(501.99))
+        end = time_et.elapsed() + 5
+        while stats["clients"] != 1 and time_et.elapsed() < end:
+            await asyncio.sleep(0.01)
+        assert stats["clients"] == 1
+        msg, _ = await _next_row(ws, "SPY", timeout=2 * live_ui.HEARTBEAT_SEC)
+        while msg["type"] != "feed":  # the beat goes on
+            msg, _ = await _next_row(ws, "SPY", timeout=2 * live_ui.HEARTBEAT_SEC)
+
+    asyncio.run(_run(body))
+
+
+#: what the frozen page subscribed to: its first rows alone outgrow its 1 KB receive window
+_WATCHED = ["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "GOOGL"]
+
+
+def _page_that_never_reads(port: int) -> socket.socket:
+    """A page's connection that subscribes and then never reads (a frozen tab), its receive
+    window 1 KB."""
+    page = socket.socket()
+    page.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024)  # before connecting: the window
+    page.connect(("127.0.0.1", port))
+    key = base64.b64encode(b"never-read page!").decode()  # 16 bytes, as RFC 6455 4.1 asks
+    page.sendall(
+        f"GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode()
+    )
+    text = json.dumps({"op": "subscribe", "symbols": _WATCHED}, separators=(",", ":")).encode()
+    assert len(text) < 126  # its length in the frame's second byte
+    mask = b"\x01\x02\x03\x04"
+    page.sendall(  # one masked text frame, as a browser sends it (RFC 6455 section 5.2)
+        bytes([0x81, 0x80 | len(text)]) + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(text))
+    )
+    return page
+
+
+def _held_by_this_program(server_port: int, page: socket.socket) -> bool:
+    """Whether the program still holds the server side of `page`'s connection open: once it lets
+    go, the system closes it (FIN_WAIT_1, its unsent bytes still offered to the page, which reads
+    them and the end when it thaws, then reconnects), never ESTABLISHED.
+    """
+    page_port = page.getsockname()[1]
+    return any(
+        c.laddr.port == server_port
+        and c.raddr
+        and c.raddr.port == page_port
+        and c.status == psutil.CONN_ESTABLISHED
+        for c in psutil.net_connections("tcp")
+    )
+
+
+def test_a_page_that_stops_reading_while_little_is_sent_is_dropped_at_the_keepalive_ping(caplog):
+    """A page that stops reading while its buffers are not full is found by the keepalive ping
+    it does not answer, and its connection is aborted (live_ui.PageSocket): uvicorn's own close
+    waits for bytes the page never takes, holding the connection for as long as the page stays
+    frozen. The program then holds no connection to it, its handler has ended, and the stop is
+    not held. Induced test conditions: the program's socket buffers no bytes in the kernel
+    (SO_SNDBUF 0) and each beat carries a 15 KB pad, so the page's window fills at once and a
+    write it does not take stays pending in the program, short of the buffer that pauses writing
+    (64 KiB); and the keepalive ping every 0.5 s, answered within 0.5 s (production: uvicorn's
+    20 s and 20 s).
+    """
+    feed = _Feed()
+
+    def padded(now: float) -> dict:
+        return {**feed(now), "pad": "x" * 15_000}
+
+    async def go():
+        stop, stats = asyncio.Event(), {}
+        sock, _ = listener()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0)
+        port = sock.getsockname()[1]
+        served = asyncio.create_task(
+            serve_page_socket(
+                stop,
+                sock,
+                {"heartbeat_fn": padded, "stats": stats, "clock": feed.clock},
+                ws_ping_interval=0.5,
+                ws_ping_timeout=0.5,
+            )
+        )
+        page = _page_that_never_reads(port)
+        try:
+            end = time_et.elapsed() + 5
+            while stats.get("clients") != 1 and time_et.elapsed() < end:
+                await asyncio.sleep(0.01)
+            assert stats["clients"] == 1 and _held_by_this_program(port, page)
+            end = time_et.elapsed() + 5  # a ping, its timeout and a beat's margin
+            # the handler ends on the loop's next turns after the connection (connection_lost)
+            while (stats["clients"] or _held_by_this_program(port, page)) and (
+                time_et.elapsed() < end
+            ):
+                await asyncio.sleep(0.05)
+            assert not _held_by_this_program(port, page), "the frozen page's connection is held"
+            assert stats["clients"] == 0
+            t0 = time_et.elapsed()
+            stop.set()
+            await asyncio.wait_for(served, 5)
+            return time_et.elapsed() - t0
+        finally:
+            page.close()
+
+    took = asyncio.run(asyncio.wait_for(go(), 30))
+    assert took < 2, f"the stop took {took:.1f} s"
+    dropped = [r.getMessage() for r in caplog.records if "stopped reading" in r.getMessage()]
+    assert dropped == [
+        "live ui: a page stopped reading (the keepalive ping unanswered); dropping it"
+    ], dropped

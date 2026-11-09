@@ -17,19 +17,34 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import schwab_client as sc
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import ChainSweep, chain_messages
+from app.options.order_flow import live_payload
+from app.options.order_flow.state import push_option_top
+from calibration.complete_chain_capture import ChainSweep, chain_messages, price_history_message
+from db import get_db
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
-from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
+from stream_spine import (
+    LATEST,
+    LOG,
+    CaptureWriter,
+    HealthRegistry,
+    MessageBus,
+    bar_msg,
+    book_msg,
+    verbatim_msg,
+)
 from tests.feed_live_helper import (
     daemon_bars,
     daemon_status,
@@ -52,14 +67,16 @@ _CHAIN = json.loads((FX / "real_spy_0dte_chain.json").read_text(encoding="utf-8"
 
 def _frame(service: str, items: list[dict], ts_ms: int) -> dict:
     """A Schwab streamer data block as schwab-py hands it to the handler: service, Schwab's own
-    frame timestamp, command, and the labeled items."""
+    frame timestamp, command, and the labeled items.
+    """
     return {"service": service, "timestamp": ts_ms, "command": "SUBS", "content": items}
 
 
 async def _console_reads(bus: MessageBus, sub, read_for: float) -> list[dict]:
     """Every message the console takes from the daemon's bus within `read_for` s, read the way its
     _bus_loop reads (streaming._bus_loop: a LATEST subscription, Schwab's records only by
-    live_push.is_forwarded, a chain record's parts in order): [{"topic": ..., "msg": ...}]."""
+    live_push.is_forwarded, a chain record's parts in order): [{"topic": ..., "msg": ...}].
+    """
     got: list[dict] = []
     try:
         end = time_et.elapsed() + read_for
@@ -84,7 +101,8 @@ async def _daemon_then_console(
 ) -> list[dict]:
     """The daemon's real bus, `publish(handler_for)` handing it Schwab frames through the daemon's
     own handler, with the console reading before (`connected`) or starting after; return every
-    message the console takes within `read_for` s: [{"topic": ..., "msg": ...}]."""
+    message the console takes within `read_for` s: [{"topic": ..., "msg": ...}].
+    """
     bus, health = MessageBus(), HealthRegistry()
     if not connected:
         publish(lambda service: capture._publisher(service, bus, health))
@@ -96,7 +114,8 @@ async def _daemon_then_console(
 
 def _values(obj) -> list:
     """Every (key, value) pair anywhere inside a received message, but the times the daemon
-    keeps for each field (`field_ts`), which are not Schwab's fields."""
+    keeps for each field (`field_ts`), which are not Schwab's fields.
+    """
     out = []
     if isinstance(obj, dict):
         for k, v in obj.items():
@@ -123,7 +142,8 @@ def _holds(msg, key, value) -> bool:
 def test_d1_a_quote_that_arrives_late_never_replaces_a_newer_one(connected):
     """Two captured quotes of one contract, Schwab's QUOTE_TIME_MILLIS apart; the newer reaches
     the daemon first and the older arrives after it. What the console holds as current is the
-    newer, whether it was connected or connects after: arrival order never decides."""
+    newer, whether it was connected or connects after: arrival order never decides.
+    """
     older, newer = (e["content"] for e in _EVENTS[:2])
     assert older["QUOTE_TIME_MILLIS"] < newer.get(
         "QUOTE_TIME_MILLIS", older["QUOTE_TIME_MILLIS"] + 1
@@ -158,7 +178,8 @@ def test_d2_every_field_and_schwabs_own_timestamp_reach_the_console():
     """A CHART_EQUITY bar with every field Schwab's Streamer API lists (docs/schwab/
     schwab_streamer_api.pdf §5.1 CHART_EQUITY, fields 0-8: SEQUENCE, CHART_DAY
     included) and the frame's own timestamp: each reaches the console as sent. Stand-in: the
-    bar's values are SPY's captured 1-minute bar; SEQUENCE and CHART_DAY are named stand-ins."""
+    bar's values are SPY's captured 1-minute bar; SEQUENCE and CHART_DAY are named stand-ins.
+    """
     bars = json.loads((FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))
     bar = bars["bars"][0]
     item = {
@@ -194,7 +215,8 @@ def test_d2_every_field_and_schwabs_own_timestamp_reach_the_console():
 def test_d3_a_burst_leaves_one_current_record_per_symbol_not_every_message():
     """50 contracts each quoted 200 times (captured quote fields, a newer QUOTE_TIME each time)
     before the console reads: the daemon holds and sends one current record per contract, never
-    10,000 old messages waiting in line."""
+    10,000 old messages waiting in line.
+    """
     base = _EVENTS[0]["content"]
     t0 = base["QUOTE_TIME_MILLIS"]
     keys = [f"TSLA  260831C{367500 + 2500 * i:08d}" for i in range(50)]  # stand-in strikes
@@ -223,7 +245,8 @@ def test_d3_a_burst_leaves_one_current_record_per_symbol_not_every_message():
 
 def test_d3_an_older_chain_never_waits_behind_a_newer_one():
     """Ten SPY chains fetched (the captured SPY 0DTE chain, ten fetch times) before the console
-    reads: only the newest chain is sent; an older one never queues ahead of it."""
+    reads: only the newest chain is sent; an older one never queues ahead of it.
+    """
     contracts = _CHAIN["chain"]
     fetched = [1790346600.0 + 10 * i for i in range(10)]
     got = asyncio.run(_chains_then_console(contracts, fetched))
@@ -234,7 +257,8 @@ def test_d3_an_older_chain_never_waits_behind_a_newer_one():
 async def _chains_then_console(contracts, fetched) -> list[dict]:
     """A console reading the bus, then the daemon's chain sweep publishing `fetched` chains on the
     daemon's bus as it does (capture.run_chains: chain_messages, each part published) before the
-    console reads."""
+    console reads.
+    """
     bus = MessageBus()
     sub = bus.subscribe("", policy=LATEST)
     for ts in fetched:
@@ -249,7 +273,8 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
 def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(tmp_path):
     """Every captured quote of the contract handed to the writer (no save rule set: the daemon's,
     Daemon.saves, keeps the traded contracts) is written to the history database, each with every
-    field Schwab sent."""
+    field Schwab sent.
+    """
     db = tmp_path / "stream_capture.db"
 
     async def go():
@@ -284,13 +309,8 @@ _CLOSED = 1790820000.0
 def _served_at(now: float, feed_live: bool) -> dict:
     """At `now`, SPY's last trade and a captured option quote of the contract in the daemon's
     memory, the feed live or not (the daemon's heartbeat holding both symbols, or none): what the
-    header row, the console's one spot, the equity book's top and the option book's top serve."""
-    import live_market_plane as lmp
-    import server
-    from app.options.order_flow import live_payload
-    from app.options.order_flow import streaming as ofs
-    from app.options.order_flow.state import push_option_top
-
+    header row, the console's one spot, the equity book's top and the option book's top serve.
+    """
     then = now - 600
     lmp.record_from_level_one_equity(
         "SPY",
@@ -350,7 +370,8 @@ def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_the_book():
 
 def test_d5_while_closed_a_feed_down_keeps_the_last_values_and_says_so():
     """22:00 ET, the feed down: the last price and both tops of book stand, and the panels
-    say the feed is down. A closed market is the same stop as any other."""
+    say the feed is down. A closed market is the same stop as any other.
+    """
     s = _served_at(_CLOSED, feed_live=False)
     assert s["row"]["spot"] == 767.39
     assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during Closed"
@@ -376,7 +397,8 @@ def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values():
 
 def test_d5_while_closed_a_live_feed_keeps_the_last_values_marked_not_live_not_offline():
     """22:00 ET, the feed up and holding both symbols: the last price and both tops of book stand,
-    each NOT LIVE, "outside Schwab's market hours" -- not OFFLINE, which is a feed outage."""
+    each NOT LIVE, "outside Schwab's market hours" -- not OFFLINE, which is a feed outage.
+    """
     s = _served_at(_CLOSED, feed_live=True)
     assert (s["row"]["spot"], s["row"]["feed_label"]) == (767.39, "NOT LIVE")
     assert s["row"]["outage"] == "outside Schwab's market hours"
@@ -392,9 +414,8 @@ def test_d5_while_closed_a_live_feed_keeps_the_last_values_marked_not_live_not_o
 
 def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
     """The daemon's status, stamped by the daemon two minutes ago, arrives now: the console
-    judges it by the daemon's own time, not by when it arrived."""
-    import live_market_plane as lmp
-
+    judges it by the daemon's own time, not by when it arrived.
+    """
     old = time_et.now() - 120
     lmp.record_feed_heartbeat(
         daemon_status(
@@ -425,7 +446,8 @@ def _et(s: str) -> float:
 class _Swept:
     """The sweep (the watchlist `watchlist`) at `clock["now"]`, its passes (ChainSweep.step) run on
     the test's thread; `chains` is each ticker whose chain it delivered, in order, `delivered` the
-    clock at each delivery."""
+    clock at each delivery.
+    """
 
     def __init__(self, tmp_path, at: str, watchlist: list[str]):
         self.clock = {"now": _et(at)}
@@ -451,7 +473,8 @@ class _Swept:
 
     def move(self, at: str) -> int:
         """The clock moved to `at` between passes: the number of requests Schwab's host received
-        before the move."""
+        before the move.
+        """
         before = len(self.schwab.requests)
         self.clock["now"] = _et(at)
         return before
@@ -512,7 +535,8 @@ def test_d5_outside_its_option_session_a_ticker_is_fetched_once_and_an_added_tic
 ):
     """After the option markets' close, and with no valid session, each ticker's close values are
     fetched once, a ticker added to the watchlist then too, and then nothing: the close values
-    stand, and none is made up."""
+    stand, and none is made up.
+    """
     swept = _Swept(tmp_path, at, ["SPY"])
     try:
         assert swept.until(1) == ["SPY"]
@@ -531,7 +555,8 @@ def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until
     again from the first option window Schwab sent for Monday. Counted by the chain requests
     Schwab's host received after each move of the clock, made with the sweep at rest (_Swept.move):
     CI 2026-10-08 counted a 15:59 request that arrived after the clock moved as one asked after the
-    close."""
+    close.
+    """
 
     def chain_requests_since(mark: int) -> int:
         return sum(
@@ -580,7 +605,8 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     streamed bars); option chains follow each ticker's options session. Thursday 2026-10-01 at
     17:00 ET (Schwab's /markets: stock options closed at 16:00): SPY's chain is asked once (its
     close values) and its price history once; nothing more that day; on Friday's date, at 03:30,
-    the price history once again, and the chain waits for the first option window Schwab sent."""
+    the price history once again, and the chain waits for the first option window Schwab sent.
+    """
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-01 17:00", ["SPY"])
     try:
@@ -596,7 +622,8 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
 
     def history_at(when: str) -> list[str]:
         """The series of the price-history requests begun at the clock `when` (each request's
-        endDate is the sweep's clock when it began)."""
+        endDate is the sweep's clock when it began).
+        """
         return [
             q["frequencyType"] + q["frequency"]
             for q in swept.schwab.asked("/marketdata/v1/pricehistory")
@@ -618,7 +645,8 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
 def test_d5_a_start_asks_every_tickers_price_history_before_any_chain(tmp_path):
     """The price-built levels need the price history; a rotation of the chains takes minutes.
     Thursday 2026-10-01 10:00 ET (RTH, both tickers' options open): the daemon's first pass asks
-    SPY's and TSLA's price history (two series each) before its first chain request."""
+    SPY's and TSLA's price history (two series each) before its first chain request.
+    """
     history = "/marketdata/v1/pricehistory"
     swept = _Swept(tmp_path, "2026-10-01 10:00", ["SPY", "TSLA"])
     try:
@@ -640,7 +668,8 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     values), then not. Levels from that chain stand at 17:00 (After-Hours), not stale; levels
     from 15:00 are stale at 16:10, while the options are open. The clock moves with the sweep at
     rest (_Swept.move): a request is counted by the clock it was made at, never by when it arrived
-    (a 16:10 request that lands after the clock moves is not one at 16:20)."""
+    (a 16:10 request that lands after the clock moves is not one at 16:20).
+    """
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
     try:
@@ -676,7 +705,8 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
     begun at 16:10 and its request answered once the clock reads 16:20 (time passing during a
     request). It carries 16:10 to the console and to the chain history (the 16:00 window), so it
     is not the close values; one more chain, begun at 16:20, follows (the close capture), then no
-    more is asked. Both are stored, each at the time it began, and no history write fails."""
+    more is asked. Both are stored, each at the time it began, and no history write fails.
+    """
     chains = "/marketdata/v1/chains"
     schwab = LocalSchwab()
     delivered: list[float] = []
@@ -734,7 +764,8 @@ def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_on
     per ET date, only to learn whether options are listed; its price history once per ET date.
     Monday 2026-10-12 10:00 ET: the stand-in's TSLA expiries (2026-08-27, 2026-10-09) have both
     passed, so Schwab lists none: one expiration-chain request that day and no chain request,
-    its price history once (two series); the next day, one more expiration-chain request."""
+    its price history once (two series); the next day, one more expiration-chain request.
+    """
     exps, chains, history = (
         "/marketdata/v1/expirationchain",
         "/marketdata/v1/chains",
@@ -757,7 +788,8 @@ def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_on
 
 def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_with_the_reason():
     """Levels are as of the chain they were computed from (computed_ts_utc). Ticker ZZCLOSED has
-    no chain failure recorded."""
+    no chain failure recorded.
+    """
     sat, monday_early = _et("2026-10-03 12:00"), _et("2026-10-05 03:00")
     for now in (sat, monday_early):
         st = server.terrain_staleness(_et("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
@@ -781,9 +813,8 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
 
 def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
-    price row: that trade is the spot with its trade time, the heartbeat live or not."""
-    import live_market_plane as lmp
-
+    price row: that trade is the spot with its trade time, the heartbeat live or not.
+    """
     at = _et("2026-10-02 11:00")
     served = {}
     for live in (True, False):
@@ -837,7 +868,8 @@ def test_d5_while_closed_the_price_levels_are_the_last_sessions():
     """Schwab's SPY and TSLA bars of Thu 2026-10-01 and Fri 10-02 as the capture daemon recorded
     them, streamed to the console, valued at Sat 10-03 12:00 ET (Closed): the levels served are
     Friday's session's, its VWAP, value area and opening range, never an empty day's
-    (2026-10-04: every ticker showed "no RTH volume" all weekend)."""
+    (2026-10-04: every ticker showed "no RTH volume" all weekend).
+    """
     closed = datetime(2026, 10, 3, 12, 0, tzinfo=ET)
     _forget(*_PAIR)
     try:
@@ -872,9 +904,8 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
     its message (complete_chain_capture.price_history_message), and each ticker's newest streamed
     receipt of Fri 2026-10-02 as the daemon recorded it. The bar writer builds the levels of the
     session at its own clock (an entry point), so they are read at now: the newest session in the
-    history before it is Tue 10-06."""
-    from calibration.complete_chain_capture import price_history_message
-
+    history before it is Tue 10-06.
+    """
     pushed = [_newest(_DAEMON_BARS, tk)[-1] for tk in _PAIR]
     history = {tk: price_history(tk, "1m") for tk in _PAIR}
     _forget(*_PAIR)
@@ -955,7 +986,8 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
     start. Real data from production for SPY and TSLA on 2026-09-24: the old store's rows (its
     built rows included) beside the daemon's record of Schwab's bars, streamed to the console. With
     both present, every bar the chart and the levels read is Schwab's; a minute only the old store
-    holds is absent (no code reads the old store)."""
+    holds is absent (no code reads the old store).
+    """
     fx = json.loads(
         (FX / "real_console_store_vs_daemon_spy_tsla_2026_09_24.json").read_text(encoding="utf-8")
     )
@@ -1047,14 +1079,8 @@ def test_d6_no_live_route_opens_a_database():
     """Every live GET route of the console, with both databases present and holding SPY's data
     (the stream database written by the real writer: a captured SPY book and the captured option
     quote; the console database), each database SQLite opens recorded: none opens one. The routes
-    are read from the app itself; /api/changes is the push stream (it never ends)."""
-    from fastapi.routing import APIRoute
-    from fastapi.testclient import TestClient
-
-    import server
-    from db import get_db
-    from stream_spine import book_msg, verbatim_msg
-
+    are read from the app itself; /api/changes is the push stream (it never ends).
+    """
     books = json.loads((FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
     ]
@@ -1126,11 +1152,8 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
     """Every request reaches the log once, with its endpoint, symbol, status and the times it was
     sent and answered; an error answer with its body and headers. Through the client the daemon
     builds. Stand-ins: a local server answering as Schwab does (the error body's shape is
-    Schwab's documented {"errors": [...]}), and a token file."""
-    import threading
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    import schwab_client as sc
+    Schwab's documented {"errors": [...]}), and a token file.
+    """
 
     class Schwab(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -1209,7 +1232,8 @@ def test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_tok
     """The token inside its refresh window (100 s left; the client refreshes inside 300 s) and
     20 requests at once: one refresh reaches the token endpoint, and every request carries the
     token it returned. Live on 2026-10-03 one renewal went out as 8 POSTs in one second. INDUCED
-    CONDITION: the token endpoint's answer is the stand-in."""
+    CONDITION: the token endpoint's answer is the stand-in.
+    """
     schwab = LocalSchwab()
     try:
         client = schwab.client(tmp_path, 100)
@@ -1227,7 +1251,8 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
     """The stream and the chain sweep ask one holder (capture.one_schwab_client). Schwab's edge
     answers the token refresh with its 403 page (as at 19:53:55 on 2026-10-03; no refusal of the
     sign-in: each request asks again): every chain fails with it, and the client is never
-    rebuilt."""
+    rebuilt.
+    """
     schwab = LocalSchwab()
     schwab.token = "edge"
     built = []
@@ -1267,7 +1292,8 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
     """Schwab's edge answers the captured 403 page: the ticker's chain fails with Schwab's status,
     its price history is not published, and the sweep asks for the next request at once. The
     clock is 2026-10-01 08:00 ET (pre-market, outside every capture window, so nothing is
-    written)."""
+    written).
+    """
     schwab = LocalSchwab()
     schwab.edge = True
     published = []

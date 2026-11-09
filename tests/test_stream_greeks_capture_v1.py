@@ -7,7 +7,8 @@ to project net_gex_1pct -- so every streamed option L1 tick was silently droppin
 live GEX recompute needs, keeping the heatmap bound to the ~60s wide-chain REST cadence even
 for the one contract already streaming. This is the foundation for feeding fresher-than-REST
 Greeks into the existing ONE FAUCET projection (project_gamma_surface), not a second one --
-capture and merge only, no new exposure math here."""
+capture and merge only, no new exposure math here.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +21,8 @@ def test_total_volume_is_captured_alongside_the_greeks():
     GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update delivery.'
     TOTAL_VOLUME is captured into the SAME per-symbol record, with its own freshness stamp,
     so the exposure/per-strike overlay can apply the same newer-than-REST precedence rule to
-    it that gamma/delta/open_interest already get."""
+    it that gamma/delta/open_interest already get.
+    """
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 12345}, ts_recv=500.0)
     g = st.get_stream_greeks("SPY   260116C00580000")
@@ -64,7 +66,8 @@ def test_never_observed_symbol_returns_none_not_a_dict_of_nones():
 
 def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
     """A quote tick that carries BID_PRICE/ASK_PRICE but not GAMMA must not erase a gamma
-    value learned on an earlier tick -- explicit per-field presence, not a group overwrite."""
+    value learned on an earlier tick -- explicit per-field presence, not a group overwrite.
+    """
     st = LiveOrderFlowState()
     st.push_level_one(
         "SPY   260116C00580000",
@@ -103,7 +106,8 @@ def test_a_negative_open_interest_is_rejected_not_stored():
 
 def test_the_streams_open_interest_is_not_kept_the_chains_is_the_one_producer():
     """Schwab's stream does not send OPEN_INTEREST for every contract it streams, so the chain
-    sends it for every contract and is its one producer; a streamed one is not kept beside it."""
+    sends it for every contract and is its one producer; a streamed one is not kept beside it.
+    """
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": 0}, ts_recv=time_et.now())
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": 4200}, ts_recv=time_et.now())

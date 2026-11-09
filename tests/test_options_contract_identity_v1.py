@@ -4,7 +4,8 @@ compared by name). It decides which ticker an option's streamed values reprice, 
 panel's contract is one Schwab listed (question 2: the screen shows the right values promptly).
 
 Real chains, published by the levels producer (server._publish_levels) at their capture: $SPX (SPX
-and SPXW roots, the same expiration), CDE (whose root starts with C) and TSLA."""
+and SPXW roots, the same expiration), CDE (whose root starts with C) and TSLA.
+"""
 
 from __future__ import annotations
 

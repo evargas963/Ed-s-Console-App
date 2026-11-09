@@ -14,7 +14,8 @@ socket open and holding SPY on LEVELONE_EQUITIES and NYSE_BOOK (for the books), 
 LEVELONE_EQUITIES (for tests/e2e/fixtures/price_rows_live.json); no status message is captured.
 
 Regenerate (from the repo root, project .venv):
-  python -c "import tests.test_order_flow_book_payload_v1 as t; t.write_book_e2e_fixture()"
+  python -c "import tests.conftest, tests.test_order_flow_book_payload_v1 as t
+  t.write_book_e2e_fixture()"
 """
 
 from __future__ import annotations
@@ -25,8 +26,16 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
+import live_market_plane as lmp
+import live_price_rows
+import server
 from app.options.order_flow import history
+from app.options.order_flow import streaming as ofs
+from stream_spine import book_msg
+from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import daemon_status
+from time_et import record_markets
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _E2E_FIXTURE = (
@@ -41,13 +50,8 @@ _CLOSED = datetime.fromisoformat("2026-10-23T22:00:00-04:00").timestamp()
 def build_book_closed_payload(feed_down: bool = False) -> dict:
     """The route's NYSE_BOOK payload for SPY at _CLOSED, from the real book and quotes: the daemon's
     connection up (NOT LIVE, the market closed), or ended after its row arrived (`feed_down`:
-    OFFLINE)."""
-    import app.options.order_flow.state as ofls
-    import live_market_plane as lmp
-    import server
-    from app.options.order_flow import streaming as ofs
-    from stream_spine import book_msg
-
+    OFFLINE).
+    """
     book = json.loads((_FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
     ]["NYSE_BOOK"]
@@ -99,10 +103,8 @@ _E2E_ROWS = _E2E_FIXTURE.with_name("price_rows_live.json")
 
 def _row_after(ticker: str, messages: list, at: float) -> dict:
     """The daemon's price row for `ticker` at `at` (live_price_rows.price_row) after its real
-    messages, the daemon holding it: what the daemon's price socket pushes to the page."""
-    import live_market_plane as lmp
-    import live_price_rows
-
+    messages, the daemon holding it: what the daemon's price socket pushes to the page.
+    """
     try:
         lmp.record_feed_heartbeat(
             daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [ticker]})
@@ -117,9 +119,10 @@ def _row_after(ticker: str, messages: list, at: float) -> dict:
 
 
 def build_price_rows() -> dict:
-    """ticker -> the daemon's live row: SPY's at _RTH after its 2026-10-23 messages, and $SPX's at
+    """Ticker -> the daemon's live row: SPY's at _RTH after its 2026-10-23 messages, and $SPX's at
     _SPX_RTH after its 2026-10-19 09:30 message
-    (tests/fixtures/real_security_status_2026_10_19.json)."""
+    (tests/fixtures/real_security_status_2026_10_19.json).
+    """
     spy = json.loads((_FX / "real_spy_level_one_2026_10_23.json").read_text(encoding="utf-8"))[
         "messages"
     ]
@@ -135,10 +138,8 @@ def build_price_rows() -> dict:
 
 def write_book_e2e_fixture() -> None:
     """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
-    hold them (tests/conftest.py), then the route's payload written to the e2e fixture."""
-    from tests.conftest import MARKETS_ANSWERS
-    from time_et import record_markets
-
+    hold them (tests/conftest.py), then the route's payload written to the e2e fixture.
+    """
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))
@@ -166,7 +167,8 @@ def _same(fixture, live):
 def test_the_closed_market_book_fixture_is_the_route_contract():
     """The committed Playwright fixture is what the route serves for the real book and quote at
     22:00 ET, every key and value: the top of book and the book NOT LIVE, outside Schwab's market
-    hours."""
+    hours.
+    """
     fixture = json.loads(_E2E_FIXTURE.read_text(encoding="utf-8"))
     live = build_book_closed_payload()
     assert _same(fixture, live), (
@@ -182,7 +184,8 @@ def test_the_closed_market_book_fixture_is_the_route_contract():
 
 def test_the_live_price_rows_fixture_is_the_daemons_rows():
     """The committed price rows the desk's push-outage test draws are the daemon's own rows for
-    SPY's and $SPX's real messages in regular hours, every key and value: LIVE."""
+    SPY's and $SPX's real messages in regular hours, every key and value: LIVE.
+    """
     fixture = json.loads(_E2E_ROWS.read_text(encoding="utf-8"))
     live = build_price_rows()
     assert _same(fixture, live), (
@@ -197,7 +200,8 @@ def test_the_live_price_rows_fixture_is_the_daemons_rows():
 
 def test_the_feed_down_book_fixture_is_the_route_contract():
     """The same with the daemon's connection ended: the last top of book stands, top and book
-    OFFLINE."""
+    OFFLINE.
+    """
     fixture = json.loads(_E2E_OFFLINE.read_text(encoding="utf-8"))
     live = build_book_closed_payload(feed_down=True)
     assert _same(fixture, live), (

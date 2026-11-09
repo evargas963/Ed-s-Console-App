@@ -2,29 +2,31 @@
 
 from __future__ import annotations
 
+import json
 import os
+import socket
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
+import schwab_client
+import server
 import time_et
 
 REPO = Path(__file__).resolve().parent.parent
 
 
 def test_schwab_client_imports_without_constructing_live_client() -> None:
-    import schwab_client
-
     assert callable(schwab_client.build_client_from_token)
     assert not hasattr(schwab_client, "_client")
 
 
 def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path) -> None:
     """Explicit live-looking credentials (ED_CI_OFFLINE does not block explicit ones) and no
-    token file: no client, and the reason names the missing file."""
-    from schwab_client import build_client_from_token
-
-    state = build_client_from_token(
+    token file: no client, and the reason names the missing file.
+    """
+    state = schwab_client.build_client_from_token(
         str(tmp_path / "missing_token.json"),
         api_key="not-a-key",
         app_secret="not-secret",
@@ -38,7 +40,8 @@ def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
     """With no Schwab credentials the configuration still builds, and the one gate
     (`schwab_live_blocked_for`, which `build_client_from_token` refuses on) builds no client: no
     live Schwab without credentials (docs/ARCHITECTURE.md "Failure domains"). Run in a fresh
-    interpreter whose environment has no Schwab credential."""
+    interpreter whose environment has no Schwab credential.
+    """
     code = (
         "import config, schwab_client\n"
         "cfg = config.build_config()\n"
@@ -104,11 +107,8 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
     not placeholders), every one of its GET routes asked for a ticker, and a chain the daemon
     fetched priced through it: nothing leaves for Schwab. Its only way out is HTTPS_PROXY, a local
     socket that records every connection. Before 2026-10-01 the console fetched every board
-    ticker's chain itself (the 429s of that day came from it and the daemon asking at once)."""
-    import json as _json
-    import socket
-    import threading
-
+    ticker's chain itself (the 429s of that day came from it and the daemon asking at once).
+    """
     proxy = socket.socket()
     proxy.bind(("127.0.0.1", 0))
     proxy.listen()
@@ -125,9 +125,10 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
             reached.append(conn.recv(200))
             conn.close()
 
-    threading.Thread(target=record, daemon=True).start()
+    recorder = threading.Thread(target=record, daemon=True)
+    recorder.start()
     (tmp_path / "schwab_token.json").write_text(
-        _json.dumps(
+        json.dumps(
             {
                 "creation_timestamp": int(time_et.now()),
                 "token": {
@@ -164,12 +165,11 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
         )
     finally:
         done.set()
+        recorder.join()
         proxy.close()
     assert r.returncode == 0, r.stdout + r.stderr
     assert reached == [], f"the console reached out: {reached}"
 
 
 def test_adversarial_tests_can_import_server() -> None:
-    import server as srv
-
-    assert hasattr(srv, "app")
+    assert hasattr(server, "app")

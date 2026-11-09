@@ -57,7 +57,8 @@ def level_side(level: float | None, price: float | None) -> str | None:
     """Where `level` sits against `price`: LEVEL_ABOVE, LEVEL_AT or LEVEL_BELOW, from the exact
     values (rounding happens only on screen); None when either is unknown. The one side rule of
     every relation of a price to a level: the wall states, the flip side, the levels' sides and
-    the crosses."""
+    the crosses.
+    """
     if level is None or price is None:
         return None
     if level > price:
@@ -69,7 +70,8 @@ def level_side(level: float | None, price: float | None) -> str | None:
 
 def price_side(level: float | None, price: float | None) -> str | None:
     """Where `price` sits against `level` (the other way round from level_side): LEVEL_ABOVE when
-    the price is over the level, LEVEL_AT, LEVEL_BELOW; None when either is unknown."""
+    the price is over the level, LEVEL_AT, LEVEL_BELOW; None when either is unknown.
+    """
     return {LEVEL_ABOVE: LEVEL_BELOW, LEVEL_AT: LEVEL_AT, LEVEL_BELOW: LEVEL_ABOVE, None: None}[
         level_side(level, price)
     ]
@@ -77,7 +79,8 @@ def price_side(level: float | None, price: float | None) -> str | None:
 
 def from_spot_text(distance: float | None, side: str | None) -> str | None:
     """A level's distance from the live price (level minus price) and its side (level_side), as
-    the screen words it: "at spot", "1.30 above spot", "1.30 below spot". None when unknown."""
+    the screen words it: "at spot", "1.30 above spot", "1.30 below spot". None when unknown.
+    """
     if side is None:
         return None
     if side == LEVEL_AT:
@@ -87,7 +90,8 @@ def from_spot_text(distance: float | None, side: str | None) -> str | None:
 
 def within(low: float | None, high: float | None, price: float | None) -> bool:
     """Whether `price` is inside the range from `low` to `high`, either edge included
-    (level_side)."""
+    (level_side).
+    """
     return level_side(low, price) in (LEVEL_BELOW, LEVEL_AT) and level_side(high, price) in (
         LEVEL_ABOVE,
         LEVEL_AT,
@@ -96,7 +100,8 @@ def within(low: float | None, high: float | None, price: float | None) -> bool:
 
 def crossed(level: float | None, before: float | None, after: float | None) -> str | None:
     """CROSSED_UP when the price moved from under `level` to at or over it, CROSSED_DOWN from over
-    it to at or under it (level_side); None otherwise."""
+    it to at or under it (level_side); None otherwise.
+    """
     was, now = level_side(level, before), level_side(level, after)
     if was == LEVEL_ABOVE and now in (LEVEL_AT, LEVEL_BELOW):
         return CROSSED_UP
@@ -143,7 +148,8 @@ def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
     gamma is LONG_GAMMA_CHOP (dealers damp moves); negative is SHORT_GAMMA_TREND (dealers
     amplify). Returns None when the sign is absent or exactly zero, so every caller shares
     one threshold instead of re-deriving `> 0` locally. build_terrain_read and
-    institutional_behavior both consume this — there is no second sign authority."""
+    institutional_behavior both consume this — there is no second sign authority.
+    """
     if signed_gamma is None or signed_gamma == 0:
         return None
     return REGIME_LONG_GAMMA if signed_gamma > 0 else REGIME_SHORT_GAMMA

@@ -11,13 +11,20 @@ locked by ``test_build_config_fail_closed_without_secrets``.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import subprocess
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
+
+import live_market_plane
+import push_changes
+from db_authority import canonical_console_db_path, canonical_stream_db_path
+from time_et import ET, now, record_markets, session
 
 # Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
 # deterministic, process-private runtime boundary before any application module imports
@@ -46,9 +53,8 @@ os.environ["ED_CI_OFFLINE"] = "1"
 # No test console may connect to the real capture daemon's live push (it would ingest live
 # market data): point the push at a port nothing listens on.
 os.environ["ED_LIVE_PUSH_PORT"] = "1"
-# ...and the browser price socket a test daemon would bind / a test page is told
-os.environ["ED_LIVE_UI_PORT"] = "1"
-# ...and a test program's console pages on a port the system picks, never production's 8000
+# ...and a test program's console pages (and the page's price socket, /ws) on a port the system
+# picks, never production's 8000
 os.environ["ED_CONSOLE_PORT"] = "0"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
@@ -59,8 +65,6 @@ def pytest_configure(config) -> None:
     """The import-time runtime boundary holds in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
     assert "ED_CONSOLE_DB" not in os.environ  # RC-534: no ambient console-DB override
-    from db_authority import canonical_console_db_path, canonical_stream_db_path
-
     assert _PYTEST_RUNTIME_ROOT in canonical_console_db_path().parents
     assert _PYTEST_RUNTIME_ROOT in canonical_stream_db_path().parents
 
@@ -80,11 +84,8 @@ MARKETS_ANSWERS = Path(__file__).parent / "fixtures" / "real_schwab_markets_2026
 def _markets_answers_held():
     """Every process holds what the daemon has asked Schwab's /markets (the console takes each
     answer as the daemon publishes it): each 200 answer captured 2026-10-07 is held through
-    the one intake, time_et.record_markets."""
-    import json
-
-    from time_et import record_markets
-
+    the one intake, time_et.record_markets.
+    """
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))
@@ -96,26 +97,24 @@ def _live_feed_starts_down():
     starts with NO live feed and no remembered held set or watchlist, so a heartbeat one test
     marks can never make another test's price live. A down feed keeps that set and that list
     for the screen (record_feed_down); this fixture clears them. Tests that need a live price
-    mark it (tests/feed_live_helper.py)."""
-    import live_market_plane as _lmp_feed
-
-    _lmp_feed.record_feed_down()
-    with _lmp_feed._lock:
-        _lmp_feed._feed["held"] = {}
-        _lmp_feed._feed["status"] = None
+    mark it (tests/feed_live_helper.py).
+    """
+    live_market_plane.record_feed_down()
+    with live_market_plane._lock:
+        live_market_plane._feed["held"] = {}
+        live_market_plane._feed["status"] = None
     yield
-    _lmp_feed.record_feed_down()
-    with _lmp_feed._lock:
-        _lmp_feed._feed["held"] = {}
-        _lmp_feed._feed["status"] = None
+    live_market_plane.record_feed_down()
+    with live_market_plane._lock:
+        live_market_plane._feed["held"] = {}
+        live_market_plane._feed["status"] = None
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     """The newest ET date at or before `on_or_before` (today) that Schwab's /markets answers
     held say the market was open (the same answers the code reads, so the test cannot disagree
-    with them)."""
-    from time_et import ET, now, session
-
+    with them).
+    """
     start = on_or_before or datetime.fromtimestamp(now(), ET).date()
     day = start
     for _ in range(14):  # the longest market closure gap is far under two weeks
@@ -132,8 +131,6 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
 @pytest.fixture(scope="session")
 def tracked_files() -> list[str]:
     """Every path git tracks."""
-    import subprocess
-
     out = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=Path(__file__).resolve().parent.parent,
@@ -149,9 +146,8 @@ def view(monkeypatch):
     """Open the page on tickers: `view("SPY")` opens its /api/changes connection (the one viewing
     signal) as the page does; the test starts with no page open and ends with them closed. No
     event loop is bound, so a change is recorded for the page but not delivered (another test's
-    loop may be closed)."""
-    import push_changes
-
+    loop may be closed).
+    """
     monkeypatch.setattr(push_changes, "_open", [])
     monkeypatch.setattr(push_changes, "_loop", None)
 

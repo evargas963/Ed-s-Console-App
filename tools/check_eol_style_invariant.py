@@ -47,10 +47,13 @@ def _text(*args: str) -> str:
 
 
 def changed_paths(staged: bool, base: str | None = None) -> list[tuple[str, str]] | None:
-    """(path before, path after) of each file modified against HEAD: staged for pre-commit,
-    worktree for --measure; with `base`, each file a pull request changes against it. A renamed
+    """Return (path before, path after) of each file modified against HEAD.
+
+    Staged for pre-commit, worktree for --measure; with `base`, each file a pull request changes
+    against it. A renamed
     file pairs its old path with its new one, so a rename cannot carry a reflow past the check;
-    names are read NUL-separated, never quoted. None when git could not list them."""
+    names are read NUL-separated, never quoted. None when git could not list them.
+    """
     args = ["diff", "--name-status", "-z", "-M", "--diff-filter=ACMR"]
     if base:
         args.append(f"{base}...HEAD")
@@ -73,7 +76,7 @@ def changed_paths(staged: bool, base: str | None = None) -> list[tuple[str, str]
 
 
 def is_text_governed(path: str) -> bool:
-    """False when git itself says this path is binary or `-text` (exempt).
+    """Return False when git itself says this path is binary or `-text` (exempt).
 
     Read from git attributes rather than inferred from the extension.
     """
@@ -98,7 +101,7 @@ def pinned_eol(path: str) -> str | None:
 
 
 def apply_pin(data: bytes, pin: str | None) -> bytes:
-    """The bytes git will commit for this content under its pin."""
+    """Return the bytes git will commit for this content under its pin."""
     if pin == "lf":
         return data.replace(b"\r\n", b"\n")
     if pin == "crlf":
