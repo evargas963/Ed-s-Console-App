@@ -621,9 +621,12 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         assert (elsewhere.returncode, out) == (0, "Ed Console: not running\n"), err
         assert daemon.poll() is None
         ended_holder = f"{gone.pid}\n{json.dumps(asdict(Ports(console=1)))}\n"
+        asked_at = time_et.elapsed()
         not_asked = [stop(home, runtime_holding(lock)) for lock in (None, ended_holder)]
         for p in not_asked:
             out, err = p.communicate(timeout=90)
+            # a stop that could not ask answers at once: no wait for an end it did not ask for
+            assert time_et.elapsed() - asked_at < launch.STOP_WAIT_SEC, (out, err)
             assert p.returncode == 1, (out, err)
             assert "Ed Console: not asked to stop: " in err
             assert "Ed Console: still running (" in out
@@ -657,8 +660,10 @@ def test_the_stop_reads_no_process_parent(tmp_path):
     """A stop in a checkout where nothing runs answers at once.
 
     It does so though reading a process's parent is slow, as psutil's is on Windows (one
-    snapshot of every process per parent): the scan asks no parent. Induced test condition: each
-    parent read held for 1 s.
+    snapshot of every process per parent), and so is reading a process's folder, as psutil's is
+    for a process whose memory gives a partial copy (it retries for a second; a sandboxed
+    browser's does): the scan asks no parent, and no folder of a process whose line does not run
+    the program. Induced test condition: each parent read and each folder read held for 1 s.
     """
     home, slow = tmp_path / "checkout", tmp_path / "slow"
     for folder in (home, slow):
@@ -666,7 +671,8 @@ def test_the_stop_reads_no_process_parent(tmp_path):
     shutil.copy(launch.ROOT / "launch.py", home)
     (slow / "sitecustomize.py").write_text(
         "import time\n\nimport psutil\n\nplatform = psutil._psplatform.Process\n"
-        "read = platform.ppid\nplatform.ppid = lambda self: time.sleep(1) or read(self)\n",
+        "read = platform.ppid\nplatform.ppid = lambda self: time.sleep(1) or read(self)\n"
+        "folder = platform.cwd\nplatform.cwd = lambda self: time.sleep(1) or folder(self)\n",
         encoding="utf-8",
     )
     stopping = subprocess.run(
@@ -685,9 +691,11 @@ def test_the_stop_reads_no_process_parent(tmp_path):
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
     """The real daemon found while it loads, its stop request not made yet, then ending on its own.
 
-    It ends because its pages' port is held, the code its window restarts on: the stop could not ask
-    it, so it does not read "stopped" and exits 1. Induced test condition: the daemon's load is
-    held until the stop has found it and said it could not ask it, however late the stop starts.
+    The stop could not ask it, so it answers at once, never "stopped": still running, exit 1, with
+    no wait for an end it did not ask for. The daemon then ends on its own,
+    because its pages' port is held, the code its window restarts on. Induced test condition: the
+    daemon's load is held until the stop has found it and said it could not ask it, however late
+    the stop starts.
     """
     home, site = tmp_path / "checkout", tmp_path / "site"
     for folder in (home, site):
@@ -741,7 +749,8 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
             _end(daemon)
     assert stopping.returncode == 1, (out, err)
     assert "Ed Console: not asked to stop: " in err
-    assert "Ed Console: ended, not asked by this stop\n" in out
+    assert "Ed Console: still running (" in out
+    assert "stopped" not in out
 
 
 def test_a_process_that_only_names_the_console_is_not_the_console():
@@ -929,6 +938,45 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             )
     assert repriced > 0, "CRWD took no reprice from its ticks"
     assert done == set(names), f"priced while the page's ticker took ticks: {sorted(done)}"
+
+
+def test_the_stop_drops_what_waits_to_be_priced_so_the_exit_waits_on_no_pricing():
+    """At the stop, the stored captures waiting to be priced are not priced.
+
+    The program's exit waits for the pricing thread (a ThreadPoolExecutor's worker, joined at
+    interpreter exit after every pricing queued before it), so what waits at the stop is dropped
+    and the exit waits on the one pricing already running. Through the real code, on Schwab's
+    captures (tests/real_chains.py): MRVL's and NFLX's stored as the daemon writes them and
+    queued by the startup load while a pricing runs. Induced test condition: the running pricing
+    is the test's own job on the pricing thread, held until the stop has been made.
+    """
+    names = (MRVL.ticker, NFLX.ticker)
+    for chain in (MRVL, NFLX):
+        _store_as_the_daemon_writes(chain)
+    with server._terrain_cache_lock:  # held by another test on this worker
+        for name in names:
+            server._terrain_cache.pop(name, None)
+    with server._chains_waiting_lock:
+        server._chains_delivered.difference_update(names)
+    running = threading.Event()
+    held = server._chain_pricing.submit(running.wait, 60)
+    try:
+        assert server._load_stored_levels(list(names)) == 2  # both wait behind the running one
+        server.stop_terrain_loop()
+    finally:
+        running.set()
+        held.result(timeout=60)
+        server._chain_pricing.submit(lambda: None).result(timeout=60)  # what was queued has run
+        with server._terrain_cache_lock:
+            priced = {name for name in names if server._terrain_cache.pop(name, None) is not None}
+        with sqlite3.connect(server.get_db().db_path) as conn:  # later tests read the newest
+            conn.executemany(
+                "DELETE FROM complete_chain_captures WHERE ticker=? AND ts_utc=?",
+                [(c.ticker, c.now.timestamp()) for c in (MRVL, NFLX)],
+            )
+    assert priced == set(), f"priced after the stop: {sorted(priced)}"
+    with server._chains_waiting_lock:
+        assert server._chains_waiting == {}
 
 
 def test_a_database_path_under_backups_is_refused_as_any_other_non_canonical_path(tmp_path):
