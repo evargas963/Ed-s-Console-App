@@ -109,7 +109,11 @@ async def serve_page_socket(
     serving = asyncio.create_task(web.serve(sockets=[sock]))
     try:
         await live_ui.serve_live_ui(
-            stop, state=server.app.state, panels=server.PAGE_PANELS, **prices
+            stop,
+            state=server.app.state,
+            panels=server.PAGE_PANELS,
+            priced=server.PRICED_PANELS,
+            **prices,
         )
     finally:
         web.should_exit = True

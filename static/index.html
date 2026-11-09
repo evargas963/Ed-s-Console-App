@@ -415,7 +415,7 @@
   .kl-regime-box .rval{font-size:16px;font-weight:700;letter-spacing:.02em}
   .kl-regime-box .rsub{font-size:11px;color:var(--ed-ink-3)}
 
-  /* gamma heatmap grid (presentation of /api/options/gamma-surface) — the HERO: the grid fills the
+  /* gamma heatmap grid (presentation of the socket's surface panel) — the HERO: the grid fills the
      whole panel, columns share the width evenly (fixed layout), rows stretch to fill the height. */
   .heat-host{display:flex;flex:1;gap:8px;min-height:0}
   .heat-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
@@ -625,7 +625,7 @@
   .st-flag{display:inline-block;margin:0 4px 0 0;padding:1px 6px;border-radius:4px;font-size:10px;
     letter-spacing:.03em;color:var(--ed-ink-4);background:transparent}
   .st-flag.on{color:var(--ed-warn);background:var(--ed-proxy-bg);border:1px solid var(--ed-warn)}
-  /* Levels view (D) — serializes /api/levels; no computation */
+  /* Levels view (D) — serializes the levels panel; no computation */
   .lv-head{display:flex;justify-content:space-between;font-family:var(--ed-sans);font-size:12px;color:var(--ed-ink-3);padding:2px 2px 9px}
   .lv-head .lv-spot{color:var(--ed-ink-2)}
   .lv{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
@@ -785,7 +785,7 @@
             <div class="panel-b mvwrap">
               <div class="mv on" id="view-heatmap"><div id="heatBody" class="mvbody">
                 <div class="placeholder"><div class="big">Strike × expiry heatmap</div>
-                  <div class="sm">Canonical per-strike GEX$ per expiry via /api/options/gamma-surface.</div></div>
+                  <div class="sm">Canonical per-strike GEX$ per expiry, pushed on the page's socket.</div></div>
               </div></div>
               <div class="mv" id="view-chart"><div id="chartBody" class="mvbody"></div></div>
               <div class="mv" id="view-levels"><div id="levelsBody" class="mvbody"></div></div>
@@ -834,11 +834,11 @@
           <div class="p-bottom">
             <div class="panel">
               <div class="panel-h"><span class="t">Strike Detail</span><span class="sub" id="sdCtx">-</span><div class="r"><span id="sdSrc"></span><span class="prov native">CHAIN</span></div></div>
-              <div class="panel-b" id="sdBody"><div class="placeholder"><div class="sm">Select a strike/expiry. OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div></div>
+              <div class="panel-b" id="sdBody"><div class="placeholder"><div class="sm">Select a strike/expiry. OI · volume · gamma · delta · IV from the chain (vendor).</div></div></div>
             </div>
             <div class="panel">
               <div class="panel-h"><span class="t">GEX by Strike</span><span class="sub">net dealer γ / 1%</span><div class="r"><span id="gbsSrc"></span><span class="prov derived">DERIVED</span></div></div>
-              <div class="panel-b" id="gbsBody"><div class="placeholder"><div class="sm">Per-strike net GEX$ around spot from /api/terrain/strikes.</div></div></div>
+              <div class="panel-b" id="gbsBody"><div class="placeholder"><div class="sm">Per-strike net GEX$ around spot, pushed on the page's socket.</div></div></div>
             </div>
             <div class="panel">
               <div class="panel-h"><span class="t">Options Flow</span><span class="sub">tape · desired contracts</span>
@@ -856,12 +856,12 @@
         </div>
         </div><!-- /sub-pane gamma -->
 
-        <!-- OPTIONS / CHAIN subview — the full vendor chain ladder (/api/chain + the socket's expiries) -->
+        <!-- OPTIONS / CHAIN subview — the full vendor chain ladder (the socket's chain panel and expiries) -->
         <div class="sub-pane" data-sub-pane="chain">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="chTicker">-</span><span class="t">Option Chain</span>
               <div class="r"><span id="chSrc"></span><span class="prov native">CHAIN</span></div></div>
-            <div class="panel-b" id="chainBody"><div class="placeholder"><div class="sm">Full vendor chain ladder from /api/chain (strike_range=ALL, one expiry).</div></div></div>
+            <div class="panel-b" id="chainBody"><div class="placeholder"><div class="sm">Full vendor chain ladder, pushed on the page's socket (strike_range=ALL, one expiry).</div></div></div>
           </div>
         </div>
 
@@ -882,7 +882,7 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="vnTicker">-</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · delta-shares per vol point · agg all expiries</span>
               <div class="r"><span id="vnSrc"></span><span class="prov derived">DERIVED</span></div></div>
-            <div class="panel-b" id="vnBody"><div class="placeholder"><div class="sm">Net dealer vanna (call_vanna − put_vanna) per strike from /api/options/vanna-by-strike.</div></div></div>
+            <div class="panel-b" id="vnBody"><div class="placeholder"><div class="sm">Net dealer vanna (call_vanna − put_vanna) per strike, pushed on the page's socket.</div></div></div>
           </div>
         </div>
 
@@ -892,12 +892,12 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="chmTicker">-</span><span class="t">Charm by Strike</span><span class="sub">dealer net charm · Δ-shares/day · agg all expiries</span>
               <div class="r"><span id="chmSrc"></span><span class="prov derived">DERIVED</span></div></div>
-            <div class="panel-b" id="chmBody"><div class="placeholder"><div class="sm">Net dealer charm (call_charm − put_charm) per strike from /api/options/charm-by-strike.</div></div></div>
+            <div class="panel-b" id="chmBody"><div class="placeholder"><div class="sm">Net dealer charm (call_charm − put_charm) per strike, pushed on the page's socket.</div></div></div>
           </div>
         </div>
 
         <!-- OPTIONS / STRUCTURES subview — contract-safety/identity metadata that is already
-             flowing through every /api/chain contract dict verbatim (operator field-inventory
+             flowing through every chain panel contract dict verbatim (operator field-inventory
              audit, 2026-09-13): multiplier, non-standard/deliverable flags, settlement/exercise/
              expiration type, last trading day, penny-pilot. Prevents an adjusted or specially-
              settled contract from silently being treated like an ordinary 100-share monthly. -->
@@ -905,7 +905,7 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="stTicker">-</span><span class="t">Contract Structures</span><span class="sub">non-standard · settlement · exercise · deliverables</span>
               <div class="r"><span id="stSrc"></span><span class="prov native">CHAIN</span></div></div>
-            <div class="panel-b" id="stBody"><div class="placeholder"><div class="sm">Contract-safety metadata (multiplier, non-standard, deliverables, settlement/exercise/expiration type, last trading day, penny pilot) from /api/chain — vendor-native, never inferred.</div></div></div>
+            <div class="panel-b" id="stBody"><div class="placeholder"><div class="sm">Contract-safety metadata (multiplier, non-standard, deliverables, settlement/exercise/expiration type, last trading day, penny pilot) from the chain — vendor-native, never inferred.</div></div></div>
           </div>
         </div>
       </section>
@@ -948,7 +948,7 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="tdTicker">-</span><span class="t">Right Now</span><span class="sub">detect · frame · confirm — one page, zero new math</span>
               <div class="r"><span class="prov derived">SYNTHESIS</span></div></div>
-            <div class="panel-b" id="tdBody"><div class="placeholder"><div class="sm">Assembles /api/order-flow/microstructure, /api/levels and /api/terrain — the same canonical endpoints Order Flow, Liquidity and Options already read. Computes nothing new.</div></div></div>
+            <div class="panel-b" id="tdBody"><div class="placeholder"><div class="sm">Assembles /api/order-flow/microstructure, /api/liquidity-snapshot and the levels pushed on the page's socket — the same canonical answers Order Flow, Liquidity and Options already read. Computes nothing new.</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="plan">
@@ -987,7 +987,7 @@
         </div>
       </section>
 
-      <!-- LIQUIDITY / LEVELS — reuses the EXACT /api/levels renderer ed-gamma-levels.js already
+      <!-- LIQUIDITY / LEVELS — reuses the EXACT levels renderer ed-gamma-levels.js already
            built for Options > Gamma > Levels (operator, 2026-09-13). Other subs (Map/Profile/
            VWAP-Value/Session/History) stay `state:'na'` until they have their own real wiring. -->
       <section class="workspace" data-ws-pane="liquidity">
@@ -1002,7 +1002,7 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="lvlTicker">-</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
               <div class="r"><span class="prov native">LEVELS</span></div></div>
-            <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from /api/levels (PDH/PDL/PDC, POC/VAH/VAL, overnight, VWAP±σ) — vendor-derived, never a fabricated line.</div></div></div>
+            <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from the levels panel (PDH/PDL/PDC, POC/VAH/VAL, overnight, VWAP±σ) — vendor-derived, never a fabricated line.</div></div></div>
           </div>
         </div>
       </section>

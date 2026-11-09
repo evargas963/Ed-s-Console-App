@@ -1,6 +1,6 @@
 /* Ed Console — Options/Gamma heatmap view. PRESENTATION ONLY.
-   Reads GET /api/options/gamma-surface with the window it wants (scope, the columns it fits, the
-   selected expiry, a pan) and draws exactly the cells the server sends: the server picks the
+   Shows the page's socket's `surface` panel in the window it asks (scope, the columns it fits,
+   the selected expiry, a pan) and draws exactly the cells the program sends: the server picks the
    strikes and expiries (server._surface_view), counts the cells streaming, names the contracts to
    stream, marks the spot row and the front column, and sends each
    measure's colour scale. This module positions cells, formats each value, maps sign to colour and
@@ -58,7 +58,7 @@
   var WORDS = JSON.parse(document.querySelector('meta[name="ed-stream-words"]').getAttribute('content'));
   var _pan = window.EdShell.newPan();
   var _panTicker = null;
-  var _lastSurface = null, _lastRevision = null, _pendingTicker = null;
+  var _lastSurface = null, _lastRevision = null;
 
   function paintChip(cov) {   // the header's coverage chip: the served words
     var el = document.getElementById('heatScope'); if (!el) return;
@@ -96,11 +96,12 @@
 
   // ---- render the window the server sent (no math on its values) ----
   function renderSurface(host, surface) {
-    if (surface.available === false) {
+    if (surface.failed != null || surface.available === false) {   // not produced, or not held: why
       _lastSurface = null; _lastRevision = null;
       paintChip(null);
-      host.innerHTML = buildBanner(surface) + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
-        '<div class="sm">' + escapeHtml(surface.reason || 'the console sent no reason') + '</div></div>';
+      host.innerHTML = (surface.failed != null ? '' : buildBanner(surface)) +
+        '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
+        '<div class="sm">' + escapeHtml(surface.failed != null ? surface.failed : surface.reason) + '</div></div>';
       return;
     }
     var view = surface.view;
@@ -217,44 +218,39 @@
 
   // gamma, dex and oi are the same heatmap pane under three subview ids
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
-  function stillCurrent(ticker) {
+  function heatOn() {
     var s = window.EdShell.getState();
-    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && s.ticker === ticker;
+    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap';
   }
-  function surfaceUrl(ticker, host) {
-    var expiry = window.EdShell.getExpiry();
-    return '/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker) +
-      window.EdShell.windowQuery(_pan) + '&cols=' + autoColCount(host) +
-      (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
-  }
-  // only the network fetch is coalesced (keyed on ticker: a newer ticker aborts the older read)
-  function loadImpl(ticker, signal) {
-    var host = document.getElementById('heatBody');
-    if (!host || !stillCurrent(ticker)) return;
-    var G = window.EdL1SseGuards;
-    return G.show(G.readJson(surfaceUrl(ticker, host), signal), '/api/options/gamma-surface',
-      function (d) { if (stillCurrent(ticker)) renderSurface(host, d); },
-      function (words) { if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: words }); });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
+  // The heatmap is the `surface` panel (server.gamma_surface) the program sends on the page's
+  // socket while the heatmap is on, in the window it asks (the scope, its pan, the columns it
+  // fits, the selected expiry or null for all), at once and each time the levels change. Nothing
+  // received yet for the ticker on screen is '-'.
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
-    var st = window.EdShell.getState();
-    var nextTicker = st.ticker;   // the shell's: '' while none is chosen
+    var nextTicker = window.EdShell.getState().ticker;   // the shell's: '' while none is chosen
     if (_panTicker !== nextTicker) {   // a new ticker, in any view: the last one's grid leaves at once
       _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker;
       _lastSurface = null; _lastRevision = null;
       paintChip(null);
-      host.innerHTML = '<div class="placeholder"><div class="sm">reading /api/options/gamma-surface for ' +
-        escapeHtml(nextTicker) + '</div></div>';
+      window.EdShell.placeholder(host, '-');
     }
-    if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
-      _pendingTicker = null;
-      return;
-    }
-    _pendingTicker = nextTicker;
-    _loader.trigger(_pendingTicker);
+    if (!heatOn()) { window.EdShell.showPanel('surface', null); return; }
+    var params = window.EdShell.windowParams(_pan);
+    params.cols = autoColCount(host);
+    params.expiry = window.EdShell.getExpiry();   // null, none selected: every column
+    window.EdShell.showPanel('surface', params);
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('ed:panel', function (e) {
+      var host = document.getElementById('heatBody');
+      if (e.detail.type !== 'surface' || !host || !heatOn()) return;
+      try { renderSurface(host, e.detail); } catch (err) {   // said, then reported
+        window.EdShell.placeholder(host, 'the page could not draw the surface the program sent');
+        throw err;
+      }
+    });
   }
   function rerender() {   // a presentation change on the window on screen: no read needed
     var h = document.getElementById('heatBody'); if (!h) return;
@@ -265,7 +261,6 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:view', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
     document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });
     document.addEventListener('ed:theme', rerender);
     document.addEventListener('ed:measure', rerender);

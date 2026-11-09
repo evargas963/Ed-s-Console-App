@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * D — Options/Gamma "Chain" subview. Full vendor ladder from /api/chain (calls left, puts right,
+ * D — Options/Gamma "Chain" subview. Full vendor ladder from the socket's chain panel (calls left, puts right,
  * strike centre), served VERBATIM. Proves: single-expiry disclosure (B), exact CALL/PUT vendor-symbol
  * selection for the Flow panel, named to the console to stream (C), duplicate vendor rows retained
  * (D), and the centre strike selects only the shared strike. Symbols are the vendor's own, never
@@ -11,7 +11,6 @@ const { expiriesAnswer, pushExpiries } = require('./fixtures/expiries');
 const { expiriesFrame, priceRow, served: servedSymbol } = require('./fixtures/price_socket');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
-const { watchRequests } = require('./fixtures/settled');
 
 function ct(side, strike, sym, oi, vol, iv, delta, expDate) {
   return { putCall: side, strikePrice: strike, symbol: sym, openInterest: oi, totalVolume: vol,
@@ -46,19 +45,26 @@ async function intercept(page) {
       flowPosts.push(contract);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: contract }) });
     }
-    let body = { available: false };
-    if (url.includes('/api/chain')) body = served(CHAIN);
-    else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', available: true, spot: 100,
-      source: 'terrain_live_cache', levels_state: 'LIVE', expirations: [{ expiry: '2026-09-11', dte: 2 }],
-      strikes: [100], cells: [{ strike: 100, gex: [1] }],
-      view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } };
-    else if (url.includes('/api/terrain/strikes')) body = { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] },
-      views: { all: { centre: 100, note: null, max_abs: 1 } } };
-    else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ available: false }) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11']);
+  panels = chainPanels(() => CHAIN);
+  sock = await pushExpiries(page, ['2026-09-11'], undefined, panels);
+}
+// the panels the page's socket sends this test: the chain panel `chainOf(expiry)` (each reader's
+// expiry; null: the front one) as the program serves it, and the Gamma tab's own (a test may
+// change one before the page opens); `sock` is the program's side of the socket
+let panels, sock;
+function chainPanels(chainOf) {
+  return {
+    chain: (key, params) => served(chainOf(params.expiry)),
+    terrain: { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' },
+    strikes: { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] }, views: { all: { centre: 100, note: null, max_abs: 1 } } },
+    surface: { ticker: 'SPY', available: true, spot: 100,
+      source: 'terrain_live_cache', levels_state: 'LIVE', expirations: [{ expiry: '2026-09-11', dte: 2 }],
+      strikes: [100], cells: [{ strike: 100, gex: [1] }],
+      view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } },
+  };
 }
 
 async function toChain(page) {
@@ -92,8 +98,7 @@ test.describe('D — Gamma Chain subview', () => {
   });
 
   test('the chain spot keeps its last trade time', async ({ page }) => {
-    await page.route('**/api/chain**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(served(Object.assign({}, CHAIN, { spot_time_ct: 'Fri 09/25 06:59 PM CT' }))) }));
+    panels.chain = () => served(Object.assign({}, CHAIN, { spot_time_ct: 'Fri 09/25 06:59 PM CT' }));
     await toChain(page);
     await expect(page.locator('#chainBody .chn-head')).toContainText('spot 100.00');
     await expect(page.locator('#chainBody .chn-head')).toContainText('last trade Fri 09/25 06:59 PM CT');
@@ -141,7 +146,7 @@ test.describe('D — Gamma Chain subview', () => {
     const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
-    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(BIG())) }));
+    panels.chain = () => served(BIG());
     await page.setViewportSize({ width: 900, height: 640 });   // a representative, not maximal, size
     await toChain(page);
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
@@ -161,7 +166,7 @@ test.describe('D — Gamma Chain subview', () => {
     // Fire a background refresh (same context) WHILE scrolled, with genuinely changed data,
     // and confirm both the new value lands AND the header still has not moved at all.
     vol = 25;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } })));
+    sock.changed('chain');   // the program sends the chain again: a new chain was priced
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
     const afterRefresh = await headBox();
 
@@ -206,7 +211,7 @@ test.describe('D — Gamma Chain subview', () => {
     const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
-    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(BIG())) }));
+    panels.chain = () => served(BIG());
     await toChain(page);
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('10');
@@ -214,10 +219,10 @@ test.describe('D — Gamma Chain subview', () => {
     await page.evaluate(() => { document.getElementById('chainScroll').scrollTop = 1800; });
     const before = await page.evaluate(() => document.getElementById('chainScroll').scrollTop);
 
-    // The NEXT chain fetch carries a genuinely different value -- proof a refresh actually
+    // The NEXT chain sent carries a genuinely different value -- proof a refresh actually
     // completed comes from the DOM showing THIS new value, not merely from time having passed.
     vol = 25;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } })));
+    sock.changed('chain');
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
 
     // A routine background refresh (same ticker/expiry context) must not recentre the ladder,
@@ -242,16 +247,15 @@ test.describe('D — Gamma Chain subview', () => {
     const EXP_A = '2026-09-11', EXP_B = '2026-09-18';
     const symA = occSymbol('SPY', EXP_A, 'CALL', 100);
     const symB = occSymbol('SPY', EXP_B, 'CALL', 200);
-    await pushExpiries(page, [EXP_A, EXP_B]);
-    await page.route('**/api/chain*', (route) => {
-      const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
+    panels = chainPanels((asked) => {
+      const exp = asked || EXP_A;
       const strike = exp === EXP_A ? 100 : 200;   // distinct strike AND distinct symbol per expiry
       const sym = exp === EXP_A ? symA : symB;
-      const body = { ticker: 'SPY', spot: strike, expiry: exp, status: 'ok',
+      return { ticker: 'SPY', spot: strike, expiry: exp, status: 'ok',
         scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
         contracts: [ct('CALL', strike, sym, 1, 1, 1, 0.1, exp)] };   // expirationDate == exp, genuinely
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
     });
+    sock = await pushExpiries(page, [EXP_A, EXP_B], undefined, panels);
     await toChain(page);
     await expect(page.locator('#chainBody .chn-head')).toContainText('SINGLE EXPIRY · ' + EXP_A);
     await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('100');
@@ -263,71 +267,32 @@ test.describe('D — Gamma Chain subview', () => {
     await expect(page.locator('#chainBody tr[data-csym="' + symA + '"]')).toHaveCount(0);
   });
 
-  // A FOURTH independent review (2026-09-13), NAMED as the same class of risk already fixed
-  // in the former /options page (deleted 2026-09-27, P2-4),
-  // which DOES fail on its pre-fix code): stillChain(tk, exp) proves the CURRENT identity
-  // matches, but two different requests issued at different times for the IDENTICAL
-  // (ticker, expiry) are indistinguishable to it -- whichever resolves LAST wins, not
-  // whichever was issued last. Unlike options.html, this loader already uses a real
-  // AbortController (makeCoalescedLoader), and in this Playwright mock harness that abort
-  // reliably prevents the held first-A response from ever resolving at all -- this test
-  // PASSES on both the pre- and post-fix code here (confirmed by direct comparison), so it
-  // is a regression/behavior test, not a proven fail-before/pass-after reproduction for
-  // THIS view. The fix (an explicit monotonic request sequence, _reqSeq) is still real
-  // defense-in-depth: AbortController does not GUARANTEE a stale fetch never resolves (a
-  // response already fully buffered before abort() is processed can still resolve in real
-  // browsers), and this sequence check makes correctness independent of that timing detail.
-  test('A -> B -> A: a held first-A response cannot overwrite the fresh second-A response (state-authority review)', async ({ page }) => {
+  // A -> B -> A: the program's B frame, sent before it read the page's return to A, arrives
+  // after A's own frame has been drawn; it is not drawn.
+  test('A -> B -> A: a frame of an expiry no longer selected is not drawn over the selected one', async ({ page }) => {
     const EXP_A = '2026-09-11', EXP_B = '2026-09-18';
-    const symA1 = occSymbol('SPY', EXP_A, 'CALL', 111);
-    const symA2 = occSymbol('SPY', EXP_A, 'CALL', 333);
-    const requests = watchRequests(page);
-    let aCallCount = 0, releaseFirstA;
-    const firstAHeld = new Promise((r) => { releaseFirstA = r; });
-    await pushExpiries(page, [EXP_A, EXP_B]);
-    await page.route('**/api/chain*', async (route) => {
-      const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
-      if (exp === EXP_A) {
-        aCallCount += 1;
-        if (aCallCount === 1) {
-          // The FIRST A request is held -- answered LATE, once the return-to-A request
-          // below has already resolved and painted the correct, newer value.
-          await firstAHeld;
-          const body = { ticker: 'SPY', spot: 111, expiry: EXP_A, status: 'ok',
-            scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
-            contracts: [ct('CALL', 111, symA1, 1, 1, 1, 0.1, EXP_A)] };
-          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
-        }
-        const body = { ticker: 'SPY', spot: 333, expiry: EXP_A, status: 'ok',
-          scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
-          contracts: [ct('CALL', 333, symA2, 1, 1, 1, 0.1, EXP_A)] };
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
-      }
-      const body = { ticker: 'SPY', spot: 222, expiry: EXP_B, status: 'ok',
-        scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
-        contracts: [ct('CALL', 222, occSymbol('SPY', EXP_B, 'CALL', 222), 1, 1, 1, 0.1, EXP_B)] };
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('#subnav .tab', { hasText: 'Chain' }).click();   // fires the first, held A request
-    await expect.poll(() => aCallCount).toBe(1);                          // it is in flight, unanswered
-
+    const ladder = (exp, strike) => ({ ticker: 'SPY', spot: strike, expiry: exp, status: 'ok',
+      scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+      contracts: [ct('CALL', strike, occSymbol('SPY', exp, 'CALL', strike), 1, 1, 1, 0.1, exp)] });
+    panels = chainPanels((asked) => (asked === EXP_B ? ladder(EXP_B, 222) : ladder(EXP_A, 333)));
+    sock = await pushExpiries(page, [EXP_A, EXP_B], undefined, panels);
+    await toChain(page);
+    await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('333');
     await page.locator('#expSel').selectOption(EXP_B);
     await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('222');
-
-    await page.locator('#expSel').selectOption(EXP_A);   // fires the second, fast A request
+    await page.locator('#expSel').selectOption(EXP_A);
     await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('333');
+
+    await page.evaluate(() => {          // every ladder drawn from here on: its strikes
+      window.__draws = [];
+      new MutationObserver(() => window.__draws.push([...document.querySelectorAll('#chainBody tbody tr td.k')]
+        .map((e) => e.textContent).join(','))).observe(document.getElementById('chainBody'), { childList: true, subtree: true });
+    });
+    sock.frame('chain:ladder', 'SPY', served(ladder(EXP_B, 222)));   // the late B frame ...
+    sock.frame('chain:ladder', 'SPY', served(ladder(EXP_A, 444)));   // ... and A's next, behind it
+    await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('444');
+    expect((await page.evaluate(() => window.__draws)).filter((d) => d.includes('222'))).toEqual([]);
     await expect(page.locator('#chainBody .chn-head')).toContainText(EXP_A);
-
-    // The held FIRST A response goes now, after the newer A painted; the page is done with it
-    // (answered or cut short).
-    releaseFirstA();
-    await requests.settled();
-
-    // Non-retrying snapshot: the held, stale first-A response must not have overwritten 333.
-    const strikeText = await page.locator('#chainBody tbody tr td.k').textContent();
-    expect(strikeText).toBe('333');
-    expect(aCallCount).toBeGreaterThanOrEqual(2);   // at least the two A requests under test
   });
 });
 

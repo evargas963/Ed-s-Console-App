@@ -48,6 +48,8 @@ EXPIRY = str(CRWD.chain[0]["expirationDate"])[:10]  # 2026-10-16
 PUBLISHED = CRWD.spot  # Schwab's price in the chain answer
 LIVE = _QUOTE["native"]["LAST_PRICE"]  # Schwab's last trade, as the daemon received it
 _AT = CRWD.now
+#: a per-strike panel's window as the page asks it: Auto, following the price
+AUTO = {"scope": "auto", "centre": None, "shift": 0}
 
 
 def _daemon(at: float, held_options=()):
@@ -105,13 +107,27 @@ def held():
     _forget()
 
 
-@pytest.mark.usefixtures("held")
-def test_every_route_serves_the_live_spot_and_names_the_computed_one():
-    """Every GET route that answers a ticker, found from the app, each answering this request.
+#: each page panel that serves a price (server.PAGE_PANELS), with a reader's parameters
+PRICED_PANEL_PARAMS = {
+    "terrain": {},
+    "strikes": AUTO,
+    "surface": {**AUTO, "cols": None, "expiry": None},
+    "chain": {"expiry": EXPIRY},
+    "levels": {"tf": "1"},
+}
 
-    A route that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
-    payload was computed at.
+
+@pytest.mark.usefixtures("held")
+def test_every_route_and_panel_serves_the_live_spot_and_names_the_computed_one():
+    """Every GET route that answers a ticker, found from the app, and every page panel.
+
+    A route or panel that serves a price serves `spot`, the live price, and `priced_at_spot`, the
+    price the payload was computed at.
     """
+    now = time_et.now()
+    for kind, params in PRICED_PANEL_PARAMS.items():
+        body = json.loads(json.dumps(server.PAGE_PANELS[kind](TK, now, params), default=str))
+        assert (body["spot"], body["priced_at_spot"]) == (LIVE, PUBLISHED), kind
     client = TestClient(server.app)
     paths = [
         r.path
@@ -129,7 +145,7 @@ def test_every_route_serves_the_live_spot_and_names_the_computed_one():
             refused[path] = answer.status_code
         elif {"spot", "priced_at_spot"} & set(body):
             served[path] = (body.get("spot"), body.get("priced_at_spot"))
-    assert refused == {} and served
+    assert refused == {}
     assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
 
 
@@ -138,7 +154,7 @@ def test_strike_side_sums_split_at_the_live_spot(held):
     below = [r for r in rows if r[0] < LIVE]
     above = [r for r in rows if r[0] > LIVE]
     assert below and above, "the real chain has strikes on both sides of the live price"
-    sums = json.loads(server.get_terrain_strikes(ticker=TK).body)["today_side_sums"]
+    sums = server.strikes(TK, time_et.now(), AUTO)["today_side_sums"]
     assert sums["spot_basis"] == LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
     assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
@@ -150,7 +166,7 @@ def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
     col = [e["expiry"] for e in surf["expirations"]].index(EXPIRY)
     expected = [[c["strike"], c["gex"][col]] for c in surf["cells"] if c["gex"][col] is not None]
     assert expected, "the real chain yields net GEX cells for its expiry"
-    body = json.loads(server.get_chain(ticker=TK, expiry=EXPIRY).body)
+    body = server.chain(TK, time_et.now(), {"expiry": EXPIRY})
     assert body["net_gex_by_strike"] == expected
 
 
@@ -186,7 +202,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
     Not the browser's clock (it counted days in UTC, a day off after 7 PM Central).
     """
-    body = server.expiries(TK, time_et.now())
+    body = server.expiries(TK, time_et.now(), {})
     assert body["expiries"] == [EXPIRY]
     assert body["dte"] == {EXPIRY: _CONTRACTS[0]["daysToExpiration"]}
     # the dropdown's texts are served (the page reformatted the date itself)
@@ -196,7 +212,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
-    body = server.expiries("ZZNOLEVELS", time_et.now())
+    body = server.expiries("ZZNOLEVELS", time_et.now(), {})
     assert (
         body["expiries"] is None  # unknown, never an empty list standing for it
         and body["reason"]
@@ -207,9 +223,9 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
 @pytest.mark.parametrize(
     "route",
     [
-        lambda: server.get_chain(ticker="SPY", expiry="2026-10-22"),
-        lambda: server.get_options_gamma_surface(ticker="SPY"),
-        lambda: server.get_terrain_strikes(ticker="SPY"),
+        lambda: server.chain("SPY", time_et.now(), {"expiry": "2026-10-22"}),
+        lambda: server.gamma_surface("SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}),
+        lambda: server.strikes("SPY", time_et.now(), AUTO),
     ],
     ids=["chain", "gamma-surface", "terrain-strikes"],
 )
@@ -244,7 +260,7 @@ def test_the_spot_row_is_served(route):
         daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     try:
-        body = json.loads(route().body)
+        body = route()
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("SPY", None)
@@ -301,7 +317,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
 @pytest.mark.usefixtures("held")
 def test_chain_flags_are_served():
     """ADJUSTED DELIVERABLE and duplicate contracts: served flags, not page rules."""
-    body = json.loads(server.get_chain(ticker=TK, expiry=EXPIRY).body)
+    body = server.chain(TK, time_et.now(), {"expiry": EXPIRY})
     plain = [c["symbol"] for c in _CONTRACTS if len(c.get("optionDeliverablesList") or []) == 1]
     assert plain and not set(plain) & set(body["adjusted_deliverable_symbols"])
     assert body["has_duplicate_contracts"] is False
@@ -332,7 +348,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     )
     try:
         server._publish_levels("$SPX", read_chain(fx["contracts"]), fx["ts_utc"], now=at)
-        body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
+        body = server.chain("$SPX", time_et.now(), {"expiry": "2026-10-16"})
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("$SPX", None)
@@ -348,7 +364,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
 
 def test_the_largest_gex_strike_is_served(held):
     rows = held.snap.per_strike["all"]
-    body = json.loads(server.get_terrain_strikes(ticker=TK).body)
+    body = server.strikes(TK, time_et.now(), AUTO)
     assert body["max_abs_row"] == max(rows, key=lambda r: abs(r[1]))
 
 

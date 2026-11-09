@@ -34,7 +34,7 @@ def test_the_terrain_carries_the_chain_time():
         srv._publish_levels(
             tk, read_chain(CRWD.chain), fetched, chain_spot=(CRWD.spot, fetched), now=CRWD.now
         )
-        body = srv.get_terrain(ticker=tk)
+        body = srv.terrain(tk, fetched, {})
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)

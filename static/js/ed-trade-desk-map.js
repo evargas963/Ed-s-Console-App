@@ -2,12 +2,12 @@
 
    One page for the SELECTED ticker, one global timeframe:
      MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
-                     /api/levels (value area, VWAP + bands, prior day, opening range, overnight),
-                     /api/terrain (call/put wall, gamma flip, max pain -- full chain)
+                     the socket's levels panel (value area, VWAP + bands, prior day, opening range, overnight),
+                     the socket's terrain panel (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- /api/desk/events (served, numbered; each marker is its queue entry, linked
                      both ways): level crosses judged by their minute's bar, wall breaches,
                      the book's size walls at the book's own time
-     CARDS        <- /api/order-flow/microstructure, /api/terrain, the price row (Schwab
+     CARDS        <- /api/order-flow/microstructure, the terrain panel, the price row (Schwab
                      LEVELONE), /api/bars1m, /api/liquidity-snapshot (value/VWAP relation)
      HEADER TRUST <- the same responses' own state/age fields
    The browser computes nothing: it picks which served values to show, formats them, and
@@ -156,7 +156,7 @@
     S.tf = tf; sset('ed.desk.tf', tf); paintTfButtons();
     S.bars = []; S.levels = S.events = undefined;   // answers for another timeframe are dropped (tf check)
     clearChart(); paintQueue(); paintCards();
-    loadBars(true); loadPerTf();
+    askPanels(); loadBars(true); loadPerTf();
   }
   function clearChart() {
     if (!S.chart) return;
@@ -187,38 +187,46 @@
     });
   }
   function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
-  // the timeframe's levels (VWAP per chart bar) and event window, each drawn as it arrives
+  // the timeframe's levels (VWAP per chart bar; the `levels:map` panel) or event window, drawn as
+  // it arrives
+  function takePerTf(key, d) {
+    S[key] = d;
+    paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+    openView();
+  }
   function loadPerTf() {
     var gen = S.gen, tf = S.tf, q = encodeURIComponent(S.ticker);
-    function take(key) {
-      return function (d) {
-        if (gen !== S.gen || tf !== S.tf) return;
-        S[key] = d;
-        paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-        openView();
-      };
-    }
-    return Promise.all([
-      fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(tf)).then(take('levels')),
-      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + window.EdShell.getState().bookVenue + '&tf=' + encodeURIComponent(tf)).then(take('events'))
-    ]);
+    return fetchJson('/api/desk/events?ticker=' + q + '&venue=' + window.EdShell.getState().bookVenue + '&tf=' + encodeURIComponent(tf))
+      .then(function (d) { if (gen === S.gen && tf === S.tf) takePerTf('events', d); });
   }
-  // the symbol's option terrain, zones, strikes, forces and the Order Flow card's hour of bars
+  // the symbol's zones, forces and the Order Flow card's hour of bars
   function loadPerTicker() {
     var gen = S.gen, q = encodeURIComponent(S.ticker);
     return Promise.all([
-      fetchJson('/api/terrain?ticker=' + q),
       fetchJson('/api/liquidity-snapshot?ticker=' + q),
-      fetchJson('/api/terrain/strikes?ticker=' + q),
       fetchJson('/api/forces?ticker=' + q),
       fetchJson('/api/bars1m?ticker=' + q + '&tf=1&limit=' + FLOW_BARS)
     ]).then(function (r) {
       if (gen !== S.gen) return;
-      S.terrain = r[0]; S.liq = r[1]; S.strikes = r[2]; S.forces = r[3];
-      S.flowBars = r[4] ? r[4].bars : null;
-      paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+      S.liq = r[0]; S.forces = r[1];
+      S.flowBars = r[2] ? r[2].bars : null;
+      paintAll();
     });
   }
+  function paintAll() { paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter(); }
+  // the symbol's option terrain and its per-strike rows: the `terrain:map` and `strikes:desk`
+  // panels (server.terrain, server.strikes in the Gamma scope's window), and the chart's
+  // timeframe's levels, the `levels:map` panel (server.levels), the program sends on the page's
+  // socket while the desk is on, at once and each time the levels change
+  var PANELS = { 'terrain:map': 'terrain', 'strikes:desk': 'strikes' };
+  function askPanels() {
+    window.EdShell.showPanel('levels:map', onDesk() ? { tf: S.tf } : null);
+    window.EdShell.showPanel('terrain:map', onDesk() ? {} : null);
+    window.EdShell.showPanel('strikes:desk', onDesk() ? window.EdShell.windowParams(null) : null);
+  }
+  // what an answer says with nothing to draw: the program could not produce the panel (`failed`),
+  // or the answer's own error
+  function why(x) { return x.failed != null ? x.failed : x.error; }
   // the chart opens on the served event window (5m/30m: the session), once per symbol and timeframe
   function openView() {
     var vk = S.ticker + '|' + S.tf;
@@ -319,7 +327,7 @@
   }
 
   // ------------------------------------------------------------------ cards
-  // the FORCES split, served: GEX below/above spot (/api/terrain/strikes today_side_sums), and
+  // the FORCES split, served: GEX below/above spot (the strikes panel's today_side_sums), and
   // OI change, DEX and charm below/above from the last two market days' captures (/api/forces)
   function forcesRows() {
     var ss = S.strikes && S.strikes.today_side_sums, f = S.forces || {};
@@ -402,9 +410,9 @@
     // OPTIONS POSITIONING — full-chain terrain
     c = $('tdmCardOpt');
     if (c) {
-      if (!t || t.error) {
+      if (!t || why(t)) {
         state(c, t === undefined ? 'LOADING' : 'UNAVAILABLE', t === undefined ? '' : 'warn'); c.querySelector('.tdm-hero').innerHTML = '';
-        src(c, 'Schwab option chain · ' + (t === undefined ? 'loading…' : esc((t && t.error) || 'terrain request failed')));
+        src(c, 'Schwab option chain · ' + (t === undefined ? 'loading…' : esc(why(t))));
         c.querySelector('.tdm-rows').innerHTML = '';
       } else {
         // the served regime word, and its tone from the one regime table (ed-gamma-panels.js)
@@ -430,7 +438,7 @@
         state(c, 'ATM IV ' + num(im.iv_pct_atm, 1) + '%', '');
         c.querySelector('.tdm-hero').innerHTML = '±' + num(im.points, 2) + ' <small>implied 1-day move, 1σ</small>';
       }
-      src(c, 'Schwab option chain · ' + (!t || t.error ? '-' : esc(chainAgeLabel(t))));
+      src(c, 'Schwab option chain · ' + (!t || why(t) ? '-' : esc(chainAgeLabel(t))));
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', num(t && t.atr_daily)) +
@@ -554,12 +562,12 @@
   function noneText(x, what, none) {
     if (x === undefined) return 'loading…';
     if (x === null) return 'the ' + what + ' request failed';
-    return x.error ? x.error : none;
+    return why(x) || none;
   }
   function paintCardCharts() {
     if (!S.chart) return;
     var P = S.chart.palette(), t = S.terrain, c;
-    var fb = S.flowBars, served = t && !t.error;   // a card draws only an answer
+    var fb = S.flowBars, served = t && !why(t);   // a card draws only an answer
     if ((c = $('tdmCardFlow'))) {
       spark(c, fb ? [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
         colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }] : [],
@@ -588,7 +596,7 @@
       ['LIQUIDITY', lz ? lv.views[S.liqView].side_word.toLowerCase() : 'No book', lz === 'BALANCED' ? '' : lz ? (/BID/.test(lz) ? 'up' : 'dn') : ''],
       ['VALUE', l && l.summary ? String(l.summary.value_state || '-').replace(/_/g, ' ') : '-', ''],
       ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '-').replace(/_/g, ' ') : '-', ''],
-      ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '-', ''],
+      ['OPTIONS', t && !why(t) && t.posture ? String(t.posture).replace(/_/g, ' ') : '-', ''],
       ['GAMMA', t && t.flip_relation ? ({ ABOVE: 'Above flip', AT: 'At flip', BELOW: 'Below flip' })[t.flip_relation] + notLive(t) : '-',
         t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
@@ -617,7 +625,7 @@
     var gammaWhen = t ? chainAgeLabel(t) : null;
     var gammaWhy = (t && t.levels_stale_reason) ? t.levels_stale_reason : null;
     h += t === undefined ? pill('GAMMA', '…', '')
-      : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) ? t.error : 'terrain request failed')
+      : why(t) ? pill('GAMMA', 'DOWN', 'bad', why(t))
       : pill('GAMMA', gammaWhen, t.levels_state === 'LIVE' ? 'ok' : 'warn', gammaWhy);
     host.innerHTML = h;
   }
@@ -628,7 +636,7 @@
       'Bars: <b>' + (S.barsAnswered === S.gen && S.bars.length ? 'streamed 1m bars' : '-') + '</b>',
       'Book: <b>' + esc((m && m.provenance && m.provenance.book_source) || '-') + '</b>',
       'Levels: <b>' + esc((L && L.bar_source) || '-') + '</b>',
-      'Options: <b>' + esc(t && !t.error ? (t.chain_basis || '-') + ' chain · ' + (t.strikes_used == null ? '-' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + ' contracts' : '-') + '</b>',
+      'Options: <b>' + esc(t && !why(t) ? (t.chain_basis == null ? '-' : t.chain_basis) + ' chain · ' + (t.strikes_used == null ? '-' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + ' contracts' : '-') + '</b>',
       'Clock: <b>Central</b>'
     ].map(function (x) { return '<span>' + x + '</span>'; }).join('');
   }
@@ -655,6 +663,7 @@
 
   // ------------------------------------------------------------------ lifecycle
   function start() {
+    askPanels();
     if (!onDesk()) return;
     buildToolbar();
     if (!ensureChart()) return;
@@ -675,6 +684,14 @@
     document.addEventListener('ed:view', start);
     document.addEventListener('ed:ticker', start);
     document.addEventListener('ed:book_venue', function () { if (onDesk() && S.ticker) { loadFast(); loadSlow(); } });
+    document.addEventListener('ed:scope', askPanels);   // the strikes' window is the Gamma scope's
+    document.addEventListener('ed:panel', function (e) {
+      var d = e.detail, key = PANELS[d.type];
+      if (!onDesk()) return;
+      // levels of a timeframe no longer on the chart are not drawn; levels not produced are none
+      if (d.type === 'levels:map' && (d.failed != null || d.tf === S.tf)) takePerTf('levels', d.failed != null ? null : d);
+      if (key) { S[key] = d; paintAll(); }
+    });
     document.addEventListener('ed:changed', function (e) {
       if (!onDesk() || !S.ticker) return;
       var k = e.detail.kind;

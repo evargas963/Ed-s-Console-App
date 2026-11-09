@@ -3,8 +3,8 @@
    first three stages from five already-canonical endpoints other workspaces already own -- one page, zero
    new math, zero new producers:
      DETECT  <- /api/order-flow/microstructure  (same engine the Order Flow > Book/DOM tab reads)
-     FRAME   <- /api/levels + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
-     CONFIRM <- /api/terrain                    (same regime/walls/headline the Gamma tab reads)
+     FRAME   <- the socket's `levels:desk` panel + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
+     CONFIRM <- the page's socket's `terrain:desk` panel (the levels the Gamma tab is sent)
    The Context Summary panel is plain-English arrangement of those SAME four responses (e.g.
    "is spot presently between these two already-fetched zone bounds") -- a classification of
    already-canonical values, never a new computed truth, and never a fabricated confluence
@@ -96,8 +96,10 @@
       rows, badge, d.top_outage || bs !== false ? 'stale' : 'live');
   }
 
-  function frameStage(levelsD) {
-    if (!levelsD) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'The levels request failed', '', 0, [], null);
+  function frameStage(sent) {   // the levels panel as sent: undefined (none yet), failed, or the levels
+    if (sent === undefined) return stage(2, 'td-accent-green', 'Frame — liquidity levels', '-', '', 0, [], null);
+    if (sent.failed != null) return stage(2, 'td-accent-green', 'Frame — liquidity levels', sent.failed, '', 0, [], null);
+    var levelsD = sent;
     var levels = levelsD.levels;   // always served (levels_payload)
     if (!levels.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No levels', '', 0, [], null);
     // served: levels ordered by distance to the live price (by_distance), each with its distance and side
@@ -113,8 +115,9 @@
   // a value computed from the live price, marked when that price is not live (served price_mark)
   function notLive(d) { return d && d.spot_not_live_text ? ' · ' + d.spot_not_live_text : ''; }
 
-  function confirmStage(d) {
-    if (!d) return stage(3, 'td-accent-amber', 'Confirm — options regime', 'No regime', '', 0, [], null);
+  function confirmStage(d) {   // d: the terrain panel as sent; undefined: none yet ('-')
+    if (d === undefined) return stage(3, 'td-accent-amber', 'Confirm — options regime', '-', '', 0, [], null);
+    if (d.failed != null) return stage(3, 'td-accent-amber', 'Confirm — options regime', 'No regime', d.failed, 0, [], null);
     // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
@@ -151,7 +154,7 @@
       if (loc.below) parts.push(esc(loc.below.zone_label) + ' zone below at ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
-    var walls = {};   // served: /api/levels' own rows
+    var walls = {};   // served: the levels panel's own rows
     if (levelsD && levelsD.levels) levelsD.levels.forEach(function (r) { walls[r.id] = r; });
     if (walls.put_wall && walls.call_wall && walls.put_wall.from_spot_text && walls.call_wall.from_spot_text) {
       lines.push(['Box', 'Put wall ' + walls.put_wall.from_spot_text + ', call wall ' + walls.call_wall.from_spot_text +
@@ -165,7 +168,7 @@
 
   // ---- Positioning Migration & Volume: today's per-strike net GEX$ (solid) vs yesterday's
   // (ghost outline), plus today's per-strike option volume -- the SAME real fields
-  // /api/terrain/strikes already serves to the GEX-by-Strike panel (today.{all,near,far} and
+  // the strikes panel already sends to GEX by Strike (today.{all,near,far} and
   // prior.{all,near,far}, both [strike, net_gex_1pct$, volume] rows). No new backend computation:
   // this is a second, in-context rendering of an already-canonical endpoint. ----
   var _migScope = 'all';   // 'all' | 'near' (<=7 DTE) | 'far' (monthly+) -- a DTE filter, distinct
@@ -201,34 +204,33 @@
   }
 
 
-  // The migration panel's strikes are the window the server sends (the Gamma scope, and the
-  // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope is a new
-  // read of the page (its key carries both), so no push redraws an older window.
+  // The migration panel's strikes are the window the program sends (the Gamma scope, and the
+  // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope asks the
+  // new window of its panel, and the program sends that window from then on.
   var _migPan = window.EdShell.newPan(), _migPanTicker = null;
   function migPan(tk) {   // the pan is the ticker's: a new ticker follows the price
     if (_migPanTicker !== tk) { _migPan.centre = null; _migPan.shift = 0; _migPanTicker = tk; }
     return _migPan;
   }
-  function migStrikesUrl(tk) {
-    migPan(tk);
-    return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(_migPan);
-  }
-  function wireMigration(panel, tk) {
-    wireMigrationChips(panel, tk);
+  function wireMigration(panel) {
+    wireMigrationChips(panel);
     var firstRow = panel.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(panel.querySelectorAll('.gbs-k'), panel.querySelector('.gbs-scroll'), _migPan,
-      firstRow ? firstRow.getBoundingClientRect().height : 0, load);
+      firstRow ? firstRow.getBoundingClientRect().height : 0, askPanels);
   }
 
-  function migrationSection(strikesD, terrain, spot, tk) {
-    if (!strikesD) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
-      '<div class="placeholder"><div class="sm">the per-strike request failed</div></div></div>';
+  function migrationSection(strikesD, terrain) {
+    // none sent yet for this ticker ('-'), or the program's words for why it is not drawn
+    var why = strikesD === undefined ? '-' : strikesD.failed != null ? strikesD.failed
+      : strikesD.available === false ? strikesD.reason : null;
+    if (why != null) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
+      '<div class="placeholder"><div class="sm">' + esc(why) + '</div></div></div>';
     var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
     if (!todayAll.length) {
-      var why = strikesD.levels_stale_reason;
+      var stale = strikesD.levels_stale_reason;
       return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
         '<div class="placeholder"><div class="sm">' +
-        (why ? 'no per-strike rows — ' + esc(why) : 'no per-strike gamma for this symbol yet') +
+        (stale ? 'no per-strike rows — ' + esc(stale) : 'no per-strike gamma for this symbol yet') +
         '</div></div></div>';
     }
     // served: day-over-day rows [strike, gex today, gex prior, change] and the verdicts
@@ -294,61 +296,87 @@
       '</div>';
   }
 
-  // a chip click is a new read through the page's one loader, never a second fetch beside the
-  // one in flight (whichever landed last would draw)
-  function wireMigrationChips(h, tk) {
+  // a chip picks which of the served rows are drawn: the page draws again, asking nothing
+  function wireMigrationChips(h) {
     h.querySelectorAll('[data-mig-scope]').forEach(function (b) {
       b.addEventListener('click', function () {
         var s = b.getAttribute('data-mig-scope'); if (s === _migScope) return;
-        _migScope = s; load();
+        _migScope = s; draw();
       });
     });
     var gh = h.querySelector('[data-mig-ghost]');
-    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; load(); });
+    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; draw(); });
   }
 
+  // FRAME's levels, CONFIRM's levels and the migration's rows: the `levels:desk`, `terrain:desk`
+  // and `strikes:migration` panels (server.levels, server.terrain, server.strikes) the program
+  // sends on the page's socket while Right Now is on, at once and each time the levels change;
+  // undefined: none sent yet for the ticker on screen
+  var _panels = { 'levels:desk': undefined, 'terrain:desk': undefined, 'strikes:migration': undefined }, _panelsTicker = null;
+  var _rest = null;   // the reads' answers, for its ticker
+  document.addEventListener('ed:panel', function (e) {
+    if (!(e.detail.type in _panels)) return;
+    _panels[e.detail.type] = e.detail;
+    if (!isRightNow() || !_rest || _rest.tk !== ticker()) return;
+    try { draw(); } catch (err) {   // said as the reads' own (EdL1SseGuards.show), then reported
+      window.EdShell.placeholder(host(), 'the page could not draw the answer of Right Now');
+      throw err;
+    }
+  });
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillRightNow(tk)) return;
     return window.EdL1SseGuards.show(Promise.all([
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue, signal),
-      fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
-      // the migration/volume section's window of the per-strike rows
-      fetchJson(migStrikesUrl(tk), signal),
     ]), 'Right Now', function (results) {
       if (!stillRightNow(tk)) return;
-      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
-      // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
-      var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
-      var when = (levelsD && levelsD.spot_time_ct) ? (' · last trade ' + esc(levelsD.spot_time_ct)) : '';
-      h.innerHTML =
-        '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
-        '</span><span class="fl-meta">' + (isFinite(spot) ? ('spot ' + num(spot) + when) : '') + '</span></div></div>' +
-        '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD) + confirmStage(terrain) + '</div>' +
-        contextSummary(terrain, snap, levelsD) +
-        migrationSection(strikesD, terrain, spot, tk) +
-        '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
-        'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
-        'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
-      var migEl = document.getElementById('tdMigration');
-      if (migEl) wireMigration(migEl, tk);
+      _rest = { tk: tk, results: results };
+      draw();
     }, function (words) {
       if (stillRightNow(tk)) window.EdShell.placeholder(h, words);
     });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  // every input of the read is in its key, so a change aborts the read in flight instead of
-  // queueing behind it: the ticker, the venue, the migration chips, the Gamma scope and the pan
-  function _loadKey() {
-    var tk = ticker(), pan = migPan(tk);
-    return tk + '|venue=' + window.EdShell.getState().bookVenue + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) +
-      '|scope=' + window.EdShell.getState().scope + '|pan=' + pan.centre + ',' + pan.shift;
+  function draw() {
+    var h = host();
+    if (!h || !_rest) return;
+    var tk = _rest.tk, detect = _rest.results[0], snap = _rest.results[1];
+    var strikesD = _panels['strikes:migration'], sent = _panels['terrain:desk'], levelsSent = _panels['levels:desk'];
+    // the levels drawn only as sent; none yet, or not produced, is no levels
+    var terrain = sent && sent.failed == null ? sent : null;
+    var levelsD = levelsSent && levelsSent.failed == null ? levelsSent : null;
+    // the spot is the levels panel's alone; none yet, or a null/'' spot, is absent, never 0
+    var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
+    var when = (levelsD && levelsD.spot_time_ct) ? (' · last trade ' + esc(levelsD.spot_time_ct)) : '';
+    h.innerHTML =
+      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
+      '</span><span class="fl-meta">' + (isFinite(spot) ? ('spot ' + num(spot) + when) : '') + '</span></div></div>' +
+      '<div class="td-grid">' + detectStage(detect) + frameStage(levelsSent) + confirmStage(sent) + '</div>' +
+      contextSummary(terrain, snap, levelsD) +
+      migrationSection(strikesD, terrain) +
+      '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
+      'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
+      'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
+    var migEl = document.getElementById('tdMigration');
+    if (migEl) wireMigration(migEl);
   }
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
+  // the panels Right Now shows, the migration's in its window (the Gamma scope and the pan)
+  function askPanels() {
+    var on = isRightNow();
+    window.EdShell.showPanel('levels:desk', on ? { tf: '1' } : null);
+    window.EdShell.showPanel('terrain:desk', on ? {} : null);
+    window.EdShell.showPanel('strikes:migration', on ? window.EdShell.windowParams(migPan(ticker())) : null);
+  }
+  // every input of the reads is in their key, so a change aborts the read in flight instead of
+  // queueing behind it: the ticker and the venue
   function load() {
-    if (!isRightNow()) return;
-    _loader.trigger(_loadKey());
+    if (isRightNow() && _panelsTicker !== ticker()) {   // a new ticker: nothing of the last one's
+      _panelsTicker = ticker();
+      _panels['levels:desk'] = _panels['terrain:desk'] = _panels['strikes:migration'] = undefined;
+    }
+    askPanels();
+    if (isRightNow()) _loader.trigger(ticker() + '|venue=' + window.EdShell.getState().bookVenue);
   }
 
   if (typeof document !== 'undefined') {
@@ -356,7 +384,7 @@
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:changed', load);
-    document.addEventListener('ed:scope', load);   // a new scope is a new window
+    document.addEventListener('ed:scope', askPanels);   // a new scope is a new window
     // the first read comes from ed-core.js's ed:ticker/ed:view dispatch at init
   }
 })();

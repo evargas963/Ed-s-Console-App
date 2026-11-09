@@ -47,7 +47,7 @@ SEL = "selected_expiry"
 TODAY = "front_expiry_to_todays_close"
 
 DECLARED: dict[tuple[str, str], tuple[str, str]] = {
-    # terrain payload (/api/terrain, TerrainSnapshot.to_dict) — the levels SSOT
+    # terrain payload (the terrain panel, TerrainSnapshot.to_dict) — the levels SSOT
     ("terrain", "absolute_gamma_strike"): ("max_total_gamma", FULL),
     ("terrain", "pin_candidate"): ("qualified_max_total_gamma", FULL),
     ("terrain", "net_gex_peak"): ("max_abs_net_gex", FULL),
@@ -204,7 +204,7 @@ def test_every_level_shaped_payload_name_is_declared():
     """
     chain, spot = _fixture_book()
     published = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
-    payload = published | price_relations(published, spot).to_dict()  # as /api/terrain serves it
+    payload = published | price_relations(published, spot).to_dict()  # as the terrain panel sends
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
     same = payload.get("same_day")
     assert isinstance(same, dict)
