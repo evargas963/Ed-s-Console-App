@@ -134,11 +134,6 @@ APP_DIR = str(Path(__file__).parent.resolve())
 # Its lines go to the program's one log (capture._start_log: the day's file and the window).
 log = logging.getLogger("ed_server")
 
-#: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
-#: Schwab call)
-TOKEN_PATH = token_path()
-
-
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
 #: number came from so a caller can never silently accept a lower-confidence source.
 SPOT_SOURCE_PLANE = (
@@ -731,7 +726,7 @@ def _schwab_token_creation_ts() -> tuple[float | None, str | None]:
     gives none, by its error's type, which the screen's note shows (its message names a path).
     """
     try:
-        raw = json.loads(Path(TOKEN_PATH).read_text(encoding="utf-8"))
+        raw = json.loads(Path(token_path()).read_text(encoding="utf-8"))
         return float(raw["creation_timestamp"]), None
     except (OSError, ValueError, KeyError, TypeError) as e:
         return None, f"token file unreadable ({type(e).__name__})"
@@ -885,14 +880,13 @@ def _gamma_surface_wanted(tk: str) -> bool:
 
 #: Per-ticker revision of PublishedLevels.gamma_surface, bumped on every publication and restamp
 #: (the page redraws its table for a new one).
-#: It counts on from the console's start time, so a page that drew a publication of the console
-#: before a restart sees every publication of the new one as new.
+#: A ticker's first counts on from its time in milliseconds (`now`), so a page that drew a
+#: publication of the console before a restart sees every publication of the new one as new.
 _gamma_surface_seq: dict[str, int] = {}
-_GAMMA_SURFACE_SEQ_START = int(time_et.now() * 1000)
 
 
-def _next_gamma_surface_seq(tk: str) -> int:
-    n = _gamma_surface_seq.get(tk, _GAMMA_SURFACE_SEQ_START) + 1
+def _next_gamma_surface_seq(tk: str, now: float) -> int:
+    n = _gamma_surface_seq.get(tk, int(now * 1000)) + 1
     _gamma_surface_seq[tk] = n
     return n
 
@@ -1116,7 +1110,7 @@ def restamp_open_surfaces(now: float) -> None:
             held = set(symbols) & set(held_now)
             live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
             stamped = _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
-            stamped["surface_seq"] = _next_gamma_surface_seq(tk)
+            stamped["surface_seq"] = _next_gamma_surface_seq(tk, now)
             _terrain_cache[tk] = replace(levels, gamma_surface=stamped)
             bumped.append(tk)
     watching = set(push_changes.watched())
@@ -1467,7 +1461,7 @@ def _publish_levels(
         surface = _stamp_gamma_surface_cell_stream_state(
             projected, streamed, feed_live, held, at.timestamp()
         )
-        surface["surface_seq"] = _next_gamma_surface_seq(tk)
+        surface["surface_seq"] = _next_gamma_surface_seq(tk, at.timestamp())
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,

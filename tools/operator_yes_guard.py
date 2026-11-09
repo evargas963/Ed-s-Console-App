@@ -1,5 +1,6 @@
-"""OPERATOR YES GUARD: production actions and the operator's yes (CLAUDE.md rule 5). PreToolUse for
-shell commands. Each command gets one answer, the strictest of its statements':
+"""OPERATOR YES GUARD: production actions and the operator's yes (CLAUDE.md rule 5).
+
+PreToolUse for shell commands. Each command gets one answer, the strictest of its statements':
 
   * A start or a clean stop of the capture daemon or the console passes at any hour (operator
     2026-11-03: restarts in regular hours need no yes): the agent posts a notice, stops cleanly
@@ -9,10 +10,9 @@ shell commands. Each command gets one answer, the strictest of its statements':
     process without its shutdown, so what the daemon holds in memory is lost. The clean stop is
     `python launch.py stop`. A stop by process id or image name is judged by what each target
     process runs (its command line) and where (the production checkout): a stop of nothing in
-    production passes; a target whose
-    command line cannot be read is put to the operator. A stop whose targets are chosen only when
-    it runs (a variable, a pipe) is refused when the command names the daemon or the console, and
-    put to the operator while either runs.
+    production passes; a target whose command line cannot be read is put to the operator. A stop
+    whose targets are chosen only when it runs (a variable, a pipe) is refused when the command
+    names the daemon or the console, and put to the operator while either runs.
   * A stop or restart of the machine is put to the operator; a merge is not (AGENTS.md Authority).
 
 Limits: shell commands are judged on the statements they run, as tools/shell_parse.read reads them
@@ -58,8 +58,9 @@ _NAMES = re.compile(
 
 
 def _printed(st: Statement) -> bool:
-    """Whether a PowerShell statement's program word is a quoted phrase or a here-string: a string
-    PowerShell prints, not a program (bash runs a quoted program path).
+    """Return whether a PowerShell statement's program word is a quoted phrase or a here-string.
+
+    Such a word is a string PowerShell prints, not a program (bash runs a quoted program path).
     """
     raw0 = st.raw[0]
     return st.powershell and (
@@ -73,8 +74,10 @@ def _printed(st: Statement) -> bool:
 
 
 def _kills(st: Statement) -> bool:
-    """Whether the statement `st` ends a process from outside: a stopper, a .Kill() call, wmic's
-    delete or terminate, CIM/WMI's Terminate, a removed process object.
+    """Return whether the statement `st` ends a process from outside.
+
+    The ways are a stopper, a .Kill() call, wmic's delete or terminate, CIM/WMI's Terminate, a
+    removed process object.
     """
     name = st.program
     args = [a.lower() for a in st.words[1:]]
@@ -94,11 +97,13 @@ LISTINGS = ("get-process", "gps", "ps", "get-ciminstance", "gcim", "get-wmiobjec
 
 
 def _targets(st: Statement, upstream: list[str] | None) -> tuple[list[psutil.Process], bool]:
-    """The running processes a kill statement `st` reaches by the ids and image names it names
-    (a stopper's bare ids and names among them), or that the listing piped straight into it
-    names (`upstream`, its words as written: Get-Process, Get-CimInstance ...); and whether it
-    also reaches processes chosen only when it runs: a target held in a variable ($ids,
-    $_.ProcessId), a pipe from anything but a listing (a filter), or none named at all.
+    """Return the running processes a kill statement `st` reaches, and whether it reaches more.
+
+    The processes are those it reaches by the ids and image names it names (a stopper's bare ids
+    and names among them), or that the listing piped straight into it names (`upstream`, its words
+    as written: Get-Process, Get-CimInstance ...). The flag is whether it also reaches processes
+    chosen only when it runs: a target held in a variable ($ids, $_.ProcessId), a pipe from
+    anything but a listing (a filter), or none named at all.
     """
     text = st.text
     later = any(t.startswith("$") for t in st.words[1:] if upstream is None) or (
@@ -137,10 +142,11 @@ def _production_running() -> bool:
 
 
 def _production(proc: psutil.Process) -> bool | None:
-    """Whether `proc` is the daemon, the console or launch.py: its command line carries one of
-    their marks and it runs in the production checkout (runtime_layout.RUNTIME_ROOT, which every
-    worktree resolves to; a worktree's test console is not production). None when either cannot
-    be read.
+    """Return whether `proc` is the daemon, the console or launch.py.
+
+    It is when its command line carries one of their marks and it runs in the production checkout
+    (runtime_layout.runtime_root(), which every worktree resolves to; a worktree's test console is
+    not production). None when either cannot be read.
     """
     try:
         line, cwd = " ".join(proc.cmdline()).lower(), Path(proc.cwd()).resolve()
@@ -148,11 +154,13 @@ def _production(proc: psutil.Process) -> bool | None:
         return False
     except psutil.AccessDenied:
         return None
-    return any(m in line for m in PRODUCTION_MARKS) and cwd == runtime_layout.RUNTIME_ROOT.resolve()
+    return (
+        any(m in line for m in PRODUCTION_MARKS) and cwd == runtime_layout.runtime_root().resolve()
+    )
 
 
 def decide(payload: dict) -> tuple[str, list[str]]:
-    """The answer to the action in `payload` (PASS, ASK or DENY), with its reasons."""
+    """Return the answer to the action in `payload` (PASS, ASK or DENY), with its reasons."""
     if payload.get("tool_name") not in BASH_TOOLS:
         return PASS, []
     cmd = payload["tool_input"]["command"]  # always sent for a shell tool; missing: refused
