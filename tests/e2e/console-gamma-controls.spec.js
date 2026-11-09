@@ -2,12 +2,13 @@
 /**
  * TICKER / EXPIRY / MEASURE controls — the value IS the control (real dropdowns, not metadata chips).
  * Proves: one selected-symbol state (dropdown <-> watchlist <-> header <-> panels); the expiry list
- * comes from /api/expiries (never hard-coded); All Expirations shows every canonical column; a single
+ * comes from the page's socket (never hard-coded); All Expirations shows every canonical column; a single
  * expiry filters the heatmap to that column; an old expiry invalid for a new ticker fails safe to All;
  * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
  */
 const { test, expect } = require('@playwright/test');
-const { expiriesAnswer } = require('./fixtures/expiries');
+const { expiriesAnswer, pushExpiries } = require('./fixtures/expiries');
+const { expiriesFrame, served } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 const { watchRequests } = require('./fixtures/settled');
 
@@ -43,10 +44,10 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { spot: spot });
     else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { spot: spot });
     else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/expiries')) body = expiriesAnswer(EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 });
     else if (url.includes('/api/chain')) body = { ticker: dec, spot: spot, expiry: EXPS[0], status: 'ok',
       scope: { kind: 'complete_single_expiry' }, contracts: [] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await pushExpiries(page, EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 });
 }
 
 test.describe('ticker / expiry / measure controls', () => {
@@ -67,7 +68,7 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#measureSel')).toHaveValue('gex');
   });
 
-  test('expiry options come from /api/expiries; All Expirations is the default', async ({ page }) => {
+  test('expiry options come from the page\'s socket; All Expirations is the default', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const opts = page.locator('#expSel option');
     await expect(opts).toHaveCount(1 + EXPS.length);           // All + each canonical expiry
@@ -76,28 +77,27 @@ test.describe('ticker / expiry / measure controls', () => {
   });
 
   test('a new chain pushed for the ticker on screen replaces the expiry list (2026-10-08: yesterday\'s list stayed)', async ({ page }) => {
-    // The console held yesterday's chain when the page opened; today's chain lands, the console
-    // pushes `chain` on /api/changes, and /api/expiries serves today's list.
-    const YESTERDAY = { expiries: ['2026-10-07', '2026-10-08'],
-      labels: { '2026-10-07': '10/07/2026 · 0DTE', '2026-10-08': '10/08/2026 · 1DTE' } };
-    const TODAY = { expiries: ['2026-10-08', '2026-10-09'],
-      labels: { '2026-10-08': '10/08/2026 · 0DTE', '2026-10-09': '10/09/2026 · 1DTE' } };
-    let served = YESTERDAY, listed;
-    const first = new Promise((resolve) => { listed = resolve; });
-    await page.route('**/api/expiries**', (route) => {
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served) });
-      listed();
-    });
-    let pushes = 0;
-    await page.route('**/api/changes**', async (route) => {
-      pushes += 1;
-      await first;                                          // the page holds yesterday's list
-      served = TODAY;                                        // today's chain reached the console
-      route.fulfill({ status: 200, contentType: 'text/event-stream',
-        body: pushes === 1 ? 'event: chain\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
+    // The program held yesterday's chain when the page subscribed; today's chain lands, and the
+    // program pushes today's list on the page's socket, with no request from the page.
+    const YESTERDAY = expiriesAnswer(['2026-10-07', '2026-10-08'], { '2026-10-07': 0, '2026-10-08': 1 });
+    const TODAY = expiriesAnswer(['2026-10-08', '2026-10-09'], { '2026-10-08': 0, '2026-10-09': 1 });
+    const asked = [];
+    page.on('request', (r) => { if (r.url().includes('/api/expiries')) asked.push(r.url()); });
+    let program;
+    await page.routeWebSocket(/\/ws$/, (ws) => {
+      program = ws;
+      ws.onMessage((m) => {
+        const req = JSON.parse(String(m));
+        if (req.op !== 'subscribe') return;
+        ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
+        ws.send(expiriesFrame(req.ticker, YESTERDAY));
+      });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#expSel option')).toHaveText(['All Expirations', '10/07/2026 · 0DTE', '10/08/2026 · 1DTE']);
+    program.send(expiriesFrame('SPY', TODAY));                // today's chain reached the program
     await expect(page.locator('#expSel option')).toHaveText(['All Expirations', '10/08/2026 · 0DTE', '10/09/2026 · 1DTE']);
+    expect(asked).toEqual([]);
   });
 
   test('selecting one expiry filters the heatmap to that column; All restores every column', async ({ page }) => {
@@ -214,5 +214,49 @@ test.describe('ticker / expiry / measure controls', () => {
     expect(tickered.length).toBeGreaterThan(0);
     expect(tickered.filter((u) => !/[?&]ticker=QQQ(&|$)/.test(u))).toEqual([]);      // no AAPL (or SPY) request survives the switch
     expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('QQQ');
+  });
+
+  // An expiry belongs to its ticker: right after a switch, before the new ticker's list is known,
+  // the page asked for the NEW ticker's chain and surface at the OLD ticker's expiry.
+  test('a ticker switch reads no old expiry; the new list re-applies a still-valid one, else All', async ({ page }) => {
+    const LIST = expiriesAnswer(EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 });
+    const IWM_LIST = expiriesAnswer(['2026-09-18'], { '2026-09-18': 9 });
+    const PICK = '2026-09-12';
+    const read = [];   // [ticker, expiry] of every read that names both
+    page.on('request', (r) => {
+      const q = new URL(r.url()).searchParams;
+      if (q.get('ticker') && q.get('expiry')) read.push([q.get('ticker'), q.get('expiry')]);
+    });
+    const requests = watchRequests(page);
+    let releaseQqq;
+    const qqqHeld = new Promise((resolve) => { releaseQqq = resolve; });
+    await page.routeWebSocket(/\/ws$/, (ws) => {
+      ws.onMessage(async (m) => {
+        const req = JSON.parse(String(m));
+        if (req.op !== 'subscribe') return;
+        ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
+        if (req.ticker === 'QQQ') await qqqHeld;   // QQQ's list is held until the test releases it
+        ws.send(expiriesFrame(req.ticker, req.ticker === 'IWM' ? IWM_LIST : LIST));
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#expSel option[value="' + PICK + '"]')).toHaveCount(1);
+    await page.locator('#expSel').selectOption(PICK);
+    await expect.poll(() => read.some(([t, e]) => t === 'SPY' && e === PICK)).toBe(true);
+    await page.locator('#subnav .tab', { hasText: 'Chain' }).click();            // the Chain tab reads at the expiry too
+    await page.locator('.wl-row .wl-sym', { hasText: 'QQQ' }).click();
+    await expect(page.locator('#chTicker')).toHaveText('QQQ');
+    await requests.settled();                                                       // every read the switch made
+    expect(read.filter(([t]) => t === 'QQQ')).toEqual([]);                         // none at SPY's expiry, or any
+    await expect(page.locator('#expSel')).toHaveValue('');
+    releaseQqq();                                                                   // QQQ's list lists PICK: kept
+    await expect(page.locator('#expSel')).toHaveValue(PICK);
+    await expect.poll(() => read.some(([t, e]) => t === 'QQQ' && e === PICK)).toBe(true);
+    await page.locator('.wl-row .wl-sym', { hasText: 'IWM' }).click();             // IWM's list does not: All
+    await expect(page.locator('#chTicker')).toHaveText('IWM');
+    await expect(page.locator('#expSel option[value="2026-09-18"]')).toHaveCount(1);
+    await expect(page.locator('#expSel')).toHaveValue('');
+    await requests.settled();
+    expect(read.filter(([t, e]) => t === 'IWM' && e === PICK)).toEqual([]);
   });
 });

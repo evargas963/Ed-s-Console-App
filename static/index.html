@@ -747,7 +747,7 @@
       <button class="vtab" data-view="multimap">Multi-Map</button>
       <div class="ctrls">
         <label class="ctrl ctrl-sym" title="Active instrument — type any Schwab symbol and press Enter; the watchlist is not changed"><input id="symInput" list="symList" aria-label="Symbol" autocomplete="off" spellcheck="false" maxlength="13" placeholder="SYMBOL"><datalist id="symList"></datalist></label>
-        <label class="ctrl" title="Expiration filter (from /api/expiries)"><select id="expSel" aria-label="Expiration"><option value="">All Expirations</option></select><span class="cv"></span></label>
+        <label class="ctrl" title="Expiration filter (the ticker's listed expiries, pushed on each new chain)"><select id="expSel" aria-label="Expiration"><option value="">All Expirations</option></select><span class="cv"></span></label>
         <label class="ctrl" title="Measure"><select id="measureSel" aria-label="Measure">
           <option value="gex">GEX</option><option value="dex">DEX</option>
           <option value="oi">Open Interest</option><option value="volume">Volume</option>
@@ -856,7 +856,7 @@
         </div>
         </div><!-- /sub-pane gamma -->
 
-        <!-- OPTIONS / CHAIN subview — the full vendor chain ladder (/api/chain + /api/expiries) -->
+        <!-- OPTIONS / CHAIN subview — the full vendor chain ladder (/api/chain + the socket's expiries) -->
         <div class="sub-pane" data-sub-pane="chain">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="chTicker">-</span><span class="t">Option Chain</span>
