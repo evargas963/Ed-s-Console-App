@@ -919,8 +919,20 @@ lines_matching(
     "regex",
     skip_comment=True,
 )
+#: an em dash standing where a value is drawn (rule 5 draws '-'): a string that is only the dash,
+#: an element whose text is only the dash, or an element's text that ends in one after a label;
+#: a dash inside a sentence is prose, not a value
 lines_matching(
-    PAGE_ALL, [("\u2014", "page draws an em dash where rule 5 says '-'")], S, "5", "regex"
+    PAGE_ALL,
+    [
+        (
+            "(['\"`])\u2014\\1|>\\s*\u2014\\s*<|>[^<>]*\\s\u2014\\s*<",
+            "page draws an em dash where rule 5 says '-'",
+        )
+    ],
+    S,
+    "5",
+    "regex",
 )
 CLOCK = re.compile(r"(?<![\d.:\[])(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?(?![\d:\]])")
 
