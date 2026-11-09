@@ -80,8 +80,8 @@ def last_message(transcript: Path) -> str:
     """Return the text of the transcript's last assistant entry (JSON lines).
 
     "" when that entry carries no text (a turn ending on a tool call), so an older message never
-    stands in for it. The end of
-    the file is read first; the whole file only when the end holds no assistant entry.
+    stands in for it. The end of the file is read first; the whole file only when the end holds no
+    assistant entry.
     """
     with transcript.open("rb") as f:
         size = f.seek(0, 2)
