@@ -1287,6 +1287,15 @@ def _closed_since(now: datetime, product: str) -> datetime | None:
     return options_closed_at(now, product) if option_market_open(now, product) is False else None
 
 
+def _close_capture(tk: str, closed: datetime) -> list | None:
+    """Return the ticker's stored close values, or None when none is stored.
+
+    Its two newest market days' captures, when the newest was taken at or after `closed`.
+    """
+    stored = last_capture_per_day(get_db().db_path, tk, 2)
+    return stored if stored and stored[0]["ts_utc"] >= closed.timestamp() else None
+
+
 def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
     """Return the price a publication of `tk`'s levels is computed at: (price, source, time).
 
@@ -1346,14 +1355,12 @@ def _publish_levels(
     product = option_close_product(tk)
     closed = _closed_since(now, product)
     if closed is not None:
-        if previous is not None and previous.computed_ts_utc >= closed.timestamp():
+        # the close values stand, and a value pushed after the close (no chain) changes nothing
+        if previous is not None and (
+            previous.computed_ts_utc >= closed.timestamp() or (chain is None and not captures)
+        ):
             return previous.snap
-        if chain is None and not captures:
-            return None if previous is None else previous.snap
-        if not captures:
-            stored = last_capture_per_day(get_db().db_path, tk, 2)
-            if stored and stored[0]["ts_utc"] >= closed.timestamp():
-                captures = stored
+        captures = captures or _close_capture(tk, closed)
     capture = captures[0] if captures else None
     if capture is not None:
         chain, fetched_ts = capture["contracts"], capture["ts_utc"]
@@ -1391,10 +1398,9 @@ def _publish_levels(
     # a streamed contract's open interest and volume are the stream's, every other the chain's,
     # inside the window; the close values are the chain as sent. The cell stamp says whether that
     # stream is live.
-    if closed is None:
-        priced, n_live = overlay_streamed_contract_fields(chain, streamed, held)
-    else:
-        priced, n_live = chain, 0
+    priced, n_live = (
+        overlay_streamed_contract_fields(chain, streamed, held) if closed is None else (chain, 0)
+    )
     live_syms = _overlaid_symbols(chain, priced)
     pushed_ts = [
         ts
