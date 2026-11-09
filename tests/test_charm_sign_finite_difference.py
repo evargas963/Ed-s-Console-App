@@ -68,9 +68,10 @@ def test_bs_charm_sign_matches_finite_difference(label, S, dte):
 
 
 def test_near_expiry_minutes_to_close_matches_finite_difference():
-    """RC-179 LOCK 3 — the regime the retired 0.5-day floor used to flatten. One hour to the
-    bell: analytic charm must match a finite-difference of BS delta over the final minutes,
-    in MAGNITUDE, not just sign. This is the test that would have caught the floor.
+    """RC-179 LOCK 3 — the regime the retired 0.5-day floor used to flatten.
+
+    One hour to the bell: analytic charm must match a finite-difference of BS delta over the
+    final minutes, in MAGNITUDE, not just sign. This is the test that would have caught the floor.
     """
     T_1h = 1.0 / (24.0 * 365.0)
     dt = 1.0 / (60.0 * 24.0 * 365.0)  # one minute of calendar time
@@ -88,8 +89,10 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
 
 
 def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
-    """RC-211: put-call parity kills any call/put vanna split — same strike/expiry/IV must
-    aggregate the SAME per-contract vanna into both bucket sides (splits come from OI only).
+    """RC-211: put-call parity kills any call/put vanna split.
+
+    Same strike/expiry/IV must aggregate the SAME per-contract vanna into both bucket sides
+    (splits come from OI only).
     """
     # valued 30 days before a fixed expiry Schwab's /markets answers (an input: the date never
     # ages out)
@@ -124,7 +127,8 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
 
 
 def test_vanna_uses_the_single_iv_conversion_authority_f7():
-    """The per-strike vanna converts Schwab IV through schwab_iv_to_sigma, the ONE authority:
+    """The per-strike vanna converts Schwab IV through schwab_iv_to_sigma, the ONE authority.
+
     Schwab's volatility is a PERCENT (measured 2026-09-27 on 49,244 contracts, min 7.967), so
     20.0 is sigma 0.20 -- equal to bs_vanna at sigma 0.20 -- and 0.20 is 0.2%, not 20%.
     """

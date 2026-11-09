@@ -48,7 +48,7 @@ def _published(out) -> dict:
 
 
 def _bars(session: date, n: int = 120) -> list:
-    """A real-shaped RTH series on a real trading day, plus a prior session and overnight."""
+    """Return a real-shaped RTH series on a real trading day, plus a prior session and overnight."""
     out = []
     for day_off, start_h in ((1, 9), (0, 9)):  # prior session, then this one
         d = session - timedelta(days=day_off)
@@ -114,8 +114,9 @@ def test_premarket_carries_every_phase2a_level_unchanged():
 
 
 def test_the_live_builder_before_the_open_carries_the_snapshot():
-    """Before the session's open the live builder returns the premarket shape, from the same
-    snapshot (ONE-09: no recompute path remains).
+    """Before the session's open the live builder returns the premarket shape.
+
+    From the same snapshot (ONE-09: no recompute path remains).
     """
     session = most_recent_trading_day_et()
     canon = _canonical(session, _bars(session))

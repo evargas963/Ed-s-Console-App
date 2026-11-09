@@ -23,7 +23,9 @@ def _forget(*tickers: str) -> None:
 
 
 def test_the_levels_page_carries_each_levels_time():
-    """Saturday 2026-10-03 12:00 ET. SPY's VWAP keeps its price, and the time beside its age is
+    """Saturday 2026-10-03 12:00 ET.
+
+    SPY's VWAP keeps its price, and the time beside its age is
     the snapshot's time. The market being closed does not remove either.
     """
     closed = datetime(2026, 10, 3, 12, 0, tzinfo=ET)
@@ -48,11 +50,12 @@ def test_the_levels_page_carries_each_levels_time():
     ],
 )
 def test_the_overnight_levels_name_the_sessions_they_span(now, window):
-    """SPY's overnight high and low name the sessions their bars span, from the prior session
-    Schwab's daily candles name (real_pricehistory_spy_tsla_2026_10_07.json). Saturday
-    2026-10-03: Thursday's regular close to Friday's regular open. Thursday 2026-10-01, the first
-    day the bars hold: Schwab's candle of Wednesday 09-30 makes it the prior session, though no
-    bar of it is held.
+    """SPY's overnight high and low name the sessions their bars span.
+
+    From the prior session Schwab's daily candles name
+    (real_pricehistory_spy_tsla_2026_10_07.json). Saturday 2026-10-03: Thursday's regular close
+    to Friday's regular open. Thursday 2026-10-01, the first day the bars hold: Schwab's candle of
+    Wednesday 09-30 makes it the prior session, though no bar of it is held.
     """
     _forget("SPY", "TSLA")
     try:

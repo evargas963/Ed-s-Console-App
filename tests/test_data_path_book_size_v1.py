@@ -6,9 +6,10 @@ from app.options.order_flow import engine as ofe
 
 
 def test_the_book_top_keeps_every_digit_of_size():
-    """Bid size and ask size are the counts Schwab sent. The depth ladder already keeps them;
-    the top does too. Cutting a size to a whole number happens on the screen, and the
-    microprice is weighted by the size Schwab sent.
+    """Bid size and ask size are the counts Schwab sent.
+
+    The depth ladder already keeps them; the top does too. Cutting a size to a whole number
+    happens on the screen, and the microprice is weighted by the size Schwab sent.
     """
     bid, ask, bid_size, ask_size = 10.0, 11.0, 10.6, 3.2
     m = ofe.compute_book_microstructure(

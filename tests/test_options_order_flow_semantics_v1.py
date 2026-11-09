@@ -1,4 +1,6 @@
-"""Option messages, Schwab to the console, through the real code: the daemon's bus
+"""Option messages, Schwab to the console, through the real code.
+
+The daemon's bus
 (capture.Daemon) and the console's reader of it in the same program
 (streaming.start_order_flow_stream), the console's state (app.options.order_flow.state), and the
 daemon's status (live_market_plane).
@@ -47,10 +49,11 @@ def _message(m: dict) -> tuple[str, dict]:
 
 
 def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
-    """The daemon publishes each message Schwab sent on its bus; the console, in the same
-    program, reads that bus and keeps each contract's newest values as sent: every option
-    contract's last BID_PRICE and ASK_PRICE (its top of book), and the option book Schwab sent
-    last.
+    """The daemon publishes each message Schwab sent on its bus.
+
+    The console, in the same program, reads that bus and keeps each contract's newest values as
+    sent: every option contract's last BID_PRICE and ASK_PRICE (its top of book), and the option
+    book Schwab sent last.
     """
     rows = [
         m for m in _MIX if m["service"] in ("LEVELONE_OPTIONS", "LEVELONE_EQUITIES", "OPTIONS_BOOK")
@@ -101,8 +104,9 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
 
 
 def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
-    """The option rule moves off a contract (the daemon's status no longer holds it): the last
-    bid stays, and the Flow panel marks the contract NOT STREAMED.
+    """The option rule moves off a contract (the daemon's status no longer holds it).
+
+    The last bid stays, and the Flow panel marks the contract NOT STREAMED.
     """
     m = next(m for m in _MIX if m["service"] == "LEVELONE_OPTIONS" and "BID_PRICE" in m["item"])
     sym = m["item"]["key"]

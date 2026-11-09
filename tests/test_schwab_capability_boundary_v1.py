@@ -38,8 +38,10 @@ SCHWAB_ENV = ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET", "ED_CI_OFFLINE")
 
 
 def _blocked(**env: str) -> bool:
-    """config.schwab_live_blocked_for in a fresh interpreter whose environment holds exactly
-    `env` of the Schwab settings (each test states the situation it is testing).
+    """config.schwab_live_blocked_for in a fresh interpreter, with exactly `env` set.
+
+    Its environment holds exactly `env` of the Schwab settings (each test states the situation
+    it is testing).
     """
     base = {k: v for k, v in os.environ.items() if k not in SCHWAB_ENV}
     done = subprocess.run(
@@ -63,8 +65,9 @@ def _blocked(**env: str) -> bool:
 
 
 def test_absent_credentials_block_live_schwab():
-    """PROOF 4a. Absent credentials block: with none, no client is built and no call goes out
-    unauthenticated.
+    """PROOF 4a. Absent credentials block.
+
+    With none, no client is built and no call goes out unauthenticated.
     """
     assert _blocked() is True, "no credentials must block live Schwab"
     assert schwab_live_blocked_for("", "") is True
@@ -93,7 +96,9 @@ def test_an_unavailable_capability_cannot_serve_live_data():
 
 
 def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
-    """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which. Schwab is
+    """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which.
+
+    Schwab is
     the capture daemon's (the console makes no Schwab call): its heartbeat says whether its Schwab
     socket is open and, when not, why, in its own words (the real daemon's status here); no
     current heartbeat is UNAVAILABLE, never AVAILABLE.

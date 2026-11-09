@@ -1,5 +1,6 @@
-"""The Order Flow book panel's Playwright stubs for a closed market and a feed down are what the
-route serves.
+"""The Order Flow book panel's Playwright stubs for a closed market and a feed down are served.
+
+They are what the route serves.
 
 tests/e2e/console-order-flow-heatmap.spec.js and tests/e2e/console-trade-desk.spec.js draw
 tests/e2e/fixtures/order_flow_book_closed_payload.json and order_flow_book_offline_payload.json.
@@ -48,9 +49,10 @@ _CLOSED = datetime.fromisoformat("2026-10-23T22:00:00-04:00").timestamp()
 
 
 def build_book_closed_payload(feed_down: bool = False) -> dict:
-    """The route's NYSE_BOOK payload for SPY at _CLOSED, from the real book and quotes: the daemon's
-    connection up (NOT LIVE, the market closed), or ended after its row arrived (`feed_down`:
-    OFFLINE).
+    """Build the route's NYSE_BOOK payload for SPY at _CLOSED, from the real book and quotes.
+
+    The daemon's connection is up (NOT LIVE, the market closed), or ended after its row arrived
+    (`feed_down`: OFFLINE).
     """
     book = json.loads((_FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
@@ -102,8 +104,10 @@ _E2E_ROWS = _E2E_FIXTURE.with_name("price_rows_live.json")
 
 
 def _row_after(ticker: str, messages: list, at: float) -> dict:
-    """The daemon's price row for `ticker` at `at` (live_price_rows.price_row) after its real
-    messages, the daemon holding it: what the daemon's price socket pushes to the page.
+    """Return the daemon's price row for `ticker` at `at` after its real messages.
+
+    The row is live_price_rows.price_row's, the daemon holding it: what the daemon's price socket
+    pushes to the page.
     """
     try:
         lmp.record_feed_heartbeat(
@@ -119,9 +123,10 @@ def _row_after(ticker: str, messages: list, at: float) -> dict:
 
 
 def build_price_rows() -> dict:
-    """Ticker -> the daemon's live row: SPY's at _RTH after its 2026-10-23 messages, and $SPX's at
-    _SPX_RTH after its 2026-10-19 09:30 message
-    (tests/fixtures/real_security_status_2026_10_19.json).
+    """Ticker -> the daemon's live row.
+
+    SPY's at _RTH after its 2026-10-23 messages, and $SPX's at _SPX_RTH after its 2026-10-19
+    09:30 message (tests/fixtures/real_security_status_2026_10_19.json).
     """
     spy = json.loads((_FX / "real_spy_level_one_2026_10_23.json").read_text(encoding="utf-8"))[
         "messages"
@@ -137,8 +142,10 @@ def build_price_rows() -> dict:
 
 
 def write_book_e2e_fixture() -> None:
-    """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
-    hold them (tests/conftest.py), then the route's payload written to the e2e fixture.
+    """Regeneration utility (never called by a test).
+
+    Schwab's /markets answers held as the tests hold them (tests/conftest.py), then the route's
+    payload written to the e2e fixture.
     """
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
@@ -165,9 +172,10 @@ def _same(fixture, live):
 
 
 def test_the_closed_market_book_fixture_is_the_route_contract():
-    """The committed Playwright fixture is what the route serves for the real book and quote at
-    22:00 ET, every key and value: the top of book and the book NOT LIVE, outside Schwab's market
-    hours.
+    """The committed Playwright fixture is what the route serves for the real book and quote.
+
+    At 22:00 ET, every key and value: the top of book and the book NOT LIVE, outside Schwab's
+    market hours.
     """
     fixture = json.loads(_E2E_FIXTURE.read_text(encoding="utf-8"))
     live = build_book_closed_payload()
@@ -183,8 +191,9 @@ def test_the_closed_market_book_fixture_is_the_route_contract():
 
 
 def test_the_live_price_rows_fixture_is_the_daemons_rows():
-    """The committed price rows the desk's push-outage test draws are the daemon's own rows for
-    SPY's and $SPX's real messages in regular hours, every key and value: LIVE.
+    """The committed price rows the desk's push-outage test draws are the daemon's own rows.
+
+    For SPY's and $SPX's real messages in regular hours, every key and value: LIVE.
     """
     fixture = json.loads(_E2E_ROWS.read_text(encoding="utf-8"))
     live = build_price_rows()
@@ -199,8 +208,9 @@ def test_the_live_price_rows_fixture_is_the_daemons_rows():
 
 
 def test_the_feed_down_book_fixture_is_the_route_contract():
-    """The same with the daemon's connection ended: the last top of book stands, top and book
-    OFFLINE.
+    """The same with the daemon's connection ended.
+
+    The last top of book stands, top and book OFFLINE.
     """
     fixture = json.loads(_E2E_OFFLINE.read_text(encoding="utf-8"))
     live = build_book_closed_payload(feed_down=True)

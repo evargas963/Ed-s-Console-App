@@ -1,5 +1,7 @@
-"""A checkout's HEAD now (server.checkout_head; for the app's own checkout, /api/build's
-repository_state_now.repo_head_now) is read from the checkout's git files, the same commit git
+"""A checkout's HEAD now is read from the checkout's git files, the same commit git names.
+
+The HEAD now is server.checkout_head; for the app's own checkout, /api/build's
+repository_state_now.repo_head_now. It is read from the checkout's git files, the same commit git
 itself names, for each layout a checkout of this repo has: a clone (its branch's commit in a loose
 ref, or packed into packed-refs), a worktree (its own HEAD, the refs in the shared git directory)
 and a detached HEAD. Real git repositories made by git in a temporary folder; git's own answer

@@ -25,8 +25,9 @@ _TSLA_EXPIRY = _FIXTURE["expiry"]
 
 
 def test_write_skips_missing_completeness_basis_fail_closed(tmp_path):
-    """A row with no stated basis for its completeness claim would be worse than no row —
-    a caller trusts what THIS table alone claims.
+    """A row with no stated basis for its completeness claim would be worse than no row.
+
+    A caller trusts what THIS table alone claims.
     """
     db_path = tmp_path / "cap.db"
     result = store_capture(
@@ -43,9 +44,10 @@ def test_write_skips_missing_completeness_basis_fail_closed(tmp_path):
 
 
 def test_persisted_chain_json_is_actually_gzip_compressed_on_disk(tmp_path):
-    """RC-REHAB-3: the whole point of wiring json_blob_codec in here is that the bytes on
-    disk are smaller than raw JSON -- prove it directly against the stored column, not just
-    that round-tripping through the public functions still works.
+    """RC-REHAB-3: the stored chain's bytes on disk are smaller than raw JSON.
+
+    That is the whole point of wiring json_blob_codec in here -- prove it directly against the
+    stored column, not just that round-tripping through the public functions still works.
     """
     db_path = tmp_path / "cap.db"
     store_capture(

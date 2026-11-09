@@ -63,8 +63,10 @@ def test_profile_uses_dealer_sign_convention() -> None:
 
 
 def test_flip_is_interpolated_within_the_profile_span() -> None:
-    """RC-467: the real chain MUST yield a flip - the old `if flip is not None` guard let
-    a flip-always-None regression pass silently while asserting nothing. MEASURED on this
+    """RC-467: the real chain MUST yield a flip.
+
+    The old `if flip is not None` guard let a flip-always-None regression pass silently while
+    asserting nothing. MEASURED on this
     fixture at its capture time: 241 profile points, 1 sign crossing, flip = 779.03, inside
     the span. Existence is pinned; the exact value is not (it moves with vol/time inputs) -
     span containment is the invariant.
@@ -169,8 +171,9 @@ def test_flip_none_when_one_signed():
 
 
 def test_flip_zero_touching_profile_start_is_the_boundary():
-    """Cursor audit 2026-07-20: a profile STARTING at exactly zero returned None —
-    both strict-sign conditions are false at v0==0, so the boundary vanished.
+    """Cursor audit 2026-07-20: a profile STARTING at exactly zero returned None.
+
+    Both strict-sign conditions are false at v0==0, so the boundary vanished.
     """
     assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 1.0), (120.0, 2.0)], 105.0) == 100.0
     assert gamma_flip_from_profile([(100.0, 0.0), (110.0, -1.0)], 105.0) == 100.0
@@ -242,8 +245,9 @@ def test_unavailable_on_empty_or_bad_inputs():
 
 
 def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
-    """RC-357: share = sum|0DTE net_gex_1pct| / sum|all net_gex_1pct|; None when the
-    full book is empty or has no measurable gamma — never a fabricated 0%.
+    """RC-357: share = sum|0DTE net_gex_1pct| / sum|all net_gex_1pct|.
+
+    None when the full book is empty or has no measurable gamma — never a fabricated 0%.
     """
     all_book = {
         700.0: {"net_gex_1pct": 6e9},
@@ -258,8 +262,10 @@ def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
 
 
 def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
-    """RC-358: RR = IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out (the published
-    fixed tenor; 2026-09-27), tolerance-gated; an unusable wing yields None.
+    """RC-358: RR = IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out.
+
+    That is the published fixed tenor (2026-09-27), tolerance-gated; an unusable wing yields
+    None.
     """
 
     def ct(side, delta, iv, dte):
@@ -298,8 +304,10 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
 
 
 def test_the_flip_counts_the_contracts_it_could_not_price():
-    """M-10: the profile cannot price a contract with open interest whose volatility Schwab
-    sent as -999; one beyond a year runs to Schwab's own expirationDate. The served flip says how
+    """M-10: the served flip counts the contracts it could not price, and says why.
+
+    The profile cannot price a contract with open interest whose volatility Schwab sent as
+    -999; one beyond a year runs to Schwab's own expirationDate. The served flip says how
     many were left out and why.
     Real captures of 2026-10-07: NFLX (10:32 ET; PM) -- on 2026-10-16, 100 contracts with open
     interest and a volatility; on 2027-12-17 and 2028-01-21, 585 with a volatility and 8 sent

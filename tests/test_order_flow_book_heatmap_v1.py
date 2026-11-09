@@ -1,7 +1,9 @@
-"""app.options.order_flow.history.book_heatmap_for_ticker: bins one venue's recent NASDAQ_BOOK or
-NYSE_BOOK books (history.RecentBooks, fed by the console's intake) into a time x price grid -- the
-time-dimensioned counterpart a single live snapshot cannot show. No interpolation: every cell
-traces to a real book's own native BID_PRICE/ASK_PRICE/TOTAL_VOLUME.
+"""app.options.order_flow.history.book_heatmap_for_ticker: one venue's books as a time x price grid.
+
+It bins one venue's recent NASDAQ_BOOK or NYSE_BOOK books (history.RecentBooks, fed by the
+console's intake) into a time x price grid -- the time-dimensioned counterpart a single live
+snapshot cannot show. No interpolation: every cell traces to a real book's own native
+BID_PRICE/ASK_PRICE/TOTAL_VOLUME.
 """
 
 from __future__ import annotations
@@ -18,8 +20,9 @@ SYM = "SPY"
 
 
 def _books(rows: list[tuple[float, str, dict]]) -> RecentBooks:
-    """A fresh store fed each (ts_recv, venue, book message) as the console's intake does: the
-    message read by the one reader (engine.read_book) first.
+    """Feed a fresh store each (ts_recv, venue, book message) as the console's intake does.
+
+    The message is read by the one reader (engine.read_book) first.
     """
     books = RecentBooks()
     for ts_recv, service, content in rows:
@@ -41,10 +44,12 @@ def _book(bid_price, bid_vol, ask_price, ask_vol, book_time_ms=0):
 
 
 def test_repeated_unchanged_levels_do_not_inflate_the_cell():
-    """NASDAQ_BOOK/NYSE_BOOK messages are full-book snapshots, not deltas -- an UNCHANGED
-    100-share level re-transmitted in ten seconds of one bucket must still read as 100, never as
-    1,000. The cell holds the LAST observed size in the bucket, not a sum across every
-    retransmission of the same resting size. A book 900 s later sets the span (bucket = 10 s).
+    """NASDAQ_BOOK/NYSE_BOOK messages are full-book snapshots, not deltas.
+
+    An UNCHANGED 100-share level re-transmitted in ten seconds of one bucket must still read as
+    100, never as 1,000. The cell holds the LAST observed size in the bucket, not a sum across
+    every retransmission of the same resting size. A book 900 s later sets the span
+    (bucket = 10 s).
     """
     books = _books(
         [(1000.0 + s, "NASDAQ_BOOK", _book(100.00, 100, 100.05, 30)) for s in range(10)]
@@ -59,8 +64,9 @@ def test_repeated_unchanged_levels_do_not_inflate_the_cell():
 
 
 def test_books_within_one_second_keep_only_the_newest():
-    """One book per second, the newest in that second: a book replaced 0.4 s later is the one
-    kept.
+    """One book per second, the newest in that second.
+
+    A book replaced 0.4 s later is the one kept.
     """
     books = _books(
         [
@@ -120,8 +126,9 @@ def test_each_venue_shows_only_its_own_book():
 
 
 def test_window_anchors_to_the_datas_own_latest_row_never_wallclock_now():
-    """A real prior session (all books far in the past) must still render honestly outside
-    RTH -- the window is [latest_captured_ts - minutes*60, latest_captured_ts], never
+    """A real prior session (all books far in the past) must still render honestly outside RTH.
+
+    The window is [latest_captured_ts - minutes*60, latest_captured_ts], never
     [now - minutes*60, now], or every weekend/after-hours request would show an empty grid
     despite real data existing a few hours earlier.
     """
@@ -171,9 +178,10 @@ def test_books_with_every_level_array_empty_fail_closed_not_a_fabricated_grid():
 
 
 def test_an_options_book_never_leaks_into_the_underlyings_heatmap():
-    """An OPTIONS_BOOK message describes a contract's own book, not the underlying's: through the
-    console's intake it never reaches the venue books the heatmap bins. Stand-in ticker XLE,
-    which no other test records.
+    """An OPTIONS_BOOK message describes a contract's own book, not the underlying's.
+
+    Through the console's intake it never reaches the venue books the heatmap bins. Stand-in
+    ticker XLE, which no other test records.
     """
     S._ingest_pushed(
         "book.XLE",
@@ -190,8 +198,9 @@ def test_an_options_book_never_leaks_into_the_underlyings_heatmap():
 
 
 def test_a_window_outside_the_books_kept_is_refused_never_replaced():
-    """The route answers any window above 0 up to the books the console keeps (240 minutes); a
-    longer one, 0 or less, or one that is not a number, is refused (422), never answered for a
+    """The route answers any window above 0 up to the books the console keeps (240 minutes).
+
+    A longer one, 0 or less, or one that is not a number, is refused (422), never answered for a
     window the page did not ask.
     """
     client = TestClient(server.app)

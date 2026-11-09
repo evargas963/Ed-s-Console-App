@@ -89,8 +89,10 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 @contextmanager
 def capture_transaction(db_path: Path | str) -> Iterator[sqlite3.Connection]:
-    """One transaction on the capture table: what is written in it commits together or not at all,
-    so a reader finds a capture whole or finds none.
+    """One transaction on the capture table.
+
+    What is written in it commits together or not at all, so a reader finds a capture whole or
+    finds none.
     """
     conn = sqlite3.connect(str(db_path), timeout=60.0)
     try:
@@ -114,11 +116,12 @@ def persist_complete_chain_capture(
     chain_spot: float | None = None,
     chain_spot_ts: float | None = None,
 ) -> dict[str, Any]:
-    """Append one COMPLETE single-expiry capture: `spot` is that expiry's underlyingPrice as
-    Schwab sent it; `chain_spot` / `chain_spot_ts` the chain's one spot and its trade time (None
-    when the daemon held no price). A time series (PRIMARY KEY includes
-    ts_utc): each capture time is its own set of rows, one per expiry. A stored capture is
-    never replaced: a second write of the same (ticker, expiry, ts_utc) raises
+    """Append one COMPLETE single-expiry capture.
+
+    `spot` is that expiry's underlyingPrice as Schwab sent it; `chain_spot` / `chain_spot_ts`
+    the chain's one spot and its trade time (None when the daemon held no price). A time series
+    (PRIMARY KEY includes ts_utc): each capture time is its own set of rows, one per expiry. A
+    stored capture is never replaced: a second write of the same (ticker, expiry, ts_utc) raises
     sqlite3.IntegrityError and the stored row stands. `conn` is the capture_transaction the row
     joins.
 
@@ -167,11 +170,13 @@ def persist_complete_chain_capture(
 
 
 def capture_slot(now_ts: float) -> float | None:
-    """The capture time a chain begun at `now_ts` is written for: the latest of the option
-    markets' open, every CAPTURE_EVERY_MIN minutes after it, and their last close (the close
-    capture) -- the regular sessions Schwab's /markets sent for the day (time_et.session) -- that is
-    at most CAPTURE_EVERY_MIN minutes before `now_ts`. None outside those windows, and on a day with
-    no regular option session or no answer: nothing is written.
+    """Return the capture time a chain begun at `now_ts` is written for.
+
+    It is the latest of the option markets' open, every CAPTURE_EVERY_MIN minutes after it, and
+    their last close (the close capture) -- the regular sessions Schwab's /markets sent for the
+    day (time_et.session) -- that is at most CAPTURE_EVERY_MIN minutes before `now_ts`. None
+    outside those windows, and on a day with no regular option session or no answer: nothing is
+    written.
     """
     today = session(datetime.fromtimestamp(now_ts, ET).date().isoformat())
     if today is None:
@@ -196,9 +201,11 @@ CHAIN_PART_CONTRACTS = 500
 def chain_messages(
     ticker: str, contracts: list[dict], fetched_ts: float, spot: float | None, spot_ts: float | None
 ) -> list[tuple[str, dict]]:
-    """A fetched chain as its bus messages: part i of n, CHAIN_PART_CONTRACTS contracts each, all
-    with the time the chain began and the chain's one spot with its trade time. The console
-    assembles the parts; a chain missing a part is never priced.
+    """Return a fetched chain as its bus messages.
+
+    Part i of n, CHAIN_PART_CONTRACTS contracts each, all with the time the chain began and the
+    chain's one spot with its trade time. The console assembles the parts; a chain missing a
+    part is never priced.
     """
     parts = [
         contracts[i : i + CHAIN_PART_CONTRACTS]
@@ -234,9 +241,10 @@ PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "1d": ("year", 2, "daily", 1)}
 def price_history_message(
     ticker: str, series: str, answer: dict, fetched_ts: float
 ) -> tuple[str, dict]:
-    """One series of a ticker's price history as its bus message: Schwab's whole answer as sent
-    (its candles and every other field), recorded by the daemon's writer like every stream
-    message.
+    """One series of a ticker's price history as its bus message.
+
+    It is Schwab's whole answer as sent (its candles and every other field), recorded by the
+    daemon's writer like every stream message.
     """
     return f"pricehistory.{ticker}.{series}", {
         "src": "schwab_pricehistory",
@@ -259,7 +267,7 @@ MARKETS_DAYS_BACK = 7
 
 
 def markets_last_day(today: date) -> date:
-    """The last date Schwab answers GET /markets for on ET date `today`: a year from it."""
+    """Return the last date Schwab answers GET /markets for on ET date `today`: a year from it."""
     return date(today.year + 1, today.month, 1) + timedelta(days=today.day - 1)
 
 
@@ -280,7 +288,7 @@ def markets_message(day: str, status: int, answer: dict, fetched_ts: float) -> t
 
 
 def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
-    """A failed fetch as its one bus message: part 0 of 1, with Schwab's answer or the error."""
+    """Return a failed fetch as its one bus message: part 0 of 1, with Schwab's answer or error."""
     return f"chain.{ticker}", {
         "src": "schwab_chain",
         "ticker": ticker,
@@ -313,10 +321,12 @@ class _Chain:
 
 
 class ChainSweep:
-    """The one fetcher of option chains: one thread, one request at a time on the daemon's one
-    Schwab client, every ticker the same, in one rotation (sorted): every watchlist ticker
-    (`watchlist`, which the daemon replaces on each add or removal: an added ticker is in the
-    next rotation, a removed one is asked for no more). For each ticker, Schwab's expiration
+    """The one fetcher of option chains.
+
+    One thread, one request at a time on the daemon's one Schwab client, every ticker the same,
+    in one rotation (sorted): every watchlist ticker (`watchlist`, which the daemon replaces on
+    each add or removal: an added ticker is in the next rotation, a removed one is asked for no
+    more). For each ticker, Schwab's expiration
     chain once per ET date, then one chain request per expiry (strike_range=ALL), as Schwab says
     to break up a large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never
     kept. A contract Schwab streams (its LEVELONE_OPTIONS record on the bus, `streamed`) with
@@ -375,13 +385,15 @@ class ChainSweep:
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
 
     def work(self, schwab_client, stop: threading.Event) -> None:
-        """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
-        market's sessions for today and the days before it, then the price history of the
-        watchlist tickers whose candles are due (the price-built levels wait for it, a rotation
-        takes minutes) and a rotation of those whose chain is due; with none due, it looks again
-        each second. With the watchlist empty, or no sign-in held
-        (waits), it asks Schwab for nothing and looks again each second: a sign-in Schwab
-        refused fails every request at once, and a round of them would only log each failure.
+        """Run the thread's life, until `stop`.
+
+        On the daemon's client (`schwab_client()`), the market's sessions for today and the days
+        before it, then the price history of the watchlist tickers whose candles are due (the
+        price-built levels wait for it, a rotation takes minutes) and a rotation of those whose
+        chain is due; with none due, it looks again each second. With the watchlist empty, or no
+        sign-in held (waits), it asks Schwab for nothing and looks again each second: a sign-in
+        Schwab refused fails every request at once, and a round of them would only log each
+        failure.
         """
         while not stop.is_set():
             if not self.step(schwab_client, stop):
@@ -406,8 +418,9 @@ class ChainSweep:
         return bool(chains or candles)
 
     def waits(self, schwab_client) -> str | None:
-        """Why the daemon holds no Schwab sign-in to ask with, kept as `waiting` for its status,
-        else None: its client not built (capture.one_schwab_client: built again on each ask until
+        """Why the daemon holds no Schwab sign-in to ask with, kept as `waiting` for its status.
+
+        Else None. Its client not built (capture.one_schwab_client: built again on each ask until
         a build succeeds), or Schwab having refused it (schwab_client.OneRefreshSession.refusal).
         A build that fails (no usable token file), or a token file locked past its wait, is
         logged once, until it passes.
@@ -434,7 +447,9 @@ class ChainSweep:
         )
 
     def chain_due(self, ticker: str, now: datetime) -> bool:
-        """Whether `ticker`'s chain is asked for at `now`: inside an option window Schwab sent
+        """Whether `ticker`'s chain is asked for at `now`.
+
+        It is inside an option window Schwab sent
         (time_et.options_open), or today's session not known (Schwab's /markets answer
         for today not held), or closed with the newest close after the ticker's newest delivered
         chain began. A ticker with no chain answer yet (none asked, or no option listed) is asked
@@ -453,9 +468,10 @@ class ChainSweep:
         )
 
     def fetch_markets(self, schwab_client, days: list[str]) -> None:
-        """Schwab's GET /markets?markets=equity,option answer for each of `days` (YYYY-MM-DD) not
-        answered on this ET date and inside the year Schwab answers (markets_last_day), one
-        request each: a 200 is that date's sessions from here on
+        """Schwab's GET /markets?markets=equity,option answer for each of `days` (YYYY-MM-DD).
+
+        Each day not answered on this ET date and inside the year Schwab answers
+        (markets_last_day), one request each: a 200 is that date's sessions from here on
         (time_et.record_markets), and every answer is published as sent (markets_message), for
         the daemon's writer to record and the console to take. An answer not in MARKETS_ANSWERED
         (log_request has it), or none, is asked again the next time.
@@ -484,11 +500,13 @@ class ChainSweep:
             self.publish(*markets_message(day, resp.status_code, answer, self.clock()))
 
     def rotation(self, schwab_client, tickers: list[str], stop: threading.Event) -> set[str]:
-        """Each ticker's chain in turn (one removed from the watchlist since the rotation began is
-        not asked for), the queued quotes asked for whenever a full request's worth is waiting
-        and the rest at the end; the tickers delivered. Its time is the round's (`round_sec`)
-        only when it asked for every watchlist ticker: the console judges a ticker's chain
-        overdue by the round, and a round of a few tickers is shorter than the watchlist's.
+        """Each ticker's chain in turn.
+
+        One removed from the watchlist since the rotation began is not asked for; the queued
+        quotes asked for whenever a full request's worth is waiting and the rest at the end; the
+        tickers delivered. Its time is the round's (`round_sec`) only when it asked for every
+        watchlist ticker: the console judges a ticker's chain overdue by the round, and a round
+        of a few tickers is shorter than the watchlist's.
         """
         started = self.clock()
         self._delivered = set()
@@ -514,8 +532,9 @@ class ChainSweep:
         return self._delivered
 
     def candles(self, schwab_client, tickers: list[str], stop: threading.Event) -> None:
-        """Each ticker's price history in turn (one removed from the watchlist meanwhile is not
-        asked for).
+        """Each ticker's price history in turn.
+
+        One removed from the watchlist meanwhile is not asked for.
         """
         for ticker in tickers:
             if stop.is_set():
@@ -524,9 +543,11 @@ class ChainSweep:
                 self.fetch_price_history(schwab_client, ticker)
 
     def fetch_price_history(self, schwab_client, ticker: str) -> None:
-        """`ticker`'s price history (PRICE_HISTORY), each series published as Schwab sent its
-        candles; a series Schwab does not answer 200 is not published (log_request has the answer)
-        and the ticker's candles are asked again the next time they are due (candles_due).
+        """Fetch `ticker`'s price history (PRICE_HISTORY).
+
+        Each series is published as Schwab sent its candles; a series Schwab does not answer 200
+        is not published (log_request has the answer) and the ticker's candles are asked again
+        the next time they are due (candles_due).
         """
         now = self.clock()
         whole = True
@@ -561,8 +582,10 @@ class ChainSweep:
             self._candled[ticker] = now
 
     def fetch_chain(self, schwab_client, ticker: str, stop: threading.Event) -> None:
-        """`ticker`'s chain, every expiry: each contract's Greeks from the stream, or the contract
-        queued for its quote; delivered at once when none is queued. A stop asked between two
+        """Fetch `ticker`'s chain, every expiry.
+
+        Each contract's Greeks from the stream, or the contract queued for its quote; delivered
+        at once when none is queued. A stop asked between two
         expiries ends it there: no expiry more is asked for, and the part fetched is not a chain.
         """
         chain = _Chain(ticker, self.clock())
@@ -600,8 +623,9 @@ class ChainSweep:
         return self.take_greeks(chain)
 
     def take_greeks(self, chain: _Chain) -> None:
-        """Each contract of a fetched chain takes its Greeks from the stream, or is queued for its
-        quote; the chain is delivered at once when none is queued.
+        """Each contract of a fetched chain takes its Greeks from the stream, or queues for them.
+
+        A contract is queued for its quote; the chain is delivered at once when none is queued.
         """
         for ct in chain.contracts():
             entry = self.streamed(ct["symbol"])
@@ -622,12 +646,14 @@ class ChainSweep:
             self.deliver(chain)
 
     def send_quotes(self, schwab_client) -> None:
-        """One quotes request for the next QUOTES_BATCH_MAX queued contracts, which take their
-        quote's Greeks; each chain it completes is delivered. A request that fails fails every
-        ticker in it. Schwab's answer carries a quote per symbol it knows and, beside them, an
-        `errors` entry naming the symbols it does not (`invalidSymbols`; measured: 8
-        SPY contracts its own chain lists, every one never quoted or traded): those contracts get
-        no Greeks, logged once with their count, and the rest of the request is delivered.
+        """One quotes request for the next QUOTES_BATCH_MAX queued contracts.
+
+        They take their quote's Greeks; each chain it completes is delivered. A request that
+        fails fails every ticker in it. Schwab's answer carries a quote per symbol it knows and,
+        beside them, an `errors` entry naming the symbols it does not (`invalidSymbols`;
+        measured: 8 SPY contracts its own chain lists, every one never quoted or traded): those
+        contracts get no Greeks, logged once with their count, and the rest of the request is
+        delivered.
         """
         self._queue = [
             (chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist
@@ -676,6 +702,7 @@ class ChainSweep:
 
     def fail(self, chains: list[_Chain], reason: str) -> None:
         """Each chain's ticker is published as failed with `reason`; its contracts leave the queue.
+
         The log has the cause already: Schwab's answer (schwab_client.log_request) or the error.
         """
         now = self.clock()
@@ -684,10 +711,11 @@ class ChainSweep:
             self.publish(*chain_failure_message(chain.ticker, reason, now))
 
     def deliver(self, chain: _Chain) -> None:
-        """The chain to the chain history when it is the window's first, then to the console, so a
-        read on its arrival finds that capture, both carrying the time the chain began (its as-of
-        everywhere: a chain begun before the close is not the close values, whenever it is
-        delivered) and its one spot: Schwab's LAST_PRICE with its trade time, as the
+        """Deliver the chain to the chain history when it is the window's first, then the console.
+
+        Ordered so a read on its arrival finds that capture, both carrying the time the chain
+        began (its as-of everywhere: a chain begun before the close is not the close values,
+        whenever it is delivered) and its one spot: Schwab's LAST_PRICE with its trade time, as the
         daemon's price row holds it now that the chain is complete.
         """
         now = self.clock()
@@ -749,7 +777,9 @@ class ChainSweep:
             )
 
     def _write_history(self, chain: _Chain) -> None:
-        """The chain history: a chain begun inside a capture window of the ticker's option market,
+        """Write the chain history.
+
+        A chain begun inside a capture window of the ticker's option market,
         the first one of the window for this ticker (a chain begun before the close is not the
         close capture, whenever it ends), one row per expiry with the underlying price of that
         expiry's answer, at the time the chain began, every row in one transaction.
@@ -786,8 +816,9 @@ class ChainSweep:
 def newest_capture_ts(
     db_path: Path | str, ticker: str, *, before_ts: float = float("inf")
 ) -> float | None:
-    """When the ticker's newest full capture before `before_ts` was taken; None when there is
-    none.
+    """When the ticker's newest full capture before `before_ts` was taken.
+
+    None when there is none.
     """
     if not Path(db_path).is_file():
         return None
@@ -814,10 +845,12 @@ def last_capture_per_day(
     before_et_date: str | None = None,
     before_ts: float = float("inf"),
 ) -> list[dict[str, Any]]:
-    """The last capture of each of the newest `days` market days (newest first) -- the close --
-    each as {et_date, ts_utc, spot, spot_ts, spot_from_chain, basis, contracts} with every expiry of
-    that capture, its contracts read once (option_contract.read_chain). `spot` is the chain's one
-    spot with its trade time `spot_ts` (`spot_from_chain` true); a capture written without one
+    """Return the last capture of each of the newest `days` market days (newest first).
+
+    That is the close, each as {et_date, ts_utc, spot, spot_ts, spot_from_chain, basis,
+    contracts} with every expiry of that capture, its contracts read once
+    (option_contract.read_chain). `spot` is the chain's one spot with its trade time `spot_ts`
+    (`spot_from_chain` true); a capture written without one
     gives its nearest expiry's underlyingPrice, `spot_ts` None and `spot_from_chain` false.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
     view); `before_ts` only captures taken before it.

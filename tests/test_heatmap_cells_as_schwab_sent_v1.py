@@ -1,5 +1,7 @@
-"""The gamma heatmap draws what Schwab sent (operator, 2026-10-01: "From Schwab's mouth to our UI's
-ears. Period."; "shouldn't be a dash should be 0").
+"""The gamma heatmap draws what Schwab sent.
+
+Operator, 2026-10-01: "From Schwab's mouth to our UI's ears. Period."; "shouldn't be a dash
+should be 0".
 
 A listed contract with open interest 0 holds no position: its GEX is gamma x 0 = 0, whatever its
 Greeks (Schwab sends -999 Greeks for a contract that has not traded). The cell is 0, drawn "$0".
@@ -100,7 +102,9 @@ def test_a_strike_with_no_contract_listed_has_no_value():
 
 
 def test_the_page_draws_zero_as_zero_and_an_unlisted_strike_as_a_dash(tmp_path):
-    """Through the page's own render (static/js/ed-gamma.js), the server's surface drawn: every
+    """Through the page's own render (static/js/ed-gamma.js), the server's surface drawn.
+
+    Every
     open-interest-zero strike of 10/14 and 10/15 reads "$0", every unlisted one "-", none "—".
     """
     surface, drawn = render("SPY", read_chain(_CONTRACTS), _SPOT, _AT, tmp_path)

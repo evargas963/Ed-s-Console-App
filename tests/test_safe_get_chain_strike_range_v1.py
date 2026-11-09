@@ -27,8 +27,9 @@ class _FakeClient:
 
 
 def test_default_call_shape_is_unchanged():
-    """Every EXISTING caller passes strike_count with no strike_range — that shape must
-    be byte-for-byte unchanged by this addition.
+    """Every EXISTING caller passes strike_count with no strike_range.
+
+    That shape must be byte-for-byte unchanged by this addition.
     """
     client = _FakeClient()
     safe_get_chain(client, "SPY", strike_count=20)
@@ -39,8 +40,9 @@ def test_default_call_shape_is_unchanged():
 
 
 def test_strike_range_omits_strike_count_entirely():
-    """The exact combination proven live: strike_range='ALL' alone, strike_count never
-    sent alongside it.
+    """The exact combination proven live: strike_range='ALL' alone.
+
+    strike_count is never sent alongside it.
     """
     client = _FakeClient()
     d = date(2026, 8, 31)
@@ -54,8 +56,9 @@ def test_strike_range_omits_strike_count_entirely():
 
 
 def test_strike_range_takes_precedence_if_both_somehow_given():
-    """Defensive: if a caller passes both (never done by any current call site), the
-    vendor-proven shape (range only) wins — never an untested combined request.
+    """Defensive: if a caller passes both, the vendor-proven shape (range only) wins.
+
+    No current call site passes both. Never an untested combined request.
     """
     client = _FakeClient()
     safe_get_chain(client, "SPY", strike_count=20, strike_range="ALL")

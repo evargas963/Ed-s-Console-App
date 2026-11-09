@@ -36,7 +36,7 @@ def _load_config(env: dict[str, str]) -> dict:
 
 
 def _run_port(config: dict) -> int:
-    """The one port the run's server, its readiness URL, the pages and their storage all use."""
+    """Return the one port the run's server, its readiness URL, the pages and storage all use."""
     base = urlsplit(config["base"])
     assert base.hostname == "127.0.0.1"
     assert config["url"] == config["base"] + "/"

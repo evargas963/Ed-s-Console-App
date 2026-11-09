@@ -15,8 +15,10 @@ HOME = f"path = 'C:/{USERS}/someone/secret.json'\n"
 
 
 def _staged(root, files, config=()):
-    """A new repository at `root` with `files` ({path: text}, written byte for byte) staged, as the
-    hook finds it; `config` is (key, value) pairs set in that repository first.
+    """Make a new repository at `root` with `files` staged, as the hook finds it.
+
+    `files` is {path: text}, written byte for byte; `config` is (key, value) pairs set in that
+    repository first.
     """
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     for key, value in config:
@@ -129,8 +131,9 @@ def test_a_name_windows_cannot_hold_is_read_under_its_own_name(tmp_path, path):
 
 
 def test_a_file_name_that_is_not_utf8_is_not_a_clean_diff(tmp_path):
-    """A header that cannot be read names no file, so nothing after it was scanned under its name:
-    the diff is unread, never clean.
+    """A header that cannot be read names no file: the diff is unread, never clean.
+
+    Nothing after that header was scanned under its name.
     """
     root = _staged_as(_staged(tmp_path, {}), b"a\xff.py", SECRET)
     with pytest.raises(DiffUnreadable, match="could not be read"):
@@ -193,9 +196,10 @@ def test_clean_addition_passes(tmp_path):
 
 
 def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
-    """CI runs the scanner on each commit of the pull request (`--base`): a commit made where the
-    pre-commit hook does not run (GitHub's editor, a skipped hook) is still read, and so is a
-    secret a later commit removes again, since the merge publishes every commit.
+    """CI runs the scanner on each commit of the pull request (`--base`).
+
+    A commit made where the pre-commit hook does not run (GitHub's editor, a skipped hook) is still
+    read, and so is a secret a later commit removes again, since the merge publishes every commit.
     """
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
     git = lambda *a: subprocess.run(
@@ -217,8 +221,10 @@ def test_a_secret_a_pull_request_commits_is_refused_against_its_base(tmp_path):
 
 
 def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
-    """A conflict resolved in a merge commit (GitHub's web conflict editor runs no hook) is read for
-    what the resolution adds; the lines main brings in through the merge are not the PR's.
+    """A conflict resolved in a merge commit is read for what the resolution adds.
+
+    GitHub's web conflict editor runs no hook. The lines main brings in through the merge are not
+    the PR's.
     """
     root = _staged(tmp_path, {"app.py": "x = 1\n"})
     git = lambda *a: subprocess.run(
