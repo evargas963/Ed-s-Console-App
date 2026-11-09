@@ -40,6 +40,37 @@ def test_linked_worktree_metadata_failure_refuses_local_runtime(
         runtime_layout._default_runtime_root()
 
 
+def test_a_named_runtime_root_never_works_out_the_default(tmp_path):
+    """ED_RUNTIME_ROOT set: the checkout's own root is not resolved (it was, on every call).
+
+    The module's own file in a checkout whose .git marker is broken: with the variable set, its
+    runtime is the one named; without it, the broken marker is refused as before.
+    """
+    checkout, runtime = tmp_path / "checkout", tmp_path / "runtime"
+    checkout.mkdir()
+    (checkout / "runtime_layout.py").write_bytes((REPO / "runtime_layout.py").read_bytes())
+    (checkout / ".git").write_text("not-a-gitdir", encoding="utf-8")
+    read = "import runtime_layout; print(runtime_layout.runtime_root())"
+
+    def root(**env):
+        base = {k: v for k, v in os.environ.items() if k != "ED_RUNTIME_ROOT"}
+        return subprocess.run(
+            [sys.executable, "-c", read],
+            cwd=str(checkout),
+            env={**base, **env},
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    named = root(ED_RUNTIME_ROOT=str(runtime))
+    assert named.returncode == 0, named.stderr
+    assert named.stdout.strip() == str(runtime.resolve())
+    unnamed = root()
+    assert unnamed.returncode != 0
+    assert "cannot resolve canonical runtime root" in unnamed.stderr
+
+
 def test_ambient_db_override_is_refused(tmp_path):
     rt = tmp_path / "runtime"
     explicit = tmp_path / "elsewhere" / "ed_console.db"
