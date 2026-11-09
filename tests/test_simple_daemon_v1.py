@@ -7,6 +7,7 @@ streamer.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import subprocess
@@ -144,13 +145,15 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
 # ------------------------------------------------------------------ the process
 
 
-def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
+def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path, caplog):
     db = tmp_path / "stream_capture.db"
     fd, lock = pl.acquire_owner_lock(db)
     try:
-        with pytest.raises(SystemExit) as e:
+        with caplog.at_level(logging.CRITICAL, logger=pl.log.name), pytest.raises(SystemExit) as e:
             pl.acquire_owner_lock(db)
         assert e.value.code == pl.EXIT_OWNER_LOCK_HELD
+        refused = [r.getMessage() for r in caplog.records if r.name == pl.log.name]
+        assert refused == [f"another capture daemon holds {lock} (pid {os.getpid()})"], refused
     finally:
         pl.release_owner_lock(fd, lock)
     lock.write_text("999999999")  # a pid that is not running

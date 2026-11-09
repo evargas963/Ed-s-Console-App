@@ -15,6 +15,7 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import json
+import logging
 import os
 import signal
 import sys
@@ -25,6 +26,8 @@ from pathlib import Path
 import psutil
 
 from stream_spine import resolve_stream_db_path
+
+log = logging.getLogger(__name__)
 
 #: Exit code when another program already holds the lock (start_capture_daemon.bat stops its
 #: restart loop on it). 2 is the live-binding refusal (runtime_layout).
@@ -75,7 +78,7 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
         except FileExistsError:
             pid = _holder(lock.read_text())
             if pid is not None:
-                print(f"FATAL: another capture daemon holds {lock} (pid {pid}).", file=sys.stderr)
+                log.critical("another capture daemon holds %s (pid %s)", lock, pid)
                 raise SystemExit(EXIT_OWNER_LOCK_HELD) from None
             if attempt == 1:
                 lock.unlink(missing_ok=True)
