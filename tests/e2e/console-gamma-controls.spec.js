@@ -9,6 +9,7 @@
 const { test, expect } = require('@playwright/test');
 const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { watchRequests } = require('./fixtures/settled');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
 // the served window: every column, or the selected expiry's alone (server.py _surface_view)
@@ -180,6 +181,8 @@ test.describe('ticker / expiry / measure controls', () => {
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol request afterwards', async ({ page }) => {
     const reqs = [];
     page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) reqs.push(u); });
+    const requests = watchRequests(page);
+    await page.clock.install();   // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await typeSymbol(page, 'AAPL');
     await expect(page.locator('#hSym')).toHaveText('AAPL');
@@ -204,7 +207,9 @@ test.describe('ticker / expiry / measure controls', () => {
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     await expect(page.locator('#flTicker')).toHaveText('QQQ');
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
-    await page.waitForTimeout(4000);                                                 // more than one scheduler tick
+    await requests.settled();                                                        // the switch's own reads are done
+    await page.clock.runFor(4000);                                                   // every page timer due in 4 s has run
+    await requests.settled();                                                        // and every read those made
     const tickered = reqs.filter((u) => /[?&]ticker=/.test(u));
     expect(tickered.length).toBeGreaterThan(0);
     expect(tickered.filter((u) => !/[?&]ticker=QQQ(&|$)/.test(u))).toEqual([]);      // no AAPL (or SPY) request survives the switch

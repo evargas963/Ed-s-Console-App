@@ -71,7 +71,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
             lambda topic, msg: published.append((topic, msg)),
             clock=lambda: at,
             failures=CaptureWriter(tmp_path / "stream_capture.db"),
-            streamed=lambda symbol: None,
+            streamed=lambda _symbol: None,
         )
         chain = cch._Chain(
             TK, at, spots={EXPIRY: CRWD.spot}, by_expiry={EXPIRY: [dict(c) for c in CRWD.chain]}

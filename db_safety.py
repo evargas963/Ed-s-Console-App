@@ -23,7 +23,7 @@ def install_production_sql_authorizer(conn: sqlite3.Connection) -> None:
     """Refuse DROP and DETACH on `conn`."""
 
     def _auth(
-        action: int, arg1: str | None, arg2: str | None, db_name: str | None, inner: str | None
+        action: int, _arg1: str | None, _arg2: str | None, _db: str | None, _inner: str | None
     ) -> int:
         return sqlite3.SQLITE_DENY if action in DENIED else sqlite3.SQLITE_OK
 

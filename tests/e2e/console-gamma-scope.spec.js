@@ -8,6 +8,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { watchRequests } = require('./fixtures/settled');
 
 // spot 100, 41 strikes 80..120; the stand-in's window per scope, as the server serves it
 const ALL_ROWS = [];
@@ -117,6 +118,7 @@ test.describe('the Gamma presentation scope', () => {
   test('a drag that ends while a read is in flight settles where the drag ended', async ({ page }) => {
     // a read answered mid-drag must not reset the pan, or the read held behind it asks for the
     // earlier window and the drag snaps back
+    const requests = watchRequests(page);
     const reads = [];
     await page.route('**/api/terrain/strikes**', async (route) => {
       const q = new URL(route.request().url()).searchParams;
@@ -134,7 +136,7 @@ test.describe('the Gamma presentation scope', () => {
     for (let i = 1; i <= 3; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * rowH);
     await page.mouse.up();
     await expect.poll(() => reads[reads.length - 1], { timeout: 5000 }).toEqual({ centre: '100', shift: '3' });
-    await page.waitForTimeout(1000);                                 // every held read has run
+    await requests.settled();                                        // every held read has run
     expect(reads[reads.length - 1]).toEqual({ centre: '100', shift: '3' });
   });
 

@@ -20,7 +20,6 @@ import asyncio
 import json
 import logging
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -132,11 +131,15 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         await _until(
             lambda: len(schwab.streamer.answers) >= 9
         )  # login + 7 requests, one answered twice
-        await asyncio.sleep(0.5)
+        # the daemon has recorded each answer but the login's, and taken SPY's data entry (its
+        # quote follows the one _market published)
+        await _until(lambda: log.queue.qsize() == 8 and quotes.queue.qsize() >= 2)
         daemon.ask()  # nothing changed: nothing is asked
-        await asyncio.sleep(0.5)
+        await _until(lambda: not daemon.wake.is_set())  # the connection has taken what is queued
         connected = dict(daemon.held)
         stop.set()
+        # the daemon's logout, answered before run() ends, follows on the same connection every
+        # request it made: Schwab has received each one
         await asyncio.wait_for(asyncio.gather(*tasks), 10)
         return connected
 
@@ -151,6 +154,7 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         for r in schwab.streamer.requests
         if r["service"] != "ADMIN"
     ]
+    assert schwab.streamer.requests[-1]["command"] == "LOGOUT", "every request came before it"
     context = sorted(["SPY", "TSLA", *MARKET_CONTEXT])
     book = sorted(daemon.options["OPTIONS_BOOK"])
     assert len(book) == 50  # SPY's half of 100
@@ -340,7 +344,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
     daemon.chains = ChainSweep(
         tmp_path / "ed_console.db",
         daemon.watchlist,
-        lambda t, m: None,
+        lambda _t, _m: None,
         failures=CaptureWriter(db),
         streamed=daemon.option_record,
     )
@@ -423,22 +427,20 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
     sweep = ChainSweep(
         tmp_path / "ed_console.db",
         [],
-        lambda t, m: None,
+        lambda _t, _m: None,
         clock=lambda: datetime(2026, 10, 7, 10, 0, tzinfo=ET).timestamp(),
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda s: None,
+        streamed=lambda _s: None,
     )
     client = schwab.client(tmp_path)
-    stop = threading.Event()
-    worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
     try:
         with caplog.at_level("INFO", logger="chain_history"):
-            worker.start()
-            time.sleep(1.5)
+            # two passes of the sweep's thread (ChainSweep.work runs one a second): each asks
+            # for nothing, so the thread waits
+            passes = [sweep.step(lambda: client, threading.Event()) for _ in range(2)]
     finally:
-        stop.set()
-        worker.join(10)
         schwab.close()
+    assert passes == [False, False], "a pass asked Schwab for something"
     assert schwab.requests == [], "nothing asked of Schwab"
     assert not [r for r in caplog.records if "chain rotation" in r.getMessage()], (
         "no rotation of nothing"
@@ -494,8 +496,8 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         assert "WATCHLIST UNKNOWN" not in server._status_line(time_et.now())
         assert "daemon not reporting" in server._status_line(time_et.now())
     finally:
-        for tk, page in zip((on, off), pages):
-            push_changes.unsubscribe(tk, page)
+        for page in pages:
+            push_changes.unsubscribe(page)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(off, None)
             server._terrain_cache.pop(on, None)
@@ -584,9 +586,10 @@ def test_a_repeated_add_an_unlisted_removal_and_an_add_with_no_sign_in_change_no
 
 
 def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
-    """Two adds of TSLA in flight together (a request sent twice): each is checked with Schwab's
-    /quotes, the first answer adds it, and the other, finding it added during its check, is
-    answered ON_LIST; the list holds TSLA once.
+    """Two adds of TSLA in flight together (a request sent twice): the list holds TSLA once.
+
+    Each is checked with Schwab's /quotes, the first answer adds it, and the other, finding it
+    added during its check, is answered ON_LIST.
     """
     schwab = LocalSchwab("ws://127.0.0.1:1")  # REST only: no stream connection is opened
     bus = MessageBus()

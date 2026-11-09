@@ -225,9 +225,9 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         h = capture._publisher("LEVELONE_EQUITIES", bus, health)
         h({"content": [big], "timestamp": 1})
-        await asyncio.sleep(0.3)
+        await _until(lambda: writer.status()["failures"] >= 1)  # kept as sent
         h({"content": [_TSLA["native"]], "timestamp": 2})
-        await asyncio.sleep(0.3)
+        await _until(lambda: writer.status()["rows_written"] >= 1)  # and the writer goes on
         stop.set()
         await task
 
@@ -288,10 +288,10 @@ def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on
 def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_writes(tmp_path):
     """INDUCED CONDITION: the stream database file is read-only before the writer starts.
 
-    It stands in for a disk that refuses writes, and is made writable again 1.5 s later, with
-    the WAL files SQLite created beside it meanwhile (SQLite gives them the database file's
-    mode). Every captured quote published meanwhile is held, all of them counted as waiting,
-    and written once the files accept writes.
+    It stands in for a disk that refuses writes, and is made writable again once the writer
+    holds every captured quote published, with the WAL files SQLite created beside it meanwhile
+    (SQLite gives them the database file's mode). Every one is held, all of them counted as
+    waiting, and written once the files accept writes.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
@@ -308,7 +308,11 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
         daemon.writer = writer
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
-        await asyncio.sleep(1.5)
+        await _until(  # refused, and every message handed over to the writer and waiting
+            lambda: (
+                writer.status()["state"] == "blocked" and writer.status()["waiting"] == len(_EVENTS)
+            )
+        )
         during = daemon.status(time_et.now()).get("writer")
         writable()
         await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
@@ -378,7 +382,9 @@ def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_onc
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _tsla_quotes(bus, health, 3)
         bus.publish("quote.TSLA", _defect())
-        await asyncio.sleep(1.5)
+        await _until(  # refused, the 4 held
+            lambda: writer.status()["state"] == "blocked" and writer.status()["held"] == 4
+        )
         writable()
         await _until(lambda: writer.status()["state"] == "dead")
         dead = writer.status()
@@ -407,14 +413,15 @@ def test_a_writer_that_dies_while_recording_counts_the_message_that_ended_it(tmp
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        sub = bus.subscribe("", policy=LOG)
+        task = asyncio.create_task(writer.run(sub, stop=stop))
         _tsla_quotes(bus, health, 3)
         bus.publish("quote.TSLA", _defect())
         _tsla_quotes(bus, health, 4)
         await _until(lambda: writer.status()["state"] == "dead")
         dead = writer.status()
         _tsla_quotes(bus, health, 6)
-        await asyncio.sleep(0.5)
+        await _until(sub.queue.empty)  # run() has handed the 6 over (each counted as it is)
         later = writer.status()
         stop.set()
         await task
@@ -489,7 +496,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         sweep = ChainSweep(
             db,
             ["SPY"],
-            lambda topic, msg: published.append(msg),
+            lambda _topic, msg: published.append(msg),
             clock=lambda: _IN_WINDOW,
             failures=daemon.writer,
             streamed=daemon.option_record,

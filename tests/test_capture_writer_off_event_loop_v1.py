@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import threading
-import time
 
 import time_et
 from stream_spine import LOG, CaptureWriter, MessageBus, quote_msg
@@ -22,8 +21,8 @@ def _quote(i: int) -> dict:
     return quote_msg(symbol="SPY", bid=1.0, ask=1.1, last=1.05, ts_recv=1000.0 + i, src="schwab_l1")
 
 
-def _hold_the_database(path, seconds: float) -> threading.Thread:
-    """Another connection holds the database's write lock for `seconds`.
+def _hold_the_database(path, release: threading.Event) -> threading.Thread:
+    """Another connection holds the database's write lock until `release` is set.
 
     It holds it as a reader of the file, a backup or the daily keep can: every write the writer
     makes meanwhile waits on it.
@@ -35,7 +34,7 @@ def _hold_the_database(path, seconds: float) -> threading.Thread:
         try:
             other.execute("BEGIN EXCLUSIVE")
             held.set()
-            time.sleep(seconds)
+            release.wait(10)
             other.commit()
         finally:
             other.close()
@@ -50,26 +49,28 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path):
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=0.05)
     bus = MessageBus()
     sub = bus.subscribe("", policy=LOG)
-    holder = _hold_the_database(tmp_path / "cap.db", 0.6)
+    release = threading.Event()
+    holder = _hold_the_database(tmp_path / "cap.db", release)
 
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
         gaps = []
         last = time_et.elapsed()
-        for i in range(40):
+        for i in range(40):  # the lock is held through every tick: each commit waits on it
             bus.publish("quote.SPY", _quote(i))
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)  # the loop's own tick, the gap measured
             now = time_et.elapsed()
             gaps.append(now - last)
             last = now
+        release.set()
         stop.set()
         await task
         return max(gaps)
 
     worst = asyncio.run(go())
     holder.join(10)
-    assert worst < 0.25, f"the event loop stalled {worst:.2f}s behind a 0.6s commit"
+    assert worst < 0.25, f"the event loop stalled {worst:.2f}s behind a held commit"
     n = (
         sqlite3.connect(str(tmp_path / "cap.db"))
         .execute("SELECT count(*) FROM stream_quotes_raw")
@@ -95,7 +96,9 @@ def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path):
         task = asyncio.create_task(writer.run(sub, stop=stop))
         for i in range(10):
             bus.publish("quote.SPY", _quote(i))
-        await asyncio.sleep(0.2)
+        deadline = time_et.elapsed() + 10  # written while the writer runs, before any stop
+        while writer.status()["rows_written"] < 10 and time_et.elapsed() < deadline:
+            await asyncio.sleep(0.01)
         stop.set()
         await task
 
