@@ -211,14 +211,14 @@ jobs:
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: |
           typeperf "\Memory\Available MBytes" "\Memory\Pool Nonpaged Bytes" "\Memory\Committed Bytes" "\Process(_Total)\Handle Count" -si 2 -sc 1100 > mem_during_e2e.csv &
-          ( for i in $(seq 1 1100); do echo "$(date -u +%H:%M:%S) tw=$(netstat -an -p tcp | grep -c TIME_WAIT) est=$(netstat -an -p tcp | grep -c ESTABLISHED)"; sleep 2; done > tcp_during_e2e.txt ) &
+          pwsh -NoProfile -Command '$end = (Get-Date).AddMinutes(36); while ((Get-Date) -lt $end) { $c = Get-NetTCPConnection; $s = ($c | Group-Object State | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join " "; $p = ($c | Group-Object OwningProcess | Sort-Object Count -Descending | Select-Object -First 4 | ForEach-Object { "$((Get-Process -Id $_.Name -ErrorAction Ignore).ProcessName)($($_.Name))=$($_.Count)" }) -join " "; "$(Get-Date -Format HH:mm:ss) total=$($c.Count) $s | $p"; Start-Sleep 2 }' > tcp_during_e2e.txt &
           rc=0
           for pass in 1 2 3 4 5 6 7 8 9 10; do
             echo "=== pass $pass starts $(date -u +%H:%M:%S)"
             npm run test:e2e || rc=$?
             if grep -q "failed" logs/test_e2e_last.log; then
               echo "=== pass $pass failed: Windows System log, Tcpip/AFD/Winsock, last 15 min"
-              pwsh -NoProfile -Command 'Get-WinEvent -FilterHashtable @{LogName="System"; StartTime=(Get-Date).AddMinutes(-15)} -ErrorAction Ignore | Where-Object { $_.ProviderName -match "Tcpip|AFD|Winsock|Resource-Exhaustion" } | Select-Object TimeCreated, ProviderName, Id, Message | Format-List | Out-String -Width 300'
+              pwsh -NoProfile -Command 'Get-WinEvent -FilterHashtable @{LogName="System"; StartTime=(Get-Date).AddMinutes(-15)} -ErrorAction Ignore | Where-Object { $_.ProviderName -match "Tcpip|AFD|Winsock|Resource-Exhaustion" } | Select-Object TimeCreated, ProviderName, Id, Message | Format-List | Out-String -Width 300; Get-NetTCPConnection | Group-Object State, OwningProcess | Sort-Object Count -Descending | Select-Object -First 15 Count, @{n="State,Process";e={$_.Name}}, @{n="Name";e={(Get-Process -Id ($_.Group[0].OwningProcess) -ErrorAction Ignore).ProcessName}} | Format-Table -AutoSize | Out-String -Width 200'
             fi
             if grep -h "NO_BUFFER_SPACE" logs/test_e2e_last.log; then
               echo "=== pass $pass: NO_BUFFER_SPACE at $(date -u +%H:%M:%S)"
