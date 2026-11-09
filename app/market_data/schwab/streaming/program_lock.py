@@ -13,7 +13,6 @@ test's -- has its own and a stop never reaches another runtime's program.
 from __future__ import annotations
 
 import ctypes
-import errno
 import hashlib
 import json
 import os
@@ -173,8 +172,8 @@ def ask_to_stop(db_path: str | Path | None = None) -> None:
     """
     if _KERNEL32 is None:
         pid = _holder(owner_lock_path(db_path).read_text())  # FileNotFoundError: no lock
-        if pid is None:  # its holder has ended
-            raise ProcessLookupError(errno.ESRCH, os.strerror(errno.ESRCH))
+        if pid is None:
+            raise ProcessLookupError("no running program holds the lock")
         os.kill(pid, signal.SIGTERM)
         return
     name = stop_event_name(db_path)
