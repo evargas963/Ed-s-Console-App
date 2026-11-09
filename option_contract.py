@@ -144,7 +144,9 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         days_to_expiry=schwab_number(raw.get("daysToExpiration")),
         settlement=raw.get("settlementType"),
         open_interest=schwab_count(raw.get("openInterest")),
-        volume=schwab_count(raw.get("totalVolume")),
+        # the quote's (the sweep's /quotes answer); a chain stored before quotes were kept with
+        # it carries only the volume /chains sent, as recorded
+        volume=schwab_count((quote if "quote" in raw else raw).get("totalVolume")),
         bid=schwab_number(quote.get("bidPrice")),
         ask=schwab_number(quote.get("askPrice")),
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,

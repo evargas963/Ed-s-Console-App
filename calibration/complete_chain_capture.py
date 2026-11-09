@@ -708,7 +708,6 @@ class ChainSweep:
             if quote is not None:
                 ct["quote"] = quote  # Schwab's /quotes answer for the contract, as sent
                 ct.update({f: quote.get(f) for f in GREEK_FIELDS})
-                ct["totalVolume"] = quote.get("totalVolume")  # the quote's, not the listing's
                 ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
             elif ct["symbol"] in named:
                 chain.named_invalid.add(ct["symbol"])
