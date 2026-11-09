@@ -37,8 +37,8 @@ def _run(body):
                 await push_changes.next_changes(other, 0.05),
             )
         finally:
-            push_changes.unsubscribe(TK, mine)
-            push_changes.unsubscribe("ZZOTHER", other)
+            push_changes.unsubscribe(mine)
+            push_changes.unsubscribe(other)
 
     return asyncio.run(main())
 

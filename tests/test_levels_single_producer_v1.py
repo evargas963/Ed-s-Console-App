@@ -291,8 +291,8 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
             assert drained.wait(5)
             told = {t: set(page.kinds) for t, page in pages}
         finally:
-            for t, page in pages:
-                push_changes.unsubscribe(t, page)
+            for _t, page in pages:
+                push_changes.unsubscribe(page)
             push_changes.bind(None)
             loop.call_soon_threadsafe(loop.stop)
             runner.join(5)

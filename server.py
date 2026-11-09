@@ -407,7 +407,7 @@ def _watchlist() -> list[str] | None:
 
 
 @asynccontextmanager
-async def _app_lifespan(app):
+async def _app_lifespan(_app):
     """Startup and shutdown.
 
     The live-binding check, the signal handlers, the recorded market sessions, the levels loop,
@@ -3029,7 +3029,7 @@ async def get_changes(ticker: str = Query(...)):
                 if not kinds:
                     yield f"event: session\ndata: {session_label(now_et())}\n\n"
         finally:
-            push_changes.unsubscribe(t, client)
+            push_changes.unsubscribe(client)
 
     return StreamingResponse(
         event_generator(),

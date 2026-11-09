@@ -719,7 +719,7 @@ KEPT_BY_TIME = (
 PRUNE_ROWS = 20000
 
 
-def _every_message(topic: str, msg: Any) -> bool:
+def _every_message(_topic: str, _msg: Any) -> bool:
     """Save every message: the writer's rule when no one has set one (CaptureWriter.saves)."""
     return True
 

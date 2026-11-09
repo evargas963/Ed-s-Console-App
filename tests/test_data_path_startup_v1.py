@@ -317,7 +317,7 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
     assert record.exc_info is not None and record.exc_info[0] is ForcedThreadError
 
 
-def test_a_market_follower_that_ends_on_an_error_carries_it_out(tmp_path):
+def test_a_market_follower_that_ends_on_an_error_carries_it_out():
     """Induced condition: SPY's 2026-09-22 same-day chain with one contract replaced by text.
 
     Text, not a contract, so reading the chain raises. follow_market ends on that error.
@@ -381,7 +381,7 @@ def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
     assert len(held) == len(contracts) - 1
 
 
-def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price(tmp_path):
+def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price():
     """Induced condition: SPY's 2026-09-22 same-day chain with one contract's putCall taken out.
 
     Captured 16:46 UTC, at that time, arriving before SPY has a price. When SPY's price comes
@@ -954,7 +954,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             ticking.set()
             ticker.join(10)
     finally:
-        push_changes.unsubscribe(tk, page)
+        push_changes.unsubscribe(page)
         _drain()  # what still waits is priced
         with server._terrain_cache_lock:
             for name in (tk, *names):
