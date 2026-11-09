@@ -140,21 +140,23 @@ def stop() -> int:
     was not asked.
     """
     program = running(DAEMON_START)
-    if not program:
-        print("Ed Console: not running")
-        return 0
-    try:
-        ask_to_stop()
-    except OSError as e:
-        log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
-        print(f"Ed Console: still running ({[p.pid for p in program]})")
-        return 1
-    _gone, alive = psutil.wait_procs(program, timeout=STOP_WAIT_SEC)
-    if alive:
-        print(f"Ed Console: still running ({[p.pid for p in alive]})")
-        return 1
-    print("Ed Console: stopped")
-    return 0
+    left = program
+    if program:
+        try:
+            ask_to_stop()
+        except OSError as e:
+            log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
+        else:
+            _gone, left = psutil.wait_procs(program, timeout=STOP_WAIT_SEC)
+    answer = (
+        f"still running ({[p.pid for p in left]})"
+        if left
+        else "stopped"
+        if program
+        else "not running"
+    )
+    print("Ed Console: " + answer)
+    return 1 if left else 0
 
 
 def wait_for_pages(seconds: float, db_path: Path | None = None) -> Ports:
