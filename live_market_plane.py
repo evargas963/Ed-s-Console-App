@@ -56,7 +56,7 @@ _SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT", "REGULAR_MARKET_CHANGE_PER
 #: trading status (measured: $SPX Closed outside regular hours, stocks Closed 20:00-04:00 ET, SPY
 #: Normal on a Saturday)
 _TEXT_FIELDS = ("SECURITY_STATUS",)
-_fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
+_fields_by_ticker: dict[str, dict[str, tuple[float | str, float]]] = {}
 
 
 def _read_stream_field(name: str, raw: Any) -> float | str | None:

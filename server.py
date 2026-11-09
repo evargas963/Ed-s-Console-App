@@ -2044,7 +2044,7 @@ LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"  # _publish_levels, the single prod
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
-def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict | None, str | None]:
+def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict, str | None]:
     """Return the previous market day's close before the day of the chain the rows came from.
 
     The rows are the ticker's; the close comes as per-strike rows ({all, near, far}), with its

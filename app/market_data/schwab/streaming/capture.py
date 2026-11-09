@@ -59,6 +59,7 @@ import socket
 import sqlite3
 import sys
 import threading
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -442,23 +443,22 @@ def streaming_fields() -> dict[str, list[str]]:
     }
 
 
-def _open_stream(client):
-    """Open schwab-py's StreamClient, recording the time of every frame Schwab sends.
+class _TimedStream(StreamClient):
+    """schwab-py's StreamClient, recording the time of every frame Schwab sends.
 
     Data, responses and Schwab's heartbeats alike are timed. That one timestamp is the liveness
     test.
     """
-    stream = StreamClient(client)
-    stream.last_frame_ts = time_et.now()
-    receive = stream._receive
 
-    async def timed_receive():
-        msg = await receive()
-        stream.last_frame_ts = time_et.now()
+    def __init__(self, client) -> None:
+        super().__init__(client)
+        self.last_frame_ts = time_et.now()
+
+    @override
+    async def _receive(self):
+        msg = await super()._receive()
+        self.last_frame_ts = time_et.now()
         return msg
-
-    stream._receive = timed_receive
-    return stream
 
 
 def _dispatch(stream, msg: dict) -> None:
@@ -512,7 +512,7 @@ class Daemon:
         self,
         bus: MessageBus,
         health: HealthRegistry,
-        watchlist: list[str] = (),
+        watchlist: Iterable[str] = (),
         *,
         clock=time_et.now,
     ) -> None:
@@ -531,13 +531,13 @@ class Daemon:
         #: per watchlist ticker: its newest whole chain while it waits for a price, that chain in
         #: the rule's order (by_gamma), its strikes per expiration (strike_ladders) and its recorded
         #: contracts (saved_window, as last placed); every contract the writer records (saves)
-        self._chains: dict[str, list[dict]] = {}
+        self._chains: dict[str, list[OptionContract]] = {}
         self._ranked: dict[str, tuple[str, ...]] = {}
         self._ladders: dict[str, list] = {}
         self._windows: dict[str, frozenset[str]] = {}
         self.saved_options: frozenset[str] = frozenset()
-        self.chains = None  # the ChainSweep: its round time, its tickers
-        self.writer = None  # the CaptureWriter: its state rides the heartbeat
+        self.chains: ChainSweep | None = None  # its round time, its tickers
+        self.writer: CaptureWriter | None = None  # its state rides the heartbeat
         self.stop: asyncio.Event | None = None  # the daemon's stop (run); a stop request sets it
         self.schwab_client = None  # the daemon's one Schwab client (run): the checks
         #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
@@ -931,7 +931,7 @@ class Daemon:
                 self.bus.forget(_current_key(sent.service, sym))
 
     async def connect(self, client) -> None:
-        stream = _open_stream(client)
+        stream = _TimedStream(client)
         # every message Schwab sends, whatever its size: the websockets library caps a received
         # message at 1 MiB by default, and nothing of ours does
         await stream.login(websocket_connect_args={"max_size": None})
@@ -1404,7 +1404,7 @@ async def run_chains(
         await asyncio.gather(worker, return_exceptions=True)
 
 
-def one_schwab_client(build) -> callable:
+def one_schwab_client(build) -> Callable[[], object]:
     """Return the daemon's one Schwab client, for the stream and every chain request.
 
     It comes as a function that returns it: built (`build()`, a SchwabClientState) when first

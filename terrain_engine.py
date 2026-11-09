@@ -474,7 +474,7 @@ def compute_wall_value_area(
 
 def atm_sigma_by_expiry(
     contracts: list[OptionContract], spot: float
-) -> dict[tuple[str, float | None], float | None]:
+) -> dict[tuple[str | None, float | None], float | None]:
     """Return each expiry's ATM implied vol as a fraction, keyed like exposure_books.
 
     The key is (expiry, days to expiry). The value is the mean of the call and the put IV, each
@@ -483,7 +483,7 @@ def atm_sigma_by_expiry(
     none -- the next strike's IV never stands in for it. Schwab `volatility` is a percent,
     converted by schwab_iv_to_sigma.
     """
-    legs: dict[tuple[str, float | None], dict[str, tuple[float, float | None]]] = {}
+    legs: dict[tuple[str | None, float | None], dict[str, tuple[float, float | None]]] = {}
     for c in contracts:
         sides = legs.setdefault((c.expiry, c.days_to_expiry), {})
         if c.strike is None or c.side is None:
@@ -491,7 +491,7 @@ def atm_sigma_by_expiry(
         d = abs(c.strike - float(spot))
         if c.side not in sides or d < sides[c.side][0]:
             sides[c.side] = (d, schwab_iv_to_sigma(c.volatility))
-    out: dict[tuple[str, float | None], float | None] = {}
+    out: dict[tuple[str | None, float | None], float | None] = {}
     # a contract with no expiry date keeps its own key (None), last
     for k, s in sorted(legs.items(), key=lambda kv: (kv[0][0] is None, kv[0][0])):
         sig = [s[x][1] for x in ("CALL", "PUT") if x in s]
@@ -812,7 +812,7 @@ def same_day_levels(
     Charm walls of a front expiry that settles today are that expiry's map. A later front
     expiry is repriced to today's close, one call.
     """
-    blank = {name: None for name, _label in SAME_DAY_LEVELS}
+    blank: dict[str, float | None] = {name: None for name, _label in SAME_DAY_LEVELS}
     if not contracts or spot is None or spot <= 0:
         return blank
     today = now.astimezone(ET).date().isoformat()
