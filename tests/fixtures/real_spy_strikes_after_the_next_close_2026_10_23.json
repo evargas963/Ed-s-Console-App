@@ -1931,9 +1931,6 @@
   "near": []
  },
  "prior_source": null,
- "schwab_token_age_days": null,
- "schwab_token_note": "token file unreadable (FileNotFoundError) \u2014 collection may be dead",
- "schwab_token_urgency": "unknown",
  "scope": "auto",
  "spot": 773.1269,
  "spot_source": "streaming_plane",

@@ -19,7 +19,7 @@ import json
 import logging
 import sqlite3
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -361,11 +361,11 @@ class ChainSweep:
         self,
         db_path: Path | str,
         watchlist: list[str],
-        publish: callable,
-        clock: callable = time_et.now,
+        publish: Callable[[str, dict], object],
+        clock: Callable[[], float] = time_et.now,
         *,
         failures: CaptureWriter,
-        streamed: callable,
+        streamed: Callable[[str], tuple[str, dict] | None],
     ) -> None:
         self.db_path = db_path
         self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change

@@ -63,7 +63,6 @@ from calibration.complete_chain_capture import (
     last_capture_per_day,
     newest_capture_ts,
 )
-from config import token_path
 from confluence_composite import at_price, build_matrix, window_rows
 from db import LevelCrossEvent, get_db
 from db_authority import canonical_stream_db_path
@@ -702,62 +701,6 @@ def terrain_cache_get(ticker: str, now: float) -> tuple[PublishedLevels | None, 
 TERRAIN_STALE_AFTER_SEC: float = 180.0
 
 
-#: Schwab refresh tokens end at 7 days: warned from day 5, red from day 6.
-_SCHWAB_TOKEN_WARN_DAYS = 5.0
-_SCHWAB_TOKEN_RED_DAYS = 6.0
-
-
-def schwab_token_countdown(token: tuple[float | None, str | None], now: float) -> dict:
-    """Return the token's urgency at `now` from the token file's creation_timestamp.
-
-    When the file gives none, why (_schwab_token_creation_ts).
-    """
-    creation_ts, unreadable = token
-    if creation_ts is None:
-        return {
-            "schwab_token_age_days": None,
-            "schwab_token_urgency": "unknown",
-            "schwab_token_note": f"{unreadable} — collection may be dead",
-        }
-    age_days = (now - float(creation_ts)) / 86400.0
-    if age_days >= _SCHWAB_TOKEN_RED_DAYS:
-        urgency, note = (
-            "red",
-            (
-                f"Schwab token is {age_days:.1f} days old (7-day hard limit) — "
-                f"re-auth NOW: python reauth_schwab.py --manual"
-            ),
-        )
-    elif age_days >= _SCHWAB_TOKEN_WARN_DAYS:
-        urgency, note = (
-            "warn",
-            (
-                f"Schwab token is {age_days:.1f} days old — re-auth before "
-                f"day 7 kills collection: python reauth_schwab.py --manual"
-            ),
-        )
-    else:
-        urgency, note = "ok", ""
-    return {
-        "schwab_token_age_days": age_days,
-        "schwab_token_urgency": urgency,
-        "schwab_token_note": note,
-    }
-
-
-def _schwab_token_creation_ts() -> tuple[float | None, str | None]:
-    """creation_timestamp from schwab_token.json, or None (never a fake age) with why.
-
-    Why the file gives none, by its error's type, which the screen's note shows (its message names
-    a path).
-    """
-    try:
-        raw = json.loads(Path(token_path()).read_text(encoding="utf-8"))
-        return float(raw["creation_timestamp"]), None
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        return None, f"token file unreadable ({type(e).__name__})"
-
-
 def terrain_staleness(
     computed_ts_utc: float | None,
     ticker: str,
@@ -780,7 +723,6 @@ def terrain_staleness(
     option value the levels hold (`levels_ts_utc`: the chain, or a value pushed since) and its
     age.
     """
-    token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
     failure = _terrain_refresh_last_error.get(ticker_storage_key(ticker))
     state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
     age = None if levels_ts_utc is None else now - float(levels_ts_utc)
@@ -793,7 +735,6 @@ def terrain_staleness(
         # actively FAILING is a different action (the chain fetch is erroring, the levels
         # will not come back on their own)
         "levels_failing": bool(state == LEVELS_STALE and failure),
-        **token,
     }
 
 
@@ -1556,6 +1497,7 @@ def _publish_levels(
     push_changes.changed(tk, push_changes.LEVELS)
     if new_chain:
         push_changes.changed(tk, push_changes.CHAIN)
+        live_ui.changed(app.state, tk, "expiries")
     return snap
 
 
@@ -2059,7 +2001,7 @@ LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"  # _publish_levels, the single prod
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
-def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict | None, str | None]:
+def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict, str | None]:
     """Return the previous market day's close before the day of the chain the rows came from.
 
     The rows are the ticker's; the close comes as per-strike rows ({all, near, far}), with its
@@ -3282,30 +3224,11 @@ def options_microstructure(c: str, now: float) -> dict:
     return payload
 
 
-@app.get("/api/watchlist")
-def get_watchlist():
-    """Serve the watchlist, the one list of tickers Schwab is asked for.
-
-    As the capture daemon (its keeper) last reported it. A missing heartbeat keeps that list and
-    says it is not live. 503 only when no beat has ever carried a list.
-    """
-    now = time_et.now()
-    tickers = _watchlist()
-    if tickers is None:
-        return JSONResponse(
-            {
-                "error": "the capture daemon is not reporting (no current heartbeat): "
-                "its watchlist is unknown"
-            },
-            status_code=503,
-        )
-    return {"tickers": tickers, "live": lmp.daemon_status(now) is not None}
-
-
 async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
     """Ask the daemon for an add or a removal (streaming.watchlist_request).
 
-    Its record is the answer: `ok` when it happened, else what happened (an invalid ticker with
+    Its record is the answer, stamped with the record's time (`ts`, the program's clock, as each
+    beat's status is): `ok` when it happened, else what happened (an invalid ticker with
     Schwab's /quotes answer, one already on the list, ...).
     """
     try:
@@ -3322,6 +3245,7 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
             "op": rec["op"],
             "ticker": rec["ticker"],
             "tickers": rec["tickers"],
+            "ts": rec["ts_recv"],
             "status": rec["status"],
             "answer": rec["answer"],
         }
@@ -3375,38 +3299,35 @@ async def post_flow_contract(selected: FlowContract):
     return {"ok": True, "contract": contract}
 
 
-@app.get("/api/expiries")
-def get_expiries(ticker: str = Query(...)):
-    """Serve the ticker's listed expiries with each one's dropdown label.
+def expiries(ticker: str, now: float) -> dict:
+    """Return the ticker's listed expiries at `now`, each with its dropdown texts.
 
-    The label is MM/DD/YYYY and Schwab's daysToExpiration, as sent; with none, the levels' own
-    reason.
+    `ticker` is the levels' own key ($SPX). Each expiry's label is its date, MM/DD/YYYY, and its
+    `dte_text` Schwab's daysToExpiration as sent (18DTE), None when Schwab sent none. Before the
+    ticker's first chain is priced the list is unknown (None), with the levels' own reason; a
+    chain listing none is an empty list with its reason. The page's socket sends it (live_ui,
+    PAGE_PANELS) when the page subscribes on the ticker and on each new chain.
     """
-    ticker = ticker_storage_key(_required_ticker(ticker))  # SPX -> $SPX: the cache's own key
-    now = time_et.now()
     levels, verdict = terrain_cache_get(ticker, now)
-    if levels is None:
-        return JSONResponse(
-            {
-                "expiries": [],
-                "dte": {},
-                "labels": {},
-                "reason": verdict["levels_stale_reason"],
-            }
-        )
-    exps, dte = levels.snap.expiries, levels.snap.expiry_dte
-    labels = {
-        e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
-        for e in exps
+    exps = dte = labels = dte_text = None
+    reason = verdict["levels_stale_reason"]
+    if levels is not None:
+        exps, dte = levels.snap.expiries, levels.snap.expiry_dte
+        labels = {e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" for e in exps}
+        dte_text = {e: None if dte[e] is None else f"{dte[e]:g}DTE" for e in exps}
+        reason = None if exps else "no expiry listed in the published chain"
+    return {
+        "expiries": exps,
+        "dte": dte,
+        "labels": labels,
+        "dte_text": dte_text,
+        "reason": reason,
     }
-    return JSONResponse(
-        {
-            "expiries": exps,
-            "dte": dte,
-            "labels": labels,
-            "reason": None if exps else "no expiry listed in the published chain",
-        }
-    )
+
+
+#: the panels the page's socket sends for the page's selected ticker (live_ui.LiveUiServer):
+#: each kind's producer, (ticker, now) -> its body; _publish_levels marks a kind changed
+PAGE_PANELS = {"expiries": expiries}
 
 
 #: /api/chain's reason while no chain of the ticker is held and no chain error is recorded
