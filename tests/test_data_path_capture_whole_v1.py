@@ -45,7 +45,7 @@ def _sweep(tmp_path, publish) -> cch.ChainSweep:
         publish,
         clock=lambda: _BEGUN,
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed=lambda _symbol: None,
     )
 
 
