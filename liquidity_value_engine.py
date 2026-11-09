@@ -17,7 +17,7 @@ import logging
 import struct
 import threading
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from instrument_identity import ticker_storage_key
 from liquidity_models import (
@@ -190,17 +190,16 @@ def compute_opening_range(
     session_date: date,
     config: PlaybookConfig,
 ) -> dict:
-    """First N minutes of RTH (default 15), from normalized bars (bars_from_candles)."""
-    orb_min = config.opening_range_minutes
+    """The bars of the first N minutes (default 15) from the regular open Schwab sent for the date.
 
-    orb_bars = []
-    for b in bars_norm:
-        dt = b["_dt"]
-        if dt.date() != session_date:
-            continue
-        mins_since_open = (dt.hour - 9) * 60 + (dt.minute - 30)
-        if 0 <= mins_since_open < orb_min:
-            orb_bars.append(b)
+    From normalized bars (bars_from_candles). {} when the date has no regular session, when
+    Schwab's /markets answer for it is not held (the open is unknown), or when no bar falls in it.
+    """
+    regular = _regular(session_date)
+    span = timedelta(minutes=config.opening_range_minutes)
+    orb_bars = [
+        b for b in bars_norm if regular is not None and regular[0] <= b["_dt"] < regular[0] + span
+    ]
 
     if not orb_bars:
         return {}
@@ -984,7 +983,7 @@ def build_price_level_snapshot(
     orb = compute_opening_range(bars_norm, session_date, cfg)
     if not orb:
         families_absent.append(
-            {"family": "opening_range", "reason": "no ORB bars in available tape for session"}
+            {"family": "opening_range", "reason": "no bar in the opening minutes, or no open known"}
         )
     else:
         put(
