@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -524,3 +525,88 @@ def test_a_change_to_one_tickers_held_contracts_restamps_that_surface_alone():
         if side in ("call", "put")
     }
     assert [states[s] for s in crwd[:2]] == ["pending", "pending"], "held, no tick yet"
+
+
+def _sym_states() -> list[str]:
+    """Return the states of SYM's legs on SPY's published heatmap."""
+    surface = server.published_levels(TK).gamma_surface
+    return [
+        col[side]["state"]
+        for cell in surface["cells"]
+        for col, pair in zip(cell["stream"], cell["contracts"])
+        for side in ("call", "put")
+        if col and pair.get(side) == SYM
+    ]
+
+
+def _publish_chain(at: float) -> None:
+    """SPY's chain delivered and priced at `at`, at the price row Schwab's quote made."""
+    lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
+    row = ofs.price_row(TK, at)
+    server._publish_levels(
+        TK,
+        read_chain(_CAPTURE["chain"]),
+        _CAPTURE["capture_ts_utc"],
+        chain_spot=(row["spot"], row["trade_ts"]),
+        now=datetime.fromtimestamp(at, ET),
+    )
+
+
+def _push() -> None:
+    """Schwab's LEVELONE_OPTIONS message for SYM, as the daemon pushes it to the console."""
+    ofs._ingest_pushed(
+        f"optquote.{SYM}",
+        verbatim_msg(
+            symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
+        ),
+    )
+
+
+def test_the_reprice_a_push_queues_keeps_the_held_contracts_legs_live():
+    """Schwab's push -> the console's feed -> the reprice it queues -> the heatmap: still live.
+
+    SPY's chain priced at `_AT`, SYM held on the daemon's beat stamped after Schwab's message
+    arrived (the daemon beats every second). The message reaches the console's feed
+    (streaming._ingest_pushed, server._on_stream_tick as its tick callback) and queues SPY's
+    reprice; the pricing job runs it at its own instant, `_AT`, as _price_waiting_chain does.
+    Production's SPY heatmap read 33 of 33 cells "unavailable" (2026-11-09 15:10 CT) while the
+    daemon held 375 SPY contracts, those cells' among them.
+    """
+    _beat(_AT - 0.5)
+    _publish_chain(_AT)
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
+    ofs._on_tick_callback = server._on_stream_tick
+    try:
+        _push()
+        with server._chains_waiting_lock:
+            job = server._chains_waiting.pop(TK)
+    finally:
+        ofs._on_tick_callback = None
+        gate.set()
+    server._price_chain(TK, *job, datetime.fromtimestamp(_AT, ET))
+    assert job[0] == server.REPRICE
+    states = _sym_states()
+    assert states and set(states) == {"live"}
+    assert server.published_levels(TK).gamma_surface["stream_overlay_contracts"] == 1
+
+
+def test_the_beat_after_a_new_surface_stamps_it_whatever_beat_stamped_the_last():
+    """A newly priced surface is stamped by the next beat, even one like the last restamp's.
+
+    SPY's chain priced at `_AT` with SYM held and streamed: live, and the beat restamps it. The
+    daemon drops SYM and the next chain is priced then: SYM is not live. The daemon holds SYM
+    again on the next beat, the same holding the last restamp saw: SYM is live again.
+    """
+    _push()
+    _beat(_AT - 0.5)
+    _publish_chain(_AT)
+    server.restamp_open_surfaces(_AT)
+    assert set(_sym_states()) == {"live"}
+    _beat(_AT + 0.2, options=[])
+    _publish_chain(_AT + 0.3)
+    assert "live" not in _sym_states()
+    _beat(_AT + 0.5)
+    server.restamp_open_surfaces(_AT + 0.6)
+    states = _sym_states()
+    assert states and set(states) == {"live"}

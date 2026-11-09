@@ -571,11 +571,14 @@ the program.
   screen draws "-". None of these rules names a ticker; the
   watchlist decides which tickers are fetched and priced. Every streamed tick of a ticker (an
   equity quote, or a LEVELONE_OPTIONS message of one of its contracts carrying a Greek or its
-  volume, `streaming._REPRICE_FIELDS`) queues a reprice of that ticker on the pricing thread, as
-  of the tick's receive time, whether a page shows it or not (operator 2026-11-06: "the live
-  price is the key"; the levels follow what Schwab pushes). The ticks that arrive while one waits
-  or runs are all in the next, which is as of the newest; it is pushed to the page the moment it
-  changes. A streamed contract's Greeks and volatility are the stream's newest once the stream
+  volume, `streaming._REPRICE_FIELDS`) queues a reprice of that ticker on the pricing thread,
+  whether a page shows it or not (operator 2026-11-06: "the live price is the key"; the levels
+  follow what Schwab pushes). The ticks that arrive while one waits or runs are all in the next.
+  Every pricing runs at the job's own instant (`server._price_waiting_chain`), so the daemon's
+  newest beat judges which of its contracts stream; it is pushed to the page the moment it
+  changes, and the next beat stamps the new heatmap (`server.restamp_open_surfaces`). Enforced by:
+  `tests/test_data_path_live_status_v1.py` (a push's reprice keeps a held contract live; the beat
+  after a new surface stamps it). A streamed contract's Greeks and volatility are the stream's newest once the stream
   holds all six, else the chain's (`math_exposure_core.overlay_streamed_contract_fields`); its
   volume is the stream's. The levels' time (`levels_ts_utc`, served as `levels_time_ct` and the
   age) is the newest Schwab option value in them: the chain, or a value pushed since; their
