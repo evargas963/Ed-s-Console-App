@@ -15,9 +15,12 @@ from pathlib import Path
 
 import pytest
 
+import live_market_plane as lmp
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
 from app.market_data.schwab.streaming import program_lock as pl
+from app.options.order_flow import streaming as ofs
+from tests.feed_live_helper import RTH_INSTANT
 from tests.real_chains import TSLA
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,10 +97,6 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     Two of TSLA's captured 2026-10-07 contracts, judged by TSLA's own option market. STAND-IN
     (named): the daemon's status. Judged in regular hours (RTH_INSTANT).
     """
-    import live_market_plane as lmp
-    from app.options.order_flow import streaming as ofs
-    from tests.feed_live_helper import RTH_INSTANT
-
     a, b = TSLA.chain[0]["symbol"], TSLA.chain[1]["symbol"]
     status = {
         "schwab_socket_open": True,

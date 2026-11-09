@@ -16,9 +16,11 @@ from pathlib import Path
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import server
 import time_et
 from app.options.order_flow.engine import read_book
 from stream_spine import book_msg, quote_msg
+from tests.feed_live_helper import RTH_INSTANT, daemon_status
 
 
 def _reset(tmp_path):
@@ -94,11 +96,6 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
     through the real ingest: each venue's route answer is that venue's book, never the newest
     of the two.
     """
-    import json
-    from pathlib import Path
-
-    import server
-
     _reset(tmp_path)
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
@@ -132,12 +129,6 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     books (tests/fixtures/real_spy_nyse_nasdaq_books.json), judged in regular hours
     (RTH_INSTANT).
     """
-    import json
-    from pathlib import Path
-
-    import server
-    from tests.feed_live_helper import RTH_INSTANT, daemon_status
-
     _reset(tmp_path)
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(

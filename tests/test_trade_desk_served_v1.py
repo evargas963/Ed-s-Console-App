@@ -11,20 +11,40 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
-from app.options.order_flow.engine import _zone, book_readout
+from app.options.order_flow.engine import (
+    _zone,
+    book_readout,
+    compute_book_microstructure,
+    read_book,
+)
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import LevelCrossEvent
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, LEVEL_NAMES
 from micro_structure import Candle
 from option_contract import read_chain
-from terrain_engine import WALL_BREACHED, WALL_CONTAINS, compute_terrain, price_relations
+from terrain_engine import (
+    WALL_BREACHED,
+    WALL_CONTAINS,
+    compute_terrain,
+    price_relations,
+    wall_lean,
+)
 from terrain_read import level_side
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, price_history
+from tests.real_chains import (
+    SPY_0DTE,
+    SPY_AFTER_HOURS_PRINT,
+    SPY_CLOSE,
+    SPY_PRINT_A_STRIKE_AWAY,
+    SPY_PRINT_ON_A_STRIKE,
+)
+from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -34,8 +54,6 @@ def _load(name):
 
 
 def test_the_book_side_is_served_from_the_real_book():
-    from app.options.order_flow.engine import compute_book_microstructure, read_book
-
     fx = _load("real_equity_book.json")
     nat = fx["book"]["native"]
     bid5 = sum(r["TOTAL_VOLUME"] for r in nat["BIDS"][:5])
@@ -122,8 +140,6 @@ def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live()
     read the same whether or not the book was live. Real TSLA NASDAQ book (its own BOOK_TIME),
     applied by the console's own intake as the daemon pushes it; Schwab's feed is down.
     """
-    import app.options.order_flow.state as ofls
-
     fx = _load("real_equity_book.json")
     tk, nat, venue = fx["ticker"], fx["book"]["native"], fx["book"]["service"]
     ofls.clear_all_live_state()
@@ -185,8 +201,6 @@ def _spy_close_at(msg):
     """SPY's 2026-10-22 close capture published at Schwab's price in it (764.04), and every
     relation of a real SPY print after it (`msg`, as the daemon received it) to those levels.
     """
-    from tests.real_chains import SPY_CLOSE
-
     published = compute_terrain(
         "SPY", read_chain(SPY_CLOSE.chain), SPY_CLOSE.spot, now=SPY_CLOSE.now
     ).to_dict()
@@ -196,8 +210,6 @@ def _spy_close_at(msg):
 
 
 def test_the_flip_side_is_the_live_prices():
-    from tests.real_chains import SPY_AFTER_HOURS_PRINT, SPY_PRINT_A_STRIKE_AWAY
-
     for msg in (SPY_AFTER_HOURS_PRINT, SPY_PRINT_A_STRIKE_AWAY):
         out = _spy_close_at(msg)
         side = level_side(out["gamma_flip"], out["spot"])
@@ -211,8 +223,6 @@ def test_a_breached_wall_says_where_the_live_price_is():
     """The 16:39 print (773.1269) is past the call wall 765; the 16:33 print (764.00) is on the
     put wall 764, which contains nothing there.
     """
-    from tests.real_chains import SPY_PRINT_A_STRIKE_AWAY, SPY_PRINT_ON_A_STRIKE
-
     out = _spy_close_at(SPY_PRINT_A_STRIKE_AWAY)
     assert (
         out["call_wall_state"] == WALL_BREACHED and out["call_wall_lean"] == "BREACHED — spot above"
@@ -225,8 +235,6 @@ def test_a_breached_wall_says_where_the_live_price_is():
 
 def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip():
     """The 18:00 print (764.27) is between the put wall 764 and the call wall 765."""
-    from tests.real_chains import SPY_AFTER_HOURS_PRINT
-
     out = _spy_close_at(SPY_AFTER_HOURS_PRINT)
     assert out["call_wall_state"] == out["put_wall_state"] == WALL_CONTAINS
     earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED"
@@ -239,9 +247,6 @@ def test_one_strike_holding_both_walls_is_two_sided():
     walls; ACTIVE_PROGRAM STAND-INS); the earned lean is SPY's close walls (764, 765) at its 18:00
     print (764.27).
     """
-    from terrain_engine import wall_lean
-    from tests.real_chains import SPY_AFTER_HOURS_PRINT
-
     price = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
     assert wall_lean(770.0, 770.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == (
         ("TWO-SIDED — magnet, not a barrier",) * 2
@@ -268,8 +273,6 @@ def _spy_bars() -> list:
     answer of 2026-10-07 (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json), every candle
     of those two ET days.
     """
-    from tests.feed_live_helper import price_history
-
     days = {"2026-10-01", "2026-10-02"}
     return [
         {
@@ -331,8 +334,6 @@ def spy_levels():
     time (tests/real_chains.py), the SPY bars published by the bar writer, and the last bar's close
     as Schwab's LAST_PRICE (stand-in). Returns (spot, terrain, serve(tf)).
     """
-    from tests.real_chains import SPY_0DTE
-
     bars = _spy_bars()
     _forget(DESK)
     terrain = _priced(DESK, SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now.timestamp())
@@ -419,8 +420,6 @@ def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
     """The proximity strip printed raw ids (OVERNIGHT_HIGH, PD_VAH) and the chart kept its own
     short-name table; both names are served now, from one table (LEVEL_NAMES).
     """
-    from liquidity_value_engine import LEVEL_NAMES
-
     _spot, _terrain, serve = spy_levels
     body = serve()
     snap = [r for r in body["levels"] if r["id"] in LEVEL_NAMES]
@@ -532,8 +531,6 @@ def test_the_desk_window_is_schwabs_last_session_open_and_its_words_are_served()
     was a hard-coded 9:30 with a 24-hour stand-in when no session was found. The open is the one
     Schwab's /markets sent (tests/conftest.py).
     """
-    from time_et import ET
-
     sat = datetime(2026, 10, 3, 11, 0, tzinfo=ET)  # Saturday: Friday's open
     assert (
         server._desk_window_start("30", sat) == datetime(2026, 10, 2, 9, 30, tzinfo=ET).timestamp()

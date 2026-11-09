@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -25,8 +26,8 @@ import push_changes
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import PRICE_HISTORY, ChainSweep
-from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
+from calibration.complete_chain_capture import PRICE_HISTORY, ChainSweep, price_history_message
+from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.schwab_rest_standin import HISTORY, PRICEHISTORY, LocalSchwab
 from time_et import ET
 
@@ -130,8 +131,6 @@ def _held(tk: str, series: str, now: datetime, candles: list | None = None) -> N
     """Schwab's captured `series` answer for `tk` (its `candles` only, when given), published,
     pushed and taken by the console.
     """
-    from calibration.complete_chain_capture import price_history_message
-
     a = HISTORY[(tk, *_SERIES[series])]
     body = a["body"] if candles is None else dict(a["body"], candles=candles)
     topic, msg = price_history_message(tk, series, body, a["answered_utc"])
@@ -206,8 +205,6 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
     monthly ATR are those of Schwab's daily candles, of the weeks and of the months they make (at
     the answer's time, before the session: no candle of today yet).
     """
-    from calibration.complete_chain_capture import price_history_message
-
     bus = MessageBus()
     sub = bus.subscribe("pricehistory.", policy=LATEST)
     for tk in ("SPY", "TSLA"):
@@ -389,8 +386,6 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
     daemon's bus, and the one writer (CaptureWriter, the bus's LOG reader) writes each answer whole,
     as sent, into stream_pricehistory_raw: SPY's 1-minute, 15-minute and daily answers.
     """
-    import sqlite3
-
     db = tmp_path / "stream_capture.db"
     schwab = LocalSchwab()
     client = schwab.client(tmp_path)
@@ -412,8 +407,6 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
             con.close()
 
     async def go():
-        from stream_spine import LOG
-
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         daemon = capture.Daemon(bus, health, ["SPY"])
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)

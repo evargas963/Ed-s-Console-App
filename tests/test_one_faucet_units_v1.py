@@ -12,8 +12,15 @@ from datetime import datetime, timedelta
 
 import pytest
 
+import server
 import time_et
-from math_exposure_core import compute_exposures_by_strike, compute_net_vanna
+from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
+from math_exposure_core import (
+    bucket_metric,
+    compute_exposures_by_strike,
+    compute_net_vanna,
+    put_call_volume_ratio,
+)
 from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.capture_store import store_capture
@@ -59,12 +66,6 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
     """The stored captures are priced at their own capture times, whatever the clock reads now
     (after the chain's expiry). Stand-in: SPY's real chain stored as two days' captures.
     """
-    import server
-    from calibration.complete_chain_capture import (
-        CAPTURE_BASIS,
-        last_capture_per_day,
-    )
-
     db = tmp_path / "ed_console.db"
     for day, hour in ((7, 12), (6, 15)):
         ts = datetime(2026, 10, day, hour, 0, tzinfo=time_et.ET).timestamp()
@@ -92,8 +93,6 @@ def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_
     """Both ratios are served (operator 2026-09-27): OI (positions held) and volume (today's
     trading, Cboe's convention). A strike with no call listed adds 0 calls: the sum of none.
     """
-    from math_exposure_core import put_call_volume_ratio
-
     book = {
         100.0: {"call_volume": 400.0, "put_volume": 300.0, "volume_unreported": 0},
         105.0: {"call_volume": 100.0, "put_volume": 200.0, "volume_unreported": 0},
@@ -111,8 +110,6 @@ def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
     data. Real chain priced the day after its own expiry (Schwab still lists an expired Friday on
     the weekend): no contract has a vanna, so there is no net vanna.
     """
-    from math_exposure_core import bucket_metric
-
     next_day = SPY_0DTE.now + timedelta(days=1)
     per, _ = compute_exposures_by_strike(
         read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=next_day

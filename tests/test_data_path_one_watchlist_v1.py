@@ -20,6 +20,7 @@ import json
 import logging
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -34,12 +35,14 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_liv
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from option_contract import read_chain
+from schwab_client import flatten_chain_contracts
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
 from tests.test_live_push_channel_v1 import listener
+from time_et import ET
 
 #: SPY's 2026-11-20 contracts (442) and the price stored with them
 SPY_CHAIN = json.loads(
@@ -193,10 +196,6 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
     SUBS 819 + ADD 1, only the last 820 ever updated), so only the first part is SUBS and the rest
     ADD: Schwab holds them all.
     """
-    from pathlib import Path
-
-    from schwab_client import flatten_chain_contracts
-
     mrvl = json.loads(
         (
             Path(__file__).parent / "fixtures" / "real_mrvl_full_chain_vs_strike_window.json"
@@ -407,10 +406,6 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
     """An empty watchlist in an open session (Wednesday 2026-10-07 10:00 ET): no request to Schwab
     and no rotation, until a ticker is added.
     """
-    from datetime import datetime
-
-    from time_et import ET
-
     schwab = LocalSchwab()
     sweep = ChainSweep(
         tmp_path / "ed_console.db",

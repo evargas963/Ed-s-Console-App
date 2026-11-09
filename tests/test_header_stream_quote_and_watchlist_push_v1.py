@@ -5,6 +5,7 @@ screen and a price in a console calculation are the same value.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server as srv
 import time_et
+from app.options.order_flow import streaming as ofs
 from tests.feed_live_helper import daemon_status
 
 
@@ -41,11 +43,6 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages. Real TSLA
     quote as Schwab sent it (tests/fixtures/real_equity_book.json), received now.
     """
-    import json
-    from pathlib import Path
-
-    from app.options.order_flow import streaming as ofs
-
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8")
     )

@@ -15,6 +15,7 @@ built here in its shape (no status is captured).
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import live_price_rows
+import push_changes
 import server
 from option_contract import read_chain
 from stream_spine import verbatim_msg
@@ -391,10 +393,6 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
     and the not-live refresh (a page open on $SPX is told to read its levels again) say the
     same.
     """
-    import asyncio
-
-    import push_changes
-
     spx_close = next(
         m for m in _STATUS if m["symbol"] == "$SPX" and m["item"]["SECURITY_STATUS"] == "Closed"
     )

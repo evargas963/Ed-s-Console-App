@@ -8,10 +8,16 @@ SPY's LEVELONE_EQUITIES prints after it, in the order the daemon received them: 
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sqlite3
+from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 import live_market_plane as lmp
+import push_changes
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
@@ -26,6 +32,7 @@ from tests.real_chains import (
     SPY_PRINT_A_STRIKE_AWAY,
     SPY_PRINT_ON_A_STRIKE,
 )
+from time_et import ET, ct_label
 
 ON_A_STRIKE = SPY_PRINT_ON_A_STRIKE["native"]["LAST_PRICE"]
 STRIKE_AWAY = SPY_PRINT_A_STRIKE_AWAY["native"]["LAST_PRICE"]
@@ -180,10 +187,6 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     marked not live, with the print's trade time and its age (AGENTS rule 5). Judged from the
     print's receipt on, in that After-Hours session.
     """
-    from datetime import datetime
-
-    from time_et import ET, ct_label
-
     msg = SPY_PRINT_A_STRIKE_AWAY
     clock = clock_from(msg["ts_recv"])
     _forget()
@@ -229,10 +232,6 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
     levels again, and once the daemon's connection ends too, every minute. Judged from the print's
     receipt on, in that After-Hours session.
     """
-    import asyncio
-
-    import push_changes
-
     msg = SPY_PRINT_A_STRIKE_AWAY
     clock = clock_from(msg["ts_recv"])
     _forget()
@@ -283,10 +282,6 @@ def stopped_price_answers() -> dict:
     publication after the next day's 16:15 option close (2026-10-23 16:30 ET), no chain fetched
     since: the answers the browser tests render (STOPPED_FIXTURES).
     """
-    from datetime import datetime
-
-    from time_et import ET
-
     _forget()
     _publish_close()
     msg = SPY_PRINT_A_STRIKE_AWAY
@@ -390,10 +385,6 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
     table does not take). Neither is stored, and the refusal reaches the caller, which logs it and
     holds neither, so the database and the console's memory stay the same.
     """
-    import sqlite3
-
-    import pytest
-
     edb = EdDB(tmp_path / "level_crosses.db")
 
     def cross(name, value):

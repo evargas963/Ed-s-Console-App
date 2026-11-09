@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
+import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
@@ -49,8 +50,6 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
 
 
 def test_a_stopped_record_reads_stale_in_the_console(tmp_path):
-    import server
-
     db = tmp_path / "stream_capture.db"
     now = time_et.now()
     CaptureWriter(db).insert(

@@ -14,7 +14,14 @@ from pathlib import Path
 
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as ofls
+import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
+import server
+from app.options.order_flow.engine import OrderFlowEngine
+from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import OrderFlowState
+from stream_spine import quote_msg, verbatim_msg
+from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_live
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
 
@@ -403,8 +410,6 @@ def test_engine_and_route_read_the_same_canonical_state():
     """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes — one
     faucet, not two producers.
     """
-    from app.options.order_flow.engine import OrderFlowEngine
-
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
     data = _data()
     out = OrderFlowEngine().compute(_read(data), now=1787233772.0, ticker="SAME")
@@ -495,8 +500,6 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
     top-of-book item beside the book and tape. Stand-in (named): a hand-built
     LEVELONE_EQUITIES tick.
     """
-    import app.options.order_flow.state as ofls
-
     ofls.clear_symbol("O01EQ")
     try:
         ofls.push_level_one(
@@ -525,9 +528,6 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's GAMMA as Schwab
     sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json).
     """
-    import app.options.order_flow.streaming as ofs
-    from stream_spine import quote_msg, verbatim_msg
-
     mix = json.loads(
         (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
             encoding="utf-8"
@@ -578,16 +578,11 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     tests/test_data_path_rules_v1.py). Real TSLA 260831C00367500 ticks (tests/fixtures), judged in
     regular hours, the option market open (RTH_INSTANT).
     """
-    import live_market_plane as lmp
-    from app.options.order_flow import state
-    from app.options.order_flow.live_payload import options_live_payload
-    from tests.feed_live_helper import RTH_INSTANT, daemon_status
-
     c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
     sym = c["symbol"]
     for ev in c["events"][:4]:
         if ev["kind"] == "l1":
-            state.push_option_top(sym, ev["content"])
+            ofls.push_option_top(sym, ev["content"])
     try:
         lmp.record_feed_heartbeat(
             daemon_status(RTH_INSTANT, schwab_socket_open=True, held={"LEVELONE_OPTIONS": [sym]})
@@ -596,7 +591,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
     finally:
         lmp.record_feed_down()
-        state.clear_all_live_state()
+        ofls.clear_all_live_state()
 
 
 def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
@@ -605,10 +600,6 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     §2 D5, tests/test_data_path_rules_v1.py). Stand-in quote (named): bid 10.00 x 3, ask 10.02 x 5.
     Served in regular hours (RTH_INSTANT).
     """
-    import live_market_plane as lmp
-    import server
-    from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
-
     now = RTH_INSTANT
     mark_feed_live("ZZTB", now=now)
     try:

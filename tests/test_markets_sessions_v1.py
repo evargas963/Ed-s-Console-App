@@ -24,6 +24,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
+from calibration.complete_chain_capture import markets_message
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.feed_live_helper import mark_feed_live
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab
@@ -108,8 +109,6 @@ def test_the_console_holds_each_200_answer_and_never_a_400():
     daemon publishes it; Schwab's 400 (more than 7 days back) is no session: the date stays
     unknown.
     """
-    from calibration.complete_chain_capture import markets_message
-
     for day in ("2026-09-29", "2026-10-07"):
         a = MARKETS_ANSWERS[day]
         topic, msg = markets_message(day, a["status"], json.loads(a["body"]), time_et.now())

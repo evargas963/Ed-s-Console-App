@@ -12,6 +12,13 @@ every other level means.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+import server as srv
+
 
 def test_bars1m_endpoint_serves_canonical_bars_shape():
     """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows from the console's
@@ -23,11 +30,6 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
     reshaping. This file's own test_spot_endpoint_caches_upstream_within_ttl already
     calls its handler directly, so this is the established pattern here.
     """
-    import json
-    from pathlib import Path
-
-    import server as srv
-
     # Real SPY 1-minute bars (tests/fixtures), each kept by the console's own bar writer.
     fx = json.loads(
         (
@@ -62,10 +64,6 @@ def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
     expiry scopes for today + prior capture, sorted by strike, read-only.
     """
-    from fastapi.testclient import TestClient
-
-    import server as srv
-
     client = TestClient(srv.app)
     r = client.get("/api/terrain/strikes?ticker=SPY")
     assert r.status_code == 200

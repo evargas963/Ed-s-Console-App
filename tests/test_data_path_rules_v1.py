@@ -17,19 +17,34 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import schwab_client as sc
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import ChainSweep, chain_messages
+from app.options.order_flow import live_payload
+from app.options.order_flow.state import push_option_top
+from calibration.complete_chain_capture import ChainSweep, chain_messages, price_history_message
+from db import get_db
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
-from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
+from stream_spine import (
+    LATEST,
+    LOG,
+    CaptureWriter,
+    HealthRegistry,
+    MessageBus,
+    bar_msg,
+    book_msg,
+    verbatim_msg,
+)
 from tests.feed_live_helper import (
     daemon_bars,
     daemon_status,
@@ -296,12 +311,6 @@ def _served_at(now: float, feed_live: bool) -> dict:
     memory, the feed live or not (the daemon's heartbeat holding both symbols, or none): what the
     header row, the console's one spot, the equity book's top and the option book's top serve.
     """
-    import live_market_plane as lmp
-    import server
-    from app.options.order_flow import live_payload
-    from app.options.order_flow import streaming as ofs
-    from app.options.order_flow.state import push_option_top
-
     then = now - 600
     lmp.record_from_level_one_equity(
         "SPY",
@@ -407,8 +416,6 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
     """The daemon's status, stamped by the daemon two minutes ago, arrives now: the console
     judges it by the daemon's own time, not by when it arrived.
     """
-    import live_market_plane as lmp
-
     old = time_et.now() - 120
     lmp.record_feed_heartbeat(
         daemon_status(
@@ -808,8 +815,6 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the daemon's
     price row: that trade is the spot with its trade time, the heartbeat live or not.
     """
-    import live_market_plane as lmp
-
     at = _et("2026-10-02 11:00")
     served = {}
     for live in (True, False):
@@ -901,8 +906,6 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
     session at its own clock (an entry point), so they are read at now: the newest session in the
     history before it is Tue 10-06.
     """
-    from calibration.complete_chain_capture import price_history_message
-
     pushed = [_newest(_DAEMON_BARS, tk)[-1] for tk in _PAIR]
     history = {tk: price_history(tk, "1m") for tk in _PAIR}
     _forget(*_PAIR)
@@ -1078,13 +1081,6 @@ def test_d6_no_live_route_opens_a_database():
     quote; the console database), each database SQLite opens recorded: none opens one. The routes
     are read from the app itself; /api/changes is the push stream (it never ends).
     """
-    from fastapi.routing import APIRoute
-    from fastapi.testclient import TestClient
-
-    import server
-    from db import get_db
-    from stream_spine import book_msg, verbatim_msg
-
     books = json.loads((FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
     ]
@@ -1158,10 +1154,6 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
     builds. Stand-ins: a local server answering as Schwab does (the error body's shape is
     Schwab's documented {"errors": [...]}), and a token file.
     """
-    import threading
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    import schwab_client as sc
 
     class Schwab(BaseHTTPRequestHandler):
         def do_GET(self):
