@@ -214,7 +214,7 @@ jobs:
           # refusal print the whole TCP table as netstat -anoq lists it (BOUND included), by state
           # and process; every second print the stack's cumulative counters (GetTcpStatisticsEx)
           cat > "$RUNNER_TEMP/ports_probe.py" <<'PROBE'
-          import collections, ctypes, socket, subprocess, sys, time
+          import collections, ctypes, socket, struct, subprocess, sys, time
           from ctypes import wintypes
           F = ("rto_alg rto_min rto_max max_conn active passive attempt_fails estab_resets "
                "curr_estab in_segs out_segs retrans in_errs out_rsts num_conns").split()
@@ -255,6 +255,9 @@ jobs:
           end = time.monotonic() + float(sys.argv[1])
           p4, p6 = stats(socket.AF_INET), stats(socket.AF_INET6)
           nxt, nsnap, nroutine, fails = time.monotonic() + 1, 0.0, time.monotonic() + 30, 0
+          cfails = collections.Counter()
+          lsock = socket.socket(); lsock.bind(("127.0.0.1", 0)); lsock.listen(16)
+          lport = lsock.getsockname()[1]
           while time.monotonic() < end:
               for addr in ("127.0.0.1", "0.0.0.0"):
                   s = socket.socket()
@@ -267,13 +270,35 @@ jobs:
                           snap("port refused"); nsnap = time.monotonic() + 2
                   finally:
                       s.close()
+              # connect (implicit port) to the console under test and to a listener of our own,
+              # each closed by reset so no TIME_WAIT is added
+              try:
+                  sport = int(open("e2e_port.txt").read().strip())
+              except (OSError, ValueError):
+                  sport = 0
+              for name, port in (("console", sport), ("own", lport)):
+                  if not port: continue
+                  c = socket.socket()
+                  c.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("hh", 1, 0))
+                  try:
+                      c.connect(("127.0.0.1", port))
+                      if name == "own":
+                          a, _ = lsock.accept(); a.close()
+                  except OSError as e:
+                      cfails[name] += 1
+                      print("### CONNECT REFUSED %s %s:%d %r" % (stamp(), name, port, e), flush=True)
+                      if time.monotonic() >= nsnap:
+                          snap("connect refused"); nsnap = time.monotonic() + 2
+                  finally:
+                      c.close()
               now = time.monotonic()
               if now >= nxt:
                   s4, s6 = stats(socket.AF_INET), stats(socket.AF_INET6)
                   print("%s v4 active+%d passive+%d fails+%d resets+%d estab=%d table=%d | v6 active+%d table=%d | refused=%d" % (
                       stamp(), s4["active"] - p4["active"], s4["passive"] - p4["passive"],
                       s4["attempt_fails"] - p4["attempt_fails"], s4["estab_resets"] - p4["estab_resets"],
-                      s4["curr_estab"], s4["num_conns"], s6["active"] - p6["active"], s6["num_conns"], fails), flush=True)
+                      s4["curr_estab"], s4["num_conns"], s6["active"] - p6["active"], s6["num_conns"], fails)
+                      + " connect-refused=%s" % dict(cfails), flush=True)
                   p4, p6, nxt = s4, s6, now + 1
               if now >= nroutine:
                   snap("every 30 s"); nroutine = now + 30
@@ -301,11 +326,13 @@ jobs:
           ETW
           # Windows' own TCP/IP and Winsock events at warning level and above, with the process
           MSYS_NO_PATHCONV=1 logman start tcpwarn -p Microsoft-Windows-TCPIP 0xffffffffffffffff 0x3 -o tcpwarn.etl -ets -max 256
-          MSYS_NO_PATHCONV=1 logman start afdwarn -p Microsoft-Windows-Winsock-AFD 0xffffffffffffffff 0x3 -o afdwarn.etl -ets -max 512
           rc=0
           for pass in 1 2 3 4 5 6 7 8 9 10; do
-            echo "=== pass $pass starts $(date -u +%H:%M:%S)"
+            export ED_E2E_PORT=$((56000 + pass * 37))
+            echo $ED_E2E_PORT > e2e_port.txt
+            echo "=== pass $pass starts $(date -u +%H:%M:%S) console port $ED_E2E_PORT"
             npm run test:e2e || rc=$?
+            rm -f e2e_port.txt
             echo "=== pass $pass ends $(date -u +%H:%M:%S)"
             if grep -q "failed" logs/test_e2e_last.log; then
               mkdir -p kept-failures/pass-$pass && cp -r test-results logs/test_e2e_last.log kept-failures/pass-$pass/ || true
@@ -315,8 +342,7 @@ jobs:
           kill $probe_pid 2>/dev/null || true
           mkdir -p kept-failures && cp ports_probe.txt kept-failures/ || true
           MSYS_NO_PATHCONV=1 logman stop tcpwarn -ets || true
-          MSYS_NO_PATHCONV=1 logman stop afdwarn -ets || true
-          for t in tcpwarn afdwarn; do
+          for t in tcpwarn; do
             MSYS_NO_PATHCONV=1 tracerpt $t.etl -o $t.csv -of CSV -y > /dev/null || true
             echo "=== $t: events by name, id, process and status"
             python "$RUNNER_TEMP/etw_status.py" $t.csv || true
