@@ -3290,30 +3290,11 @@ def options_microstructure(c: str, now: float) -> dict:
     return payload
 
 
-@app.get("/api/watchlist")
-def get_watchlist():
-    """Serve the watchlist, the one list of tickers Schwab is asked for.
-
-    As the capture daemon (its keeper) last reported it. A missing heartbeat keeps that list and
-    says it is not live. 503 only when no beat has ever carried a list.
-    """
-    now = time_et.now()
-    tickers = _watchlist()
-    if tickers is None:
-        return JSONResponse(
-            {
-                "error": "the capture daemon is not reporting (no current heartbeat): "
-                "its watchlist is unknown"
-            },
-            status_code=503,
-        )
-    return {"tickers": tickers, "live": lmp.daemon_status(now) is not None}
-
-
 async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
     """Ask the daemon for an add or a removal (streaming.watchlist_request).
 
-    Its record is the answer: `ok` when it happened, else what happened (an invalid ticker with
+    Its record is the answer, stamped with the record's time (`ts`, the program's clock, as each
+    beat's status is): `ok` when it happened, else what happened (an invalid ticker with
     Schwab's /quotes answer, one already on the list, ...).
     """
     try:
@@ -3330,6 +3311,7 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
             "op": rec["op"],
             "ticker": rec["ticker"],
             "tickers": rec["tickers"],
+            "ts": rec["ts_recv"],
             "status": rec["status"],
             "answer": rec["answer"],
         }

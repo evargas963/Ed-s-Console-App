@@ -2,7 +2,9 @@
 // e2e console runs no daemon, so its own /ws refuses a page. Like the daemon, it answers a subscribe with what each asked-for
 // symbol is ({type:'symbols'}: requested, key, display), then sends `rows` 300 ms apart
 // ({type:'quotes'}). Stand-in for instrument_identity: an index root is keyed with '$'
-// (tests/test_live_ui_identity_v1.py holds the daemon's real answer).
+// (tests/test_live_ui_identity_v1.py holds the daemon's real answer). Its beat carries the
+// watchlist routeWatchlist keeps for the page (fixtures/watchlist.js), as the program's does.
+const { beat, socketed } = require('./watchlist');
 const INDEX_ROOTS = new Set(['SPX', 'NDX', 'VIX', 'DJI', 'COMPX', 'RUT']);
 function served(s) {
   const u = String(s).toUpperCase();
@@ -22,7 +24,9 @@ function expiriesFrame(ticker, body) {
 // `later`: [{ afterMs, row }], rows sent that long after the subscribe (a push that resumes);
 // `expiries`: the body sent for the selected ticker on each subscribe (none: no list is sent)
 async function mockPriceSocket(page, rows = [], later = [], expiries = undefined) {
+  socketed.add(page);
   await page.routeWebSocket(/\/ws$/, (ws) => {
+    beat(page, ws);
     ws.onMessage((m) => {
       const req = JSON.parse(String(m));
       if (req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;

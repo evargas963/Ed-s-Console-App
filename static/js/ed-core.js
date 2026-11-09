@@ -467,25 +467,34 @@
   }
 
   // ================= watchlist: the one list, kept by the capture daemon =================
-  // The page holds the list as the console last served it (/api/watchlist); an add or a removal
-  // is the daemon's (POST / DELETE /api/watchlist), and its answer carries the new list.
-  var _wl = [];
-  function loadWL() { return _wl.slice(); }
+  // The page holds the list as the program's socket last carried it: every beat's `feed` is the
+  // daemon's status, its `watchlist` the list (null until the first beat carries one: unknown, not
+  // empty). An add or a removal is the daemon's (POST / DELETE /api/watchlist), and its answer
+  // carries the new list. Each list carries its time on the program's one clock (a beat's `ts`, an
+  // answer's `ts`): a list stamped before the one shown is older and is not drawn (a beat built
+  // before an add can arrive after the add's answer).
+  var _wl = null, _wlShown = null, _wlTs = null;
+  function loadWL() { return _wl ? _wl.slice() : []; }
   function wlFetch(url, opts) {
     return fetch(url, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
   }
-  function refreshWL() {
-    wlFetch('/api/watchlist', { cache: 'no-store' })
-      .then(function (a) {
-        if (!a.ok) { wlNotify(a.j.error); return; }
-        _wl = a.j.tickers; renderWatchlist();
-        if (a.j.live === false) wlNotify('the capture daemon is not reporting');
-      })
-      .catch(function (e) { wlNotify('The watchlist could not be read: ' + e); });
+  // a list carried to the page at time `ts`: an older one is not taken, and one is drawn only
+  // when it is not the one already drawn
+  function setWL(list, ts) {
+    if (_wlTs !== null && ts < _wlTs) return;
+    _wlTs = ts;
+    var shown = JSON.stringify(list);
+    if (shown === _wlShown) return;
+    _wlShown = shown; _wl = list; renderWatchlist();
+  }
+  // one beat's status: a beat with none (the daemon's status failed) keeps the list drawn
+  function ingestWatchlist(feed) {
+    if (feed) setWL(feed.watchlist, feed.ts);
+    else wlNotify('the capture daemon is not reporting');
   }
   // the daemon's answer to an add or a removal: the new list, or what happened instead
   function wlAnswer(a) {
-    if (a.j.tickers) { _wl = a.j.tickers; renderWatchlist(); }
+    if (a.j.tickers) setWL(a.j.tickers, a.j.ts);
     if (a.j.ok) return true;
     if (a.j.op === 'invalid') wlNotify(a.j.ticker + ' is not added: Schwab does not quote it (' + JSON.stringify(a.j.answer) + ')');
     else wlNotify(a.j.error || (a.j.ticker + ': ' + a.j.op));
@@ -500,7 +509,7 @@
     if (!list.length) {
       var empty = document.createElement('div');
       empty.className = 'wl-empty';
-      empty.textContent = 'Watchlist is empty — use + Add symbol below';
+      empty.textContent = _wl ? 'Watchlist is empty — use + Add symbol below' : '-';
       host.insertBefore(empty, add);
     }
     list.forEach(function (sym) {
@@ -817,6 +826,7 @@
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
       if (msg && msg.type === 'feed') {
         paintRecord(msg.feed && msg.feed.writer);
+        ingestWatchlist(msg.feed);
         if (msg.feed && typeof msg.feed.ts === 'number') { _serverNow = msg.feed.ts; tickClock(); }
       }
       if (msg && msg.type !== 'feed' && msg.type !== 'quotes') {
@@ -901,7 +911,6 @@
     if (typeof EventSource === 'undefined') return;
     try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
     catch (e) { return; }
-    _changes.onopen = refreshWL;     // the list as the daemon keeps it, again after the push reopens
     _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
     _changes.addEventListener('session', function (ev) { paintSession(ev.data, ''); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
@@ -1013,7 +1022,6 @@
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
     // watchlist
     renderWatchlist();
-    refreshWL();
     document.getElementById('wlAdd').addEventListener('click', function () {   // EXPLICIT watchlist add
       var s = window.prompt('Add symbol to watchlist', state.ticker); if (s) addSymbol(s);
     });
