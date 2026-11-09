@@ -210,36 +210,28 @@ jobs:
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: |
-          typeperf "\Memory\Available MBytes" "\Memory\Pool Nonpaged Bytes" "\Memory\Committed Bytes" "\Process(_Total)\Handle Count" -si 2 -sc 1100 > mem_during_e2e.csv &
-          pwsh -NoProfile -Command '$end = (Get-Date).AddMinutes(36); while ((Get-Date) -lt $end) { $c = Get-NetTCPConnection; $s = ($c | Group-Object State | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join " "; $p = ($c | Group-Object OwningProcess | Sort-Object Count -Descending | Select-Object -First 4 | ForEach-Object { "$((Get-Process -Id $_.Name -ErrorAction Ignore).ProcessName)($($_.Name))=$($_.Count)" }) -join " "; "$(Get-Date -Format HH:mm:ss) total=$($c.Count) $s | $p"; Start-Sleep 2 }' > tcp_during_e2e.txt &
+          PYTHONPATH=. python .github/diag/ports_probe.py 2400 > ports_probe.txt 2>&1 &
+          probe_pid=$!
           rc=0
           for pass in 1 2 3 4 5 6 7 8 9 10; do
             echo "=== pass $pass starts $(date -u +%H:%M:%S)"
-            pwsh -NoProfile -Command '$end = (Get-Date).AddMinutes(4); while ((Get-Date) -lt $end) { Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)`t$($_.Name)`t$($_.CommandLine)" }; Start-Sleep -Milliseconds 500 }' > procs.txt &
-            procs_pid=$!
-            MSYS_NO_PATHCONV=1 logman start afdtrace -p Microsoft-Windows-Winsock-AFD 0xffffffffffffffff 0xff -o afd.etl -ets -mode circular -max 512 > /dev/null
             npm run test:e2e || rc=$?
-            MSYS_NO_PATHCONV=1 logman stop afdtrace -ets > /dev/null
-            kill $procs_pid 2>/dev/null || true
+            echo "=== pass $pass ends $(date -u +%H:%M:%S)"
             if grep -q "failed" logs/test_e2e_last.log; then
               mkdir -p kept-failures/pass-$pass && cp -r test-results logs/test_e2e_last.log kept-failures/pass-$pass/ || true
-              echo "=== pass $pass failed: socket events by process and kind, from Windows' own Winsock trace"
-              MSYS_NO_PATHCONV=1 tracerpt afd.etl -o afd.csv -of CSV -y > /dev/null
-              head -c 600 afd.csv; echo
-              pwsh -NoProfile -Command '$rows = Import-Csv afd.csv; $col = ($rows[0].PSObject.Properties.Name | Where-Object { $_.Trim() -match "^(PID|Process ID|ProcessId)$" } | Select-Object -First 1); "pid column: [$col] events: $($rows.Count)"; $rows | Where-Object { $_.Type -match "Connected" } | Group-Object $col | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { $raw = $_.Name.Trim(); $id = if ($raw -match "^0x") { [Convert]::ToInt32($raw.Substring(2), 16) } else { [int]$raw }; $seen = (Select-String -Path procs.txt -Pattern "^$id`t" | Select-Object -First 1).Line; "connected=$($_.Count) pid $id :: $seen" }'
-            fi
-            rm -f afd.etl afd.csv
-            if grep -q "failed" logs/test_e2e_last.log; then
-              echo "=== pass $pass failed: Windows System log, Tcpip/AFD/Winsock, last 15 min"
-              pwsh -NoProfile -Command 'Get-WinEvent -FilterHashtable @{LogName="System"; StartTime=(Get-Date).AddMinutes(-15)} -ErrorAction Ignore | Where-Object { $_.ProviderName -match "Tcpip|AFD|Winsock|Resource-Exhaustion" } | Select-Object TimeCreated, ProviderName, Id, Message | Format-List | Out-String -Width 300; Get-NetTCPConnection | Group-Object State, OwningProcess | Sort-Object Count -Descending | Select-Object -First 15 Count, @{n="State,Process";e={$_.Name}}, @{n="Name";e={(Get-Process -Id ($_.Group[0].OwningProcess) -ErrorAction Ignore).ProcessName}} | Format-Table -AutoSize | Out-String -Width 200'
-            fi
-            if grep -h "NO_BUFFER_SPACE" logs/test_e2e_last.log; then
-              echo "=== pass $pass: NO_BUFFER_SPACE at $(date -u +%H:%M:%S)"
-              pwsh -NoProfile -Command 'Get-NetTCPConnection | Group-Object OwningProcess, State | Sort-Object Count -Descending | Select-Object -First 15 Count, Name | Format-Table -AutoSize | Out-String -Width 200; Get-Process | Sort-Object HandleCount -Descending | Select-Object -First 10 Id, ProcessName, HandleCount, @{n="NPM_KB";e={[int]($_.NonpagedSystemMemorySize64/1KB)}} | Format-Table -AutoSize | Out-String -Width 200'
+              grep -h -E "net::ERR_|  [0-9]+\) tests" logs/test_e2e_last.log | sort | uniq -c | head -20
             fi
           done
-          cat mem_during_e2e.csv
-          cat tcp_during_e2e.txt
+          kill $probe_pid 2>/dev/null || true
+          echo "=== Windows System log: Tcpip 4227 / 4231 since the job began"
+          pwsh -NoProfile -Command 'Get-WinEvent -FilterHashtable @{LogName="System"; ProviderName="Tcpip"; StartTime=(Get-Date).AddHours(-2)} -ErrorAction Ignore | Where-Object { $_.Id -in 4227,4231 } | ForEach-Object { "$($_.TimeCreated.ToUniversalTime().ToString("HH:mm:ss.fff")) Tcpip $($_.Id)" }'
+          netsh int ipv4 show dynamicport tcp
+          netsh int ipv4 show excludedportrange protocol=tcp
+          echo "=== probe: refusals and snapshots"
+          grep -E "^###" ports_probe.txt | head -400
+          echo "=== probe: per-second counters"
+          grep -v -E "^###" ports_probe.txt
+          mkdir -p kept-failures && cp ports_probe.txt kept-failures/
           exit $rc
 
       - name: Run the full pytest suite on Windows
@@ -266,7 +258,7 @@ jobs:
         run: python -m pytest --durations=1 -rs -m alone
 
       - name: Upload Playwright failure traces and the E2E log
-        if: failure() && steps.e2e.outcome == 'failure'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: playwright-failures-windows
