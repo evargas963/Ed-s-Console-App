@@ -140,8 +140,6 @@ def test_with_no_levels_the_atr_is_absent():
     """ATR is from the bars, not the chain: a ticker with no levels published still serves it
     (here absent, and no sentence in its place).
     """
-    import server
-
     t = server.get_terrain(ticker="ZZNOLEVELSATR")
     assert t["atr_daily"] is None and "atr_daily_reason" not in t
 

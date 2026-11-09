@@ -13,15 +13,17 @@ identity is exact).
 
 import json
 
+import server
 from math_exposure_core import (
     bucket_metric,
     compute_exposures_by_strike,
     exposure_books,
+    merge_exposure_books,
     strike_oi_legs,
     strike_volume_legs,
 )
 from option_contract import OptionContract, read_chain
-from server import project_gamma_surface
+from server import project_gamma_surface, ticker_storage_key
 from tests.real_chains import MRVL
 
 NOW = MRVL.now
@@ -191,8 +193,6 @@ def test_G_malformed_expiry_excluded_not_reassigned():
 
 # H. SPX / SPXW — canonical underlying->option-chain identity is unchanged; no UI translation.
 def test_H_spx_identity_unchanged():
-    from server import ticker_storage_key
-
     assert ticker_storage_key("SPX") == "$SPX"
     assert ticker_storage_key("$SPX") == "$SPX"
     # an SPXW-rooted contract projects without any symbol rewriting: a REAL vendor row re-rooted
@@ -341,8 +341,6 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute():
     chain by expiry and merging the per-expiry exposures must reproduce
     compute_exposures_by_strike's own single-call result over the WHOLE chain, strike for
     strike, field for field, at the same valuation instant."""
-    from math_exposure_core import merge_exposure_books
-
     chain = _chain()
     full, _diag = compute_exposures_by_strike(chain, spot=SPOT, now=NOW)
     by_expiry = exposure_books(chain, spot=SPOT, now=NOW)
@@ -364,8 +362,6 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     """Operator 2026-09-29: the Delta / DEX and Open Interest Chart views were blank. The chart's
     DEX and OI profiles (/api/terrain/strikes `measures`, from the terrain publication) are the
     heatmap's own cells summed across expiries -- one computation, two views."""
-    import server
-
     chain = _chain()
     snap = server._publish_levels(
         "MRVL", chain, NOW.timestamp(), chain_spot=(SPOT, NOW.timestamp()), now=NOW

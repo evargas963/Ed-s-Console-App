@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import live_market_plane as lmp
 import time_et
+from app.options.order_flow.engine import _resolve_quote_mark
 
 
 def test_plane_change_percent_is_schwab_net_change_percent():
@@ -52,7 +53,5 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
 
 
 def test_mark_is_the_streamed_mark_only():
-    from app.options.order_flow.engine import _resolve_quote_mark
-
     assert _resolve_quote_mark({"top": {"mark": 10.05, "bid_size": 5}}) == 10.05
     assert _resolve_quote_mark({"quote": {"mark": 10.05}}) is None

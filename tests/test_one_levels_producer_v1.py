@@ -21,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
@@ -33,6 +34,7 @@ from math_exposure_core import bucket_metric, merge_exposure_books
 from option_contract import read_chain
 from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
+from terrain_read import GAMMA_FLIP_TRUSTED, build_terrain_read
 from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
@@ -186,8 +188,6 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     """2026-09-26: the payload carried the snapshot object and /api/terrain served the whole
     entry -- HTTP 500 for every published ticker, and the kept chain on every poll.
     """
-    from fastapi.testclient import TestClient
-
     _daemon()
     snap = _put_chain()
     r = TestClient(server.app).get(f"/api/terrain?ticker={TK}")
@@ -495,8 +495,6 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
     """Measured 2026-09-26: with gamma at spot unknown, the regime read UNAVAILABLE while the
     headline said "Short gamma -- trend regime. Follow breaks" -- advice from nothing.
     """
-    from terrain_read import GAMMA_FLIP_TRUSTED, build_terrain_read
-
     r = build_terrain_read(
         spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=None
     )

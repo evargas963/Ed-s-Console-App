@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+import stream_spine as ss
 from stream_spine import (
     LATEST,
     LOG,
@@ -361,8 +362,6 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
 
 
 def test_db_path_a_resolves_the_canonical_default():
-    import stream_spine as ss
-
     assert ss.resolve_stream_db_path() == ss.canonical_stream_db_path()
 
 
@@ -394,8 +393,6 @@ def test_db_path_b_ambient_override_cannot_move_production(tmp_path):
 
 
 def test_db_path_c_reader_test_default_is_explicit(tmp_path):
-    import stream_spine as ss
-
     target = tmp_path / "reader-test.db"
     assert ss.resolve_stream_db_path(target) == target.resolve()
 

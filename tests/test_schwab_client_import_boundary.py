@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import os
+import socket
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
+import schwab_client
+import server
 import time_et
 
 REPO = Path(__file__).resolve().parent.parent
 
 
 def test_schwab_client_imports_without_constructing_live_client() -> None:
-    import schwab_client
-
     assert callable(schwab_client.build_client_from_token)
     assert not hasattr(schwab_client, "_client")
 
@@ -23,9 +26,7 @@ def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path)
     """Explicit live-looking credentials (ED_CI_OFFLINE does not block explicit ones) and no
     token file: no client, and the reason names the missing file.
     """
-    from schwab_client import build_client_from_token
-
-    state = build_client_from_token(
+    state = schwab_client.build_client_from_token(
         str(tmp_path / "missing_token.json"),
         api_key="not-a-key",
         app_secret="not-secret",
@@ -108,10 +109,6 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
     socket that records every connection. Before 2026-10-01 the console fetched every board
     ticker's chain itself (the 429s of that day came from it and the daemon asking at once).
     """
-    import json as _json
-    import socket
-    import threading
-
     proxy = socket.socket()
     proxy.bind(("127.0.0.1", 0))
     proxy.listen()
@@ -130,7 +127,7 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
 
     threading.Thread(target=record, daemon=True).start()
     (tmp_path / "schwab_token.json").write_text(
-        _json.dumps(
+        json.dumps(
             {
                 "creation_timestamp": int(time_et.now()),
                 "token": {
@@ -173,6 +170,4 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
 
 
 def test_adversarial_tests_can_import_server() -> None:
-    import server as srv
-
-    assert hasattr(srv, "app")
+    assert hasattr(server, "app")

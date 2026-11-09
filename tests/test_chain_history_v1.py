@@ -21,6 +21,7 @@ import pytest
 
 import calibration.complete_chain_capture as cch
 import schwab_client as sc
+import server
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
@@ -406,8 +407,6 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     interest (SPY: +1.4M below and above spot in one day). Only full captures are read: with no
     full prior day the forces numbers are absent.
     """
-    import server
-
     db = tmp_path / "ed_console.db"
     # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
     ct = {"symbol": "ZZ 2030-01-04", "expirationDate": "2030-01-04T20:00:00.000+00:00"}

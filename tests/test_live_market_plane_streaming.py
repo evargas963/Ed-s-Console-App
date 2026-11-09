@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import inspect
+
+import pytest
+
 import live_market_plane as lmp
+import live_price_rows
+import server
 import time_et
+from tests.feed_live_helper import RTH_INSTANT, mark_feed_down, mark_feed_live
 
 
 def _rec(ticker, item, received_ts=None):
@@ -73,10 +80,6 @@ def test_record_from_level_one_never_uses_trade_time_as_the_quote_time():
 
 
 def test_received_ts_is_required_and_is_what_freshness_judges():
-    import inspect
-
-    import pytest
-
     param = inspect.signature(lmp.record_from_level_one_equity).parameters["received_ts"]
     assert param.default is inspect.Parameter.empty, "no wall-clock default"
     with pytest.raises(TypeError):
@@ -92,10 +95,6 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     carries it and the quote as Schwab last sent them, and it is the console's spot. (A feed down:
     docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.) Judged in regular hours.
     """
-    import live_price_rows
-    import server
-    from tests.feed_live_helper import RTH_INSTANT, mark_feed_down, mark_feed_live
-
     now = RTH_INSTANT
     t_trade = now - 45.0
     _rec(
