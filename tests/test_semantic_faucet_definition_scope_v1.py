@@ -138,7 +138,8 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
 
 def test_terrain_names_carry_their_declared_definitions():
     """absolute_gamma_strike ≡ pick_pin_and_strength; net_gex_peak ≡
-    pick_net_gex_peak_strike — same book, same strikes, ONE faucet per definition."""
+    pick_net_gex_peak_strike — same book, same strikes, ONE faucet per definition.
+    """
     chain, spot = _fixture_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
@@ -154,7 +155,8 @@ def test_terrain_names_carry_their_declared_definitions():
 
 def test_pin_candidate_is_published_only_through_the_qualification_gates():
     """RC-292 operator disposition, executed: every gate flips the claim off; all five
-    passing publishes the strike; the real fixture withholds with named blockers."""
+    passing publishes the strike; the real fixture withholds with named blockers.
+    """
     passing = dict(
         spot=100.0,
         absolute_gamma_strike=100.2,
@@ -194,7 +196,8 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
 
 def test_every_level_shaped_payload_name_is_declared():
     """Coverage: a new level-bearing field cannot ship without a (definition, scope)
-    declaration — the omission RC-303 names as the root becomes a failing test."""
+    declaration — the omission RC-303 names as the root becomes a failing test.
+    """
     chain, spot = _fixture_book()
     published = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     payload = published | price_relations(published, spot).to_dict()  # as /api/terrain serves it

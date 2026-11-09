@@ -108,7 +108,8 @@ def live_binding_error(
     Allowed: the runtime root IS this checkout (production running itself), or the runtime
     root is a dedicated directory that is not a git checkout (an explicit ED_RUNTIME_ROOT
     sandbox, the test and e2e runtime roots). Refused: the runtime root is ANOTHER checkout.
-    Reading tools and tests are unaffected -- only live processes call this."""
+    Reading tools and tests are unaffected -- only live processes call this.
+    """
     src = (source_root or SOURCE_ROOT).resolve()
     rt = (runtime_root or RUNTIME_ROOT).resolve()
     if rt == src:

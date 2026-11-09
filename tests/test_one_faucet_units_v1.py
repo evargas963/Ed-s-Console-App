@@ -3,7 +3,8 @@ per 1 volatility point in every bucket and in the aggregate; a contract with no 
 in no expiry's book; yesterday's chain is priced at its own capture time.
 
 Real data (tests/real_chains.py): SPY's same-day chain of 2026-10-07 12:32 ET and CRWD's 2026-10-16
-chain of 2026-10-07 10:38 ET, each valued at its capture."""
+chain of 2026-10-07 10:38 ET, each valued at its capture.
+"""
 
 from __future__ import annotations
 
@@ -41,7 +42,8 @@ def test_vanna_is_per_vol_point_in_every_bucket_and_in_the_aggregate():
 
 def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
     """On a chain with no same-day expiry (CRWD, 9 days out), a contract that does not state its
-    expiry must not create a same-day share (it was pooled into the 0DTE book)."""
+    expiry must not create a same-day share (it was pooled into the 0DTE book).
+    """
     chain, spot = CRWD.chain, CRWD.spot
     base = compute_terrain("CRWD", read_chain(chain), spot, now=CRWD.now).zero_dte_gamma_share_pct
     # the contract with the most gamma among those Schwab sent a gamma for
@@ -55,7 +57,8 @@ def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
 
 def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
     """The stored captures are priced at their own capture times, whatever the clock reads now
-    (after the chain's expiry). Stand-in: SPY's real chain stored as two days' captures."""
+    (after the chain's expiry). Stand-in: SPY's real chain stored as two days' captures.
+    """
     import server
     from calibration.complete_chain_capture import (
         CAPTURE_BASIS,
@@ -87,7 +90,8 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
 
 def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_missing():
     """Both ratios are served (operator 2026-09-27): OI (positions held) and volume (today's
-    trading, Cboe's convention). A strike with no call listed adds 0 calls: the sum of none."""
+    trading, Cboe's convention). A strike with no call listed adds 0 calls: the sum of none.
+    """
     from math_exposure_core import put_call_volume_ratio
 
     book = {
@@ -105,7 +109,8 @@ def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_
 def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
     """Audit M-17: vanna fields start at 0.0 in every bucket, and the total read those zeros as
     data. Real chain priced the day after its own expiry (Schwab still lists an expired Friday on
-    the weekend): no contract has a vanna, so there is no net vanna."""
+    the weekend): no contract has a vanna, so there is no net vanna.
+    """
     from math_exposure_core import bucket_metric
 
     next_day = SPY_0DTE.now + timedelta(days=1)

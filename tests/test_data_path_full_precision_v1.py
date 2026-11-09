@@ -18,7 +18,8 @@ from tests.real_chains import CRWD, SPY_0DTE
 def test_the_flip_is_the_profiles_full_zero_crossing():
     """SPY's 20-strike 0DTE chain: the flip is the interpolated zero crossing of the gamma
     profile in full, inside the delivered strikes; the verdict is NARROW because 20 strikes span
-    only ~+/-1.3% of spot, with both span flags False."""
+    only ~+/-1.3% of spot, with both span flags False.
+    """
     chain, spot = read_chain(SPY_0DTE.chain), SPY_0DTE.spot
     flip, confidence, diag = compute_gamma_flip_v2(
         chain, spot, profile=compute_gamma_profile(chain, spot, now=SPY_0DTE.now)
@@ -36,7 +37,8 @@ def test_the_flip_is_the_profiles_full_zero_crossing():
 def test_net_vanna_is_the_books_full_sum():
     """RC-362: net vanna = sum of call vanna - sum of put vanna, shares per vol point, and that
     times spot in dollars -- in full (they were cut to two decimals); None on an empty or
-    valueless book or no spot."""
+    valueless book or no spot.
+    """
     book, _ = compute_exposures_by_strike(read_chain(CRWD.chain), spot=CRWD.spot, now=CRWD.now)
     want = sum(b["call_vanna"] for b in book.values()) - sum(b["put_vanna"] for b in book.values())
     out = compute_net_vanna(book, 800.0)

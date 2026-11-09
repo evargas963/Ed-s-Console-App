@@ -7,7 +7,8 @@ from terrain_engine import _per_strike_measure_rows, _per_strike_rows
 
 def test_a_strike_keeps_every_digit_of_volume_and_open_interest():
     """A count Schwab sent as a fraction of a contract is the count on the row. Cutting it to a
-    whole number happens on the screen, not in the calculation."""
+    whole number happens on the screen, not in the calculation.
+    """
     volume = _per_strike_rows(
         {
             500.0: {

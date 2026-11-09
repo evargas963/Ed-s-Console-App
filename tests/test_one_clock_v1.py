@@ -1,7 +1,8 @@
 """One clock, repo wide (operator 2026-11-05: "fix the fucking clock ... REPO WIDE NO
 EXCEPTIONS"): the computer's clock is read in time_et.py alone (time_et.now, time_et.elapsed);
 every other file takes the time from it, and the page reads no clock at all (its time of day is
-the program's, from the daemon's heartbeat)."""
+the program's, from the daemon's heartbeat).
+"""
 
 from __future__ import annotations
 

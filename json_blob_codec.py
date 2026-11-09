@@ -17,7 +17,8 @@ _COMPRESSLEVEL = 6
 
 def encode_json_blob(obj: Any, *, default: Any) -> bytes:
     """`obj` as gzip-compressed JSON (`default` as json.dumps takes it). `mtime=0`: the same
-    object always gives the same bytes."""
+    object always gives the same bytes.
+    """
     raw = json.dumps(obj, default=default).encode("utf-8")
     return gzip.compress(raw, compresslevel=_COMPRESSLEVEL, mtime=0)
 

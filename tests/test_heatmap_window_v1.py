@@ -43,7 +43,8 @@ _AT = datetime(2026, 10, 1, 12, 0, tzinfo=ET)  # the captures' day, before every
 
 def _price(spot):
     """The daemon's status at _AT (Schwab's socket open, SPY held) and SPY's price row (None: no
-    price)."""
+    price).
+    """
     lmp.record_feed_heartbeat(
         daemon_status(_AT.timestamp(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
@@ -144,7 +145,8 @@ def test_the_view_serves_each_measures_colour_scale_of_the_cells_drawn():
 
 def test_a_new_publication_serves_the_new_number():
     """The number moves: a publication with a changed value serves that value, as a new
-    publication (surface_seq), so the page redraws it."""
+    publication (surface_seq), so the page redraws it.
+    """
     first = _heat(scope="all")
     target = next(
         c for c in _CHAIN if c["expirationDate"].startswith("2026-11-20") and c["openInterest"] > 0
@@ -167,7 +169,8 @@ def test_a_new_publication_serves_the_new_number():
 
 def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
     """No price and no pan: the rows are the middle of the chain, served with the reason (no row
-    is marked as the price), on the heatmap and on every per-strike panel."""
+    is marked as the price), on the heatmap and on every per-strike panel.
+    """
     _price(None)
     d = _heat()
     assert d["view"]["note"] == server.WINDOW_NO_PRICE and not any(c["spot"] for c in d["cells"])
@@ -183,7 +186,8 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
 def test_expired_columns_are_drawn_labelled_and_never_counted():
     """On 2026-10-15 the 10-14 column has expired: Auto draws the unexpired columns, Wider and All
     draw it labelled, and its cells are not counted in the coverage; alone, its chip says
-    EXPIRED."""
+    EXPIRED.
+    """
     later = datetime(2026, 10, 15, 12, 0, tzinfo=ET)
     auto = _heat(later, cols=3)
     assert [e["expiry"] for e in auto["expirations"]] == ["2026-10-15", "2026-11-20"]
@@ -204,7 +208,8 @@ def test_expired_columns_are_drawn_labelled_and_never_counted():
 def test_every_per_strike_panel_is_served_its_window_and_scale():
     """GEX by strike (today: all, near, far), the chart's DEX and OI, the migration's scale with the
     prior day, vanna and charm: each list is the scope's rows around the price or the pan, with
-    the largest |value| drawn as its scale."""
+    the largest |value| drawn as its scale.
+    """
 
     def lists(body):
         return {

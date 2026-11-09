@@ -1,5 +1,6 @@
 """The Trade Desk forces are the two-day capture diff. Fewer than two market days, or no
-published levels, leaves each number absent. The producer attaches no sentence."""
+published levels, leaves each number absent. The producer attaches no sentence.
+"""
 
 from __future__ import annotations
 

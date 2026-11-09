@@ -80,7 +80,8 @@ def _add_charm(bucket: dict, side: str, exposure: float | None) -> None:
 def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
     """One strike map from per-expiry maps of the same function. A strike listed on more
     than one expiry is the sum of those expiries, +call/−put, the same as one call over
-    every contract."""
+    every contract.
+    """
     out: dict[float, dict] = {}
     for part in maps.values():
         for strike, bucket in part.items():
@@ -102,7 +103,8 @@ def pick_charm_wall_strikes(
 ) -> tuple[float | None, float | None]:
     """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side
     charm exposure. These are the strikes whose delta decay exerts the most mechanical
-    pressure into the close."""
+    pressure into the close.
+    """
 
     def wall(side: str) -> float | None:
         known = {k: abs(b[side]) for k, b in charm_by_strike.items() if b[side] is not None}
@@ -120,7 +122,8 @@ def contract_inputs(
 ) -> tuple[list, dict]:
     """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
     for the gamma profile (compute_terrain); `unpriced` counts the
-    contracts with open interest the profile could not price, by reason."""
+    contracts with open interest the profile could not price, by reason.
+    """
     priced, unpriced = [], {}
     for c in contracts:
         r = _contract_inputs(c, now=now, product=product)
@@ -200,13 +203,14 @@ _GAMMA_PROFILE_BLOCK = 32
 
 
 def _gamma_profile_totals(parsed: list, grid: list[float]) -> list[float]:
-    """sum over contracts of side_sign * bs_gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
+    """Sum over contracts of side_sign * bs_gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
 
     The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
     passes), evaluated as arrays instead of one Python call per (price, contract) pair: on SPY's
     full chain (13,290 contracts, 241 prices) a per-call loop over the contracts it could price
     made 2.27M bs_gamma calls, 82% of compute_terrain's 17.8 s with that loop. A gamma that is not
-    finite contributes nothing, matching bs_gamma's None."""
+    finite contributes nothing, matching bs_gamma's None.
+    """
     arr = np.asarray(parsed, dtype=float)
     strike, oi, mult, t_years, sigma, side = (arr[:, i] for i in range(6))
     weight = side * oi * mult
@@ -266,7 +270,8 @@ GSF_STATE_UNAVAILABLE = "UNAVAILABLE"
 def _lerp(x: float, x0: float, x1: float, y0: float, y1: float) -> float:
     """THE one linear interpolation of the profile: y at `x` on the segment (x0, y0)-(x1, y1);
     y0 on a segment with no width. Read both ways: the value at a price, and the price at a
-    value (the flip, the support and resistance crossings)."""
+    value (the flip, the support and resistance crossings).
+    """
     if x1 == x0:
         return y0
     return y0 + (y1 - y0) * (x - x0) / (x1 - x0)

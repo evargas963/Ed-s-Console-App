@@ -21,7 +21,8 @@ def test_schwab_client_imports_without_constructing_live_client() -> None:
 
 def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path) -> None:
     """Explicit live-looking credentials (ED_CI_OFFLINE does not block explicit ones) and no
-    token file: no client, and the reason names the missing file."""
+    token file: no client, and the reason names the missing file.
+    """
     from schwab_client import build_client_from_token
 
     state = build_client_from_token(
@@ -38,7 +39,8 @@ def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
     """With no Schwab credentials the configuration still builds, and the one gate
     (`schwab_live_blocked_for`, which `build_client_from_token` refuses on) builds no client: no
     live Schwab without credentials (docs/ARCHITECTURE.md "Failure domains"). Run in a fresh
-    interpreter whose environment has no Schwab credential."""
+    interpreter whose environment has no Schwab credential.
+    """
     code = (
         "import config, schwab_client\n"
         "cfg = config.build_config()\n"
@@ -104,7 +106,8 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
     not placeholders), every one of its GET routes asked for a ticker, and a chain the daemon
     fetched priced through it: nothing leaves for Schwab. Its only way out is HTTPS_PROXY, a local
     socket that records every connection. Before 2026-10-01 the console fetched every board
-    ticker's chain itself (the 429s of that day came from it and the daemon asking at once)."""
+    ticker's chain itself (the 429s of that day came from it and the daemon asking at once).
+    """
     import json as _json
     import socket
     import threading

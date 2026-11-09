@@ -56,7 +56,8 @@ class LocalStreamer:
     """The streamer on 127.0.0.1 (`url`). Each request it receives is kept (`requests`), with the
     frames it answered (`answers`). SUBS/ADD hold the keys asked for up to `limits[service]`;
     past it, the request is answered twice: code 19 (refusal) and then code 24
-    ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them."""
+    ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them.
+    """
 
     def __init__(self, limits: dict[str, int], data: dict[str, dict]):
         self.limits = dict(limits)

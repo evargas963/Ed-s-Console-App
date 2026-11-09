@@ -1,5 +1,6 @@
 """The price levels: one snapshot per bar generation, and /api/levels and
-/api/liquidity-snapshot serve its values under the same ids."""
+/api/liquidity-snapshot serve its values under the same ids.
+"""
 
 from __future__ import annotations
 
@@ -90,7 +91,8 @@ def _prior(tk: str, session):
 
 def _daemon_bars(name: str, tk: str) -> list:
     """The capture daemon's newest receipt of each of `tk`'s minutes in fixture `name`, taken in
-    by the bar writer's own check (server._schwab_bar)."""
+    by the bar writer's own check (server._schwab_bar).
+    """
     newest = {}
     for r in sorted(daemon_bars(name, tk), key=lambda r: r["ts_recv"]):
         newest[r["bar_start_ms"]] = r
@@ -154,7 +156,8 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
     area cannot exist for it and are absent with that reason; the value area said "no today RTH
     bars" over 278 RTH bars (2026-09-28, the running app). SPY's real bars of the same days have
     volume and get both. The prior day (Thursday 10-01) is Schwab's daily candle, present for both
-    (fixtures/real_schwab_daily_spx_2026_10.json, real_pricehistory_spy_tsla_2026_10_07.json)."""
+    (fixtures/real_schwab_daily_spx_2026_10.json, real_pricehistory_spy_tsla_2026_10_07.json).
+    """
     friday = datetime(2026, 10, 2, tzinfo=ET).date()
     for name, tk, has_volume in (
         ("real_daemon_bars_spx_2026_10_01_02.json", "$SPX", False),
@@ -207,7 +210,8 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
 
 def _published(tk: str, now: datetime) -> None:
     """The tape in the console's memory under stand-in ticker `tk`, published as the bar writer
-    publishes it (its tiny prior session is stamped degraded, and still served)."""
+    publishes it (its tiny prior session is stamped degraded, and still served).
+    """
     srv._bars.pop(tk, None)
     for b in _tape():
         srv._keep_bar(tk, b)
@@ -243,7 +247,8 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
     snapshots (premarket, opening, midday, afternoon) and a past-date replay that recomputed the
     prior day, overnight, VWAP and value area from bars, and a default ("premarket") that served
     those under "@checkpoint" ids. It serves the one snapshot now: every level it shows is the
-    /api/levels value under the same id. Stand-in: ticker ZZP2B carries the tape."""
+    /api/levels value under the same id. Stand-in: ticker ZZP2B carries the tape.
+    """
     noon = datetime(2026, 10, 5, 12, 0, tzinfo=ET)
     try:
         _published("ZZP2B", noon)

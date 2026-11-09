@@ -45,7 +45,8 @@ def repo(tmp_path):
 
 def _patch_tool_repo(root: Path):
     """The tool resolves REPO from its own location; run it with cwd inside the scratch
-    repo and point it there via git's own discovery by copying it in."""
+    repo and point it there via git's own discovery by copying it in.
+    """
     dest = root / "tools"
     dest.mkdir(exist_ok=True)
     (dest / "check_eol_style_invariant.py").write_bytes(TOOL.read_bytes())
@@ -115,7 +116,8 @@ def test_crlf_file_edited_as_crlf_passes_and_flipped_to_lf_fails(repo):
 
 def test_a_reflow_a_pull_request_commits_is_refused_against_its_base(repo):
     """CI runs the check on the pull request's commits (`--base`): a commit made where the
-    pre-commit hook does not run is still read."""
+    pre-commit hook does not run is still read.
+    """
     root, git = repo
     git("branch", "base")
     p = root / "lf_file.py"
@@ -183,7 +185,8 @@ def test_binary_files_are_exempt(repo):
 
 def test_a_pinned_path_may_differ_on_disk_without_being_a_violation(repo):
     """`text eol=lf` means git normalises into the blob, so worktree CRLF is the
-    CONFIGURED state, not a flip. .claude/settings.json lives exactly here."""
+    CONFIGURED state, not a flip. .claude/settings.json lives exactly here.
+    """
     root, git = repo
     (root / ".gitattributes").write_bytes(b"pinned.json text eol=lf\n")
     (root / "pinned.json").write_bytes(b'{\n  "a": 1\n}\n')

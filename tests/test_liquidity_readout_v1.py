@@ -58,7 +58,8 @@ _HELD = {"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"], "NASDAQ_BOOK": ["SP
 def _readout(sent: dict) -> dict:
     """engine.book_readout of each venue's book as Schwab sent it (`sent`: venue -> its message
     content, or None), each read by the one reader, engine.read_book, as the console's intake
-    reads it."""
+    reads it.
+    """
     return e.book_readout({v: None if c is None else e.read_book(c, v) for v, c in sent.items()})
 
 
@@ -72,7 +73,8 @@ def _pair_readout() -> dict:
 
 def _replay(rows: list = _ROWS) -> tuple[dict, list]:
     """Every captured 2026-11-02 book (or `rows`) through the readout, as the console's intake
-    records it: the readout of the newest book of each venue at each receipt."""
+    records it: the readout of the newest book of each venue at each receipt.
+    """
     newest: dict = dict.fromkeys(e.BOOK_VENUES)
     points = []
     for ts, svc, content in rows:
@@ -86,7 +88,8 @@ def build_readout_payload(
 ) -> dict:
     """The route's payload for SPY at `now` after Schwab's books `rows` (every captured book when
     None), each through the console's own intake: the daemon holding both books, then holding
-    only the services `held_after` when given, or its connection ended (`feed_down`)."""
+    only the services `held_after` when given, or its connection ended (`feed_down`).
+    """
     quotes = json.loads((_FX / "real_spy_level_one_2026_10_23.json").read_text(encoding="utf-8"))[
         "messages"
     ]
@@ -127,7 +130,8 @@ def test_the_level_weights_fall_from_the_touch_and_sum_to_one():
 def test_the_weighted_headline_and_the_flat_views_of_schwabs_nyse_book():
     """NYSE_BOOK's best five bids 160, 120, 120, 360, 40 and asks 200, 320, 1560, 40, 40 shares:
     the headline weighs each level, the flat views sum the shares, and the weighted view's bars
-    are the flat top five."""
+    are the flat top five.
+    """
     nyse = _pair_readout()["NYSE_BOOK"]["views"]
     bids, asks = [160, 120, 120, 360, 40], [200, 320, 1560, 40, 40]
     wb = sum(w * b for w, b in zip(e.OF_LEVEL_WEIGHTS, bids, strict=True))
@@ -144,7 +148,8 @@ def test_the_weighted_headline_and_the_flat_views_of_schwabs_nyse_book():
 
 def test_the_weighted_headline_is_not_the_flat_top_five():
     """Schwab's NASDAQ_BOOK: the touch leans to the bids (+17.6%) while the flat top five leans
-    to the offers (-5.5%); the weighted headline follows the touch, and says the two disagree."""
+    to the offers (-5.5%); the weighted headline follows the touch, and says the two disagree.
+    """
     nq = _pair_readout()["NASDAQ_BOOK"]["views"]
     assert nq["1"]["pct"] > 0 > nq["5"]["pct"]
     assert nq["weighted"]["pct"] > 0 > nq["weighted"]["imbalance"]
@@ -166,7 +171,8 @@ def test_the_weighted_headline_is_not_the_flat_top_five():
 def _merged(books: dict) -> dict:
     """The composite recomputed from the books as Schwab sent them, with no engine code: each
     side's quotes, every code once (any case), from the book whose copy carries the newer quote
-    time (SEQUENCE; an equal time keeps NYSE_BOOK's), summed at each price, best first."""
+    time (SEQUENCE; an equal time keeps NYSE_BOOK's), summed at each price, best first.
+    """
     out = {}
     for side, pk, sk in (("BIDS", "BID_PRICE", "BID_VOLUME"), ("ASKS", "ASK_PRICE", "ASK_VOLUME")):
         newest: dict = {}
@@ -222,7 +228,8 @@ _COMPOSITE_BOOKS = {
 def test_the_composite_is_every_quote_once_its_newest_copy(name):
     """Schwab's books, each composite recomputed from them as sent: every exchange and market
     maker once, NSDQ (in both books) from the book whose copy carries the newer quote time, the
-    shares summed at each distinct price."""
+    shares summed at each distinct price.
+    """
     books = _COMPOSITE_BOOKS[name]
     comp = _readout(books)["COMPOSITE"]
     for view in e.READOUT_VIEWS:
@@ -241,7 +248,8 @@ def test_the_newer_nsdq_quote_counts_and_the_older_copy_does_not():
     ask; in NASDAQ_BOOK, quoted later on both sides, at 767.41 x 100 bid and 767.42 x 70 ask.
     NASDAQ_BOOK's copy counts: the best bid is Nasdaq's 767.41, which meets the other exchanges'
     767.41 ask (the composite is locked), and the top five hold 780 bid and 2110 ask shares
-    (NYSE_BOOK's older copy would give a 767.39 best bid, 800 and 2160)."""
+    (NYSE_BOOK's older copy would give a 767.39 best bid, 800 and 2160).
+    """
     nyse, nq = (_PAIR[v]["content"] for v in ("NYSE_BOOK", "NASDAQ_BOOK"))
     for side in ("BIDS", "ASKS"):
         seq = {
@@ -258,7 +266,8 @@ def test_the_newer_nsdq_quote_counts_and_the_older_copy_does_not():
 def test_the_composite_never_sums_the_books_level_totals():
     """Schwab's pair: the composite's best three asks are each contributor's newest quote once,
     never the two books' TOTAL_VOLUMEs summed at those prices (2150) and never an average of
-    NSDQ's two sizes."""
+    NSDQ's two sizes.
+    """
     comp = _pair_readout()["COMPOSITE"]
     bt, at, _pct = _expected(_merged({v: b["content"] for v, b in _PAIR.items()}), "3")
     assert (comp["views"]["3"]["bid_total"], comp["views"]["3"]["ask_total"]) == (bt, at)
@@ -289,7 +298,8 @@ def _rows_without(book: dict, key: str, code: str) -> dict:
 def test_nsdq_is_one_contributor_however_spelled():
     """INDUCED: Schwab's NASDAQ_BOOK of the pair with NSDQ spelled in lower case (Schwab spells
     other exchanges so there, tests/fixtures/real_tsla_book_rows.json): the composite is the same,
-    its dedup whole."""
+    its dedup whole.
+    """
     want = _pair_readout()["COMPOSITE"]["views"]
     nq = _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "nothing", "nsdq")
     comp = _readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
@@ -306,7 +316,8 @@ def test_a_copy_without_its_quote_time_is_never_the_newer():
     """INDUCED: Schwab's pair with NASDAQ_BOOK's NSDQ rows sent without their quote time (every row
     of SPY's and IWM's 2026-11-02 books carries one): NYSE_BOOK's timed NSDQ counts, once, at its
     767.39 bid and 767.41 ask (the top five 800 bid and 2,160 ask, NASDAQ_BOOK's own book
-    unchanged), and the composite says its dedup is partial, and why."""
+    unchanged), and the composite says its dedup is partial, and why.
+    """
     nq = _rows_without(_PAIR["NASDAQ_BOOK"]["content"], "SEQUENCE", "NSDQ")
     comp = _readout({"NYSE_BOOK": _PAIR["NYSE_BOOK"]["content"], "NASDAQ_BOOK": nq})
     assert comp["COMPOSITE"]["dedup_partial"] is True
@@ -323,7 +334,8 @@ def test_a_copy_without_its_quote_time_is_never_the_newer():
 def test_on_an_equal_quote_time_nyse_books_copy_counts():
     """INDUCED: Schwab's pair with NASDAQ_BOOK's NSDQ rows given NYSE_BOOK's NSDQ quote times
     (bid 37799874, ask 37800006): an equal time keeps NYSE_BOOK's copy (767.39 x 80 bid, 767.41 x
-    120 ask), never NASDAQ_BOOK's (767.41 x 100, 767.42 x 70), never both."""
+    120 ask), never NASDAQ_BOOK's (767.41 x 100, 767.42 x 70), never both.
+    """
     nyse = _PAIR["NYSE_BOOK"]["content"]
     nq = json.loads(json.dumps(_PAIR["NASDAQ_BOOK"]["content"]))
     for side in ("BIDS", "ASKS"):
@@ -350,7 +362,8 @@ def _served(readout: dict) -> dict:
 
 def test_a_level_without_per_exchange_rows_is_taken_whole_and_the_dedup_marked_partial():
     """A level as Schwab sent it, its own rows removed: its TOTAL_VOLUME is counted once, and the
-    composite says its dedup is partial."""
+    composite says its dedup is partial.
+    """
     nyse = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
     del nyse["BIDS"][1]["BIDS"]  # 767.38: BATX 80 + NYSE 40, TOTAL_VOLUME 120
     comp = _readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
@@ -364,7 +377,8 @@ def test_any_code_in_both_books_counts_once():
     BATX. INDUCED: that real book, and the same book with its codes in upper case, as NYSE_BOOK
     spells them (no captured pair of the two spellings is held: SPY's and IWM's books of
     2026-11-02 share NSDQ only). Matched without regard to case, every code is in both books with
-    the same quote time: each counts once, so the composite is the one book, never doubled."""
+    the same quote time: each counts once, so the composite is the one book, never doubled.
+    """
     tsla = json.loads((_FX / "real_tsla_book_rows.json").read_text(encoding="utf-8"))["rows"]
     lower = {
         x["EXCHANGE"]
@@ -392,7 +406,8 @@ def test_any_code_in_both_books_counts_once():
 
 def test_with_one_book_the_composite_is_that_book():
     """Schwab's NASDAQ_BOOK alone, as for a Nasdaq-listed ticker Schwab sends no NYSE_BOOK for:
-    the composite is NASDAQ_BOOK's numbers, its source names that book."""
+    the composite is NASDAQ_BOOK's numbers, its source names that book.
+    """
     r = _readout({"NYSE_BOOK": None, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]})
     assert r["COMPOSITE"]["books"] == ["NASDAQ_BOOK"]
     for view in e.READOUT_VIEWS:
@@ -413,7 +428,8 @@ def test_with_one_book_the_composite_is_that_book():
 def test_a_nasdaq_only_composite_is_live_while_the_feed_holds_both_books():
     """Schwab's NASDAQ_BOOK messages of 2026-11-02 alone, the daemon holding SPY on both books (as
     it holds every watchlist ticker: its status of 2026-11-04 holds 10 symbols on each): the
-    composite is NASDAQ_BOOK's book, live, its source naming that one book."""
+    composite is NASDAQ_BOOK's book, live, its source naming that one book.
+    """
     rows = [r for r in _ROWS if r[1] == "NASDAQ_BOOK"]
     comp = build_readout_payload(rows=rows)["readout"]["venues"][e.COMPOSITE]
     assert (comp["live"], comp["feed_label"], comp["books"]) == (True, "LIVE", ["NASDAQ_BOOK"])
@@ -432,7 +448,8 @@ def test_with_no_book_the_composite_names_the_two_books_it_reads():
 def test_a_book_with_no_levels_adds_nothing_to_the_composite():
     """INDUCED: Schwab's pair with NASDAQ_BOOK as Schwab sends a book after the close (no levels,
     tests/test_order_flow_served_v1.py): the composite is NYSE_BOOK's quotes alone. With NYSE_BOOK's
-    asks so, the composite's asks are NASDAQ_BOOK's and its bids both books'."""
+    asks so, the composite's asks are NASDAQ_BOOK's and its bids both books'.
+    """
     nyse, nq = _PAIR["NYSE_BOOK"]["content"], _PAIR["NASDAQ_BOOK"]["content"]
     r = _readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": {**nq, "BIDS": [], "ASKS": []}})
     for view in e.READOUT_VIEWS:
@@ -449,7 +466,8 @@ def test_a_book_with_no_levels_adds_nothing_to_the_composite():
 
 def test_crossed_withholds_the_sentence_and_locked_keeps_it():
     """Schwab's books when the composite was first locked (NYSE_BOOK's 760.25 bid and ask) and
-    first crossed (NYSE_BOOK's 757.58 bid over its 757.57 ask) after 10:00 ET on 2026-11-02."""
+    first crossed (NYSE_BOOK's 757.58 bid over its 757.57 ask) after 10:00 ET on 2026-11-02.
+    """
     for state, flag in (("LOCKED", "BOOK LOCKED"), ("CROSSED", "BOOK CROSSED")):
         readout = _readout({svc: content for _ts, svc, content in _TOUCHING[state]})
         card = e.readout_card(readout, [(1.0, readout)], dict.fromkeys(readout, 1.0))
@@ -482,7 +500,8 @@ def test_crossed_withholds_the_sentence_and_locked_keeps_it():
 
 def test_the_spans_run_from_the_touch_to_the_depths_last_level():
     """Schwab's pair: NYSE_BOOK bids 767.39 to 767.35 and asks 767.41 to 767.60 over five levels;
-    NASDAQ_BOOK bids 767.41 to 753.40; a one-level span is 0."""
+    NASDAQ_BOOK bids 767.41 to 753.40; a one-level span is 0.
+    """
     card = e.readout_card(
         _pair_readout(), [(1.0, _pair_readout())], dict.fromkeys(_pair_readout(), 1.0)
     )
@@ -496,7 +515,8 @@ def test_the_spans_run_from_the_touch_to_the_depths_last_level():
 def test_a_thin_side_is_read_over_the_levels_it_has_with_the_weights_renormalized():
     """Schwab's NYSE_BOOK at 10:00:34 ET on 2026-11-02 (row 66): seven bid levels and four ask
     levels. The asks' top five is its four, the weights renormalized over four, no level
-    invented; the counts line says so."""
+    invented; the counts line says so.
+    """
     _ts, svc, content = _ROWS[66]
     r = _readout({v: content if v == svc else None for v in e.BOOK_VENUES})[svc]
     bids = [lv["TOTAL_VOLUME"] for lv in content["BIDS"]][:5]
@@ -546,7 +566,8 @@ def _steady(readout: dict, venue: str, view: str) -> dict:
 def test_the_zones_turn_at_10_and_70_percent(row, venue, view, pct, zone):
     """Schwab's readouts of 2026-11-02 10:00-10:02:30 ET on each side of the zone lines, held ten
     seconds: 10% and 70% exactly (NYSE_BOOK's 1,760 / 1,440 and 680 / 120 shares) are the next
-    zone."""
+    zone.
+    """
     w = _steady(_replayed()[1][row][1], venue, view)
     assert w["live_pct"] == pytest.approx(pct, abs=5e-4)
     assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
@@ -570,7 +591,8 @@ _LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text
 def test_the_zones_on_the_books_nearest_each_line(case, line, zone):
     """The two books held, over SPY's whole 2026-11-02 session, when a venue and view read
     exactly -70% and when one read nearest inside each line (9.996%, -9.989%, 69.999%,
-    -69.999%), held ten seconds: -70% is very one-sided, just inside a line is not past it."""
+    -69.999%), held ten seconds: -70% is very one-sided, just inside a line is not past it.
+    """
     c = _LINES[case]
     readout = _readout({svc: content for _ts, svc, content in c["books"]})
     w = _steady(readout, c["venue"], c["view"])
@@ -588,7 +610,8 @@ def test_the_sentence_four_cases_from_the_flat_shares():
     """Schwab's own books, each held ten seconds: NYSE_BOOK's touch at 10:00:08 ET on 2026-11-02
     (80 bid, 80 ask), its weighted view then (+1.5%, 240 shares apart), NYSE_BOOK's touch on
     2026-09-25 (160 bid, 200 ask), NASDAQ_BOOK's then (100 bid, 70 ask) and the composite's top
-    five then (780 bid, 2,110 ask)."""
+    five then (780 bid, 2,110 ask).
+    """
     rows, pair = _replayed()[1], _pair_readout()
     assert _steady(rows[16][1], "NYSE_BOOK", "1")["sentence"] == (
         "Balanced — no shares needed to balance."
@@ -635,14 +658,16 @@ def test_the_sentence_four_cases_from_the_flat_shares():
 )
 def test_a_zone_changes_only_after_it_has_stood_three_seconds(runs, zone, held):
     """INDUCED times: Schwab's readouts of 2026-11-02 by the zone of NYSE_BOOK's touch, one a
-    second from second 1000."""
+    second from second 1000.
+    """
     w = _touch_card(*runs)
     assert (w["zone"], w["held_sec"]) == (zone, held)
 
 
 def test_an_unknown_value_starts_the_zone_over():
     """INDUCED times: BALANCED books 1000-1004, no book 1005-1014, BALANCED again from 1015: the
-    zone is dated from 1015, not from the first value known, and says so (held 9 at 1024)."""
+    zone is dated from 1015, not from the first value known, and says so (held 9 at 1024).
+    """
     w = _touch_card(("bal", 5), ("none", 10), ("bal", 10))
     assert (w["zone"], w["held_sec"], w["held_open"]) == ("BALANCED", 9, False)
 
@@ -660,7 +685,8 @@ def _zone_of(pct: float | None) -> str | None:
 def test_on_schwabs_books_the_zone_changes_three_seconds_after_the_value_leaves_it():
     """Every venue and view of the captured books, read at each second: the zone shown never
     stands while the headline (the 2-minute series' last value) has been out of it three seconds
-    or more, never changes sooner, and is dated from the second the headline entered it."""
+    or more, never changes sooner, and is dated from the second the headline entered it.
+    """
     readout, points = _replayed()
     dwell = e.OF_ZONE_DWELL_SEC
     before: dict = {}
@@ -686,7 +712,8 @@ def test_on_schwabs_books_the_zone_changes_three_seconds_after_the_value_leaves_
 def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
     """INDUCED: one of Schwab's books, recorded again 400 s later with nothing between (a quiet
     ticker): the first still stands at the window's start, so the zone has held at least the
-    window, and says so."""
+    window, and says so.
+    """
     history.LEAN.forget("SPY")
     try:
         for ts, svc, content in (_ROWS[0], [_ROWS[0][0] + 400, _ROWS[0][1], _ROWS[0][2]]):
@@ -705,7 +732,8 @@ def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
 
 def test_held_is_at_least_when_the_values_began_inside_the_window():
     """The console started inside the window: the zone standing since the first value known has
-    held at least that long, never exactly."""
+    held at least that long, never exactly.
+    """
     _readout, points = _replayed()
     end = int(points[19][0])
     card = e.readout_card(points[-1][1], points[:20], {v: points[19][0] for v in points[-1][1]})
@@ -719,7 +747,8 @@ def test_held_is_at_least_when_the_values_began_inside_the_window():
 
 def test_the_headline_is_the_median_of_the_last_five_seconds():
     """The composite's weighted headline at the last captured second: the median of the five
-    one-second values standing then, each the newest readout received by that second's end."""
+    one-second values standing then, each the newest readout received by that second's end.
+    """
     readout, points = _replayed()
     last = int(points[-1][0])
     standing = [
@@ -753,7 +782,8 @@ def _replayed() -> tuple[dict, list]:
 
 def _touch_card(*runs: tuple[str, int]) -> dict:
     """INDUCED times: Schwab's readouts named by the zone of NYSE_BOOK's touch, each run of them
-    one a second (`none`: no book); the card's NYSE_BOOK touch view after the last."""
+    one a second (`none`: no book); the card's NYSE_BOOK touch view after the last.
+    """
     pts = _replayed()[1]
     seq = [_NO_BOOK if n == "none" else pts[_TOUCH[n]][1] for n, k in runs for _ in range(k)]
     points = [(1000.0 + i, r) for i, r in enumerate(seq)]
@@ -816,7 +846,8 @@ def test_a_sparkline_is_green_or_red_only_when_every_value_is_on_one_side(runs, 
 def test_the_route_serves_the_readout_of_both_books_and_the_composite_live():
     """Every captured book through the console's intake: the route's readout is the readout of the
     newest book of each venue, read over the one-second values the intake kept; each venue LIVE;
-    in regular hours, outside the auctions."""
+    in regular hours, outside the auctions.
+    """
     p = build_readout_payload()
     rd = p["readout"]
     readout, points = _replay()
@@ -841,7 +872,8 @@ def test_the_route_serves_the_readout_of_both_books_and_the_composite_live():
 
 def test_a_book_that_stops_keeps_its_last_numbers_marked_not_live():
     """The daemon's connection ended: every venue OFFLINE, its last values standing with their
-    time, read to the last value's second, never blanked."""
+    time, read to the last value's second, never blanked.
+    """
     p = build_readout_payload(feed_down=True)
     for v, got in p["readout"]["venues"].items():
         assert (got["live"], got["feed_label"]) == (False, "OFFLINE"), v
@@ -858,7 +890,8 @@ def test_a_book_that_stops_keeps_its_last_numbers_marked_not_live():
 
 def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
     """INDUCED: Schwab's pair with NYSE_BOOK's BOOK_TIME removed, read with no feed (not live): it
-    and the composite keep their words, with "-" never a blank."""
+    and the composite keep their words, with "-" never a blank.
+    """
     nyse = {k: v for k, v in _PAIR["NYSE_BOOK"]["content"].items() if k != "BOOK_TIME"}
     got = _served(_readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": _PAIR["NASDAQ_BOOK"]["content"]}))
     assert got["NYSE_BOOK"]["source_text"].startswith(
@@ -875,7 +908,8 @@ def test_a_book_that_stopped_is_read_to_its_own_last_book_while_the_other_runs()
     stopped then), through the intake, the daemon then holding NYSE_BOOK only: NASDAQ_BOOK is not
     live, and its held time and flips are read to the second its last book arrived, not on with
     NYSE_BOOK's. The composite, not live either, still moves with NYSE_BOOK: its headline is read
-    to its own last change, the same moment as its bars and sentence."""
+    to its own last change, the same moment as its bars and sentence.
+    """
     cut = datetime.fromisoformat("2026-11-02T10:01:30-05:00").timestamp()
     rows = [r for r in _ROWS if r[1] == "NYSE_BOOK" or r[0] < cut]
     p = build_readout_payload(
@@ -913,7 +947,8 @@ def test_no_book_serves_no_number():
 
 def test_a_one_sided_book_shows_the_side_it_has_and_no_percentage():
     """INDUCED: Schwab's NYSE_BOOK with its asks as Schwab sends a side it has no level for (an
-    empty list)."""
+    empty list).
+    """
     nyse = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
     nyse["ASKS"] = []
     r = _readout({"NYSE_BOOK": nyse, "NASDAQ_BOOK": None})["NYSE_BOOK"]
@@ -962,7 +997,8 @@ def test_the_auction_windows_come_from_schwabs_regular_window(at, window):
 
 def test_the_closing_auction_keeps_the_number_and_adds_its_line():
     """Continuous trading runs through the closing auction window: the book's number stands, and
-    a line says the auction imbalance is a different number."""
+    a line says the auction imbalance is a different number.
+    """
     p = build_readout_payload(now=_CLOSE_AUCTION)
     assert p["readout"]["auction"] == "CLOSE"
     assert p["readout"]["auction_text"] == (
@@ -1026,7 +1062,8 @@ _E2E_FILES = {
 
 def write_readout_e2e_fixtures() -> None:
     """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
-    hold them (tests/conftest.py), then each route payload written to its e2e fixture."""
+    hold them (tests/conftest.py), then each route payload written to its e2e fixture.
+    """
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))

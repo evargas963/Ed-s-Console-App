@@ -37,7 +37,8 @@ def watched() -> list[str]:
 
 def subscribe(tk: str, c: Client | None = None) -> Client:
     """A page opened on `tk` (on the event loop), as connection `c` (a new one when not given:
-    a caller that must close it whatever happens creates it first)."""
+    a caller that must close it whatever happens creates it first).
+    """
     c = Client() if c is None else c
     _open.append((tk, c))
     return c
@@ -50,7 +51,8 @@ def unsubscribe(tk: str, c: Client) -> None:
 
 def close_all() -> None:
     """The program is stopping (on the event loop): every open page's stream ends now, so the
-    web server closes without waiting out its graceful timeout."""
+    web server closes without waiting out its graceful timeout.
+    """
     for _t, c in _open:
         c.closed = True
         c.wake.set()

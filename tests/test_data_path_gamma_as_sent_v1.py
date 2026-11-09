@@ -6,7 +6,8 @@ no value.
 Real data (tests/fixtures/real_impossible_gamma_nvda_2026_10_22_and_iwm_0dte_2026_10_20.json, read
 from ed_console.db and stream_capture.db): NVDA's 2026-12-18 chain captured 2026-10-22 12:30 CT,
 whose 148 call came with gamma 16.42 at delta 0.92; Schwab's /markets answers for the day. NFLX's
-chain of 2026-10-07 (tests/real_chains.py) carries Greeks on a volatility Schwab sent as -999."""
+chain of 2026-10-07 (tests/real_chains.py) carries Greeks on a volatility Schwab sent as -999.
+"""
 
 from __future__ import annotations
 

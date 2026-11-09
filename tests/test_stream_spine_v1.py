@@ -1,5 +1,6 @@
 """The spine's contracts: the current record before delivery, LATEST readers, and the writer's
-refusal of the console's database."""
+refusal of the console's database.
+"""
 
 from __future__ import annotations
 
@@ -117,7 +118,8 @@ def test_writer_batches_into_stream_capture_db(tmp_path):
 def test_quote_native_content_stored_with_field_fidelity(tmp_path):
     """The daemon's flattened columns cannot carry BID_TIME_MILLIS / REGULAR_MARKET_
     CHANGE_PERCENT — fields the live-plane hydrator needs. `native` must round-trip
-    losslessly through the same INSERT the flattened columns use."""
+    losslessly through the same INSERT the flattened columns use.
+    """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     native = {
@@ -136,7 +138,8 @@ def test_quote_native_content_stored_with_field_fidelity(tmp_path):
 
 def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
     """Quote producers that pass no native dict (tests) — must stay NULL,
-    never an empty-dict placeholder that would misrepresent 'no data' as 'measured empty'."""
+    never an empty-dict placeholder that would misrepresent 'no data' as 'measured empty'.
+    """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0))
@@ -146,7 +149,8 @@ def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
 
 def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
     """A daemon restart against a DB written without the native_json column must not crash —
-    ALTER TABLE ADD COLUMN is idempotent forward migration, not a fresh-DB assumption."""
+    ALTER TABLE ADD COLUMN is idempotent forward migration, not a fresh-DB assumption.
+    """
     db = tmp_path / "stream_capture.db"
     with closing(sqlite3.connect(db)) as con:
         con.executescript("""
@@ -169,7 +173,8 @@ def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
 
 def test_book_content_stored_verbatim_never_flattened(tmp_path):
     """Schwab's SPY NASDAQ_BOOK message as the capture daemon stored it
-    (tests/fixtures/real_spy_nyse_nasdaq_books.json)."""
+    (tests/fixtures/real_spy_nyse_nasdaq_books.json).
+    """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     sent = json.loads(
@@ -198,7 +203,8 @@ def test_book_content_stored_verbatim_never_flattened(tmp_path):
 
 def test_book_msg_with_no_content_is_not_inserted(tmp_path):
     """insert() on kind 'book' with no content must not write a row that get_content_for_symbol
-    would then treat as a valid empty book snapshot."""
+    would then treat as a valid empty book snapshot.
+    """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert(
@@ -251,7 +257,8 @@ def test_options_quote_with_no_content_is_not_inserted(tmp_path):
 
 def test_options_book_reuses_the_generic_book_table_by_service(tmp_path):
     """OPTIONS_BOOK needs no new table — stream_book_raw is already service-discriminated
-    (NASDAQ_BOOK/NYSE_BOOK/OPTIONS_BOOK all coexist by `service` value)."""
+    (NASDAQ_BOOK/NYSE_BOOK/OPTIONS_BOOK all coexist by `service` value).
+    """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     contract = _CAPTURED["symbol"]
@@ -323,7 +330,8 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
     connection is left for the collector, which Python 3.13 reports ("unclosed database"). The
     writer runs in a Python of its own, so no other code's connection can be counted. INDUCED
     CONDITION: the database file holds bytes that are not a database, so SQLite connects and the
-    first statement fails."""
+    first statement fails.
+    """
     db = tmp_path / "s.db"
     db.write_bytes(b"not a database, " * 64)
     code = (
@@ -360,7 +368,8 @@ def test_db_path_a_resolves_the_canonical_default():
 
 def _in_own_python(code: str, **env: str) -> subprocess.CompletedProcess:
     """`code` run in a Python of its own from the repository, with `env` added to this process's
-    environment (the test runtime root tests/conftest.py sets included)."""
+    environment (the test runtime root tests/conftest.py sets included).
+    """
     return subprocess.run(
         [sys.executable, "-c", code],
         cwd=Path(__file__).resolve().parent.parent,
@@ -393,7 +402,8 @@ def test_db_path_c_reader_test_default_is_explicit(tmp_path):
 
 def test_db_path_d_capture_writer_default_is_its_runtime_roots_stream_database(tmp_path):
     """A writer given no path writes the stream database of the runtime root its process was
-    started with (ED_RUNTIME_ROOT, runtime_layout)."""
+    started with (ED_RUNTIME_ROOT, runtime_layout).
+    """
     root = tmp_path / "runtime"
     done = _in_own_python(
         "from stream_spine import CaptureWriter\nprint(CaptureWriter().db_path)\n",
@@ -411,7 +421,8 @@ def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):
 
 def test_production_stream_daemon_exposes_no_database_path_switch(tmp_path):
     """The daemon started with a database path refuses it and exits 2 before it starts: no
-    log, no owner lock, no connection."""
+    log, no owner lock, no connection.
+    """
     done = _in_own_python(
         "import sys\n"
         "from app.market_data.schwab.streaming import capture\n"

@@ -106,7 +106,8 @@ class LevelCrossEvent:
 @dataclass(frozen=True)
 class ColumnInventory:
     """One column as SQLite's table_info reports it. `default_sql` is the DEFAULT clause SQLite
-    holds for it, None when the column has none."""
+    holds for it, None when the column has none.
+    """
 
     name: str
     default_sql: str | None
@@ -124,7 +125,8 @@ class TableInventory:
 
 def inventory(db_path: Path) -> tuple[TableInventory, ...]:
     """Every table of the database at `db_path`, read through a read-only connection, so the
-    census counts it without writing to it. A file that is not there raises."""
+    census counts it without writing to it. A file that is not there raises.
+    """
     conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
     try:
         tables: list[TableInventory] = []
@@ -226,7 +228,8 @@ class EdDB:
     def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[dict]:
         """Store the level crosses of one price (server._log_level_crosses decides them), all in
         one transaction: every one is stored, or none is and the error is raised. Returns the
-        rows stored, each as get_recent_crosses reads it back."""
+        rows stored, each as get_recent_crosses reads it back.
+        """
         cols = [f.name for f in fields(LevelCrossEvent)]
         sql = (
             f"INSERT INTO level_crosses ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"

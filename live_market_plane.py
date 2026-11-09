@@ -1,7 +1,8 @@
 """The quote per ticker, from Schwab's streamed LEVEL_ONE_EQUITY rows
 (`record_from_level_one_equity`): each field the last value Schwab sent, at any hour, and
 whether the symbol's values are live now (`live_state`): the feed delivers it and its market
-trades."""
+trades.
+"""
 
 from __future__ import annotations
 
@@ -187,7 +188,8 @@ _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
     """Apply one daemon heartbeat (capture.Daemon.status, live_ui's beat), judged by the time the
     daemon stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
-    (docs/DATA_FLOW.md §2 D5)."""
+    (docs/DATA_FLOW.md §2 D5).
+    """
     held = {
         svc: frozenset(ticker_storage_key(s) for s in syms) for svc, syms in msg["held"].items()
     }
@@ -197,7 +199,8 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
 
 def record_feed_down() -> None:
     """The connection to the daemon ended: nothing is live until a heartbeat arrives.
-    The latest beat stays (last_beat), so the last streamed values still price."""
+    The latest beat stays (last_beat), so the last streamed values still price.
+    """
     with _lock:
         _feed["rx"] = None
 
@@ -205,7 +208,8 @@ def record_feed_down() -> None:
 def last_beat() -> dict[str, Any] | None:
     """The latest status the daemon sent, current or not; None until one arrives. What it
     reported stands while a beat is late or missing (its watchlist, its last round of chains);
-    whether it is live is daemon_status's."""
+    whether it is live is daemon_status's.
+    """
     with _lock:
         return _feed["status"]
 
@@ -214,7 +218,8 @@ def last_beat() -> dict[str, Any] | None:
 class FeedNow:
     """One read of the daemon's heartbeat at a time. `status` is None when that beat is not
     current. `held` is the symbols on the latest beat: they stand when that beat is missing
-    or too old. A beat stamped after `now` contributes neither."""
+    or too old. A beat stamped after `now` contributes neither.
+    """
 
     status: dict[str, Any] | None
     held: dict[str, frozenset[str]]
@@ -223,7 +228,8 @@ class FeedNow:
 def feed_now(now: float) -> FeedNow:
     """The daemon's heartbeat at `now`, read once. Current only when its stamp is not older
     than FEED_HEARTBEAT_MAX_AGE_SEC. A stamp after `now` is a later moment, not this one.
-    A beat that is missing or too old is not live, and the symbols it last named still stand."""
+    A beat that is missing or too old is not live, and the symbols it last named still stand.
+    """
     with _lock:
         rx, status, held = _feed["rx"], _feed["status"], dict(_feed["held"])
     if isinstance(rx, (int, float)) and now < float(rx):
@@ -259,7 +265,8 @@ def not_trading(symbol: str, service: str, now: float) -> str | None:
     """Why `symbol`'s values on Schwab `service` are not live at `now`, or None in a valid session
     (time_et.session_label): no valid session, that /markets answer not held, for an option today's
     option markets closed (time_et.options_open), or for a stock or an index Schwab's own
-    SECURITY_STATUS for it Closed or Halted."""
+    SECURITY_STATUS for it Closed or Halted.
+    """
     at = datetime.fromtimestamp(now, ET)
     session = session_label(at)
     if session == UNKNOWN:
@@ -283,13 +290,15 @@ def live_state(symbol: str, service: str, now: float) -> tuple[str, str | None]:
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
-    current value; judging by arrival age blanks quiet names on a healthy feed."""
+    current value; judging by arrival age blanks quiet names on a healthy feed.
+    """
     return _judge(feed_now(now), symbol, service, now)
 
 
 def live_symbols(feed: FeedNow, symbols, service: str, now: float) -> set[str]:
     """The `symbols` live on Schwab `service` at `now` by the live rule, judged on one read of
-    the heartbeat (`feed`)."""
+    the heartbeat (`feed`).
+    """
     return {s for s in symbols if _judge(feed, s, service, now)[0] == LIVE}
 
 

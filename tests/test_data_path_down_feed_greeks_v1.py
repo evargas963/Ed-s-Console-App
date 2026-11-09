@@ -23,7 +23,8 @@ from time_et import ET
 def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels():
     """Schwab's socket closed, the daemon still holding the contract: at 11:00 ET the last
     spot and the last streamed volume stand, and the cell is not live. At 22:00 ET the values
-    as of the close stand."""
+    as of the close stand.
+    """
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
 
     def states(surface):

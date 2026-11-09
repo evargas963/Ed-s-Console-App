@@ -10,7 +10,8 @@ elsewhere: test_charm_by_strike_v1.py, test_charm_sign_finite_difference.py).
 
 Real data: CRWD's 2026-10-16 chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py), priced
 at its capture instant, and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
-(tests/fixtures/real_crwd_quote_2026_10_07.json), the live price the routes serve beside it."""
+(tests/fixtures/real_crwd_quote_2026_10_07.json), the live price the routes serve beside it.
+"""
 
 from __future__ import annotations
 

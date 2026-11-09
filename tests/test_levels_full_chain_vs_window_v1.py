@@ -67,7 +67,8 @@ def test_the_fixture_is_the_full_chain_and_its_window():
 
 def test_the_window_gives_different_levels_than_the_full_chain():
     """The measurement itself: same code, same spot, same instant (the capture's) -- only the
-    strikes differ."""
+    strikes differ.
+    """
     full = _levels(compute_terrain("MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED))
     window = _levels(compute_terrain("MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED))
     differing = {k for k in full if full[k] != window[k]}
@@ -79,7 +80,8 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
     """The one producer (server._publish_levels) prices the full chain stored as the daemon
     stores it (every expiry, with Schwab's underlying price), valued at the capture's own time:
     the full chain's levels -- not the window's. That the sweep delivers the whole chain is
-    tests/test_chain_history_v1.py::test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in."""
+    tests/test_chain_history_v1.py::test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in.
+    """
     tk = server.ticker_storage_key("MRVL")
     db = tmp_path / "ed.db"
     by_expiry: dict = {}

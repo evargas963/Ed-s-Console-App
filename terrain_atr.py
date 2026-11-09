@@ -24,7 +24,8 @@ ATR_PERIOD = 14
 @dataclass(frozen=True)
 class Atr:
     """Daily, weekly and monthly ATR in price points. Any may be None: Schwab did not send enough
-    candles to compute it. Nothing stands in for the missing number."""
+    candles to compute it. Nothing stands in for the missing number.
+    """
 
     daily: float | None
     weekly: float | None
@@ -33,7 +34,8 @@ class Atr:
 
 def roll_up(candles: list[Candle], key) -> list[Candle]:
     """`candles` (oldest first) rolled into one candle per `key` of each candle's ET date: the
-    first open, the highest high, the lowest low, the last close."""
+    first open, the highest high, the lowest low, the last close.
+    """
     out: list[Candle] = []
     last = None
     for c in candles:
@@ -51,13 +53,15 @@ def roll_up(candles: list[Candle], key) -> list[Candle]:
 
 def _leg(candles: list) -> float | None:
     """ATR(ATR_PERIOD) of `candles`, or None when fewer than ATR_PERIOD + 1 of them give a true
-    range."""
+    range.
+    """
     return compute_atr(candles, period=ATR_PERIOD)
 
 
 def compute_atrs(daily: list[Candle]) -> Atr:
     """Daily, weekly and monthly ATR of one ticker from its daily candles (oldest first, today's
-    the live one). A horizon that cannot be computed is None."""
+    the live one). A horizon that cannot be computed is None.
+    """
     return Atr(
         _leg(daily),
         _leg(roll_up(daily, lambda day: day.isocalendar()[:2])),

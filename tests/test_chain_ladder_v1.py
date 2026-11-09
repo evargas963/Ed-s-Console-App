@@ -1,5 +1,6 @@
 """/api/chain serves the ladder the Chain view draws (terrain_engine.chain_ladder): strikes high to
-low, one row per listed contract, in-the-money flags against the live spot. Real CRWD chain."""
+low, one row per listed contract, in-the-money flags against the live spot. Real CRWD chain.
+"""
 
 import json
 from pathlib import Path
@@ -59,7 +60,8 @@ def test_a_second_contract_at_one_strike_and_side_gets_its_own_row():
 def test_a_number_schwab_did_not_send_is_absent_and_an_unknown_side_is_not_a_call():
     """Register P-23 / M-29: the ladder carried contracts raw, so a -999 printed as "-999.00";
     and any putCall other than PUT was placed as a call. Stand-in: one contract's delta set to
-    Schwab's no-value -999, and one contract with an unknown side."""
+    Schwab's no-value -999, and one contract with an unknown side.
+    """
     first = dict(FX["chain"][0], delta=-999.0)
     odd = dict(FX["chain"][1], putCall="X", symbol="CRWD-ODD")
     rows, unplaced = chain_ladder([first, odd] + FX["chain"][2:], FX["spot"])

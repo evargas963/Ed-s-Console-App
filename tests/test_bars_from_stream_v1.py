@@ -2,7 +2,8 @@
 for each ET date) and its streamed CHART_EQUITY 1-minute bars, which the daemon records
 (stream_capture.db stream_bars_raw) and forwards. The console keeps them in memory (server._bars:
 the history, each pushed bar on top); every live reader reads memory. Only completed bars are
-served. A minute Schwab sent neither way stays missing."""
+served. A minute Schwab sent neither way stays missing.
+"""
 
 from __future__ import annotations
 
@@ -107,7 +108,8 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
     days, extended hours: ~11,000 candles each), taken by the bar writer
     (server._write_streamed_bars, as the daemon pushes it) beside a busy pure-Python thread: each
     minute is Schwab's candle with every field as sent, the pre-market and after-hours minutes
-    included, in well under a second."""
+    included, in well under a second.
+    """
     busy = threading.Event()
 
     def price_options():

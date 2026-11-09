@@ -54,7 +54,8 @@ def _clean():
 def _publish(held, ticked, *, at=_AT, socket_open=True):
     """The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent a GAMMA for each of
     `ticked` a second before `at`, CRWD's chain published at `at`; the route's coverage of every
-    strike, and the published surface."""
+    strike, and the published surface.
+    """
     lmp.record_feed_heartbeat(
         daemon_status(
             at.timestamp(),
@@ -107,7 +108,8 @@ def test_a_contract_the_feed_delivers_is_live_with_its_own_age():
 
 def test_every_cell_streaming_reads_all_streaming_and_one_cell_short_never_does():
     """ALL STREAMING only when every cell drawn is live; one cell short (its put held, no update)
-    is the share rounded down, never 100%, and the cell says pending."""
+    is the share rounded down, never 100%, and the cell says pending.
+    """
     every = CALLS + PUTS
     cov, _ = _publish(every, every)
     assert (cov["state"], cov["label"], cov["live"], cov["cells"]) == (
@@ -132,7 +134,8 @@ def test_one_live_cell_of_many_reads_under_one_percent_never_zero():
 
 def test_a_contract_that_streamed_reads_stale_while_schwabs_socket_is_closed():
     """Closed (22:00 ET), Schwab's socket closed: the chain's gamma prices the cell, its volume
-    is the stream's last, and its legs say they are not streaming now."""
+    is the stream's last, and its legs say they are not streaming now.
+    """
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym], at=_CLOSED, socket_open=False)
     assert [leg["state"] for leg in _legs(surface, sym)] == ["stale"]

@@ -64,7 +64,8 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
     nearest, 5 listed each side), calls and puts. MRVL at 283.73, no same-day expiration: its
     nearest, 2026-10-09, strikes 270 to 295 (282.5 nearest). The contract selected on the Flow panel
     is recorded wherever it is. No other option quote or option book is recorded; both tickers'
-    equity quotes are."""
+    equity quotes are.
+    """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     bus = MessageBus()
@@ -188,7 +189,8 @@ def _recorded(bus) -> None:
 
 def _kept_at(tmp_path, clock: str, wait: float) -> str:
     """The rows left after the daemon's keep runs at `clock` (ET) for `wait` seconds or until the
-    old rows are gone: a summary per table."""
+    old rows are gone: a summary per table.
+    """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     bus = MessageBus()
@@ -231,7 +233,8 @@ def test_after_the_last_option_close_rows_before_the_newest_five_sessions_are_re
     """2026-10-07 17:00 ET, the last option market (IND) closed at 16:15: Schwab's /markets says
     the market was open 09-30, 10-01, 10-02, 10-05, 10-06 and 10-07, so the newest five sessions
     run from 2026-10-01 00:00 ET. Every row received before it is removed from each table, except
-    the newest watchlist row, which the daemon reads at its start."""
+    the newest watchlist row, which the daemon reads at its start.
+    """
     assert (
         _kept_at(tmp_path, "2026-10-07 17:00", 30.0)
         == "quotes:1 options:1 feed:1 watchlist:1 newest-watchlist:09-30 12:00"
@@ -254,7 +257,8 @@ def _old_file(tmp_path_factory) -> Path:
     """INDUCED CONDITIONS: the writer's own file, indexed as production's stream_capture.db is
     (PRAGMA index_list on it: its quote, book and option tables by receipt time), holding the mix's
     option quotes as the writer stores them, one copy for each of the 54 minutes before the mix,
-    each received a week earlier (2026-09-28, before the newest five sessions began)."""
+    each received a week earlier (2026-09-28, before the newest five sessions began).
+    """
     db = tmp_path_factory.mktemp("old") / "stream_capture.db"
     writer = CaptureWriter(db)
     conn = sqlite3.connect(db)
@@ -272,7 +276,8 @@ def _old_file(tmp_path_factory) -> Path:
 
 def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> int:
     """The mix's messages of `services`, each frame decoded from its JSON through the daemon's
-    handler for its service, received now: how many were published."""
+    handler for its service, received now: how many were published.
+    """
     health = HealthRegistry()
     handlers = {s: capture._publisher(s, bus, health) for s in services}
     sent = [m for m in _MIX["messages"] if m["service"] in services][:limit]
@@ -295,7 +300,8 @@ def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_st
     """The old file (_old_file: 400,680 option quotes before the newest five sessions, twenty-one
     parts of the keep), and the whole mix arriving while the keep runs: every message is written
     while old rows remain (every message queued is written in each round between parts), and the
-    keep then removes every old row and nothing else."""
+    keep then removes every old row and nothing else.
+    """
     db = tmp_path / "stream_capture.db"
     shutil.copy(_old_file, db)
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
@@ -330,7 +336,8 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
     first ten equity quotes and the stop are handed to the writer: it writes the ten and ends,
     having run at most the one part in progress when they arrived, none after it took the stop.
     The bound holds while run() hands the ten (microseconds) within one part's time (a
-    PRUNE_ROWS-row delete)."""
+    PRUNE_ROWS-row delete).
+    """
     db = tmp_path / "stream_capture.db"
     shutil.copy(_old_file, db)
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
@@ -351,7 +358,8 @@ def test_every_message_a_round_has_taken_counts_as_held_until_it_is_written(tmp_
     lock: the writer takes what is queued into its round and waits up to timeout_sec on the round's
     first row. While it waits, the header's held count is every one of them, queued or taken, and
     once the lock is let go every one is written. The 0.2 s pause lets the last hand-over and the
-    round's take (microseconds) finish well inside the 5 s wait."""
+    round's take (microseconds) finish well inside the 5 s wait.
+    """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, timeout_sec=5.0)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
@@ -389,7 +397,8 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
     """The mix's 152 equity quotes are queued while another connection holds the write lock, and
     the writer's memory cap is 1 byte (an input, STAND-IN for about 2 GB), so every held message
     goes to the spill file. Read during the pause after the first refusal: the held count is what
-    memory holds (none) plus the queue, and every message is written once the lock is let go."""
+    memory holds (none) plus the queue, and every message is written once the lock is let go.
+    """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=1.0, hold_cap_bytes=1)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
@@ -436,7 +445,8 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
     the mix's first ten equity quotes held in memory while another connection holds the write
     lock. Once the lock is let go the ten are committed, and the keep's part after them is
     refused: in the pause that follows, held is the queue alone, nothing waits and nothing
-    spills."""
+    spills.
+    """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=1.0)
     old = {**_eleventh(), "ts_recv": _et("2026-09-28 13:00")}
@@ -486,7 +496,8 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
 
 class _UnreadableQuote(dict):
     """STAND-IN for a defect: a captured equity quote whose fields cannot be read as items, so the
-    writer can neither size it for memory nor write it to a spill record (RuntimeError)."""
+    writer can neither size it for memory nor write it to a spill record (RuntimeError).
+    """
 
     def items(self):
         raise RuntimeError("a message the writer cannot read")
@@ -502,7 +513,8 @@ class _Unprintable:
 def _dies_holding(db, cap: int, eleventh: dict, *, stop: bool) -> dict:
     """The writer's status once it has died holding the mix's first ten equity quotes and then the
     eleventh's message `eleventh`, the write lock held throughout; with `stop`, the stop is asked
-    once all eleven are held in memory."""
+    once all eleven are held in memory.
+    """
     writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=0.1, hold_cap_bytes=cap)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
@@ -539,7 +551,8 @@ def test_a_writer_that_dies_while_spilling_counts_as_not_recorded_only_what_was_
     """INDUCED CONDITIONS: a 1-byte memory cap (an input, STAND-IN for about 2 GB), so the first ten
     go to the spill file, and the eleventh an _UnreadableQuote: the writer dies holding it. Not
     recorded is the eleventh alone; the ten are in the spill file, listed as left on disk; none is
-    lost."""
+    lost.
+    """
     s = _dies_holding(tmp_path / "stream_capture.db", 1, _UnreadableQuote(_eleventh()), stop=False)
     assert s["error"] == "RuntimeError: a message the writer cannot read"
     assert (s["unrecorded"], s["lost"], [k["messages"] for k in s["left_on_disk"]]) == (1, 0, [10])
@@ -548,7 +561,8 @@ def test_a_writer_that_dies_while_spilling_counts_as_not_recorded_only_what_was_
 def test_a_writer_that_dies_while_holding_in_memory_counts_all_it_held_as_not_recorded(tmp_path):
     """INDUCED CONDITIONS: a 10 MB memory cap, so the first ten are held in memory, and the eleventh
     an _UnreadableQuote: the writer dies holding it. Not recorded is all eleven; nothing is on
-    disk or lost."""
+    disk or lost.
+    """
     s = _dies_holding(
         tmp_path / "stream_capture.db", 10_000_000, _UnreadableQuote(_eleventh()), stop=False
     )
@@ -562,7 +576,8 @@ def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_wa
     """INDUCED CONDITIONS: a 10 MB memory cap, so all eleven are held in memory, the eleventh
     carrying an _Unprintable value; the stop is asked, and the writer dies writing the eleventh
     to the stop's file. Not recorded is the eleventh alone, none is lost, and the next writer
-    writes the ten from that file into the database."""
+    writes the ten from that file into the database.
+    """
     db = tmp_path / "stream_capture.db"
     s = _dies_holding(db, 10_000_000, {**_eleventh(), "unprintable": _Unprintable()}, stop=True)
     assert s["error"] == "RuntimeError: a value no spill record can write"
@@ -581,7 +596,8 @@ def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_wa
 
 def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp_path):
     """2026-10-07 12:00 ET, the options open; and 2027-10-12, a date Schwab's held answers do not
-    reach: no row is removed (never on a guess)."""
+    reach: no row is removed (never on a guess).
+    """
     untouched = "quotes:2 options:2 feed:2 watchlist:2 newest-watchlist:09-30 12:00"
     assert _kept_at(tmp_path / "open", "2026-10-07 12:00", 1.5) == untouched
     assert _kept_at(tmp_path / "unknown", "2027-10-12 17:00", 1.5) == untouched

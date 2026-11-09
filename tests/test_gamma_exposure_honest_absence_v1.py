@@ -56,7 +56,8 @@ SPOT = 100.0
 
 def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
     """Real CRWD chain (tests/real_chains.py), valued at its capture. Stand-in: open interest
-    removed from every contract at one strike, as Schwab never omitted it in the captures."""
+    removed from every contract at one strike, as Schwab never omitted it in the captures.
+    """
     chain = copy.deepcopy(CRWD.chain)
     ois = {}
     for c in chain:

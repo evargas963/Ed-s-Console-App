@@ -21,7 +21,8 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
     get_bars1m is a plain sync handler taking only Query params and returning a
     JSONResponse it builds itself -- no auth, middleware, Request, or response_model
     reshaping. This file's own test_spot_endpoint_caches_upstream_within_ttl already
-    calls its handler directly, so this is the established pattern here."""
+    calls its handler directly, so this is the established pattern here.
+    """
     import json
     from pathlib import Path
 
@@ -59,7 +60,8 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
 
 def test_terrain_strikes_endpoint_shape_and_scopes():
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
-    expiry scopes for today + prior capture, sorted by strike, read-only."""
+    expiry scopes for today + prior capture, sorted by strike, read-only.
+    """
     from fastapi.testclient import TestClient
 
     import server as srv

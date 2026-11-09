@@ -1,6 +1,7 @@
 """compute_exposures_by_strike's contract multiplier must come from the real chain
 data, never a hardcoded/default multiplier -- a wrong default silently mis-scales
-every exposure computed from that contract."""
+every exposure computed from that contract.
+"""
 
 from __future__ import annotations
 
@@ -46,7 +47,8 @@ def test_exposures_use_schwab_multiplier_without_defaulting_to_100():
 
 def test_a_missing_multiplier_leaves_the_exposure_unknown_and_keeps_the_open_interest():
     """No silent 100: the contract's exposure is not known, its leg's sums are absent; its open
-    interest and volume, which Schwab sent, are kept (M-14: the contract used to be dropped)."""
+    interest and volume, which Schwab sent, are kept (M-14: the contract used to be dropped).
+    """
     ct = _contract()
     ct.pop("multiplier")
 
