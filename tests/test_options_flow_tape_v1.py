@@ -4,7 +4,8 @@ Locked to the operator's own required schema: Time/Symbol/Expiry/Type/Strike/Bid
 Size/Trade/Size/Premium/Volume/OI/IV/Delta, with Trade/Size/Time/Bid/Ask/BidSize/AskSize/Volume/
 OI/IV/Delta read verbatim (never derived) and Premium = Trade x Size x native Multiplier. No
 aggressor-side (buy/sell) classification is ever produced -- `classification` states only where
-a print landed relative to that SAME tick's own bid/ask."""
+a print landed relative to that SAME tick's own bid/ask.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +24,8 @@ SYM = "SPY   260918C00600000"
 def _tape(rows: list[tuple[float, dict]]) -> RecentTape:
     """A fresh tape fed each (ts_recv, LEVELONE_OPTIONS item) as the console's intake does
     (streaming._ingest_pushed): the live state reads the record first, and the tape takes the
-    state's top of book and streamed values with it."""
+    state's top of book and streamed values with it.
+    """
     tape, live = RecentTape(), OrderFlowState()
     for ts_recv, content in rows:
         live.push_level_one(SYM, content, ts_recv=ts_recv)
@@ -84,7 +86,8 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
 def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice():
     """The vendor re-sends the SAME (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) trade
     alongside an unrelated field update (e.g. a fresh Greek recompute) -- this must collapse
-    to ONE tape row, not one per re-emission."""
+    to ONE tape row, not one per re-emission.
+    """
     tick = _full_context(
         TRADE_TIME_MILLIS=999000,
         LAST_PRICE=1.18,
@@ -107,7 +110,8 @@ def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row
     """Reproduced against real captured data (SPY 260909C00767000): a partial
     LEVELONE_OPTIONS tick can carry a fresh LAST_SIZE with NO LAST_PRICE on the same packet (a
     size-only field bumping TOTAL_VOLUME on its own). A trade print requires its OWN price AND
-    its OWN trade timestamp on the SAME tick; this shape is excluded."""
+    its OWN trade timestamp on the SAME tick; this shape is excluded.
+    """
     tape = _tape(
         [
             (
@@ -134,7 +138,8 @@ def test_context_is_carried_forward_from_the_most_recent_full_tick():
     """The vendor does not repeat expiry/strike/type/multiplier on every partial update --
     a LATER genuine trade print that arrives on a tick carrying ONLY price/size/bid/ask
     must still resolve its own contract identity from the most recent tick that reported
-    it, not read as if that identity were unknown."""
+    it, not read as if that identity were unknown.
+    """
     tape = _tape(
         [
             (
@@ -254,7 +259,8 @@ def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
 
 def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     """The console's intake records a print, then clear_symbol is called for that contract:
-    its prints and its books are gone from memory. The release path does not call it."""
+    its prints and its books are gone from memory. The release path does not call it.
+    """
     _ingest_pushed(
         f"optquote.{SYM}",
         {
@@ -277,7 +283,8 @@ def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
 
 def test_a_row_count_outside_1_to_500_is_refused_never_replaced():
     """/api/options/tape answers 1 to 500 prints; any other count, or one that is not a whole
-    number, is refused (422), never answered with a count the page did not ask."""
+    number, is refused (422), never answered with a count the page did not ask.
+    """
     client = TestClient(server.app)
 
     def status(limit) -> int:

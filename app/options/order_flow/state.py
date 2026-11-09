@@ -63,7 +63,8 @@ class OrderFlowState:
     def push_book(self, symbol: str, content_item: dict, service: str) -> Book | None:
         """Apply one Schwab book observation (from `service`: NYSE_BOOK, NASDAQ_BOOK or
         OPTIONS_BOOK) to this state instance: the book as read once (engine.read_book), returned;
-        None when the message carries no book."""
+        None when the message carries no book.
+        """
         if not content_item or not isinstance(content_item, dict):
             return None
         book = read_book(content_item, service)
@@ -85,7 +86,8 @@ class OrderFlowState:
     ) -> None:
         """Apply one Schwab L1 observation with canonical merge/freshness/tape semantics. A
         current record merged from several messages (the daemon's bus) carries each field's own
-        receive time in `field_received`; each value is stamped with it."""
+        receive time in `field_received`; each value is stamped with it.
+        """
         if not content_item or not isinstance(content_item, dict):
             return
         sym = ticker_storage_key(symbol)
@@ -145,7 +147,8 @@ class OrderFlowState:
     def get_content_for_symbol(self, symbol: str, venue: str | None = None) -> list:
         """The engine's input for one symbol: its newest book of each Schwab service (engine.Book)
         then its tape's prints (dicts), in receive order; with `venue`, only that Schwab book
-        service's book (an equity has two: NYSE_BOOK and NASDAQ_BOOK)."""
+        service's book (an equity has two: NYSE_BOOK and NASDAQ_BOOK).
+        """
         sym = ticker_storage_key(symbol)
         if not sym:
             return []
@@ -197,7 +200,8 @@ class OrderFlowState:
 
     def push_option_top(self, symbol: str, content_item: dict) -> None:
         """An option contract's top of book (LEVELONE_OPTIONS BID/ASK price and size, MARK),
-        merged per field as Schwab sends changes only; not a number clears the field."""
+        merged per field as Schwab sends changes only; not a number clears the field.
+        """
         sym = ticker_storage_key(symbol)
         if not sym:
             return
@@ -223,7 +227,8 @@ class OrderFlowState:
         last-update wall-clock receive time, not merely this call's time) -- a per-field
         freshness stamp is what lets a caller judge one field newer than a same-tick sibling
         that was absent this update, per the sparse-overlay pattern below. Returns None when
-        nothing has ever been observed for this symbol (never a dict of Nones)."""
+        nothing has ever been observed for this symbol (never a dict of Nones).
+        """
         sym = ticker_storage_key(symbol)
         if not sym:
             return None
@@ -284,5 +289,6 @@ def clear_symbol(symbol: str) -> None:
 
 def get_stream_greeks(symbol: str) -> dict | None:
     """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one option
-    contract symbol (each paired with its own `_ts_recv`), or None if never observed."""
+    contract symbol (each paired with its own `_ts_recv`), or None if never observed.
+    """
     return _LIVE_STATE.get_stream_greeks(symbol)

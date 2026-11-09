@@ -63,7 +63,8 @@ def test_a_commit_message_quoting_destructive_git_is_not_an_action():
 
 def test_stripping_payloads_does_not_open_a_bypass():
     """The exemption is for DATA. A body handed to an interpreter is the instruction, and a
-    real destructive command is unaffected by any of this."""
+    real destructive command is unaffected by any of this.
+    """
     piped = "bash <<'EOF'\ngit reset --hard\nEOF"
     assert OPL.reset_guard_violations(piped), (
         "a heredoc piped into a shell IS the instruction — stripping it would be a bypass"
@@ -156,7 +157,8 @@ def test_git_is_adjudicated_by_what_it_can_destroy():
 
 def test_a_safe_form_cannot_launder_a_destructive_one():
     """The class rule is judged per statement: a safe form exempts only itself, never a
-    destructive statement chained after it."""
+    destructive statement chained after it.
+    """
     for chain in (
         "git reset --soft HEAD~1 && git clean -fd",
         "git reset --soft HEAD~1 && git reset --mixed HEAD~1",
@@ -173,7 +175,8 @@ def test_a_safe_form_cannot_launder_a_destructive_one():
 
 def test_an_interpreter_heredoc_is_judged_per_line():
     """A heredoc handed to a shell IS the instruction, so a CLASS form inside it
-    (not only a hard form) still blocks, and a quoted commit message stays prose."""
+    (not only a hard form) still blocks, and a quoted commit message stays prose.
+    """
     assert OPL.reset_guard_violations("bash <<'EOF'\ngit status\ngit restore .\nEOF")
     assert not OPL.reset_guard_violations(
         "git commit -m 'RC-231: git restore . wiped the tree' && git push origin feat/x"
@@ -197,7 +200,7 @@ def test_the_safe_reset_is_live_on_the_pretooluse_path():
 
 
 def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
-    """git given by its path or with `.exe` (`& C:\\Git\\cmd\\git.exe reset --hard`) is git."""
+    """Git given by its path or with `.exe` (`& C:\\Git\\cmd\\git.exe reset --hard`) is git."""
     for tool, cmd in (
         ("PowerShell", "& C:\\Git\\cmd\\git.exe reset --hard"),
         ("PowerShell", '& "C:\\Program Files\\Git\\cmd\\git.exe" reset --hard HEAD~1'),
@@ -212,7 +215,8 @@ def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
 
 def test_a_heredoc_handed_to_an_interpreter_by_its_full_path_is_judged():
     """A heredoc handed to bash by its path (`C:\\Git\\bin\\bash.exe <<'EOF'`) is judged as
-    bash's."""
+    bash's.
+    """
     for shell in (
         "C:\\Git\\bin\\bash.exe",
         "/usr/bin/bash",

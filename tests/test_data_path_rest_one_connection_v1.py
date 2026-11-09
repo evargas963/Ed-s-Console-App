@@ -90,7 +90,8 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
 def test_market_hours_are_not_asked_for_a_date_beyond_the_year_schwab_answers(tmp_path):
     """On 2026-10-01 an expiry a year and a week out (2027-10-08, whose captured answer is
     Schwab's 400 "Date cannot be beyond 1 year from today.") is not asked; one inside the year
-    is, and is published as Schwab sent it."""
+    is, and is published as Schwab sent it.
+    """
     schwab = LocalSchwab()
     _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
     try:
@@ -103,7 +104,8 @@ def test_market_hours_are_not_asked_for_a_date_beyond_the_year_schwab_answers(tm
 
 def test_market_hours_are_asked_to_the_last_day_schwab_answered(tmp_path):
     """At the capture's own moment, 2026-10-07 22:16 ET, Schwab answered 2027-10-07 (200) and
-    refused 2027-10-08 (400, "beyond 1 year"): the first is asked, the second is not."""
+    refused 2027-10-08 (400, "beyond 1 year"): the first is asked, the second is not.
+    """
     schwab = LocalSchwab()
     _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-07 22:16"))
     try:
@@ -207,7 +209,8 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 
 def test_the_one_connection_stands_through_a_pause(tmp_path):
     """The session as production builds it: two requests 6 s apart, longer than httpx keeps an idle
-    connection by default, go on the same connection."""
+    connection by default, go on the same connection.
+    """
     schwab = LocalSchwab()
     client = sc.client_from_token_file_atomic(schwab.token_file(tmp_path), "k", "s")
     url = f"http://127.0.0.1:{schwab.server.server_address[1]}{EXPIRATIONS}?symbol=SPY"
@@ -224,7 +227,8 @@ def test_the_one_connection_stands_through_a_pause(tmp_path):
 def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
     """The stream record holds every greek field as Schwab's -999. That is not a reported greek,
     so the contract is asked on the quotes endpoint and takes the quote's exact greeks. The same
-    rule for every ticker."""
+    rule for every ticker.
+    """
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
     record = daemon.option_record(HELD)[1]
@@ -251,7 +255,8 @@ def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
 
 def test_a_429_on_one_expiry_does_not_cost_the_ticker_its_round(tmp_path):
     """Measured 2026-11-02: Schwab answered one of SPY's expiries 429, and SPY's levels stood 15
-    minutes old until its next round. That expiry is asked once more, and SPY is delivered."""
+    minutes old until its next round. That expiry is asked once more, and SPY is delivered.
+    """
     schwab = LocalSchwab()
     schwab.throttle_chain = {"SPY"}
     _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
@@ -322,7 +327,8 @@ def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a
 def test_a_held_contracts_record_ends_with_its_connection(tmp_path):
     """The connection ends and the next one holds HELD again: until Schwab sends HELD on the new
     connection, the sweep has no stream record of it, so it is asked of the quotes endpoint
-    rather than priced on the ended connection's Greeks."""
+    rather than priced on the ended connection's Greeks.
+    """
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
     asyncio.run(daemon.disconnect())
@@ -338,7 +344,8 @@ def test_a_held_contracts_record_ends_with_its_connection(tmp_path):
 def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path):
     """The stream's connection ends (it holds nothing): HELD's record from that connection is
     still on the bus, and its Greeks are asked of the quotes endpoint, never taken from a feed
-    that is down."""
+    that is down.
+    """
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
     daemon.held["LEVELONE_OPTIONS"] = frozenset()  # as Daemon.disconnect leaves it
@@ -355,7 +362,8 @@ def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path)
 
 def test_a_quotes_answer_that_is_not_json_fails_its_tickers_and_the_sweep_goes_on(tmp_path):
     """STAND-IN: a 200 answer whose body is not JSON. Each ticker in the request is published as
-    failed with the error, and the next rotation delivers."""
+    failed with the error, and the next rotation delivers.
+    """
     schwab = LocalSchwab()
     schwab.quotes_body = b"<html>not json</html>"
     _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
@@ -378,7 +386,8 @@ def test_contracts_schwab_names_invalid_get_no_greeks_and_every_ticker_in_the_re
     per request with their count; SPY and TSLA, which share a request, are both delivered. Real
     data: the 8 contracts' /chains entries and Schwab's errors entry as sent
     (tests/fixtures/real_spy_quotes_invalid_symbols_2026_10_07.json). STAND-IN: the 8 are served in
-    SPY's chain answer beside its 2026-11-20 contracts, as one more expiry's."""
+    SPY's chain answer beside its 2026-11-20 contracts, as one more expiry's.
+    """
     invalid = json.loads(
         (FX / "real_spy_quotes_invalid_symbols_2026_10_07.json").read_text(encoding="utf-8")
     )

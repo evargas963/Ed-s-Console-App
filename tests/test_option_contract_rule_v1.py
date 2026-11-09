@@ -57,7 +57,8 @@ def _expires(ct: dict) -> float:
 def _order(ct: dict, price: float) -> tuple:
     """Ed's order: the highest Schwab gamma first (absent, -999, or a -999 volatility is no gamma,
     last); of equal gammas the nearest expiration, then the strike nearest the price (the lower
-    of two), calls before puts."""
+    of two), calls before puts.
+    """
     rest = (
         _expires(ct),
         abs(ct["strikePrice"] - price),
@@ -72,7 +73,8 @@ def _order(ct: dict, price: float) -> tuple:
 
 def by_definition(contracts: list[dict], price: float, n: int, now: float) -> set[str]:
     """The rule's set, from its definition: of the contracts not expired at `now` (Schwab's
-    expirationDate), the first `n` in Ed's order."""
+    expirationDate), the first `n` in Ed's order.
+    """
     live = sorted((c for c in contracts if _expires(c) > now), key=lambda c: _order(c, price))
     return {c["symbol"] for c in live[:n]}
 
@@ -102,7 +104,8 @@ async def _until(cond, seconds: float = 20.0) -> None:
 
 class _Market:
     """Schwab's streamer (with its limits) and REST host played locally, the daemon on them, and
-    its bus fed as the chain sweep and the stream feed it."""
+    its bus fed as the chain sweep and the stream feed it.
+    """
 
     def __init__(self, tmp_path, watchlist: list[str], clock):
         self.streamer = LocalStreamer(capture.OPTION_LIMITS, data={})
@@ -165,7 +168,8 @@ def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(t
     """MRVL and SPY on the watchlist: each streams its half of 3,000 on LEVELONE_OPTIONS (MRVL the
     1,500 of its 2,432 with the highest gamma; SPY all 442 of its 2026-11-20 contracts), and its
     half of 100 on OPTIONS_BOOK, the highest gamma of every expiration; Schwab holds every one and
-    refuses none."""
+    refuses none.
+    """
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
 
@@ -182,7 +186,8 @@ def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(t
 
 def test_a_contract_without_gamma_streams_only_after_every_one_with_it(tmp_path):
     """SPY's 2026-10-14 chain as the console served it: 60 contracts with Schwab's gamma, 242 with
-    -999. OPTIONS_BOOK's 100 are the 60, then the 40 without gamma nearest the price."""
+    -999. OPTIONS_BOOK's 100 are the 60, then the 40 without gamma nearest the price.
+    """
     contracts, price, ts = (
         _SPY_NO_GAMMA["contracts"],
         _SPY_NO_GAMMA["priced_at_spot"],
@@ -206,7 +211,8 @@ def test_a_price_tick_asks_schwab_for_nothing_and_the_next_chain_only_the_differ
     """MRVL moves from Schwab's last (263.51) to its close (258.95): nothing is asked. Its next
     chain, after its 2026-09-25 contracts expire at 20:00 UTC (Schwab still lists them), is ordered
     at the close price: one UNSUBS of the contracts that left and one ADD of those that came, on
-    each option service, and no 2026-09-25 contract streams anywhere."""
+    each option service, and no 2026-09-25 contract streams anywhere.
+    """
     clock = [CAPTURED]
     expired = {c["symbol"] for c in CHAINS["MRVL"] if c["expirationDate"].startswith("2026-09-25")}
     after = _expires(next(c for c in CHAINS["MRVL"] if c["symbol"] in expired)) + 60
@@ -247,7 +253,8 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
     LAST_PRICE. Induced condition: after MRVL's last (263.51), Schwab marks LAST_PRICE invalid
     (-999), so the row has no price. MRVL's next chain, after its 2026-09-25 contracts expire, is
     not ordered at the last price: the contracts held, and the contracts recorded, stay as they
-    were. It is ordered at the next price Schwab sends (its close, 258.95)."""
+    were. It is ordered at the next price Schwab sends (its close, 258.95).
+    """
     clock = [CAPTURED]
     expired = {c["symbol"] for c in CHAINS["MRVL"] if c["expirationDate"].startswith("2026-09-25")}
     after = _expires(next(c for c in CHAINS["MRVL"] if c["symbol"] in expired)) + 60
@@ -287,7 +294,8 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
 
 def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
     """SPY removed from the watchlist: its contracts are released, and MRVL's share is all of
-    3,000 (its 2,432 contracts) and all of 100 on OPTIONS_BOOK, its highest gamma."""
+    3,000 (its 2,432 contracts) and all of 100 on OPTIONS_BOOK, its highest gamma.
+    """
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"])
 
@@ -306,7 +314,8 @@ def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
 def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(tmp_path):
     """SPY removed from the watchlist and added again (its check answered by Schwab's /quotes, as
     captured), then a SPY price: no SPY contract is recorded from the window it had before it was
-    removed, and its price row's price orders nothing, until its next chain arrives."""
+    removed, and its price row's price orders nothing, until its next chain arrives.
+    """
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
     spy = {c["symbol"] for c in CHAINS["SPY"]}
     seen: dict = {}
@@ -335,7 +344,8 @@ def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(t
 
 def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_path):
     """SPY removed, then its chain sweep's last chain of it arrives (the sweep's batch was taken
-    before the removal): no SPY contract is recorded."""
+    before the removal): no SPY contract is recorded.
+    """
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
     spy = {c["symbol"] for c in CHAINS["SPY"]}
     seen: dict = {}
@@ -360,7 +370,8 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
     """Ed selects MRVL's last contract in the rule's order on the Flow panel, through the
     console's route to the daemon it runs in: Schwab streams it on LEVELONE_OPTIONS and
     OPTIONS_BOOK, and the rule splits what is left (2,999 and 99) across the watchlist. Ed's
-    selection cleared, Schwab holds the rule's contracts alone again."""
+    selection cleared, Schwab holds the rule's contracts alone again.
+    """
     far = max(CHAINS["MRVL"], key=lambda c: _order(c, PRICES["MRVL"]))["symbol"]
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], flow=far)
     rule_alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])

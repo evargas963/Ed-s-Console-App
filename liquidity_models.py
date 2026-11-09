@@ -40,7 +40,8 @@ class VolumeProfile:
     bins -- a derived distribution from 1-minute bars, not traded volume at a price from trade
     prints -- and the value area read from it. `bins`: ((price, volume), ...) in price order.
     `bars`: the bars given; `bars_without_volume`: those Schwab sent with no volume, which the
-    profile cannot place and does not contain."""
+    profile cannot place and does not contain.
+    """
 
     tick_size: float
     bins: tuple

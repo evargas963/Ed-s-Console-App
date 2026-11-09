@@ -1,6 +1,7 @@
 """The order-flow book store holds each symbol's newest book from each Schwab service, and keeps
 symbols apart (real QQQ/TSLA option books, tests/fixtures/real_options_stream_history_samples.json;
-SPY's NYSE_BOOK and NASDAQ_BOOK of 2026-11-02, tests/fixtures/real_spy_books_2026_11_02.json)."""
+SPY's NYSE_BOOK and NASDAQ_BOOK of 2026-11-02, tests/fixtures/real_spy_books_2026_11_02.json).
+"""
 
 from __future__ import annotations
 
@@ -44,7 +45,8 @@ def test_each_contract_keeps_its_newest_book_apart():
 def test_a_quiet_books_newest_stands_however_many_the_other_service_sends():
     """Schwab sends a book only when it changes. SPY's NYSE_BOOK as sent at 10:00:00 ET on
     2026-11-02, then every NASDAQ_BOOK Schwab sent in the next 150 s (more than the 20 books the
-    store used to keep per symbol): NYSE_BOOK's book still stands, the newest of each service."""
+    store used to keep per symbol): NYSE_BOOK's book still stands, the newest of each service.
+    """
     rows = json.loads((FIXTURES / "real_spy_books_2026_11_02.json").read_text("utf-8"))["rows"]
     nyse = next(c for _ts, svc, c in rows if svc == "NYSE_BOOK")
     nasdaq = [c for _ts, svc, c in rows if svc == "NASDAQ_BOOK"]

@@ -89,7 +89,8 @@ def test_a_folder_that_is_no_checkout_has_no_identity(tmp_path):
 def test_the_identity_stands_while_the_checkout_moves_and_the_drift_is_explicit(tmp_path):
     """The process loaded commit A; the checkout moves to B: git_sha stays A on every answer, the
     HEAD now is B, and the drift says so; the same HEAD is no drift; an unknown HEAD is unknown
-    drift, never "no drift"."""
+    drift, never "no drift".
+    """
     repo = _repo(tmp_path)
     ident = srv.capture_process_identity(repo)
     sha_a, sha_b = ident.startup_git_sha, _commit(repo, "b.txt")

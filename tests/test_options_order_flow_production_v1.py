@@ -95,8 +95,9 @@ def build_flow_e2e_fixture_response() -> dict:
 
 
 def build_side_e2e_fixture_response() -> dict:
-    """contract -> the route's payload for the SPY call and put after their stored messages, at the
-    newest one's time."""
+    """Contract -> the route's payload for the SPY call and put after their stored messages, at the
+    newest one's time.
+    """
     import app.options.order_flow.state as ofls
     import live_market_plane as lmp
     import server as srv
@@ -150,7 +151,8 @@ def build_side_e2e_fixture_response() -> dict:
 
 def write_flow_e2e_fixture() -> None:
     """Regeneration utility (never called by a test), in a child process with the same private
-    runtime boundary tests/conftest.py applies, so the fixture never carries a live DB or token."""
+    runtime boundary tests/conftest.py applies, so the fixture never carries a live DB or token.
+    """
     import os
     import shutil
     import subprocess
@@ -202,7 +204,8 @@ def write_flow_e2e_fixture() -> None:
 
 def _same(fixture, live):
     """Every key and value equal; a float to 1e-6 relative (a least-squares slope, `np.polyfit`,
-    differs in its last digits between machines)."""
+    differs in its last digits between machines).
+    """
     if isinstance(fixture, dict) and isinstance(live, dict):
         return fixture.keys() == live.keys() and all(_same(fixture[k], live[k]) for k in fixture)
     if isinstance(fixture, list) and isinstance(live, list):
@@ -214,7 +217,8 @@ def _same(fixture, live):
 
 def test_flow_e2e_fixture_is_the_route_contract():
     """The committed Playwright fixture is what the route serves for these messages, every key and
-    value, so the Flow spec proves the real API's output; the flow values it shows are served."""
+    value, so the Flow spec proves the real API's output; the flow values it shows are served.
+    """
     fixture = json.loads(_FLOW_E2E_FIXTURE.read_text(encoding="utf-8"))
     live = build_flow_e2e_fixture_response()
     assert _same(fixture, live), (
@@ -236,7 +240,8 @@ def test_flow_e2e_fixture_is_the_route_contract():
 
 def test_side_e2e_fixture_is_the_route_contract():
     """The Playwright side payloads are what the route serves for the SPY call and put, every key
-    and value: the side the header shows is the route's CALL and PUT."""
+    and value: the side the header shows is the route's CALL and PUT.
+    """
     fixture = json.loads(_SIDES_E2E_FIXTURE.read_text(encoding="utf-8"))
     assert _same(fixture, build_side_e2e_fixture_response()), (
         "E2E side fixture drifted from the route; regenerate with write_flow_e2e_fixture()"

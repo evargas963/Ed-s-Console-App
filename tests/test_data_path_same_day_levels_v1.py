@@ -1,6 +1,7 @@
 """Same-day levels: one producer, every ticker. The nearest expiry keeps its open interest
 and implied volatility; gamma and delta are rebuilt to that ticker's option close today.
-A name with no listed same-day expiry still gets them. That pin is the only 0DTE pin."""
+A name with no listed same-day expiry still gets them. That pin is the only 0DTE pin.
+"""
 
 from __future__ import annotations
 
@@ -29,7 +30,8 @@ def test_the_option_close_follows_the_ticker():
 
 def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
     """SPY 2026-10-07 12:32 ET expires that day. MRVL, CRWD and TSLA that morning do not.
-    Each still gets a same-day pin. There is no second listed-expiry pin beside it."""
+    Each still gets a same-day pin. There is no second listed-expiry pin beside it.
+    """
     for book in (SPY_0DTE, MRVL, CRWD, TSLA):
         snap = compute_terrain(book.ticker, read_chain(book.chain), book.spot, now=book.now)
         same = snap.to_dict()["same_day"]
@@ -45,7 +47,8 @@ def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
 
 def test_a_same_day_expiry_reads_the_charm_map_already_priced():
     """SPY expires 2026-10-07, the day this chain was captured. The rail charm is that
-    expiry's map. Charm is calculated once for the expiry, not again for the rail."""
+    expiry's map. Charm is calculated once for the expiry, not again for the rail.
+    """
     held = SPY_0DTE
     calls = {"n": 0}
     real = terrain_engine.compute_charm_by_strike
@@ -68,7 +71,8 @@ def test_a_same_day_expiry_reads_the_charm_map_already_priced():
 
 def test_a_later_front_expiry_keeps_its_charm_at_todays_close():
     """TSLA on 2026-10-07 expires 2026-10-09. The rail charm is that front expiry at today's
-    close. It is not the charm of the Friday settlement."""
+    close. It is not the charm of the Friday settlement.
+    """
     snap = compute_terrain(TSLA.ticker, read_chain(TSLA.chain), TSLA.spot, now=TSLA.now)
     assert snap.same_day["call_charm_wall"] == 372.5
     assert snap.same_day["put_charm_wall"] == 380.0
@@ -81,7 +85,8 @@ def test_a_later_front_expiry_keeps_its_charm_at_todays_close():
 )
 def test_gamma_rebuilt_to_todays_close_is_not_refused_at_the_listed_expiry(book, pin):
     """A front expiry later than today: gamma rebuilt to today's close is largest at the price,
-    above any gamma the contract can have at its listed expiry. The strike there stays a level."""
+    above any gamma the contract can have at its listed expiry. The strike there stays a level.
+    """
     same = compute_terrain(book.ticker, read_chain(book.chain), book.spot, now=book.now).same_day
     assert same["absolute_gamma_strike"] == pin
 
@@ -89,7 +94,8 @@ def test_gamma_rebuilt_to_todays_close_is_not_refused_at_the_listed_expiry(book,
 def _with_a_call_at(strike: float, book=SPY_0DTE) -> dict:
     """Induced test condition: the captured call at `strike`, its volatility absent and its own
     open interest kept, is put back on the captured chain. No capture holds a contract that cannot
-    be rebuilt beside a good one on the other side."""
+    be rebuilt beside a good one on the other side.
+    """
     chain = [dict(ct) for ct in book.chain]
     seed = next(
         ct

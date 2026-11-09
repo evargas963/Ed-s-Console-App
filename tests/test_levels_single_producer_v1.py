@@ -87,7 +87,8 @@ def test_api_levels_b1_contract_single_session_prior_day():
     authority, with per-level provenance naming the window, unique ids, honest
     families_absent — and never the multi-session union values (the RC-213 defect). A tape of
     tiny sessions tests window selection (their prior day is stamped degraded, and still
-    served); stand-in: ticker ZZB1."""
+    served); stand-in: ticker ZZB1.
+    """
     tk = "ZZB1"
 
     def _bar(y, mo, d, h, mi, o, hi, lo, c):
@@ -176,7 +177,8 @@ def test_strikes_payload_carries_server_side_sums():
     """STRIP server half: /api/terrain/strikes serves today_side_sums computed against the
     payload's own spot — the one aggregator. SPY's same-day chain (tests/real_chains.SPY_0DTE)
     published by the levels producer at its captured price, the price row there with the feed
-    live; each side's sum is its strikes' GEX and volume from the same chain's book."""
+    live; each side's sum is its strikes' GEX and volume from the same chain's book.
+    """
     srv._publish_levels(
         C.ticker, read_chain(C.chain), C.now.timestamp(), chain_spot=(C.spot, 1.0), now=C.now
     )
@@ -214,7 +216,8 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
     high and low are the whole session's 1-minute extremes, and its close is the official close,
     which the last 1-minute bar's is not. Schwab's SPY and TSLA bars of Thu 2026-10-01 as recorded
     and their daily candles (real_pricehistory_spy_tsla_2026_10_07.json), the levels of Fri 10-02
-    at 10:00 ET."""
+    at 10:00 ET.
+    """
     now = _dt(2026, 10, 2, 10, 0, tzinfo=ET)
     _forget(*_PAIR)
     try:
@@ -248,7 +251,8 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
     viewed or not, so a page switching to it finds them current; a new session is built by the
     levels loop; the route serves what was published and reads no bar. Schwab's SPY and TSLA
     bars of 2026-10-01/02 as the capture daemon recorded them: each ticker's newest receipt
-    arrives as a pushed bar, valued at Fri 10-02 19:59:30 ET, the rest streamed before it."""
+    arrives as a pushed bar, valued at Fri 10-02 19:59:30 ET, the rest streamed before it.
+    """
     tk, other = _PAIR
     now = _dt(2026, 10, 2, 19, 59, 30, tzinfo=ET)
     pushed = {t: _newest(_DAEMON_BARS, t)[-1] for t in _PAIR}

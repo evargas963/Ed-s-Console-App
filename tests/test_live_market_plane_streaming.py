@@ -53,7 +53,8 @@ def test_record_from_level_one_uses_schwab_quote_timestamp_for_fast_ts():
 
 def test_record_from_level_one_never_uses_trade_time_as_the_quote_time():
     """No fallbacks (operator rule 2026-09-23): TRADE_TIME_MILLIS is a different clock. With
-    no QUOTE_TIME_MILLIS the quote time is unavailable -- never the trade time relabeled."""
+    no QUOTE_TIME_MILLIS the quote time is unavailable -- never the trade time relabeled.
+    """
     ok = _rec(
         "TRADEPROXY",
         {
@@ -89,7 +90,8 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
 def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     """The unchanged LAST_PRICE keeps its own receive time; with the feed live the price row
     carries it and the quote as Schwab last sent them, and it is the console's spot. (A feed down:
-    docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.) Judged in regular hours."""
+    docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.) Judged in regular hours.
+    """
     import live_price_rows
     import server
     from tests.feed_live_helper import RTH_INSTANT, mark_feed_down, mark_feed_live
@@ -126,7 +128,8 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
 
 def test_a_minus_999_last_price_clears_the_spot_and_the_quote_stays():
     """Schwab's -999 (no value) for LAST_PRICE clears it: the row is published with no spot,
-    never the previous price, and the bid and ask Schwab sent stand."""
+    never the previous price, and the bid and ask Schwab sent stand.
+    """
     _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
     assert _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": -999.0, "BID_PRICE": 9.8}) is True
     row = lmp.get_quote("NOLAST")
@@ -174,7 +177,8 @@ def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate(
 def test_unchanged_bid_ask_stand_with_their_own_age():
     """Schwab LEVELONE sends only CHANGED fields (measured 2026-09-24 on 4,039 captured
     messages: 11% carried bid+ask+last together, 17% ask-only, 15% bid-only). A message with
-    no BID_PRICE means the bid is unchanged -- it used to blank the bid and ask."""
+    no BID_PRICE means the bid is unchanged -- it used to blank the bid and ask.
+    """
     t0 = time_et.now() - 5.0
     _rec(
         "NOCARRY",
@@ -228,7 +232,8 @@ def test_record_from_level_one_rejects_midpoint_spot_fabrication():
 
 def test_a_resent_identical_last_price_refreshes_its_age():
     """A LAST_PRICE message is a trade report: the same price resent is a NEW trade at that
-    price, so its age refreshes (it used to be suppressed as a duplicate, aging the spot)."""
+    price, so its age refreshes (it used to be suppressed as a duplicate, aging the spot).
+    """
     t0 = time_et.now() - 20.0
     _rec(
         "AAA",
@@ -241,7 +246,8 @@ def test_a_resent_identical_last_price_refreshes_its_age():
 
 def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
     """Schwab streaming dictionary uses BID_PRICE/ASK_PRICE only — bare BID/ASK are not wire
-    leaves."""
+    leaves.
+    """
     ok = _rec(
         "NOCANON",
         {"key": "NOCANON", "LAST_PRICE": 100.0, "BID": 99.5, "ASK": 100.5},
@@ -267,7 +273,8 @@ def test_prior_close_is_the_streamed_close_price_and_stands_between_sends():
 def test_last_price_is_carried_forward_only_from_a_streamed_row():
     """Independent audit (2026-09-24): a bid/ask-only tick used to keep the prior row's
     LAST_PRICE whenever that row's spot was tagged LAST_PRICE -- even a REST-written row --
-    and stamp the result schwab_streaming_level_one. Only a streamed LAST_PRICE may carry."""
+    and stamp the result schwab_streaming_level_one. Only a streamed LAST_PRICE may carry.
+    """
     assert not hasattr(lmp, "record_quote"), "the plane has ONE writer: the stream"
     with lmp._lock:
         lmp._by_ticker["RESTROW"] = {"ticker": "RESTROW", "spot": 50.0}

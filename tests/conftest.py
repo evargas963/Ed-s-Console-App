@@ -80,7 +80,8 @@ MARKETS_ANSWERS = Path(__file__).parent / "fixtures" / "real_schwab_markets_2026
 def _markets_answers_held():
     """Every process holds what the daemon has asked Schwab's /markets (the console takes each
     answer as the daemon publishes it): each 200 answer captured 2026-10-07 is held through
-    the one intake, time_et.record_markets."""
+    the one intake, time_et.record_markets.
+    """
     import json
 
     from time_et import record_markets
@@ -96,7 +97,8 @@ def _live_feed_starts_down():
     starts with NO live feed and no remembered held set or watchlist, so a heartbeat one test
     marks can never make another test's price live. A down feed keeps that set and that list
     for the screen (record_feed_down); this fixture clears them. Tests that need a live price
-    mark it (tests/feed_live_helper.py)."""
+    mark it (tests/feed_live_helper.py).
+    """
     import live_market_plane as _lmp_feed
 
     _lmp_feed.record_feed_down()
@@ -113,7 +115,8 @@ def _live_feed_starts_down():
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     """The newest ET date at or before `on_or_before` (today) that Schwab's /markets answers
     held say the market was open (the same answers the code reads, so the test cannot disagree
-    with them)."""
+    with them).
+    """
     from time_et import ET, now, session
 
     start = on_or_before or datetime.fromtimestamp(now(), ET).date()
@@ -149,7 +152,8 @@ def view(monkeypatch):
     """Open the page on tickers: `view("SPY")` opens its /api/changes connection (the one viewing
     signal) as the page does; the test starts with no page open and ends with them closed. No
     event loop is bound, so a change is recorded for the page but not delivered (another test's
-    loop may be closed)."""
+    loop may be closed).
+    """
     import push_changes
 
     monkeypatch.setattr(push_changes, "_open", [])

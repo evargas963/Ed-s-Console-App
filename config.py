@@ -16,7 +16,8 @@ ENV_FILE = _ROOT / ".env"
 
 def load_dotenv_file(path: Path = ENV_FILE) -> None:
     """Put `path`'s variables into the environment, never over ones already set. Entry points
-    call it once, first; library code reads the environment and never loads a file."""
+    call it once, first; library code reads the environment and never loads a file.
+    """
     if path.is_file():
         load_dotenv(path, override=False)
 
@@ -58,7 +59,8 @@ def token_path() -> str:
     """The Schwab token file, absolute: SCHWAB_TOKEN_PATH, else schwab_token.json under the
     runtime root (this checkout, or the primary checkout for a linked worktree, unless
     ED_RUNTIME_ROOT moves it). The console reads only this
-    (the token's age); it holds no Schwab credential."""
+    (the token's age); it holds no Schwab credential.
+    """
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:
         return os.path.abspath(env_token)
@@ -68,7 +70,8 @@ def token_path() -> str:
 def build_config() -> AppConfig:
     """The Schwab client's configuration (the capture daemon, reauth), the one reader of its
     credentials: each as the environment holds it, None when not set. Offline (ED_CI_OFFLINE,
-    tests and CI) takes none, so the one gate, `schwab_live_blocked_for`, refuses live Schwab."""
+    tests and CI) takes none, so the one gate, `schwab_live_blocked_for`, refuses live Schwab.
+    """
     offline = os.environ.get("ED_CI_OFFLINE") in ("1", "true", "yes")
     return AppConfig(
         token_path=token_path(),

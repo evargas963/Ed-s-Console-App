@@ -56,7 +56,8 @@ def bring_to_origin_main(root: Path) -> tuple[str, str | None, str]:
     at origin/main. COMMIT_MOVED: fast-forwarded. COMMIT_UNKNOWN: origin out of reach, or git
     itself not answering (absent, hung);
     COMMIT_REFUSED: not on main, local changes, or a history split from origin/main; nothing is
-    moved."""
+    moved.
+    """
     try:
         return _bring(root)
     except (OSError, subprocess.SubprocessError) as e:
@@ -112,7 +113,8 @@ def running(start: list[str], root: Path = ROOT) -> list[psutil.Process]:
 def daemon_window(batch: Path) -> list[str]:
     """The command that runs `batch` (start_capture_daemon.bat) in a minimized window of its own
     titled "Ed Capture Daemon", under `cmd /c` so the window closes when the batch ends (`start`
-    given a batch file runs it under `cmd /K`, which keeps the window open)."""
+    given a batch file runs it under `cmd /K`, which keeps the window open).
+    """
     return ["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)]
 
 
@@ -129,7 +131,8 @@ def ask_daemon_to_stop(port: int) -> None:
 def stop() -> int:
     """The clean stop of the program (ask_daemon_to_stop): the Schwab connection, the recording
     and the console's pages end together. Waits up to STOP_WAIT_SEC; 0 when it ended after being
-    asked: one that ended when this stop could not ask it is not reported stopped."""
+    asked: one that ended when this stop could not ask it is not reported stopped.
+    """
     program = running(DAEMON_START)
     ended = "stopped"
     ports = program_ports()

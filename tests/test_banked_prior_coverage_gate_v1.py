@@ -29,7 +29,8 @@ _PAIR = ("SPY", "TSLA")
 
 def _published(now: datetime) -> dict:
     """Each ticker's price levels published at `now` from the recorded bars, streamed to the
-    console as the daemon pushed them; nothing is left behind."""
+    console as the daemon pushed them; nothing is left behind.
+    """
 
     def forget():
         for tk in _PAIR:

@@ -87,7 +87,8 @@ def test_the_commit_exemption_is_by_verb_not_by_heredoc():
 
 def test_the_protected_tree_is_guarded_and_backups_is_not():
     """Destructive is defined by the TARGET's recoverability, not by the verb. No database
-    backups are kept (operator's decision), so backups/ is no protected tree."""
+    backups are kept (operator's decision), so backups/ is no protected tree.
+    """
     assert any(f"under {D}" in b for b in G.bash_violations(f"rm -rf {D}x"))
     assert not any(f"under {D}" in b for b in G.bash_violations(f"rm -rf {B}x"))
 

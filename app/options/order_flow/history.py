@@ -2,7 +2,8 @@
 imbalance readout's one-second values (the Liquidity card), in the console's memory: fed by the
 console's intake as the daemon pushes each record (app.options.order_flow.streaming), never read
 from the database (docs/DATA_FLOW.md §2 D6).
-The database keeps the whole history."""
+The database keeps the whole history.
+"""
 
 from __future__ import annotations
 
@@ -35,7 +36,8 @@ class RecentTape:
     """Per option contract: its newest TAPE_KEPT trade prints. A print is a genuinely NEW
     (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) triple, never a repeat of the same trade sent again
     with an unrelated field (l1_trade_observation's rule, the live tape's); the contract's details
-    are carried forward from the newest message that sent them."""
+    are carried forward from the newest message that sent them.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -49,7 +51,8 @@ class RecentTape:
         """One LEVELONE_OPTIONS record of `contract` as the live state took it: its top of book
         (`top`, state.option_top) and its streamed Greeks and volume (`streamed`,
         state.get_stream_greeks), each read once by the state; the print and the contract's
-        details are read here."""
+        details are read here.
+        """
         sym = ticker_storage_key(contract)
         if not sym or not isinstance(item, dict):
             return
@@ -84,7 +87,8 @@ class RecentTape:
 
     def put_call(self, contract: str) -> str | None:
         """The contract's side (CALL / PUT) as Schwab's CONTRACT_TYPE last sent it; None until
-        sent."""
+        sent.
+        """
         sym = ticker_storage_key(contract)
         with self._lock:
             return (
@@ -105,7 +109,8 @@ def _print_row(
 ) -> dict[str, Any]:
     """One trade print in the Options Flow tape's schema: Schwab's values as sent; premium =
     trade x size x Schwab's multiplier; `classification` only where the trade landed against
-    the same record's bid and ask (no aggressor side)."""
+    the same record's bid and ask (no aggressor side).
+    """
     strike = schwab_number(context.get("STRIKE_TYPE"))
     side = put_call_side(context.get("CONTRACT_TYPE"))
     y, m, d = (
@@ -171,7 +176,8 @@ DISPLAY_TAIL_SHARE = 0.01
 
 def _display_window(cells: list[dict]) -> tuple[float, float]:
     """(lo, hi): the price window holding all but DISPLAY_TAIL_SHARE of displayed size at each
-    end."""
+    end.
+    """
     totals: dict[float, float] = {}
     for c in cells:
         totals[c["price"]] = totals.get(c["price"], 0.0) + sum(
@@ -197,7 +203,8 @@ def _display_window(cells: list[dict]) -> tuple[float, float]:
 class RecentBooks:
     """Per (ticker, venue): its books for BOOKS_KEPT_SEC, one per second (the newest in that
     second), each as (receive time, bid levels, ask levels). A book with no level (after the
-    close Schwab keeps sending empty ones) is not kept, so the window ends at the last real one."""
+    close Schwab keeps sending empty ones) is not kept, so the window ends at the last real one.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -242,7 +249,8 @@ class RecentLean:
     series. Kept for engine.OF_LEAN_KEPT_SEC before the newest, and the one before that, which
     still stands then. Owner: the console's intake (streaming._ingest_pushed); while it receives
     no book, the last readout stands and the live rule marks it not live. It is per ticker over
-    both venues, where RecentBooks is per venue."""
+    both venues, where RecentBooks is per venue.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -287,7 +295,8 @@ def book_heatmap_for_ticker(
     observed size at that price within the bucket -- never a sum (a book is a full snapshot, so
     an unchanged resting level comes again with every other change). The window ends at the
     newest book, never the wall clock, so outside market hours the last real session shows with
-    its own time. No interpolated cell."""
+    its own time. No interpolated cell.
+    """
     sym = ticker_storage_key(ticker)
     if not sym:
         return {"ticker": ticker, "available": False, "reason": "empty ticker"}
@@ -316,7 +325,8 @@ def book_heatmap_for_ticker(
 
     def _dominant(bid, ask) -> str:
         """The displayed side at this price and bucket (the cell's colour): the one Schwab sent,
-        or the larger of the two."""
+        or the larger of the two.
+        """
         if ask is None:
             return "BID"
         if bid is None:

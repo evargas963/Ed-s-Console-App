@@ -101,7 +101,8 @@ def test_a_strike_with_no_contract_listed_has_no_value():
 
 def test_the_page_draws_zero_as_zero_and_an_unlisted_strike_as_a_dash(tmp_path):
     """Through the page's own render (static/js/ed-gamma.js), the server's surface drawn: every
-    open-interest-zero strike of 10/14 and 10/15 reads "$0", every unlisted one "-", none "—"."""
+    open-interest-zero strike of 10/14 and 10/15 reads "$0", every unlisted one "-", none "—".
+    """
     surface, drawn = render("SPY", read_chain(_CONTRACTS), _SPOT, _AT, tmp_path)
     for expiry in ("2026-10-14", "2026-10-15"):
         unlisted = set(surface["strikes"]) - set(_by_strike(_COLUMNS[expiry]))

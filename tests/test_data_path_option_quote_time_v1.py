@@ -1,7 +1,8 @@
 """Schwab -> the Flow panel. A contract's quote time and book time stay when the feed is down; its
 side is the CONTRACT_TYPE Schwab sent in its first message (real SPY 2026-10-23 761 call and 762
 put: the stored message carrying CONTRACT_TYPE and the three after it,
-tests/fixtures/real_spy_option_contract_type_2026_10_23.json, read from stream_capture.db)."""
+tests/fixtures/real_spy_option_contract_type_2026_10_23.json, read from stream_capture.db).
+"""
 
 from __future__ import annotations
 
@@ -27,7 +28,8 @@ _SIDES = json.loads(
 
 def test_the_flow_panel_shows_the_side_schwab_sent_in_the_contracts_first_message():
     """After the messages that leave CONTRACT_TYPE out, the Flow panel still shows CALL and PUT.
-    Before Schwab sends it, the side is unknown."""
+    Before Schwab sends it, the side is unknown.
+    """
     sides = {}
     try:
         for sym, msgs in _SIDES.items():
@@ -59,7 +61,8 @@ def test_the_flow_panel_shows_the_side_schwab_sent_in_the_contracts_first_messag
 
 def test_a_down_feed_keeps_the_contracts_quote_time_and_book_time():
     """QUOTE_TIME_MILLIS stays on the option top, and BOOK_TIME stays on the book. The Flow
-    panel still shows the last bid, with both times."""
+    panel still shows the last bid, with both times.
+    """
     of_state.push_option_top(
         _SYM,
         {

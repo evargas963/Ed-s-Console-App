@@ -14,7 +14,8 @@ def test_recorded_index_bars_are_held_and_served_under_the_index_key():
     """Schwab keys an index as "$SPX" (tests/fixtures/real_schwab_index_identity_2026_09_28.json:
     only the "$" form answers). Schwab's $SPX bars of 2026-10-01/02 as the capture daemon recorded
     them, streamed to the console: held under $SPX, and the bare "SPX" a page asks for serves
-    exactly them (Issue 19 rehydration)."""
+    exactly them (Issue 19 rehydration).
+    """
     rows = daemon_bars("real_daemon_bars_spy_tsla_spx_2026_10_01_02.json", "$SPX")
     newest = {}
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
@@ -61,7 +62,8 @@ def test_ticker_storage_key_vxn_rvx_broker_index_roots():
 
 def test_index_roots_resolve_to_dollar_form():
     """Typing a bare index root anywhere must reach Schwab in its dollar form — $SPX stayed
-    dark for a session because the endpoints skipped this authority."""
+    dark for a session because the endpoints skipped this authority.
+    """
     for bare, dollar in (
         ("SPX", "$SPX"),
         ("spx", "$SPX"),
@@ -82,7 +84,8 @@ def test_every_bare_index_root_is_what_schwab_names_an_index_with_dollar():
     Schwab's own answer (tests/fixtures/real_schwab_index_identity_2026_09_28.json): Schwab
     names each index only with "$" (instruments symbol-search: assetType INDEX; quoted), knows
     no bare root, and no equity or ETF uses those letters -- so mapping a bare root to its "$"
-    form never misroutes, and a root cannot join the list without Schwab's evidence."""
+    form never misroutes, and a root cannot join the list without Schwab's evidence.
+    """
     fx = json.loads(
         (
             Path(__file__).parent / "fixtures" / "real_schwab_index_identity_2026_09_28.json"

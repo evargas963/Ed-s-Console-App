@@ -101,7 +101,8 @@ def listener() -> tuple[socket.socket, str]:
 
 def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
-    beat stamped by `clock`."""
+    beat stamped by `clock`.
+    """
     return lambda _now: {
         "ts": clock(),
         "schwab_socket_open": socket_open,
@@ -115,7 +116,8 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
     price socket, whose beat records the daemon's status (the one program's one plane), and its
     market follower feeding the plane -- with the console's real feed started on the same loop,
     bound to that daemon (start_order_flow_stream, with the tick and chain callbacks the console
-    passes it)."""
+    passes it).
+    """
     bus = MessageBus()
     stop = asyncio.Event()
     stats: dict = {}
@@ -147,7 +149,8 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
 
 def _received(ts):
     """The console applied SPY's trade that the daemon received at `ts`: it is on SPY's tape
-    with that receive time."""
+    with that receive time.
+    """
     return lambda: any(
         r.get("server_received_ts") == ts for r in ofls.get_content_for_symbol("SPY")
     )
@@ -157,7 +160,8 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
     """Real daemon -> real console feed, one program. Live only while the daemon's status beats,
     the Schwab socket is open and the daemon holds the symbol; once the program stops, its last
     status is past the live limit and the feed is down. In regular hours: the beats and the reads
-    run from RTH_INSTANT."""
+    run from RTH_INSTANT.
+    """
     clock = clock_from(RTH_INSTANT)
 
     async def body(bus, stats):
@@ -184,7 +188,8 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     console 20 ms to apply on its event loop (a named stand-in for pricing it: the console's chain
     callback, as start_order_flow_stream sets it, sleeps); the feed, live and holding SPY, reads
     live at every sample a route thread takes while it works through them. In regular hours: the
-    beats and the reads run from RTH_INSTANT."""
+    beats and the reads run from RTH_INSTANT.
+    """
     contracts = json.loads(
         (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(
             encoding="utf-8"
@@ -237,7 +242,8 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
     """Neither the message nor any value it carried: what the console applies, and the SPY record
     a second reader of the daemon's bus takes as the console's _bus_loop does (a LATEST
     subscription, Schwab's records only by live_push.is_forwarded), hold only what Schwab sent
-    (here, no CLOSE_PRICE and no 1.05 -- only the non-Schwab message carried them)."""
+    (here, no CLOSE_PRICE and no 1.05 -- only the non-Schwab message carried them).
+    """
 
     async def body(bus, stats):
         assert stats["clients"] == 0  # the console reads the bus: no copy over the socket
@@ -339,7 +345,8 @@ def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(feed, ca
     """With no daemon in the program the console's feed does not start, says why in one line, and
     nothing is served: a Schwab message on a bus no daemon of this program holds is not applied.
     Once the daemon is bound (capture.serve_console, before the web server starts), the feed
-    starts and the daemon's next message is applied with its own receive time."""
+    starts and the daemon's next message is applied with its own receive time.
+    """
     bus = MessageBus()
 
     async def run():
@@ -380,7 +387,8 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
 def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
     """A handler blocked waiting for its client's next frame must not keep the daemon's local
     socket open: stopping the daemon with a client attached (launch.py stop's connection, as a
-    console's once was) hung forever before the fix."""
+    console's once was) hung forever before the fix.
+    """
 
     async def run():
         stop = asyncio.Event()
@@ -406,7 +414,8 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
     later bid/ask tick gets the bus's current record (docs/DATA_FLOW.md §2 D3): the trade's fields
     and the bid/ask together, each stamped with the receive time the daemon gave the message
     that carried it -- the trade is not lost behind the later bid/ask-only tick, nor re-dated
-    to it."""
+    to it.
+    """
 
     async def run():
         bus = MessageBus()

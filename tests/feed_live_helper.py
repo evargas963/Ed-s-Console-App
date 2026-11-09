@@ -2,7 +2,8 @@
 
 Liveness is the FEED's (live_market_plane.feed_live_for): a daemon heartbeat < 3 s old that
 reports the Schwab socket open and holds the symbol. Tests that exercise a live price mark
-exactly the symbols the daemon would hold -- through the production entry point."""
+exactly the symbols the daemon would hold -- through the production entry point.
+"""
 
 from __future__ import annotations
 
@@ -19,13 +20,15 @@ _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 def daemon_status(now: float, **staged) -> dict:
     """A capture daemon's status at `now` as the daemon builds it (capture.Daemon.status: every
-    key it sends), with the `staged` keys set: the socket, the symbols held, the watchlist."""
+    key it sends), with the `staged` keys set: the socket, the symbols held, the watchlist.
+    """
     return {**capture.Daemon(MessageBus(), HealthRegistry(), []).status(now), **staged}
 
 
 def daemon_bars(name: str, *symbols: str) -> list[dict]:
     """The capture daemon's recorded receipts of Schwab's CHART_EQUITY bars in fixture `name`
-    (tests/fixtures/real_daemon_bars_*.json), of `symbols` (every symbol when none is named)."""
+    (tests/fixtures/real_daemon_bars_*.json), of `symbols` (every symbol when none is named).
+    """
     rows = json.loads((_FIXTURES / name).read_text(encoding="utf-8"))["rows"]
     return [r for r in rows if not symbols or r["symbol"] in symbols]
 
@@ -33,7 +36,8 @@ def daemon_bars(name: str, *symbols: str) -> list[dict]:
 def stream_daemon_bars(rows: list[dict]) -> None:
     """What the capture daemon pushes of Schwab's bars: each captured receipt, in the order the
     daemon received them, through the console's own streamed-bar writer
-    (server._write_streamed_bar), so each minute holds Schwab's newest bar for it."""
+    (server._write_streamed_bar), so each minute holds Schwab's newest bar for it.
+    """
     import server
 
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
@@ -43,7 +47,8 @@ def stream_daemon_bars(rows: list[dict]) -> None:
 def price_history(symbol: str, series: str) -> dict:
     """Schwab's captured /pricehistory answer for `symbol`'s `series` ("1m", "15m", "1d")
     (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json): {params, status, date, sent_utc,
-    answered_utc, body}."""
+    answered_utc, body}.
+    """
     fx = json.loads(
         (_FIXTURES / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(encoding="utf-8")
     )
@@ -56,7 +61,8 @@ def hold_schwab_daily(symbol: str, under: str | None = None) -> None:
     recorded /pricehistory daily answer, SPY's and TSLA's of 2026-10-07
     (real_pricehistory_spy_tsla_2026_10_07.json), $SPX's of 2026-11-03
     (real_schwab_daily_spx_2026_10.json, 2024-11-04 through 2026-11-02). The caller pops
-    server._daily when done, as it pops server._bars."""
+    server._daily when done, as it pops server._bars.
+    """
     import server
 
     if symbol == "$SPX":
@@ -87,14 +93,16 @@ RTH_INSTANT = 1790780400.0
 
 def clock_from(start: float):
     """A clock running from `start`, time still passing: what a test hands the code it calls as
-    `now`."""
+    `now`.
+    """
     began = time_et.elapsed()
     return lambda: start + time_et.elapsed() - began
 
 
 def mark_feed_live(*tickers: str, now: float | None = None) -> None:
     """The daemon's heartbeat stamped `now` (the wall clock when not given), holding `tickers` on
-    LEVELONE_EQUITIES."""
+    LEVELONE_EQUITIES.
+    """
     lmp.record_feed_heartbeat(
         daemon_status(
             time_et.now() if now is None else now,

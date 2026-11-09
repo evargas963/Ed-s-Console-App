@@ -64,7 +64,8 @@ asyncio.run(go())
 def test_the_console_refuses_before_starting_anything(tmp_path):
     """A console whose runtime root is another checkout (a `.git` folder in it) holding the
     daemon's recorded /markets answers: it refuses at its start, and loads none of them (the
-    first thing it starts, logged as 'Recorded market answers held')."""
+    first thing it starts, logged as 'Recorded market answers held').
+    """
     _record_answers(tmp_path / "data" / "stream_capture.db")
     (tmp_path / ".git").mkdir()
     run = subprocess.run(

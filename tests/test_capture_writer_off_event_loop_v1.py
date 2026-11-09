@@ -24,7 +24,8 @@ def _quote(i: int) -> dict:
 
 def _hold_the_database(path, seconds: float) -> threading.Thread:
     """Another connection holds the database's write lock for `seconds` (as a reader of the
-    file, a backup or the daily keep can): every write the writer makes meanwhile waits on it."""
+    file, a backup or the daily keep can): every write the writer makes meanwhile waits on it.
+    """
     held = threading.Event()
 
     def hold():
