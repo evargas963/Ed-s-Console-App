@@ -9,7 +9,7 @@
 const { test, expect } = require('@playwright/test');
 const { expiriesAnswer, pushExpiries } = require('./fixtures/expiries');
 const { expiriesFrame, served } = require('./fixtures/price_socket');
-const { routeWatchlist } = require('./fixtures/watchlist');
+const { routeWatchlist, beat } = require('./fixtures/watchlist');
 const { watchRequests } = require('./fixtures/settled');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
@@ -86,6 +86,7 @@ test.describe('ticker / expiry / measure controls', () => {
     let program;
     await page.routeWebSocket(/\/ws$/, (ws) => {
       program = ws;
+      beat(page, ws);   // the program's beat, the watchlist the rail draws
       ws.onMessage((m) => {
         const req = JSON.parse(String(m));
         if (req.op !== 'subscribe') return;
@@ -231,6 +232,7 @@ test.describe('ticker / expiry / measure controls', () => {
     let releaseQqq;
     const qqqHeld = new Promise((resolve) => { releaseQqq = resolve; });
     await page.routeWebSocket(/\/ws$/, (ws) => {
+      beat(page, ws);   // the program's beat, the watchlist the rail draws (QQQ and IWM clicked below)
       ws.onMessage(async (m) => {
         const req = JSON.parse(String(m));
         if (req.op !== 'subscribe') return;
