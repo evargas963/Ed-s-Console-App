@@ -86,7 +86,7 @@ def _constants(tree: ast.Module) -> dict[str, str]:
 
 
 def fields_read(src: str, fields: set[str]) -> set[str]:
-    """The Schwab fields this module takes out of a mapping by name."""
+    """Return the Schwab fields this module takes out of a mapping by name."""
     tree = ast.parse(src)
     named = _constants(tree)
 
