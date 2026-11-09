@@ -145,7 +145,7 @@ def _production(proc: psutil.Process) -> bool | None:
     """Return whether `proc` is the daemon, the console or launch.py.
 
     It is when its command line carries one of their marks and it runs in the production checkout
-    (runtime_layout.RUNTIME_ROOT, which every worktree resolves to; a worktree's test console is
+    (runtime_layout.runtime_root(), which every worktree resolves to; a worktree's test console is
     not production). None when either cannot be read.
     """
     try:
@@ -154,7 +154,9 @@ def _production(proc: psutil.Process) -> bool | None:
         return False
     except psutil.AccessDenied:
         return None
-    return any(m in line for m in PRODUCTION_MARKS) and cwd == runtime_layout.RUNTIME_ROOT.resolve()
+    return (
+        any(m in line for m in PRODUCTION_MARKS) and cwd == runtime_layout.runtime_root().resolve()
+    )
 
 
 def decide(payload: dict) -> tuple[str, list[str]]:
