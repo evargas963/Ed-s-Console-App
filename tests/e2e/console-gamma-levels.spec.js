@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * D — Options/Gamma "Levels" view. Serializes the canonical /api/levels contract (per-level
+ * D — Options/Gamma "Levels" view. Serializes the canonical levels panel (per-level
  * price/family/evidence_tier/provenance/staleness + carried VWAP) verbatim; computes nothing.
  * Proves the table renders the contract, discloses VWAP/absent/degraded honestly, marks no
  * proximity, and a level click drives the shared strike selection. Offline.
@@ -23,26 +23,27 @@ const LEVELS = {
   ],
   by_distance: ['VWAP', 'POC', 'PDH'],
   vwap_series: [[1757000000, 100.0, 100.5, 99.5, 101.0, 99.0]],
-  families_absent: [{ family: 'gamma', reason: 'served by /api/terrain' }],
+  families_absent: [{ family: 'gamma', reason: 'sent as the terrain panel' }],
   degraded: [],
 };
 
+// the panels the page's socket sends this test (a test sets its own levels before the page
+// opens), and the program's side of that socket
+let panels, sock;
 async function intercept(page) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/levels')) body = LEVELS;
-    else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', available: true, spot: 100,
+  await page.route('**/api/**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ available: false }) }));
+  await routeWatchlist(page, ['SPY']);
+  panels = {
+    levels: LEVELS,
+    terrain: { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' },
+    strikes: { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] }, views: { all: { centre: 100, note: null, max_abs: 1 } } },
+    surface: { ticker: 'SPY', available: true, spot: 100,
       source: 'terrain_live_cache', levels_state: 'LIVE', expirations: [{ expiry: '2026-09-11', dte: 2 }],
       strikes: [100], cells: [{ strike: 100, gex: [1] }],
-      view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } };
-    else if (url.includes('/api/terrain/strikes')) body = { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] },
-      views: { all: { centre: 100, note: null, max_abs: 1 } } };
-    else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
-  await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11']);
+      view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } },
+  };
+  sock = await pushExpiries(page, ['2026-09-11'], undefined, panels);
 }
 
 test.describe('D — Gamma Levels view', () => {
@@ -52,8 +53,7 @@ test.describe('D — Gamma Levels view', () => {
   });
 
   test('the levels spot keeps its last trade time', async ({ page }) => {
-    await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, LEVELS, { spot_time_ct: 'Fri 10/02 10:00 AM CT' })) }));
+    panels.levels = Object.assign({}, LEVELS, { spot_time_ct: 'Fri 10/02 10:00 AM CT' });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#levelsBody .lv-spot')).toHaveText('spot 100.00 · schwab_quote_last · last trade Fri 10/02 10:00 AM CT');
   });
@@ -62,8 +62,7 @@ test.describe('D — Gamma Levels view', () => {
     const LEVEL_TIME = 'Fri 09/25 06:59 PM CT';
     const levels = JSON.parse(JSON.stringify(LEVELS));
     levels.levels.forEach(function (r) { r.staleness.as_of_time_ct = LEVEL_TIME; });
-    await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(levels) }));
+    panels.levels = levels;
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-px').nth(0);
     await expect(cell).toContainText('101.50');
@@ -72,7 +71,7 @@ test.describe('D — Gamma Levels view', () => {
     await expect(page.locator('#levelsBody th', { hasText: 'As-of' })).toHaveCount(0);
   });
 
-  test('renders the canonical /api/levels contract as a table', async ({ page }) => {
+  test('renders the canonical levels contract as a table', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const lv = page.locator('#levelsBody');
     await expect(lv.locator('table.lv')).toBeVisible();
@@ -107,13 +106,10 @@ test.describe('D — Gamma Levels view', () => {
   });
 
   test('the 0DTE table shows the served same-day price beside the level it reprices', async ({ page }) => {
-    await page.route('**/api/levels**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, LEVELS, {
-        zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
-          staleness: { as_of_time_ct: '12:32:07 CT', age_sec: 4 } }],
-      })),
-    }));
+    panels.levels = Object.assign({}, LEVELS, {
+      zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
+        staleness: { as_of_time_ct: '12:32:07 CT', age_sec: 4 } }],
+    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const row = page.locator('#levelsBody .zd-row', { hasText: 'Call wall' });
     await expect(row.locator('.lv-px').nth(0)).toContainText('600.00');
@@ -122,18 +118,31 @@ test.describe('D — Gamma Levels view', () => {
   });
 
   test('the 0DTE table still shows when the canonical list is empty', async ({ page }) => {
-    await page.route('**/api/levels**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, LEVELS, {
-        levels: [],
-        zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
-          staleness: { as_of_time_ct: '12:32:07 CT' } }],
-      })),
-    }));
+    panels.levels = Object.assign({}, LEVELS, {
+      levels: [],
+      zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
+        staleness: { as_of_time_ct: '12:32:07 CT' } }],
+    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#levelsBody .placeholder')).toHaveCount(0);
     await expect(page.locator('#levelsBody th', { hasText: 'Regular' })).toBeVisible();
     await expect(page.locator('#levelsBody .zd-row .lv-px').nth(1)).toContainText('580.00');
     await expect(page.locator('#levelsBody .zd-row .lv-px').nth(1).locator('.lv-age')).toHaveText('12:32:07 CT');
+  });
+
+  test('new levels reach the view on the page\'s socket with no ask; levels not produced say why', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const pdh = page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).locator('.lv-px').nth(0);
+    await expect(pdh).toContainText('101.50');
+    expect(sock.subscribes[sock.subscribes.length - 1].panels['levels:view']).toEqual({ tf: '1' });
+    const asked = sock.subscribes.length;
+    panels.levels = Object.assign({}, LEVELS, { levels: LEVELS.levels.map((r) => (r.id === 'PDH' ? Object.assign({}, r, { price: 101.75 }) : r)) });
+    sock.changed('levels');
+    await expect(pdh).toContainText('101.75');
+    const words = 'the program could not produce this panel: ValueError: tf \'2\' is not one of 1, 3, 5, 15, 30, 60, D';
+    panels.levels = { failed: words };
+    sock.changed('levels');
+    await expect(page.locator('#levelsBody')).toContainText(words);
+    expect(sock.subscribes.length).toBe(asked);
   });
 });

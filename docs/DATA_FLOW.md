@@ -248,7 +248,7 @@ the program.
 | daemon part → console part | the daemon's bus, in memory (`streaming._bus_loop`: a LATEST subscription) | each topic's current record the moment it changes (a quote merged field by field with each field's times in `field_ts`; a book, bar or news item whole), at the start every current record; never an older value behind a newer one (§2 D1, D3); each ticker's newest whole chain, in parts of 500 contracts (`chain.TK`: part i of n, with the time the chain began, which the chain history stores too, so a chain begun before the close is never the close values however late it is delivered; a failed fetch with Schwab's answer); only Schwab's records (`live_push.is_forwarded`) |
 | console part → daemon part | a call, in memory (`capture.Daemon.console_frame`) | the contract selected on the Flow panel (`{"op": "flow_contract", "contract": symbol or null}`: only one Schwab listed in a chain the console holds, refused otherwise (409)); the daemon holds it in memory only. And each add or removal of a watchlist ticker the operator makes (`{"op": "watchlist", "action", "ticker", "id"}`), answered by the daemon's `watchlist` record on the bus, carrying the same id |
 | `launch.py stop` → the program | its stop request, by name (`program_lock.StopRequest`, made before the program takes its lock; set by `program_lock.ask_to_stop`): on Windows a named manual-reset event, `Local\EdConsoleStop-<hash of the lock's path>` (`stop_event_name`), in the operator's session namespace with default security, so only his session's processes can open it, and each runtime (production's, a test's) has its own; elsewhere (Linux CI) SIGTERM to the process the lock names | the clean stop, nothing back: set twice it stays set; a runtime with no program's request (none runs, or it has not made it yet) is an `OSError` that `launch.py stop` reports, "not asked to stop", exit 1. The program's one waiter (`capture.stop_on_request`, on its own thread, `STOP_WAIT_SEC` at a time, so any other stop ends it) sets the program's stop (`tests/test_program_stop_v1.py`, `tests/test_data_path_startup_v1.py`) |
-| daemon → browser | the page's WebSocket, `/ws` on the program's own port (8000; `live_ui.page_socket`, routed by `server.app`; refused, 403, while the program serves no prices, `server.app.state.prices` None) | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then each panel of the page's selected ticker (the subscribe's `ticker`; `server.PAGE_PANELS`: the expiry list, `server.expiries`, Schwab's listed expiries and daysToExpiration from the published levels, or, while none are published, unknown (`expiries` null) with the levels' own reason; a page switching ticker puts no expiry in force until that ticker's list arrives), at once and again each time its producer marks it changed (`live_ui.changed`: `_publish_levels` on each new chain), only to the pages on that ticker; the page draws a list only for the ticker it shows (`tests/test_live_ui_daemon_to_browser_v1.py`, `tests/e2e/console-gamma-chain.spec.js`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, why it is not connected, symbols held per service, the watchlist, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `live_push.MARKET_CONTEXT`). A client (a browser) has stopped reading when asyncio's flow control keeps writing to it paused (its buffers full) for `live_ui.HEARTBEAT_SEC`, so its beat is not taken, or when it does not answer uvicorn's keepalive ping (every 20 s, within 20 s): the web server's protocol for the socket (`live_ui.PageSocket`, `capture.PAGES`, the one place a client that stopped reading is dropped; each connection's handler, `serve_client`, owns its lifetime) drops it by aborting its connection, since no close frame can be written to a client that does not read and uvicorn's own close waits for the bytes it never takes, so its handler ends, the beat it held ends within a beat, and the program's stop is not held; the page reconnects (`tests/test_data_path_startup_v1.py`, `tests/test_live_ui_daemon_to_browser_v1.py`) |
+| daemon → browser | the page's WebSocket, `/ws` on the program's own port (8000; `live_ui.page_socket`, routed by `server.app`; refused, 403, while the program serves no prices, `server.app.state.prices` None) | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then each panel the page shows of its selected ticker (the subscribe's `ticker`, and its `panels`: each panel the page shows with its own parameters; `server.PAGE_PANELS`, each kind's producer `(ticker, now, parameters) -> body`, run on a worker thread as a route's read ran, so a producer waiting on the levels' lock never holds the beat; a producer that raises fails its panel alone, `{"failed": words}` drawn as the panel's words, its traceback logged (`live_ui.LiveUiServer._produce`); a kind read with different parameters names each reader's panel `<kind>:<reader>`; the Vanna and Charm tabs, `server.vanna_by_strike` and `charm_by_strike`, the published levels' per-strike rows in the window the page asks (scope, the operator's panned centre and shift; a window it cannot draw is unavailable with its words), marked changed with the levels (`server._levels_changed`, beside the `levels` push on `/api/changes`); the expiry list, `server.expiries`, Schwab's listed expiries and daysToExpiration from the published levels, or, while none are published, unknown (`expiries` null) with the levels' own reason; a page switching ticker puts no expiry in force until that ticker's list arrives; the gamma group, each marked changed with the levels: the terrain, `server.terrain` (`terrain:levels`, `terrain:chart`, `terrain:desk`, `terrain:map`), the per-strike rows, `server.strikes` (`strikes:gbs`, `strikes:chart`, `strikes:migration`, `strikes:desk`, each in its window), the heatmap, `server.gamma_surface` (`surface`, its window), one expiry of the chain, `server.chain` (`chain:ladder`, `chain:detail`, `chain:structures`, each at its `expiry`, null the chain's front one), and the price levels, `server.levels` (`levels:view`, `levels:liquidity`, `levels:desk`, `levels:map`, each in its timeframe `tf`; a `tf` not served fails that panel in words), which carry each level's distance from the live price and so are sent again with each price row of the ticker (`server.PRICED_PANELS`, `live_ui.LiveUiServer.on_row`); a frame of an expiry or timeframe the page no longer shows is not drawn), at once and again each time its producer marks it changed (`live_ui.changed`: `_publish_levels` on each new chain), only to the pages on that ticker showing that panel; the page draws a panel only for the ticker it shows, and '-' for one not yet received since a switch (`tests/test_live_ui_daemon_to_browser_v1.py`, `tests/e2e/console-gamma-chain.spec.js`, `tests/e2e/console-options-vanna-charm.spec.js`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, why it is not connected, symbols held per service, the watchlist, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `live_push.MARKET_CONTEXT`). A client (a browser) has stopped reading when asyncio's flow control keeps writing to it paused (its buffers full) for `live_ui.HEARTBEAT_SEC`, so its beat is not taken, or when it does not answer uvicorn's keepalive ping (every 20 s, within 20 s): the web server's protocol for the socket (`live_ui.PageSocket`, `capture.PAGES`, the one place a client that stopped reading is dropped; each connection's handler, `serve_client`, owns its lifetime) drops it by aborting its connection, since no close frame can be written to a client that does not read and uvicorn's own close waits for the bytes it never takes, so its handler ends, the beat it held ends within a beat, and the program's stop is not held; the page reconnects (`tests/test_data_path_startup_v1.py`, `tests/test_live_ui_daemon_to_browser_v1.py`) |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
 
@@ -358,7 +358,7 @@ the program.
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
-  → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
+  → the levels panel on `/ws` (`server.levels`), and the liquidity zones of `/api/liquidity-snapshot` are built from that same
   snapshot (the market's session, `time_et.market_session_date`: today's while a session is
   open, the newest session's while Closed, whose levels stand until the next session opens; no
   checkpoint or past-date path). Producer `_publish_price_levels`: the bar writer
@@ -402,7 +402,7 @@ the program.
   is held, the route says so and the page draws that sentence. When the request fails, the
   page says the request failed. When the push stops, the last drawn table stays; the header
   chip is the not-live mark.
-  `/api/levels` also serves the order the
+  The levels panel also serves the order the
   chart draws them in (`by_distance`): nearest the spot (Schwab's last trade under §2 D5, with
   its trade time `spot_as_of_ts_utc`), each level's distance and side from it,
   and the session's volume profile (`volume_profile`: each RTH 1-minute bar's volume spread
@@ -486,7 +486,7 @@ the program.
   `option_contract.read_contract` (rule 2 for each: -999, text and NaN are no value; a -999
   volatility leaves the contract's Greeks no value), where the chain arrives: the console's
   pricing thread (`_price_chain`, off the event loop), the stored-capture loader `last_capture_per_day`, and the daemon's option rule
-  (`Daemon._took_chain`); every calculator, the carry rules, the gamma surface and /api/chain
+  (`Daemon._took_chain`); every calculator, the carry rules, the gamma surface and the chain panel
   (`option_contract.chain_row`) take the record. Enforced by: `tests/test_canonical_gex_input_validity_v1.py`,
   `tools/check_one_reader.py`. The Greeks (gamma, delta, theta, vega, rho,
   volatility) are never the chain's: the chain sends them rounded, which Schwab cannot change
@@ -538,23 +538,28 @@ the program.
   are unmeasured (`ACTIVE_PROGRAM.md` SPEED).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
-  a new chain arrived, with the ticker's expiry list sent on `/ws`) → the browser reads
-  `/api/terrain` and four other slice routes. Not stored; at startup they are computed from the
+  a new chain arrived, with the ticker's expiry list sent on `/ws`) → the browser reads no
+  route for them: the program sends the levels themselves on `/ws` (`server.terrain`, the
+  `terrain` panel, one per reader: `terrain:levels` Key Levels, `terrain:chart` the Gamma chart,
+  `terrain:desk` Right Now, `terrain:map` the Desk map; marked changed by `server._levels_changed`
+  wherever the `levels` push is). Not stored; at startup they are computed from the
   newest chain capture of each watchlist ticker the daemon has not yet delivered a chain for (once the
   daemon's heartbeat says what the watchlist is), queued on the pricing thread behind the delivered
   chains while the console
   already serves the page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer, each capture at its own time or at that ticker's option
-  close once the capture is past it, only when the ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
-  serve that result and read no stored chain. The same publication carries each strike's net
-  DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
-  served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open
+  close once the capture is past it, only when the ticker's newest capture or its chain's day changes; `/api/forces` and the strikes panel
+  (`server.strikes`, on `/ws`, one per reader in its own window: `strikes:gbs` GEX by Strike,
+  `strikes:chart` the Gamma chart's profile, `strikes:migration` Right Now, `strikes:desk` the
+  Desk map) serve that result and read no stored chain. The same publication carries each
+  strike's net DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap
+  cell's readers), sent as the strikes panel's `measures` for the Chart view of Delta / DEX and Open
   Interest. The book's values at spot (gamma at spot, regime, posture, confidence, headline) are
-  computed in that one publication at that publication's price; `/api/terrain` serves them as
+  computed in that one publication at that publication's price; the terrain panel sends them as
   published and recomputes none. Each relation of the live price to the levels is served beside
   them, at the live price (below).
   A publication carries the same fields whatever its chain's source (a live download or a stored
-  capture). `/api/terrain` adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
+  capture). The terrain panel adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
   Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
   inside Schwab's regular window, and the weeks and months those make. The day-over-day
   open-interest change has one producer: the forces, from the stored captures (`/api/forces`,
@@ -594,21 +599,22 @@ the program.
   (`tests/test_data_path_chain_spot_v1.py`). Every route names that price `priced_at_spot` (with
   `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`
   as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
-  checks every GET route that answers a ticker). Every relation of the price to the levels is at
+  checks every GET route that answers a ticker and every page panel that serves a price). Every relation of the price to the levels is at
   that live price, computed when served, never stored with the publication: each wall's state
   and lean, the price's side of the flip, the pin candidate and the read's lines
-  (`terrain_engine.price_relations`, a `PriceRelations` record, on `/api/terrain`, `/api/levels`
+  (`terrain_engine.price_relations`, a `PriceRelations` record, on the terrain panel, the levels panel
   and the chart's markers); each level's distance (level minus price), side and the words for
-  both (`from_spot_text`, "1.30 below spot") on `/api/levels`, the one distance the desk's nearest
+  both (`from_spot_text`, "1.30 below spot") on the levels panel, sent again with each price row
+  of its ticker, the one distance the desk's nearest
   level and its Box line print; the price inside, above or below each liquidity zone
   (`terrain_read.within`); and the level crosses (below). One side rule, exact values:
   `terrain_read.level_side` (ABOVE, AT, BELOW), with `price_side` (the price's side of a level),
   `within` and `crossed` built on it (`tests/test_level_crosses_wire.py`,
-  `tests/test_trade_desk_served_v1.py`). Each route serving them (`/api/terrain`, `/api/levels`,
+  `tests/test_trade_desk_served_v1.py`). Each answer serving them (the terrain panel, the levels panel,
   `/api/confluence`) serves the price's mark beside them (`server.price_mark`: whether Schwab's
   feed delivers the price, why not, its trade time and age, and the words the page prints,
   `spot_not_live_text`, "not live · last trade Thu 10/22 03:39 PM CT, 81m old", from the one age
-  formatter `time_et.age_text`); `/api/levels` puts it on the pin candidate's row too
+  formatter `time_et.age_text`); the levels panel puts it on the pin candidate's row too
   (`not_live_text`). When the price stops, every relation stands, marked with it: the desk's wall
   labels, GAMMA cell, pin candidate, nearest level and Box line, and the confluence screen's spot.
   While the price stays stopped, the levels loop tells each open page on that ticker to read
@@ -622,7 +628,7 @@ the program.
   `tests/fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json`, kept equal to them by
   `test_the_stopped_price_answers_the_browser_renders_are_the_routes_own`). The one-day move's two prices are the live price
   plus and minus the publication's implied move (`server.expected_move`, the one producer;
-  `/api/levels` and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
+  the levels panel and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
   price) has no levels, with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
   value for its strike and expiry, exact. A cell with no value (no contract listed at that strike
@@ -638,6 +644,9 @@ the program.
   and the note says so (`WINDOW_NO_PRICE`, drawn on the panel; no row is marked as the price).
   The confluence matrix takes only the rows and the note, which it serves among its `notes`; its
   colours stay on the whole expiry's scale, its `peaks` (`docs/derived_register.md` Heat color).
+  The heatmap is the `surface` panel on `/ws` (`server.gamma_surface`, its window the page's
+  parameters: scope, centre, shift, `cols` and `expiry`, each sent, null for none), marked
+  changed wherever the `levels` push is (`server._levels_changed`).
   The heatmap's view (`server._surface_view`) also picks the columns (the selected expiry
   alone; for Auto the nearest unexpired the page fits, `cols`; Wider twice that; All every one;
   an expired column is a past observation, drawn labelled EXPIRED, and with none unexpired Auto

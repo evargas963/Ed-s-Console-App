@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 import server
+import time_et
 from app.market_data.schwab.streaming.capture import by_gamma
 from option_contract import read_chain
 from tests.real_chains import NFLX
@@ -66,7 +67,7 @@ def published():
 
 @pytest.mark.usefixtures("published")
 def test_the_chain_serves_every_gamma_as_schwab_sent_it():
-    body = json.loads(bytes(server.get_chain(ticker="NVDA", expiry=NVDA["expiry"]).body))
+    body = server.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
     served = {c["symbol"]: c["gamma"] for c in body["contracts"]}
     sent = {k["symbol"]: k["gamma"] for k in NVDA["contracts"]}
     assert served[LARGE] == sent[LARGE] > 16
@@ -75,13 +76,8 @@ def test_the_chain_serves_every_gamma_as_schwab_sent_it():
 
 @pytest.mark.usefixtures("published")
 def test_the_heatmap_cell_of_a_large_gamma_has_its_gex():
-    body = json.loads(
-        bytes(
-            server.get_options_gamma_surface(
-                ticker="NVDA", scope="all", centre=None, shift=0, cols=None, expiry=None
-            ).body
-        )
-    )
+    window = {"scope": "all", "centre": None, "shift": 0, "cols": None, "expiry": None}
+    body = server.gamma_surface("NVDA", time_et.now(), window)
     cell = next(r for r in body["cells"] if r["strike"] == 148.0)
     assert cell["gex"][0] is not None
     assert all(r["gex"][0] is not None for r in body["cells"])
@@ -110,7 +106,7 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
         now=NFLX.now,
     )
     try:
-        body = json.loads(bytes(server.get_chain(ticker=tk, expiry=expiry).body))
+        body = server.chain(tk, time_et.now(), {"expiry": expiry})
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
