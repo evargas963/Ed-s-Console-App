@@ -153,7 +153,6 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_HOST": "127.0.0.1",
         "ED_LIVE_UI_PORT": "0",
         "ED_LIVE_PUSH_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
@@ -560,7 +559,6 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         **os.environ,
         "PYTHONPATH": str(launch.ROOT),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_HOST": "127.0.0.1",
         "ED_LIVE_UI_PORT": "0",
         "ED_LIVE_PUSH_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
@@ -655,12 +653,11 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
         "        time.sleep(0.05)\n",
         encoding="utf-8",
     )
-    with socket.create_server(("127.0.0.1", 0)) as held:
+    with socket.create_server((live_ui.LIVE_UI_HOST, 0)) as held:  # where the daemon binds
         env = {
             **os.environ,
             "PYTHONPATH": str(launch.ROOT),
             "ED_RUNTIME_ROOT": str(tmp_path),
-            "ED_LIVE_UI_HOST": "127.0.0.1",
             "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
             "ED_LIVE_PUSH_PORT": "0",
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
@@ -767,12 +764,11 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
     """Another socket holds the live UI's port: the daemon, run as its window runs it, ends as it
     opens its sockets, with the bind's error naming the port in its log and an exit code its
     window restarts on (not EXIT_STOPPED), instead of running with no browser served."""
-    with socket.create_server(("127.0.0.1", 0)) as held:
+    with socket.create_server((live_ui.LIVE_UI_HOST, 0)) as held:  # where the daemon binds
         port = held.getsockname()[1]
         env = {
             **os.environ,
             "ED_RUNTIME_ROOT": str(tmp_path),
-            "ED_LIVE_UI_HOST": "127.0.0.1",
             "ED_LIVE_UI_PORT": str(port),
             "ED_LIVE_PUSH_PORT": "0",
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
@@ -788,7 +784,7 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
     log = path.read_text(encoding="utf-8")
     assert done.returncode == 1, (done.returncode, log)
     assert "capture daemon: ended by an error" in log, log
-    assert f"('127.0.0.1', {port})" in log, log  # the bind names the port
+    assert f"({live_ui.LIVE_UI_HOST!r}, {port})" in log, log  # the bind names its address
     assert "OSError" in log, log
 
 
