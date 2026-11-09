@@ -81,9 +81,9 @@ def _daily(tk: str) -> list:
     """`tk`'s daily candles as the bar writer holds them (server._write_price_history)."""
     srv._write_price_history(_daily_msg(tk))
     try:
-        return list(srv._daily[tk])
+        return list(srv._series[(tk, "1d")])
     finally:
-        srv._daily.pop(tk, None)
+        srv._series.pop((tk, "1d"), None)
 
 
 def _prior(tk: str, session):
@@ -233,7 +233,7 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute():
         payload = srv.levels_payload("ZZP2A", "1", noon)
     finally:
         srv._bars.pop("ZZP2A", None)
-        srv._daily.pop("ZZP2A", None)
+        srv._series.pop(("ZZP2A", "1d"), None)
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     ids = [lv["id"] for lv in payload["levels"]]
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload"
@@ -264,7 +264,7 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
         liq = srv.liquidity_snapshot("ZZP2B", noon)
     finally:
         srv._bars.pop("ZZP2B", None)
-        srv._daily.pop("ZZP2B", None)
+        srv._series.pop(("ZZP2B", "1d"), None)
     copies = {"raw_levels", "raw_levels_used", "as_of_cutoff_et", "level_semantic_scope"}
     assert not copies & set(liq), "the snapshot's values are served once, by /api/levels"
     used = {s["label"]: s["value"] for z in liq["zones"] for s in z["source_levels"]}

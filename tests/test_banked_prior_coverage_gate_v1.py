@@ -37,7 +37,7 @@ def _published(now: datetime) -> dict:
     def forget():
         for tk in _PAIR:
             server._bars.pop(tk, None)
-            server._daily.pop(tk, None)
+            server._series.pop((tk, "1d"), None)
             for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
                 del _MATERIALIZED_SNAPSHOTS[key]
 

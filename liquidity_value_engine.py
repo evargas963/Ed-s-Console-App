@@ -108,7 +108,7 @@ def bars_from_candles(candles) -> list[dict]:
 def prior_session(daily: list, session_date: date):
     """Return THE prior session, for the previous-day levels and the overnight window.
 
-    It is the newest of Schwab's daily candles (the bar writer's, server._daily) dated before
+    It is the newest of Schwab's daily candles (the bar writer's, server._series) dated before
     `session_date`. Schwab sends a daily candle for each session that traded, so a weekend, a
     holiday or a closure has none. None: no such candle held (not received), never a guessed
     date.
@@ -1073,7 +1073,7 @@ def materialize_price_level_snapshot(
     """Materialize once per generation; return the SAME object within a generation.
 
     Built from normalized bars (bars_from_candles) and Schwab's daily candles (`daily`,
-    server._daily).
+    server._series).
 
     A new market generation (the bar input or the prior session's candle changed) invokes the
     producer exactly once. Every later ask in that generation is a read, never a recomputation.

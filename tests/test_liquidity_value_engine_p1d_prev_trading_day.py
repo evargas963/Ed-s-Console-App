@@ -39,9 +39,9 @@ def _held(symbol: str) -> tuple[list, list]:
                     {"symbol": symbol, "series": series, "answer": a["body"]}
                 )
     try:
-        return list(server._daily[symbol]), list(server._bars[symbol])
+        return list(server._series[(symbol, "1d")]), list(server._bars[symbol])
     finally:
-        server._daily.pop(symbol, None)
+        server._series.pop((symbol, "1d"), None)
         server._bars.pop(symbol, None)
 
 

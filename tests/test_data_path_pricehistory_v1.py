@@ -171,7 +171,7 @@ def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
     now = datetime(2026, 10, 6, 16, 30, tzinfo=ET)
     for tk in ("SPY", "TSLA"):
         server._bars.pop(tk, None)
-        server._daily.pop(tk, None)
+        server._series.pop((tk, "1d"), None)
         try:
             _held(tk, "1d", now)
             _held(tk, "1m", now)
@@ -198,7 +198,7 @@ def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
             assert server._atr(tk, now).daily == _true_range_mean(before + [rolled]), tk
         finally:
             server._bars.pop(tk, None)
-            server._daily.pop(tk, None)
+            server._series.pop((tk, "1d"), None)
 
 
 def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_the_atr_from_them():
@@ -219,7 +219,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
         ofs.streamed_bars.get_nowait()
     for tk in ("SPY", "TSLA"):
         server._bars.pop(tk, None)
-        server._daily.pop(tk, None)
+        server._series.pop((tk, "1d"), None)
     try:
         assert len(sub.changed) == 4, "each ticker's two series, its current record on the bus"
         for key in list(sub.changed):
@@ -254,7 +254,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
     finally:
         for tk in ("SPY", "TSLA"):
             server._bars.pop(tk, None)
-            server._daily.pop(tk, None)
+            server._series.pop((tk, "1d"), None)
 
 
 def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
@@ -320,13 +320,15 @@ def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not
     for tk in ("SPY", "TSLA"):
         sent = HISTORY[(tk, "daily", "1")]["body"]["candles"]
         now = datetime.fromtimestamp(HISTORY[(tk, "daily", "1")]["answered_utc"], ET)
-        server._daily.pop(tk, None)
+        server._series.pop((tk, "1d"), None)
         try:
             _held(tk, "1d", now, sent[:-1])
             newer, again = _told(tk, [partial(_held, tk, "1d", now)] * 2)
-            held = [(c.ts, c.open, c.high, c.low, c.close, c.volume) for c in server._daily[tk]]
+            held = [
+                (c.ts, c.open, c.high, c.low, c.close, c.volume) for c in server._series[(tk, "1d")]
+            ]
         finally:
-            server._daily.pop(tk, None)
+            server._series.pop((tk, "1d"), None)
         assert "liquidity" in newer, tk
         assert again == set(), (tk, again)
         assert held == [

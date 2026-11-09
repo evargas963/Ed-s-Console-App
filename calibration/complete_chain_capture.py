@@ -42,7 +42,15 @@ from schwab_client import (
     safe_get_quotes,
 )
 from stream_spine import CaptureWriter
-from time_et import ET, options_closed_at, options_open, record_markets, session
+from time_et import (
+    CLOSED,
+    ET,
+    options_closed_at,
+    options_open,
+    record_markets,
+    session,
+    session_label,
+)
 
 log = logging.getLogger("chain_history")
 
@@ -233,10 +241,19 @@ def chain_messages(
 #: Schwab's price history of every ticker (GET /pricehistory,
 #: docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt): series -> (periodType,
 #: period, frequencyType, frequency). Each request ends now (endDate; without it Schwab ends at the
-#: previous business day's close), extended hours included. Both once per ET date: the 1-minute
-#: bars (the stream's CHART_EQUITY bars carry them on from there) and two years of daily candles
-#: (monthly ATR(14) needs 15 months; today's candle the console rolls up from the bars).
-PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "1d": ("year", 2, "daily", 1)}
+#: previous business day's close), extended hours included. The 1-minute bars once per ET date
+#: (the stream's CHART_EQUITY bars carry them on from there); the 5-, 15- and 30-minute bars each
+#: time one of theirs completes in a session (BAR_MINUTES); two years of daily candles once per ET
+#: date and again after the regular close, for that day's (monthly ATR(14) needs 15 months).
+PRICE_HISTORY = {
+    "1m": ("day", 10, "minute", 1),
+    "5m": ("day", 10, "minute", 5),
+    "15m": ("day", 10, "minute", 15),
+    "30m": ("day", 10, "minute", 30),
+    "1d": ("year", 2, "daily", 1),
+}
+#: the minute series asked again as each of their bars completes, by the bar's minutes
+BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
 
 
 def price_history_message(
@@ -337,8 +354,8 @@ class ChainSweep:
     does not send is absent (None). Each contract carries the time of its Greeks as `greeksTime`
     ({field: Schwab's time, ms}).
 
-    The price history (candles, fetch_price_history): each watchlist ticker's 1-minute bars and
-    daily candles once per ET date (candles_due).
+    The price history (candles, fetch_price_history): each watchlist ticker's series of
+    PRICE_HISTORY, each when it is due (series_due).
 
     The market's sessions (fetch_markets): Schwab's /markets answer for today and the
     MARKETS_DAYS_BACK days before it, and for each expiry date of the chains, each date asked
@@ -380,7 +397,8 @@ class ChainSweep:
         self._markets_day: dict[str, date] = {}  # market date -> the ET date Schwab answered it
         self._optioned: set[str] = set()  # tickers Schwab has answered a chain for
         self._fetched: dict[str, float] = {}  # ticker -> when its newest delivered chain began
-        self._candled: dict[str, float] = {}  # ticker -> when its newest whole price history began
+        # (ticker, series) -> when its newest answered request began
+        self._candled: dict[tuple[str, str], float] = {}
         self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
@@ -411,7 +429,7 @@ class ChainSweep:
         )
         now = datetime.fromtimestamp(self.clock(), ET)
         chains = [t for t in sorted(self.watchlist) if self.chain_due(t, now)]
-        candles = [t for t in sorted(self.watchlist) if self.candles_due(t, now)]
+        candles = {t: due for t in sorted(self.watchlist) if (due := self.candles_due(t, now))}
         if candles:
             self.candles(schwab_client, candles, stop)
         if chains:
@@ -440,12 +458,37 @@ class ChainSweep:
             self.waiting = why
         return self.waiting
 
-    def candles_due(self, ticker: str, now: datetime) -> bool:
-        """Whether `ticker`'s price history is asked for at `now`: not yet whole on this ET date."""
-        return (
-            ticker not in self._candled
-            or datetime.fromtimestamp(self._candled[ticker], ET).date() < now.date()
-        )
+    def candles_due(self, ticker: str, now: datetime) -> list[str]:
+        """The series of `ticker`'s price history asked for at `now` (series_due)."""
+        return [s for s in PRICE_HISTORY if self.series_due(ticker, s, now)]
+
+    def series_due(self, ticker: str, series: str, now: datetime) -> bool:
+        """Whether one series of `ticker`'s price history is asked for at `now`.
+
+        Never answered yet: due. A minute series of BAR_MINUTES: once one of its bars has
+        completed since it was asked, while a session Schwab sent (time_et.session_label) was
+        open then or now, so the bar that ends a session is asked once after it. The daily
+        candles: once per ET date, and once after today's regular window Schwab sent has ended.
+        The 1-minute bars: once per ET date.
+        """
+        if (ticker, series) not in self._candled:
+            return True
+        asked = self._candled[(ticker, series)]
+        if series in BAR_MINUTES:
+            span = BAR_MINUTES[series] * 60
+            in_session = (session_label(now), session_label(datetime.fromtimestamp(asked, ET))) != (
+                CLOSED,
+                CLOSED,
+            )
+            return now.timestamp() // span > asked // span and in_session
+        if datetime.fromtimestamp(asked, ET).date() < now.date():
+            return True
+        if series != "1d":
+            return False
+        today = session(now.date().isoformat())
+        if today is None or not today.regular:
+            return False
+        return asked < today.regular[-1][1].timestamp() <= now.timestamp()
 
     def chain_due(self, ticker: str, now: datetime) -> bool:
         """Whether `ticker`'s chain is asked for at `now`.
@@ -532,27 +575,26 @@ class ChainSweep:
         )
         return self._delivered
 
-    def candles(self, schwab_client, tickers: list[str], stop: threading.Event) -> None:
-        """Each ticker's price history in turn.
+    def candles(self, schwab_client, due: dict[str, list[str]], stop: threading.Event) -> None:
+        """Each ticker's due series of its price history (`due`), ticker by ticker.
 
         One removed from the watchlist meanwhile is not asked for.
         """
-        for ticker in tickers:
+        for ticker, series in due.items():
             if stop.is_set():
                 break
             if ticker in self.watchlist:
-                self.fetch_price_history(schwab_client, ticker)
+                self.fetch_price_history(schwab_client, ticker, series)
 
-    def fetch_price_history(self, schwab_client, ticker: str) -> None:
-        """Fetch `ticker`'s price history (PRICE_HISTORY).
+    def fetch_price_history(self, schwab_client, ticker: str, due: list[str]) -> None:
+        """Fetch the `due` series of `ticker`'s price history (PRICE_HISTORY).
 
-        Each series is published as Schwab sent its candles; a series Schwab does not answer 200
-        is not published (log_request has the answer) and the ticker's candles are asked again
-        the next time they are due (candles_due).
+        Each is published as Schwab sent its candles; one Schwab does not answer 200 is not
+        published (log_request has the answer) and is asked again the next time (series_due).
         """
-        now = self.clock()
-        whole = True
-        for series, (period_type, period, frequency_type, frequency) in PRICE_HISTORY.items():
+        for series in due:
+            period_type, period, frequency_type, frequency = PRICE_HISTORY[series]
+            now = self.clock()
             try:
                 resp = schwab_client().get_price_history(
                     ticker,
@@ -564,7 +606,6 @@ class ChainSweep:
                     need_extended_hours_data=True,
                 )
                 if resp.status_code != 200:
-                    whole = False
                     continue
                 answer = resp.json()
             except Exception as e:  # that series' answer is the failure; the next series is asked
@@ -576,11 +617,9 @@ class ChainSweep:
                     e,
                     exc_info=True,
                 )
-                whole = False
                 continue
             self.publish(*price_history_message(ticker, series, answer, self.clock()))
-        if whole:
-            self._candled[ticker] = now
+            self._candled[(ticker, series)] = now
 
     def fetch_chain(self, schwab_client, ticker: str, stop: threading.Event) -> None:
         """Fetch `ticker`'s chain, every expiry.
