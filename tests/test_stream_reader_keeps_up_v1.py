@@ -27,6 +27,7 @@ from pathlib import Path
 
 import live_market_plane as lmp
 import server
+import terrain_engine
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
@@ -43,20 +44,6 @@ BOOKS = json.loads((_FX / "real_spy_books_2026_11_02.json").read_text(encoding="
 _MIX = json.loads((_FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))
 #: the streamer's heartbeat: a frame every 0.1 s, so a reader held up shows within one
 BEAT_SEC = 0.1
-
-
-def _read_sec() -> float:
-    """How long this computer takes to read SPY's chain (read_chain), alone, before the run.
-
-    The bound on how far the reader may fall behind: the chain is read, ranked, priced and
-    stamped while Schwab's frames arrive, and none of that work is the reader's, so no stretch
-    of it may hold the reader for as long as reading the chain takes. The reader's own work on a
-    frame is a small part of a millisecond; what remains is its turns at the interpreter lock
-    with the pricing thread.
-    """
-    started = time_et.elapsed()
-    read_chain(SPY["chain"])
-    return time_et.elapsed() - started
 
 
 def _numbered(item: dict, fields) -> dict:
@@ -232,14 +219,19 @@ async def _until(cond, seconds: float, state=lambda: None) -> None:
 
 
 def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path):
-    """SPY's 12,904 contracts reach the option rule and the console: the reader keeps up.
+    """SPY's 12,904 contracts reach the option rule and the console: none of it on the loop.
 
-    The sweep reads the chain once as it delivers it, the daemon's option rule orders it and the
-    console prices it and stamps its heatmap. Production (2026-11-09) ran those on the event loop
-    that reads Schwab's stream, and the reader fell up to 17.97 s behind Schwab. Here no stretch
-    of that work holds the reader as long as reading the chain takes (_read_sec).
+    The chain is read, laid out, ordered, priced and its heatmap stamped while Schwab's frames
+    arrive. Production (2026-11-09) ran the read, the order and the stamp on the event loop that
+    reads Schwab's stream, and the reader fell up to 17.97 s behind Schwab. Here none of that
+    work runs on the loop's thread: each of its functions is watched with Python's own
+    monitoring (sys.monitoring), which names the thread every call runs on. (How far behind
+    Schwab the reader falls is no measure of it: the reader also takes turns at the interpreter
+    lock with the pricing thread, by the computer's speed -- Linux CI 0.37 s against a 0.33 s
+    read.)
     """
-    bound = _read_sec()
+    calls: list[tuple[str, int]] = []  # (function, the thread it ran on)
+    loop_thread: list[int] = []
     streamer = LocalStreamer({}, data={}, beat=BEAT_SEC)
     rest = LocalSchwab(streamer.url)
     client = rest.client(tmp_path)
@@ -254,6 +246,8 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                 behind.append(time_et.now() - daemon.stream.schwab_ts)
 
     async def go():
+        loop = asyncio.get_running_loop()
+        loop_thread.append(threading.get_ident())
         stop = asyncio.Event()
         ofs.bind_daemon(daemon)  # as capture.serve_console binds it
         assert ofs.start_order_flow_stream(**server.FEED_CALLBACKS)
@@ -283,8 +277,8 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                 SPY["spot"],
                 SPY["capture_ts_utc"],
             )
-            for topic, msg in delivered:
-                bus.publish(topic, msg)
+            for topic, msg in delivered:  # each its own callback, as the sweep's publish puts it
+                loop.call_soon(bus.publish, topic, msg)
             # the rule picked from the read chain and Schwab holds it; the console priced it
             # and stamped its heatmap
             await _until(
@@ -310,9 +304,34 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
             ofs.bind_daemon(None)
             await asyncio.wait_for(asyncio.gather(*tasks), 30)
 
+    work = {
+        f.__name__: f.__code__
+        for f in (
+            read_chain,
+            capture.strike_ladders,
+            capture.by_gamma,
+            terrain_engine.compute_terrain,
+            server.restamp_open_surfaces,
+            server._stamp_gamma_surface_cell_stream_state,
+        )
+    }
+    by_code = {code: name for name, code in work.items()}
+    mon = sys.monitoring
+    tool = next(i for i in range(6) if mon.get_tool(i) is None)
+    mon.use_tool_id(tool, "thread of each call")
+    mon.register_callback(
+        tool,
+        mon.events.PY_START,
+        lambda code, _o: calls.append((by_code[code], threading.get_ident())),
+    )
+    for code in work.values():
+        mon.set_local_events(tool, code, mon.events.PY_START)
     try:
         asyncio.run(go())
     finally:
+        for code in work.values():
+            mon.set_local_events(tool, code, 0)
+        mon.free_tool_id(tool)
         streamer.close()
         rest.close()
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
@@ -322,6 +341,7 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
         server._last_feed_stamp.clear()
     assert len(daemon.options["LEVELONE_OPTIONS"]) == capture.OPTION_LIMITS["LEVELONE_OPTIONS"]
     assert len(behind) > 100, "the reader was sampled throughout"
-    assert max(behind) < bound, (
-        f"the reader fell {max(behind):.2f} s behind Schwab; reading the chain takes {bound:.2f} s"
+    assert set(work) == {name for name, _thread in calls}, "every piece of the work ran"
+    assert not sorted({name for name, thread in calls if thread == loop_thread[0]}), (
+        "ran on the event loop's thread"
     )
