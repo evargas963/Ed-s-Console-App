@@ -241,6 +241,7 @@ jobs:
               bp = collections.Counter((r[3], r[4]) for r in rows)
               eph = collections.Counter(r[4] for r in rows if int(r[1].rsplit(":", 1)[1]) >= 49152)
               n = names()
+              print("### PIDS %s %s" % (stamp(), " ".join("%s:%s" % kv for kv in sorted(n.items()))), flush=True)
               print("### SNAPSHOT %s (%s) netstat %.2fs rows=%d" % (stamp(), why, time.monotonic() - t0, len(rows)), flush=True)
               print("###   by state: %s" % dict(st), flush=True)
               for (s, pid), c in bp.most_common(12):
@@ -270,14 +271,8 @@ jobs:
                           snap("port refused"); nsnap = time.monotonic() + 2
                   finally:
                       s.close()
-              # connect (implicit port) to the console under test and to a listener of our own,
-              # each closed by reset so no TIME_WAIT is added
-              try:
-                  sport = int(open("e2e_port.txt").read().strip())
-              except (OSError, ValueError):
-                  sport = 0
-              for name, port in (("console", sport), ("own", lport)):
-                  if not port: continue
+              # connect (implicit port) to a listener of our own, closed by reset (no TIME_WAIT)
+              for name, port in (("own", lport),):
                   c = socket.socket()
                   c.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("hh", 1, 0))
                   try:
@@ -309,30 +304,31 @@ jobs:
           # rows of an ETW CSV whose fields carry a failure status, by event, process and status
           cat > "$RUNNER_TEMP/etw_status.py" <<'ETW'
           import collections, csv, re, sys
-          WANT = re.compile(r"0x[cC]0000(09[aA]|209|206)|10055|NO_BUFFER|INSUFFICIENT|TOO_MANY", re.I)
-          by, hits, total = collections.Counter(), [], 0
+          # every event id with its count and one example; then each row whose text fields name a
+          # failure other than the routine ones, with the time (FILETIME) and process
+          WANT = re.compile(r"insufficient|resource|exhaust|no buffer|in use|too many|could not|fail", re.I)
+          by, ex, hits, total = collections.Counter(), {}, [], 0
           with open(sys.argv[1], newline="", encoding="utf-8", errors="replace") as f:
               for row in csv.reader(f):
                   total += 1
-                  if len(row) < 10: continue
-                  st = [x.strip() for x in row[19:] if re.fullmatch(r"\s*0x[cC8][0-9a-fA-F]{7}\s*", x)]
-                  by[(row[0].strip(), row[2].strip(), row[9].strip(), ",".join(st[:2]))] += 1
-                  line = ",".join(x.strip() for x in row)
-                  if WANT.search(line) and len(hits) < 60: hits.append(line[:500])
+                  if len(row) < 20 or not row[2].strip().isdigit(): continue
+                  text = [x.strip() for x in row[20:] if re.search(r"[A-Za-z]{3,}", x) and not x.strip().startswith("0x")]
+                  key = (row[2].strip(), row[1].strip(), " | ".join(text)[:90])
+                  by[key] += 1
+                  ex.setdefault(key, ",".join(x.strip() for x in row[16:])[:300])
+                  if any(WANT.search(t) for t in text) and len(hits) < 80:
+                      hits.append("%s pid %s :: %s" % (row[16].strip(), row[9].strip(), ",".join(x.strip() for x in row[20:])[:400]))
           print("rows", total)
-          for k, n in by.most_common(40): print("%8d %s" % (n, k))
-          print("--- rows naming an out-of-resources status")
+          for k, n in by.most_common(60): print("%8d %s\n           e.g. %s" % (n, k, ex[k]))
+          print("--- rows naming a failure")
           for h in hits: print(h)
           ETW
           # Windows' own TCP/IP and Winsock events at warning level and above, with the process
-          MSYS_NO_PATHCONV=1 logman start tcpwarn -p Microsoft-Windows-TCPIP 0xffffffffffffffff 0x3 -o tcpwarn.etl -ets -max 256
+          MSYS_NO_PATHCONV=1 logman start tcpwarn -p Microsoft-Windows-TCPIP 0xffffffffffffffff 0x4 -o tcpwarn.etl -ets -mode circular -max 2048
           rc=0
           for pass in 1 2 3 4 5 6 7 8 9 10; do
-            export ED_E2E_PORT=$((56000 + pass * 37))
-            echo $ED_E2E_PORT > e2e_port.txt
-            echo "=== pass $pass starts $(date -u +%H:%M:%S) console port $ED_E2E_PORT"
+            echo "=== pass $pass starts $(date -u +%H:%M:%S)"
             npm run test:e2e || rc=$?
-            rm -f e2e_port.txt
             echo "=== pass $pass ends $(date -u +%H:%M:%S)"
             if grep -q "failed" logs/test_e2e_last.log; then
               mkdir -p kept-failures/pass-$pass && cp -r test-results logs/test_e2e_last.log kept-failures/pass-$pass/ || true
@@ -346,6 +342,7 @@ jobs:
             MSYS_NO_PATHCONV=1 tracerpt $t.etl -o $t.csv -of CSV -y > /dev/null || true
             echo "=== $t: events by name, id, process and status"
             python "$RUNNER_TEMP/etw_status.py" $t.csv || true
+            grep -a -E "^ *Microsoft-Windows-TCPIP *, *[A-Za-z]+ *, *(1006|1007|1008)," $t.csv > kept-failures/tcp_addr_events.csv || true
             echo "=== $t: first 12 rows"
             head -12 $t.csv | cut -c1-700 || true
           done
@@ -354,7 +351,7 @@ jobs:
           netsh int ipv4 show dynamicport tcp
           netsh int ipv4 show excludedportrange protocol=tcp
           echo "=== probe: refusals and snapshots"
-          grep -E "^###" ports_probe.txt | head -400
+          grep -E "^###" ports_probe.txt | grep -v "### PIDS" | head -400
           echo "=== probe: per-second counters"
           grep -v -E "^###" ports_probe.txt
           exit $rc
