@@ -14,7 +14,6 @@ from datetime import datetime
 from pathlib import Path
 
 import time_et
-from math_exposure_core import compute_zero_dte_gamma_share
 from math_levels import (
     GAMMA_FLIP_UNAVAILABLE,
     GSF_STATE_BELOW_SUPPORT,
@@ -28,7 +27,6 @@ from math_levels import (
     gamma_at_price,
     gamma_flip_from_profile,
 )
-from math_volatility import compute_25d_risk_reversal
 from option_contract import OptionContract, read_chain, read_contract
 from terrain_engine import compute_terrain
 
@@ -241,65 +239,6 @@ def test_unavailable_on_empty_or_bad_inputs():
     assert (
         compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), -5)["state"]
         == GSF_STATE_UNAVAILABLE
-    )
-
-
-def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
-    """RC-357: share = sum|0DTE net_gex_1pct| / sum|all net_gex_1pct|.
-
-    None when the full book is empty or has no measurable gamma — never a fabricated 0%.
-    """
-    all_book = {
-        700.0: {"net_gex_1pct": 6e9},
-        705.0: {"net_gex_1pct": -2e9},
-        710.0: {"net_gex_1pct": 2e9},
-    }
-    zero_book = {700.0: {"net_gex_1pct": 4e9}, 705.0: {"net_gex_1pct": -1e9}}
-    assert compute_zero_dte_gamma_share(all_book, zero_book) == 50.0  # 5e9/10e9
-    assert compute_zero_dte_gamma_share(all_book, {}) == 0.0  # genuine zero 0DTE
-    assert compute_zero_dte_gamma_share({}, zero_book) is None  # empty full book
-    assert compute_zero_dte_gamma_share({700.0: {"net_gex_1pct": 0.0}}, {}) is None
-
-
-def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
-    """RC-358: RR = IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out.
-
-    That is the published fixed tenor (2026-09-27), tolerance-gated; an unusable wing yields
-    None.
-    """
-
-    def ct(side, delta, iv, dte):
-        return read_contract(
-            {"putCall": side, "delta": delta, "volatility": iv, "daysToExpiration": dte}
-        )
-
-    chain = [
-        # the ~30-day expiry (28d): usable 25Δ wings — RR = 17.0 − 21.5 = −4.5
-        ct("CALL", 0.27, 17.0, 28),
-        ct("PUT", -0.24, 21.5, 28),
-        # noise wings far from 25Δ on the same expiry
-        ct("CALL", 0.55, 15.0, 28),
-        ct("PUT", -0.60, 25.0, 28),
-        # the front (1d) and a far (60d) expiry are IGNORED even with perfect deltas
-        ct("CALL", 0.25, 30.0, 1),
-        ct("PUT", -0.25, 10.0, 1),
-        ct("CALL", 0.25, 40.0, 60),
-        ct("PUT", -0.25, 12.0, 60),
-    ]
-    out = compute_25d_risk_reversal(chain)
-    assert out is not None and out["dte"] == 28
-    assert out["rr_pts"] == -4.5
-    assert out["call_iv_25d"] == 17.0 and out["put_iv_25d"] == 21.5
-
-    # tolerance gate: nearest call delta 0.45 is > 0.10 from target -> fail closed
-    bad = [ct("CALL", 0.45, 17.0, 28), ct("PUT", -0.25, 21.5, 28)]
-    assert compute_25d_risk_reversal(bad) is None
-    # one-sided chain, empty chain, missing greeks -> fail closed
-    assert compute_25d_risk_reversal([ct("CALL", 0.25, 17.0, 28)]) is None
-    assert compute_25d_risk_reversal([]) is None
-    assert (
-        compute_25d_risk_reversal([read_contract({"putCall": "CALL", "daysToExpiration": 1})])
-        is None
     )
 
 

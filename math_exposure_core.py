@@ -13,12 +13,13 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from numeric_contract import float_finite_or_none
 from option_contract import OptionContract, streamed_greek_set
 from time_et import time_to_expiry_years
 
 if TYPE_CHECKING:
-    import numpy as np
     from numpy.typing import NDArray
 
 # ── Black-Scholes Greeks per share: the one place their formulas live ──
@@ -87,49 +88,70 @@ def bs_delta(
     return d if math.isfinite(d) else None
 
 
-def bs_vanna(
-    spot: float, strike: float, t_years: float, sigma: float, rate: float = 0.0, div: float = 0.0
-) -> float | None:
-    """Black-Scholes vanna (dDelta/dSigma) per share — identical for calls and puts.
+def _each(
+    f: Callable[[float], float], priced: NDArray[np.bool_]
+) -> Callable[[NDArray[np.float64]], NDArray[np.float64]]:
+    """Return `f` (math.log, math.exp) taken on each priced element, NaN on the rest.
 
-    Closed form: -e^(-qT) * phi(d1) * d2 / sigma. Sign is driven entirely by -d2, so it
-    flips through SPOT (strikes above spot positive, below negative) — never through the
-    call/put boundary. Equivalent forms: vanna = (vega/S)(1 - d1/(sigma*sqrt(T)))
+    The platform's own function, as the scalar Greeks take it: numpy's exp and log round the
+    last bit differently on some processors, so a value would differ between machines.
+    """
+
+    def on(x: NDArray[np.float64]) -> NDArray[np.float64]:
+        out = np.full(x.shape, np.nan)
+        out[priced] = [f(v) for v in x[priced].tolist()]
+        return out
+
+    return on
+
+
+def bs_vanna_array(
+    spot: float,
+    strike: NDArray[np.float64],
+    t_years: NDArray[np.float64],
+    sigma: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Black-Scholes vanna (dDelta/dSigma) per share of each contract, r = q = 0.
+
+    Identical for calls and puts. Closed form: -e^(-qT) * phi(d1) * d2 / sigma. Sign is driven
+    entirely by -d2, so it flips through SPOT (strikes above spot positive, below negative) --
+    never through the call/put boundary. Equivalent forms: vanna = (vega/S)(1 - d1/(sigma*sqrt(T)))
     = -Gamma * S * sqrt(T) * d2.
     Units: delta-change per 1.00 of IV (100 vol points); multiply by 0.01 for per-vol-point
-    — the sigma-scaling convention is LOCKED here beside the dealer convention.
+    -- the sigma-scaling convention is LOCKED here beside the dealer convention.
+    NaN where it cannot be priced: an input not positive (or NaN, not known), a d1 or a vanna
+    that is not finite.
     """
-    priced = _priced_d1(spot, strike, t_years, sigma, rate - div)
-    if priced is None:
-        return None
-    d1, vt = priced
-    d2 = d1 - vt
-    v = -math.exp(-div * t_years) * norm_pdf(d1) * d2 / sigma
-    return v if math.isfinite(v) else None
+    with np.errstate(all="ignore"):
+        priced = (spot > 0) & (strike > 0) & (t_years > 0) & (sigma > 0)
+        d1, vt = d1_vt(spot, strike, t_years, sigma, log=_each(math.log, priced), sqrt=np.sqrt)
+        d2 = d1 - vt
+        v = -np.exp(-0.0 * t_years) * norm_pdf(d1, exp=_each(math.exp, priced)) * d2 / sigma
+    return np.where(priced & np.isfinite(d1) & np.isfinite(v), v, np.nan)
 
 
-def bs_charm(
-    spot: float, strike: float, t_years: float, sigma: float, rate: float = 0.0
-) -> float | None:
-    """Black-Scholes charm (dDelta/dt, calendar time) per share, q=0.
+def bs_charm_array(
+    spot: float,
+    strike: NDArray[np.float64],
+    t_years: NDArray[np.float64],
+    sigma: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Black-Scholes charm (dDelta/dt, calendar time) per share of each contract, r = q = 0.
 
-    Textbook (Haug) charm is dDelta/dT = -phi(d1) * [ r/(sigma*sqrt(T)) - d2/(2T) ].
-    Calendar-time charm is the negative of that. Callers that want the deliberate
-    0DTE-stable r-omission (compute_net_charm) pass rate=0.0; the r term is otherwise
-    retained and guarded by the t_years floor applied upstream.
-
-    Identical for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant
-    vanishes under differentiation with respect to time.
+    Textbook (Haug) charm is dDelta/dT = -phi(d1) * [ r/(sigma*sqrt(T)) - d2/(2T) ]; calendar-time
+    charm is the negative of that, with the deliberate 0DTE-stable r-omission (r = 0). Identical
+    for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant vanishes under
+    differentiation with respect to time. Sign verified against a finite-difference derivative of
+    the BS delta (tests/test_charm_sign_finite_difference.py).
+    NaN where it cannot be priced: an input not positive (or NaN, not known), a d1 or a charm
+    that is not finite.
     """
-    priced = _priced_d1(spot, strike, t_years, sigma, rate)
-    if priced is None:
-        return None
-    d1, vt = priced
-    d2 = d1 - vt
-    # dDelta/dt (calendar time). Sign verified against a finite-difference
-    # derivative of the BS delta.
-    c = -norm_pdf(d1) * (rate / vt - d2 / (2.0 * t_years))
-    return c if math.isfinite(c) else None
+    with np.errstate(all="ignore"):
+        priced = (spot > 0) & (strike > 0) & (t_years > 0) & (sigma > 0)
+        d1, vt = d1_vt(spot, strike, t_years, sigma, log=_each(math.log, priced), sqrt=np.sqrt)
+        d2 = d1 - vt
+        c = -norm_pdf(d1, exp=_each(math.exp, priced)) * (0.0 / vt - d2 / (2.0 * t_years))
+    return np.where(priced & np.isfinite(d1) & np.isfinite(c), c, np.nan)
 
 
 def schwab_iv_to_sigma(iv: float | None) -> float | None:
@@ -180,8 +202,9 @@ def bucket_metric(bucket: dict, key: str) -> float | None:
     """
     if not isinstance(bucket, dict) or key not in bucket:
         return None
-    if any(bucket.get(u) for u in _GREEK_FIELD_UNREPORTED.get(key, ())):
-        return None
+    for u in _GREEK_FIELD_UNREPORTED[key] if key in _GREEK_FIELD_UNREPORTED else ():
+        if bucket.get(u):
+            return None
     return float_finite_or_none(bucket[key])
 
 
@@ -204,78 +227,58 @@ class ExposureDiagnostics:
 # ── Exposure primitives ──────────────────────────────────────────────────────
 
 
-def _strike_bucket(exposures_by_strike: dict[float, dict], strike: float, dollarized: bool) -> dict:
-    """Return the bucket of `strike`, made empty on its first contract.
+def _empty_bucket(dollarized: bool) -> dict:
+    """Return a strike's bucket before its first contract (copied from _EMPTY_BUCKET).
 
     Its dollar fields and vanna need spot (`dollarized`): None, not known, without it.
     """
     with_spot = 0.0 if dollarized else None
-    if strike not in exposures_by_strike:
-        exposures_by_strike[strike] = {
-            # Contracts at this strike whose openInterest was NOT REPORTED (absent, -999, text);
-            # strike_total_oi() reads this so no total treats unknown as zero.
-            "oi_unreported": 0,
-            # Same discipline for totalVolume: an unreported one is UNKNOWN, never zero.
-            "volume_unreported": 0,
-            # Contracts on each leg whose gamma / delta / vanna term is not known: openInterest or
-            # multiplier not reported, or open interest above 0 with no Greek (Schwab sent -999 or
-            # none). That leg's sum of it is not known; a contract with open interest 0 adds 0.
-            **{
-                f"{s}_{g}_unreported": 0
-                for s in ("call", "put")
-                for g in ("gamma", "delta", "vanna", "oi_mult")
-            },
-            # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
-            # real dollar values. Set explicitly at build; never inferred from values.
-            "dollarized": dollarized,
-            # each leg's sums: 0.0 over no contract; None once a contract's value was not sent
-            "call_oi": 0.0,
-            "put_oi": 0.0,
-            "call_oi_mult": 0.0,
-            "put_oi_mult": 0.0,
-            # NOTE: These are exposure-scaled buckets (gamma*OI*mult, delta*OI*mult)
-            "call_gamma": 0.0,
-            "put_gamma": 0.0,
-            "call_vanna": with_spot,
-            "put_vanna": with_spot,
-            "call_delta": 0.0,
-            "put_delta": 0.0,
-            "net_gamma": 0.0,
-            "net_delta": 0.0,
-            # Dollarized (institutional) exposures when spot is provided
-            "call_dex_dollars": with_spot,
-            "put_dex_dollars": with_spot,
-            "net_dex_dollars": 0.0,
-            "call_gex_1pct": with_spot,
-            "put_gex_1pct": with_spot,
-            "net_gex_1pct": 0.0,
-            # traded contracts per leg (Schwab totalVolume)
-            "call_volume": 0.0,
-            "put_volume": 0.0,
-        }
-    return exposures_by_strike[strike]
+    return {
+        # Contracts at this strike whose openInterest was NOT REPORTED (absent, -999, text);
+        # strike_total_oi() reads this so no total treats unknown as zero.
+        "oi_unreported": 0,
+        # Same discipline for totalVolume: an unreported one is UNKNOWN, never zero.
+        "volume_unreported": 0,
+        # Contracts on each leg whose gamma / delta / vanna term is not known: openInterest or
+        # multiplier not reported, or open interest above 0 with no Greek (Schwab sent -999 or
+        # none). That leg's sum of it is not known; a contract with open interest 0 adds 0.
+        **{
+            f"{s}_{g}_unreported": 0
+            for s in ("call", "put")
+            for g in ("gamma", "delta", "vanna", "oi_mult")
+        },
+        # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
+        # real dollar values. Set explicitly at build; never inferred from values.
+        "dollarized": dollarized,
+        # each leg's sums: 0.0 over no contract; None once a contract's value was not sent
+        "call_oi": 0.0,
+        "put_oi": 0.0,
+        "call_oi_mult": 0.0,
+        "put_oi_mult": 0.0,
+        # NOTE: These are exposure-scaled buckets (gamma*OI*mult, delta*OI*mult)
+        "call_gamma": 0.0,
+        "put_gamma": 0.0,
+        "call_vanna": with_spot,
+        "put_vanna": with_spot,
+        "call_delta": 0.0,
+        "put_delta": 0.0,
+        "net_gamma": 0.0,
+        "net_delta": 0.0,
+        # Dollarized (institutional) exposures when spot is provided
+        "call_dex_dollars": with_spot,
+        "put_dex_dollars": with_spot,
+        "net_dex_dollars": 0.0,
+        "call_gex_1pct": with_spot,
+        "put_gex_1pct": with_spot,
+        "net_gex_1pct": 0.0,
+        # traded contracts per leg (Schwab totalVolume)
+        "call_volume": 0.0,
+        "put_volume": 0.0,
+    }
 
 
-def _add_sent(b: dict, key: str, value: float | None) -> None:
-    """Add a value Schwab sent to the sum `b[key]`; one not sent leaves the sum unknown (None)."""
-    if value is None:
-        b[key] = None
-    elif b[key] is not None:
-        b[key] += value
-
-
-def _contract_vanna(
-    spot: float, strike: float, years: float | None, iv: float | None
-) -> float | None:
-    """Return the exact Black-Scholes vanna (math_levels.bs_vanna) of a contract.
-
-    The same for a call and a put at a strike and expiry. None when its time to expiry or its
-    implied volatility is not known.
-    """
-    if not (years is not None and years > 0):
-        return None
-    sigma = schwab_iv_to_sigma(iv)
-    return None if sigma is None else bs_vanna(spot, float(strike), years, sigma)
+#: a strike's empty bucket, built with spot (True) and without (False)
+_EMPTY_BUCKET = {d: _empty_bucket(d) for d in (True, False)}
 
 
 def compute_exposures_by_strike(
@@ -300,79 +303,110 @@ def compute_exposures_by_strike(
       gamma_exposure = gamma * OI * multiplier
 
     The dollar fields (DEX$, GEX$ per 1%) are computed when `spot` is provided.
+
+    Every contract's terms are computed at once as arrays (numpy, IEEE double as Python's floats)
+    and added to its strike's leg in the chain's order, as one contract at a time adds them. A
+    value Schwab did not send is NaN in the arrays and never a number in the book: a sum it
+    enters is None (open interest, volume), a term it leaves unknown adds nothing and is counted
+    unreported.
     """
-    exposures: dict[float, dict] = {}
-    total = 0
-    used = 0
-    missing = 0
-
-    # T for the BS-vanna faucet comes from the ONE valuation-T authority,
-    # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
-    # whole-day `dte / 365.0`. Every contract in the aggregate is priced at the caller's one
-    # valuation instant `now` (a replay of a stored chain prices at the snapshot's time), and T
-    # is memoised per distinct expiry string.
-    tte = functools.cache(
-        lambda expiration, settlement: time_to_expiry_years(
-            expiration, now=now, settlement_type=settlement, product=product
-        )
-    )
-
-    for c in contracts:
-        total += 1
-        if c.strike is None or c.side is None:
-            continue
-        b = _strike_bucket(exposures, c.strike, dollarized=spot is not None)
-        leg = c.side.lower()
-        oi, mult, delta, gamma = c.open_interest, c.multiplier, c.delta, c.gamma
-        b["volume_unreported"] += c.volume is None
-        _add_sent(b, f"{leg}_volume", c.volume)
-        b["oi_unreported"] += oi is None
-        _add_sent(b, f"{leg}_oi", oi)
-        if oi is None or mult is None:  # the contract's exposure terms are not known
-            missing += 1
-            for g in ("oi_mult", "gamma", "delta", "vanna"):
-                b[f"{leg}_{g}_unreported"] += 1
-            continue
-        missing += delta is None or gamma is None
-        used += 1
-        # each exposure term of the contract; None: its Greek was not sent (vanna: not priced)
-        terms = {
-            "oi_mult": oi * mult,
-            "delta": None if delta is None else delta * oi * mult,
-            "gamma": None if gamma is None else gamma * oi * mult,
-        }
-        if spot is not None:
-            spt = float(spot)
-            years = tte(str(c.expiration), c.settlement)
-            vanna = _contract_vanna(spt, c.strike, years, c.volatility)
-            terms.update(
-                dex_dollars=None if delta is None else delta * oi * mult * spt,
-                # $-GEX per 1% spot move
-                gex_1pct=None if gamma is None else gamma * oi * mult * spt * spt * 0.01,
-                vanna=None if vanna is None else vanna * 0.01 * oi * mult,  # per 1 vol point
+    rows = [c for c in contracts if c.strike is not None and c.side is not None]
+    at = {k: i for i, k in enumerate(dict.fromkeys(c.strike for c in rows))}
+    empty = _EMPTY_BUCKET[spot is not None]
+    exposures: dict[float, dict] = {k: dict(empty) for k in at}
+    if not rows:
+        return exposures, _diagnostics(len(contracts), 0, 0)
+    # each contract's slot: its strike's call leg (2i) or put leg (2i + 1)
+    slot = np.array([2 * at[c.strike] + (c.side != "CALL") for c in rows])
+    slots = 2 * len(at)
+    # Schwab's values as read (option_contract), one row per contract; not sent: NaN
+    oi, mult, volume, delta, gamma, iv, strike = np.array(
+        [
+            (c.open_interest, c.multiplier, c.volume, c.delta, c.gamma, c.volatility, c.strike)
+            for c in rows
+        ],
+        float,
+    ).T
+    known = ~(np.isnan(oi) | np.isnan(mult))  # the contract's exposure terms can be known
+    counted = known & (oi > 0)  # with open interest above 0 an unknown term is unreported
+    terms = {
+        "oi_mult": oi * mult,
+        "delta": delta * oi * mult,
+        "gamma": gamma * oi * mult,
+    }
+    if spot is not None:
+        spt = float(spot)
+        # T from the ONE valuation-T authority (time_et.time_to_expiry_years, intraday ACT/365
+        # to the session close) at the caller's one valuation instant `now`, per expiry
+        tte = functools.cache(
+            lambda expiration, settlement: time_to_expiry_years(
+                expiration, now=now, settlement_type=settlement, product=product
             )
-        _add_terms(b, leg, oi, terms)
-
-    for b in exposures.values():
+        )
+        years = np.array(
+            [np.nan if (t := tte(str(c.expiration), c.settlement)) is None else t for c in rows],
+            float,
+        )
+        sigma = iv / 100.0  # schwab_iv_to_sigma: 0 or less is no sigma
+        vanna = bs_vanna_array(spt, strike, years, sigma)
+        terms.update(
+            dex_dollars=delta * oi * mult * spt,
+            gex_1pct=gamma * oi * mult * spt * spt * 0.01,  # $-GEX per 1% spot move
+            vanna=vanna * 0.01 * oi * mult,  # per 1 vol point
+        )
+    sums = {
+        "volume": _slot_sums(slot, volume, slots, sticky=True),
+        "oi": _slot_sums(slot, oi, slots, sticky=True),
+        **{
+            term: _slot_sums(slot[known], value[known], slots, sticky=False)
+            for term, value in terms.items()
+        },
+    }
+    unreported = {
+        f"{g}_unreported": (
+            np.bincount(slot[~known], minlength=slots)
+            + (
+                np.bincount(slot[counted & np.isnan(terms[g])], minlength=slots)
+                if g in terms and g != "oi_mult"
+                else 0
+            )
+        ).tolist()
+        for g in ("oi_mult", "gamma", "delta", "vanna")
+    }
+    strike_of = slot // 2
+    per_strike = {
+        "volume_unreported": np.bincount(strike_of[np.isnan(volume)], minlength=len(at)).tolist(),
+        "oi_unreported": np.bincount(strike_of[np.isnan(oi)], minlength=len(at)).tolist(),
+    }
+    buckets = list(exposures.values())
+    for key, values in per_strike.items():
+        for b, v in zip(buckets, values, strict=True):
+            b[key] = v
+    for field, values in (*unreported.items(), *sums.items()):
+        call, put = f"call_{field}", f"put_{field}"
+        for i, b in enumerate(buckets):
+            b[call], b[put] = values[2 * i], values[2 * i + 1]
+    for b in buckets:
         _finish_bucket(b)
+    missing = int((~known).sum() + (known & (np.isnan(delta) | np.isnan(gamma))).sum())
+    return exposures, _diagnostics(len(contracts), int(known.sum()), missing)
 
-    return exposures, _diagnostics(total, used, missing)
 
+def _slot_sums(
+    slot: NDArray[np.int64], values: NDArray[np.float64], slots: int, *, sticky: bool
+) -> list[float | None]:
+    """Each slot's sum of `values`, added in order from 0.0 as one contract at a time adds it.
 
-def _add_terms(b: dict, leg: str, oi: float, terms: dict[str, float | None]) -> None:
-    """Add a contract's exposure terms to its leg's sums in strike bucket `b`.
-
-    A term not known (None) adds nothing, and with open interest above 0 its Greek is counted
-    unreported: the leg's sum of it is not known. Open interest 0 adds a known 0 whatever its
-    Greeks.
+    `sticky`: a value not sent (NaN) leaves its slot's sum not known (None); otherwise a term not
+    known adds nothing.
     """
-    for term, value in terms.items():
-        if value is not None:
-            b[f"{leg}_{term}"] += value
-    if oi > 0:
-        for g in ("gamma", "delta", "vanna"):
-            if g in terms and terms[g] is None:
-                b[f"{leg}_{g}_unreported"] += 1
+    sent = ~np.isnan(values)
+    # bincount adds each slot's values one at a time, in the order given
+    out = np.bincount(slot[sent], weights=values[sent], minlength=slots).tolist()
+    if sticky:
+        for s in np.unique(slot[~sent]).tolist():
+            out[s] = None
+    return out
 
 
 def _finish_bucket(b: dict) -> None:
@@ -444,19 +478,24 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
             if cur is None:
                 merged[strike] = dict(bucket)
                 continue
-            for k, v in bucket.items():
-                if k in _BUCKET_FLAGS:
-                    cur[k] = cur[k] or v
-                elif not k.startswith("net_"):
-                    cur[k] = None if v is None or cur[k] is None else cur[k] + v
+            for k in _BUCKET_FLAGS:
+                cur[k] = cur[k] or bucket[k]
+            for k in _BUCKET_SUMS:
+                v, now = bucket[k], cur[k]
+                cur[k] = None if v is None or now is None else now + v
     for b in merged.values():
         _finish_bucket(b)
     return merged, _diagnostics(total, used, missing)
 
 
 #: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is
-#: a sum, None when no contract reported it (_strike_bucket, compute_exposures_by_strike).
+#: a sum, None when no contract reported it (_empty_bucket, compute_exposures_by_strike).
 _BUCKET_FLAGS = frozenset({"dollarized"})
+#: the per-strike bucket fields that are sums: every field but the flags and the net fields, which
+#: _finish_bucket computes from the legs
+_BUCKET_SUMS = tuple(
+    k for k in _EMPTY_BUCKET[True] if k not in _BUCKET_FLAGS and not k.startswith("net_")
+)
 
 
 def overlay_streamed_contract_fields(
@@ -615,59 +654,6 @@ def total_gex_dollars_at_strike(bucket: dict) -> float | None:
 
 def net_gex_dollars_at_strike(bucket: dict) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
-
-
-def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
-    """Aggregate dealer vanna — how much dealer DELTA shifts per IV point.
-
-    Same naive dealer-sign model (dealer +calls/−puts): net vanna Δ-shares per 1.00 vol
-    = Σ net_vanna over the ONE exposures book (each strike's net_vanna from
-    compute_exposures_by_strike: exact Black-Scholes bs_vanna, per vol point, ·OI·mult);
-    dollars per vol-pt = × spot. Positive net: IV UP forces dealer delta up → they SELL
-    into vol spikes; IV DOWN (crush) → they BUY, the vanna-tailwind rally mechanic.
-    FAIL-CLOSED: None on an empty/valueless book or missing spot.
-    """
-    if not exposures or spot is None or spot <= 0:
-        return None
-    nets = [v for b in exposures.values() if (v := bucket_metric(b, "net_vanna")) is not None]
-    if not nets:
-        return None
-    net_shares_per_volpt = sum(nets)  # the book is already per vol point
-    return {
-        "net_vanna_dollars_per_volpt": net_shares_per_volpt * float(spot),
-        "net_vanna_shares_per_volpt": net_shares_per_volpt,
-    }
-
-
-def compute_zero_dte_gamma_share(
-    exposures_all: dict[float, dict], exposures_0dte: dict[float, dict]
-) -> float | None:
-    """% of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
-
-    share = sum(|net_gex_1pct|) over the 0DTE book / sum(|net_gex_1pct|) over the full book,
-    BOTH books from the ONE producer (compute_exposures_by_strike; the 0DTE book merges
-    exposure_books' same-day groups). High share
-    means today's walls/flip decay into the close (0DTE gamma dies at 4pm); low share means
-    the levels are carried by dated gamma and persist. FAIL-CLOSED: None when the full book
-    is empty or has no measurable gamma — never a fabricated 0%.
-    """
-    if not exposures_all:
-        return None
-    # a bucket MISSING its net-GEX field must not contribute a fabricated zero
-    # weight to a share-of-book ratio — absence WITHHOLDS the whole metric.
-    total = 0.0
-    for v in exposures_all.values():
-        x = bucket_metric(v, "net_gex_1pct")
-        if x is not None:
-            total += abs(x)
-    if total <= 0:
-        return None
-    zero = 0.0
-    for v in exposures_0dte.values():
-        x = bucket_metric(v, "net_gex_1pct")
-        if x is not None:
-            zero += abs(x)
-    return 100.0 * zero / total
 
 
 def _pick_strike_max_metric(

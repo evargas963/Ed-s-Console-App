@@ -165,7 +165,7 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
 def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
     """Every ticker's levels follow what Schwab pushes, not only the one on screen.
 
-    A tick queues a reprice of its ticker as of its receive time, whether a page shows it or not
+    A tick queues a reprice of its ticker, whether a page shows it or not
     (a page open on one, the pricing thread held while the ticks arrive, the queue read as it
     stands).
     """
@@ -175,8 +175,8 @@ def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
     gate = threading.Event()
     srv._chain_pricing.submit(gate.wait, 10)
     try:
-        srv._on_stream_tick("ZZNOTVIEWED", RTH_INSTANT)
-        srv._on_stream_tick("ZZVIEW", RTH_INSTANT + 1)
+        srv._on_stream_tick("ZZNOTVIEWED")
+        srv._on_stream_tick("ZZVIEW")
         with srv._chains_waiting_lock:
             waiting = dict(srv._chains_waiting)
     finally:
@@ -185,6 +185,6 @@ def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
         push_changes.unsubscribe(page)
         push_changes.bind(loop)
     assert waiting == {
-        "ZZNOTVIEWED": (srv.REPRICE, None, RTH_INSTANT, None),
-        "ZZVIEW": (srv.REPRICE, None, RTH_INSTANT + 1, None),
+        "ZZNOTVIEWED": (srv.REPRICE, None, None, None),
+        "ZZVIEW": (srv.REPRICE, None, None, None),
     }
