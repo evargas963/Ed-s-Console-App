@@ -24,7 +24,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server as srv
 import time_et
-from option_contract import read_chain
+from option_contract import GREEKS, LISTED, read_chain
 from schwab_client import flatten_chain_contracts
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
@@ -83,13 +83,31 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True, held=held))
 
 
-def _as_shown(contracts):
-    """`contracts` as the screen shows them: every chain field as sent, bid and ask the quote's.
+#: the chain fields the screens show, each as Schwab sent it (option_contract.chain_row)
+_SHOWN = (
+    "symbol",
+    "putCall",
+    "strikePrice",
+    "expirationDate",
+    "daysToExpiration",
+    "settlementType",
+    "openInterest",
+    "totalVolume",
+    "multiplier",
+    "volatility",
+    "nonStandard",
+    *GREEKS,
+    *LISTED,
+)
 
-    The chain's own bid and ask are not used (the stream's, or /quotes'); these captures carry no
-    /quotes answer, so they show none.
+
+def _as_shown(contracts):
+    """`contracts` as the screen shows them: the fields it shows as sent, bid and ask the quote's.
+
+    No other /chains field is sent. The chain's own bid and ask are not used (the stream's, or
+    /quotes'); these captures carry no /quotes answer, so they show none.
     """
-    return [{**c, "bid": None, "ask": None} for c in contracts]
+    return [{**{k: c[k] for k in _SHOWN if k in c}, "bid": None, "ask": None} for c in contracts]
 
 
 def _get(ticker, expiry=None):
