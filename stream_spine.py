@@ -377,6 +377,15 @@ class Subscription:
             await self.wake.wait()
 
 
+async def _end_at(stop: asyncio.Event, sub: Subscription) -> None:
+    """Put the end of a LOG reader's messages (None) into its queue once `stop` is set.
+
+    It goes behind every message delivered before the stop, so the reader takes those first.
+    """
+    await stop.wait()
+    sub.queue.put_nowait(None)
+
+
 class MessageBus:
     """Every Schwab message is published once.
 
@@ -1341,9 +1350,11 @@ class CaptureWriter:
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
         """Hand every bus message to the writer thread until `stop`.
 
-        Everything delivered before the stop is written and committed before this returns. Once
-        the thread is dead, each message is counted unrecorded instead of queued for a thread
-        that will not take it.
+        Each message is awaited as it comes, with no timer of its own; the stop goes into the
+        same queue, behind every message delivered before it (None, _end_at), so everything
+        delivered before the stop is written and committed before this returns. Once the thread
+        is dead, each message is counted unrecorded instead of queued for a thread that will not
+        take it.
         """
         thread = threading.Thread(
             target=self._thread, args=(self._q,), name="stream-capture-writer", daemon=True
@@ -1351,15 +1362,12 @@ class CaptureWriter:
         with self._lock:
             self.state = WRITER_RECORDING
         thread.start()
+        ending = asyncio.ensure_future(_end_at(stop, sub))
         try:
-            while not stop.is_set():
-                try:
-                    self._hand(await asyncio.wait_for(sub.get(), timeout=0.25))
-                except TimeoutError:
-                    continue
-            while not sub.queue.empty():
-                self._hand(await sub.get())
+            while (item := await sub.get()) is not None:
+                self._hand(item)
         finally:
+            ending.cancel()
             with self._lock:  # a dead thread takes no stop message
                 if self.state != WRITER_DEAD:
                     self._q.put(None)
