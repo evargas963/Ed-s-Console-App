@@ -256,16 +256,17 @@ jobs:
           p4, p6 = stats(socket.AF_INET), stats(socket.AF_INET6)
           nxt, nsnap, nroutine, fails = time.monotonic() + 1, 0.0, time.monotonic() + 30, 0
           while time.monotonic() < end:
-              s = socket.socket()
-              try:
-                  s.bind(("127.0.0.1", 0))
-              except OSError as e:
-                  fails += 1
-                  print("### PORT REFUSED %s %r" % (stamp(), e), flush=True)
-                  if time.monotonic() >= nsnap:
-                      snap("port refused"); nsnap = time.monotonic() + 2
-              finally:
-                  s.close()
+              for addr in ("127.0.0.1", "0.0.0.0"):
+                  s = socket.socket()
+                  try:
+                      s.bind((addr, 0))
+                  except OSError as e:
+                      fails += 1
+                      print("### PORT REFUSED %s %s %r" % (stamp(), addr, e), flush=True)
+                      if time.monotonic() >= nsnap:
+                          snap("port refused"); nsnap = time.monotonic() + 2
+                  finally:
+                      s.close()
               now = time.monotonic()
               if now >= nxt:
                   s4, s6 = stats(socket.AF_INET), stats(socket.AF_INET6)
@@ -279,10 +280,28 @@ jobs:
               time.sleep(0.05)
           PROBE
           python "$RUNNER_TEMP/ports_probe.py" 2400 > ports_probe.txt 2>&1 &
+          probe_pid=$!
+          # rows of an ETW CSV whose fields carry a failure status, by event, process and status
+          cat > "$RUNNER_TEMP/etw_status.py" <<'ETW'
+          import collections, csv, re, sys
+          WANT = re.compile(r"0x[cC]0000(09[aA]|209|206)|10055|NO_BUFFER|INSUFFICIENT|TOO_MANY", re.I)
+          by, hits, total = collections.Counter(), [], 0
+          with open(sys.argv[1], newline="", encoding="utf-8", errors="replace") as f:
+              for row in csv.reader(f):
+                  total += 1
+                  if len(row) < 10: continue
+                  st = [x.strip() for x in row[19:] if re.fullmatch(r"\s*0x[cC8][0-9a-fA-F]{7}\s*", x)]
+                  by[(row[0].strip(), row[2].strip(), row[9].strip(), ",".join(st[:2]))] += 1
+                  line = ",".join(x.strip() for x in row)
+                  if WANT.search(line) and len(hits) < 60: hits.append(line[:500])
+          print("rows", total)
+          for k, n in by.most_common(40): print("%8d %s" % (n, k))
+          print("--- rows naming an out-of-resources status")
+          for h in hits: print(h)
+          ETW
           # Windows' own TCP/IP and Winsock events at warning level and above, with the process
           MSYS_NO_PATHCONV=1 logman start tcpwarn -p Microsoft-Windows-TCPIP 0xffffffffffffffff 0x3 -o tcpwarn.etl -ets -max 256
-          MSYS_NO_PATHCONV=1 logman start afdwarn -p Microsoft-Windows-Winsock-AFD 0xffffffffffffffff 0x3 -o afdwarn.etl -ets -max 256
-          probe_pid=$!
+          MSYS_NO_PATHCONV=1 logman start afdwarn -p Microsoft-Windows-Winsock-AFD 0xffffffffffffffff 0x3 -o afdwarn.etl -ets -max 512
           rc=0
           for pass in 1 2 3 4 5 6 7 8 9 10; do
             echo "=== pass $pass starts $(date -u +%H:%M:%S)"
@@ -294,18 +313,16 @@ jobs:
             fi
           done
           kill $probe_pid 2>/dev/null || true
-          MSYS_NO_PATHCONV=1 logman stop tcpwarn -ets
-          MSYS_NO_PATHCONV=1 logman stop afdwarn -ets
+          mkdir -p kept-failures && cp ports_probe.txt kept-failures/ || true
+          MSYS_NO_PATHCONV=1 logman stop tcpwarn -ets || true
+          MSYS_NO_PATHCONV=1 logman stop afdwarn -ets || true
           for t in tcpwarn afdwarn; do
-            MSYS_NO_PATHCONV=1 tracerpt $t.etl -o $t.csv -of CSV -y > /dev/null
-            echo "=== $t: events by name, type and process"
-            pwsh -NoProfile -Command "\$r = Import-Csv $t.csv; \$r | Group-Object { \$_.'Event Name'.Trim() + ' / ' + \$_.Type.Trim() + ' / pid ' + \$_.PID.Trim() } | Sort-Object Count -Descending | Select-Object -First 40 Count, Name | Format-Table -AutoSize | Out-String -Width 250"
-            echo "=== $t: first 60 rows"
-            head -c 30000 $t.csv | head -60 | cut -c1-600
-            cp $t.csv kept-failures/ 2>/dev/null || { mkdir -p kept-failures && cp $t.csv kept-failures/; }
+            MSYS_NO_PATHCONV=1 tracerpt $t.etl -o $t.csv -of CSV -y > /dev/null || true
+            echo "=== $t: events by name, id, process and status"
+            python "$RUNNER_TEMP/etw_status.py" $t.csv || true
+            echo "=== $t: first 12 rows"
+            head -12 $t.csv | cut -c1-700 || true
           done
-          echo "=== process names"
-          tasklist /fo csv /nh | head -80
           echo "=== Windows System log: Tcpip 4227 / 4231 since the job began"
           pwsh -NoProfile -Command 'Get-WinEvent -FilterHashtable @{LogName="System"; ProviderName="Tcpip"; StartTime=(Get-Date).AddHours(-2)} -ErrorAction Ignore | Where-Object { $_.Id -in 4227,4231 } | ForEach-Object { "$($_.TimeCreated.ToUniversalTime().ToString("HH:mm:ss.fff")) Tcpip $($_.Id)" }'
           netsh int ipv4 show dynamicport tcp
@@ -314,7 +331,6 @@ jobs:
           grep -E "^###" ports_probe.txt | head -400
           echo "=== probe: per-second counters"
           grep -v -E "^###" ports_probe.txt
-          mkdir -p kept-failures && cp ports_probe.txt kept-failures/
           exit $rc
 
       - name: Run the full pytest suite on Windows
