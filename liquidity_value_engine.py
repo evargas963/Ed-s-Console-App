@@ -11,6 +11,7 @@ All calculations derived from bars; no Schwab-specific logic.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import logging
 import struct
@@ -356,92 +357,120 @@ def build_premarket_snapshot(
     helper runs here. Absent stays absent: a family missing from the snapshot is missing here,
     never replaced by spot, zero or a neighbouring level.
     """
-    prev, over, _orb, _poc, _vah, _val, _vwap, _bands = _phase2a_families_from_canonical(canonical)
-
-    levels = []
-    if prev.get("pdh") is not None:
-        levels.append((prev["pdh"], "PDH"))
-    if prev.get("pd_vah") is not None:
-        levels.append((prev["pd_vah"], "PD_VAH"))
-    if prev.get("pd_poc") is not None:
-        levels.append((prev["pd_poc"], "PD_POC"))
-    if prev.get("pd_val") is not None:
-        levels.append((prev["pd_val"], "PD_VAL"))
-    if prev.get("pdl") is not None:
-        levels.append((prev["pdl"], "PDL"))
-    if prev.get("pdc") is not None:
-        levels.append((prev["pdc"], "PDC"))
-    if over.get("overnight_high") is not None:
-        levels.append((over["overnight_high"], "OVERNIGHT_HIGH"))
-    if over.get("overnight_low") is not None:
-        levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
-
-    clusters = cluster_price_levels_into_zones(levels, config)
-
+    levels = _held_levels(canonical, PREMARKET_LEVELS)
+    families = {PHASE2A_LEVEL_IDS[lid][0] for _price, lid in levels}
+    pdh, pdl = canonical.price("PDH"), canonical.price("PDL")
     zones = []
-    for lo, hi, mid, tags, source_pairs in clusters:
-        zt = ZoneType.RESISTANCE_LIQUIDITY
-        if "PDL" in str(tags) or "PD_VAL" in str(tags) or "OVERNIGHT_LOW" in str(tags):
-            zt = ZoneType.SUPPORT_LIQUIDITY
-        elif "PD_POC" in str(tags) or "PDC" in str(tags):
-            zt = ZoneType.PIVOT_VALUE
-        sl = [{"label": t, "value": p} for p, t in source_pairs]
-        z = Zone(
-            zone_type=zt,
-            zone_low=lo,
-            zone_high=hi,
-            zone_mid=mid,
-            source_levels=sl,
-            source_tags=tags,
-            confluence_score=len(tags),
-            snapshot_type=SnapshotType.PREMARKET,
-            interpretation_notes="",
-        )
-        zones.append(z)
-
-    # Canonical taxonomy: downside extremes -> low_extreme; PDL/VAL ->
-    # support_liquidity; POC/balance -> pivot_value; PDH/overnight high -> resistance_liquidity.
-    # Notes state WHERE the level came from — never that stops rest there or that price is drawn
-    # to it.
-    out_zones = []
-    if prev and over:
-        pdh, pdl = prev.get("pdh"), prev.get("pdl")
-        for z in zones:
-            tags_str = " ".join(z.source_tags)
-            if pdl is not None and z.zone_low < pdl * 0.995:
-                z.zone_type = ZoneType.LOW_EXTREME
-                z.interpretation_notes = "Extreme low, below the prior-day low"
-            elif "PDH" in tags_str or "OVERNIGHT_HIGH" in tags_str:
-                if "PD_POC" not in tags_str and "PDC" not in tags_str:
-                    z.zone_type = ZoneType.RESISTANCE_LIQUIDITY
-                    z.interpretation_notes = "Overhead structure at the prior-day high"
-            elif "OVERNIGHT_LOW" in tags_str and "PDL" not in tags_str and "PD_VAL" not in tags_str:
-                z.zone_type = ZoneType.LOW_EXTREME
-                z.interpretation_notes = "Extreme low of the overnight window"
-            elif "PDL" in tags_str or "PD_VAL" in tags_str:
-                if "PD_POC" not in tags_str and "PDC" not in tags_str:
-                    z.zone_type = ZoneType.SUPPORT_LIQUIDITY
-                    z.interpretation_notes = "Underside structure at the prior-day low"
-            elif "PD_POC" in tags_str or "PDC" in tags_str or "PD_VAL" in tags_str:
-                z.zone_type = ZoneType.PIVOT_VALUE
-                z.interpretation_notes = "Fair value reference from prior day POC/close"
-            elif pdh is not None and z.zone_high >= pdh * 0.998:
-                z.zone_type = ZoneType.RESISTANCE_LIQUIDITY
-                z.interpretation_notes = "Overhead structure, above the prior-day high"
-            elif pdl is not None and z.zone_low <= pdl * 1.002:
-                z.zone_type = ZoneType.SUPPORT_LIQUIDITY
-                z.interpretation_notes = "Underside structure at the prior-day low"
-            out_zones.append(z)
-    else:
-        out_zones = zones
-
+    for cluster in cluster_price_levels_into_zones(levels, config):
+        lo, hi, _mid, tags, _source_pairs = cluster
+        if {"prior_day", "overnight"} <= families:
+            zone_type, notes = _place_premarket_cluster(tags, lo, hi, pdh, pdl)
+        else:
+            zone_type, notes = _premarket_type_by_tags(tags), ""
+        zones.append(_zone(cluster, zone_type, notes, SnapshotType.PREMARKET))
     return SnapshotOutput(
         ticker=ticker,
         session_date=session_date.isoformat(),
         snapshot_type=SnapshotType.PREMARKET,
-        zones=out_zones,
+        zones=zones,
         summary=None,
     )
+
+
+#: the levels a premarket snapshot clusters, in order
+PREMARKET_LEVELS = (
+    "PDH",
+    "PD_VAH",
+    "PD_POC",
+    "PD_VAL",
+    "PDL",
+    "PDC",
+    "OVERNIGHT_HIGH",
+    "OVERNIGHT_LOW",
+)
+#: the levels a live snapshot clusters, in order (the option levels and spot follow them)
+LIVE_LEVELS = (
+    "PDH",
+    "PD_VAH",
+    "PD_POC",
+    "ORB_HIGH",
+    "ORB_MID",
+    "ORB_LOW",
+    "TODAY_VAH",
+    "VWAP_P1",
+    "VWAP",
+    "TODAY_POC",
+    "VWAP_M1",
+    "TODAY_VAL",
+    "PD_VAL",
+    "PDL",
+    "OVERNIGHT_HIGH",
+    "OVERNIGHT_LOW",
+)
+
+
+def _held_levels(canonical: PriceLevelSnapshot, level_ids: tuple) -> list[tuple[float, str]]:
+    """(price, id) of each of `level_ids` the snapshot holds, in order; one not held is left out.
+
+    Absent stays absent: never replaced by spot, zero or a neighbouring level.
+    """
+    return [(price, lid) for lid in level_ids if (price := canonical.price(lid)) is not None]
+
+
+def _zone(cluster: tuple, zone_type: ZoneType, notes: str, snapshot_type: SnapshotType) -> Zone:
+    """Return the zone of one cluster (cluster_price_levels_into_zones)."""
+    lo, hi, mid, tags, source_pairs = cluster
+    return Zone(
+        zone_type=zone_type,
+        zone_low=lo,
+        zone_high=hi,
+        zone_mid=mid,
+        source_levels=[{"label": t, "value": p} for p, t in source_pairs],
+        source_tags=tags,
+        confluence_score=len(tags),
+        snapshot_type=snapshot_type,
+        interpretation_notes=notes,
+    )
+
+
+def _premarket_type_by_tags(tags: list[str]) -> ZoneType:
+    """Return the zone type a premarket cluster's tags alone give."""
+    if "PDL" in tags or "PD_VAL" in tags or "OVERNIGHT_LOW" in tags:
+        return ZoneType.SUPPORT_LIQUIDITY
+    if "PD_POC" in tags or "PDC" in tags:
+        return ZoneType.PIVOT_VALUE
+    return ZoneType.RESISTANCE_LIQUIDITY
+
+
+def _place_premarket_cluster(
+    tags: list[str], zone_low: float, zone_high: float, pdh: float | None, pdl: float | None
+) -> tuple[ZoneType, str]:
+    """Return a premarket cluster's zone type and note, placed against the prior day's range.
+
+    Canonical taxonomy: downside extremes -> low_extreme; PDL/VAL -> support_liquidity;
+    POC/balance -> pivot_value; PDH/overnight high -> resistance_liquidity. Notes state WHERE the
+    level came from -- never that stops rest there or that price is drawn to it.
+    """
+    high = "PDH" in tags or "OVERNIGHT_HIGH" in tags
+    low = "PDL" in tags or "PD_VAL" in tags
+    value = "PD_POC" in tags or "PDC" in tags
+    if pdl is not None and zone_low < pdl * 0.995:
+        return ZoneType.LOW_EXTREME, "Extreme low, below the prior-day low"
+    if value and (high or low):  # a prior-day POC or close keeps the type its tags give
+        return _premarket_type_by_tags(tags), ""
+    if high:
+        return ZoneType.RESISTANCE_LIQUIDITY, "Overhead structure at the prior-day high"
+    if "OVERNIGHT_LOW" in tags and not low:
+        return ZoneType.LOW_EXTREME, "Extreme low of the overnight window"
+    if low:
+        return ZoneType.SUPPORT_LIQUIDITY, "Underside structure at the prior-day low"
+    if value:
+        return ZoneType.PIVOT_VALUE, "Fair value reference from prior day POC/close"
+    if pdh is not None and zone_high >= pdh * 0.998:
+        return ZoneType.RESISTANCE_LIQUIDITY, "Overhead structure, above the prior-day high"
+    if pdl is not None and zone_low <= pdl * 1.002:
+        return ZoneType.SUPPORT_LIQUIDITY, "Underside structure at the prior-day low"
+    return _premarket_type_by_tags(tags), ""
 
 
 def _classify_value_state_and_vwap_relation(
@@ -473,7 +502,7 @@ def _classify_value_state_and_vwap_relation(
     return value_state, vwap_relation, auction_interp
 
 
-def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
+def _classify_live_cluster(tags: list[str]) -> tuple[ZoneType, str]:
     """Map clustered level tags to zone type + note (live / fused playbook)."""
     ts = " ".join(tags)
     opt_markers = (
@@ -529,46 +558,6 @@ def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
     return ZoneType.PIVOT_VALUE, "Unclassified session zone"
 
 
-def _phase2a_families_from_canonical(canonical: PriceLevelSnapshot):
-    """Unpack the canonical snapshot into the family shapes, values UNCHANGED.
-
-    Absent stays absent: a level missing from the snapshot is missing here, never
-    replaced by zero, spot or a neighbouring level.
-    """
-    p = canonical.price
-    prev = {
-        k: v
-        for k, v in (
-            ("pdh", p("PDH")),
-            ("pdl", p("PDL")),
-            ("pdc", p("PDC")),
-            ("pd_poc", p("PD_POC")),
-            ("pd_vah", p("PD_VAH")),
-            ("pd_val", p("PD_VAL")),
-        )
-        if v is not None
-    }
-    over = {
-        k: v
-        for k, v in (
-            ("overnight_high", p("OVERNIGHT_HIGH")),
-            ("overnight_low", p("OVERNIGHT_LOW")),
-        )
-        if v is not None
-    }
-    orb = {
-        k: v
-        for k, v in (
-            ("orb_high", p("ORB_HIGH")),
-            ("orb_low", p("ORB_LOW")),
-            ("orb_mid", p("ORB_MID")),
-        )
-        if v is not None
-    }
-    bands = (p("VWAP_P1"), p("VWAP_M1"), p("VWAP_P2"), p("VWAP_M2"))
-    return (prev, over, orb, p("TODAY_POC"), p("TODAY_VAH"), p("TODAY_VAL"), p("VWAP"), bands)
-
-
 def build_live_snapshot(
     ticker: str,
     config: PlaybookConfig,
@@ -587,73 +576,16 @@ def build_live_snapshot(
     regular = _regular(session_date)
     if regular is None or now < regular[0]:
         return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
-    prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, _vwap_p2, _vwap_m2) = (
-        _phase2a_families_from_canonical(canonical)
-    )
-
-    levels: list[tuple[float, str]] = []
-    if prev.get("pdh") is not None:
-        levels.append((prev["pdh"], "PDH"))
-    if prev.get("pd_vah") is not None:
-        levels.append((prev["pd_vah"], "PD_VAH"))
-    if prev.get("pd_poc") is not None:
-        levels.append((prev["pd_poc"], "PD_POC"))
-    if orb.get("orb_high") is not None:
-        levels.append((orb["orb_high"], "ORB_HIGH"))
-    if orb.get("orb_mid") is not None:
-        levels.append((orb["orb_mid"], "ORB_MID"))
-    if orb.get("orb_low") is not None:
-        levels.append((orb["orb_low"], "ORB_LOW"))
-    if vah is not None:
-        levels.append((vah, "TODAY_VAH"))
-    if vwap_p1 is not None:
-        levels.append((vwap_p1, "VWAP_P1"))
-    if vwap is not None:
-        levels.append((vwap, "VWAP"))
-    if poc is not None:
-        levels.append((poc, "TODAY_POC"))
-    if vwap_m1 is not None:
-        levels.append((vwap_m1, "VWAP_M1"))
-    if val is not None:
-        levels.append((val, "TODAY_VAL"))
-    if prev.get("pd_val") is not None:
-        levels.append((prev["pd_val"], "PD_VAL"))
-    if prev.get("pdl") is not None:
-        levels.append((prev["pdl"], "PDL"))
-    if over.get("overnight_high") is not None:
-        levels.append((over["overnight_high"], "OVERNIGHT_HIGH"))
-    if over.get("overnight_low") is not None:
-        levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
-
-    for pair in extra_levels:
-        p, tag = pair[0], pair[1]
-        pf = float(p)
-        levels.append((pf, str(tag)))
-
-    clusters = cluster_price_levels_into_zones(levels, config)
-
+    levels = _held_levels(canonical, LIVE_LEVELS) + [
+        (float(pair[0]), str(pair[1])) for pair in extra_levels
+    ]
+    zones = [
+        _zone(cluster, *_classify_live_cluster(cluster[3]), SnapshotType.LIVE)
+        for cluster in cluster_price_levels_into_zones(levels, config)
+    ]
     value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
-        poc, prev.get("pd_poc"), vwap
+        canonical.price("TODAY_POC"), canonical.price("PD_POC"), canonical.price("VWAP")
     )
-
-    zones: list[Zone] = []
-    for lo, hi, mid, tags, source_pairs in clusters:
-        zt, notes = _classify_live_cluster(tags, orb)
-        sl = [{"label": t, "value": p} for p, t in source_pairs]
-        zones.append(
-            Zone(
-                zone_type=zt,
-                zone_low=lo,
-                zone_high=hi,
-                zone_mid=mid,
-                source_levels=sl,
-                source_tags=tags,
-                confluence_score=len(tags),
-                snapshot_type=SnapshotType.LIVE,
-                interpretation_notes=notes,
-            )
-        )
-
     summary = SnapshotSummary(
         value_state=value_state,
         vwap_relation=vwap_relation,
@@ -896,6 +828,39 @@ def _snapshot_input_fingerprint(
     return (ticker, session_date.isoformat(), bar_source, len(bars_norm), h.hexdigest())
 
 
+def _put_levels(
+    levels: dict[str, PriceLevelValue],
+    prices,
+    *,
+    producer: str,
+    window: str,
+    vendor_basis: str,
+    as_of: float | None,
+    generation: int,
+) -> None:
+    """Materialize each (level id, price) of `prices` into `levels`.
+
+    A price that is not a finite number is left out: absent stays absent.
+    """
+    for level_id, price in prices:
+        v = float_finite_or_none(price)
+        if v is None:
+            continue
+        family, scope, tier = PHASE2A_LEVEL_IDS[level_id]
+        levels[level_id] = PriceLevelValue(
+            level_id=level_id,
+            price=v,
+            family=family,
+            semantic_scope=scope,
+            evidence_tier=tier,
+            producer=producer,
+            window=window,
+            vendor_basis=vendor_basis,
+            as_of_ts_utc=as_of,
+            generation=generation,
+        )
+
+
 def build_price_level_snapshot(
     ticker: str,
     session_date: date,
@@ -927,27 +892,13 @@ def build_price_level_snapshot(
 
     as_of: float | None = max((b["_dt"].timestamp() for b in bars_norm), default=None)
 
-    basis = f"1m bars ({bar_source}); Schwab streamed bars"
-
-    def _put(level_id: str, price, *, producer: str, window: str, vendor_basis=basis) -> None:
-        if price is None:
-            return
-        v = float_finite_or_none(price)
-        if v is None:
-            return
-        family, scope, tier = PHASE2A_LEVEL_IDS[level_id]
-        levels[level_id] = PriceLevelValue(
-            level_id=level_id,
-            price=v,
-            family=family,
-            semantic_scope=scope,
-            evidence_tier=tier,
-            producer=producer,
-            window=window,
-            vendor_basis=vendor_basis,
-            as_of_ts_utc=as_of,
-            generation=generation,
-        )
+    put = functools.partial(
+        _put_levels,
+        levels,
+        vendor_basis=f"1m bars ({bar_source}); Schwab streamed bars",
+        as_of=as_of,
+        generation=generation,
+    )
 
     # ── prior day ────────────────────────────────────────────────────────────
     eng = get_previous_day_levels(bars_norm, prior, cfg)
@@ -957,22 +908,19 @@ def build_price_level_snapshot(
             {"family": "prior_day", "reason": "no Schwab daily candle held for a prior session"}
         )
     else:
+        producer = f"{_PRODUCER_NS}.get_previous_day_levels"
         window = f"{prior_date.isoformat()} RTH (most recent prior RTH session)"
-        for lid, key, sent_by in (
-            ("PDH", "pdh", DAILY_CANDLE_BASIS),
-            ("PDL", "pdl", DAILY_CANDLE_BASIS),
-            ("PDC", "pdc", DAILY_CANDLE_BASIS),
-            ("PD_POC", "pd_poc", basis),
-            ("PD_VAH", "pd_vah", basis),
-            ("PD_VAL", "pd_val", basis),
-        ):
-            _put(
-                lid,
-                eng.get(key),
-                producer=f"{_PRODUCER_NS}.get_previous_day_levels",
-                window=window,
-                vendor_basis=sent_by,
-            )
+        put(
+            (("PDH", eng["pdh"]), ("PDL", eng["pdl"]), ("PDC", eng["pdc"])),
+            producer=producer,
+            window=window,
+            vendor_basis=DAILY_CANDLE_BASIS,
+        )
+        put(
+            (("PD_POC", eng["pd_poc"]), ("PD_VAH", eng["pd_vah"]), ("PD_VAL", eng["pd_val"])),
+            producer=producer,
+            window=window,
+        )
         if eng["rth_bars"] < LEVELS_PRIOR_SESSION_MIN_BARS:
             degraded.append(
                 {
@@ -1011,25 +959,25 @@ def build_price_level_snapshot(
     # ── vwap + bands (one accumulation: the series IS the scalars' source) ───
     session_rth_vol_n = count_session_rth_positive_volume_bars(bars_norm, session_date)
     vwap_series = compute_session_vwap_series(bars_norm, session_date)
-    vwap_val = vwap_series[-1][1] if vwap_series else None
-    if vwap_val is None:
-        if session_rth_vol_n > 0:
-            vwap_abs_reason = "RTH volume bars present but session VWAP did not materialize"
-        else:
-            vwap_abs_reason = "no RTH volume for session VWAP in available bars"
-        families_absent.append({"family": "vwap", "reason": vwap_abs_reason})
+    if not vwap_series:
+        families_absent.append(
+            {
+                "family": "vwap",
+                "reason": (
+                    "RTH volume bars present but session VWAP did not materialize"
+                    if session_rth_vol_n > 0
+                    else "no RTH volume for session VWAP in available bars"
+                ),
+            }
+        )
     else:
-        _put(
-            "VWAP",
-            vwap_val,
+        # the curve's last point IS the served level and band
+        _t, vwap, p1, m1, p2, m2 = vwap_series[-1]
+        put(
+            (("VWAP", vwap), ("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)),
             producer=f"{_PRODUCER_NS}.compute_session_vwap_series",
             window=sess_window,
         )
-        p1, m1, p2, m2 = vwap_series[-1][2:]  # the curve's last point IS the served band
-        for lid, val in (("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)):
-            _put(
-                lid, val, producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window
-            )
     vwap_path = [(t, w) for t, w, _a, _b, _c, _d in vwap_series]
 
     # ── opening range ────────────────────────────────────────────────────────
@@ -1039,14 +987,15 @@ def build_price_level_snapshot(
             {"family": "opening_range", "reason": "no ORB bars in available tape for session"}
         )
     else:
-        orb_window = f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH"
-        for lid, key in (("ORB_HIGH", "orb_high"), ("ORB_LOW", "orb_low"), ("ORB_MID", "orb_mid")):
-            _put(
-                lid,
-                orb.get(key),
-                producer=f"{_PRODUCER_NS}.compute_opening_range",
-                window=orb_window,
-            )
+        put(
+            (
+                ("ORB_HIGH", orb["orb_high"]),
+                ("ORB_LOW", orb["orb_low"]),
+                ("ORB_MID", orb["orb_mid"]),
+            ),
+            producer=f"{_PRODUCER_NS}.compute_opening_range",
+            window=f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH",
+        )
 
     # ── overnight ────────────────────────────────────────────────────────────
     overnight = get_overnight_levels(bars_norm, session_date, prior_date)
@@ -1055,24 +1004,21 @@ def build_price_level_snapshot(
             {"family": "overnight", "reason": "no overnight-window bars in available tape"}
         )
     else:
-        overnight_window = (
-            f"{session_date.isoformat()} before the RTH open (no prior session)"
-            if prior_date is None
-            else f"{prior_date.isoformat()} RTH close -> {session_date.isoformat()} RTH open"
+        put(
+            (
+                ("OVERNIGHT_HIGH", overnight["overnight_high"]),
+                ("OVERNIGHT_LOW", overnight["overnight_low"]),
+            ),
+            producer=f"{_PRODUCER_NS}.get_overnight_levels",
+            window=(
+                f"{session_date.isoformat()} before the RTH open (no prior session)"
+                if prior_date is None
+                else f"{prior_date.isoformat()} RTH close -> {session_date.isoformat()} RTH open"
+            ),
         )
-        for lid, key in (("OVERNIGHT_HIGH", "overnight_high"), ("OVERNIGHT_LOW", "overnight_low")):
-            _put(
-                lid,
-                overnight.get(key),
-                producer=f"{_PRODUCER_NS}.get_overnight_levels",
-                window=overnight_window,
-            )
 
     # ── current-session value area ───────────────────────────────────────────
     profile = compute_volume_profile_levels(bars_norm, session_date, cfg)
-    poc, vah, val = (
-        (None, None, None) if profile is None else (profile.poc, profile.vah, profile.val)
-    )
     if profile is None:
         families_absent.append(
             {
@@ -1085,13 +1031,11 @@ def build_price_level_snapshot(
             }
         )
     else:
-        for lid, price in (("TODAY_POC", poc), ("TODAY_VAH", vah), ("TODAY_VAL", val)):
-            _put(
-                lid,
-                price,
-                producer=f"{_PRODUCER_NS}.compute_volume_profile_levels",
-                window=sess_window,
-            )
+        put(
+            (("TODAY_POC", profile.poc), ("TODAY_VAH", profile.vah), ("TODAY_VAL", profile.val)),
+            producer=f"{_PRODUCER_NS}.compute_volume_profile_levels",
+            window=sess_window,
+        )
 
     return PriceLevelSnapshot(
         ticker=tk,
