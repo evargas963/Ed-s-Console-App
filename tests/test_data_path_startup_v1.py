@@ -43,6 +43,7 @@ from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
     chain_messages,
 )
+from option_contract import read_chain
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.capture_store import store_capture
@@ -293,29 +294,19 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
     assert record.exc_info is not None and record.exc_info[0] is ForcedThreadError
 
 
-def test_a_market_follower_that_ends_on_an_error_carries_it_out():
+def test_a_chain_that_cannot_be_read_fails_where_the_sweep_reads_it():
     """Induced condition: SPY's 2026-09-22 same-day chain with one contract replaced by text.
 
-    Text, not a contract, so reading the chain raises. follow_market ends on that error.
+    Text, not a contract, so reading the chain raises, where it is read once: as the sweep puts
+    it on the bus (chain_messages), before any reader takes it.
     """
     fixture = json.loads(
         (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
     )
     contracts = [dict(c) for c in fixture["chain"]]
     contracts[0] = "not a contract"
-    bus = MessageBus()
-    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
-
-    async def go():
-        stop = asyncio.Event()
-        task = asyncio.create_task(daemon.follow_market(stop))
-        await asyncio.sleep(0)
-        for topic, msg in chain_messages("SPY", contracts, time_et.now(), None, None):
-            bus.publish(topic, msg)
-        await asyncio.wait_for(task, timeout=10)
-
     with pytest.raises(AttributeError, match="get"):
-        asyncio.run(go())
+        chain_messages("SPY", contracts, time_et.now(), None, None)
 
 
 def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
@@ -915,7 +906,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
 
     try:
         server._on_chain(
-            tk, contracts, CRWD.now.timestamp(), None, (CRWD.spot, CRWD.now.timestamp())
+            tk, read_chain(contracts), CRWD.now.timestamp(), None, (CRWD.spot, CRWD.now.timestamp())
         )
         server._chain_pricing.submit(lambda: None).result(timeout=60)
         before = server._gamma_surface_seq[tk]

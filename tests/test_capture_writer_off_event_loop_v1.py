@@ -10,11 +10,84 @@ from ticking, and every delivered message is still written before run() returns.
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 import threading
+from pathlib import Path
 
 import time_et
+from app.market_data.schwab.streaming import capture
 from stream_spine import LOG, CaptureWriter, MessageBus, quote_msg
+
+#: production's stream of 2026-10-05 14:00:00-14:00:03 CT (RTH): every LEVELONE_EQUITIES and
+#: LEVELONE_OPTIONS item Schwab sent, in receive order, as stored
+_MIX = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
+        encoding="utf-8"
+    )
+)
+_BURST = [
+    capture._message(m["service"], m["item"]["key"], m["item"], m["schwab_ts"])
+    for m in _MIX["messages"]
+    if m["service"] in ("LEVELONE_EQUITIES", "LEVELONE_OPTIONS")
+]
+
+
+class _TimerCountingLoop(asyncio.SelectorEventLoop):
+    """asyncio's own event loop, counting each timer scheduled on it (call_at); nothing else."""
+
+    timers = 0
+
+    def call_at(self, when, callback, *args, context=None):
+        self.timers += 1
+        return super().call_at(when, callback, *args, context=context)
+
+
+def _rows(path, table: str) -> int:
+    with sqlite3.connect(str(path)) as conn:
+        return conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+
+
+def test_the_writer_takes_each_message_with_no_timer_and_writes_all_delivered_before_the_stop(
+    tmp_path,
+):
+    """A real burst, 3 s of production's RTH stream (7,572 messages), through the real writer.
+
+    The writer awaited each message with a 0.25 s timeout to look at its stop: a timer made and
+    cancelled on the event loop for every message (2026-11-09: 26% of the program's interpreter
+    lock). It now awaits each one as it comes, and the stop follows the messages delivered
+    before it: none is scheduled, and the stop, set the moment the burst is published, still
+    leaves every one written and committed when run() returns.
+    """
+    writer = CaptureWriter(tmp_path / "cap.db")
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    loop = _TimerCountingLoop()
+
+    async def go() -> int:
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=stop))
+        await asyncio.sleep(0)  # the writer waits on its first message
+        before = loop.timers
+        for kind, msg in _BURST:
+            bus.publish(f"{kind}.{msg['symbol']}", msg)
+        while not sub.queue.empty():
+            await asyncio.sleep(0)  # the writer takes the burst
+        scheduled = loop.timers - before
+        for kind, msg in _BURST:  # a second burst, the stop set as it is delivered
+            bus.publish(f"{kind}.{msg['symbol']}", msg)
+        stop.set()
+        await task
+        return scheduled
+
+    try:
+        scheduled = loop.run_until_complete(go())
+    finally:
+        loop.close()
+    assert scheduled == 0, f"{scheduled} timers scheduled for {len(_BURST)} messages"
+    quotes = sum(kind == "quote" for kind, _m in _BURST)
+    assert _rows(tmp_path / "cap.db", "stream_quotes_raw") == 2 * quotes
+    assert _rows(tmp_path / "cap.db", "stream_options_quotes_raw") == 2 * (len(_BURST) - quotes)
 
 
 def _quote(i: int) -> dict:

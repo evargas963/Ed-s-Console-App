@@ -32,6 +32,7 @@ import server
 from option_contract import read_chain
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
+from tests.real_chains import CRWD, TSLA
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -72,7 +73,7 @@ def _clean():
         kept.pop(TK, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    server._last_feed_stamp = None
+    server._last_feed_stamp.clear()
 
 
 def _beat(ts: float, *, socket_open: bool = True, options: list[str] | None = None) -> None:
@@ -474,3 +475,52 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live_and_no_row_is_not_live():
     assert ofs.price_row(TK, at)["spot"] is None
     assert server.price_mark(TK, None, at)["spot_feed_live"] is True
     assert server.resolve_spot(TK, now=at) == (None, server.SPOT_SOURCE_NONE, None)
+
+
+def test_a_change_to_one_tickers_held_contracts_restamps_that_surface_alone():
+    """CRWD and TSLA priced (their real 2026-10-07 chains): only CRWD's held contracts change.
+
+    Only CRWD's heatmap is restamped (its stream state, its sequence). TSLA's levels, surface
+    included, are the very records they were, and CRWD's levels keep everything but the stamp:
+    nothing is repriced or rebuilt. The restamp had keyed on the whole held set, so any change
+    restamped every surface (2026-11-09: 423 option-rule changes, each of one ticker's
+    contracts).
+    """
+    names = (CRWD.ticker, TSLA.ticker)
+    for chain in (CRWD, TSLA):
+        at = chain.now.timestamp()
+        server._publish_levels(
+            chain.ticker, read_chain(chain.chain), at, chain_spot=(chain.spot, at), now=chain.now
+        )
+    crwd = [c["symbol"] for c in CRWD.chain]
+    at = max(CRWD.now.timestamp(), TSLA.now.timestamp())
+
+    def beat(options: list[str]) -> None:
+        lmp.record_feed_heartbeat(
+            daemon_status(at, schwab_socket_open=True, held={"LEVELONE_OPTIONS": options})
+        )
+        server.restamp_open_surfaces(at)
+
+    try:
+        beat(crwd[:1])
+        before = {tk: server.published_levels(tk) for tk in names}
+        beat(crwd[:2])
+        after = {tk: server.published_levels(tk) for tk in names}
+    finally:
+        with server._terrain_cache_lock:
+            for tk in names:
+                server._terrain_cache.pop(tk, None)
+    assert after[TSLA.ticker] is before[TSLA.ticker], "the other surface is not restamped"
+    old, new = before[CRWD.ticker], after[CRWD.ticker]
+    assert new.gamma_surface is not old.gamma_surface, "the changed surface is restamped"
+    assert new.gamma_surface["surface_seq"] > old.gamma_surface["surface_seq"]
+    assert (new.snap, new.chain, new.priced_chain) == (old.snap, old.chain, old.priced_chain)
+    assert new.snap is old.snap and new.chain is old.chain, "nothing repriced or rebuilt"
+    states = {
+        leg["symbol"]: leg["state"]
+        for cell in new.gamma_surface["cells"]
+        for col in cell["stream"]
+        for side, leg in col.items()
+        if side in ("call", "put")
+    }
+    assert [states[s] for s in crwd[:2]] == ["pending", "pending"], "held, no tick yet"

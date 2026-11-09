@@ -14,7 +14,9 @@ failed", tests/fixtures/real_schwab_field_number_replies_2026_10_12.json).
 STAND-INS: the login and a code-0 answer's message (Schwab's were not logged); the limit (`limits`,
 per service) a test sets; which symbols of a request past the limit Schwab keeps (the first ones);
 a SUBS whose highest field number is past the service's range refused whole (Schwab's refusals
-were of ranges and of single numbers); a data entry (`data`) sent once after an accepted SUBS.
+were of ranges and of single numbers); a data entry (`data`) sent once after an accepted SUBS;
+Schwab's heartbeat ({"notify": [{"heartbeat": "<ms>"}]}, Streamer API §1.3) every HEARTBEAT_SEC
+(its cadence was not logged).
 """
 
 from __future__ import annotations
@@ -46,12 +48,42 @@ HIGHEST_FIELD = {
 }
 
 
+#: how often the streamer sends its heartbeat
+HEARTBEAT_SEC = 1.0
+
+
 def refusal(service: str, limit: int, discarded: int) -> str:
     """Schwab's code-19 message, as logged on 2026-10-07 (two spaces before the parenthesis)."""
     return (
         "You've reached the maximum number of symbols allowed.  "
         f"({service}={limit}, DISCARDED={discarded})"
     )
+
+
+class _Outbox:
+    """One connection's frames, each delivered `lag` seconds after it was made, in order."""
+
+    def __init__(self, ws, every: float) -> None:
+        self.ws = ws
+        self.every = every  # how often the heartbeat is sent
+        self.lag = 0.0  # the login is answered at once
+        self.queue: asyncio.Queue = asyncio.Queue()
+
+    def send(self, frame: dict | None) -> None:
+        """Queue a frame; None closes the socket once every frame before it is sent."""
+        self.queue.put_nowait((time_et.elapsed() + self.lag, frame))
+
+    async def deliver(self) -> None:
+        while (item := await self.queue.get())[1] is not None:
+            if (wait := item[0] - time_et.elapsed()) > 0:
+                await asyncio.sleep(wait)
+            await self.ws.send(json.dumps(item[1]))
+        await self.ws.close()
+
+    async def beat(self) -> None:
+        while True:
+            await asyncio.sleep(self.every)
+            self.send({"notify": [{"heartbeat": str(int(time_et.now() * 1000))}]})
 
 
 class LocalStreamer:
@@ -61,10 +93,22 @@ class LocalStreamer:
     frames it answered (`answers`). SUBS/ADD hold the keys asked for up to `limits[service]`;
     past it, the request is answered twice: code 19 (refusal) and then code 24
     ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them.
+
+    Each frame carries the time it was made; every frame after the login's answer reaches the
+    daemon `lag` seconds after it, in order, as frames reach a reader that runs that far behind
+    Schwab's stream. Its heartbeat is sent every `beat` seconds.
     """
 
-    def __init__(self, limits: dict[str, int], data: dict[str, dict]):
+    def __init__(
+        self,
+        limits: dict[str, int],
+        data: dict[str, dict],
+        lag: float = 0.0,
+        beat: float = HEARTBEAT_SEC,
+    ):
         self.limits = dict(limits)
+        self.lag = lag
+        self.beat = beat
         #: per service, a data entry Schwab sent, streamed once a SUBS on that service is accepted
         self.data = dict(data)
         self.requests: list = []
@@ -88,24 +132,38 @@ class LocalStreamer:
         ready.wait(10)
 
     async def _client(self, ws) -> None:
-        async for raw in ws:
-            for req in json.loads(raw)["requests"]:
-                self.requests.append(req)
-                frames = self.answer(req)
-                for frame in frames:
-                    self.answers.append(frame)
-                    await ws.send(json.dumps(frame))
-                if (
-                    req["command"] == "LOGOUT"
-                ):  # "Streamer will close the connection" (Streamer API §1)
-                    await ws.close()
-                    return
-                if (
-                    req["command"] == "SUBS"
-                    and req["service"] in self.data
-                    and frames[-1]["response"][0]["content"]["code"] == 0
-                ):
-                    await ws.send(json.dumps({"data": [self.data[req["service"]]]}))
+        out = _Outbox(ws, self.beat)
+        tasks = [asyncio.create_task(out.deliver()), asyncio.create_task(out.beat())]
+        try:
+            async for raw in ws:
+                for req in json.loads(raw)["requests"]:
+                    if not self._take(req, out):  # "Streamer will close the connection" (§1)
+                        await asyncio.wait([tasks[0]])
+                        return
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _take(self, req: dict, out: _Outbox) -> bool:
+        """Answer one request; False once it is the LOGOUT, after which the socket closes."""
+        self.requests.append(req)
+        frames = self.answer(req)
+        for frame in frames:
+            self.answers.append(frame)
+            out.send(frame)
+        if req["command"] == "LOGIN":
+            out.lag = self.lag
+        if req["command"] == "LOGOUT":
+            out.send(None)
+            return False
+        if (
+            req["command"] == "SUBS"
+            and req["service"] in self.data
+            and frames[-1]["response"][0]["content"]["code"] == 0
+        ):
+            out.send({"data": [self.data[req["service"]]]})
+        return True
 
     def answer(self, req: dict) -> list[dict]:
         service, command = req["service"], req["command"]
