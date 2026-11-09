@@ -60,6 +60,9 @@ os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
 
+#: fixtures several test files share, loaded by pytest after this module has set the environment
+pytest_plugins = ["tests.liquidity_friday"]
+
 
 def pytest_configure() -> None:
     """The import-time runtime boundary holds in the controller and every xdist worker."""
