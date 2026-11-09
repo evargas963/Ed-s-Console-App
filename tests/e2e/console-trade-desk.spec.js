@@ -9,6 +9,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { watchRequests } = require('./fixtures/settled');
 
 const {
   EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, LIVE_COMP, MICRO, LIQ, STRIKES, BARS, intercept, watchErrors,
@@ -47,6 +48,7 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   await intercept(page);
   const asked = [];
   page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) asked.push(u.split('/api/')[1]); });
+  const requests = watchRequests(page);
   let releaseBars;
   const barsHeld = new Promise((r) => { releaseBars = r; });
   await page.route(/\/api\/bars1m\?.*tf=15/, async (route) => { await barsHeld;
@@ -55,7 +57,7 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
     localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '5'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
-  await page.waitForTimeout(500);
+  await requests.settled();   // every read the load made has gone out and landed
   const count = (re) => asked.filter((u) => re.test(u)).length;
   for (const re of [/^levels\?/, /^desk\/events\?/, /^terrain\?/, /^liquidity-snapshot\?/, /^terrain\/strikes\?/, /^forces\?/,
     /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/, /^bars1m\?.*tf=1&/]) expect(count(re), String(re)).toBe(1);
@@ -68,7 +70,7 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers.length)).toBe(0);
   releaseBars();
   await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe('15');
-  await page.waitForTimeout(500);
+  await requests.settled();   // every read the switch made has gone out and landed
   expect(asked.filter((u) => !/^(changes|streaming\/)/.test(u)).map((u) => u.split('?')[0]).sort())
     .toEqual(['bars1m', 'desk/events', 'levels']);
   expect(errs).toEqual([]);
@@ -186,6 +188,7 @@ test('Desk: an offline price keeps its last trade time on the map', async ({ pag
 test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'s LIVE', async ({ page }) => {
   // the daemon's own rows for SPY's and $SPX's real messages in regular hours (tests/test_order_flow_book_payload_v1.py)
   const ROWS = require(path.join(__dirname, 'fixtures', 'price_rows_live.json'));
+  const requests = watchRequests(page);
   await intercept(page);
   // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row, and SPY's at 12 s
   await mockPriceSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 12000, row: ROWS.SPY }]);
@@ -201,7 +204,7 @@ test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'
   // the header, even after the map repaints (the console's flow change re-reads and redraws it)
   await expect(page.locator('#tdmIdxSPX')).toContainText('last trade ' + ROWS['$SPX'].trade_time_ct, { timeout: 10000 });
   await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
-  await page.waitForTimeout(500);
+  await requests.settled();   // the flow change's reads have landed and the map has repainted
   // read once, before SPY's row at 12 s ends the outage (no retrying: a retry would wait for it)
   expect(await page.locator('#hFeed').textContent()).toBe('OFFLINE');
   const trust = await page.locator('#tdmTrust').textContent();
@@ -461,9 +464,11 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(span).toBeGreaterThan(before * 1.5);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.autoScale)).toBe(false);
     const widened = await span();
+    const range = () => page.evaluate(() => { const c = window.EdTradeDeskMap.state().chart; return [c.from, c.to]; });
+    const times = await range();
     await page.mouse.move(box.x + box.width / 3, box.y + box.height / 2);    // on the plot: time, not price
     await page.mouse.wheel(0, 400);
-    await page.waitForTimeout(200);
+    await expect.poll(range).not.toEqual(times);                              // the wheel has been taken: time moved
     expect(await span()).toBeCloseTo(widened, 6);
   });
 
@@ -485,8 +490,10 @@ test.describe('Trade Desk renders served values', () => {
     await intercept(page);
     const barReads = [];
     page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
+    const requests = watchRequests(page);
     await mockPriceSocket(page, []);            // the daemon answers what SPY is (its served key)
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
+    await page.clock.install();                 // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
     const legend = page.locator('#tdmChart .tvc-legend');
@@ -503,7 +510,9 @@ test.describe('Trade Desk renders served values', () => {
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
       spot_disp: null, feed_live: false, feed_label: 'OFFLINE', trade_age_text: null } })));
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
-    await page.waitForTimeout(1500);
+    await requests.settled();                   // the ticks' own work, and any read it made, is done
+    await page.clock.runFor(1500);              // every page timer due in 1.5 s has run
+    await requests.settled();                   // and every read those made
     expect(barReads.length).toBe(before);
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'liquidity' } })));
     await expect.poll(() => barReads.length).toBeGreaterThan(before);
@@ -648,15 +657,16 @@ test.describe('Trade Desk renders served values', () => {
       const p = new URL(r.url()).pathname;
       if (['/api/order-flow/microstructure', '/api/levels', '/api/terrain', '/api/liquidity-snapshot', '/api/terrain/strikes'].includes(p)) reads.push(p);
     });
+    const requests = watchRequests(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
     await expect(body).toContainText('Max pain 770.00');
     const push = async (kind) => {
-      await page.waitForTimeout(300);                    // the first read has settled
+      await requests.settled();                          // the reads before have landed
       reads.length = 0;
       await page.evaluate((k) => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: k } })), kind);
       await expect.poll(() => reads.length).toBeGreaterThan(0);
-      await page.waitForTimeout(300);                    // every read that push makes has gone out
+      await requests.settled();                          // every read that push makes has gone out
       return [...new Set(reads)].sort();
     };
     // each read serves values the server derives at read time (the live price, each level's
@@ -667,6 +677,7 @@ test.describe('Trade Desk renders served values', () => {
   });
 
   test('Right Now: a new scope\'s strike window stays drawn through the next push', async ({ page }) => {
+    const requests = watchRequests(page);
     await intercept(page);
     const wider = Object.assign({}, STRIKES, { spot_strike: 791,
       today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
@@ -682,7 +693,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.evaluate(() => window.EdShell.setScope('wider'));
     await expect(strikes).toHaveText(['792', '791', '790']);
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
-    await page.waitForTimeout(600);                                   // the push's reads have landed
+    await requests.settled();                                         // the push's reads have landed
     await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
   });
 
@@ -708,11 +719,13 @@ test.describe('Trade Desk renders served values', () => {
   });
 
   test('Right Now: a read cut short by a venue switch never draws the old venue', async ({ page }) => {
+    const requests = watchRequests(page);
     await intercept(page);
-    let slow = false, inFlight = 0;
+    let slow = false, inFlight = 0, release;
+    const held = new Promise((r) => { release = r; });
     await page.route('**/api/order-flow/microstructure?**', async (route) => {
       const venue = new URL(route.request().url()).searchParams.get('venue');
-      if (slow && venue === 'NYSE_BOOK') { inFlight += 1; await new Promise((r) => setTimeout(r, 800)); }
+      if (slow && venue === 'NYSE_BOOK') { inFlight += 1; await held; }   // answered when the test says
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, MICRO, { venue: venue })) });
     });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
@@ -730,7 +743,8 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => inFlight).toBe(1);
     await page.evaluate(() => document.querySelector('.bookvenue [data-venue="NASDAQ_BOOK"]').click());   // ... cut short
     await expect(body).toContainText('(NASDAQ_BOOK, depth 5)');
-    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
+    release();                                                       // the cut-short read's answer goes now
+    await requests.settled();                                        // and the page is done with it
     expect(await page.evaluate(() => window.__draws)).toEqual(['(NASDAQ_BOOK']);
   });
 
@@ -756,6 +770,7 @@ test.describe('Trade Desk renders served values', () => {
   });
 
   test('Right Now: a read cut short by a scope change never draws', async ({ page }) => {
+    const requests = watchRequests(page);
     await intercept(page);
     const wider = Object.assign({}, STRIKES, { spot_strike: 791,
       today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
@@ -763,9 +778,10 @@ test.describe('Trade Desk renders served values', () => {
     await page.route('**/api/terrain/strikes?**', (route) => route.request().url().includes('scope=wider')
       ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(wider) })
       : route.fallback());
-    let slow = false, inFlight = 0;
+    let slow = false, inFlight = 0, release;
+    const held = new Promise((r) => { release = r; });
     await page.route('**/api/levels?**', async (route) => {
-      if (slow) { inFlight += 1; await new Promise((r) => setTimeout(r, 800)); }   // the push's read is in flight ...
+      if (slow) { inFlight += 1; await held; }   // the push's read is in flight, answered when the test says ...
       route.fallback();
     });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
@@ -786,7 +802,8 @@ test.describe('Trade Desk renders served values', () => {
     slow = false;
     await page.evaluate(() => window.EdShell.setScope('wider'));     // ... and the scope change cuts it short
     await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['792', '791', '790']);
-    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
+    release();                                                       // the cut-short read's answer goes now
+    await requests.settled();                                        // and the page is done with it
     expect(await page.evaluate(() => window.__draws)).toEqual(['792,791,790 | spot 771.30']);
   });
 

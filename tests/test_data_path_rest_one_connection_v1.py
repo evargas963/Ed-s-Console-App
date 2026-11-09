@@ -25,7 +25,6 @@ import time
 from datetime import datetime
 
 import schwab_client as sc
-import time_et
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, verbatim_msg
@@ -312,20 +311,15 @@ def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a
         tmp_path, schwab, _et("2026-10-03 12:00")
     )  # Saturday
     stop = threading.Event()
-    worker = threading.Thread(target=sweep.work, args=(client, stop), daemon=True)
     try:
-        worker.start()
-        deadline = time_et.elapsed() + 10
-        while (
-            len({t for t, m in published if "contracts" in m}) < 2 and time_et.elapsed() < deadline
-        ):
-            time.sleep(0.05)
+        # the passes of the sweep's thread (ChainSweep.work), until one asks for nothing: then
+        # the thread waits, and its next pass asks for nothing again
+        for _ in range(10):
+            if not sweep.step(client, stop):
+                break
         settled = len(schwab.requests)
-        time.sleep(1.5)
-        idle = len(schwab.requests) == settled
+        idle = not sweep.step(client, stop) and len(schwab.requests) == settled
     finally:
-        stop.set()
-        worker.join(10)
         schwab.close()
     chains = [(q["symbol"], q["fromDate"]) for q in schwab.asked(CHAIN)]
     assert chains == [("SPY", "2026-11-20"), ("TSLA", "2026-10-09"), ("TSLA", "2026-10-09")]

@@ -26,6 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 import live_market_plane as lmp
+import live_price_rows
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
@@ -49,6 +50,7 @@ PRICES = {"MRVL": _MRVL["full"]["underlying"]["last"], "SPY": _SPY["spot"]}
 MRVL_CLOSE = _MRVL["full"]["underlying"]["close"]
 CAPTURED = _MRVL["captured_utc"]
 L1, BOOK = "LEVELONE_OPTIONS", "OPTIONS_BOOK"
+_MARK = "ZZTAKEN"  # a ticker no test streams: its price marks what the follower has taken
 
 
 def _expires(ct: dict) -> float:
@@ -117,6 +119,7 @@ class _Market:
         self.client = self.rest.client(tmp_path)
         self.bus = MessageBus()
         self.daemon = capture.Daemon(self.bus, HealthRegistry(), watchlist, clock=clock)
+        self.marks = 0  # the prices taken() has published
 
     def chain(self, tk: str, ts: float = CAPTURED, contracts: list[dict] | None = None) -> None:
         for topic, msg in chain_messages(
@@ -131,6 +134,17 @@ class _Market:
                 symbol=tk, last=last, src="schwab_l1", native={"key": tk, "LAST_PRICE": last}
             ),
         )
+
+    async def taken(self) -> None:
+        """Wait until the daemon's market follower has taken every message published before.
+
+        A price for a ticker no test uses goes on the bus after them, and is taken in turn: the
+        follower takes each topic's messages in order, and a chain published before it woke its
+        own reader first.
+        """
+        self.marks += 1
+        self.price(_MARK, self.marks)
+        await _until(lambda: live_price_rows.spot(_MARK) == self.marks)
 
     def holds(self, want: dict[str, set[str]]) -> bool:
         return all(
@@ -155,7 +169,7 @@ class _Market:
         finally:
             self.streamer.close()
             self.rest.close()
-            for tk in CHAINS:  # the plane rows these prices wrote
+            for tk in [*CHAINS, _MARK]:  # the plane rows these prices wrote
                 lmp._by_ticker.pop(tk, None)
                 lmp._fields_by_ticker.pop(tk, None)
 
@@ -236,7 +250,7 @@ def test_a_price_tick_asks_schwab_for_nothing_and_the_next_chain_only_the_differ
         await _until(lambda: m.holds(before))
         sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
         m.price("MRVL", MRVL_CLOSE)
-        await asyncio.sleep(1.0)
+        await m.taken()
         sent["after_tick"] = {s: len(m.streamer.asked(s)) for s in (L1, BOOK)}
         clock[0] = after
         m.chain("MRVL", after)
@@ -282,7 +296,7 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
         m.price("MRVL", -999)
         clock[0] = after
         m.chain("MRVL", after)
-        await asyncio.sleep(1.0)
+        await m.taken()
         held.update(
             {s: set(m.daemon.held[s]) for s in (L1, BOOK)},
             recorded=(recorded, m.daemon.saved_options),
@@ -345,7 +359,7 @@ def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(t
         m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2})
         await _until(lambda: "SPY" in m.daemon.watchlist)
         m.price("SPY", PRICES["SPY"])
-        await asyncio.sleep(0.5)
+        await m.taken()
         seen["re_added"] = m.daemon.saved_options & spy
         m.chain("SPY")
         await _until(lambda: m.daemon.saved_options & spy)
@@ -374,7 +388,7 @@ def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_pa
         await _until(lambda: "SPY" not in m.daemon.watchlist)
         m.chain("SPY")
         m.price("SPY", PRICES["SPY"])
-        await asyncio.sleep(0.5)
+        await m.taken()
         seen["after"] = m.daemon.saved_options & spy
 
     market.run(steps)

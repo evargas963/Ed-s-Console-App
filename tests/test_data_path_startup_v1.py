@@ -37,7 +37,7 @@ import live_market_plane as lmp
 import push_changes
 import server
 import time_et
-from app.market_data.schwab.streaming import capture, live_push, live_ui
+from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.program_lock import Ports, program_ports
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
@@ -72,29 +72,6 @@ async def _until(cond, limit: float = 10.0) -> None:
     while not cond():
         assert time_et.elapsed() < end, "timed out"
         await asyncio.sleep(0.05)
-
-
-def test_a_web_page_cannot_reach_the_daemons_local_socket():
-    """`launch.py stop` sends no Origin and connects; a browser always sends one.
-
-    And a page on any site is refused before it asks the daemon anything (to stop). Induced test
-    condition: a client sending the Origin a page's browser would.
-    """
-
-    async def go():
-        stop = asyncio.Event()
-        sock, url = listener()
-        pushing = asyncio.create_task(live_push.serve_live_push(stop, [].append, sock))
-        async with connect(url):
-            pass
-        with pytest.raises(InvalidStatus) as refused:
-            async with connect(url, origin="https://example.com"):
-                pass
-        stop.set()
-        await pushing
-        return refused.value.response.status_code
-
-    assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
 
 
 def test_a_page_is_refused_while_the_program_serves_no_prices():
@@ -189,7 +166,6 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_PUSH_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
     }
     bat = home / "start_capture_daemon.bat"
@@ -404,7 +380,7 @@ def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price():
         await asyncio.sleep(0)
         for topic, msg in chain_messages("SPY", contracts, now, None, None):
             bus.publish(topic, msg)
-        await asyncio.sleep(0.1)
+        await _until(lambda: "SPY" in daemon._ladders or task.done())  # the chain is taken first
         bus.publish(
             "quote.SPY",
             quote_msg(
@@ -495,10 +471,10 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
         stop = asyncio.Event()
         ui = asyncio.create_task(serve_page_socket(stop, sock, {"heartbeat_fn": daemon.status}))
         run = asyncio.create_task(daemon.run(schwab_client, stop))
+        # run() logs why before it sets the status that says so
         await _until(
             lambda: daemon.status(time_et.now())["schwab_down"].startswith("NOT CONNECTED")
         )
-        await asyncio.sleep(0.2)
         async with connect(f"{url}/ws", max_size=None) as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
             while (msg := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "feed":
@@ -605,26 +581,23 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
     """The real daemon as its batch runs it, in a folder of its own with launch.py beside it.
 
     So the stop reaches nothing else; no Schwab token, ports the system picks as it binds them.
-    Another checkout's stop leaves it alone. A stop that cannot ask it, its lock naming a port
-    nothing serves or one that closes at once, says so and that the daemon is still running, exit
-    1. A page on the daemon's own pages' port, /ws, is answered with what it subscribed to and
-    takes the daemon's beat; a stop at the port the daemon wrote in its lock, that page connected,
-    ends the daemon and the page's socket with it, exit 0. Induced test condition: the lock a stop
-    reads, in a runtime folder of its own, names the daemon and the port.
+    Another checkout's stop leaves it alone. A stop from a runtime where no program made its stop
+    request (no lock, or a lock whose holder has ended), so another runtime's, cannot ask it: it
+    says so and that the daemon is still running, exit 1. A page on the daemon's own pages' port,
+    /ws, is answered with what it subscribed to and takes the daemon's beat; a stop in the
+    daemon's runtime, that page connected, ends the daemon and the page's socket with it, exit 0.
+    Induced test condition: the runtime folders a stop reads, of the test's own.
     """
     home, other = tmp_path / "checkout", tmp_path / "other_checkout"
     for folder in (home, other):
         folder.mkdir()
         shutil.copy(launch.ROOT / "launch.py", folder)
-    nothing = socket.socket()
-    nothing.bind(("127.0.0.1", 0))  # held, never listening: a connection to it is refused
-    closing = socket.create_server(("127.0.0.1", 0))
-    threading.Thread(target=lambda: closing.accept()[0].close(), daemon=True).start()
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait(30)
     env = {
         **os.environ,
         "PYTHONPATH": str(launch.ROOT),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_PUSH_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
     }
     daemon = subprocess.Popen([sys.executable, *launch.DAEMON_START], cwd=home, env=env)
@@ -639,14 +612,12 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
             text=True,
         )
 
-    def lock_naming(port: int) -> Path:
-        """Make a runtime folder whose lock names the daemon and `port` as its control socket's."""
-        runtime = tmp_path / f"lock_naming_{port}"
+    def runtime_holding(lock: str | None) -> Path:
+        """Make a runtime folder of its own holding `lock` as its lock (None: no lock)."""
+        runtime = tmp_path / f"runtime_{uuid.uuid4().hex}"
         (runtime / "data").mkdir(parents=True)
-        ports = asdict(Ports(console=port, live_push=port))
-        (runtime / "data" / "stream_capture.lock").write_text(
-            f"{daemon.pid}\n{json.dumps(ports)}\n", encoding="utf-8"
-        )
+        if lock is not None:
+            (runtime / "data" / "stream_capture.lock").write_text(lock, encoding="utf-8")
         return runtime
 
     try:
@@ -658,7 +629,8 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         out, err = elsewhere.communicate(timeout=60)
         assert (elsewhere.returncode, out) == (0, "Ed Console: not running\n"), err
         assert daemon.poll() is None
-        not_asked = [stop(home, lock_naming(s.getsockname()[1])) for s in (nothing, closing)]
+        ended_holder = f"{gone.pid}\n{json.dumps(asdict(Ports(console=1)))}\n"
+        not_asked = [stop(home, runtime_holding(lock)) for lock in (None, ended_holder)]
         for p in not_asked:
             out, err = p.communicate(timeout=90)
             assert p.returncode == 1, (out, err)
@@ -687,8 +659,6 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         out, err = stopping.communicate(timeout=60)
         assert (stopping.returncode, out) == (0, "Ed Console: stopped\n"), err
     finally:
-        nothing.close()
-        closing.close()
         _end(daemon)
 
 
@@ -722,7 +692,7 @@ def test_the_stop_reads_no_process_parent(tmp_path):
 
 
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
-    """The real daemon found while it loads, its ports not opened yet, then ending on its own.
+    """The real daemon found while it loads, its stop request not made yet, then ending on its own.
 
     It ends because its pages' port is held, the code its window restarts on: the stop could not ask
     it, so it does not read "stopped" and exits 1. Induced test condition: the daemon's load is
@@ -746,7 +716,6 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
             "PYTHONPATH": str(launch.ROOT),
             "ED_RUNTIME_ROOT": str(tmp_path),
             "ED_CONSOLE_PORT": str(held.getsockname()[1]),
-            "ED_LIVE_PUSH_PORT": "0",
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         }
         loading = {**env, "PYTHONPATH": os.pathsep.join((str(site), str(launch.ROOT)))}
@@ -763,7 +732,7 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
             said: list[str] = []
 
             def take_the_answer():
-                # the stop found the daemon and could not ask it (no ports written yet): the
+                # the stop found the daemon and could not ask it (no stop request yet): the
                 # daemon's load goes on
                 for line in stopping.stderr:
                     said.append(line)
@@ -864,7 +833,6 @@ def test_a_daemon_whose_pages_port_is_held_ends_at_once_with_why_and_its_window_
             **os.environ,
             "ED_RUNTIME_ROOT": str(tmp_path),
             "ED_CONSOLE_PORT": str(port),
-            "ED_LIVE_PUSH_PORT": "0",
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         }
         done = subprocess.run(

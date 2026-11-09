@@ -9,7 +9,7 @@ unknown, never passed. It starts either way (RC-512).
 
 The program (capture_main: the Schwab connection, the recording and the console's pages) runs in
 its own window from start_capture_daemon.bat; the launcher waits for its pages to answer and opens
-the browser at them, and launch.py stop asks it to stop on its local socket.
+the browser at them, and launch.py stop asks it to stop by its stop request (a named event).
 
 STAND-INS: local git repositories for GitHub's origin and the production checkout; a folder of
 its own holding launch.py, the batch and a virtual environment, as the production checkout does;
@@ -123,7 +123,6 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_PUSH_PORT": "0",
         "ED_CONSOLE_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         "BROWSER": f'"{Path(sys.executable).as_posix()}" "{browser.as_posix()}" %s',

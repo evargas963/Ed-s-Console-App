@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
+import app.options.order_flow.streaming as ofs
 import live_market_plane
 import push_changes
 from db_authority import canonical_console_db_path, canonical_stream_db_path
@@ -50,11 +52,8 @@ os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
 # set — RC-534 resolves the token canonically under ED_RUNTIME_ROOT (a path with no token in
 # the private root, so still offline), and runtime_layout's own tests require it unset.
 os.environ["ED_CI_OFFLINE"] = "1"
-# No test console may connect to the real capture daemon's live push (it would ingest live
-# market data): point the push at a port nothing listens on.
-os.environ["ED_LIVE_PUSH_PORT"] = "1"
-# ...and a test program's console pages (and the page's price socket, /ws) on a port the system
-# picks, never production's 8000
+# A test program's console pages (with the page's price socket, /ws) on a port the system picks,
+# never production's 8000
 os.environ["ED_CONSOLE_PORT"] = "0"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
@@ -113,6 +112,20 @@ def _live_feed_starts_down():
     with live_market_plane._lock:
         live_market_plane._feed["held"] = {}
         live_market_plane._feed["status"] = None
+
+
+@pytest.fixture
+def feed():
+    """Clear the console's state before and after, and leave no daemon bound after."""
+    ofs.stop_order_flow_stream()
+    ofs._option_contract_last_update_ts.clear()
+    ofls.clear_all_live_state()
+    live_market_plane._by_ticker.clear()
+    yield
+    ofs.stop_order_flow_stream()
+    ofs.bind_daemon(None)
+    live_market_plane._by_ticker.clear()
+    live_market_plane.record_feed_down()
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
