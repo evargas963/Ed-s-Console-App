@@ -692,6 +692,7 @@ class ChainSweep:
         for chain, ct in batch:
             quote = quoted.get(ct["symbol"])
             if quote is not None:
+                ct["quote"] = quote  # Schwab's /quotes answer for the contract, as sent
                 ct.update({f: quote.get(f) for f in GREEK_FIELDS})
                 ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
             elif ct["symbol"] in named:

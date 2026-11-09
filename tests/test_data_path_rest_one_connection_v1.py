@@ -198,6 +198,14 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
             assert {f: getattr(ct, f) for f in GREEKS} == {f: quote[f] for f in GREEKS}, sym
             assert ct.listing["greeksTime"] == dict.fromkeys(GREEKS, quote["quoteTime"]), sym
     assert any(rounded[s] != spy[s].gamma for s in spy), "the chain's rounded Greeks are not kept"
+    # bid and ask are the quote's as sent; the chain's are not used, and the held contract,
+    # not asked on /quotes, has none until the stream's are laid over it
+    for sym, ct in spy.items():
+        if sym != HELD:
+            quote = SPY_QUOTES[sym]["quote"]
+            assert (ct.bid, ct.ask) == (quote["bidPrice"], quote["askPrice"]), sym
+            assert ct.listing.get("quote") is None, "the answer is read, not listed"
+    assert (spy[HELD].bid, spy[HELD].ask) == (None, None)
     assert all(
         getattr(ct, f) is None and ct.listing["greeksTime"] is None
         for ct in tsla.values()

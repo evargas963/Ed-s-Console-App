@@ -47,7 +47,7 @@ from app.options.order_flow.history import (
     book_heatmap_for_ticker,
 )
 from app.options.order_flow.live_payload import flow_block, options_live_payload
-from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
+from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks, option_top
 from app.options.order_flow.streaming import (
     get_option_contract_streaming_diagnostics,
     price_row,
@@ -865,7 +865,7 @@ def _next_gamma_surface_seq(tk: str, now: float) -> int:
 def _streamed_greeks_for_ticker(
     listed: frozenset, now: float, feed: lmp.FeedNow | None = None
 ) -> dict:
-    """Return the newest streamed Greeks, OPEN_INTEREST and VOLUME of the ticker's held contracts.
+    """Return the newest streamed Greeks, volume, bid and ask of the ticker's held contracts.
 
     The contracts are every one the daemon's latest beat holds of the ticker's chain (`listed`,
     the symbols Schwab listed in it). A missing beat keeps that set. `feed` is one read of that
@@ -873,9 +873,9 @@ def _streamed_greeks_for_ticker(
     """
     out: dict = {}
     for sym in _held_option_symbols_for_ticker(listed, now, feed):
-        greeks = get_stream_greeks(sym)
-        if greeks:
-            out[sym] = greeks
+        pushed = {**(get_stream_greeks(sym) or {}), **(option_top(sym) or {})}
+        if pushed:
+            out[sym] = pushed
     return out
 
 

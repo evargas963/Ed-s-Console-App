@@ -39,6 +39,9 @@ READ = frozenset(
         "multiplier",
         "volatility",
         "nonStandard",
+        "bid",
+        "ask",
+        "quote",
         *GREEKS,
     }
 )
@@ -62,6 +65,10 @@ class OptionContract:
     settlement: Any
     open_interest: float | None
     volume: float | None
+    #: its quote's bidPrice and askPrice (Schwab's /quotes answer the chain sweep asked for, or
+    #: the stream's BID_PRICE and ASK_PRICE for a contract it streams); never the chain's
+    bid: float | None
+    ask: float | None
     #: a contract size: None when not a number or negative
     multiplier: float | None
     #: Schwab's volatility, a percent
@@ -142,6 +149,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     vol_sent = raw.get("volatility")
     void = vol_sent is not None and vol_sent == SCHWAB_NO_VALUE
     multiplier = schwab_number(raw.get("multiplier"))
+    quote = raw["quote"] if isinstance(raw.get("quote"), Mapping) else {}
     return OptionContract(
         symbol=raw.get("symbol"),
         side=side if side in ("CALL", "PUT") else None,
@@ -153,6 +161,8 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         settlement=raw.get("settlementType"),
         open_interest=schwab_count(raw.get("openInterest")),
         volume=schwab_count(raw.get("totalVolume")),
+        bid=schwab_number(quote.get("bidPrice")),
+        ask=schwab_number(quote.get("askPrice")),
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
         volatility=schwab_number(vol_sent),
         **{g: _greek(raw, g, void) for g in GREEKS},
@@ -198,6 +208,8 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
         "settlementType": c.settlement,
         "openInterest": c.open_interest,
         "totalVolume": c.volume,
+        "bid": c.bid,
+        "ask": c.ask,
         "multiplier": c.multiplier,
         "volatility": c.volatility,
         "nonStandard": c.non_standard,

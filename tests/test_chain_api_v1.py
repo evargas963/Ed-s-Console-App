@@ -83,6 +83,15 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True, held=held))
 
 
+def _as_shown(contracts):
+    """`contracts` as the screen shows them: every chain field as sent, bid and ask the quote's.
+
+    The chain's own bid and ask are not used (the stream's, or /quotes'); these captures carry no
+    /quotes answer, so they show none.
+    """
+    return [{**c, "bid": None, "ask": None} for c in contracts]
+
+
 def _get(ticker, expiry=None):
     """The chain panel for `ticker` (as typed) at `expiry` (None: the front one), now."""
     return srv.chain(srv.ticker_storage_key(ticker), time_et.now(), {"expiry": expiry})
@@ -99,7 +108,7 @@ def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     body = _get(ticker="tsla")
     assert body["status"] == "ok" and body["expiry"] == _TSLA_EXPIRY
     assert body["scope"]["kind"] == "complete_single_expiry"
-    assert body["contracts"] == _TSLA_CONTRACTS
+    assert body["contracts"] == _as_shown(_TSLA_CONTRACTS)
     fractional = [c for c in body["contracts"] if c["strikePrice"] != int(c["strikePrice"])]
     assert len(fractional) == _TSLA["n_fractional_strikes"]
 
@@ -111,9 +120,9 @@ def test_only_the_requested_expiry_is_served():
     missing = _get(ticker="MRVL", expiry="2031-01-17")
     assert len(expiries) == 21 and first["expiry"] == expiries[0]
     for body, expiry in ((first, expiries[0]), (last, expiries[-1])):
-        assert body["contracts"] == [
-            c for c in _MRVL_CONTRACTS if c["expirationDate"].startswith(expiry)
-        ]
+        assert body["contracts"] == _as_shown(
+            [c for c in _MRVL_CONTRACTS if c["expirationDate"].startswith(expiry)]
+        )
     assert missing["status"] == "unavailable" and "2031-01-17" in missing["scope"]["reason"]
 
 
@@ -131,8 +140,33 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
     body = _get(ticker="TSLA")
     overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
     assert overlaid["totalVolume"] == streamed and body["stream_overlay_contracts"] == 1
-    assert all(overlaid[k] == v for k, v in target.items() if k != "totalVolume")
-    assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _TSLA_CONTRACTS[1:]
+    assert all(overlaid[k] == v for k, v in _as_shown([target])[0].items() if k != "totalVolume")
+    assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _as_shown(
+        _TSLA_CONTRACTS[1:]
+    )
+
+
+def test_a_streamed_contracts_bid_and_ask_are_the_streams_never_the_chains():
+    """The chain screen's bid and ask of a contract Schwab streams are LEVELONE_OPTIONS's.
+
+    A streamed contract whose bid and ask the stream has not sent shows none (None), never the
+    chain's (AGENTS.md rule 3: a pushed field has one producer).
+    """
+    pushed, silent = _TSLA_CONTRACTS[0], _TSLA_CONTRACTS[1]
+    bid, ask = pushed["bid"] + 0.07, pushed["ask"] + 0.11
+    _hold(
+        "TSLA",
+        _TSLA_CONTRACTS,
+        _AT.timestamp() - 20.0,
+        330.0,
+        [
+            (pushed["symbol"], {"BID_PRICE": bid, "ASK_PRICE": ask}, _AT.timestamp()),
+            (silent["symbol"], {"TOTAL_VOLUME": silent["totalVolume"]}, _AT.timestamp()),
+        ],
+    )
+    shown = {c["symbol"]: c for c in _get(ticker="TSLA")["contracts"]}
+    assert (shown[pushed["symbol"]]["bid"], shown[pushed["symbol"]]["ask"]) == (bid, ask)
+    assert (shown[silent["symbol"]]["bid"], shown[silent["symbol"]]["ask"]) == (None, None)
 
 
 def test_a_later_streamed_gamma_does_not_replace_the_quote():
