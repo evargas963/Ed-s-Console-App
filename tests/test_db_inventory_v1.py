@@ -1,6 +1,7 @@
-"""db.inventory: what the census counts in each database, read without writing, from databases the
-Recorder itself made (CaptureWriter's schema, EdDB's schema and its write of a captured SPY print's
-level cross).
+"""db.inventory: what the census counts in each database, read without writing.
+
+Read from databases the Recorder itself made (CaptureWriter's schema, EdDB's schema and its write
+of a captured SPY print's level cross).
 """
 
 from __future__ import annotations

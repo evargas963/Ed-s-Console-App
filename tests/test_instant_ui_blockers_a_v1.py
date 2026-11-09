@@ -27,7 +27,10 @@ from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
 
 
 def _token_file(tmp_path):
-    """A token file in schwab-py's shape (the stand-in for schwab_token.json), valid for an hour."""
+    """Write a token file in schwab-py's shape, valid for an hour.
+
+    It is the stand-in for schwab_token.json.
+    """
     tok = tmp_path / "schwab_token.json"
     tok.write_text(
         json.dumps(
@@ -47,8 +50,9 @@ def _token_file(tmp_path):
 
 
 def test_every_token_refresh_writes_atomically(tmp_path):
-    """The client we build refreshes through OUR writer (temp + replace), never open(path, 'w')
-    in place (audit of #280: the atomic helper had no production caller). A replace puts a new
+    """The client we build refreshes through OUR writer (temp + replace), never open(path, 'w').
+
+    Never in place (audit of #280: the atomic helper had no production caller). A replace puts a new
     file at the path (its file id changes); a write in place keeps the same file.
     """
     tok = _token_file(tmp_path)
@@ -61,8 +65,9 @@ def test_every_token_refresh_writes_atomically(tmp_path):
 
 
 def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
-    """Operator 2026-10-06: chains and quotes one request at a time on one connection. The
-    client the daemon builds, asked for 20 requests at once from 20 threads, sends them one at a
+    """Operator 2026-10-06: chains and quotes one request at a time on one connection.
+
+    The client the daemon builds, asked for 20 requests at once from 20 threads, sends them one at a
     time (the server never holds two) over one connection (one client port).
     """
     n = 20
@@ -158,9 +163,11 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
 
 
 def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
-    """Every ticker's levels follow what Schwab pushes, not only the one on screen: a tick queues
-    a reprice of its ticker as of its receive time, whether a page shows it or not (a page open
-    on one, the pricing thread held while the ticks arrive, the queue read as it stands).
+    """Every ticker's levels follow what Schwab pushes, not only the one on screen.
+
+    A tick queues a reprice of its ticker as of its receive time, whether a page shows it or not
+    (a page open on one, the pricing thread held while the ticks arrive, the queue read as it
+    stands).
     """
     loop = push_changes._loop
     push_changes.bind(None)

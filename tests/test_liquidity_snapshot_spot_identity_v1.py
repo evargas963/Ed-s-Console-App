@@ -1,8 +1,10 @@
-"""/api/liquidity-snapshot: spot_used_for_scoring never carries a VWAP value, and an
-HTTPException raised on the route's path keeps its own status code. Real data through the real
-route: Schwab's SPY 1-minute bars of Thursday 2026-10-01 and Friday 10-02 as the capture daemon
-recorded them (each minute's newest receipt), the levels published as the bar writer publishes
-them, valued on Friday 2026-10-02 at 15:00 ET. Stand-in: ticker ZZLIQ carries the SPY bars.
+"""/api/liquidity-snapshot: spot_used_for_scoring never carries a VWAP value.
+
+And an HTTPException raised on the route's path keeps its own status code. Real data through the
+real route: Schwab's SPY 1-minute bars of Thursday 2026-10-01 and Friday 10-02 as the capture
+daemon recorded them (each minute's newest receipt), the levels published as the bar writer
+publishes them, valued on Friday 2026-10-02 at 15:00 ET. Stand-in: ticker ZZLIQ carries the SPY
+bars.
 """
 
 from __future__ import annotations
@@ -49,8 +51,9 @@ _BARS = [b for b in _newest_per_minute() if b["timestamp"] / 1000 < FRIDAY.times
 
 @pytest.fixture
 def published():
-    """The SPY bars to 15:00 ET on Friday in the console's memory and the levels published from
-    them; nothing of the stand-in ticker is left behind.
+    """Hold the SPY bars to 15:00 ET on Friday in the console's memory, and their levels.
+
+    The levels published from them; nothing of the stand-in ticker is left behind.
     """
 
     def forget():
@@ -85,8 +88,9 @@ def _body(resp):
 
 
 def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(published):
-    """With no live spot, spot_used_for_scoring is null, never the VWAP under the "spot" name:
-    absence stays absence. Schwab has sent no price for the ticker here.
+    """With no live spot, spot_used_for_scoring is null, never the VWAP under the "spot" name.
+
+    Absence stays absence. Schwab has sent no price for the ticker here.
     """
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
     vwap = srv.canonical_price_level_snapshot(TK, FRIDAY).price("VWAP")
@@ -96,8 +100,9 @@ def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(publ
 
 
 def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path(published):
-    """The real zones of the real levels: with no spot, distance and inside-zone are absent --
-    not a crash, not a fabricated distance, never VWAP standing in for the spot.
+    """The real zones of the real levels: with no spot, distance and inside-zone are absent.
+
+    Not a crash, not a fabricated distance, never VWAP standing in for the spot.
     """
     body = _body(srv.liquidity_snapshot(TK, FRIDAY))
     assert body["zones"]
@@ -113,9 +118,10 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path(p
 
 
 def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(published):
-    """The positive control: Schwab's LAST_PRICE, through the daemon's price row to the console
-    (resolve_spot, the one spot authority), is reported as spot_used_for_scoring. Stand-in: the
-    last bar's close as the LAST_PRICE Schwab sent.
+    """The positive control: Schwab's LAST_PRICE is reported as spot_used_for_scoring.
+
+    Through the daemon's price row to the console (resolve_spot, the one spot authority).
+    Stand-in: the last bar's close as the LAST_PRICE Schwab sent.
     """
     last, at = _BARS[-1]["close"], FRIDAY.timestamp()
     lmp.record_feed_heartbeat(
@@ -129,8 +135,9 @@ def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(publish
 
 
 def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500():
-    """An HTTPException on this route's path keeps its own status, not a bare 500: a blank
-    ticker is refused by the snapshot read with 400.
+    """An HTTPException on this route's path keeps its own status, not a bare 500.
+
+    A blank ticker is refused by the snapshot read with 400.
     """
     resp = srv.liquidity_snapshot("", FRIDAY)
     assert resp.status_code == 400

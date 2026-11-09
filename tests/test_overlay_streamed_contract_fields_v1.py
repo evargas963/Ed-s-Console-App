@@ -1,10 +1,11 @@
-"""overlay_streamed_contract_fields (math_exposure_core.py): a contract Schwab streams takes its
-volume from the stream alone, never the chain's (AGENTS.md rule 3: the pushed field is its one
-producer); one the stream has not sent is None. Its Greeks and volatility are the stream's once
-the stream holds all six (one set, as the chain sweep takes them), else the chain's. Open interest
-is the chain's for every contract (the stream does not send it for every contract it streams). A
-contract the stream does not hold keeps the chain's. Pure function: no network, no cache, no
-clock.
+"""overlay_streamed_contract_fields (math_exposure_core.py).
+
+A contract Schwab streams takes its volume from the stream alone, never the chain's (AGENTS.md
+rule 3: the pushed field is its one producer); one the stream has not sent is None. Its Greeks and
+volatility are the stream's once the stream holds all six (one set, as the chain sweep takes
+them), else the chain's. Open interest is the chain's for every contract (the stream does not send
+it for every contract it streams). A contract the stream does not hold keeps the chain's. Pure
+function: no network, no cache, no clock.
 """
 
 from __future__ import annotations
@@ -81,8 +82,10 @@ def test_a_full_set_of_streamed_greeks_is_the_contracts_and_open_interest_stays_
 
 
 def test_a_streamed_greek_sent_as_no_value_leaves_the_set_the_chains():
-    """Schwab's -999 is no value (rule 2, read as None): the stream then holds no full set, and
-    the contract's Greeks stay the chain's, never one pushed and five requested mixed.
+    """Schwab's -999 is no value (rule 2, read as None).
+
+    The stream then holds no full set, and the contract's Greeks stay the chain's, never one
+    pushed and five requested mixed.
     """
     contracts = [_contract("A", gamma=0.01, delta=0.40, volatility=30.0)]
     streamed = {
@@ -131,9 +134,10 @@ def test_only_the_streamed_symbol_is_copied_others_stay_the_original_object():
 
 
 def test_a_streamed_contract_never_shows_the_chains_volume():
-    """The chain's volume is never the screen's for a contract Schwab streams: one the stream
-    has not sent is unknown (None), and one it sent before the chain is still the stream's (the
-    cell stamp says whether it is live).
+    """The chain's volume is never the screen's for a contract Schwab streams.
+
+    One the stream has not sent is unknown (None), and one it sent before the chain is still the
+    stream's (the cell stamp says whether it is live).
     """
     contracts = [_contract("A", openInterest=100, totalVolume=7)]
     out, n = overlay_streamed_contract_fields(contracts, {}, {"A"})

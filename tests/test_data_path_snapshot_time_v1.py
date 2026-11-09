@@ -28,8 +28,10 @@ def _forget(*tickers: str) -> None:
 
 
 def test_the_levels_pill_carries_the_snapshots_time():
-    """Saturday 2026-10-03 12:00 ET. SPY's last session snapshot keeps its time, the newest
-    bar's start, so the desk map can show it beside the age.
+    """Saturday 2026-10-03 12:00 ET.
+
+    SPY's last session snapshot keeps its time, the newest bar's start, so the desk map can show
+    it beside the age.
     """
     closed = datetime(2026, 10, 3, 12, 0, tzinfo=ET)
     _forget("SPY", "TSLA")

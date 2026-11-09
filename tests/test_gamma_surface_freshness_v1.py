@@ -1,6 +1,8 @@
-"""The heatmap's answer is the live levels' surface with the one freshness authority's age, the live
-price and the price its cells were computed at each named, and a ticker open on a page is
-repriced for as long as the page has it (question 2: the screen shows it correctly and promptly).
+"""The heatmap's answer is the live levels' surface with the one freshness authority's age.
+
+The live price and the price its cells were computed at are each named, and a ticker open on a
+page is repriced for as long as the page has it (question 2: the screen shows it correctly and
+promptly).
 
 Through the real code: the daemon's status and price row as the console holds them, the console's
 pages (push_changes), the levels producer, the routes. Real data: CRWD's captured chain
@@ -39,9 +41,10 @@ def _call(tk):
 
 
 def _daemon(price: float, at: float, *tickers) -> None:
-    """The daemon's status at `at` (Schwab's socket open, `tickers` held, the watchlist [_ON]) and
-    each ticker's quote received at `at` (its trade at _AT), in the plane the price row is built
-    from.
+    """Record the daemon's status at `at` and each ticker's quote received at `at`.
+
+    The status has Schwab's socket open, `tickers` held, the watchlist [_ON]; each quote has its
+    trade at _AT, in the plane the price row is built from.
     """
     lmp.record_feed_heartbeat(
         daemon_status(
@@ -108,9 +111,10 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
 
 @pytest.mark.parametrize("tk", [_ON, _OFF])
 def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(published, tk):
-    """2026-09-28 audit: "viewed" was a 300 s timer renewed only by some routes. The page's one
-    connection is the one viewing signal: a route read does not make a ticker viewed, and it
-    stays viewed for as long as the page has it open.
+    """2026-09-28 audit: "viewed" was a 300 s timer renewed only by some routes.
+
+    The page's one connection is the one viewing signal: a route read does not make a ticker
+    viewed, and it stays viewed for as long as the page has it open.
     """
     _call(tk)  # a route read alone: not viewed
     assert not server._gamma_surface_wanted(tk)
@@ -126,8 +130,9 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(published, t
 def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a_sentence(
     published, tk
 ):
-    """On the watchlist or not, a publication carries the same fields: the chain basis, and ATR
-    (from the bars, none here) absent, with no sentence in its place.
+    """On the watchlist or not, a publication carries the same fields.
+
+    The chain basis, and ATR (from the bars, none here) absent, with no sentence in its place.
     """
     t = server.get_terrain(ticker=tk)
     assert t["chain_basis"] == CAPTURE_BASIS
@@ -137,8 +142,9 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
 
 
 def test_with_no_levels_the_atr_is_absent():
-    """ATR is from the bars, not the chain: a ticker with no levels published still serves it
-    (here absent, and no sentence in its place).
+    """ATR is from the bars, not the chain.
+
+    A ticker with no levels published still serves it (here absent, and no sentence in its place).
     """
     t = server.get_terrain(ticker="ZZNOLEVELSATR")
     assert t["atr_daily"] is None and "atr_daily_reason" not in t

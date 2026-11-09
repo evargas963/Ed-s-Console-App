@@ -26,9 +26,10 @@ _IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture wi
 
 
 def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key(tmp_path):
-    """INSERT OR REPLACE replaced a stored capture whose (ticker, expiry, ts_utc) a second write
-    repeated. STAND-IN: the second write (one contract of the same chain, with the stored
-    capture's spot, on the same key) is a later write landing on that key.
+    """INSERT OR REPLACE replaced a stored capture whose (ticker, expiry, ts_utc) a write repeated.
+
+    The repeat was a second write. STAND-IN: the second write (one contract of the same chain,
+    with the stored capture's spot, on the same key) is a later write landing on that key.
     """
     db = tmp_path / "ed_console.db"
     schwab = LocalSchwab()

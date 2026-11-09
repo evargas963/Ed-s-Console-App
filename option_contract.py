@@ -116,8 +116,9 @@ def streamed_greek_set(greeks: Mapping[str, Any]) -> dict[str, float] | None:
 
 
 def _expires_at(raw: Any, symbol: Any) -> float | None:
-    """Schwab's expirationDate ("2026-09-18T20:00:00.000+00:00") as a time; None, logged, when it
-    was not sent as one (rule 2).
+    """Schwab's expirationDate ("2026-09-18T20:00:00.000+00:00") as a time.
+
+    None, logged, when it was not sent as one (rule 2).
     """
     try:
         return datetime.fromisoformat(raw).timestamp()
@@ -127,14 +128,14 @@ def _expires_at(raw: Any, symbol: Any) -> float | None:
 
 
 def _shown(value: Any) -> Any:
-    """A listing value as the screen shows it: a number by rule 2, anything else as sent."""
+    """Return a listing value as the screen shows it: a number by rule 2, anything else as sent."""
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return schwab_number(value)
     return value
 
 
 def read_contract(raw: Mapping[str, Any]) -> OptionContract:
-    """The record of one contract as the chain sweep delivers it."""
+    """Return the record of one contract as the chain sweep delivers it."""
     put_call = raw.get("putCall")
     side = put_call.strip().upper() if isinstance(put_call, str) else None
     expiration = raw.get("expirationDate")
@@ -167,10 +168,11 @@ def read_chain(contracts: Iterable[Mapping[str, Any]]) -> list[OptionContract]:
 
 
 def listed_expiries(answer: Mapping[str, Any], today: date) -> list[date]:
-    """The expiries of Schwab's expiration chain answer (/marketdata/v1/expirationchain) from
-    `today` on, ascending. The list still carries an expiry that has passed (a Saturday's list
-    holds Friday's), and a chain request whose fromDate has passed is refused with HTTP 400, so
-    those are left out.
+    """Return the expiries of Schwab's expiration chain answer from `today` on, ascending.
+
+    The answer is /marketdata/v1/expirationchain's. The list still carries an expiry that has
+    passed (a Saturday's list holds Friday's), and a chain request whose fromDate has passed is
+    refused with HTTP 400, so those are left out.
     """
     return sorted(
         {
@@ -182,7 +184,9 @@ def listed_expiries(answer: Mapping[str, Any], today: date) -> list[date]:
 
 
 def chain_row(c: OptionContract) -> dict[str, Any]:
-    """The contract as the chain screens show it, under Schwab's field names: each field Schwab
+    """Return the contract as the chain screens show it, under Schwab's field names.
+
+    Each field Schwab
     sent, and each value the record holds (a streamed count or a carried Greek), and no other.
     """
     read = {

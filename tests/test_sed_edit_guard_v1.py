@@ -1,6 +1,7 @@
-"""The law guard's sed-edit ban (tools/operator_law_guard.py), run as Claude Code runs it: the
-hook chain on a hook payload, its exit code (2 refuses the command) and its message. AGENTS.md:
-never edit source through a script.
+"""The law guard's sed-edit ban (tools/operator_law_guard.py), run as Claude Code runs it.
+
+The hook chain on a hook payload, its exit code (2 refuses the command) and its message.
+AGENTS.md: never edit source through a script.
 """
 
 from __future__ import annotations

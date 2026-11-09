@@ -59,18 +59,18 @@ def _chain(span: float, spot: float = 100.0, n: int = 41):
     out = []
     for i in range(n):
         k = lo + (hi - lo) * i / (n - 1)
-        for side in ("CALL", "PUT"):
-            out.append(
-                {
-                    "strikePrice": round(k, 2),
-                    "putCall": side,
-                    "openInterest": 100,
-                    "multiplier": 100,
-                    "volatility": 20.0,
-                    "daysToExpiration": 30,
-                    "expirationDate": "2027-07-16T00:00:00.000+00:00",
-                }
-            )
+        out.extend(
+            {
+                "strikePrice": round(k, 2),
+                "putCall": side,
+                "openInterest": 100,
+                "multiplier": 100,
+                "volatility": 20.0,
+                "daysToExpiration": 30,
+                "expirationDate": "2027-07-16T00:00:00.000+00:00",
+            }
+            for side in ("CALL", "PUT")
+        )
     return read_chain(out)
 
 
@@ -97,8 +97,10 @@ def test_three_tiers_are_ordered_by_span():
 
 
 def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
-    """SPY/QQQ class (~8-9% span): the regime must STILL be issued — its basis is the sign of gamma
-    at spot, independent of flip-level precision — while the flip LEVEL says it is approximate.
+    """SPY/QQQ class (~8-9% span): the regime must STILL be issued.
+
+    Its basis is the sign of gamma at spot, independent of flip-level precision — while the flip
+    LEVEL says it is approximate.
     """
     read = build_terrain_read(
         spot=100.0,

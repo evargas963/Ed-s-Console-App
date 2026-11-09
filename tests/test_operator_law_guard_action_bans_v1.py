@@ -1,7 +1,9 @@
 # institutional-synthetic-ok: these tests INJECT banned shell / edit spellings to prove the
 # action bans BLOCK and the sanctioned forms flow — that is their entire purpose.
-"""Action-ban controls for tools/operator_law_guard.py: each banned action is refused and the
-sanctioned forms pass; the guard is wired for the edit tools.
+"""Action-ban controls for tools/operator_law_guard.py.
+
+Each banned action is refused and the sanctioned forms pass; the guard is wired for the edit
+tools.
 """
 
 from __future__ import annotations
@@ -111,8 +113,9 @@ def test_ruffs_unsafe_fixes_are_refused_in_any_command():
 
 
 def test_lock_disable_routes_are_git_and_precommits_own():
-    """The lock-disable ban refuses the routes that bypass the pre-commit checks: git's
-    (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall).
+    """The lock-disable ban refuses the routes that bypass the pre-commit checks.
+
+    Git's (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall).
     """
     for cmd in (
         "git commit --no-verify -m x",
@@ -199,8 +202,9 @@ def test_python_with_a_script_or_c_or_m_runs(cmd):
 
 
 def test_operator_law_guard_wired_for_edit_tools():
-    """.claude/settings.json routes the edit tools to operator_law_guard, and pretooluse_guard is
-    not on the roster.
+    """.claude/settings.json routes the edit tools to operator_law_guard.
+
+    And pretooluse_guard is not on the roster.
     """
     settings = json.loads(
         (Path(__file__).resolve().parent.parent / ".claude" / "settings.json").read_text(
@@ -221,8 +225,10 @@ D = "data"
 
 
 def test_a_whole_protected_tree_find_delete_and_cmd_c_are_refused():
-    """A remover given the tree itself (`data`, no trailing slash), `find ... -delete` or `-exec`,
-    `cmd /c del`, and rm by its full path are refused.
+    """A remover given the whole protected tree, find's delete, cmd /c del and rm are refused.
+
+    A remover given the tree itself (`data`, no trailing slash), `find ... -delete` or
+    `-exec`, `cmd /c del`, and rm by its full path are refused.
     """
     for cmd in (
         f"rm -r {D}",

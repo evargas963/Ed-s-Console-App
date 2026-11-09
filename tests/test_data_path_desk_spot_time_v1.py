@@ -10,8 +10,10 @@ from time_et import ET
 
 
 def test_the_desk_spot_carries_schwabs_trade_time_when_the_feed_is_down():
-    """Friday 2026-10-02 11:00 ET. The desk's spot is Schwab's last trade, and the time beside
-    it is that trade's time. The feed being down does not remove either.
+    """Friday 2026-10-02 11:00 ET.
+
+    The desk's spot is Schwab's last trade, and the time beside it is that trade's time. The
+    feed being down does not remove either.
     """
     at = datetime(2026, 10, 2, 11, 0, tzinfo=ET).timestamp()
     lmp.record_from_level_one_equity(

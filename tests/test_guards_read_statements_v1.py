@@ -1,5 +1,6 @@
-"""The command guards read a command's statements the way a shell does (tools/shell_parse.read): a
-statement behind a keyword (`if`, `then`), inside a subshell `( ... )`, behind a wrapper
+"""The command guards read a command's statements the way a shell does (tools/shell_parse.read).
+
+A statement behind a keyword (`if`, `then`), inside a subshell `( ... )`, behind a wrapper
 (`timeout`), in a shell's command string or a heredoc fed to a shell is judged, and text inside
 quotes is never read as a statement.
 """
@@ -301,8 +302,9 @@ def test_a_python_behind_a_runner_with_valued_options_is_judged(runner):
 
 
 def test_a_branch_listing_aimed_at_production_is_a_read_and_a_new_branch_is_refused():
-    """Git branch --list (-l) and --contains aimed at production read; other listing options still
-    meet the branch rule.
+    """Git branch --list (-l) and --contains aimed at production read.
+
+    Other listing options still meet the branch rule.
     """
     primary = PLG._primary_worktree_root(PLG.REPO) or PLG.REPO
     lock = "PROD_CHECKOUT_LOCK"
@@ -333,7 +335,7 @@ ESCAPED_D = f"d\\{D[1:]}"  # the tree's name with a backslash bash drops
     ],
 )
 def test_a_redirect_into_the_protected_tree_spelled_with_a_backslash_is_refused(cmd):
-    """Bash drops the backslash: `d\\ata/x` is `data/x`."""
+    r"""Bash drops the backslash: `d\ata/x` is `data/x`."""
     assert any(f"under {D}/" in b for b in bash_violations(cmd)), cmd
 
 

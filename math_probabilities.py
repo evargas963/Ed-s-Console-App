@@ -1,6 +1,6 @@
 """
-math_probabilities.py
-Mathematical probability, confidence, and scoring helpers.
+math_probabilities.py: mathematical probability, confidence, and scoring helpers.
+
 Support-math layer for prediction and call engines.
 """
 

@@ -1,9 +1,11 @@
-"""RC-UI-1 — proof that the Options/Gamma strike×expiry surface is a PROJECTION of the one
-canonical exposure faucet (math_exposure_core.compute_exposures_by_strike), not a second GEX
-producer. Covers the operator's required invariants A/B/C/D/F/G/H on a REAL vendor chain
-(MRVL's capture of 2026-10-07 10:31 ET, tests/real_chains.py: native ISO ``expirationDate``
-stamps, zero-OI rows), so the projection is proven on the field shapes production actually feeds
-it (flatten_chain_contracts passes Schwab rows through verbatim). D/E colour+format are proven at
+"""RC-UI-1 — proof that the Options/Gamma strike×expiry surface is a PROJECTION, not a producer.
+
+It is a projection of the one canonical exposure faucet
+(math_exposure_core.compute_exposures_by_strike), not a second GEX producer. Covers the
+operator's required invariants A/B/C/D/F/G/H on a REAL vendor chain (MRVL's capture of
+2026-10-07 10:31 ET, tests/real_chains.py: native ISO ``expirationDate`` stamps, zero-OI rows),
+so the projection is proven on the field shapes production actually feeds it
+(flatten_chain_contracts passes Schwab rows through verbatim). D/E colour+format are proven at
 the frontend formatter (heatmap view module).
 
 Two expiries: MRVL's first two, 2026-10-09 and 2026-10-16, from the one capture, valued at its
@@ -31,13 +33,14 @@ SPOT = MRVL.spot
 
 
 def _exp_key(ct: dict) -> str:
-    """The projection's own column key rule: the native expirationDate's first 10 chars."""
+    """Return the projection's own column key rule: the native expirationDate's first 10 chars."""
     return str(ct.get("expirationDate") or "")[:10]
 
 
 def _heaviest(rows: list[dict]) -> dict:
-    """The row with the largest open interest Schwab sent; a row it sent none for is not ranked
-    (missing is not zero).
+    """Return the row with the largest open interest Schwab sent.
+
+    A row it sent none for is not ranked (missing is not zero).
     """
     return max(
         (ct for ct in rows if ct.get("openInterest") is not None), key=lambda ct: ct["openInterest"]
@@ -48,8 +51,9 @@ E1, E2 = sorted({_exp_key(ct) for ct in MRVL.chain})[:2]  # 2026-10-09, 2026-10-
 
 
 def _raw_chain() -> list[dict]:
-    """The two expiries' contracts as the sweep delivers them (an induced condition changes one
-    of these, then reads it).
+    """Return the two expiries' contracts as the sweep delivers them.
+
+    An induced condition changes one of these, then reads it.
     """
     return [dict(ct) for ct in MRVL.chain if _exp_key(ct) in (E1, E2)]
 
@@ -67,7 +71,7 @@ def _slice(chain: list[OptionContract], exp: str) -> list[OptionContract]:
 
 
 def _surface(chain: list[OptionContract], spot: float) -> dict:
-    """The grid as _publish_levels builds it: shaped from the chain's exposure_books."""
+    """Return the grid as _publish_levels builds it: shaped from the chain's exposure_books."""
     return project_gamma_surface(chain, exposure_books(chain, spot=spot, now=NOW))
 
 
@@ -220,8 +224,9 @@ def test_J_cell_carries_the_real_vendor_symbols_for_its_strike_and_expiry():
 
 
 def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
-    """The ABSENT-side case, from ONE real row re-struck at a strike no other row in the chain
-    uses, so only ITS OWN presence/absence is under test.
+    """The ABSENT-side case, from ONE real row re-struck at a strike no other row uses.
+
+    No other row in the chain uses the strike, so only ITS OWN presence/absence is under test.
     # institutional-synthetic-ok: a single real CALL row, re-struck to an otherwise-unused
     # strike so no PUT row exists there -- the minimal input this identity check needs.
     """
@@ -238,8 +243,10 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
 
 
 def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_wrong_value():
-    """A contract missing its own `symbol` field must never silently borrow a strike-mate's
-    symbol or fall back to a stale cached value -- it must report None.
+    """A contract missing its own `symbol` field must report None.
+
+    It must never silently borrow a strike-mate's symbol or fall back to a stale cached value
+    -- it must report None.
     """
     probe = _heaviest(_raw_slice(E1))
     no_symbol = dict(probe)
@@ -317,9 +324,10 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
 
 
 def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zero():
-    """A strike in E2's real book with no contract in E1's slice reports None for
-    dex/vanna/oi/volume in the E1 column -- never a silent 0.0, which would read as "genuinely
-    zero dealer DEX/vanna/OI/volume at this strike", a real, different fact.
+    """A strike in E2's real book with no contract in E1's slice reports None in the E1 column.
+
+    None for dex/vanna/oi/volume in the E1 column -- never a silent 0.0, which would read as
+    "genuinely zero dealer DEX/vanna/OI/volume at this strike", a real, different fact.
     """
     chain = _chain()
     surface = _surface(chain, SPOT)
@@ -341,10 +349,11 @@ def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zer
 
 
 def test_per_expiry_exposures_additively_merge_to_the_full_recompute():
-    """The identity the heatmap, per-strike rows and levels rely on: partitioning the two-expiry
-    chain by expiry and merging the per-expiry exposures must reproduce
-    compute_exposures_by_strike's own single-call result over the WHOLE chain, strike for
-    strike, field for field, at the same valuation instant.
+    """The identity the heatmap, per-strike rows and levels rely on.
+
+    Partitioning the two-expiry chain by expiry and merging the per-expiry exposures must
+    reproduce compute_exposures_by_strike's own single-call result over the WHOLE chain, strike
+    for strike, field for field, at the same valuation instant.
     """
     chain = _chain()
     full, _diag = compute_exposures_by_strike(chain, spot=SPOT, now=NOW)
@@ -364,9 +373,11 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute():
 
 
 def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
-    """Operator 2026-09-29: the Delta / DEX and Open Interest Chart views were blank. The chart's
-    DEX and OI profiles (/api/terrain/strikes `measures`, from the terrain publication) are the
-    heatmap's own cells summed across expiries -- one computation, two views.
+    """Operator 2026-09-29: the Delta / DEX and Open Interest Chart views were blank.
+
+    The chart's DEX and OI profiles (/api/terrain/strikes `measures`, from the terrain
+    publication) are the heatmap's own cells summed across expiries -- one computation, two
+    views.
     """
     chain = _chain()
     snap = server._publish_levels(
