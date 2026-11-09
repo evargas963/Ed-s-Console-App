@@ -563,7 +563,7 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
     gate = _busy()
     try:
         for i in range(3):
-            server._on_chain(TK, _CONTRACTS, _T + i, None, (_SPOT, _T))
+            server._on_chain(TK, _RECORDS, _T + i, None, (_SPOT, _T))
         with server._chains_waiting_lock:
             waiting = server._chains_waiting[TK]
     finally:
@@ -644,13 +644,11 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
     gate = _busy()
     try:
         if delivered_first:
-            server._on_chain(tk, _CONTRACTS, _T, None, (_SPOT, _T))
+            server._on_chain(tk, _RECORDS, _T, None, (_SPOT, _T))
             queued = server._load_stored_levels([tk])
         else:
             queued = server._load_stored_levels([tk])
-            server._on_chain(
-                tk, _CONTRACTS, _T, None, (_SPOT, _T)
-            )  # arrives while the capture waits
+            server._on_chain(tk, _RECORDS, _T, None, (_SPOT, _T))  # arrives while the capture waits
     finally:
         gate.set()
         _drain()
@@ -676,7 +674,7 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
     gate = _busy()
     try:
         assert server._load_stored_levels(list(stored)) == 2
-        server._on_chain(TK, _CONTRACTS, _T, None, (_SPOT, _T))
+        server._on_chain(TK, _RECORDS, _T, None, (_SPOT, _T))
     finally:
         gate.set()
         _drain()
@@ -736,6 +734,6 @@ def test_a_delivered_chain_is_priced_at_the_pricing_jobs_own_instant():
     capture's own time: the heatmap's stamp is that instant, never the wall clock read deep
     inside the producer.
     """
-    server._price_chain(TK, server.DELIVERED, _CONTRACTS, _T, (_SPOT, _T), _AT)
+    server._price_chain(TK, server.DELIVERED, _RECORDS, _T, (_SPOT, _T), _AT)
     surface = server.published_levels(TK).gamma_surface
     assert surface["stream_overlay_computed_ts_utc"] == _T

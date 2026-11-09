@@ -188,19 +188,20 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
         in lines[0]
     ), lines
     record = daemon.option_record(HELD)[1]
-    assert {f: spy[HELD][f] for f in GREEKS} == {f: record["content"][f.upper()] for f in GREEKS}
-    assert spy[HELD]["greeksTime"] == {f: record["field_ts"][f.upper()][0] for f in GREEKS}
+    content = record["content"]
+    assert {f: getattr(spy[HELD], f) for f in GREEKS} == {f: content[f.upper()] for f in GREEKS}
+    assert spy[HELD].listing["greeksTime"] == {f: record["field_ts"][f.upper()][0] for f in GREEKS}
     rounded = {ct["symbol"]: ct["gamma"] for ct in SPY["chain"]}
     for sym, ct in spy.items():
         if sym != HELD:
             quote = SPY_QUOTES[sym]["quote"]
-            assert {f: ct[f] for f in GREEKS} == {f: quote[f] for f in GREEKS}, sym
-            assert ct["greeksTime"] == dict.fromkeys(GREEKS, quote["quoteTime"]), sym
-    assert any(rounded[s] != spy[s]["gamma"] for s in spy), (
-        "the chain's rounded Greeks are not kept"
-    )
+            assert {f: getattr(ct, f) for f in GREEKS} == {f: quote[f] for f in GREEKS}, sym
+            assert ct.listing["greeksTime"] == dict.fromkeys(GREEKS, quote["quoteTime"]), sym
+    assert any(rounded[s] != spy[s].gamma for s in spy), "the chain's rounded Greeks are not kept"
     assert all(
-        ct[f] is None and ct["greeksTime"] is None for ct in tsla.values() for f in GREEKS
+        getattr(ct, f) is None and ct.listing["greeksTime"] is None
+        for ct in tsla.values()
+        for f in GREEKS
     ), "a Greek Schwab did not send is absent"
 
     with sqlite3.connect(tmp_path / "ed_console.db") as conn:  # 10:15 ET: the 10:00 window
@@ -257,8 +258,8 @@ def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
     assert HELD in [s for q in schwab.asked(QUOTES) for s in q["symbols"].split(",")]
     quote = SPY_QUOTES[HELD]["quote"]
     got = delivered(published, "SPY")[HELD]
-    assert {f: got[f] for f in GREEKS} == {f: quote[f] for f in GREEKS}
-    assert got["gamma"] != -999
+    assert {f: getattr(got, f) for f in GREEKS} == {f: quote[f] for f in GREEKS}
+    assert got.gamma is not None, "Schwab's quote, never its no-value"
 
 
 def test_a_429_on_one_expiry_does_not_cost_the_ticker_its_round(tmp_path):
@@ -362,7 +363,7 @@ def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path)
         schwab.close()
     assert HELD in [s for q in schwab.asked(QUOTES) for s in q["symbols"].split(",")]
     quote = SPY_QUOTES[HELD]["quote"]
-    assert {f: delivered(published, "SPY")[HELD][f] for f in GREEKS} == {
+    assert {f: getattr(delivered(published, "SPY")[HELD], f) for f in GREEKS} == {
         f: quote[f] for f in GREEKS
     }
 
@@ -421,12 +422,15 @@ def test_contracts_schwab_names_invalid_get_no_greeks_and_every_ticker_in_the_re
     )
     spy = delivered(published, "SPY")
     assert len(spy) == len(SPY["chain"]) + len(named)
-    assert all(spy[s][f] is None and spy[s]["greeksTime"] is None for s in named for f in GREEKS)
+    assert all(
+        getattr(spy[s], f) is None and spy[s].listing["greeksTime"] is None
+        for s in named
+        for f in GREEKS
+    )
     for sym, ct in spy.items():
         if sym not in named and sym != HELD:
-            assert {f: ct[f] for f in GREEKS} == {f: SPY_QUOTES[sym]["quote"][f] for f in GREEKS}, (
-                sym
-            )
+            quote = SPY_QUOTES[sym]["quote"]
+            assert {f: getattr(ct, f) for f in GREEKS} == {f: quote[f] for f in GREEKS}, sym
     assert len(delivered(published, "TSLA")) == len(TSLA["chain"])
     logged = [r.getMessage() for r in caplog.records]
     in_request = [[s for s in symbols if s in named] for symbols in answered]

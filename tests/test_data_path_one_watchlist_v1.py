@@ -61,8 +61,8 @@ async def _until(cond, seconds: float = 15.0) -> None:
 class _Schwab:
     """The local streamer and REST host, and the daemon's client of them as the daemon builds it."""
 
-    def __init__(self, tmp_path, limits: dict, data: dict):
-        self.streamer = LocalStreamer(limits, data)
+    def __init__(self, tmp_path, limits: dict, data: dict, lag: float = 0.0):
+        self.streamer = LocalStreamer(limits, data, lag)
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
 
@@ -273,7 +273,7 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
     """A request unanswered for REQUEST_TIMEOUT_SEC means the connection is broken.
 
     It ends with that reason (Schwab's streamer here takes NYSE_BOOK requests and never answers
-    them).
+    them, while its heartbeats carry Schwab's time past the request).
     """
     schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     answer = schwab.streamer.answer
@@ -294,6 +294,47 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
         schwab.close()
     assert time_et.elapsed() - started >= capture.REQUEST_TIMEOUT_SEC
     assert daemon.stream is None, "the broken session is logged out and dropped"
+
+
+#: How far behind Schwab's stream the daemon's reader ran, measured in production's log
+#: (logs/stream_capture.2026-11-09.log): Schwab stamped its answer to NASDAQ_BOOK SUBS (requestid
+#: 5) 1794237724246 ms, 09:22:04.246 CT, 0.400 s after the daemon sent it, and the daemon took it
+#: at 09:22:22.213 CT; at 09:22:22.335 the connection ended "no answer to LEVELONE_OPTIONS SUBS in
+#: 15 s", and the logout that followed read Schwab's answer to that SUBS (requestid 6) waiting next.
+READER_LAG_SEC = 22.213 - 4.246
+
+
+def test_an_answer_schwab_sent_at_once_but_read_late_keeps_the_connection(tmp_path):
+    """Schwab answers each request at once; its answers reach the reader 17.967 s later.
+
+    As on 2026-11-09 (READER_LAG_SEC): the reader ran behind Schwab's stream, so Schwab's
+    answers waited behind the frames before them. The connection had ended at 15 s on this
+    computer's clock, as if Schwab had not answered, and with it every option subscription; a
+    reconnect asked Schwab for all of them again. Schwab's own time on the frames read says it
+    answered: the connection stays, and every request is answered and held.
+    """
+    schwab = _Schwab(tmp_path, limits={}, data={}, lag=READER_LAG_SEC)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+
+    async def go():
+        stop = asyncio.Event()
+        run = asyncio.create_task(daemon.run_connection(schwab.client, stop))
+        await _until(lambda: run.done() or all(daemon.held[s] for s in EQUITY), 30)
+        held, answers = dict(daemon.held), [s.answers for s in daemon._sent.values()]
+        stop.set()
+        await asyncio.wait_for(run, 10)  # the connection's own error, raised
+        return held, answers
+
+    started = time_et.elapsed()
+    try:
+        held, answers = asyncio.run(go())
+    finally:
+        schwab.close()
+    assert time_et.elapsed() - started > READER_LAG_SEC > capture.REQUEST_TIMEOUT_SEC
+    assert [r["command"] for r in schwab.streamer.requests].count("LOGIN") == 1, "one session"
+    wanted = daemon.wanted()
+    assert {svc: held[svc] for svc in wanted} == wanted, "every request answered and held"
+    assert answers == [1] * len(EQUITY), answers
 
 
 def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_no_more(tmp_path):

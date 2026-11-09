@@ -388,9 +388,9 @@ class LocalSchwab:
 
 
 def delivered(published: list, ticker: str) -> dict[str, dict]:
-    """Return the ticker's contracts in the chain the sweep published, by symbol."""
+    """Return the ticker's contracts in the chain the sweep published (read), by symbol."""
     return {
-        ct["symbol"]: ct
+        ct.symbol: ct
         for topic, msg in published
         if topic == f"chain.{ticker}" and "contracts" in msg
         for ct in msg["contracts"]
