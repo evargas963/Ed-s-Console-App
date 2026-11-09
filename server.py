@@ -457,6 +457,9 @@ async def _app_lifespan(_app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
+#: the price server the page's socket serves while the program serves prices
+#: (live_ui.serve_live_ui), None before and after
+app.state.prices = None
 
 
 class _RevalidateStaticFiles(StaticFiles):

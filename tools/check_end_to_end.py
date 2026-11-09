@@ -585,7 +585,7 @@ def _running_totals(tree: ast.AST) -> set[int]:
 
 
 #: the program's port settings, each read with its written default (the operator, 2026-11-05)
-PORT_SETTINGS = frozenset({"ED_CONSOLE_PORT", "ED_LIVE_PUSH_PORT"})
+PORT_SETTINGS = frozenset({"ED_CONSOLE_PORT"})
 
 
 def _port_settings(tree: ast.AST) -> set[int]:
