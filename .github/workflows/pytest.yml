@@ -325,8 +325,12 @@ jobs:
           ETW
           # Windows' own TCP/IP and Winsock events at warning level and above, with the process
           MSYS_NO_PATHCONV=1 logman start tcpwarn -p Microsoft-Windows-TCPIP 0xffffffffffffffff 0x4 -o tcpwarn.etl -ets -mode circular -max 2048
+          # EXPERIMENT: a quarter of the dynamic range; if the refusals come from the share of
+          # the range the suite's TIME_WAIT ports hold, they become frequent here
+          netsh int ipv4 set dynamicport tcp start=49152 num=4096
+          netsh int ipv4 show dynamicport tcp
           rc=0
-          for pass in 1 2 3 4 5 6 7 8 9 10; do
+          for pass in 1 2 3; do
             echo "=== pass $pass starts $(date -u +%H:%M:%S)"
             npm run test:e2e || rc=$?
             echo "=== pass $pass ends $(date -u +%H:%M:%S)"
