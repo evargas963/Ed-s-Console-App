@@ -102,3 +102,22 @@ def test_the_programs_own_stop_ends_the_waiter_at_once(tmp_path):
         request.close()
     assert took < capture.STOP_WAIT_SEC + 1.0, f"the waiter held the stop {took:.2f} s"
     assert not asked
+
+
+def test_a_closed_stop_request_refuses_a_wait_and_a_waiting_program_ends_naming_it(tmp_path):
+    """Waiting on a closed request is refused, never read as "not asked yet".
+
+    A wait that answers "not asked" when it could not wait would leave the program deaf to every
+    stop, with nothing logged; the waiter raises instead, so the program ends naming it.
+    """
+    request = StopRequest(tmp_path / "stream_capture.db")
+    request.close()
+    with pytest.raises(ValueError, match="closed stop request"):
+        request.wait(0)
+
+    async def go():
+        stop = asyncio.Event()
+        await capture.stop_on_request(stop, request)
+
+    with pytest.raises(ValueError, match="closed stop request"):
+        asyncio.run(go())

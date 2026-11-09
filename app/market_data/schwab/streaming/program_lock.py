@@ -48,6 +48,7 @@ if _KERNEL32 is not None:
 #: OpenEventW's right to set an event; WaitForSingleObject's answer for a set one
 EVENT_MODIFY_STATE = 0x0002
 WAIT_OBJECT_0 = 0
+WAIT_TIMEOUT = 0x102
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,7 @@ class StopRequest:
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         self._handle = self._sigterm = None
+        self._closed = False
         self._asked = threading.Event()
         if _KERNEL32 is None:
             self._sigterm = signal.signal(signal.SIGTERM, lambda _sig, _frame: self._asked.set())
@@ -153,12 +155,18 @@ class StopRequest:
             raise ctypes.WinError(ctypes.get_last_error())
 
     def wait(self, seconds: float) -> bool:
-        """Whether the stop was asked for, waiting up to `seconds` for it."""
+        """Whether the stop was asked for, waiting up to `seconds` for it; a failed wait raises."""
+        if self._closed:
+            raise ValueError("wait on a closed stop request")
         if self._handle is None:
             return self._asked.wait(seconds)
-        return _KERNEL32.WaitForSingleObject(self._handle, round(seconds * 1000)) == WAIT_OBJECT_0
+        result = _KERNEL32.WaitForSingleObject(self._handle, round(seconds * 1000))
+        if result not in (WAIT_OBJECT_0, WAIT_TIMEOUT):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return result == WAIT_OBJECT_0
 
     def close(self) -> None:
+        self._closed = True
         if self._handle is None:
             signal.signal(signal.SIGTERM, self._sigterm)
         else:
