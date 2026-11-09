@@ -1231,12 +1231,18 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
         book = server.published_levels(tk)
         overlaid = book.gamma_surface["stream_overlay_contracts"]
         kept = {ct.symbol: ct.volume for ct in book.priced_chain if ct.symbol in traded}
+        panel = server.chain(
+            tk, after.timestamp(), {"expiry": str(held["chain"][0]["expirationDate"])[:10]}
+        )
+        shown = {row["symbol"]: row.get("totalVolume") for row in panel["contracts"]}
     finally:
         ofls.clear_all_live_state()
         _forget(tk)
     assert overlaid == 0
     assert all(m["native"]["TOTAL_VOLUME"] == 0 for m in messages)
     assert all(traded[s] > 0 and kept[s] == traded[s] for s in symbols)
+    # the chain panel shows the contracts as the levels priced them
+    assert all(shown[s] == traded[s] for s in symbols)
 
 
 def _drop_counts(chain):

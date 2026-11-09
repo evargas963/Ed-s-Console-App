@@ -514,18 +514,24 @@ the program.
   stream field's time, or the quote's `quoteTime`). Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (a contract the stream holds is not asked
   for on `/quotes`).
-  Outside that ticker's option window — after it has ended, and before the next one opens —
-  a quote that does not report a greek leaves the greek the last quote reported, and an open
-  interest or volume of zero leaves the last count above zero. A missing count and Schwab's
-  no-value code are not that zero. That last count is the one this process already published,
-  or, when it has not, the newest capture stored before this chain. A day Schwab says is closed is outside every
-  window (`time_et.option_market_open`), so its zeros keep the last count too (operator 2026-10-25:
-  the last valid number stands, as a bank's last balance does while it is closed). A chain is judged by when it was fetched: one begun inside the window keeps a reported
-  zero even when it is priced after the close. A streamed zero after the close does not replace
-  the count already on that chain. A zero book from a closed day does not replace the last count,
-  through the next open. During the window,
-  Schwab's no-value code is not a greek and does not keep an older one, and a count of zero
-  replaces the last count. A chain is published once all its quotes are in. A quotes request Schwab refuses
+  Outside that ticker's option window — after it has ended, and before the next one opens; a
+  day Schwab says is closed is outside every window (`time_et.option_market_open`) — the close
+  values are the balance until the next open (operator 2026-11-09: "upon market close (when the
+  bank closes) that is the balance until the bank opens again, post market, pre market, etc."):
+  the first chain begun at or after that ticker's close, the one this process published or the
+  ticker's newest capture stored after the close (`server._publish_levels`), priced as Schwab
+  sent it. A reported 0 is 0 in them, Schwab's no-value code and a missing count are no value,
+  and no earlier count or greek is carried in. Nothing Schwab sends after them replaces them: no
+  later chain, and no pushed value (no reprice, no streamed value over the chain; the chain panel
+  shows the contracts as the levels priced them). Until the close values are held, a chain is
+  priced as sent; one begun inside the window keeps its reported zero even when it is priced
+  after the close. During the window, Schwab's no-value code is not a greek and a count of zero
+  is the count. Enforced by: `tests/test_data_path_confluence_v1.py`
+  (`test_the_close_values_stand_until_the_next_open`,
+  `test_a_close_capture_of_zeros_is_the_balance_not_the_capture_before_it`,
+  `test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture`) and
+  `tests/test_data_path_served_verdicts_v1.py` (Sunday's chain on Schwab's captured answer). A
+  chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good
   publication, stale with that reason. A contract missing from an answered request has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when

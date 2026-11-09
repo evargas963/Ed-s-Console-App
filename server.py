@@ -86,7 +86,7 @@ from math_exposure_core import (
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from option_contract import GREEK_FIELDS, OptionContract, chain_row
+from option_contract import OptionContract, chain_row
 from terrain_atr import Atr, compute_atrs, roll_up
 from terrain_engine import (
     PRICE_RELATIONS,
@@ -646,10 +646,6 @@ class PublishedLevels:
     forces: dict
     prior_strikes: tuple[dict, str | None]
     captures_key: tuple
-    #: outside the option window, the newest stored capture before the chain, and its time;
-    #: None until one is read
-    count_capture: list | tuple | None
-    count_capture_ts: float | None
 
     def served(self) -> dict:
         """Return the levels as the terrain panel sends them, before the live price's relations."""
@@ -898,8 +894,7 @@ def _held_option_symbols_for_ticker(
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
     """Return the contracts `post` holds as new records of `pre`'s.
 
-    overlay_streamed_contract_fields and _keep_last_reported pass an unchanged contract through as
-    the same record.
+    overlay_streamed_contract_fields passes an unchanged contract through as the same record.
     """
     return [new.symbol for orig, new in zip(pre, post) if new is not orig and new.symbol]
 
@@ -1284,56 +1279,12 @@ def _contract_ticker(sym: str) -> str | None:
         )
 
 
-_QUOTE_COUNTS = ("open_interest", "volume")
+def _closed_since(now: datetime, product: str) -> datetime | None:
+    """Return the ticker's last option close while its option market is closed at `now`.
 
-
-def _positive(count: float | None) -> bool:
-    """Tell whether a count is one Schwab reported above zero. Zero and no value are not one."""
-    return count is not None and count > 0
-
-
-def _carried(newer: OptionContract, older: OptionContract | None, replaced) -> OptionContract:
-    """`newer`, with `older`'s greeks where Schwab sent `newer` no gamma and `older` one.
-
-    And each count of `older` above zero where `replaced` says `newer`'s is to be replaced.
-    `newer` itself when nothing is carried.
+    None while it is open, or while Schwab's /markets answer for today is not held.
     """
-    if older is None:
-        return newer
-    taken = {}
-    if newer.gamma is None and older.gamma is not None:
-        taken.update({f: getattr(older, f) for f in GREEK_FIELDS})
-    for f in _QUOTE_COUNTS:
-        if _positive(getattr(older, f)) and replaced(getattr(newer, f)):
-            taken[f] = getattr(older, f)
-    return replace(newer, **taken) if taken else newer
-
-
-def _keep_last_reported(chain, previous, at, product):
-    """Keep the last reported greeks and counts outside that ticker's option window.
-
-    Outside the window, a quote that does not report a greek leaves the greek the last quote
-    reported, and a count of zero leaves the last count above zero. During the window the quote
-    stands, and Schwab's no-value code does not keep an older greek.
-    """
-    if option_market_open(at, product) is not False or not previous:
-        return chain
-    prior = {c.symbol: c for c in previous if c.symbol}
-    return [_carried(c, prior.get(c.symbol), lambda count: count == 0) for c in chain]
-
-
-def _previous_counts(memory, stored):
-    """Return the last reported contract per symbol.
-
-    Each count above zero and the greeks of its newest quote that reported them (_carried), over
-    the stored capture and the last published chain, whichever exist. `memory` is newer than
-    `stored`.
-    """
-    by_sym: dict[str, OptionContract] = {}
-    for c in [c for chain in (stored, memory) if chain is not None for c in chain]:
-        if c.symbol:
-            by_sym[c.symbol] = _carried(c, by_sym.get(c.symbol), lambda count: not _positive(count))
-    return list(by_sym.values())
+    return options_closed_at(now, product) if option_market_open(now, product) is False else None
 
 
 def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
@@ -1354,18 +1305,6 @@ def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
         return chain_spot[0], source, chain_spot[1]
     live = resolve_spot(tk, now=now.timestamp())
     return previous.priced_at if live[0] is None else live
-
-
-def _capture_before(tk, fetched_ts, held, held_ts):
-    """Return the newest capture of `tk` stored before `fetched_ts`, its contracts and its time.
-
-    `held` (at `held_ts`) when that is it already; read once otherwise (() when none is stored).
-    """
-    newest = newest_capture_ts(get_db().db_path, tk, before_ts=fetched_ts)
-    if held_ts == newest:
-        return held, held_ts
-    rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=fetched_ts)
-    return (rows[0]["contracts"] if rows else ()), newest
 
 
 def _publish_levels(
@@ -1396,14 +1335,25 @@ def _publish_levels(
     its own time, or at that ticker's option close when the capture is past it, and both feed
     the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
     A chain that is not a capture is valued then, or at that ticker's option close once it has
-    passed. Outside that window, a quote that does not report a greek leaves the greek the
-    last quote reported, and a count of zero leaves the last count above zero. That last
-    count is the one already published, or the newest capture stored before this chain when this
-    process has not published one. The last streamed values price over the chain when they are
-    newer, and each leg's age is taken.
+    passed. Inside that window the last streamed values price over the chain, and each leg's age
+    is taken. Outside it the close values are the balance until the next open: the first chain
+    begun at or after the close, the one published or the ticker's stored capture taken then,
+    priced as Schwab sent it, a reported 0 included; nothing Schwab sends later (a chain, a
+    pushed value) replaces it. Until the close values are held, a chain is priced as sent.
     Returns the snapshot, or None when there is no chain to price.
     """
     previous = published_levels(tk)
+    product = option_close_product(tk)
+    closed = _closed_since(now, product)
+    if closed is not None:
+        if previous is not None and previous.computed_ts_utc >= closed.timestamp():
+            return previous.snap
+        if chain is None and not captures:
+            return None if previous is None else previous.snap
+        if not captures:
+            stored = last_capture_per_day(get_db().db_path, tk, 2)
+            if stored and stored[0]["ts_utc"] >= closed.timestamp():
+                captures = stored
     capture = captures[0] if captures else None
     if capture is not None:
         chain, fetched_ts = capture["contracts"], capture["ts_utc"]
@@ -1413,18 +1363,7 @@ def _publish_levels(
             return None
         chain, fetched_ts = previous.chain, previous.computed_ts_utc
     begun = datetime.fromtimestamp(fetched_ts, ET)
-    product = option_close_product(tk)
     valued_at = valuation_instant(begun if capture is not None else now, product)
-    count_capture, count_capture_ts = (
-        (None, None) if previous is None else (previous.count_capture, previous.count_capture_ts)
-    )
-    if new_chain and capture is None and option_market_open(begun, product) is False:
-        # the capture before this chain: its own may be stored already
-        count_capture, count_capture_ts = _capture_before(
-            tk, fetched_ts, count_capture, count_capture_ts
-        )
-        memory = None if previous is None else previous.priced_chain
-        chain = _keep_last_reported(chain, _previous_counts(memory, count_capture), begun, product)
     priced_at = _priced_at(tk, capture, new_chain, chain_spot, previous, now)
     if (
         capture is None
@@ -1449,11 +1388,13 @@ def _publish_levels(
     streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
     held = set(_held_option_symbols_for_ticker(listed, now.timestamp(), feed))
-    # a streamed contract's open interest and volume are the stream's, every other the chain's.
-    # The cell stamp says whether that stream is live.
-    priced, n_live = overlay_streamed_contract_fields(chain, streamed, held)
-    if option_market_open(now, product) is False:
-        priced = _keep_last_reported(priced, chain, now, product)
+    # a streamed contract's open interest and volume are the stream's, every other the chain's,
+    # inside the window; the close values are the chain as sent. The cell stamp says whether that
+    # stream is live.
+    if closed is None:
+        priced, n_live = overlay_streamed_contract_fields(chain, streamed, held)
+    else:
+        priced, n_live = chain, 0
     live_syms = _overlaid_symbols(chain, priced)
     pushed_ts = [
         ts
@@ -1511,8 +1452,6 @@ def _publish_levels(
         forces=forces,
         prior_strikes=prior,
         captures_key=captures_key,
-        count_capture=count_capture,
-        count_capture_ts=count_capture_ts,
     )
     with _terrain_cache_lock:
         _terrain_cache[tk] = levels
@@ -1683,8 +1622,8 @@ DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
 _chains_waiting: dict[str, tuple[str, list | None, float | None, tuple | None]] = {}
 _chains_waiting_lock = threading.Lock()
 #: the tickers the daemon has delivered a chain for since the console started: their stored
-#: capture is older and is not priced as the book. Outside the option window that capture's
-#: counts are the last counts when this process has not published one.
+#: capture is older and is not priced as the book, unless it holds the close values
+#: (_publish_levels)
 _chains_delivered: set[str] = set()
 
 
@@ -3393,18 +3332,19 @@ def chain(ticker: str, now: float, params: dict) -> dict:
     contracts = [c for c in chain if c.expiry == resolved_expiry]
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
-    # the levels' own rule (_publish_levels): a streamed contract's counts are the stream's
-    feed = lmp.feed_now(now)
-    listed = held.contract_symbols
-    response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts,
-        _streamed_greeks_for_ticker(listed, now, feed),
-        set(_held_option_symbols_for_ticker(listed, now, feed)),
-    )
-    product = option_close_product(t)
-    response_contracts = _keep_last_reported(
-        response_contracts, contracts, datetime.fromtimestamp(now, ET), product
-    )
+    # the levels' own rule (_publish_levels): inside the window a streamed contract's counts are
+    # the stream's; outside it the contracts as the levels priced them
+    if _closed_since(datetime.fromtimestamp(now, ET), option_close_product(t)) is None:
+        feed = lmp.feed_now(now)
+        listed = held.contract_symbols
+        response_contracts, overlay_n = overlay_streamed_contract_fields(
+            contracts,
+            _streamed_greeks_for_ticker(listed, now, feed),
+            set(_held_option_symbols_for_ticker(listed, now, feed)),
+        )
+    else:
+        response_contracts = [c for c in held.priced_chain if c.expiry == resolved_expiry]
+        overlay_n = 0
     shown = [chain_row(c) for c in response_contracts]
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)

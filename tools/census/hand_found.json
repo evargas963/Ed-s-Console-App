@@ -114,10 +114,6 @@
       "item": "auction word (decision 25)"
     },
     {
-      "category": "substitution, conflicts with first rule",
-      "item": "a reported 0 count replaced by the last count (decision 26)"
-    },
-    {
       "category": "one value, several producers",
       "item": "net gamma at spot: book_net_gex vs gamma_at_price vs GSF interpolation"
     },
@@ -366,14 +362,6 @@
     {
       "category": "contradiction: doc vs doc",
       "item": "ACTIVE_PROGRAM.md:286-287 P2-5/P2-6 folders daemon/, producer/, console/ vs ARCHITECTURE.md:10-26 feed/, state/, calc/, push/, recorder/, shared/"
-    },
-    {
-      "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:121 rule 2 'a reported 0 is 0' vs ACTIVE_PROGRAM.md:33-36 and DATA_FLOW.md:510-519 a zero outside the window keeps the last count"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:100 LIVE-SESSION cites the 2026-09-27 ruling that ACTIVE_PROGRAM.md:39-40 says was replaced on 2026-10-25"
     },
     {
       "category": "contradiction: rule vs doc",

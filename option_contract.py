@@ -187,7 +187,7 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
     """Return the contract as the chain screens show it, under Schwab's field names.
 
     Each field Schwab
-    sent, and each value the record holds (a streamed count or a carried Greek), and no other.
+    sent, and each value the record holds (a streamed count or Greek), and no other.
     """
     read = {
         "symbol": c.symbol,
