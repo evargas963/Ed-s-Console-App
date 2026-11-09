@@ -52,6 +52,45 @@ class VolumeProfile:
     bars_without_volume: int
 
 
+def _spread(vol_by_idx: dict[int, float], lo_i: int, hi_i: int, vol: int) -> None:
+    """Spread one bar's volume evenly over the tick bins `lo_i`..`hi_i` (a flat bar: one bin).
+
+    A bar spanning more than MAX_BINS_PER_BAR bins is spread over that many bins evenly spaced
+    across the same range.
+    """
+    n = hi_i - lo_i + 1
+    if n <= MAX_BINS_PER_BAR:
+        share = vol / n
+        for i in range(lo_i, hi_i + 1):
+            vol_by_idx[i] += share
+    else:
+        share = vol / MAX_BINS_PER_BAR
+        step = (hi_i - lo_i) / (MAX_BINS_PER_BAR - 1)
+        for k in range(MAX_BINS_PER_BAR):
+            vol_by_idx[int(round(lo_i + k * step))] += share
+
+
+def _value_area(vols: list[float], poc: int, target: float) -> tuple[int, int]:
+    """Return the value area's first and last positions in `vols` (each bin's volume, by price).
+
+    From the POC's position it grows one bin at a time toward the side whose next bin holds more
+    volume (the lower one on a tie), until it holds `target` or spans every bin.
+    """
+    lo = hi = poc
+    acc = vols[poc]
+    last = len(vols) - 1
+    while acc < target and (lo > 0 or hi < last):
+        v_lo = vols[lo - 1] if lo > 0 else -1.0  # every bin's volume is above 0
+        v_hi = vols[hi + 1] if hi < last else -1.0
+        if v_hi > v_lo:
+            hi += 1
+            acc += v_hi
+        else:
+            lo -= 1
+            acc += v_lo
+    return lo, hi
+
+
 def volume_profile(
     bars: list,
     value_area_pct: float = 0.70,
@@ -84,47 +123,17 @@ def volume_profile(
         # high < low has no range to spread over (measured: 0 of 2,166,115 bars)
         if hi is None or lo is None or vol is None or vol == 0 or hi < lo:
             continue
-        lo_i = int(round(lo / tick_size))
-        hi_i = int(round(hi / tick_size))
-        n = hi_i - lo_i + 1
-        if n <= 1:
-            vol_by_idx[lo_i] += vol  # flat bar: one price, all of it
-            continue
-        if n <= MAX_BINS_PER_BAR:
-            share = vol / n
-            for i in range(lo_i, hi_i + 1):
-                vol_by_idx[i] += share
-        else:
-            share = vol / MAX_BINS_PER_BAR
-            step = (hi_i - lo_i) / (MAX_BINS_PER_BAR - 1)
-            for k in range(MAX_BINS_PER_BAR):
-                vol_by_idx[int(round(lo_i + k * step))] += share
+        _spread(vol_by_idx, int(round(lo / tick_size)), int(round(hi / tick_size)), vol)
 
-    if not vol_by_idx:
+    if not vol_by_idx:  # every bin holds volume above 0
         return None
-    total_vol = sum(vol_by_idx.values())
-    if total_vol <= 0:
-        return None
-
     idx_sorted = sorted(vol_by_idx)
     poc_idx = max(idx_sorted, key=lambda i: (vol_by_idx[i], -i))
-    target = total_vol * value_area_pct
-    lo_pos = hi_pos = idx_sorted.index(poc_idx)
-    acc = vol_by_idx[poc_idx]
-    while acc < target and (lo_pos > 0 or hi_pos < len(idx_sorted) - 1):
-        v_lo = vol_by_idx[idx_sorted[lo_pos - 1]] if lo_pos > 0 else -1.0
-        v_hi = vol_by_idx[idx_sorted[hi_pos + 1]] if hi_pos < len(idx_sorted) - 1 else -1.0
-        if v_hi > v_lo and hi_pos < len(idx_sorted) - 1:
-            hi_pos += 1
-            acc += v_hi
-        elif lo_pos > 0:
-            lo_pos -= 1
-            acc += v_lo
-        elif hi_pos < len(idx_sorted) - 1:
-            hi_pos += 1
-            acc += v_hi
-        else:
-            break
+    lo_pos, hi_pos = _value_area(
+        [vol_by_idx[i] for i in idx_sorted],
+        idx_sorted.index(poc_idx),
+        sum(vol_by_idx.values()) * value_area_pct,
+    )
     return VolumeProfile(
         tick_size=tick_size,
         bins=tuple((round(i * tick_size, ndigits), vol_by_idx[i]) for i in idx_sorted),

@@ -393,21 +393,22 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
         elif sc is not None:
             out.scope_value = str(sc)
 
-    issues: list[str] = []
-    if not out.has_creation_timestamp:
-        issues.append("missing creation_timestamp")
-    if not out.has_token_object:
-        issues.append("missing or invalid token object")
-    if not out.has_access_token:
-        issues.append("missing or empty access_token")
-    if not out.has_refresh_token:
-        issues.append("missing or empty refresh_token (not refreshable)")
-    if not out.has_expires_at:
-        issues.append("missing expires_at")
-    if issues:
-        out.message = "Token structure issues: " + "; ".join(issues)
-    else:
-        out.message = "Token file structure OK; refreshable."
+    issues = [
+        issue
+        for present, issue in (
+            (out.has_creation_timestamp, "missing creation_timestamp"),
+            (out.has_token_object, "missing or invalid token object"),
+            (out.has_access_token, "missing or empty access_token"),
+            (out.has_refresh_token, "missing or empty refresh_token (not refreshable)"),
+            (out.has_expires_at, "missing expires_at"),
+        )
+        if not present
+    ]
+    out.message = (
+        "Token structure issues: " + "; ".join(issues)
+        if issues
+        else "Token file structure OK; refreshable."
+    )
     return out
 
 
