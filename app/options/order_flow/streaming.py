@@ -79,7 +79,8 @@ def price_state(
 #: the capture daemon this console runs in (start_order_flow_stream): watchlist requests and the
 #: Flow panel's contract go to it
 _daemon = None
-#: request id -> the future the daemon's watchlist record for it resolves (_ingest_pushed)
+#: request id -> the future the daemon's watchlist record for it resolves
+#: (_answer_watchlist_request)
 _watchlist_answers: dict[int, asyncio.Future] = {}
 #: each watchlist request's id, unique in this process (an id, not a time)
 _request_ids = itertools.count(1)
@@ -267,20 +268,14 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if not isinstance(msg, dict):
         return
     if topic.startswith("chain."):
-        for done in assemble_chain_part(msg):
-            if _on_chain_callback is not None:
-                _on_chain_callback(*done)
+        _apply_chain_part(msg)
         return
     if topic.startswith("markets."):
         if msg["status"] == 200:
             record_markets(msg["answer"])
         return
-    if topic == "watchlist":  # the daemon's answer to a watchlist request
-        if (
-            msg["request_id"] in _watchlist_answers
-            and not _watchlist_answers[msg["request_id"]].done()
-        ):
-            _watchlist_answers[msg["request_id"]].set_result(msg)
+    if topic == "watchlist":
+        _answer_watchlist_request(msg)
         return
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
@@ -292,40 +287,69 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         streamed_bars.put(msg)
         return
     received = {f: stamp[1] for f, stamp in msg["field_ts"].items()} if "field_ts" in msg else None
-    if kind == "quote":
-        item = msg.get("native")
-        if not isinstance(item, dict):
-            return
-        push_level_one(sym, item, ts_recv=ts, field_received=received)
-        push_changes.changed(sym, push_changes.FLOW)
-        _tick(sym, ts)
+    apply = _APPLY_BY_KIND.get(kind)
+    if apply is not None:
+        apply(sym, ts, msg, received)
+
+
+def _apply_chain_part(msg: dict) -> None:
+    """Take a chain's part; each chain it completes goes to the chain callback."""
+    for done in assemble_chain_part(msg):
+        if _on_chain_callback is not None:
+            _on_chain_callback(*done)
+
+
+def _answer_watchlist_request(msg: dict) -> None:
+    """Resolve the watchlist request the daemon's record answers, while it still waits."""
+    answer = _watchlist_answers.get(msg["request_id"])
+    if answer is not None and not answer.done():
+        answer.set_result(msg)
+
+
+def _apply_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
+    """Apply a LEVELONE_EQUITIES message: the order-flow state, then the equity's tick."""
+    item = msg.get("native")
+    if not isinstance(item, dict):
         return
-    if kind == "book":
-        content = msg.get("content")
-        if not isinstance(content, dict):
-            return
-        book = push_book(sym, content, msg["service"])
-        if msg.get("service") == "OPTIONS_BOOK":
-            _option_contract_last_update_ts[sym] = ts
-        else:
-            if book is not None:
-                recent.BOOKS.record(sym, msg["service"], book, ts)
-            recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
-            push_changes.changed(sym, push_changes.FLOW)
+    push_level_one(sym, item, ts_recv=ts, field_received=received)
+    push_changes.changed(sym, push_changes.FLOW)
+    _tick(sym, ts)
+
+
+def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
+    """Apply a book message: an option contract's, or an equity venue's with its readout."""
+    content = msg.get("content")
+    if not isinstance(content, dict):
         return
-    if kind == "optquote":
-        content = msg.get("content")
-        if not isinstance(content, dict):
-            return
-        push_level_one(sym, content, ts_recv=ts, field_received=received)
-        push_option_top(sym, content)
-        recent.TAPE.record(sym, content, ts, option_top(sym), get_stream_greeks(sym))
+    book = push_book(sym, content, msg["service"])
+    if msg.get("service") == "OPTIONS_BOOK":
         _option_contract_last_update_ts[sym] = ts
-        # a tick when the newest message carried a value the levels use (a merged record holds
-        # the last of each field; only one this message brought is new)
-        if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
-            _tick(sym, ts)
-    return
+        return
+    if book is not None:
+        recent.BOOKS.record(sym, msg["service"], book, ts)
+    recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
+    push_changes.changed(sym, push_changes.FLOW)
+
+
+def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
+    """Apply a LEVELONE_OPTIONS message: the contract's order-flow state, tape and update time.
+
+    A tick when the newest message carried a value the levels use (a merged record holds the last
+    of each field; only one this message brought is new).
+    """
+    content = msg.get("content")
+    if not isinstance(content, dict):
+        return
+    push_level_one(sym, content, ts_recv=ts, field_received=received)
+    push_option_top(sym, content)
+    recent.TAPE.record(sym, content, ts, option_top(sym), get_stream_greeks(sym))
+    _option_contract_last_update_ts[sym] = ts
+    if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
+        _tick(sym, ts)
+
+
+#: each symbol's message, by its topic's kind, and what applies it (_ingest_pushed)
+_APPLY_BY_KIND = {"quote": _apply_quote, "book": _apply_book, "optquote": _apply_option_quote}
 
 
 async def _bus_loop(bus) -> None:

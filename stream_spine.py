@@ -1427,6 +1427,40 @@ class CaptureWriter:
         conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
         return conn
 
+    def _take_round(
+        self, q: queue.SimpleQueue, stopping: bool, last_commit: float
+    ) -> tuple[list, bool]:
+        """Take one round's messages from `q`, and whether the stop is taken.
+
+        The first is waited for until the batch is due (a moment only while a spill file or a
+        prune has work); then every message already queued is taken, none after the stop.
+        """
+        unread = (bool(self._spills) and self._spills[0].read_at < self._spills[0].size) or bool(
+            self._prune
+        )
+        timeout = 0.001 if unread else max(self.batch_sec - (time_et.elapsed() - last_commit), 0.01)
+        incoming: list = []
+        block = True  # the first is waited for; after it, only what is already queued
+        while block or not stopping:
+            try:
+                item = q.get(block=block, timeout=timeout)
+            except queue.Empty:
+                if not block:
+                    break
+            else:
+                stopping = stopping or item is None
+                incoming += [item] if item else []
+            block = False
+        return incoming, stopping
+
+    def _store_round(self, conn: sqlite3.Connection) -> None:
+        """Store the round's messages into the open batch, each counted stored as it is."""
+        for item in self._round:
+            out = self._store(conn, item)
+            with self._lock:
+                self._batch.append((item, out))
+                self._stored += 1
+
     def _write(self, q: queue.SimpleQueue) -> None:
         """Run the writer thread's loop.
 
@@ -1438,26 +1472,7 @@ class CaptureWriter:
         try:
             last_commit, stopping = time_et.elapsed(), False
             while not (stopping and not self._waiting and not self._spills):
-                unread = (
-                    bool(self._spills) and self._spills[0].read_at < self._spills[0].size
-                ) or bool(self._prune)
-                try:
-                    item = q.get(
-                        timeout=0.001
-                        if unread
-                        else max(self.batch_sec - (time_et.elapsed() - last_commit), 0.01)
-                    )
-                except queue.Empty:
-                    item = False
-                stopping = stopping or item is None
-                incoming = [item] if item else []
-                while not stopping:  # every message already queued is taken in this round
-                    try:
-                        item = q.get_nowait()
-                    except queue.Empty:
-                        break
-                    stopping = item is None
-                    incoming += [item] if item else []
+                incoming, stopping = self._take_round(q, stopping, last_commit)
                 holding = bool(self._waiting) or bool(self._spills)
                 with self._lock:
                     self._round, self._stored = self._waiting if holding else incoming, 0
@@ -1467,11 +1482,7 @@ class CaptureWriter:
                 try:
                     if conn is None:
                         conn = self._open()
-                    for item in self._round:
-                        out = self._store(conn, item)
-                        with self._lock:
-                            self._batch.append((item, out))
-                            self._stored += 1
+                    self._store_round(conn)
                     if self._batch and (
                         holding
                         or stopping
