@@ -75,7 +75,12 @@ CATCH_ALL = ("Exception", "BaseException")
 #: absent key has its own form, `d.get(k)`, so `KeyError` is not one
 ABSENT = ("FileNotFoundError",)
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
-JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
+#: any literal, as `_literal` reads Python's: a number, a string, an empty array or object, null,
+#: true or false
+JS_LITERAL = (
+    r"(-?\d+(\.\d+)?(?![\w.])|'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\""
+    r"|\[\]|\{\}|null(?!\w)|true(?!\w)|false(?!\w))"
+)
 JS_PATCH = re.compile(
     rf"\|\|\s*{JS_LITERAL}"
     rf"|\?\?\s*{JS_LITERAL}"
