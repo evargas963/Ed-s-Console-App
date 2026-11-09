@@ -142,10 +142,9 @@ def commit_pipe_violations(cmd: str, powershell: bool = False) -> list[str]:
 
     Such a commit reports the FILTER's exit code and truncates hook output, so a failed commit
     reads as exit 0. Commits run UNPIPED; long hooks go to a background task whose full output is
-    read back. Escape: '# pipe-ok: <reason>' (operator-reviewed). A `|` inside a quoted -m message
-    is not a pipe.
+    read back. A `|` inside a quoted -m message is not a pipe.
     """
-    if not cmd or "# pipe-ok:" in cmd:
+    if not cmd:
         return []
     for st in read(cmd, powershell=powershell):
         up = st.upstream if st.program in _MASKING_FILTERS else None
@@ -156,6 +155,6 @@ def commit_pipe_violations(cmd: str, powershell: bool = False) -> list[str]:
                 "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
                 "code replaces the commit's and hook failures vanish. Run the "
                 "commit UNPIPED (background task for long hooks), then verify via "
-                "`git show --stat`. Escape: '# pipe-ok: <reason>'."
+                "`git show --stat`."
             ]
     return []

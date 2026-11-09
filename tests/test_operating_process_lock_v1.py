@@ -177,8 +177,13 @@ def test_rc234_pipe_on_other_segment_allows():
     assert OPL.commit_pipe_violations('pytest -q | tail -2 && git commit -m "after tests"') == []
 
 
-def test_rc234_pipe_ok_escape_allows():
-    assert OPL.commit_pipe_violations('git commit -m "x" | tail -1  # pipe-ok: operator demo') == []
+def test_a_piped_commit_is_refused_whatever_text_the_command_carries():
+    for cmd in (
+        'git commit -m "x" | tail -1  # pipe-ok: operator demo',
+        'git commit -m "# pipe-ok: in the message" | tail -1',
+    ):
+        bad = OPL.commit_pipe_violations(cmd)
+        assert bad and bad[0].startswith("PIPE_MASKED_COMMIT:"), cmd
 
 
 def test_an_edit_target_is_placed_once_whatever_its_spelling(tmp_path):
