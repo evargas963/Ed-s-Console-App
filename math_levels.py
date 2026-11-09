@@ -6,12 +6,13 @@ Walls, pins, inflections, support/resistance derived from options exposure struc
 
 from __future__ import annotations
 
+import functools
 from datetime import datetime
 
 import numpy as np
 
 from math_exposure_core import (
-    bs_charm,
+    bs_charm_array,
     bucket_metric,
     d1_vt,
     key_level_strikes_with_oi,
@@ -53,19 +54,35 @@ def compute_charm_by_strike(
     out: dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
         return out
+    tte = _expiry_years(now, product)
+    # each contract that counts: its strike, its side's slot, and its pricing inputs (NaN: it
+    # cannot be priced, so its side's sum is not known)
+    slot, inputs = [], []
     for c in contracts:
-        row = _contract_inputs(c, now, t_years=t_years, product=product)
-        strike = c.strike
-        if row in ("zero_open_interest", "settled") or strike is None or c.side is None:
+        years = t_years if t_years is not None else tte(c.expiration, c.settlement)
+        row = _contract_inputs(c, now, t_years=years, product=product)
+        if row in ("zero_open_interest", "settled") or c.strike is None or c.side is None:
             continue
-        side = f"{c.side.lower()}_charm"
-        exposure = None
-        if isinstance(row, tuple):
-            _, oi, mult, years, sigma, _ = row
-            c = bs_charm(float(spot), strike, years, sigma)
-            exposure = None if c is None else c * oi * mult / 365.0
-        b = out.setdefault(strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
-        _add_charm(b, side, exposure)
+        out.setdefault(c.strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
+        slot.append((c.strike, c.side == "CALL"))
+        inputs.append(row[1:5] if isinstance(row, tuple) else (np.nan,) * 4)
+    if not out:
+        return out
+    at = {k: i for i, k in enumerate(out)}
+    where = np.array([2 * at[k] + (not call) for k, call in slot])
+    oi, mult, years, sigma = np.array(inputs, float).T
+    strike = np.array([k for k, _call in slot], float)
+    charm = bs_charm_array(float(spot), strike, years, sigma)
+    exposure = charm * oi * mult / 365.0
+    known = ~np.isnan(exposure)
+    # bincount adds each side's exposures one at a time, in the chain's order
+    sums = np.bincount(where[known], weights=exposure[known], minlength=2 * len(at)).tolist()
+    for s in np.unique(where[~known]).tolist():  # one not known leaves its side not known
+        sums[s] = None
+    for i, b in enumerate(out.values()):
+        call, put = sums[2 * i], sums[2 * i + 1]
+        b["call_charm"], b["put_charm"] = call, put
+        b["net_charm"] = None if call is None or put is None else call - put
     return out
 
 
@@ -128,13 +145,23 @@ def contract_inputs(
     contracts with open interest the profile could not price, by reason.
     """
     priced, unpriced = [], {}
+    tte = _expiry_years(now, product)
     for c in contracts:
-        r = _contract_inputs(c, now=now, product=product)
+        r = _contract_inputs(c, now=now, t_years=tte(c.expiration, c.settlement), product=product)
         if isinstance(r, tuple):
             priced.append(r)
         elif r != "zero_open_interest":
             unpriced[r] = unpriced.get(r, 0) + 1
     return priced, unpriced
+
+
+def _expiry_years(now: datetime, product: str):
+    """Return time_to_expiry_years at `now`, computed once per (expiration, settlement)."""
+    return functools.cache(
+        lambda expiration, settlement: time_to_expiry_years(
+            expiration, now=now, settlement_type=settlement, product=product
+        )
+    )
 
 
 def _contract_inputs(
