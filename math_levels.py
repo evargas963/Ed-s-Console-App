@@ -6,6 +6,7 @@ Walls, pins, inflections, support/resistance derived from options exposure struc
 
 from __future__ import annotations
 
+import functools
 from datetime import datetime
 
 import numpy as np
@@ -53,8 +54,10 @@ def compute_charm_by_strike(
     out: dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
         return out
+    tte = _expiry_years(now, product)
     for c in contracts:
-        row = _contract_inputs(c, now, t_years=t_years, product=product)
+        years = t_years if t_years is not None else tte(c.expiration, c.settlement)
+        row = _contract_inputs(c, now, t_years=years, product=product)
         strike = c.strike
         if row in ("zero_open_interest", "settled") or strike is None or c.side is None:
             continue
@@ -128,13 +131,23 @@ def contract_inputs(
     contracts with open interest the profile could not price, by reason.
     """
     priced, unpriced = [], {}
+    tte = _expiry_years(now, product)
     for c in contracts:
-        r = _contract_inputs(c, now=now, product=product)
+        r = _contract_inputs(c, now=now, t_years=tte(c.expiration, c.settlement), product=product)
         if isinstance(r, tuple):
             priced.append(r)
         elif r != "zero_open_interest":
             unpriced[r] = unpriced.get(r, 0) + 1
     return priced, unpriced
+
+
+def _expiry_years(now: datetime, product: str):
+    """Return time_to_expiry_years at `now`, computed once per (expiration, settlement)."""
+    return functools.cache(
+        lambda expiration, settlement: time_to_expiry_years(
+            expiration, now=now, settlement_type=settlement, product=product
+        )
+    )
 
 
 def _contract_inputs(

@@ -2604,8 +2604,8 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
     expiries = sorted(per_expiry)
     strikes = sorted(strike_set)
     expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
-    # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna
-    # (call - put, the dealer convention of compute_net_vanna), OI and volume -- so one grid
+    # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna (call - put,
+    # the dealer convention of math_exposure_core._finish_bucket), OI and volume -- so one grid
     # serves every heatmap measure; a measure with no value is None (_gamma_surface_cell_fields).
     cells = []
     for k in strikes:

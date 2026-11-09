@@ -1,7 +1,7 @@
 """One meaning per name (2026-09-27).
 
 DEX is dealer-signed (+call/-put) in every bucket; vanna is per 1 volatility point in every
-bucket and in the aggregate; a contract with no readable expiry is in no expiry's book;
+bucket and in their sum; a contract with no readable expiry is in no expiry's book;
 yesterday's chain is priced at its own capture time.
 
 Real data (tests/real_chains.py): SPY's same-day chain of 2026-10-07 12:32 ET and CRWD's 2026-10-16
@@ -20,7 +20,6 @@ from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_d
 from math_exposure_core import (
     bucket_metric,
     compute_exposures_by_strike,
-    compute_net_vanna,
     put_call_volume_ratio,
 )
 from option_contract import read_chain
@@ -45,25 +44,26 @@ def test_dex_is_dealer_signed_in_every_bucket():
 def test_vanna_is_per_vol_point_in_every_bucket_and_in_the_aggregate():
     per = _book()
     shares = sum(b["call_vanna"] - b["put_vanna"] for b in per.values())
-    agg = compute_net_vanna(per, SPY_0DTE.spot)
-    assert agg["net_vanna_shares_per_volpt"] == pytest.approx(shares, abs=0.01)
+    nets = sum(b["net_vanna"] for b in per.values())
+    assert nets == pytest.approx(shares, abs=0.01)
 
 
 def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
     """On a chain with no same-day expiry, a contract with no stated expiry is not same-day.
 
-    On CRWD, 9 days out, a contract that does not state its expiry must not create a same-day
-    share (it was pooled into the 0DTE book).
+    On CRWD, 9 days out, a contract that does not state its expiry is in no expiry's book: the
+    terrain has no same-day book (no expiry of 0 days) with it or without it.
     """
     chain, spot = CRWD.chain, CRWD.spot
-    base = compute_terrain("CRWD", read_chain(chain), spot, now=CRWD.now).zero_dte_gamma_share_pct
+    base = compute_terrain("CRWD", read_chain(chain), spot, now=CRWD.now).books
     # the contract with the most gamma among those Schwab sent a gamma for
     top = max((c for c in chain if c.get("gamma") is not None), key=lambda c: c["gamma"])
     orphan = {k: v for k, v in top.items() if k not in ("expirationDate", "daysToExpiration")}
     orphan["openInterest"] = 100_000
-    assert base == 0.0
+    assert not [d for (_e, d) in base if d is not None and d <= 0]
     with_orphan = read_chain(chain + [orphan])
-    assert compute_terrain("CRWD", with_orphan, spot, now=CRWD.now).zero_dte_gamma_share_pct == base
+    books = compute_terrain("CRWD", with_orphan, spot, now=CRWD.now).books
+    assert not [d for (_e, d) in books if d is not None and d <= 0]
 
 
 def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
@@ -124,4 +124,6 @@ def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
         read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=next_day
     )
     assert [bucket_metric(b, "net_vanna") for b in per.values()] == [None] * len(per)
-    assert compute_net_vanna(per, SPY_0DTE.spot) is None
+    assert [bucket_metric(b, f"{s}_vanna") for b in per.values() for s in ("call", "put")] == [
+        None
+    ] * (2 * len(per)), "no leg has a vanna: none is 0"

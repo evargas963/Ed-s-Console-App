@@ -180,8 +180,9 @@ def bucket_metric(bucket: dict, key: str) -> float | None:
     """
     if not isinstance(bucket, dict) or key not in bucket:
         return None
-    if any(bucket.get(u) for u in _GREEK_FIELD_UNREPORTED.get(key, ())):
-        return None
+    for u in _GREEK_FIELD_UNREPORTED[key] if key in _GREEK_FIELD_UNREPORTED else ():
+        if bucket.get(u):
+            return None
     return float_finite_or_none(bucket[key])
 
 
@@ -444,11 +445,11 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
             if cur is None:
                 merged[strike] = dict(bucket)
                 continue
-            for k, v in bucket.items():
-                if k in _BUCKET_FLAGS:
-                    cur[k] = cur[k] or v
-                elif not k.startswith("net_"):
-                    cur[k] = None if v is None or cur[k] is None else cur[k] + v
+            for k in _BUCKET_FLAGS:
+                cur[k] = cur[k] or bucket[k]
+            for k in _BUCKET_SUMS:
+                v, now = bucket[k], cur[k]
+                cur[k] = None if v is None or now is None else now + v
     for b in merged.values():
         _finish_bucket(b)
     return merged, _diagnostics(total, used, missing)
@@ -457,6 +458,11 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
 #: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is
 #: a sum, None when no contract reported it (_strike_bucket, compute_exposures_by_strike).
 _BUCKET_FLAGS = frozenset({"dollarized"})
+#: the per-strike bucket fields that are sums: every field but the flags and the net fields, which
+#: _finish_bucket computes from the legs
+_BUCKET_SUMS = tuple(
+    k for k in _strike_bucket({}, 0.0, True) if k not in _BUCKET_FLAGS and not k.startswith("net_")
+)
 
 
 def overlay_streamed_contract_fields(
@@ -615,59 +621,6 @@ def total_gex_dollars_at_strike(bucket: dict) -> float | None:
 
 def net_gex_dollars_at_strike(bucket: dict) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
-
-
-def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
-    """Aggregate dealer vanna — how much dealer DELTA shifts per IV point.
-
-    Same naive dealer-sign model (dealer +calls/−puts): net vanna Δ-shares per 1.00 vol
-    = Σ net_vanna over the ONE exposures book (each strike's net_vanna from
-    compute_exposures_by_strike: exact Black-Scholes bs_vanna, per vol point, ·OI·mult);
-    dollars per vol-pt = × spot. Positive net: IV UP forces dealer delta up → they SELL
-    into vol spikes; IV DOWN (crush) → they BUY, the vanna-tailwind rally mechanic.
-    FAIL-CLOSED: None on an empty/valueless book or missing spot.
-    """
-    if not exposures or spot is None or spot <= 0:
-        return None
-    nets = [v for b in exposures.values() if (v := bucket_metric(b, "net_vanna")) is not None]
-    if not nets:
-        return None
-    net_shares_per_volpt = sum(nets)  # the book is already per vol point
-    return {
-        "net_vanna_dollars_per_volpt": net_shares_per_volpt * float(spot),
-        "net_vanna_shares_per_volpt": net_shares_per_volpt,
-    }
-
-
-def compute_zero_dte_gamma_share(
-    exposures_all: dict[float, dict], exposures_0dte: dict[float, dict]
-) -> float | None:
-    """% of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
-
-    share = sum(|net_gex_1pct|) over the 0DTE book / sum(|net_gex_1pct|) over the full book,
-    BOTH books from the ONE producer (compute_exposures_by_strike; the 0DTE book merges
-    exposure_books' same-day groups). High share
-    means today's walls/flip decay into the close (0DTE gamma dies at 4pm); low share means
-    the levels are carried by dated gamma and persist. FAIL-CLOSED: None when the full book
-    is empty or has no measurable gamma — never a fabricated 0%.
-    """
-    if not exposures_all:
-        return None
-    # a bucket MISSING its net-GEX field must not contribute a fabricated zero
-    # weight to a share-of-book ratio — absence WITHHOLDS the whole metric.
-    total = 0.0
-    for v in exposures_all.values():
-        x = bucket_metric(v, "net_gex_1pct")
-        if x is not None:
-            total += abs(x)
-    if total <= 0:
-        return None
-    zero = 0.0
-    for v in exposures_0dte.values():
-        x = bucket_metric(v, "net_gex_1pct")
-        if x is not None:
-            zero += abs(x)
-    return 100.0 * zero / total
 
 
 def _pick_strike_max_metric(
