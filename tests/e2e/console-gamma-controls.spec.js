@@ -217,4 +217,48 @@ test.describe('ticker / expiry / measure controls', () => {
     expect(tickered.filter((u) => !/[?&]ticker=QQQ(&|$)/.test(u))).toEqual([]);      // no AAPL (or SPY) request survives the switch
     expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('QQQ');
   });
+
+  // An expiry belongs to its ticker: right after a switch, before the new ticker's list is known,
+  // the page asked for the NEW ticker's chain and surface at the OLD ticker's expiry.
+  test('a ticker switch reads no old expiry; the new list re-applies a still-valid one, else All', async ({ page }) => {
+    const LIST = { expiries: EXPS, labels: Object.fromEntries(EXPS.map((e) => [e, e])), reason: null };
+    const IWM_LIST = { expiries: ['2026-09-18'], labels: { '2026-09-18': '2026-09-18' }, reason: null };
+    const PICK = '2026-09-12';
+    const read = [];   // [ticker, expiry] of every read that names both
+    page.on('request', (r) => {
+      const q = new URL(r.url()).searchParams;
+      if (q.get('ticker') && q.get('expiry')) read.push([q.get('ticker'), q.get('expiry')]);
+    });
+    const requests = watchRequests(page);
+    let releaseQqq;
+    const qqqHeld = new Promise((resolve) => { releaseQqq = resolve; });
+    await page.routeWebSocket(/\/ws$/, (ws) => {
+      ws.onMessage(async (m) => {
+        const req = JSON.parse(String(m));
+        if (req.op !== 'subscribe') return;
+        ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
+        if (req.ticker === 'QQQ') await qqqHeld;   // QQQ's list is held until the test releases it
+        ws.send(expiriesFrame(req.ticker, req.ticker === 'IWM' ? IWM_LIST : LIST));
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#expSel option[value="' + PICK + '"]')).toHaveCount(1);
+    await page.locator('#expSel').selectOption(PICK);
+    await expect.poll(() => read.some(([t, e]) => t === 'SPY' && e === PICK)).toBe(true);
+    await page.locator('#subnav .tab', { hasText: 'Chain' }).click();            // the Chain tab reads at the expiry too
+    await page.locator('.wl-row .wl-sym', { hasText: 'QQQ' }).click();
+    await expect(page.locator('#chTicker')).toHaveText('QQQ');
+    await requests.settled();                                                       // every read the switch made
+    expect(read.filter(([t]) => t === 'QQQ')).toEqual([]);                         // none at SPY's expiry, or any
+    await expect(page.locator('#expSel')).toHaveValue('');
+    releaseQqq();                                                                   // QQQ's list lists PICK: kept
+    await expect(page.locator('#expSel')).toHaveValue(PICK);
+    await expect.poll(() => read.some(([t, e]) => t === 'QQQ' && e === PICK)).toBe(true);
+    await page.locator('.wl-row .wl-sym', { hasText: 'IWM' }).click();             // IWM's list does not: All
+    await expect(page.locator('#chTicker')).toHaveText('IWM');
+    await expect(page.locator('#expSel option[value="2026-09-18"]')).toHaveCount(1);
+    await expect(page.locator('#expSel')).toHaveValue('');
+    await requests.settled();
+    expect(read.filter(([t, e]) => t === 'IWM' && e === PICK)).toEqual([]);
+  });
 });

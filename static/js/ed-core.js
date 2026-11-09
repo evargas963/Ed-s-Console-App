@@ -590,7 +590,7 @@
     paintIdentity(state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
-    paintExpiriesUnknown();           // until the socket sends this ticker's list (subscribePrices)
+    forgetExpiries();                 // until the socket sends this ticker's list (subscribePrices)
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     // just asked for this ticker: WAITING (not OFFLINE) until PRICE_SILENCE_MS passes with no row
     _priceConnecting = true; clearTimeout(_priceConnectTimer);
@@ -628,13 +628,23 @@
     exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
     if (!exps.length && d.reason) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
     sel.innerHTML = opts;
-    var cur = state.expiryFilter;
-    if (cur && exps.indexOf(cur) !== -1) { sel.value = cur; }   // keep a still-valid selection
-    else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid current expiry -> All (honest)
+    // the expiry chosen before a ticker switch, else the one in force: kept while this list holds
+    // it, else All (honest)
+    var pick = _expiryPick !== null ? _expiryPick : state.expiryFilter;
+    _expiryPick = null;
+    var keep = pick !== null && exps.indexOf(pick) !== -1;
+    sel.value = keep ? pick : '';
+    setExpiry(keep ? pick : '');
     relabelExpiryDefault();
   }
-  // a new ticker's list is not received yet: none is shown ('-'), never the last ticker's
-  function paintExpiriesUnknown() {
+  // An expiry belongs to its ticker. A new ticker's list is not received yet, so its expiry is
+  // unknown: none is in force (no read carries the last ticker's) and none is shown ('-'); the
+  // operator's pick waits for the new list (paintExpiries).
+  var _expiryPick = null;
+  function forgetExpiries() {
+    if (state.expiryFilter !== null) _expiryPick = state.expiryFilter;
+    state.expiryFilter = null;
+    var ctx = document.getElementById('aiCtxExp'); if (ctx) ctx.textContent = 'All';
     var sel = document.getElementById('expSel'); if (!sel) return;
     sel.innerHTML = '<option value="">All Expirations</option><option value="" disabled>-</option>';
     relabelExpiryDefault();
