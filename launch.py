@@ -98,16 +98,26 @@ def running(start: list[str], root: Path = ROOT) -> list[psutil.Process]:
     Those whose folder is `root` (this checkout, ROOT, unless a test names another), where its
     daemon's batch and its console run, so another checkout's daemon or console (a test's) is
     never taken for one, nor a process that only names them, as a search does (one whose line or
-    folder cannot be read is none).
+    folder cannot be read is none). A folder is read only for a process whose line runs `start`:
+    each read of another process's memory can take a second (psutil retries a partial copy, as a
+    sandboxed browser's gives), so the scan reads no folder it does not compare.
     """
     return [
         p
-        for p in psutil.process_iter(["cmdline", "cwd"])
+        for p in psutil.process_iter(["cmdline"])
         if p.info["cmdline"] is not None
         and p.info["cmdline"][1 : len(start) + 1] == start
-        and p.info["cwd"] is not None
-        and Path(p.info["cwd"]).resolve() == root.resolve()
+        and _folder(p) == root.resolve()
     ]
+
+
+def _folder(p: psutil.Process) -> Path | None:
+    """Return the folder process `p` runs in, or None when it cannot be read or has ended."""
+    try:
+        return Path(p.cwd()).resolve()
+    except psutil.Error as e:
+        log.warning("Ed Console: pid %s runs the program; its folder is unknown: %r", p.pid, e)
+        return None
 
 
 def daemon_window(batch: Path) -> list[str]:
@@ -125,24 +135,28 @@ def stop() -> int:
 
     It writes what it holds and exits, and start_capture_daemon.bat does not restart it; the
     Schwab connection, the recording and the console's pages end together. Waits up to
-    STOP_WAIT_SEC; 0 when it ended after being asked: one that ended when this stop could not ask
-    it (it had made no request to set) is not reported stopped.
+    STOP_WAIT_SEC for a program it asked; 0 when it ended. One it could not ask (it had made no
+    request to set) is reported at once, still running, exit 1: no wait can stop a program that
+    was not asked.
     """
     program = running(DAEMON_START)
-    ended = "stopped"
+    left = program
     if program:
         try:
             ask_to_stop()
         except OSError as e:
             log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
-            ended = "ended, not asked by this stop"
-    _gone, alive = psutil.wait_procs(program, timeout=STOP_WAIT_SEC)
-    left = [p.pid for p in program if p in alive]
-    print(
-        "Ed Console: "
-        + ("not running" if not program else f"still running ({left})" if left else ended)
+        else:
+            _gone, left = psutil.wait_procs(program, timeout=STOP_WAIT_SEC)
+    answer = (
+        f"still running ({[p.pid for p in left]})"
+        if left
+        else "stopped"
+        if program
+        else "not running"
     )
-    return 1 if alive or ended != "stopped" else 0
+    print("Ed Console: " + answer)
+    return 1 if left else 0
 
 
 def wait_for_pages(seconds: float, db_path: Path | None = None) -> Ports:
