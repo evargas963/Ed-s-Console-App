@@ -125,7 +125,8 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
             reached.append(conn.recv(200))
             conn.close()
 
-    threading.Thread(target=record, daemon=True).start()
+    recorder = threading.Thread(target=record, daemon=True)
+    recorder.start()
     (tmp_path / "schwab_token.json").write_text(
         json.dumps(
             {
@@ -164,6 +165,7 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
         )
     finally:
         done.set()
+        recorder.join()
         proxy.close()
     assert r.returncode == 0, r.stdout + r.stderr
     assert reached == [], f"the console reached out: {reached}"

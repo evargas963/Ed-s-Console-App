@@ -14,7 +14,8 @@ socket open and holding SPY on both books; no status message is captured.
 
 The Playwright fixtures the card's browser tests draw are this route's answers
 (write_readout_e2e_fixtures), never hand written:
-  python -c "import tests.test_liquidity_readout_v1 as t; t.write_readout_e2e_fixtures()"
+  python -c "import tests.conftest, tests.test_liquidity_readout_v1 as t
+  t.write_readout_e2e_fixtures()"
 """
 
 from __future__ import annotations

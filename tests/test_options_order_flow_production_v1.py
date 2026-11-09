@@ -17,7 +17,8 @@ capture published as the chain that lists them. STAND-IN (named): the daemon's s
 each contract on LEVELONE_OPTIONS.
 
 Regenerate (from the repo root, project .venv):
-  python -c "import tests.test_options_order_flow_production_v1 as t; t.write_flow_e2e_fixture()"
+  python -c "import tests.conftest, tests.test_options_order_flow_production_v1 as t
+  t.write_flow_e2e_fixture()"
 """
 
 from __future__ import annotations
