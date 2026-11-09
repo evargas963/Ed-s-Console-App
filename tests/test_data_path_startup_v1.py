@@ -630,9 +630,12 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         assert (elsewhere.returncode, out) == (0, "Ed Console: not running\n"), err
         assert daemon.poll() is None
         ended_holder = f"{gone.pid}\n{json.dumps(asdict(Ports(console=1)))}\n"
+        asked_at = time_et.elapsed()
         not_asked = [stop(home, runtime_holding(lock)) for lock in (None, ended_holder)]
         for p in not_asked:
             out, err = p.communicate(timeout=90)
+            # a stop that could not ask answers at once: no wait for an end it did not ask for
+            assert time_et.elapsed() - asked_at < launch.STOP_WAIT_SEC, (out, err)
             assert p.returncode == 1, (out, err)
             assert "Ed Console: not asked to stop: " in err
             assert "Ed Console: still running (" in out
@@ -697,9 +700,11 @@ def test_the_stop_reads_no_process_parent(tmp_path):
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
     """The real daemon found while it loads, its stop request not made yet, then ending on its own.
 
-    It ends because its pages' port is held, the code its window restarts on: the stop could not ask
-    it, so it does not read "stopped" and exits 1. Induced test condition: the daemon's load is
-    held until the stop has found it and said it could not ask it, however late the stop starts.
+    The stop could not ask it, so it answers at once, never "stopped": still running, exit 1, with
+    no wait for an end it did not ask for. The daemon then ends on its own,
+    because its pages' port is held, the code its window restarts on. Induced test condition: the
+    daemon's load is held until the stop has found it and said it could not ask it, however late
+    the stop starts.
     """
     home, site = tmp_path / "checkout", tmp_path / "site"
     for folder in (home, site):
@@ -753,7 +758,8 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
             _end(daemon)
     assert stopping.returncode == 1, (out, err)
     assert "Ed Console: not asked to stop: " in err
-    assert "Ed Console: ended, not asked by this stop\n" in out
+    assert "Ed Console: still running (" in out
+    assert "stopped" not in out
 
 
 def test_a_process_that_only_names_the_console_is_not_the_console():

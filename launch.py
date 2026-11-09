@@ -135,24 +135,26 @@ def stop() -> int:
 
     It writes what it holds and exits, and start_capture_daemon.bat does not restart it; the
     Schwab connection, the recording and the console's pages end together. Waits up to
-    STOP_WAIT_SEC; 0 when it ended after being asked: one that ended when this stop could not ask
-    it (it had made no request to set) is not reported stopped.
+    STOP_WAIT_SEC for a program it asked; 0 when it ended. One it could not ask (it had made no
+    request to set) is reported at once, still running, exit 1: no wait can stop a program that
+    was not asked.
     """
     program = running(DAEMON_START)
-    ended = "stopped"
-    if program:
-        try:
-            ask_to_stop()
-        except OSError as e:
-            log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
-            ended = "ended, not asked by this stop"
+    if not program:
+        print("Ed Console: not running")
+        return 0
+    try:
+        ask_to_stop()
+    except OSError as e:
+        log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
+        print(f"Ed Console: still running ({[p.pid for p in program]})")
+        return 1
     _gone, alive = psutil.wait_procs(program, timeout=STOP_WAIT_SEC)
-    left = [p.pid for p in program if p in alive]
-    print(
-        "Ed Console: "
-        + ("not running" if not program else f"still running ({left})" if left else ended)
-    )
-    return 1 if alive or ended != "stopped" else 0
+    if alive:
+        print(f"Ed Console: still running ({[p.pid for p in alive]})")
+        return 1
+    print("Ed Console: stopped")
+    return 0
 
 
 def wait_for_pages(seconds: float, db_path: Path | None = None) -> Ports:
