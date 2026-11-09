@@ -14,7 +14,10 @@ Protocol (JSON text frames):
               "ticker": "SPY",                                      page's selected ticker (null
               "panels": {"expiries": {}, "vanna": {"scope": ...}}}  for none) and the panels it
                                                                      shows, each with its own
-                                                                     parameters)
+                                                                     parameters; a kind read
+                                                                     with different parameters
+                                                                     names each reader's panel
+                                                                     "<kind>:<reader>", kind_of)
   server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
                                                                      what each asked-for symbol
                                                                      is -- "SPX" is key "$SPX",
@@ -27,7 +30,8 @@ Protocol (JSON text frames):
                                                                      server.PAGE_PANELS) for the
                                                                      page's parameters: on
                                                                      subscribe, then each time it
-                                                                     changes)
+                                                                     changes; a producer that
+                                                                     failed: {"failed": words})
   server  -> {"type": "feed", "feed": {...}, "rows": [...]}           (every HEARTBEAT_SEC:
                                                                      the daemon's whole status
                                                                      and a fresh row per symbol,
@@ -103,6 +107,15 @@ class PageSocket(WebSocketsSansIOProtocol):
         self.transport.abort()
 
 
+def kind_of(name: str) -> str:
+    """Return the kind of panel `name`: its kind, or "<kind>:<reader>" for one of several readers.
+
+    Readers of one kind that ask for different parameters (two windows of the strikes) each name
+    their own panel; each is the kind's one producer's answer for its parameters.
+    """
+    return name.partition(":")[0]
+
+
 class _Client:
     __slots__ = ("ws", "symbols", "pending", "identity", "ticker", "shown", "panels", "wake")
 
@@ -156,10 +169,11 @@ class LiveUiServer:
                 c.wake.set()
 
     def mark_changed(self, ticker: str, kind: str) -> None:
-        """Mark panel `kind` changed for every browser showing it for its selected `ticker`."""
+        """Mark each panel of `kind` changed for every browser showing it for its `ticker`."""
         for c in self.clients:
-            if c.ticker == ticker and kind in c.shown:
-                c.panels.add(kind)
+            names = {n for n in c.shown if kind_of(n) == kind} if c.ticker == ticker else ()
+            if names:
+                c.panels.update(names)
                 c.wake.set()
 
     def beat(self) -> dict:
@@ -191,17 +205,29 @@ class LiveUiServer:
                 await self._send(c, {"type": "symbols", "symbols": identity})
             now = self.clock()
             kinds, c.panels = c.panels, set()
-            for kind in sorted(kinds & c.shown.keys()):
-                # on a worker thread, as a route's read ran: a producer that reads a lock the
-                # pricing thread holds, or works a while, never holds the beat or another page
-                ticker, params = c.ticker, c.shown[kind]
-                body = await asyncio.to_thread(self.panels[kind], ticker, now, params)
-                await self._send(c, {"type": kind, "ticker": ticker, **body})
+            for name in sorted(kinds & c.shown.keys()):
+                ticker = c.ticker
+                body = await self._produce(name, ticker, now, c.shown[name])
+                await self._send(c, {"type": name, "ticker": ticker, **body})
             now = self.clock()
             syms, c.pending = c.pending, set()
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
+
+    async def _produce(self, name: str, ticker: str, now: float, params: dict) -> dict:
+        """Return panel `name`'s body: its kind's producer for `ticker` at `now` with `params`.
+
+        On a worker thread, as a route's read ran: a producer that waits on a lock the pricing
+        thread holds, or works a while, never holds the beat or another page. A producer that
+        raises is this panel's failure alone, said in words (`failed`), its traceback logged, as
+        a route's 500 was; the page's other panels and its prices keep coming.
+        """
+        try:
+            return await asyncio.to_thread(self.panels[kind_of(name)], ticker, now, params)
+        except Exception as e:
+            log.exception("live ui: panel %s of %s not produced", name, ticker)
+            return {"failed": f"the program could not produce this panel: {type(e).__name__}: {e}"}
 
     async def _read(self, c: _Client) -> None:
         while (msg := await c.ws.receive())["type"] == "websocket.receive":
@@ -245,14 +271,14 @@ class LiveUiServer:
             log.warning("live ui: a subscribe's panels not an object: %.200r", shown)
             return {}
         out = {}
-        for kind, params in shown.items():
-            if kind in self.panels and isinstance(params, dict):
-                out[kind] = params
+        for name, params in shown.items():
+            if kind_of(name) in self.panels and isinstance(params, dict):
+                out[name] = params
             else:
                 log.warning(
                     "live ui: a subscribed panel unknown, or its parameters not an object: "
                     "%.200r %.200r",
-                    kind,
+                    name,
                     params,
                 )
         return out

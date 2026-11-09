@@ -317,8 +317,8 @@
     var pan = window.EdShell.newPan(), panTicker = null;
     function renderIt(host, d) {
       var src = document.getElementById(srcId); if (src) src.textContent = '';
-      if (!d.available) {
-        host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(d.reason) + '</div></div>';
+      if (d.failed != null || !d.available) {   // not produced, or nothing to draw: why
+        window.EdShell.placeholder(host, d.failed != null ? d.failed : d.reason);
         return;
       }
       drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, { top: '' });

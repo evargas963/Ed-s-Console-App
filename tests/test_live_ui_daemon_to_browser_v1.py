@@ -50,6 +50,7 @@ import base64
 import json
 import socket
 import threading
+from dataclasses import replace
 
 import psutil
 import pytest
@@ -906,3 +907,46 @@ def test_a_producer_held_on_the_levels_lock_does_not_stall_the_beat():
         asyncio.run(_serve_panels(body))
     finally:
         release.set()
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_producer_that_raises_fails_its_panel_alone_in_words():
+    """The panel says why; the socket stays open, prices and the other panels keep coming.
+
+    Induced condition: CRWD's published levels hold no vanna rows (None), so the vanna producer
+    raises reading them, as a defect in a producer would.
+    """
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        server._terrain_cache[A] = replace(server._terrain_cache[A], vanna_rows=None)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await ws.send(
+                json.dumps(
+                    {
+                        "op": "subscribe",
+                        "symbols": [A],
+                        "ticker": A,
+                        "panels": {**LIST, "vanna": ALL, "charm": ALL},
+                    }
+                )
+            )
+            seen = {}
+            while {"expiries", "vanna", "charm", "feed"} - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert seen["vanna"] == {
+                "type": "vanna",
+                "ticker": A,
+                "failed": "the program could not produce this panel: "
+                "TypeError: 'NoneType' object is not iterable",
+            }
+            assert seen["charm"]["rows"] == _published_rows(A, "charm_rows")
+            assert seen["expiries"]["expiries"] == _expected(CRWD.chain)[0]
+            assert [r["ticker"] for r in seen["feed"]["rows"]] == [A]  # the beat's price rows
+            # the socket is open: the next subscribe is answered, and the failure said again
+            assert _kind(await _select(ws, A, {"vanna": ALL}), "symbols")
+            assert "failed" in await _next(ws, "vanna")
+
+    asyncio.run(_serve_panels(body))

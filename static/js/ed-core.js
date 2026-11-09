@@ -833,7 +833,10 @@
         // a panel: one for a ticker the page has left, or of a panel it no longer shows, is not
         // drawn
         if (msg.ticker !== state.key || !Object.prototype.hasOwnProperty.call(_panels, msg.type)) return;
-        if (msg.type === 'expiries') paintExpiries(msg); else emit('ed:panel', msg);
+        // a panel the program could not produce carries why (`failed`): its module draws the words
+        if (msg.type !== 'expiries') emit('ed:panel', msg);
+        else if (msg.failed != null) paintExpiries({ expiries: null, labels: null, dte_text: null, reason: msg.failed });
+        else paintExpiries(msg);
         return;
       }
       if (!msg || !Array.isArray(msg.rows)) return;
