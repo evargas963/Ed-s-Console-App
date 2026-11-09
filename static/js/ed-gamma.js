@@ -239,7 +239,7 @@
     if (!heatOn()) { window.EdShell.showPanel('surface', null); return; }
     var params = window.EdShell.windowParams(_pan);
     params.cols = autoColCount(host);
-    params.expiry = window.EdShell.getExpiry() || null;   // none selected: every column
+    params.expiry = window.EdShell.getExpiry();   // null, none selected: every column
     window.EdShell.showPanel('surface', params);
   }
   if (typeof document !== 'undefined') {

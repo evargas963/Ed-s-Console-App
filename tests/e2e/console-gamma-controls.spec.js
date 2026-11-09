@@ -236,7 +236,7 @@ test.describe('ticker / expiry / measure controls', () => {
         const req = JSON.parse(String(m));
         if (req.op !== 'subscribe') return;
         // a panel asked at an expiry is a read that names both, as a route's was
-        Object.values(req.panels || {}).forEach((p) => { if (req.ticker && p.expiry) read.push([req.ticker, p.expiry]); });
+        Object.values(req.panels).forEach((p) => { if (req.ticker && p.expiry) read.push([req.ticker, p.expiry]); });
         ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
         if (req.ticker === 'QQQ') await qqqHeld;   // QQQ's list is held until the test releases it
         ws.send(expiriesFrame(req.ticker, req.ticker === 'IWM' ? IWM_LIST : LIST));

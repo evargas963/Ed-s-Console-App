@@ -33,7 +33,7 @@
       _ladderTicker = window.EdShell.getState().ticker;
       setSrc(null); if (host) window.EdShell.placeholder(host, '-');
     }
-    window.EdShell.showPanel('chain:ladder', { expiry: curExpiry() || null });
+    window.EdShell.showPanel('chain:ladder', { expiry: curExpiry() });
   }
   document.addEventListener('ed:panel', function (e) {
     var d = e.detail, host = document.getElementById('chainBody');

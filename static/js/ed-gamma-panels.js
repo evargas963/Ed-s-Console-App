@@ -186,7 +186,7 @@
       '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
       '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
     host.querySelectorAll('.gbs-row').forEach(function (rr) {   // click a strike: every panel follows it
-      rr.addEventListener('click', function () { window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
+      rr.addEventListener('click', function () { window.EdShell.setStrike(Number(rr.getAttribute('data-strike')), null); });   // every expiry's row: no expiry
     });
     var firstRow = host.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(host.querySelectorAll('.gbs-k'), host.querySelector('.gbs-scroll'), pan,
@@ -259,7 +259,7 @@
     _sdDesired = { strike: strike, expiry: expiry };
     if (strike == null) { window.EdShell.showPanel('chain:detail', null); return; }
     if (was === expiry) drawStrike();   // the chain at this expiry is on hand
-    window.EdShell.showPanel('chain:detail', { expiry: expiry || null });
+    window.EdShell.showPanel('chain:detail', { expiry: expiry });
   }
   document.addEventListener('ed:panel', function (e) {
     if (e.detail.type !== 'chain:detail') return;
@@ -419,7 +419,7 @@
       _stTicker = ticker();
       var host = document.getElementById('stBody'); if (host) window.EdShell.placeholder(host, '-');
     }
-    window.EdShell.showPanel('chain:structures', { expiry: window.EdShell.getExpiry() || null });
+    window.EdShell.showPanel('chain:structures', { expiry: window.EdShell.getExpiry() });
   }
 
   // ---------- Options Flow tape ------------
