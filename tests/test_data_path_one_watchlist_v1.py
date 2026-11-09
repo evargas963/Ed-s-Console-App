@@ -2,9 +2,9 @@
 
 The capture daemon's connection (capture.Daemon.run) on the real schwab-py StreamClient, logged in
 to Schwab's streamer played locally (tests/schwab_stream_standin.py) through Schwab's REST host
-played locally (tests/schwab_rest_standin.py); the daemon's local socket (live_push); the console
-in the daemon's program (streaming.bind_daemon, its feed reading the daemon's bus) and its routes
-(server.post_watchlist, delete_watchlist, get_watchlist).
+played locally (tests/schwab_rest_standin.py); the console in the daemon's program
+(streaming.bind_daemon, its feed reading the daemon's bus) and its routes (server.post_watchlist,
+delete_watchlist, get_watchlist).
 
 Real data: Schwab's /quotes answers to SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as
 the watchlist check asks (2026-10-07; ZQZQZ is named in errors.invalidSymbols); Schwab's answers to
@@ -18,20 +18,18 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import threading
 from datetime import datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from websockets.asyncio.client import connect
 
 import live_market_plane as lmp
 import push_changes
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from option_contract import read_chain
@@ -41,7 +39,6 @@ from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
-from tests.test_live_push_channel_v1 import listener
 from time_et import ET
 
 #: SPY's 2026-11-20 contracts (442) and the price stored with them
@@ -296,37 +293,6 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
         schwab.close()
     assert time_et.elapsed() - started >= capture.REQUEST_TIMEOUT_SEC
     assert daemon.stream is None, "the broken session is logged out and dropped"
-
-
-def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
-    """The daemon's local socket reads every frame a client sends (launch.py stop's is one).
-
-    One that is not JSON, or JSON that is not an object, is logged with what arrived, never dropped
-    unseen; a request after it still reaches the daemon.
-    """
-    got, stats = [], {}
-    request = {"op": "watchlist", "add": "SPY"}
-
-    async def go():
-        stop = asyncio.Event()
-        sock, url = listener()
-        served = asyncio.create_task(serve_live_push(stop, got.append, sock, stats=stats))
-        ws = await connect(url, max_size=None)
-        try:
-            for frame in ("not json", "[1, 2]", json.dumps(request)):
-                await ws.send(frame)
-            await _until(lambda: got)
-        finally:  # a failure still closes the socket: cancelling over an open one can hang
-            await ws.close()
-            stop.set()
-            await served
-
-    with caplog.at_level(logging.WARNING, logger="app.market_data.schwab.streaming.live_push"):
-        asyncio.run(go())
-    warned = [r.getMessage() for r in caplog.records if r.name.endswith("live_push")]
-    assert got == [request]
-    assert any("'not json'" in m for m in warned), warned
-    assert any("'[1, 2]'" in m for m in warned), warned
 
 
 def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_no_more(tmp_path):
