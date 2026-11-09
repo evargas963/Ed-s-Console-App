@@ -26,8 +26,8 @@ import pytest
 import server
 import time_et
 from calibration.complete_chain_capture import ChainSweep
-from numeric_contract import schwab_count
-from option_contract import GREEK_FIELDS, read_chain
+from numeric_contract import schwab_number
+from option_contract import GREEK_FIELDS, OptionContract, read_chain
 from stream_spine import CaptureWriter
 from terrain_engine import compute_terrain
 from tests.schwab_rest_standin import SPY, SPY_QUOTES, LocalSchwab, delivered
@@ -43,9 +43,9 @@ _SWEEP_AT = datetime(
 
 @pytest.fixture
 def fetched(tmp_path):
-    """SPY's chain as the sweep delivers it; `withheld` symbols get no quote back."""
+    """SPY's chain as the sweep delivers it, read; `withheld` symbols get no quote back."""
 
-    def run(withheld: set[str] = frozenset()) -> list[dict]:
+    def run(withheld: set[str] = frozenset()) -> list[OptionContract]:
         schwab = LocalSchwab()
         schwab.withheld = set(withheld)
         published: list = []
@@ -67,18 +67,17 @@ def fetched(tmp_path):
     return run
 
 
-def _column(contracts: list[dict]) -> dict:
+def _column(records: list[OptionContract]) -> dict:
     """Return the heatmap's 2026-11-20 column as the levels producer projects it.
 
     {strike: (cell's gex, its contracts)}.
     """
-    records = read_chain(contracts)
     snap = compute_terrain("SPY", records, _SPOT, now=_CAPTURED)
     surface = server.project_gamma_surface(records, snap.books)
     j = [e["expiry"] for e in surface["expirations"]].index("2026-11-20")
     by_k = {}
-    for ct in contracts:
-        by_k.setdefault(float(ct["strikePrice"]), []).append(ct)
+    for ct in records:
+        by_k.setdefault(ct.strike, []).append(ct)
     return {row["strike"]: (row["gex"][j], by_k[row["strike"]]) for row in surface["cells"]}
 
 
@@ -94,8 +93,8 @@ def test_the_875_call_cell_is_its_exact_quote_gamma_times_open_interest(fetched)
     assert gamma == 0.00037225  # what the quote sends
     cells = _column(fetched())
     gex, contracts = cells[875.0]
-    put = next(c for c in contracts if c["putCall"] == "PUT")
-    assert put["openInterest"] == 0
+    put = next(c for c in contracts if c.side == "PUT")
+    assert put.open_interest == 0
     assert gex == gamma * 23235 * 100.0 * _SPOT * _SPOT * 0.01
 
 
@@ -104,7 +103,7 @@ def test_every_contract_carries_its_quotes_greeks_as_sent_and_none_of_the_chains
     assert len(contracts) == len(SPY["chain"]) == 442
     for ct in contracts:
         for f in GREEK_FIELDS:
-            assert ct[f] == _QUOTED[ct["symbol"]][f], (ct["symbol"], f)
+            assert getattr(ct, f) == schwab_number(_QUOTED[ct.symbol][f]), (ct.symbol, f)
     rounded = {
         (c["symbol"], f)
         for c in SPY["chain"]
@@ -125,20 +124,18 @@ def test_no_cell_with_open_interest_and_greeks_reads_zero_unless_its_exact_gamma
     def zero_cells(contracts):
         cells = _column(contracts)
         oi = {
-            k: sum(schwab_count(c["openInterest"]) for c in cts)  # every contract sent its OI
+            k: sum(c.open_interest for c in cts)  # every contract sent its OI
             for k, (_g, cts) in cells.items()
         }
         return cells, {k for k, (g, _cts) in cells.items() if oi[k] > 0 and g == 0}
 
-    _cells, rounded_zero = zero_cells(json.loads(json.dumps(SPY["chain"])))
+    _cells, rounded_zero = zero_cells(read_chain(json.loads(json.dumps(SPY["chain"]))))
     assert len(rounded_zero) >= 40, len(rounded_zero)  # the defect, on the chain's values
     cells, exact_zero = zero_cells(fetched())
     for k in exact_zero:
-        assert all(c["gamma"] * schwab_count(c["openInterest"]) == 0 for c in cells[k][1]), k
+        assert all(c.gamma * c.open_interest == 0 for c in cells[k][1]), k
     assert len(exact_zero) < len(rounded_zero)
-    with_oi = [
-        k for k, (_g, cts) in cells.items() if any(schwab_count(c["openInterest"]) > 0 for c in cts)
-    ]
+    with_oi = [k for k, (_g, cts) in cells.items() if any(c.open_interest > 0 for c in cts)]
     assert all(cells[k][0] is not None for k in with_oi), (
         "every cell with open interest has its GEX"
     )
@@ -150,6 +147,6 @@ def test_a_contract_whose_quote_did_not_come_back_has_no_greek_never_the_chains(
     Never the chain's rounded 0.0.
     """
     contracts = fetched(withheld={_CALL_875})
-    call = next(c for c in contracts if c["symbol"] == _CALL_875)
-    assert all(call[f] is None for f in GREEK_FIELDS)
+    call = next(c for c in contracts if c.symbol == _CALL_875)
+    assert all(getattr(call, f) is None for f in GREEK_FIELDS)
     assert _column(contracts)[875.0][0] is None

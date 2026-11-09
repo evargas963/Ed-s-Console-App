@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import sys
 import threading
 from pathlib import Path
 
@@ -31,8 +32,9 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import chain_messages
-from option_contract import read_chain
+from option_contract import read_chain, read_contract
 from stream_spine import HealthRegistry, MessageBus, quote_msg
+from tests.real_chains import MRVL
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, LocalStreamer
 
@@ -101,6 +103,70 @@ def test_each_frame_is_named_as_schwab_pys_label_message_names_it_without_its_co
     assert named[1]["content"][0] == BOOKS["rows"][0][2], "Schwab's book as stored"
 
 
+def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
+    """MRVL's whole chain as the sweep delivers it: each contract is read once, for both readers.
+
+    The console prices it into the levels and the daemon's option rule orders it; both take the
+    one read the sweep makes as it puts the chain on the bus (chain_messages). Each call of
+    option_contract.read_contract is counted with Python's own monitoring (sys.monitoring), the
+    code itself untouched.
+    """
+    tk, now = MRVL.ticker, MRVL.now.timestamp()
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), [tk], clock=lambda: now)
+    mon = sys.monitoring
+    tool = next(i for i in range(6) if mon.get_tool(i) is None)
+    reads: list[None] = []
+    mon.use_tool_id(tool, "read count")
+    mon.register_callback(tool, mon.events.PY_START, lambda _code, _offset: reads.append(None))
+    mon.set_local_events(tool, read_contract.__code__, mon.events.PY_START)
+
+    async def go():
+        stop = asyncio.Event()
+        ofs.bind_daemon(daemon)
+        assert ofs.start_order_flow_stream(**server.FEED_CALLBACKS)
+        follower = asyncio.create_task(daemon.follow_market(stop))
+        try:
+            bus.publish(
+                f"quote.{tk}",
+                quote_msg(
+                    symbol=tk,
+                    last=MRVL.spot,
+                    src="schwab_l1",
+                    native={"key": tk, "LAST_PRICE": MRVL.spot},
+                ),
+            )
+            delivered = await asyncio.to_thread(
+                chain_messages, tk, [dict(c) for c in MRVL.chain], now, MRVL.spot, now
+            )
+            for topic, msg in delivered:
+                bus.publish(topic, msg)
+            await _until(
+                lambda: tk in daemon._ranked and server.published_levels(tk) is not None, 120
+            )
+            return [ct for _topic, msg in delivered for ct in msg["contracts"]]
+        finally:
+            stop.set()
+            ofs.stop_order_flow_stream()
+            ofs.bind_daemon(None)
+            await asyncio.wait_for(follower, 10)
+
+    try:
+        read = asyncio.run(go())
+    finally:
+        mon.set_local_events(tool, read_contract.__code__, 0)
+        mon.free_tool_id(tool)
+        for kept in (lmp._by_ticker, lmp._fields_by_ticker):
+            kept.pop(tk, None)
+        levels = server.published_levels(tk)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        server._last_feed_stamp.clear()
+    assert len(reads) == len(MRVL.chain) == len(read), "each contract read once"
+    assert all(a is b for a, b in zip(levels.chain, read, strict=True)), "the levels: that read"
+    assert daemon._ranked[tk] == capture.by_gamma(read, MRVL.spot, now), "the rule: that read"
+
+
 async def _until(cond, seconds: float, state=lambda: None) -> None:
     deadline = time_et.elapsed() + seconds
     while not cond():
@@ -111,10 +177,10 @@ async def _until(cond, seconds: float, state=lambda: None) -> None:
 def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path):
     """SPY's 12,904 contracts reach the option rule and the console: the reader keeps up.
 
-    The daemon reads the chain for its option rule and the console prices it and stamps its
-    heatmap. Production (2026-11-09) ran those on the event loop that reads Schwab's stream, and
-    the reader fell up to 17.97 s behind Schwab. Here no stretch of that work holds the reader
-    as long as reading the chain takes (_read_sec).
+    The sweep reads the chain once as it delivers it, the daemon's option rule orders it and the
+    console prices it and stamps its heatmap. Production (2026-11-09) ran those on the event loop
+    that reads Schwab's stream, and the reader fell up to 17.97 s behind Schwab. Here no stretch
+    of that work holds the reader as long as reading the chain takes (_read_sec).
     """
     bound = _read_sec()
     streamer = LocalStreamer({}, data={}, beat=BEAT_SEC)
@@ -151,9 +217,16 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                     native={"key": "SPY", "LAST_PRICE": SPY["spot"]},
                 ),
             )
-            for topic, msg in chain_messages(
-                "SPY", SPY["chain"], SPY["capture_ts_utc"], SPY["spot"], SPY["capture_ts_utc"]
-            ):
+            # made on a thread of its own, as the chain sweep makes them
+            delivered = await asyncio.to_thread(
+                chain_messages,
+                "SPY",
+                SPY["chain"],
+                SPY["capture_ts_utc"],
+                SPY["spot"],
+                SPY["capture_ts_utc"],
+            )
+            for topic, msg in delivered:
                 bus.publish(topic, msg)
             # the rule picked from the read chain and Schwab holds it; the console priced it
             # and stamped its heatmap

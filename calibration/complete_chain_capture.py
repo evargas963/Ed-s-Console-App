@@ -204,8 +204,9 @@ def chain_messages(
     """Return a fetched chain as its bus messages.
 
     Part i of n, CHAIN_PART_CONTRACTS contracts each, all with the time the chain began and the
-    chain's one spot with its trade time. The console assembles the parts; a chain missing a
-    part is never priced.
+    chain's one spot with its trade time. Each contract is read here, once (read_chain, on the
+    sweep's own thread): the console's pricing and the daemon's option rule both take that read.
+    The console assembles the parts; a chain missing a part is never priced.
     """
     parts = [
         contracts[i : i + CHAIN_PART_CONTRACTS]
@@ -222,7 +223,7 @@ def chain_messages(
                 "spot_ts": spot_ts,
                 "part": i,
                 "parts": len(parts),
-                "contracts": part,
+                "contracts": read_chain(part),
             },
         )
         for i, part in enumerate(parts)

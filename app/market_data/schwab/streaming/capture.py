@@ -96,7 +96,7 @@ from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_number
-from option_contract import OptionContract, read_chain
+from option_contract import OptionContract
 from schwab_client import build_client_from_token, safe_get_quotes
 from stream_spine import (
     LATEST,
@@ -321,12 +321,6 @@ def by_gamma(contracts: list[OptionContract], price: float, now: float) -> tuple
 #: listed strikes each side of the one nearest the price whose option quotes and option books are
 #: recorded (the operator's setting; Daemon.saves)
 STRIKES_SAVED = 5
-
-
-def read_for_rule(contracts: list[dict]) -> tuple[list[OptionContract], list]:
-    """Return a chain's contracts as Schwab sent them, read (read_chain), and their ladders."""
-    chain = read_chain(contracts)
-    return chain, strike_ladders(chain)
 
 
 def strike_ladders(
@@ -743,16 +737,16 @@ class Daemon:
     async def _took_chain(self, ticker: str, record: list) -> None:
         """Order a watchlist ticker's newest whole chain on the bus (its parts) at its live price.
 
-        The chain is read on the program's pricing thread (server._chain_pricing, read_for_rule),
-        never on the event loop, whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1);
-        a ticker removed while it was read takes nothing. A failed fetch carries no contracts and
-        changes nothing.
+        The chain is the sweep's one read of it (complete_chain_capture.chain_messages); its
+        ladders are laid out on the program's pricing thread (server._chain_pricing), never on the
+        event loop, whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1); a ticker
+        removed meanwhile takes nothing. A failed fetch carries no contracts and changes nothing.
         """
         if ticker in self.watchlist and all("contracts" in part for part in record):
             now = self.clock()
-            contracts = [ct for part in record for ct in part["contracts"]]
-            chain, ladders = await asyncio.get_running_loop().run_in_executor(
-                server._chain_pricing, read_for_rule, contracts
+            chain = [ct for part in record for ct in part["contracts"]]
+            ladders = await asyncio.get_running_loop().run_in_executor(
+                server._chain_pricing, strike_ladders, chain
             )
             if ticker in self.watchlist:
                 self._chains[ticker], self._ladders[ticker] = chain, ladders

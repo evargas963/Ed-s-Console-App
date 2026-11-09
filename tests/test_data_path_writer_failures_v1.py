@@ -41,6 +41,7 @@ from app.market_data.schwab.streaming.program_lock import (
     release_owner_lock,
 )
 from calibration.complete_chain_capture import ChainSweep
+from option_contract import read_chain
 from stream_spine import (
     LOG,
     CaptureWriter,
@@ -543,7 +544,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     ]  # the chain's, not its price history
     received = [ct for msg in parts[: parts[0]["parts"]] for ct in msg["contracts"]]
     assert kept["spots"] == {"2026-11-20": 766.31}
-    assert kept["contracts"] == received, "kept as the sweep delivered it"
+    assert read_chain(kept["contracts"]) == received, "kept as Schwab sent what was delivered"
     assert writer["last_failure"] == f"chain_history.SPY: {failures[-1][2]}"
 
 

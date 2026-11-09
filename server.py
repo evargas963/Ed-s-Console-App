@@ -87,7 +87,7 @@ from math_exposure_core import (
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from option_contract import GREEK_FIELDS, OptionContract, chain_row, read_chain
+from option_contract import GREEK_FIELDS, OptionContract, chain_row
 from terrain_atr import Atr, compute_atrs, roll_up
 from terrain_engine import (
     PRICE_RELATIONS,
@@ -1824,8 +1824,8 @@ def _price_chain(
             if captures:
                 _publish_levels(tk, captures=captures, now=now)
             return
-        # read here, on the pricing thread: a whole chain, never on the event loop
-        _publish_levels(tk, read_chain(contracts), fetched_ts, chain_spot=spot, now=now)
+        # the chain as the sweep read it, once (complete_chain_capture.chain_messages)
+        _publish_levels(tk, contracts, fetched_ts, chain_spot=spot, now=now)
         _terrain_refresh_last_error.pop(tk, None)
     except Exception as e:  # kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
