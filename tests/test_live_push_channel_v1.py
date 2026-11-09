@@ -101,13 +101,16 @@ async def serve_page_socket(
 ):
     """Serve the page's price socket as the program serves it, until `stop`.
 
-    The daemon's side (live_ui.serve_live_ui, `prices` its arguments) and /ws on the program's
-    web server (`web`, a test's to watch, or program_web with `settings`) on `sock`.
+    The daemon's side (live_ui.serve_live_ui, `prices` its arguments, with the program's panels,
+    server.PAGE_PANELS) and /ws on the program's web server (`web`, a test's to watch, or
+    program_web with `settings`) on `sock`.
     """
     web = web if web is not None else program_web(**settings)
     serving = asyncio.create_task(web.serve(sockets=[sock]))
     try:
-        await live_ui.serve_live_ui(stop, state=server.app.state, **prices)
+        await live_ui.serve_live_ui(
+            stop, state=server.app.state, panels=server.PAGE_PANELS, **prices
+        )
     finally:
         web.should_exit = True
         await serving

@@ -9,7 +9,7 @@
  * fact of where a print landed relative to that same tick's own bid/ask.
  */
 const { test, expect } = require('@playwright/test');
-const { expiriesAnswer } = require('./fixtures/expiries');
+const { pushExpiries } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,
@@ -40,9 +40,10 @@ async function intercept(page, tapeBody) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable', scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } };
-    else if (url.includes('/api/expiries')) body = expiriesAnswer(['2026-09-18'], {});    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
+  await pushExpiries(page, ['2026-09-18']);
 }
 
 test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {

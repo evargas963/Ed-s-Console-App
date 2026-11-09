@@ -2,7 +2,7 @@
    Renders the full vendor chain ladder from /api/chain (strike_range=ALL, one expiry) — calls left,
    puts right, strike centre. Every field is served AS-IS from the vendor; this computes nothing and
    discloses the chain scope (complete / mismatch / fallback) honestly. The expiry is the workspace
-   expiry dropdown (canonical /api/expiries); the ticker is the one selected-symbol state. */
+   expiry dropdown (the socket's `expiries`); the ticker is the one selected-symbol state. */
 (function () {
   'use strict';
 

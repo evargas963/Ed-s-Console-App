@@ -1485,7 +1485,13 @@ async def run(lock_fd: int, request: StopRequest) -> int:
         asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
         asyncio.create_task(
-            serve_live_ui(stop, state=server.app.state, heartbeat_fn=daemon.status), name="live ui"
+            serve_live_ui(
+                stop,
+                state=server.app.state,
+                heartbeat_fn=daemon.status,
+                panels=server.PAGE_PANELS,
+            ),
+            name="live ui",
         ),
         asyncio.create_task(serve_console(daemon, stop, pages), name="console"),
         asyncio.create_task(stop_on_request(stop, request), name="stop request"),
