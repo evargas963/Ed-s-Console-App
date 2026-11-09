@@ -98,7 +98,8 @@ def test_three_tiers_are_ordered_by_span():
 
 def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
     """SPY/QQQ class (~8-9% span): the regime must STILL be issued — its basis is the sign of gamma
-    at spot, independent of flip-level precision — while the flip LEVEL says it is approximate."""
+    at spot, independent of flip-level precision — while the flip LEVEL says it is approximate.
+    """
     read = build_terrain_read(
         spot=100.0,
         flip=99.0,

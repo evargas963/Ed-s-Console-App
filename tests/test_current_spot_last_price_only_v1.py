@@ -1,5 +1,6 @@
 """Adversarial lock: MARK / close / chain / snapshot / bar-close cannot become current live spot,
-the feed live (a feed down in an open session is its own reason: test_data_path_rules_v1 D5)."""
+the feed live (a feed down in an open session is its own reason: test_data_path_rules_v1 D5).
+"""
 
 from __future__ import annotations
 

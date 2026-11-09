@@ -45,7 +45,8 @@ DAILY_CANDLE_BASIS = "Schwab's daily candle (/pricehistory, frequencyType daily)
 
 def _regular(d: date) -> tuple[datetime, datetime] | None:
     """`d`'s regular session (open, close) as Schwab's /markets sent it (time_et.session); None:
-    no regular session that day, or Schwab's answer for it is not held."""
+    no regular session that day, or Schwab's answer for it is not held.
+    """
     s = session(d.isoformat())
     if s is None or not s.regular:
         return None
@@ -81,7 +82,8 @@ LEVEL_NAMES = {
 def bars_from_candles(candles) -> list[dict]:
     """The bars every level function takes, from the bar writer's Candles, each field already
     checked once as Schwab sent it, where it came in (server._schwab_bar): {timestamp (ms), _dt
-    (its ET time), open, high, low, close, volume}."""
+    (its ET time), open, high, low, close, volume}.
+    """
     return [
         {
             "timestamp": int(c.ts * 1000),
@@ -105,7 +107,8 @@ def prior_session(daily: list, session_date: date):
     """THE prior session, for the previous-day levels and the overnight window: the newest of
     Schwab's daily candles (the bar writer's, server._daily) dated before `session_date`. Schwab
     sends a daily candle for each session that traded, so a weekend, a holiday or a closure has
-    none. None: no such candle held (not received), never a guessed date."""
+    none. None: no such candle held (not received), never a guessed date.
+    """
     before = [c for c in daily if datetime.fromtimestamp(c.ts, ET).date() < session_date]
     return max(before, key=lambda c: c.ts) if before else None
 
@@ -113,7 +116,8 @@ def prior_session(daily: list, session_date: date):
 def get_previous_day_levels(bars_norm: list, prior, config: PlaybookConfig) -> dict:
     """The prior session's levels: its high, low and close as Schwab sent them on its daily candle
     (`prior`, prior_session), and its POC, VAH and VAL estimated from its RTH 1-minute bars
-    (Schwab sends no volume profile), with the count of those bars. No prior session: {}."""
+    (Schwab sends no volume profile), with the count of those bars. No prior session: {}.
+    """
     if prior is None:
         return {}
     prior_date = datetime.fromtimestamp(prior.ts, ET).date()
@@ -140,7 +144,8 @@ def get_overnight_levels(
     prior session's (`prev_session`, prior_session's candle date) regular close to this session's
     regular open, as Schwab's /markets sent them -- a weekend's or holiday's bars included. With
     no prior session the interval has no start, so only this session's pre-open bars are used.
-    No bars in the window, or a session's hours not held: {}."""
+    No bars in the window, or a session's hours not held: {}.
+    """
     today = _regular(session_date)
     prev = None if prev_session is None else _regular(prev_session)
     if today is None or (prev_session is not None and prev is None):
@@ -261,7 +266,8 @@ def compute_volume_profile_levels(
     config: PlaybookConfig,
 ) -> VolumeProfile | None:
     """The current day's volume profile with its POC, VAH, VAL, from normalized bars
-    (bars_from_candles). RTH only, no lookahead."""
+    (bars_from_candles). RTH only, no lookahead.
+    """
     return volume_profile(
         _filter_rth_bars(bars_norm, session_date),
         config.value_area_percent,
@@ -784,7 +790,8 @@ class PriceLevelValue:
 
 class PriceLevelSnapshot:
     """The ONE materialized result for (ticker, session scope, generation). `input_fingerprint`
-    is set by materialize_price_level_snapshot, which decides the generation from it."""
+    is set by materialize_price_level_snapshot, which decides the generation from it.
+    """
 
     __slots__ = (
         "ticker",

@@ -35,7 +35,8 @@ BOOKS = [
 
 def _daemon_holds(*services: str, now: float | None = None) -> None:
     """The daemon's heartbeat stamped `now` (the wall clock when not given), holding CONTRACT on
-    `services`."""
+    `services`.
+    """
     lmp.record_feed_heartbeat(
         daemon_status(
             time_et.now() if now is None else now,
@@ -51,7 +52,8 @@ def _route() -> dict:
 
 def test_the_flow_panel_shows_schwabs_newest_option_book_as_sent():
     """Each OPTIONS_BOOK message the daemon pushes reaches the Flow panel: its top level's sizes
-    are Schwab's newest book's, as sent."""
+    are Schwab's newest book's, as sent.
+    """
     ofls.clear_all_live_state()
     _daemon_holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
     try:
@@ -87,7 +89,8 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     """SUBSCRIBED while the daemon holds the contract on LEVELONE_OPTIONS; NOT STREAMED when it
     does not, and when its status is gone (a daemon that stopped reporting holds nothing). A
     contract of SPY's 2026-10-07 0DTE chain, served at that chain's capture (12:32 ET, the option
-    market open)."""
+    market open).
+    """
     contract, at = SPY_0DTE.chain[0]["symbol"], SPY_0DTE.now.timestamp()
 
     def holds(*services: str) -> None:

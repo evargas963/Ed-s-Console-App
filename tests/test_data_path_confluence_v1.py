@@ -72,7 +72,8 @@ _SPY_PRINT_ABOVE = _fixture("real_spy_print_above_the_0dte_strikes_2026_10_23.js
 def _chain_spot(tk: str, quote: dict) -> tuple:
     """The spot the daemon sends with a chain completed when Schwab's LEVELONE_EQUITIES message
     `quote` was the last it had: that message taken in by the daemon's plane at its receipt time,
-    and the price row the daemon's own function makes then. (LAST_PRICE, its trade time)."""
+    and the price row the daemon's own function makes then. (LAST_PRICE, its trade time).
+    """
     at = quote["ts_recv"]
     lmp.record_from_level_one_equity(tk, quote["native"], received_ts=at)
     lmp.record_feed_heartbeat(
@@ -93,7 +94,8 @@ def _forget(tk: str) -> None:
 
 def _published_0dte() -> server.PublishedLevels:
     """SPY's captured 0DTE chain (SPY_0DTE) published by the levels producer as the stored
-    capture it is, at Schwab's price in it."""
+    capture it is, at Schwab's price in it.
+    """
     held = SPY_0DTE
     server._publish_levels(
         "SPY",
@@ -115,7 +117,8 @@ def _published_0dte() -> server.PublishedLevels:
 
 def _hold_with(levels: server.PublishedLevels, **snap_fields) -> None:
     """`levels` held with its snapshot's `snap_fields` in their place, ranked once on them as
-    the publication ranks (_ranked_matrices). The request then reads that ranking."""
+    the publication ranks (_ranked_matrices). The request then reads that ranking.
+    """
     snap = replace(levels.snap, **snap_fields)
     with server._terrain_cache_lock:
         server._terrain_cache["SPY"] = replace(
@@ -135,7 +138,8 @@ def _book_magnitudes(live: TerrainSnapshot, expiry: str, spot: float) -> dict:
 def _nflx_far_book() -> tuple[dict, dict]:
     """NFLX's 2027-12-17 expiry as the levels producer priced it (tests/real_chains.py NFLX,
     captured 2026-10-07): its book, and each strike's factor magnitudes as the matrix builds
-    them."""
+    them.
+    """
     try:
         server._publish_levels(
             "NFLX",
@@ -167,7 +171,8 @@ def _scores_by_definition(mags: dict, weights: dict) -> dict:
     """The score as defined, stated apart from the code: over the strikes with open interest or
     volume, each weighted factor's 5th and 95th percentiles (Hyndman-Fan type 7, Python's
     statistics.quantiles with method="inclusive"), each value placed between them and clipped to
-    [0, 1], weighted, summed and times 100; a strike missing a weighted factor has none."""
+    [0, 1], weighted, summed and times 100; a strike missing a weighted factor has none.
+    """
     universe = [s for s, m in mags.items() if _traded(m)]
     required = [k for k, w in weights.items() if w > 0]
     cuts = {}
@@ -190,7 +195,8 @@ def _scores_by_definition(mags: dict, weights: dict) -> dict:
 def test_a_missing_gamma_blanks_the_score_and_the_top_is_not_100():
     """NFLX's 2027-12-17 book: strikes where Schwab sent no gamma (-999) have no net gamma, so
     their score is absent with that reason. Every other strike's score is the definition's, and
-    the top one is not rescaled to 100."""
+    the top one is not rescaled to 100.
+    """
     _book, mags = _nflx_far_book()
     weights = in_score_weights("MONTHLY")
     scored, _flat, spans = score_magnitudes(mags, weights)
@@ -209,7 +215,8 @@ def test_a_missing_gamma_blanks_the_score_and_the_top_is_not_100():
 def test_an_am_settled_expiry_past_the_year_is_scored():
     """$SPX's AM-settled 2027-12-17 expiry, captured 2026-10-07, past the year Schwab's /markets
     answers: each strike with open interest has its charm and vanna, so it has a score, and the
-    score is the definition's."""
+    score is the definition's.
+    """
     fx = _fixture("real_spx_chain_2026_10_07_2027_12_17.json")
     tk, at = server.ticker_storage_key(fx["ticker"]), datetime.fromtimestamp(fx["ts_utc"], ET)
     try:
@@ -245,7 +252,8 @@ def test_a_missing_factor_is_not_called_flat():
     """NFLX's 2027-12-17 strikes 2.5 to 4, priced by the levels producer: Schwab sent -999 for the
     volatility of the calls at 2.5, 3 and 3.5, with no puts open there, so those have no charm, and
     4 has it. Charm does not vary where present, but the note does not call it flat, because it is
-    missing elsewhere; each strike missing it has no score and says charm."""
+    missing elsewhere; each strike missing it has no score and says charm.
+    """
     _book, book_mags = _nflx_far_book()
     mags = {s: book_mags[s] for s in (2.5, 3.0, 3.5, 4.0)}
     scored, flat, spans = score_magnitudes(mags, in_score_weights("MONTHLY"))
@@ -285,7 +293,8 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     """SPY's 2026-10-22 close capture, its same-day expiry: the matrix ranks the book the
     publication priced, each row's net and gross gamma that book's own numbers (millions, two
     decimals, net signed), flow and the change in gamma empty, and a same-day expiry's score
-    cannot pass 72."""
+    cannot pass 72.
+    """
     try:
         live = _publish_close()
         book = live.snap.books[("2026-10-22", 0.0)][0]
@@ -316,7 +325,8 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
 def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     """SPY's 2026-10-22 close capture: a strike whose every contract Schwab sent with open interest
     0 has no charm entry, and its book's charm magnitude is 0, not missing. The publication's call
-    wall is a level at its own price, in the options lane, its text two decimals."""
+    wall is a level at its own price, in the options lane, its text two decimals.
+    """
     zero_oi = sorted(
         k
         for k in {c["strikePrice"] for c in SPY_CLOSE.chain}
@@ -343,7 +353,8 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
     """SPY's 2026-10-14 expiry as the console served it 2026-10-01 08:59:47 ET
     (tests/fixtures/real_spy_2026_10_14_chain_oi_zero.json): strikes 761 to 764, inside the window,
     have open interest 0 on both legs and no volume. Each one's charm on the matrix is 0.00, not
-    missing; with no open interest and no volume the strike is not scored, and says why."""
+    missing; with no open interest and no volume the strike is not scored, and says why.
+    """
     fx = json.loads(
         (
             Path(__file__).resolve().parent / "fixtures" / "real_spy_2026_10_14_chain_oi_zero.json"
@@ -385,7 +396,8 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
 def _around(listed: list[float], price: float) -> list[float]:
     """The window as defined for every per-strike panel (docs/DATA_FLOW.md "Strike windows", Auto):
     the eleven listed strikes centred on the one nearest the price, held inside the list, lowest
-    first."""
+    first.
+    """
     on = min(range(len(listed)), key=lambda i: abs(listed[i] - price))
     first = min(max(0, on - 5), len(listed) - 11)
     return listed[first : first + 11]
@@ -395,7 +407,8 @@ def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
     """IWM's same-day expiry captured 2026-10-23 15:37:16 ET, priced at the underlyingPrice Schwab
     sent in it, 276.00, with no live price held: the rows are the eleven middle strikes of the
     chain, not those around the chain's price, and the notes say why (operator 2026-10-29: one
-    window for every per-strike panel)."""
+    window for every per-strike panel).
+    """
     fx = _IWM_ON_A_STRIKE
     tk, at = fx["ticker"], datetime.fromtimestamp(fx["ts_utc"], ET)
     listed = sorted({float(c["strikePrice"]) for c in fx["chain"]})
@@ -430,7 +443,8 @@ def test_the_window_follows_the_live_price_off_the_chains_price():
     """SPY's 2026-10-22 close capture, priced at Schwab's price in it, and SPY's first print after
     it a whole strike away (SPY_PRINT_A_STRIKE_AWAY), taken in by the plane and made the price row
     by the daemon's own function: the window is every panel's, centred on the strike nearest that
-    live price, not on the price the chain was ranked at (operator 2026-10-29)."""
+    live price, not on the price the chain was ranked at (operator 2026-10-29).
+    """
     tk, quote = "SPY", SPY_PRINT_A_STRIKE_AWAY
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     live = quote["native"]["LAST_PRICE"]
@@ -459,7 +473,8 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
     """SPY's 2026-10-22 close capture, and SPY's first print after it on one of its strikes
     (LAST_PRICE 764.00, received 16:33:27 ET), taken in by the plane and made the price row by the
     daemon's own function: the window is that strike and the five listed strikes each side of it,
-    and the spot line is that strike's row, not the one above it."""
+    and the spot line is that strike's row, not the one above it.
+    """
     tk, quote = "SPY", _SPY_PRINT_ON_A_STRIKE
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     on = quote["native"]["LAST_PRICE"]
@@ -486,7 +501,8 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     """SPY's 2026-10-07 chain as captured here (its 20 strikes nearest the price, 767 to 786) and
     SPY's first kept print above all of them (LAST_PRICE 787.5169, received 2026-10-23 17:09:50
     ET): no listed strike is at or above the price, so no row carries the spot line, and the price
-    is still shown."""
+    is still shown.
+    """
     held, price = SPY_0DTE, _SPY_PRINT_ABOVE["native"]["LAST_PRICE"]
     chain = read_chain(held.chain)
     book, _diag = compute_exposures_by_strike(
@@ -534,7 +550,8 @@ def _publish_mrvl() -> None:
 
 def mrvl_answers() -> dict:
     """/api/confluence on MRVL's published chain, no live price row: its first two expiries asked
-    at the capture instant, and the front one asked on Sunday, after it passed."""
+    at the capture instant, and the front one asked on Sunday, after it passed.
+    """
     try:
         _publish_mrvl()
         by_expiry = {
@@ -562,7 +579,8 @@ def mrvl_answers() -> dict:
 def write_mrvl_e2e_fixture() -> None:
     """Regeneration utility (never called by a test): Schwab's /markets answers held as the tests
     hold them (tests/conftest.py), then the route's answers written to the browser test's
-    fixture."""
+    fixture.
+    """
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))
@@ -571,7 +589,8 @@ def write_mrvl_e2e_fixture() -> None:
 
 def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
     """The confluence browser test's answers are the route's on MRVL's captured chain: each
-    column's shading number and peak served beside its text."""
+    column's shading number and peak served beside its text.
+    """
     served = mrvl_answers()
     assert json.loads(_MRVL_ANSWERS.read_text(encoding="utf-8")) == served, (
         "drifted from the route; regenerate with write_mrvl_e2e_fixture()"
@@ -583,7 +602,8 @@ def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
 
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     """MRVL's full chain captured Wednesday 2026-10-07 still holds Friday's 2026-10-09 expiry. On
-    Sunday the matrix opens on the next one, and a request for Friday's opens there too."""
+    Sunday the matrix opens on the next one, and a request for Friday's opens there too.
+    """
     tk = "MRVL"
     listed = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
     try:
@@ -601,8 +621,8 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
 def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
     """Charm is the map the book stored for this expiry. SPY's captured 0DTE chain valued an hour
     before its capture is a different charm map than the chain valued at its capture would build;
-    stored with the book, it is the charm on the matrix (thousands, two decimals, signed)."""
-
+    stored with the book, it is the charm on the matrix (thousands, two decimals, signed).
+    """
     held = SPY_0DTE
     chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
@@ -628,8 +648,8 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
 def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
     """The volatility column is the blend the book stored for this expiry. The blend of SPY's
     2026-10-22 close chain, stored with SPY's 2026-10-07 0DTE book, is not the blend that chain
-    would build; it is the volatility on the matrix (one decimal)."""
-
+    would build; it is the volatility on the matrix (one decimal).
+    """
     held = SPY_0DTE
     chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
@@ -653,8 +673,8 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
 
 def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
     """The request does not rank again. The ranking of SPY's 2026-10-22 close book, stored with
-    SPY's 2026-10-07 chain, is not a ranking that chain could produce; the request returns it."""
-
+    SPY's 2026-10-07 chain, is not a ranking that chain could produce; the request returns it.
+    """
     held = SPY_0DTE
     chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
@@ -693,8 +713,8 @@ def _window_has(rows: list, key: str) -> bool:
 
 def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     """SPY's captured 0DTE chain, valued at the index close, still has vanna, charm, and a
-    score. The same chain priced after that close has no time left, and those three are missing."""
-
+    score. The same chain priced after that close has no time left, and those three are missing.
+    """
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     valued = valuation_instant(at, INDEX_OPTIONS)
@@ -723,8 +743,8 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
 
 def test_spy_keeps_vanna_until_the_index_close():
     """SPY settles at the index close. At 4:10 PM ET the equity-option close has passed
-    and the index close has not, so this captured chain's vanna still stands."""
-
+    and the index close has not, so this captured chain's vanna still stands.
+    """
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
     chain = read_chain(held.chain)
@@ -737,8 +757,8 @@ def test_spy_keeps_vanna_until_the_index_close():
 
 def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     """The page reads the publication. SPY's captured chain, delivered after the index
-    close, is valued at that close, so vanna, charm, and the score are on the matrix."""
-
+    close, is valued at that close, so vanna, charm, and the score are on the matrix.
+    """
     held = SPY_0DTE
     tk = "SPY"
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -765,8 +785,8 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
 
 def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     """TSLA's captured Friday chain, delivered after that Friday's equity close, is valued
-    at that close. The same publication fills vanna, charm, and the score. The request reads it."""
-
+    at that close. The same publication fills vanna, charm, and the score. The request reads it.
+    """
     held = TSLA
     tk = "TSLA"
     at = datetime(2026, 10, 9, 18, 0, tzinfo=ET)
@@ -803,8 +823,8 @@ def _no_value_quote(chain):
 
 def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
     """SPY's captured chain is published after the index close, valued at that close. A later
-    quote that sends Schwab's no-value code does not erase that quote's gamma, vanna, or charm."""
-
+    quote that sends Schwab's no-value code does not erase that quote's gamma, vanna, or charm.
+    """
     held = SPY_0DTE
     tk = "SPY"
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -839,7 +859,6 @@ def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
 
 def test_during_the_session_a_no_value_quote_does_not_keep_the_old_greek():
     """During the session Schwab's no-value code is not a greek. It does not keep the older one."""
-
     held = SPY_0DTE
     tk = "SPY"
     session = datetime(2026, 10, 7, 12, 32, tzinfo=ET)
@@ -877,8 +896,8 @@ def _zero_counts(chain):
 
 def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
     """SPY's captured chain is published after the index close. A later chain that reports
-    zero open interest and zero volume does not erase those counts, or the score they carry."""
-
+    zero open interest and zero volume does not erase those counts, or the score they carry.
+    """
     held = SPY_0DTE
     tk = "SPY"
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -909,8 +928,8 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
 
 def _first_chain_keeps_the_capture(now, capture_at):
     """No chain is in memory. The delivered chain reports zero counts. The stored capture
-    is the last count, so put/call volume stays."""
-
+    is the last count, so put/call volume stays.
+    """
     held = SPY_0DTE
     tk = "SPYKEEP"
     expiry = str(held.chain[0]["expirationDate"])[:10]
@@ -949,7 +968,8 @@ def _first_chain_keeps_the_capture(now, capture_at):
 def test_the_first_chain_after_the_close_keeps_the_stored_counts():
     """A restart after the close has no chain in memory. The chain the daemon delivers
     reports zero open interest and zero volume. The stored close capture is the last
-    count, so put/call volume stays."""
+    count, so put/call volume stays.
+    """
     _first_chain_keeps_the_capture(
         datetime(2026, 10, 7, 18, 0, tzinfo=ET), datetime(2026, 10, 7, 16, 15, tzinfo=ET)
     )
@@ -957,7 +977,8 @@ def test_the_first_chain_after_the_close_keeps_the_stored_counts():
 
 def test_a_chain_before_the_next_open_keeps_the_stored_counts():
     """Before the next option window opens, a delivered chain of zeros does not erase
-    the stored close capture's volume."""
+    the stored close capture's volume.
+    """
     _first_chain_keeps_the_capture(
         datetime(2026, 10, 7, 8, 0, tzinfo=ET), datetime(2026, 10, 6, 16, 0, tzinfo=ET)
     )
@@ -976,7 +997,6 @@ def _no_value_counts(chain):
 
 def test_a_no_value_count_after_the_close_is_not_the_last_count():
     """Schwab's no-value code is not a reported zero. It does not keep the last count."""
-
     held = SPY_0DTE
     tk = "SPY"
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -1003,7 +1023,6 @@ def test_a_no_value_count_after_the_close_is_not_the_last_count():
 
 def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
     """A chain fetched before the close and priced after it keeps the zero it reported."""
-
     held = SPY_0DTE
     tk = "SPY"
     inside = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
@@ -1029,7 +1048,8 @@ def test_a_chain_past_its_close_stored_first_keeps_the_capture_before_it():
     """SPY's chain with its counts stored at 16:00, then a chain begun after the option close with
     every count zero, stored before the console hears of it, on a console holding no earlier chain:
     the last count is the 16:00 capture's, not the zeros of the chain's own capture. Induced test
-    condition: one chain stored twice, once with its counts set to 0, as Schwab's after a close."""
+    condition: one chain stored twice, once with its counts set to 0, as Schwab's after a close.
+    """
     held = SPY_0DTE
     tk = "SPYOWN"
     fresh = [dict(c) for c in held.chain]
@@ -1059,8 +1079,8 @@ def test_a_chain_past_its_close_stored_first_keeps_the_capture_before_it():
 
 def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
     """A day Schwab says is closed is outside every option window: Sunday's zero book does not
-    replace the last count, the stored capture's; and Monday before the open it still stands."""
-
+    replace the last count, the stored capture's; and Monday before the open it still stands.
+    """
     held = SPY_0DTE
     tk = "SPYMON"
     fresh = [dict(c) for c in held.chain]
@@ -1113,7 +1133,8 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
 def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
     """SPY's 2026-10-19 expiry from the 2026-10-16 close capture, published Monday 2026-10-19 before
     the open: the LEVELONE_OPTIONS messages Schwab sent that morning with TOTAL_VOLUME 0, taken in
-    as the daemon received them, leave each contract the volume the capture reported."""
+    as the daemon received them, leave each contract the volume the capture reported.
+    """
     held, messages = _SPY_MONDAY["close"], _SPY_MONDAY["zero_volume_messages"]
     tk = "SPY"
     after = datetime.fromtimestamp(max(m["ts_recv"] for m in messages) + 1.0, ET)
@@ -1174,7 +1195,6 @@ def _drop_counts(chain):
 
 def test_a_missing_count_after_the_close_is_not_the_last_count():
     """A count Schwab did not send is not a reported zero. It does not keep the last count."""
-
     held = SPY_0DTE
     tk = "SPY"
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -1197,7 +1217,6 @@ def test_a_missing_count_after_the_close_is_not_the_last_count():
 
 def test_a_date_with_no_session_keeps_a_reported_zero():
     """A date Schwab has not answered is not outside an option window. A reported zero stays."""
-
     held = SPY_0DTE
     tk = "SPYNOSN"
     fresh = [dict(c) for c in held.chain]
@@ -1231,8 +1250,8 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
 def test_a_newer_capture_is_the_count_the_next_chain_keeps():
     """SPY's 2026-10-23 expiry: its 2026-10-21 close capture, read before 2026-10-22's open, is not
     kept once that day's close capture is stored. The chain is priced at SPY's quote at the first
-    capture (LAST_PRICE 773.50)."""
-
+    capture (LAST_PRICE 773.50).
+    """
     older, newer = _SPY_TWO_CLOSES["older"], _SPY_TWO_CLOSES["newer"]
     tk = "SPYNEW"
     fresh = [dict(c) for c in older["chain"]]
@@ -1280,7 +1299,6 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
 
 def test_during_the_session_a_zero_count_replaces_the_old_count():
     """During the session a count of zero is the count. It does not keep the older one."""
-
     held = SPY_0DTE
     tk = "SPY"
     session = datetime(2026, 10, 7, 12, 32, tzinfo=ET)
@@ -1306,7 +1324,8 @@ def test_an_after_hours_print_keeps_the_close_book():
     """SPY's 2026-10-22 close capture (begun 16:17:04 ET, after the index close) is published at
     the price Schwab sent in it. SPY's after-hours print at 18:00 ET (LAST_PRICE as the daemon
     received it), with no new chain, reprices nothing: the strike's gamma, vanna and charm and the
-    publication's price stay the close's."""
+    publication's price stay the close's.
+    """
     held, print_ = SPY_CLOSE, SPY_AFTER_HOURS_PRINT
     tk = "SPY"
     at = datetime.fromtimestamp(print_["ts_recv"], ET)
@@ -1348,8 +1367,8 @@ def test_an_after_hours_print_keeps_the_close_book():
 
 def test_a_close_capture_keeps_its_charm_in_the_forces():
     """SPY's captured 0DTE chain, banked after the index close, is valued at that close.
-    The forces charm sums include it."""
-
+    The forces charm sums include it.
+    """
     held = SPY_0DTE
     chain = read_chain(held.chain)
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -1376,8 +1395,8 @@ def test_a_close_capture_keeps_its_charm_in_the_forces():
 def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
     """The side sums are the charm map priced with that capture. SPY's captured chain,
     valued at the index close, sums to the same charm either way. The same chain's charm valued
-    at its own capture instant, 12:32 ET, is a different map, and the sums are that map's."""
-
+    at its own capture instant, 12:32 ET, is a different map, and the sums are that map's.
+    """
     held = SPY_0DTE
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
@@ -1412,7 +1431,8 @@ def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
 
 def test_a_chain_whose_every_expiry_has_passed_says_so():
     """SPY's 2026-10-22 close capture holds only that day's expiry. On Sunday 2026-10-25 the
-    matrix says no expiry on the chain is still open."""
+    matrix says no expiry on the chain is still open.
+    """
     sunday = datetime(2026, 10, 25, 12, 0, tzinfo=ET)
     try:
         _publish_close()
@@ -1429,7 +1449,8 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     LEVELONE_EQUITIES message the daemon received at 10:38:00 ET (LAST_PRICE 269.395), taken in by
     the plane and made the price row by the daemon's own function. The matrix stays ranked at the
     chain's price (priced_at_spot); its window, its spot, its one-day move and each row's distance
-    are the live price's, the move the same two prices /api/levels serves (server.expected_move)."""
+    are the live price's, the move the same two prices /api/levels serves (server.expected_move).
+    """
     tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
     live = _QUOTE["native"]["LAST_PRICE"]
     lmp.record_from_level_one_equity(tk, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])

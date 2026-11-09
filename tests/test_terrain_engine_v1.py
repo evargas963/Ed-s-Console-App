@@ -121,7 +121,8 @@ def test_payload_is_json_serialisable() -> None:
 
 def test_is_deterministic() -> None:
     """Same chain, same spot, same instant, same payload — or nothing on the card is
-    reproducible."""
+    reproducible.
+    """
     chain, spot = _real_chain()
     a = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     b = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
@@ -133,7 +134,8 @@ def test_is_deterministic() -> None:
 
 def test_implied_one_day_move_matches_the_named_formula() -> None:
     """EM = S x sigma_ATM x sqrt(1/252). The chain here is hand-built ON PURPOSE — a formula
-    verification needs known inputs (the real-chain test below covers the live shape)."""
+    verification needs known inputs (the real-chain test below covers the live shape).
+    """
     spot = 700.0
     # institutional-synthetic-ok: formula verification REQUIRES known inputs — the exactness
     # assertion below is meaningless on a live chain; the real-chain test covers the live shape.
@@ -198,7 +200,8 @@ def test_implied_move_fails_closed_without_usable_iv() -> None:
 def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> None:
     """The ATM call's IV is Schwab's -999 (no value): that leg has no IV, and the expiry's ATM IV
     is None -- the 705 call's IV used to stand in for it, labelled ATM (operator 2026-10-01: "we
-    use what schwab gives us and we display it")."""
+    use what schwab gives us and we display it").
+    """
     # institutional-synthetic-ok: the rule needs a known ATM contract with no IV beside a priced one
     chain = read_chain(
         [
@@ -230,7 +233,8 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
 
 def test_real_chain_carries_the_sigma_band() -> None:
     """The 1-day band uses the first expiry at least a day out (2026-09-27): a same-day-only
-    chain has none; the CRWD chain (9 days out, valued at its capture) has one."""
+    chain has none; the CRWD chain (9 days out, valued at its capture) has one.
+    """
     chain, spot = _real_chain()
     assert compute_terrain("SPY", chain, spot, now=NOW).implied_1d_move is None
     snap = compute_terrain("CRWD", read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
@@ -246,7 +250,8 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
     """The Trade Desk's Volatility card draws ATM IV by expiry (2026-09-28). The ATM rule was
     applied to the front expiry only (the implied move); it is one function for every expiry, and
     the implied move reads its front entry. Real MRVL full chain, 20 expiries, valued at its
-    capture (tests/real_chains.py)."""
+    capture (tests/real_chains.py).
+    """
     chain = read_chain(MRVL.chain)
     snap = compute_terrain("MRVL", chain, MRVL.spot, now=MRVL.now)
     by_exp = snap.atm_iv_pct_by_expiry
@@ -264,7 +269,8 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
 
 def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:
     """The CQG value-area rule verbatim: start at the POC, absorb the bigger neighbor each
-    step until 68.2% is enclosed."""
+    step until 68.2% is enclosed.
+    """
     # institutional-synthetic-ok: algorithm verification requires known mass — the real-chain
     # test below covers the live shape.
     # side GEX$ mass on a dollarized book (T-05: raw gamma no longer stands in)
@@ -393,7 +399,8 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
 def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> None:
     """The pin's GEX and open interest are the whole book's (every expiry), so its pin_score is
     not the selected expiry's. MRVL's full real chain, all its expiries, against its front
-    expiry."""
+    expiry.
+    """
     wide, spot, now = read_chain(MRVL.chain), MRVL.spot, MRVL.now
     front = min(c.expiry for c in wide)
     chain = [c for c in wide if c.expiry.startswith(front)]

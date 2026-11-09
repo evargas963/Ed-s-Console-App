@@ -1,5 +1,6 @@
 """The streamed percent change (NET_CHANGE_PERCENT) on the price row, the same rule for every
-ticker: Schwab's value as sent, 0 a value, its feed live."""
+ticker: Schwab's value as sent, 0 a value, its feed live.
+"""
 
 from __future__ import annotations
 

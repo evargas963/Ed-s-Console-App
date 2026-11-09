@@ -117,7 +117,8 @@ def streamed_greek_set(greeks: Mapping[str, Any]) -> dict[str, float] | None:
 
 def _expires_at(raw: Any, symbol: Any) -> float | None:
     """Schwab's expirationDate ("2026-09-18T20:00:00.000+00:00") as a time; None, logged, when it
-    was not sent as one (rule 2)."""
+    was not sent as one (rule 2).
+    """
     try:
         return datetime.fromisoformat(raw).timestamp()
     except (TypeError, ValueError) as e:
@@ -169,7 +170,8 @@ def listed_expiries(answer: Mapping[str, Any], today: date) -> list[date]:
     """The expiries of Schwab's expiration chain answer (/marketdata/v1/expirationchain) from
     `today` on, ascending. The list still carries an expiry that has passed (a Saturday's list
     holds Friday's), and a chain request whose fromDate has passed is refused with HTTP 400, so
-    those are left out."""
+    those are left out.
+    """
     return sorted(
         {
             d
@@ -181,7 +183,8 @@ def listed_expiries(answer: Mapping[str, Any], today: date) -> list[date]:
 
 def chain_row(c: OptionContract) -> dict[str, Any]:
     """The contract as the chain screens show it, under Schwab's field names: each field Schwab
-    sent, and each value the record holds (a streamed count or a carried Greek), and no other."""
+    sent, and each value the record holds (a streamed count or a carried Greek), and no other.
+    """
     read = {
         "symbol": c.symbol,
         "putCall": c.side,

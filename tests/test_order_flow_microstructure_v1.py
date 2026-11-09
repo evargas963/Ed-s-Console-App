@@ -41,7 +41,8 @@ def _book_snapshot() -> dict:
 
 def _read(data: dict) -> dict:
     """`data` with each book message of its content read by the one reader, engine.read_book,
-    as the live state reads it (a NASDAQ_BOOK); a book the state already read stays."""
+    as the live state reads it (a NASDAQ_BOOK); a book the state already read stays.
+    """
     content = [
         ofe.read_book(c, "NASDAQ_BOOK")
         if isinstance(c, dict) and ("BIDS" in c or "ASKS" in c)
@@ -117,7 +118,8 @@ def test_wall_candidates_are_flagged_heuristic():
 def test_microprice_is_computed_from_every_quote_schwab_sent():
     """A crossed book's quotes are Schwab's and compute (the book says it is crossed): "we use
     what schwab gives us and we display it". Absent only with a leg Schwab did not send, or no
-    size to weight."""
+    size to weight.
+    """
     ok = ofe._microprice(712.47, 712.49, 300, 500)
     assert abs(ok - 712.4775) < 1e-9
     assert (
@@ -164,7 +166,8 @@ def test_every_emitted_metric_is_classified():
     """The metric set is taken from the actual payload, so a newly emitted metric with no
     classification entry fails. A family match requires a dotted boundary (`key + "."`), so a
     bare prefix collision (an unrelated `mid_price` entry) cannot stand in for the real `mid`
-    entry."""
+    entry.
+    """
     m = _micro(_data(), now_ts=1787233772.0)
     cls = m["classification"]
     # Self-describing meta blocks, not emitted metrics: the classification map
@@ -185,7 +188,8 @@ def test_every_emitted_metric_is_classified():
 def test_server_received_ts_is_classified_derived():
     """server_received_ts is the server wall clock stamped at serialization, not an
     exchange-native field — it must be labeled DERIVED, distinct from the NATIVE
-    exchange_quote_ts."""
+    exchange_quote_ts.
+    """
     m = _micro(_data(), now_ts=1787233772.0)
     assert m["classification"]["provenance.server_received_ts"] == "DERIVED"
     assert m["classification"]["provenance.exchange_quote_ts"] == "NATIVE"
@@ -219,7 +223,8 @@ def _unsorted_data() -> dict:
 
 def test_unsorted_book_is_canonicalized_before_topn():
     """Levels arriving out of order must be sorted (bids desc, asks asc) BEFORE any Top-N
-    semantics, so the touch and cumulative depth curve are correct regardless of input order."""
+    semantics, so the touch and cumulative depth curve are correct regardless of input order.
+    """
     m = _micro(_unsorted_data(), now_ts=2.0)
     assert m["top_of_book"]["bid"] == 712.47  # highest bid, not the 712.43 that arrived first
     assert m["top_of_book"]["ask"] == 712.49  # lowest ask, not the 712.53 that arrived first
@@ -232,7 +237,8 @@ def test_unsorted_book_is_canonicalized_before_topn():
 def test_invalid_sizes_are_rejected():
     """Negative or non-finite displayed sizes are not real quantities — they must be dropped
     from level totals, and an invalid L1 size must not be published as a real top-of-book size.
-    The L1 size is read where it is stored (OrderFlowState.push_option_top)."""
+    The L1 size is read where it is stored (OrderFlowState.push_option_top).
+    """
     l1 = OrderFlowState()
     l1.push_option_top(
         "BADSIZE", {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500}
@@ -262,7 +268,8 @@ def test_invalid_sizes_are_rejected():
 
 def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
     """A crossed book (bid > ask): Schwab sent both quotes, so mid and microprice are computed
-    from them and the payload flags crossed ("we use what schwab gives us and we display it")."""
+    from them and the payload flags crossed ("we use what schwab gives us and we display it").
+    """
     crossed = {
         "content": [
             {
@@ -282,7 +289,8 @@ def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
 
 def test_one_sided_book_fails_closed():
     """With one side of the book empty, depth imbalance cannot be computed and must be None
-    (fail closed) rather than fabricated from the single populated side."""
+    (fail closed) rather than fabricated from the single populated side.
+    """
     one = {
         "content": [
             {"BIDS": [], "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}], "BOOK_TIME": 1}
@@ -297,7 +305,8 @@ def test_one_sided_book_fails_closed():
 def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sided_one():
     """A book message with asks and no bids (as Schwab sends a side with no displayed orders) is
     the latest book: its asks are served, and the previous two-sided book does not stand as
-    current ("we use what schwab gives us and we display it")."""
+    current ("we use what schwab gives us and we display it").
+    """
     st = OrderFlowState()
     snap = _book_snapshot()
     st.push_book("ONESIDE", snap, "NASDAQ_BOOK")
@@ -315,7 +324,8 @@ def test_route_serializes_carried_state_without_recomputing():
     """The /api/order-flow/microstructure route and the engine call the SAME producer. Once the
     structural state is computed for (ticker, BOOK_TIME) it is memoized; a second serialization of
     the SAME unchanged book must carry that cached state, NOT re-run the structural computation
-    (a recompute stores a new entry)."""
+    (a recompute stores a new entry).
+    """
     ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
     data = _data()
     first = _micro(data, now_ts=100.0, ticker="CARRYTEST")
@@ -337,7 +347,8 @@ def test_route_serializes_carried_state_without_recomputing():
 def test_changed_ladder_under_same_book_time_is_not_served_stale():
     """CACHE INVALIDATION: the carry cache must key on canonical book CONTENT, not BOOK_TIME
     alone. With the SAME ticker and the SAME BOOK_TIME but a MUTATED ladder, depth totals,
-    imbalance, and wall_candidates must reflect the new book — never the prior cached state."""
+    imbalance, and wall_candidates must reflect the new book — never the prior cached state.
+    """
     BT = 424242  # identical BOOK_TIME across both snapshots
 
     def _book(bids, asks) -> dict:
@@ -390,7 +401,8 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
 
 def test_engine_and_route_read_the_same_canonical_state():
     """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes — one
-    faucet, not two producers."""
+    faucet, not two producers.
+    """
     from app.options.order_flow.engine import OrderFlowEngine
 
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
@@ -442,7 +454,8 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
     """Real LEVELONE_OPTIONS ticks (tests/fixtures, TSLA 260831C00367500): Schwab sends
     changed fields only -- the 4th tick carries BID_SIZE/ASK_SIZE and no price. The prices from
     earlier ticks stand, the sizes update. Stand-ins (named): the BID_SIZE 0 and ASK_PRICE -999
-    ticks are edits of the real tick, to pin a reported 0 kept and a not-a-number clearing."""
+    ticks are edits of the real tick, to pin a reported 0 kept and a not-a-number clearing.
+    """
     samples = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"]
     tsla = next(c for c in samples if c["symbol"] == "TSLA  260831C00367500")
     qqq = next(c for c in samples if c["symbol"] == "QQQ   260904C00712500")
@@ -480,7 +493,8 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
 def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
     """An equity's Level-1 quote lives in live_market_plane only. push_level_one writes no
     top-of-book item beside the book and tape. Stand-in (named): a hand-built
-    LEVELONE_EQUITIES tick."""
+    LEVELONE_EQUITIES tick.
+    """
     import app.options.order_flow.state as ofls
 
     ofls.clear_symbol("O01EQ")
@@ -509,7 +523,8 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     push) must hand push_level_one the MESSAGE's own ts_recv for both equity
     (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
     processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's GAMMA as Schwab
-    sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json)."""
+    sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json).
+    """
     import app.options.order_flow.streaming as ofs
     from stream_spine import quote_msg, verbatim_msg
 
@@ -561,7 +576,8 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     """The option top of book is the newest value Schwab sent, merged per field, while the
     daemon holds the contract (a feed down: docs/DATA_FLOW.md §2 D5,
     tests/test_data_path_rules_v1.py). Real TSLA 260831C00367500 ticks (tests/fixtures), judged in
-    regular hours, the option market open (RTH_INSTANT)."""
+    regular hours, the option market open (RTH_INSTANT).
+    """
     import live_market_plane as lmp
     from app.options.order_flow import state
     from app.options.order_flow.live_payload import options_live_payload
@@ -587,7 +603,8 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     """/api/order-flow/microstructure takes the equity top of book from the daemon's price
     row (the header's): the newest quote Schwab sent, its feed live (a feed down: docs/DATA_FLOW.md
     §2 D5, tests/test_data_path_rules_v1.py). Stand-in quote (named): bid 10.00 x 3, ask 10.02 x 5.
-    Served in regular hours (RTH_INSTANT)."""
+    Served in regular hours (RTH_INSTANT).
+    """
     import live_market_plane as lmp
     import server
     from tests.feed_live_helper import RTH_INSTANT, mark_feed_live

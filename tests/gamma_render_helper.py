@@ -1,7 +1,8 @@
 """Test helper: the gamma heatmap from Schwab's chain to the drawn cell. A chain capture published
 by the levels producer (server._publish_levels, as at startup and on a closed market), served by
 the heatmap's answer at the capture's time (server.gamma_surface_payload) and drawn by the page's
-own render (static/js/ed-gamma.js, through tests/ed_gamma_cells_node.mjs)."""
+own render (static/js/ed-gamma.js, through tests/ed_gamma_cells_node.mjs).
+"""
 
 from __future__ import annotations
 
@@ -18,7 +19,8 @@ def drawn(
     tk: str, contracts: list, spot: float, now: datetime, tmp_path: Path
 ) -> tuple[dict, dict]:
     """`contracts` captured at `now` with Schwab's underlying price `spot`, published, served for
-    every strike and column and drawn: (surface, {(strike, expiry): text})."""
+    every strike and column and drawn: (surface, {(strike, expiry): text}).
+    """
     node = shutil.which("node")
     assert node, "Node.js is required on PATH (the same prerequisite as Playwright E2E)"
     with server._terrain_cache_lock:

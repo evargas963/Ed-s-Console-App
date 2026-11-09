@@ -73,7 +73,8 @@ def is_forwarded(topic: str, msg) -> bool:
 
 async def _serve_client(ws, stats: dict, on_request) -> None:
     """Each frame of one connection handed to `on_request` (capture.Daemon.console_frame), until
-    the connection closes. A frame that is not a JSON object is logged with what arrived."""
+    the connection closes. A frame that is not a JSON object is logged with what arrived.
+    """
     stats["clients"] += 1
     try:
         async for frame in ws:

@@ -13,7 +13,8 @@ from tests.real_chains import CRWD
 def test_the_chain_spot_carries_schwabs_trade_time():
     """The ladder's spot is the daemon's last price, and the time on it is that price's trade
     time. A feed that is down does not remove either. CRWD's real chain, published by the one
-    producer (_publish_levels) as captured."""
+    producer (_publish_levels) as captured.
+    """
     tk = "ZZCHAIN"
     exp = CRWD.chain[0]["expirationDate"][:10]
     # delivered with no price held: levels with no surface, as _publish_levels writes them

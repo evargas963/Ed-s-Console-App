@@ -1,6 +1,7 @@
 """tools.census.compare: before and after, from two census reports in the census's own format.
 Zero is a value, missing is unknown: a category one report lacks is 0 only when that report shows
-its checker ran; otherwise it is "-" and the totals say they are incomplete."""
+its checker ran; otherwise it is "-" and the totals say they are incomplete.
+"""
 
 from __future__ import annotations
 

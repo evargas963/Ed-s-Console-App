@@ -146,7 +146,8 @@ class LocalSchwab:
     `expired`: access tokens a data request carrying one is answered 401 for, with Schwab's
     INVALID_TOKEN challenge; `edge`:
     while set, every data request is answered with EDGE_403. Each request is recorded as (path,
-    query, started, answered, the client's port, its Authorization)."""
+    query, started, answered, the client's port, its Authorization).
+    """
 
     def __init__(self, stream_url: str | None = None):
         self.stream_url = stream_url
@@ -325,7 +326,8 @@ class LocalSchwab:
 
     def delivering_here(self, client):
         """`client`, every request it sends delivered here instead of Schwab's host, the token
-        refresh included (schwab-py and the token endpoint name that host themselves)."""
+        refresh included (schwab-py and the token endpoint name that host themselves).
+        """
         port = self.server.server_address[1]
 
         def deliver(request) -> None:
@@ -337,7 +339,8 @@ class LocalSchwab:
     def token_file(self, tmp_path, expires_in_sec: float = 3600) -> str:
         """A token file (tmp_path / schwab_token.json) whose token expires in `expires_in_sec` (far
         from expiry by default), saved whole as every writer of it saves one
-        (sc.write_token_file_atomically)."""
+        (sc.write_token_file_atomically).
+        """
         tok = tmp_path / "schwab_token.json"
         sc.write_token_file_atomically(
             str(tok),

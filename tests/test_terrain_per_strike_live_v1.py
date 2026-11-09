@@ -21,7 +21,8 @@ def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
     sentinel, so a contract whose DTE could not be read was rendered in the far (MONTHLY+) chip and
     omitted from the near (≤7DTE) chip. The contract record's `days_to_expiry` is None for an
     unreadable DTE (belonging to NEITHER scope). This locks that invariant on the record the
-    endpoint splits by."""
+    endpoint splits by.
+    """
     contracts = read_chain(
         [
             {"strikePrice": 100.0, "daysToExpiration": 0},  # near (0-DTE)
@@ -46,7 +47,8 @@ def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
 
 def test_per_strike_is_excluded_from_to_dict_but_timestamp_is_not():
     """per_strike is hundreds of entries — too heavy for every poll (same reason `profile` is
-    excluded). computed_ts_utc MUST survive: every consumer has to be able to render an age."""
+    excluded). computed_ts_utc MUST survive: every consumer has to be able to render an age.
+    """
     snap = TerrainSnapshot(ticker="SPY", spot=740.0)
     d = snap.to_dict()
     assert "per_strike" not in d

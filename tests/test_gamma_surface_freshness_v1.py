@@ -41,7 +41,8 @@ def _call(tk):
 def _daemon(price: float, at: float, *tickers) -> None:
     """The daemon's status at `at` (Schwab's socket open, `tickers` held, the watchlist [_ON]) and
     each ticker's quote received at `at` (its trade at _AT), in the plane the price row is built
-    from."""
+    from.
+    """
     lmp.record_feed_heartbeat(
         daemon_status(
             at,
@@ -109,7 +110,8 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
 def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(published, tk):
     """2026-09-28 audit: "viewed" was a 300 s timer renewed only by some routes. The page's one
     connection is the one viewing signal: a route read does not make a ticker viewed, and it
-    stays viewed for as long as the page has it open."""
+    stays viewed for as long as the page has it open.
+    """
     _call(tk)  # a route read alone: not viewed
     assert not server._gamma_surface_wanted(tk)
     client = push_changes.subscribe(tk)  # /api/changes open on this ticker
@@ -125,7 +127,8 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
     published, tk
 ):
     """On the watchlist or not, a publication carries the same fields: the chain basis, and ATR
-    (from the bars, none here) absent, with no sentence in its place."""
+    (from the bars, none here) absent, with no sentence in its place.
+    """
     t = server.get_terrain(ticker=tk)
     assert t["chain_basis"] == CAPTURE_BASIS
     for horizon in ("daily", "weekly", "monthly"):
@@ -135,7 +138,8 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
 
 def test_with_no_levels_the_atr_is_absent():
     """ATR is from the bars, not the chain: a ticker with no levels published still serves it
-    (here absent, and no sentence in its place)."""
+    (here absent, and no sentence in its place).
+    """
     import server
 
     t = server.get_terrain(ticker="ZZNOLEVELSATR")

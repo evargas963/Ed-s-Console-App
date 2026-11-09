@@ -50,14 +50,16 @@ def _stand_in(
     *marks: str, exe: str = sys.executable, cwd: Path = runtime_layout.RUNTIME_ROOT
 ) -> subprocess.Popen:
     """A sleeping process whose command line carries `marks`, running in `cwd` (production's
-    checkout by default, as the daemon and the console run)."""
+    checkout by default, as the daemon and the console run).
+    """
     return subprocess.Popen([exe, "-c", "import time; time.sleep(600)", *marks], cwd=cwd)
 
 
 @pytest.fixture(scope="module")
 def procs(tmp_path_factory):
     """Running stand-ins: the daemon, the console, launch.py, a process of no production, and a
-    test console in another checkout (as Playwright's in a worktree)."""
+    test console in another checkout (as Playwright's in a worktree).
+    """
     running = {
         "daemon": _stand_in("-m", "app.market_data.schwab.streaming.capture_main"),
         "console": _stand_in("-m", "uvicorn", "server:app"),
@@ -314,7 +316,8 @@ def test_the_machine_a_merge_and_a_push(cmd, answer):
 )
 def test_every_merge_route_goes_ahead_without_a_question(cmd, tool):
     """A merge does not wait on the operator (AGENTS.md Authority): branch protection's green CI
-    and the two reviewers decide."""
+    and the two reviewers decide.
+    """
     assert _decide(cmd, tool) == guard.PASS, cmd
 
 
@@ -404,7 +407,8 @@ def test_everything_else_passes_at_any_hour(payload, procs):
 def test_the_hook_chain_answers_ask_refuses_and_passes_ordinary_work():
     """The real wiring: .claude/settings.json runs hook_chain with this guard; an action that
     needs a yes gets Claude Code's "ask" on stdout, a refused one exit 2 with the reason, other
-    actions nothing."""
+    actions nothing.
+    """
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     commands = [h["command"] for e in settings["hooks"]["PreToolUse"] for h in e["hooks"]]
     assert all("tools/operator_yes_guard.py" in c for c in commands)

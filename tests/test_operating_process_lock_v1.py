@@ -20,7 +20,8 @@ def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
     that names no agent: an edit whose target belongs to the production checkout. A linked
     worktree editing its own files stays unblocked: that is where development belongs.
     Deterministic against a temp topology, so it holds in a primary clone (CI) and a linked
-    worktree alike."""
+    worktree alike.
+    """
     primary, wt = _linked_worktree_layout(tmp_path)
     (wt / "server.py").write_text("# mine\n", encoding="utf-8")
     (primary / "notes.md").write_text("# doc\n", encoding="utf-8")
@@ -36,7 +37,8 @@ def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
 
 def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
     """A primary checkout (.git directory) and a linked worktree (.git FILE pointing at
-    primary/.git/worktrees/wt) — pure file topology, exactly what the rail reads."""
+    primary/.git/worktrees/wt) — pure file topology, exactly what the rail reads.
+    """
     primary = tmp_path / "primary"
     (primary / ".git").mkdir(parents=True)
     (primary / ".git" / "worktrees" / "wt").mkdir(parents=True)
@@ -50,7 +52,8 @@ def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
 
 def test_cross_checkout_edit_into_primary_blocks(tmp_path):
     """A linked-worktree session editing the PRIMARY working tree: the rail fires on that
-    exact topology."""
+    exact topology.
+    """
     primary, wt = _linked_worktree_layout(tmp_path)
     bad = PLG.production_checkout_edit_violations({"file_path": str(primary / "db.py")}, repo=wt)
     assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
@@ -83,7 +86,8 @@ def test_own_worktree_edit_stays_unblocked(tmp_path):
 
 def test_the_primary_session_is_refused_only_its_own_app_code(tmp_path):
     """From the production checkout (.git a directory), a linked worktree's file is not the
-    production checkout's, and only the production checkout's app code is refused."""
+    production checkout's, and only the production checkout's app code is refused.
+    """
     primary, wt = _linked_worktree_layout(tmp_path)
     assert (
         PLG.production_checkout_edit_violations({"file_path": str(wt / "own.py")}, repo=primary)
@@ -97,7 +101,8 @@ def test_the_primary_session_is_refused_only_its_own_app_code(tmp_path):
 
 def test_rail_fails_open_on_unreadable_topology(tmp_path):
     """A malformed .git file must never block (the rail blocks only on an affirmative
-    cross-checkout hit)."""
+    cross-checkout hit).
+    """
     wt = tmp_path / "wt2"
     wt.mkdir()
     (wt / ".git").write_text("not a gitdir line\n", encoding="utf-8")
@@ -113,7 +118,8 @@ def test_reset_guard_blocks_destructive_git_on_product():
     """The reset guard: soft tree-destructive git against product scope BLOCKS.
 
     The guard's own static inventory (PRODUCT_WIPE_PROTECTED) is the only thing that can
-    satisfy it."""
+    satisfy it.
+    """
     for cmd in (
         "git restore -- static/chart.html",
         "git checkout -- server.py",
@@ -199,7 +205,8 @@ def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
     """The rails' list of what is app code is checked against what runs: every repository file
     the console (server) and the capture daemon load is app code in the production checkout, so
     an edit to it there is refused. A folder of running code left off the list fails here. The two
-    load in a fresh process, so what other tests imported into this worker is not counted."""
+    load in a fresh process, so what other tests imported into this worker is not counted.
+    """
     loaded = subprocess.run(
         [
             sys.executable,
@@ -229,7 +236,8 @@ def test_every_file_the_console_and_daemon_run_is_app_code_to_the_rails():
 def test_an_edit_target_that_cannot_be_placed_is_refused(tmp_path):
     """INDUCED CONDITION: a target holding a NUL byte, inside the production checkout. Where the
     filesystem cannot place it (Linux), the guard raises and hook_chain refuses the event; where
-    it can (Windows), it is app code and refused. It is never let through."""
+    it can (Windows), it is app code and refused. It is never let through.
+    """
     primary, _wt = _linked_worktree_layout(tmp_path)
     try:
         bad = PLG.production_checkout_edit_violations(
@@ -243,7 +251,8 @@ def test_an_edit_target_that_cannot_be_placed_is_refused(tmp_path):
 def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
     """INDUCED CONDITION: a linked worktree's edit target in the production checkout holding a NUL
     byte. The rail places it with the same function as the shell rail: it raises (a block) or it is
-    refused, never let through."""
+    refused, never let through.
+    """
     primary, wt = _linked_worktree_layout(tmp_path)
     try:
         bad = PLG.production_checkout_edit_violations(

@@ -10,7 +10,8 @@ from tests.feed_live_helper import mark_feed_live
 
 def test_a_down_feed_keeps_schwabs_quote_time_and_trade_time():
     """QUOTE_TIME and TRADE_TIME are on the row the page paints. A feed that stops does not
-    remove them."""
+    remove them.
+    """
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity(
         "SPY",

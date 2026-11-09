@@ -21,7 +21,8 @@ from tests.test_one_levels_producer_v1 import (
 
 def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
     """The daemon named the contract, Schwab sent a volume, then the heartbeat is gone: the
-    levels still show that volume and the cell is not live."""
+    levels still show that volume and the cell is not live.
+    """
     ofls.clear_all_live_state()
     lmp.record_feed_down()
     with lmp._lock:

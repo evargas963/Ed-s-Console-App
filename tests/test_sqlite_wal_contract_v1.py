@@ -29,7 +29,8 @@ def test_configure_sqlite_connection_enforces_wal_and_normal():
 def test_configure_sqlite_connection_applies_access_tuning_rc50():
     """RC-50: every configured connection must carry the mmap + cache tuning, not the
     2 MB / no-mmap defaults that starved reads on the ~30 GB DB. Durability PRAGMAs
-    (WAL, synchronous=NORMAL) must remain untouched by the tuning."""
+    (WAL, synchronous=NORMAL) must remain untouched by the tuning.
+    """
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "t.db"
         conn = sqlite3.connect(str(p), timeout=30.0)

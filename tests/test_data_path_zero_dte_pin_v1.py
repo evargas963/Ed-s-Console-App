@@ -10,7 +10,8 @@ from tests.real_chains import MRVL, SPY_0DTE
 
 def test_the_0dte_pin_has_one_producer():
     """SPY 2026-10-07 12:32 ET and MRVL 2026-10-07 10:31 ET. The pin is the same-day
-    absolute gamma. The old listed-expiry pin is not a second field and not a levels row."""
+    absolute gamma. The old listed-expiry pin is not a second field and not a levels row.
+    """
     spy_chain = read_chain(SPY_0DTE.chain)
     spy = compute_terrain("SPY", spy_chain, SPY_0DTE.spot, now=SPY_0DTE.now).to_dict()
     assert "zero_dte_abs_gamma_strike" not in spy

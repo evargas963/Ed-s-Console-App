@@ -199,7 +199,8 @@ def quote_msg(
     schwab_ts: int | None = None,
 ) -> dict:
     """quote.* (LEVELONE_EQUITIES). `native` is Schwab's item verbatim -- readers need fields
-    the flat columns do not carry (BID_TIME_MILLIS, LAST_MIC_ID, ...)."""
+    the flat columns do not carry (BID_TIME_MILLIS, LAST_MIC_ID, ...).
+    """
     return {
         "ts_recv": _now(ts_recv),
         "schwab_ts": schwab_ts,
@@ -322,7 +323,8 @@ _FIELD_DELTA = {"quote": "native", "optquote": "content"}
 def current_key(topic: str, msg: Any) -> str:
     """A topic's key in the current state, by its source (`src`: a message from elsewhere is
     never merged into Schwab's record) and, for a book, its service (NYSE_BOOK and NASDAQ_BOOK
-    are two books of one symbol)."""
+    are two books of one symbol).
+    """
     if not isinstance(msg, dict):
         return topic
     if topic.startswith("book."):
@@ -353,7 +355,8 @@ class Subscription:
 
     async def get(self) -> tuple[str, Any]:
         """LOG: the next message. LATEST: (topic, current record) of the next changed topic; a
-        chain's record is its parts, in order."""
+        chain's record is its parts, in order.
+        """
         if self.policy == LOG:
             return await self.queue.get()
         while True:
@@ -371,7 +374,8 @@ class MessageBus:
     """Every Schwab message is published once. It becomes its topic's current record -- the
     newest by Schwab's time (`schwab_ts`, the frame's timestamp; a chain by its fetch time):
     a LEVELONE message merged field by field, a book, bar or news item whole, a chain whole once
-    all its parts are in -- and each reader takes it by its policy (LOG or LATEST)."""
+    all its parts are in -- and each reader takes it by its policy (LOG or LATEST).
+    """
 
     def __init__(self) -> None:
         self._subs: list[Subscription] = []
@@ -409,12 +413,14 @@ class MessageBus:
 
     def forget(self, key: str) -> None:
         """The daemon stopped holding what `key` (current_key) names: its record is no longer
-        current and is never handed out again (D5)."""
+        current and is never handed out again (D5).
+        """
         self.current.pop(key, None)
 
     def _newest(self, key: str, topic: str, msg: Any) -> bool:
         """Make `msg` part of its topic's current record where it is the newest by Schwab's
-        time. Returns whether the record changed."""
+        time. Returns whether the record changed.
+        """
         held = self.current.get(key)
         t = msg.get("schwab_ts") if isinstance(msg, dict) else None
         body_key = _FIELD_DELTA.get(topic.split(".", 1)[0])
@@ -448,7 +454,8 @@ class MessageBus:
 
     def _chain(self, key: str, topic: str, msg: dict) -> bool:
         """A chain part (a failed fetch is its one part): the newest fetch of the ticker is kept;
-        once all its parts are in it replaces the current chain whole."""
+        once all its parts are in it replaces the current chain whole.
+        """
         ts = msg["ts_recv"]
         held = self._chains.get(key)
         if held is not None and ts < held[0]:
@@ -466,7 +473,8 @@ class MessageBus:
 class HealthRegistry:
     """When each Schwab service last carried data: an observation, not a liveness verdict
     (live is live_market_plane.feed_live_for -- Schwab sends only changes, so a quiet service
-    on an open socket is live)."""
+    on an open socket is live).
+    """
 
     def __init__(self) -> None:
         self._last: dict[str, float] = {}
@@ -714,7 +722,8 @@ class RowWritten:
 @dataclass(frozen=True)
 class KeptFailure:
     """A message kept as sent in stream_write_failures: its topic, the message, the error (type
-    and text) and when the write failed."""
+    and text) and when the write failed.
+    """
 
     topic: str
     msg: Any
@@ -738,7 +747,8 @@ class WriterStatus:
     database nor the spill file took, received from `lost_first_ts` to `lost_last_ts`;
     `unrecorded`: messages a dead writer could not write; `error`: the database's refusal
     (blocked) or what ended the thread (dead), from `error_ct`. `line` and `cls`: the header's
-    Record, as the page prints it."""
+    Record, as the page prints it.
+    """
 
     state: str
     rows_written: int
@@ -764,7 +774,8 @@ class WriterStatus:
 
 def _record_line(s: dict) -> tuple[str, str]:
     """The header's Record for a writer status: the line, and its class ("neg" for anything
-    but recording with nothing kept, spilled, lost or left)."""
+    but recording with nothing kept, spilled, lost or left).
+    """
     spill = s["spill"]
     if spill is None:
         word = _STATE_WORD[s["state"]]
@@ -814,7 +825,8 @@ def _record_line(s: dict) -> tuple[str, str]:
 
 def _object_bytes(obj, seen: set) -> int:
     """Memory of `obj` and everything it holds that is its own: each object once (`seen`), not
-    None, True, False, CPython's cached small ints and one-character strings."""
+    None, True, False, CPython's cached small ints and one-character strings.
+    """
     stack, total = [obj], 0
     while stack:
         o = stack.pop()
@@ -837,7 +849,8 @@ def _held_size(item) -> int:
     and every value it carries (Schwab's item decoded from the wire, its fields). The message's
     keys and its `src` are the writer's code constants, shared by every message, and not counted.
     Measured against tracemalloc on production's stream mix decoded from JSON:
-    tests/test_data_path_writer_failures_v1.py::test_the_hold_cap_holds_memory_to_its_size."""
+    tests/test_data_path_writer_failures_v1.py::test_the_hold_cap_holds_memory_to_its_size.
+    """
     seen: set = set()
     if isinstance(item, KeptFailure):
         return sys.getsizeof(item) + sum(
@@ -856,7 +869,8 @@ def _held_size(item) -> int:
 
 def _received(item) -> float | None:
     """When the daemon received a message: its `ts_recv` (`ts` for a status or a subscription
-    answer; a kept failure's time)."""
+    answer; a kept failure's time).
+    """
     if isinstance(item, KeptFailure):
         return item.ts
     msg = item[1]
@@ -867,7 +881,8 @@ def _received(item) -> float | None:
 
 def _spill_record(item) -> bytes:
     """A held message as one spill record's JSON: the topic and the message as sent (a kept
-    failure with its error and time)."""
+    failure with its error and time).
+    """
     if isinstance(item, KeptFailure):
         rec = {"kept": {"topic": item.topic, "msg": item.msg, "error": item.error, "ts": item.ts}}
     else:
@@ -889,7 +904,8 @@ def _spill_order(path: Path) -> tuple[int, ...]:
 
 class _Spill:
     """One append-only spill file: each record a 4-byte big-endian length and the record's JSON.
-    Appended in arrival order; written back from the start, `read_at` advancing at each commit."""
+    Appended in arrival order; written back from the start, `read_at` advancing at each commit.
+    """
 
     def __init__(self, path: Path, mode: str | None = "ab"):
         self.path = path
@@ -906,7 +922,8 @@ class _Spill:
     def new(cls, db_path: Path, ms: int, n: int) -> _Spill:
         """A new spill file beside the database, <stem>.<ms>.<n>.spill, named for its place in
         arrival order: created, never opened over another file (a name taken moves it to the next
-        millisecond). Raises the disk's refusal."""
+        millisecond). Raises the disk's refusal.
+        """
         while True:
             try:
                 return cls(db_path.with_name(f"{db_path.stem}.{ms}.{n}.spill"), "xb")
@@ -915,7 +932,8 @@ class _Spill:
 
     def append(self, record: bytes) -> OSError | None:
         """Append one record; the disk's refusal (OSError) is returned, the file cut back to its
-        whole records."""
+        whole records.
+        """
         data = len(record).to_bytes(4, "big") + record
         try:
             if self.out.write(data) != len(data):
@@ -931,7 +949,8 @@ class _Spill:
         decode (a damaged file) is its bytes as a KeptFailure with where and why, kept as sent in
         stream_write_failures; its length still places the next record. A length that runs past
         the file's whole records (a damaged length) places nothing: every byte from it to the end
-        is one KeptFailure (_unframed)."""
+        is one KeptFailure (_unframed).
+        """
         if self._in is None:
             self._in = open(self.path, "rb")
         self._in.seek(self.read_at)
@@ -959,7 +978,8 @@ class _Spill:
 
     def _unframed(self, at: int, raw: bytes) -> KeptFailure:
         """Bytes from `at` that make no whole record (a damaged length, or a crash cut a record
-        off), as one KeptFailure: kept as sent, never cut away unrecorded."""
+        off), as one KeptFailure: kept as sent, never cut away unrecorded.
+        """
         return KeptFailure(
             "spill",
             raw.decode("latin-1"),
@@ -980,7 +1000,8 @@ class _Spill:
         none of it was; a count past its whole records: all of them). Bytes after its last whole
         record (a crash cut a record off, or a damaged length) are its last message, kept as sent
         when the write-back reaches them (read). It is read only: nothing is appended to it, so no
-        new message lands behind bytes that frame nothing (new ones go to a new spill file)."""
+        new message lands behind bytes that frame nothing (new ones go to a new spill file).
+        """
         spill = cls(path, None)
         disk, whole = path.stat().st_size, 0
         with open(path, "rb") as f:
@@ -1039,7 +1060,8 @@ class CaptureWriter:
     of it is in. Spill files found beside the database at start are written back first, each from
     after its committed parts. A message the spill file cannot take (a full disk) is lost:
     counted, with when it was received. Only an error outside these ends the thread (dead): what
-    it held in memory and what reaches it after are counted unrecorded."""
+    it held in memory and what reaches it after are counted unrecorded.
+    """
 
     def __init__(
         self,
@@ -1131,7 +1153,8 @@ class CaptureWriter:
         """One bus message -> one row: its RowWritten, the KeptFailure when its row is refused,
         or None (a topic without a table, or nothing Schwab sent to keep). A DATABASE_REFUSALS error
         is raised. Without `conn` (a test, a recovery tool) it opens, writes, commits and counts
-        a connection of its own."""
+        a connection of its own.
+        """
         kind = topic.split(".", 1)[0]
         spec = _INSERTS.get(kind)
         if spec is None:
@@ -1186,7 +1209,8 @@ class CaptureWriter:
         """Keep `msg`, which another thread could not store (a chain whose history write
         failed), as sent. While the writer thread runs it takes it in turn, the one writer; a
         writer whose thread is not running (not started, or stopped) writes it here, on a
-        connection of its own."""
+        connection of its own.
+        """
         kept = KeptFailure(topic, msg, f"{type(error).__name__}: {error}", now)
         with self._lock:
             standalone = self.state in (WRITER_NOT_STARTED, WRITER_STOPPED)
@@ -1207,7 +1231,8 @@ class CaptureWriter:
 
     def _keep(self, conn: sqlite3.Connection, kept: KeptFailure) -> KeptFailure:
         """One stream_write_failures row: the message as JSON (Python's repr when it is not
-        JSON)."""
+        JSON).
+        """
         try:
             sent = json.dumps(kept.msg, default=repr)
         except (ValueError, TypeError, RecursionError) as e:
@@ -1221,7 +1246,8 @@ class CaptureWriter:
 
     def _committed(self, batch: list) -> None:
         """A batch is in the database: count its rows and kept failures; the writer records. The
-        caller holds the lock, so a batch is counted written and stops being held at one time."""
+        caller holds the lock, so a batch is counted written and stops being held at one time.
+        """
         for _item, out in batch:
             if isinstance(out, RowWritten):
                 self.rows_written += 1
@@ -1272,7 +1298,8 @@ class CaptureWriter:
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
         """Hand every bus message to the writer thread until `stop`; everything delivered
         before the stop is written and committed before this returns. Once the thread is dead,
-        each message is counted unrecorded instead of queued for a thread that will not take it."""
+        each message is counted unrecorded instead of queued for a thread that will not take it.
+        """
         thread = threading.Thread(
             target=self._thread, args=(self._q,), name="stream-capture-writer", daemon=True
         )
@@ -1359,7 +1386,8 @@ class CaptureWriter:
     def _write(self, q: queue.SimpleQueue) -> None:
         """The writer thread's loop. After a refusal the connection is closed and the next try
         opens a new one: a connection SQLite opened on a database that refused writes (a
-        read-only file) keeps refusing after the database accepts them again."""
+        read-only file) keeps refusing after the database accepts them again.
+        """
         conn = None
         try:
             last_commit, stopping = time_et.elapsed(), False
@@ -1435,7 +1463,8 @@ class CaptureWriter:
     def _refused(self, error: BaseException, held: list, holding: bool, stopping: bool) -> None:
         """The database refused a write: the open batch is rolled back and `held` (its messages
         and the ones not yet written, in order; spill records stay in their file) is written
-        again after `retry_sec`. At the stop what is held is left on disk."""
+        again after `retry_sec`. At the stop what is held is left on disk.
+        """
         reason = f"{type(error).__name__}: {error}"
         self._log_once_a_minute(
             ("refused", reason),
@@ -1464,7 +1493,8 @@ class CaptureWriter:
     def _admit(self, items: list) -> None:
         """Hold `items`, in order: while no spill file is open, in memory while the held bytes
         stay within the cap; then, and for every newer message, in the newest spill file. Those not
-        yet held are counted held (status) and, if the writer dies, not recorded."""
+        yet held are counted held (status) and, if the writer dies, not recorded.
+        """
         with self._lock:
             self._admitting, self._admitted = items, 0
         for item in items:
@@ -1488,7 +1518,8 @@ class CaptureWriter:
     def _tail(self) -> _Spill:
         """The spill file new messages go to: the newest, when this writer opened it; a new one,
         named for now and after the file memory goes to at a stop (_leave_on_disk), when there is
-        none or the newest was found at start (read only). Raises the disk's refusal."""
+        none or the newest was found at start (read only). Raises the disk's refusal.
+        """
         if self._spills and self._spills[-1].out is not None:
             return self._spills[-1]
         spill = _Spill.new(self.db_path, int(self.clock() * 1000), 1)
@@ -1499,7 +1530,8 @@ class CaptureWriter:
 
     def _leave_spills(self) -> None:
         """Every spill file stays on disk, listed as left; the next writer writes it back. The
-        caller holds the lock."""
+        caller holds the lock.
+        """
         for spill in self._spills:
             spill.close()
             self.left_on_disk.append(spill.left())
@@ -1508,7 +1540,8 @@ class CaptureWriter:
     def _spilled(self, item, spill: _Spill | None, refused: BaseException | None) -> None:
         """One message _admit or the stop's spill is done with, counted in one locked section with
         its being held (_admitted): in `spill`, or, refused by the disk, lost (neither the database
-        nor a spill file holds it), with when it was received."""
+        nor a spill file holds it), with when it was received.
+        """
         ts = _received(item) if refused is not None else None
         with self._lock:
             if refused is None:
@@ -1535,7 +1568,8 @@ class CaptureWriter:
         """Remove every row received before `before` from the tables of KEPT_BY_TIME (the newest
         stream_watchlist row stays), on the writer thread, one part of PRUNE_ROWS at a time between
         rounds of live writes (each round takes every message queued) while nothing is held on disk;
-        a stop before it ends leaves the rest for the next one."""
+        a stop before it ends leaves the rest for the next one.
+        """
         with self._lock:
             self._prune_before, self._prune, self._pruned = before, list(KEPT_BY_TIME), Counter()
 
@@ -1565,7 +1599,8 @@ class CaptureWriter:
 
     def _write_back(self, conn: sqlite3.Connection) -> None:
         """The next part of the oldest spill file into the database, in one transaction with how
-        far its write-back got; once all of it is in, the file is done (_finish_spill)."""
+        far its write-back got; once all of it is in, the file is done (_finish_spill).
+        """
         spill = self._spills[0]
         records = spill.read(SPILL_CHUNK)
         if records:
@@ -1591,7 +1626,8 @@ class CaptureWriter:
     def _finish_spill(self, spill: _Spill, conn: sqlite3.Connection) -> None:
         """A spill whose every record is in the database: deleted, then its progress row. A file
         the disk will not delete (another process holds it open) keeps its row, which counts every
-        record committed: the next writer's start deletes it without writing it again."""
+        record committed: the next writer's start deletes it without writing it again.
+        """
         spill.close()
         try:
             os.remove(spill.path)
@@ -1617,7 +1653,8 @@ class CaptureWriter:
         """At a stop while the database refuses writes: what is held in memory goes to a spill
         file named for when the block began (before the spill file's, _tail), and both stay, listed
         as left (here, or by the writer's death). Those not yet in it are counted as _admit's are
-        (held; not recorded if the writer dies)."""
+        (held; not recorded if the writer dies).
+        """
         with self._lock:
             items, self._waiting, self._waiting_bytes = self._waiting, [], 0
             self._round, self._stored = self._waiting, 0

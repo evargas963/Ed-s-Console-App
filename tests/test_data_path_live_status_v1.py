@@ -87,7 +87,8 @@ def _beat(ts: float, *, socket_open: bool = True, options: list[str] | None = No
 
 def _states_when_the_status_was_sent(offset: float) -> list[str]:
     """SPY's chain priced and its heatmap served at `_AT`, the daemon's status stamped `offset`
-    seconds from `_AT` (negative: earlier). The states of SYM's heatmap legs."""
+    seconds from `_AT` (negative: earlier). The states of SYM's heatmap legs.
+    """
     _beat(_AT + offset)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     row = ofs.price_row(TK, _AT)
@@ -175,7 +176,8 @@ def test_a_streamed_cell_is_not_live_after_its_own_option_close():
     live. At 16:05 ET that day, after the stock options' 16:00 close, SPY's own option market
     (index-close options, 16:15 in Schwab's /markets answer) is still open: its legs stay live. At
     16:20 it has closed, the feed up and the daemon still holding SYM: no leg reads live, and the
-    heatmap's levels are STALE (the chain was fetched 2026-09-30, not after this close)."""
+    heatmap's levels are STALE (the chain was fetched 2026-09-30, not after this close).
+    """
     assert _states_when_the_status_was_sent(-0.5) == ["live"]
 
     def legs_at(hhmm: str) -> tuple[list, dict]:
@@ -209,7 +211,8 @@ def test_a_status_sent_past_the_live_limit_is_not_current():
 
 def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
     """Schwab's socket drops and the daemon's held set empties: the last streamed gamma stays,
-    the cell is stale, and its tooltip carries Schwab's time and the age."""
+    the cell is stale, and its tooltip carries Schwab's time and the age.
+    """
     _beat(_AT - 0.5)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     row = ofs.price_row(TK, _AT)
@@ -287,7 +290,8 @@ def _all_held(now: float, *tickers: str) -> None:
 def test_a_value_is_live_only_while_its_market_trades(at, equities, options, why):
     """The daemon's socket is open and it holds SPY and SYM at every instant (Schwab's /markets
     answers captured 2026-10-07 say which days those are): a valid session is live, stock and
-    option alike, and with none each names why not."""
+    option alike, and with none each names why not.
+    """
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     _all_held(at, TK)
     assert lmp.feed_live_for(TK, "LEVELONE_EQUITIES", at) is equities
@@ -314,7 +318,8 @@ def test_a_feed_down_in_a_trading_session_reads_offline():
 
 def test_a_symbol_the_daemon_does_not_hold_reads_not_live_not_offline():
     """Regular hours, the Schwab socket open, SPY not held on LEVELONE_EQUITIES: the feed is up, so
-    the header word is NOT LIVE, and the reason names the symbol, not a feed outage."""
+    the header word is NOT LIVE, and the reason names the symbol, not a feed outage.
+    """
     at = _et("2026-10-07", 11)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     _all_held(at)
@@ -333,7 +338,8 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
     the 16:00 close. At 17:00 ET (After-Hours, the stock market still trading) $SPX is not live
     and says Schwab marks it Closed. NVDA, Normal from 04:00, is not live at 04:30, before the
     07:00 pre-market Schwab's /markets sent, is live at 07:30, and is not live once the day's last
-    window has ended."""
+    window has ended.
+    """
     spx_open, spx_close = (m for m in _STATUS if m["symbol"] == "$SPX")
     nvda_closed, nvda_normal = (
         next(m for m in _STATUS if m["symbol"] == "NVDA" and m["item"]["SECURITY_STATUS"] == s)
@@ -383,7 +389,8 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
     $SPX) the row says NOT LIVE, "Schwab marks $SPX Closed"; the levels' price mark, the equity
     book's top and its book, the spot's reason (a row with no price: Schwab's -999 for LAST_PRICE)
     and the not-live refresh (a page open on $SPX is told to read its levels again) say the
-    same."""
+    same.
+    """
     import asyncio
 
     import push_changes
@@ -437,7 +444,8 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live_and_no_row_is_not_live():
     """Regular hours, the feed up. SPY's row said LIVE; the daemon then stops holding SPY. The
     console serves NOT LIVE with the reason, not the last row's LIVE. And before Schwab's first
     quote for a held symbol, the console serves the daemon's own row: the feed's word, LIVE, and
-    no price ("-"), never a price of ours."""
+    no price ("-"), never a price of ours.
+    """
     at = _et("2026-10-05", 11)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     _all_held(at, TK)

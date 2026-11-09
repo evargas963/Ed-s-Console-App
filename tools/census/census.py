@@ -159,7 +159,8 @@ page_text = "\n".join(TEXT[f] for f in PAGE_ALL)
 class Row:
     """One category of the census: the rule it checks, what counts it, and its items. A check
     declares its row before it looks, so a row with no items is a check that ran and found 0;
-    `counted` is a count a tool gave whole, its items elsewhere."""
+    `counted` is a count a tool gave whole, its items elsewhere.
+    """
 
     rule: str
     tool: str
@@ -218,7 +219,8 @@ SWALLOW = re.compile(r"except|swallow|suppress|silenced|thrown away|let pass")
 
 def patch_kind(f, line, kind):
     """A fallback puts an invented value where one is missing; a swallow throws an error away.
-    check_end_to_end gives JS one label for both: a JS line holding a catch is a swallow."""
+    check_end_to_end gives JS one label for both: a JS line holding a catch is a swallow.
+    """
     text = kind if f.endswith(".py") else TEXT[f].splitlines()[line - 1]
     return "swallows" if SWALLOW.search(text) or "catch" in text else "fallbacks"
 
@@ -349,7 +351,8 @@ for f in [
 
 class _Unnamed(ast.NodeTransformer):
     """A formula with its names set aside: two functions computing the same thing from
-    differently named inputs read the same."""
+    differently named inputs read the same.
+    """
 
     def visit_Name(self, node):
         return ast.copy_location(ast.Name(id="_", ctx=ast.Load()), node)
@@ -1607,7 +1610,8 @@ def rel(p):
 def reconcile(name, own_total, prefix, tool):
     """The census's count of a checker's findings must equal the checker's own total. The row
     carries the checker's tool name, so it also shows the checker ran: a rule of it with no row
-    found nothing."""
+    found nothing.
+    """
     ours = sum(r.count for k, r in rows.items() if k[0] == S and k[1].startswith(prefix))
     if own_total == ours:
         add(
@@ -1641,7 +1645,8 @@ for cat, tool in (
 def json_findings(name, cmd):
     """A checker's JSON report, written to a file by the checker's own output option: a Node
     tool's report sent through a pipe can lose its end when the tool exits (seen in CI: html-
-    validate's cut at 15,992 characters). `cmd` holds `{out}` where the report file goes."""
+    validate's cut at 15,992 characters). `cmd` holds `{out}` where the report file goes.
+    """
     report_file = LINT / f"{name}.json"
     run([str(c).replace("{out}", str(report_file)) for c in cmd], cwd=HEAD)
     return json.loads(report_file.read_text(encoding="utf-8"))

@@ -45,7 +45,8 @@ def ticker_storage_key(ticker: str) -> str:
 
 def display_symbol(key: str) -> str:
     """How the screen names the instrument whose storage key is `key` ("$SPX" -> "SPX"): the one
-    display form, served with the key so the page never re-derives either."""
+    display form, served with the key so the page never re-derives either.
+    """
     return key[1:] if key.startswith("$") else key
 
 

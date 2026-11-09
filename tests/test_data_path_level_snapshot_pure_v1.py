@@ -1,7 +1,8 @@
 """Schwab's 1-minute bars -> the price levels. The level producer is a calculator (AGENTS.md rule
 11): the same bars give the same snapshot, whenever it runs. Real data: the capture daemon's
 newest receipt of each SPY and TSLA minute of 2026-10-01 and 10-02, taken in by the bar writer's
-own check (server._schwab_bar), valued for Friday 2026-10-02."""
+own check (server._schwab_bar), valued for Friday 2026-10-02.
+"""
 
 from __future__ import annotations
 

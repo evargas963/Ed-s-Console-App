@@ -58,7 +58,8 @@ def _forget() -> None:
 
 def _publish(tk: str, chain, delivered: datetime) -> None:
     """`chain` published by the levels producer as delivered at `delivered`, at the price the
-    daemon's price row gave from Schwab's quote at that chain's capture."""
+    daemon's price row gave from Schwab's quote at that chain's capture.
+    """
     quote = _QUOTES[tk]
     lmp.record_from_level_one_equity(tk, quote["native"], received_ts=quote["ts_recv"])
     lmp.record_feed_heartbeat(
@@ -120,7 +121,8 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
 ):
     """The levels' one served word: LIVE while the ticker's own option market is open and its
     chain current, STALE when the chain is overdue or the close values were never fetched, CLOSE
-    once its own market has closed and a chain fetched after that close stands."""
+    once its own market has closed and a chain fetched after that close stands.
+    """
     published(tk, chain, delivered)
     body = server.terrain_answer(tk, at)
     assert body["levels_state"] == state
@@ -157,7 +159,8 @@ def test_a_late_heartbeat_does_not_shorten_the_round_a_chain_is_judged_by(
     old, "the daemon reports no round of its sweep", while the daemon's last round of the
     watchlist had taken 245 s (its log): a heartbeat more than 3 s old was read as no round, and
     the limit fell to its 180 s floor. The round the daemon last reported stands while its beat
-    is late; the chain is overdue only past two of them."""
+    is late; the chain is overdue only past two of them.
+    """
     delivered = _et(13, 0)
     published("TSLA", TSLA, delivered)
     lmp.record_feed_heartbeat(
@@ -181,7 +184,8 @@ def test_the_flow_panel_judges_a_contract_by_the_option_market_of_the_chain_that
 ):
     """A contract of TSLA's or SPY's published chain, held on LEVELONE_OPTIONS and OPTIONS_BOOK, the
     feed up: the route (server.options_microstructure) finds its ticker by the chain that lists it
-    and serves it live by that ticker's own option market."""
+    and serves it live by that ticker's own option market.
+    """
     chain = {"TSLA": TSLA, "SPY": SPY_0DTE}[tk]
     published(tk, chain, _et(13, 0))
     sym = chain.chain[0]["symbol"]
@@ -212,7 +216,8 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
     16:16 close had above 0. A closed day is outside every option market's window
     (time_et.option_market_open), so the close counts stand (server._keep_last_reported, the stored
     close capture), as after any close. STAND-IN (named): the chain's price is Friday's close
-    capture's underlying price, not Schwab's LAST_PRICE with its trade time."""
+    capture's underlying price, not Schwab's LAST_PRICE with its trade time.
+    """
     friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
     close_oi = {c["symbol"]: c["openInterest"] for c in friday["chain"]}
     blanked = [
@@ -261,7 +266,8 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
 
 def _told(tk: str, at: datetime) -> set:
     """What a page open on `tk` is told by the levels loop's minute
-    (server.refresh_not_live_pages)."""
+    (server.refresh_not_live_pages).
+    """
 
     async def run():
         push_changes.bind(asyncio.get_running_loop())
@@ -280,7 +286,8 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
     """TSLA's price live (its quote's receipt, the daemon holding it) and its chain current: the
     page is not told, each new price and chain tell it. The same chain at 16:05, after TSLA's own
     option close and fetched after it: the levels are CLOSE, so the page is told each minute and the
-    close values' age keeps counting."""
+    close values' age keeps counting.
+    """
     quote = _QUOTES["TSLA"]
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     published("TSLA", TSLA, at)
