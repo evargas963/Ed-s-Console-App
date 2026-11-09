@@ -2313,9 +2313,10 @@ def chart_bars(tk: str, tf: str, minutes: list[dict], now: datetime) -> list[dic
     ]
     if schwab and datetime.fromtimestamp(schwab[-1]["t"], ET).date() == today:
         return schwab
-    regular = () if s is None else s.regular
     todays = [
-        m for m in minutes if any(a.timestamp() <= m["t"] < b.timestamp() for a, b in regular)
+        m
+        for m in minutes
+        if s is not None and any(a.timestamp() <= m["t"] < b.timestamp() for a, b in s.regular)
     ]
     return schwab + aggregate_bars(todays, "D")
 
