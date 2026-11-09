@@ -23,8 +23,8 @@
       "depth.*.imbalance": "DERIVED",
       "depth_pressure": "DERIVED",
       "liquidity_concentration": "DERIVED",
+      "mark": "NATIVE",
       "microprice": "DERIVED",
-      "mid": "DERIVED",
       "provenance.book_time_ms": "NATIVE",
       "provenance.exchange_quote_ts": "NATIVE",
       "provenance.server_received_ts": "DERIVED",
@@ -88,8 +88,8 @@
       "ask": null,
       "bid": null
     },
+    "mark": 2.025,
     "microprice": 2.021684210526316,
-    "mid": 2.025,
     "provenance": {
       "book_source": "unavailable",
       "book_time_ms": null,
@@ -161,8 +161,8 @@
       "depth.*.imbalance": "DERIVED",
       "depth_pressure": "DERIVED",
       "liquidity_concentration": "DERIVED",
+      "mark": "NATIVE",
       "microprice": "DERIVED",
-      "mid": "DERIVED",
       "provenance.book_time_ms": "NATIVE",
       "provenance.exchange_quote_ts": "NATIVE",
       "provenance.server_received_ts": "DERIVED",
@@ -226,8 +226,8 @@
       "ask": null,
       "bid": null
     },
+    "mark": 3.05,
     "microprice": 3.048,
-    "mid": 3.05,
     "provenance": {
       "book_source": "unavailable",
       "book_time_ms": null,

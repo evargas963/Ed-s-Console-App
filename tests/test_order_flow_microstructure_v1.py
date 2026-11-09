@@ -85,7 +85,8 @@ def test_top_of_book_is_native():
 
 def test_derived_scalars():
     m = _micro(_data(), now_ts=1787233772.0)
-    assert m["mid"] == 712.48
+    # the mark is Schwab's MARK as the top holds it (none here: "-"), never computed from bid/ask
+    assert "mid" not in m and m["mark"] is None and m["classification"]["mark"] == "NATIVE"
     # microprice weights each price by the OPPOSITE size: (712.47*500 + 712.49*300)/800.
     assert abs(m["microprice"] - 712.4775) < 1e-6
     assert m["spread_pts"] == 712.49 - 712.47  # exact, unrounded
@@ -281,8 +282,8 @@ def test_invalid_sizes_are_rejected():
     assert m["top_of_book"]["ask_size"] == 500
 
 
-def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
-    """A crossed book (bid > ask): Schwab sent both quotes, so mid and microprice are computed.
+def test_a_crossed_book_computes_microprice_and_says_it_is_crossed():
+    """A crossed book (bid > ask): Schwab sent both quotes, so the microprice is computed.
 
     Computed from them and the payload flags crossed ("we use what schwab gives us and we
     display it").
@@ -299,7 +300,7 @@ def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
     }
     m = _micro(crossed, now_ts=2.0)
     assert m["crossed"] is True
-    assert m["mid"] == (712.60 + 712.49) / 2.0
+    assert m["mark"] is None, "Schwab's MARK as sent; none in this top"
     assert m["microprice"] == (712.60 * 500 + 712.49 * 300) / 800
     assert m["classification"]["microprice"] == "DERIVED"
 

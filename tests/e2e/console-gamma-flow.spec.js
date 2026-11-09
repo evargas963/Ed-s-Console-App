@@ -180,7 +180,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.cum_delta_slope')).toHaveText(fmt(FIXTURE.flow.cum_delta_slope, 3));
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
-    await expect(rowV(page, 'mid')).toHaveText(fmt(FIXTURE.mid, 2));
+    await expect(rowV(page, 'mark')).toHaveText(fmt(FIXTURE.mark, 2));
     await expect(rowV(page, 'microprice')).toHaveText(fmt(FIXTURE.microprice, 2));
     await expect(rowV(page, 'depth.1.imbalance')).toHaveText(fmt(FIXTURE.depth['1'].imbalance, 3));
     await expect(rowV(page, 'top_of_book.bid_size')).toHaveText(String(Math.round(FIXTURE.top_of_book.bid_size)));
@@ -223,7 +223,7 @@ test.describe('D — Gamma Flow subview', () => {
     for (const [k, v] of Object.entries(fc)) await expect(rowTag(page, 'flow.' + k)).toHaveText(v);
     // d.classification (engine) -> book rows: exact keys, and the wildcard depth keys.
     const bc = FIXTURE.classification;
-    for (const k of ['top_of_book.bid', 'top_of_book.ask', 'top_of_book.bid_size', 'top_of_book.ask_size', 'mid', 'microprice', 'spread_pts', 'ages.book_age_sec', 'ages.quote_age_sec']) {
+    for (const k of ['top_of_book.bid', 'top_of_book.ask', 'top_of_book.bid_size', 'top_of_book.ask_size', 'mark', 'microprice', 'spread_pts', 'ages.book_age_sec', 'ages.quote_age_sec']) {
       expect(typeof bc[k]).toBe('string');
       await expect(rowTag(page, k)).toHaveText(bc[k]);
     }
@@ -243,7 +243,7 @@ test.describe('D — Gamma Flow subview', () => {
     ctx.mutate = (d) => {
       d.flow.classification.tape_pressure_30s = 'NATIVE';        // was PROXY
       d.flow.classification.top_book_pressure = 'PROXY';         // was DERIVED
-      d.classification.mid = 'PROXY';                            // was DERIVED
+      d.classification.mark = 'PROXY';                           // was NATIVE
       d.classification['top_of_book.bid'] = 'DERIVED-HEURISTIC (test)';   // an arbitrary backend string, verbatim
       delete d.flow.classification.cum_delta_slope;              // served value, no classification
       delete d.flow.native_aggressor_available;                  // absent => not fabricated as false
@@ -253,7 +253,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
     await expect(rowTag(page, 'flow.tape_pressure_30s')).toHaveText('NATIVE');
     await expect(rowTag(page, 'flow.top_book_pressure')).toHaveText('PROXY');
-    await expect(rowTag(page, 'mid')).toHaveText('PROXY');
+    await expect(rowTag(page, 'mark')).toHaveText('PROXY');
     await expect(rowTag(page, 'top_of_book.bid')).toHaveText('DERIVED-HEURISTIC (test)');
     await expect(rowTag(page, 'flow.cum_delta_slope')).toHaveText('UNKNOWN');
     await expect(rowTag(page, 'flow.cum_delta_slope')).toHaveClass(/unknown/);

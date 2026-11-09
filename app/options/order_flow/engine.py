@@ -424,8 +424,6 @@ def _microstructure_structural(cb: dict) -> dict:
     have_quotes = bid is not None and ask is not None
     crossed = have_quotes and bid > ask
 
-    # computed from Schwab's quotes as sent, a crossed book included (served with `crossed`)
-    mid = (bid + ask) / 2.0 if have_quotes else None
     microprice = _microprice(bid, ask, bid_size, ask_size)
     spread_pts = ask - bid if have_quotes else None
     mark = cb["mark"]
@@ -451,7 +449,7 @@ def _microstructure_structural(cb: dict) -> dict:
         "status": "ok" if cb["has_book"] else "no_book",
         "top_of_book": {"bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size},
         "crossed": crossed,
-        "mid": mid,
+        "mark": mark,
         "microprice": microprice,
         "spread_pts": spread_pts,
         "spread_frac": spread_frac,
@@ -491,7 +489,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "top_of_book.ask": "NATIVE",
             "top_of_book.bid_size": "NATIVE",
             "top_of_book.ask_size": "NATIVE",
-            "mid": "DERIVED",
+            "mark": "NATIVE",
             "microprice": "DERIVED",
             "crossed": "DERIVED",
             "spread_pts": "DERIVED",
