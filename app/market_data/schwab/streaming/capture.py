@@ -31,8 +31,8 @@ It does four things, in one loop:
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
   3. FAN-OUT Every Schwab message is published once on the bus: the database writer
-             (stream_capture.db), the console socket (8799) and the browser price socket
-             (8800) all read from it.
+             (stream_capture.db), the console and the pages' price socket (/ws on the
+             program's port) all read from it.
   4. HEALTH  Any frame from Schwab -- data or Schwab's own heartbeat -- proves the connection
              is alive. None for DEAD_SEC, or a request unanswered for REQUEST_TIMEOUT_SEC:
              reconnect with backoff and subscribe once again. There is nothing else to recover.
@@ -82,8 +82,7 @@ from app.market_data.schwab.streaming.live_push import (
 from app.market_data.schwab.streaming.live_ui import (
     CONSOLE_HOST,
     CONSOLE_PORT,
-    LIVE_UI_HOST,
-    LIVE_UI_PORT,
+    PageSocket,
     serve_live_ui,
 )
 from app.market_data.schwab.streaming.program_lock import (
@@ -1168,21 +1167,27 @@ class _PagesServer(uvicorn.Server):
         yield
 
 
+#: the console's web server's settings (serve_console): each page request is not the window's
+#: (PUSH and REQUEST lines are); the page's socket (/ws) drops a page that stops reading
+#: (live_ui.PageSocket) and sends its frames uncompressed
+PAGES = {
+    "timeout_graceful_shutdown": 10,
+    "log_config": None,
+    "access_log": False,
+    "ws": PageSocket,
+    "ws_per_message_deflate": False,
+}
+
+
 async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket) -> None:
-    """Serve the console's pages and routes (server.app) on `sock` until `stop`.
+    """Serve the console's pages and routes (server.app) and the page's socket on `sock` until
+    `stop`.
 
     They read the daemon's one bus (console_feed.bind_daemon): one program, one copy of every
     value.
     """
     console_feed.bind_daemon(daemon)
-    web = _PagesServer(
-        uvicorn.Config(
-            server.app,
-            timeout_graceful_shutdown=10,
-            log_config=None,
-            access_log=False,  # each page request is not the window's: PUSH and REQUEST lines are
-        )
-    )
+    web = _PagesServer(uvicorn.Config(server.app, **PAGES))
     host, port = sock.getsockname()[:2]
     log.info("console: serving the pages on http://%s:%s", host, port)
     serving = asyncio.create_task(web.serve(sockets=[sock]), name="console web server")
@@ -1356,16 +1361,15 @@ def one_schwab_client(build) -> callable:
     return schwab_client
 
 
-def open_sockets() -> tuple[socket.socket, socket.socket, socket.socket]:
-    """Open the program's three listening sockets before anything serves them.
+def open_sockets() -> tuple[socket.socket, socket.socket]:
+    """Open the program's two listening sockets before anything serves them.
 
-    They are the console's pages, the browser's price socket and the local control socket. The
-    ports they hold are known at once (port 0: the system's pick as it binds, no gap for another
-    program to take it). A port another program holds ends the start here, naming it.
+    They are the console's pages (with the page's price socket, /ws) and the local control
+    socket. The ports they hold are known at once (port 0: the system's pick as it binds, no gap
+    for another program to take it). A port another program holds ends the start here, naming it.
     """
     return (
         socket.create_server((CONSOLE_HOST, CONSOLE_PORT)),
-        socket.create_server((LIVE_UI_HOST, LIVE_UI_PORT)),
         socket.create_server((LIVE_PUSH_HOST, LIVE_PUSH_PORT)),
     )
 
@@ -1373,19 +1377,15 @@ def open_sockets() -> tuple[socket.socket, socket.socket, socket.socket]:
 async def run(lock_fd: int) -> int:
     """Run the whole daemon until the stop.
 
-    Its writer, its three sockets, the chain sweep, the market follower and the Schwab connection
-    each run until the stop; one that ends first ends the daemon with an error naming it, which
-    start_capture_daemon.bat restarts. The ports its sockets hold go in its lock (`lock_fd`),
-    where launch.py reads them.
+    Its writer, its sockets, the price rows' beat, the chain sweep, the market follower and the
+    Schwab connection each run until the stop; one that ends first ends the daemon with an error
+    naming it, which start_capture_daemon.bat restarts. The ports its sockets hold go in its lock
+    (`lock_fd`), where launch.py reads them.
     """
-    pages, prices, control = open_sockets()
+    pages, control = open_sockets()
     record_ports(
         lock_fd,
-        Ports(
-            console=pages.getsockname()[1],
-            live_ui=prices.getsockname()[1],
-            live_push=control.getsockname()[1],
-        ),
+        Ports(console=pages.getsockname()[1], live_push=control.getsockname()[1]),
     )
     load_dotenv_file()
     cfg = build_config()
@@ -1413,9 +1413,7 @@ async def run(lock_fd: int) -> int:
         asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
         asyncio.create_task(serve_live_push(stop, daemon.console_frame, control), name="live push"),
-        asyncio.create_task(
-            serve_live_ui(stop, prices, heartbeat_fn=daemon.status), name="live ui"
-        ),
+        asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status), name="live ui"),
         asyncio.create_task(serve_console(daemon, stop, pages), name="console"),
     ]
     try:

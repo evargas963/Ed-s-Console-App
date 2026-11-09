@@ -119,7 +119,6 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_PORT": "0",
         "ED_LIVE_PUSH_PORT": "0",
         "ED_CONSOLE_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),

@@ -1,14 +1,11 @@
 """The price is one row, built by the capture daemon from its plane (live_price_rows.price_row),
-pushed to the browser (live_ui.py) and read by the console in the same program: a price on
-screen and a price in a console calculation are the same value.
+pushed to the browser (live_ui.py, the page's socket) and read by the console in the same
+program: a price on screen and a price in a console calculation are the same value.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 import live_market_plane as lmp
@@ -70,20 +67,3 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop(tk, None)
         lmp.record_feed_down()
-
-
-def test_pages_are_told_the_daemon_price_port() -> None:
-    """The console fills the page's price-socket port from the daemon's own setting
-    (ED_LIVE_UI_PORT, read when the console loads); e2e points it at a dead port so no test page
-    can ever reach the real daemon. A console loaded with the setting at 8811 serves the page.
-    """
-    html = subprocess.run(
-        [sys.executable, "-c", "import sys, server; sys.stdout.buffer.write(server.root().body)"],
-        cwd=Path(__file__).resolve().parent.parent,
-        env={**os.environ, "ED_LIVE_UI_PORT": "8811"},
-        capture_output=True,
-        check=True,
-        timeout=120,
-    ).stdout.decode("utf-8")
-    assert '<meta name="ed-live-ui-port" content="8811">' in html
-    assert 'content="">' not in html.split("ed-live-ui-port", 1)[1][:12]

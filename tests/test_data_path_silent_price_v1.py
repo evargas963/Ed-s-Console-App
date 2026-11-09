@@ -18,6 +18,7 @@ from tests.test_live_push_channel_v1 import (
     _spy_trade,
     _until,
     listener,
+    serve_page_socket,
 )
 from tests.test_live_push_channel_v1 import (
     feed as feed,
@@ -25,35 +26,42 @@ from tests.test_live_push_channel_v1 import (
 
 
 def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
-    """The daemon's price socket reads every page frame: one that is not JSON, one that is not a
-    subscribe request with a list of symbols, and a symbol in it that is not a string, or is blank,
-    are each logged with what arrived (its first 200 characters), never dropped unseen.
+    """The daemon's price socket reads every page frame: one that is not JSON (text or binary),
+    one that is not a subscribe request with a list of symbols, and a symbol in it that is not a
+    string, or is blank, are each logged with what arrived (its first 200 characters), never
+    dropped unseen, and the page is still served.
     """
 
     async def go():
         stop, stats = asyncio.Event(), {}
         sock, url = listener()
         ui = asyncio.create_task(
-            live_ui.serve_live_ui(
+            serve_page_socket(
                 stop,
                 sock,
-                heartbeat_fn=_daemon_heartbeat(),
-                stats=stats,
-                record_heartbeat=lambda _beat: None,
+                {
+                    "heartbeat_fn": _daemon_heartbeat(),
+                    "stats": stats,
+                    "record_heartbeat": lambda _beat: None,
+                },
             )
         )
         assert await _until(lambda: "clients" in stats)  # serving
-        ws = await connect(url, max_size=None)
+        ws = await connect(f"{url}/ws", max_size=None)
         try:
             for frame in (
                 "not json",
                 '{"op": "hello"}',
                 json.dumps({"op": "subscribe", "symbols": [7]}),
+                b"\xff not text",
             ):
                 await ws.send(frame)
             await _until(
-                lambda: len([r for r in caplog.records if r.name.endswith("live_ui")]) >= 3
+                lambda: len([r for r in caplog.records if r.name.endswith("live_ui")]) >= 4
             )
+            # the socket still serves the page after them
+            await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+            assert json.loads(await asyncio.wait_for(ws.recv(), 5))["type"] == "symbols"
         finally:  # a failure still closes the socket: cancelling over an open one can hang
             await ws.close()
             stop.set()
@@ -64,6 +72,7 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     warned = " | ".join(r.getMessage() for r in caplog.records if r.name.endswith("live_ui"))
     assert "'not json'" in warned and '\'{"op": "hello"}\'' in warned, warned
     assert "a subscribed symbol not a string, or blank: 7" in warned, warned
+    assert "b'\\xff not text'" in warned, warned  # a binary frame, read as what it carries
 
 
 def test_a_silent_daemon_keeps_the_last_price(feed):
