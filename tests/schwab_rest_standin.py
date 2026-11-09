@@ -263,51 +263,68 @@ class LocalSchwab:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def answer(self, path: str, query: dict) -> tuple[int, dict | bytes]:
-        if path == EXPIRATIONS:
-            return 200, {
-                "expirationList": [
-                    {"expirationDate": PASSED},
-                    {"expirationDate": CHAINS[query["symbol"]][0]},
-                ]
-            }
-        if path == CHAIN:
-            if query["symbol"] in self.refuse_chain:
-                self.refuse_chain.discard(query["symbol"])
-                return 502, {}
-            if query["symbol"] in self.throttle_chain:
-                self.throttle_chain.discard(query["symbol"])
-                return 429, {}
-            payload = chain_payload(query["symbol"])
-            for ct in self.invalid if query["symbol"] == "SPY" else ():
-                side = "callExpDateMap" if ct["putCall"] == "CALL" else "putExpDateMap"
-                payload[side].setdefault(
-                    f"{ct['expirationDate'][:10]}:{ct['daysToExpiration']}", {}
-                ).setdefault(str(ct["strikePrice"]), []).append(ct)
-            return 200, payload
-        if path == PRICEHISTORY:
-            return 200, HISTORY[(query["symbol"], query["frequencyType"], query["frequency"])][
-                "body"
+        """Schwab's answer to a request for `path` with `query` (/quotes: any other path)."""
+        by_path = {
+            EXPIRATIONS: self._expirations,
+            CHAIN: self._chain,
+            PRICEHISTORY: self._pricehistory,
+            MARKETS: self._markets,
+            PREFERENCES: self._preferences,
+        }
+        return by_path.get(path, self._quotes)(query)
+
+    @staticmethod
+    def _expirations(query: dict) -> tuple[int, dict]:
+        return 200, {
+            "expirationList": [
+                {"expirationDate": PASSED},
+                {"expirationDate": CHAINS[query["symbol"]][0]},
             ]
-        if path == MARKETS:
-            day = query["date"]
-            a = MARKETS_ANSWERS[
-                day
-                if day in MARKETS_ANSWERS
-                else ("2026-09-29" if day < "2026-09-29" else "2027-10-08")
+        }
+
+    def _chain(self, query: dict) -> tuple[int, dict]:
+        if query["symbol"] in self.refuse_chain:
+            self.refuse_chain.discard(query["symbol"])
+            return 502, {}
+        if query["symbol"] in self.throttle_chain:
+            self.throttle_chain.discard(query["symbol"])
+            return 429, {}
+        payload = chain_payload(query["symbol"])
+        for ct in self.invalid if query["symbol"] == "SPY" else ():
+            side = "callExpDateMap" if ct["putCall"] == "CALL" else "putExpDateMap"
+            payload[side].setdefault(
+                f"{ct['expirationDate'][:10]}:{ct['daysToExpiration']}", {}
+            ).setdefault(str(ct["strikePrice"]), []).append(ct)
+        return 200, payload
+
+    @staticmethod
+    def _pricehistory(query: dict) -> tuple[int, dict]:
+        return 200, HISTORY[(query["symbol"], query["frequencyType"], query["frequency"])]["body"]
+
+    @staticmethod
+    def _markets(query: dict) -> tuple[int, bytes]:
+        day = query["date"]
+        a = MARKETS_ANSWERS[
+            day
+            if day in MARKETS_ANSWERS
+            else ("2026-09-29" if day < "2026-09-29" else "2027-10-08")
+        ]
+        return a["status"], a["body"].encode()
+
+    def _preferences(self, _query: dict) -> tuple[int, dict]:
+        return 200, {
+            "streamerInfo": [
+                {
+                    "streamerSocketUrl": self.stream_url,
+                    "schwabClientCustomerId": "c",
+                    "schwabClientCorrelId": "r",
+                    "schwabClientChannel": "N9",
+                    "schwabClientFunctionId": "APIAPP",
+                }
             ]
-            return a["status"], a["body"].encode()
-        if path == PREFERENCES:
-            return 200, {
-                "streamerInfo": [
-                    {
-                        "streamerSocketUrl": self.stream_url,
-                        "schwabClientCustomerId": "c",
-                        "schwabClientCorrelId": "r",
-                        "schwabClientChannel": "N9",
-                        "schwabClientFunctionId": "APIAPP",
-                    }
-                ]
-            }
+        }
+
+    def _quotes(self, query: dict) -> tuple[int, dict]:
         if query["symbols"] in CHECKS:
             return CHECKS[query["symbols"]]["status"], CHECKS[query["symbols"]]["body"]
         if self.quotes_status != 200:

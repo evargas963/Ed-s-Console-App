@@ -457,6 +457,9 @@ async def _app_lifespan(_app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
+#: the price server the page's socket serves while the program serves prices
+#: (live_ui.serve_live_ui), None before and after
+app.state.prices = None
 
 
 class _RevalidateStaticFiles(StaticFiles):
@@ -1370,6 +1373,38 @@ def _previous_counts(memory, stored):
     return list(by_sym.values())
 
 
+def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
+    """Return the price a publication of `tk`'s levels is computed at: (price, source, time).
+
+    A stored capture's chain spot (one written before the chain carried one: its nearest
+    expiry's underlyingPrice); a delivered chain's (Schwab's LAST_PRICE when the chain was
+    complete, with its trade time; SPOT_SOURCE_NONE when the daemon held no price); for a
+    streamed tick, the live price, newer than any the levels hold, or the last one published
+    while Schwab has sent this program none.
+    """
+    if capture is not None and capture["spot_from_chain"]:
+        return capture["spot"], SPOT_SOURCE_PLANE, capture["spot_ts"]
+    if capture is not None:
+        return capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
+    if new_chain:
+        source = SPOT_SOURCE_NONE if chain_spot[0] is None else SPOT_SOURCE_PLANE
+        return chain_spot[0], source, chain_spot[1]
+    live = resolve_spot(tk, now=now.timestamp())
+    return previous.priced_at if live[0] is None else live
+
+
+def _capture_before(tk, fetched_ts, held, held_ts):
+    """Return the newest capture of `tk` stored before `fetched_ts`, its contracts and its time.
+
+    `held` (at `held_ts`) when that is it already; read once otherwise (() when none is stored).
+    """
+    newest = newest_capture_ts(get_db().db_path, tk, before_ts=fetched_ts)
+    if held_ts == newest:
+        return held, held_ts
+    rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=fetched_ts)
+    return (rows[0]["contracts"] if rows else ()), newest
+
+
 def _publish_levels(
     tk: str,
     chain: list | None = None,
@@ -1422,30 +1457,12 @@ def _publish_levels(
     )
     if new_chain and capture is None and option_market_open(begun, product) is False:
         # the capture before this chain: its own may be stored already
-        newest = newest_capture_ts(get_db().db_path, tk, before_ts=fetched_ts)
-        if count_capture_ts != newest:
-            rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=fetched_ts)
-            count_capture = rows[0]["contracts"] if rows else ()
-            count_capture_ts = newest
+        count_capture, count_capture_ts = _capture_before(
+            tk, fetched_ts, count_capture, count_capture_ts
+        )
         memory = None if previous is None else previous.priced_chain
         chain = _keep_last_reported(chain, _previous_counts(memory, count_capture), begun, product)
-    # the price the levels are computed at: (price, source, time)
-    if capture is not None and capture["spot_from_chain"]:
-        priced_at = (capture["spot"], SPOT_SOURCE_PLANE, capture["spot_ts"])
-    elif capture is not None:
-        # a capture written without the chain's spot: its nearest expiry's underlyingPrice
-        priced_at = (capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"])
-    elif new_chain:
-        # Schwab's LAST_PRICE when the chain was complete, with its trade time; SPOT_SOURCE_NONE
-        # when the daemon held no price
-        source = SPOT_SOURCE_PLANE
-        if chain_spot[0] is None:
-            source = SPOT_SOURCE_NONE
-        priced_at = (chain_spot[0], source, chain_spot[1])
-    else:  # a streamed tick: the live price, newer than any the levels hold
-        priced_at = resolve_spot(tk, now=now.timestamp())
-        if priced_at[0] is None:  # Schwab has sent this program no price: the last one stands
-            priced_at = previous.priced_at
+    priced_at = _priced_at(tk, capture, new_chain, chain_spot, previous, now)
     if (
         capture is None
         and valued_at < now
@@ -1494,9 +1511,7 @@ def _publish_levels(
         stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
         # This publication priced a stored capture, so its charm map is that newer capture.
         # A live chain is not that capture: the same function then runs once on the banked one.
-        held_charm = None
-        if captures and captures[0]["spot"] is not None:
-            held_charm = snap.charm_by_strike
+        held_charm = snap.charm_by_strike if captures and captures[0]["spot"] is not None else None
         forces = _forces_from_captures(tk, stored, held_charm)
         prior = _prior_strikes(stored, fetched_ts, product)
     surface = None

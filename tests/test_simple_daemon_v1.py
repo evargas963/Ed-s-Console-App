@@ -8,6 +8,7 @@ tests/test_data_path_one_watchlist_v1.py on the local Schwab streamer.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import subprocess
@@ -146,13 +147,15 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
 # ------------------------------------------------------------------ the process
 
 
-def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
+def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path, caplog):
     db = tmp_path / "stream_capture.db"
     fd, lock = pl.acquire_owner_lock(db)
     try:
-        with pytest.raises(SystemExit) as e:
+        with caplog.at_level(logging.CRITICAL, logger=pl.log.name), pytest.raises(SystemExit) as e:
             pl.acquire_owner_lock(db)
         assert e.value.code == pl.EXIT_OWNER_LOCK_HELD
+        refused = [r.getMessage() for r in caplog.records if r.name == pl.log.name]
+        assert refused == [f"another capture daemon holds {lock} (pid {os.getpid()})"], refused
     finally:
         pl.release_owner_lock(fd, lock)
     lock.write_text("999999999")  # a pid that is not running
@@ -176,8 +179,8 @@ def test_the_lock_holds_the_ports_the_program_opened_while_it_runs(tmp_path):
     assert pl.program_ports(db) is None  # no program
     fd, lock = pl.acquire_owner_lock(db)
     try:
-        assert pl.program_ports(db) is None  # its sockets not opened yet
-        ports = pl.Ports(console=8000, live_push=8799)
+        assert pl.program_ports(db) is None  # its socket not opened yet
+        ports = pl.Ports(console=8000)
         pl.record_ports(fd, ports)
         assert pl.program_ports(db) == ports
         whole = lock.read_text()
