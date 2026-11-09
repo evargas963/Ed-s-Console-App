@@ -460,12 +460,13 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     _daemon(at=valued.timestamp())  # live when the chain is published
     snap = server._publish_levels(TK, _RECORDS, _T, chain_spot=(_SPOT, _T), now=valued)
     _daemon(at=time_et.now())  # live now, as the routes read it
-    charm = server.charm_by_strike(TK, time_et.now(), {"scope": "all"})
+    every = {"scope": "all", "centre": None, "shift": 0}
+    charm = server.charm_by_strike(TK, time_et.now(), every)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(
         1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None
     )
-    vanna = server.vanna_by_strike(TK, time_et.now(), {"scope": "all"})
+    vanna = server.vanna_by_strike(TK, time_et.now(), every)
     assert vanna["available"] and vanna["rows"]
 
 

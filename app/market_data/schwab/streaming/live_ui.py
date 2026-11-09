@@ -230,7 +230,7 @@ class LiveUiServer:
             c.symbols = frozenset(keys)
             c.identity = identity  # what each asked-for symbol is, before its rows
             c.pending = set(keys)  # snapshot: the current row for each, now
-            selected, shown = req.get("ticker"), req.get("panels", {})
+            selected, shown = req.get("ticker"), req.get("panels")
             c.ticker = None
             c.shown = {}
             if isinstance(selected, str) and selected.strip():

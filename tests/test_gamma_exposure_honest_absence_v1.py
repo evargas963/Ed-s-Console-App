@@ -96,7 +96,9 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes():
         now=CRWD.now,
     )
     try:
-        body = server.vanna_by_strike(tk, time_et.now(), {})
+        body = server.vanna_by_strike(
+            tk, time_et.now(), {"scope": "auto", "centre": None, "shift": 0}
+        )
         assert body["rows"] == [], f"a chain with no reported OI yields no rows: {body['rows']}"
         # no rows is shown absent with its reason, the one rule for the vanna and charm panels
         assert body["available"] is False and body["reason"]

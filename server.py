@@ -2364,11 +2364,11 @@ def strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, now: f
 def _window_asked(params: dict) -> tuple[str, float | None, int] | str:
     """Return the window a page's panel parameters ask for: (scope, centre, shift).
 
-    The scope is one of SCOPES (default auto), the centre a strike or None (follow the price),
-    the shift a whole number of rows (default 0). Parameters that ask for none of these: the
-    words saying which.
+    The page sends all three: the scope, one of SCOPES; the centre, a strike or None (follow the
+    price); the shift, a whole number of rows. Parameters that ask for none of these: the words
+    saying which.
     """
-    scope, centre, shift = params.get("scope", "auto"), params.get("centre"), params.get("shift", 0)
+    scope, centre, shift = params.get("scope"), params.get("centre"), params.get("shift")
     if scope not in SCOPES:
         return f"scope {scope!r} is not one of {', '.join(SCOPES)}"
     if centre is not None and (isinstance(centre, bool) or not isinstance(centre, int | float)):

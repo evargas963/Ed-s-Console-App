@@ -38,6 +38,9 @@ _QUOTE = json.loads(
     )
 )
 TK = server.ticker_storage_key("CRWD")
+#: the windows a page asks: Auto and All, following the price
+AUTO = {"scope": "auto", "centre": None, "shift": 0}
+ALL = {**AUTO, "scope": "all"}
 
 
 def _clear():
@@ -62,24 +65,26 @@ def teardown_function(_fn):
 
 
 def test_vanna_by_strike_unavailable_with_no_cached_chain():
-    body = server.vanna_by_strike(TK, time_et.now(), {})
+    body = server.vanna_by_strike(TK, time_et.now(), AUTO)
     assert body["available"] is False
-    assert "reason" in body
+    assert body["reason"] == "no levels published for this ticker yet"
 
 
 def test_charm_by_strike_unavailable_with_no_cached_chain():
-    body = server.charm_by_strike(TK, time_et.now(), {})
+    body = server.charm_by_strike(TK, time_et.now(), AUTO)
     assert body["available"] is False
-    assert "reason" in body
+    assert body["reason"] == "no levels published for this ticker yet"
 
 
 @pytest.mark.parametrize(
     ("params", "words"),
     [
-        ({"scope": "most"}, "scope 'most' is not one of auto, wider, all"),
-        ({"centre": "high"}, "centre 'high' is not a strike"),
-        ({"centre": True}, "centre True is not a strike"),
-        ({"shift": 1.5}, "shift 1.5 is not a whole number of rows"),
+        ({**AUTO, "scope": "most"}, "scope 'most' is not one of auto, wider, all"),
+        ({**AUTO, "centre": "high"}, "centre 'high' is not a strike"),
+        ({**AUTO, "centre": True}, "centre True is not a strike"),
+        ({**AUTO, "shift": 1.5}, "shift 1.5 is not a whole number of rows"),
+        ({"centre": None, "shift": 0}, "scope None is not one of auto, wider, all"),
+        ({"scope": "auto", "centre": None}, "shift None is not a whole number of rows"),
     ],
 )
 def test_a_window_the_panel_cannot_draw_is_unavailable_with_its_words(params, words):
@@ -96,7 +101,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time_et.now())
     mark_feed_live(TK)
 
-    body = server.vanna_by_strike(TK, time_et.now(), {"scope": "all"})
+    body = server.vanna_by_strike(TK, time_et.now(), ALL)
     assert body["available"] is True
     # spot is the live price (the header's own); the rows were computed at priced_at_spot
     assert body["spot"] == _QUOTE["native"]["LAST_PRICE"] and body["priced_at_spot"] == _SPOT
@@ -118,7 +123,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
 
 def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_strike():
     _put_live_chain()
-    body = server.charm_by_strike(TK, time_et.now(), {"scope": "all"})
+    body = server.charm_by_strike(TK, time_et.now(), ALL)
     assert body["available"] is True
     rows = {r[0]: r[1] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"
@@ -152,12 +157,11 @@ def build_e2e_panels() -> dict:
         _put_live_chain()
         at = _QUOTE["ts_recv"]  # when the daemon received it
         lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=at)
-        params = {"scope": "auto", "centre": None, "shift": 0}
         return json.loads(
             json.dumps(
                 {
-                    "vanna": server.vanna_by_strike(TK, at, params),
-                    "charm": server.charm_by_strike(TK, at, params),
+                    "vanna": server.vanna_by_strike(TK, at, AUTO),
+                    "charm": server.charm_by_strike(TK, at, AUTO),
                 }
             )
         )
@@ -171,7 +175,7 @@ def test_the_browser_tests_panels_are_the_producers_own():
 
 def test_vanna_and_charm_rows_are_sorted_by_strike_ascending():
     _put_live_chain()
-    v_rows = server.vanna_by_strike(TK, time_et.now(), {})["rows"]
-    c_rows = server.charm_by_strike(TK, time_et.now(), {})["rows"]
+    v_rows = server.vanna_by_strike(TK, time_et.now(), AUTO)["rows"]
+    c_rows = server.charm_by_strike(TK, time_et.now(), AUTO)["rows"]
     assert [r[0] for r in v_rows] == sorted(r[0] for r in v_rows)
     assert [r[0] for r in c_rows] == sorted(r[0] for r in c_rows)
