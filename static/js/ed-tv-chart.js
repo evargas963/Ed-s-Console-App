@@ -798,12 +798,12 @@
         if (document.fullscreenElement) document.exitFullscreen(); else if (el.requestFullscreen) el.requestFullscreen();
       },
       // The live price row's LAST_PRICE. A null price removes the line. Schwab's trade time, when
-      // the caller has it, is the title; otherwise the served age in seconds.
-      setLivePrice: function (price, ageSec, tradeTime) {
+      // the caller has it, is the title; otherwise the served age text.
+      setLivePrice: function (price, ageText, tradeTime) {
         if (price == null) { if (liveLine) { candles.removePriceLine(liveLine); liveLine = null; } return; }
         var title = 'LAST';
         if (tradeTime != null) title += ' · last trade ' + tradeTime;
-        else if (ageSec != null) title += ' · ' + Math.round(ageSec) + 's';
+        else if (ageText != null) title += ' · ' + ageText;
         var opts = { price: price, color: P.accent, lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
           title: title };
         if (liveLine) liveLine.applyOptions(opts); else liveLine = candles.createPriceLine(opts);

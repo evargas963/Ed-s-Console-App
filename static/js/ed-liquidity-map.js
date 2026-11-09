@@ -10,9 +10,8 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
-  function st() { return window.EdShell.getState(); }
-  function isMap() { var s = st(); return s.workspace === 'liquidity' && s.subview === 'map'; }
-  function ticker() { return st().ticker; }
+  function isMap() { var s = window.EdShell.getState(); return s.workspace === 'liquidity' && s.subview === 'map'; }
+  function ticker() { return window.EdShell.getState().ticker; }
   function host() { return document.getElementById('liqmBody'); }
   function stillMap(tk) { return isMap() && ticker() === tk; }
   function fetchJson(url, signal) {
@@ -50,7 +49,7 @@
     var failed = [[snap, 'liquidity snapshot'], [levels, 'levels'], [barsD, 'bars']]
       .filter(function (a) { return !a[0]; }).map(function (a) { return a[1]; });
     var zones = snap ? snap.zones : [];
-    c.setBars(barsD ? barsD.bars : [], barsD ? barsD.tf : _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(barsD ? barsD.bars : [], barsD ? barsD.tf : _tf, window.EdShell.getState().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
     c.setZones(zones.map(function (z) {
       return { lo: z.zone_low, hi: z.zone_high, color: side[z.zone_side] || P.ink3, label: z.zone_label + ' · ' + z.confluence_score + '×' };
     }));

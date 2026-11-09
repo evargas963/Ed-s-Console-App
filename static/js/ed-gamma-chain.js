@@ -10,8 +10,7 @@
   var AS_SENT = 'as_sent';
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function st() { return window.EdShell.getState(); }
-  function isChain() { var s = st(); return s.workspace === 'options' && s.subview === 'chain'; }
+  function isChain() { var s = window.EdShell.getState(); return s.workspace === 'options' && s.subview === 'chain'; }
 
   function setSrc(d) {
     var el = document.getElementById('chSrc'); if (!el) return;
@@ -22,7 +21,7 @@
   var _lastScrollContext = null;
 
   function curExpiry() { return window.EdShell.getExpiry(); }
-  function stillChain(tk, exp) { return isChain() && st().ticker === tk && curExpiry() === exp; }
+  function stillChain(tk, exp) { return isChain() && window.EdShell.getState().ticker === tk && curExpiry() === exp; }
   // A -> B -> A could let the FIRST A request's response paint over the THIRD (fresh) A
   // request's response. `stillChain` proves the identity (ticker, expiry) still matches NOW,
   // but two requests issued at different times for the identical identity are
@@ -44,8 +43,8 @@
       function (d) { if (current()) render(host, d); },
       function (words) { if (current()) { setSrc(null); window.EdShell.placeholder(host, words); } });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker, curExpiry(), signal); });
-  function load() { _loader.trigger(st().ticker + '|' + curExpiry()); }
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(window.EdShell.getState().ticker, curExpiry(), signal); });
+  function load() { _loader.trigger(window.EdShell.getState().ticker + '|' + curExpiry()); }
 
   function render(host, d) {
     setSrc(d);
@@ -117,7 +116,7 @@
         window.EdShell.setStrike(k, d.expiry);   // centre strike -> shared strike only
       });
     });
-    var context = st().ticker + '|' + d.expiry;
+    var context = window.EdShell.getState().ticker + '|' + d.expiry;
     var isNewContext = context !== _lastScrollContext;
     _lastScrollContext = context;
     if (isNewContext) {

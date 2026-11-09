@@ -7,6 +7,7 @@
  * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
  */
 const { test, expect } = require('@playwright/test');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
@@ -23,7 +24,9 @@ function surfaceFor(tk, spot, expiry) {
     view: { centre: spot, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 }
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
-  net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 10 };
+  net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 10,
+  // every terrain answer carries these TerrainSnapshot fields; no ratio known here
+  pcr_by_expiry: {}, pcr_volume_by_expiry: {}, pcr_all: null, pcr_volume_all: null };
 const STRIKES = { spot: 100, levels_state: 'LIVE',
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
   views: { all: { centre: 100, note: null, max_abs: 958600 } } };
@@ -39,7 +42,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { spot: spot });
     else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { spot: spot });
     else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/expiries')) body = { expiries: EXPS };
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 });
     else if (url.includes('/api/chain')) body = { ticker: dec, spot: spot, expiry: EXPS[0], status: 'ok',
       scope: { kind: 'complete_single_expiry' }, contracts: [] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });

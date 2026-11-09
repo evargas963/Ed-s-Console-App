@@ -20,7 +20,7 @@ from typing import Any
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
-from time_et import ct_label
+from time_et import age_text, ct_label
 
 SPOT_SOURCE = "streaming_plane"
 
@@ -34,11 +34,10 @@ def with_change(bar: dict[str, Any]) -> dict[str, Any]:
     return bar
 
 
-def _trade_age_sec(trade_ts: float | None, now: float) -> float | None:
-    """Seconds since the Schwab trade time; None when no trade is known (never a 0)."""
-    if trade_ts is None:
-        return None
-    return max(0.0, now - float(trade_ts))
+def _trade_age_text(trade_ts: float | None, now: float) -> str | None:
+    """The age of Schwab's trade time as the screen shows it (time_et.age_text); None when no
+    trade is known (never a 0)."""
+    return None if trade_ts is None else age_text(now - trade_ts)
 
 
 def _spot_of(row: dict[str, Any] | None) -> float | None:
@@ -98,7 +97,7 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "prior_close": field("prior_close"),
         "trade_ts": trade_ts,  # Schwab TRADE_TIME (epoch s)
         "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
-        "trade_age_sec": _trade_age_sec(trade_ts, now),
+        "trade_age_text": _trade_age_text(trade_ts, now),
         "ts_recv": field("server_received_ts"),
         "server_ts": now,
     }
