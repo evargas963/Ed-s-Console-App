@@ -63,8 +63,9 @@ def refusal(service: str, limit: int, discarded: int) -> str:
 class _Outbox:
     """One connection's frames, each delivered `lag` seconds after it was made, in order."""
 
-    def __init__(self, ws) -> None:
+    def __init__(self, ws, every: float) -> None:
         self.ws = ws
+        self.every = every  # how often the heartbeat is sent
         self.lag = 0.0  # the login is answered at once
         self.queue: asyncio.Queue = asyncio.Queue()
 
@@ -81,7 +82,7 @@ class _Outbox:
 
     async def beat(self) -> None:
         while True:
-            await asyncio.sleep(HEARTBEAT_SEC)
+            await asyncio.sleep(self.every)
             self.send({"notify": [{"heartbeat": str(int(time_et.now() * 1000))}]})
 
 
@@ -95,12 +96,19 @@ class LocalStreamer:
 
     Each frame carries the time it was made; every frame after the login's answer reaches the
     daemon `lag` seconds after it, in order, as frames reach a reader that runs that far behind
-    Schwab's stream.
+    Schwab's stream. Its heartbeat is sent every `beat` seconds.
     """
 
-    def __init__(self, limits: dict[str, int], data: dict[str, dict], lag: float = 0.0):
+    def __init__(
+        self,
+        limits: dict[str, int],
+        data: dict[str, dict],
+        lag: float = 0.0,
+        beat: float = HEARTBEAT_SEC,
+    ):
         self.limits = dict(limits)
         self.lag = lag
+        self.beat = beat
         #: per service, a data entry Schwab sent, streamed once a SUBS on that service is accepted
         self.data = dict(data)
         self.requests: list = []
@@ -124,7 +132,7 @@ class LocalStreamer:
         ready.wait(10)
 
     async def _client(self, ws) -> None:
-        out = _Outbox(ws)
+        out = _Outbox(ws, self.beat)
         tasks = [asyncio.create_task(out.deliver()), asyncio.create_task(out.beat())]
         try:
             async for raw in ws:
