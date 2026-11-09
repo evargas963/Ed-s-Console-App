@@ -1,8 +1,9 @@
 name: DO NOT MERGE diag keep on Windows
 
-# Measures tests/test_data_path_stream_kept_v1.py's keep test on the Windows runner: alone on C:
-# (pytest's temp) and on D: (the runner's temp), and beside the suite's other workers, with the
-# disks' write latency and the CPU sampled every second.
+# Forces tests/test_data_path_stream_kept_v1.py's keep test to fail on the Windows runner: its
+# database on C: (pytest's temp, the runner's network OS disk) while induced write-through 4 KB
+# writes load C:. The same command with TEMP and TMP on D: (the runner's local NVMe). Then the
+# whole suite with its temp on D:, three times. The disks' write latency is sampled each second.
 
 on:
   pull_request:
@@ -10,7 +11,7 @@ on:
 jobs:
   keep-probe:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CI: "true"
       ED_CI_OFFLINE: "1"
@@ -32,51 +33,47 @@ jobs:
       - name: Install Python dependencies
         shell: bash
         run: uv pip install --system -r requirements-dev.txt -r requirements.txt
-      - name: Runner
+      - name: Start the disk sampler
         shell: pwsh
         run: |
-          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, AntivirusEnabled | Format-List
-          Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
-          Get-PSDrive C, D | Format-Table
-          Get-PhysicalDisk | Format-Table FriendlyName, MediaType, Size
-          "TEMP=$env:TEMP RUNNER_TEMP=$env:RUNNER_TEMP nproc=$env:NUMBER_OF_PROCESSORS"
-      - name: Start the disk and CPU sampler
+          Start-Process typeperf -ArgumentList '"\LogicalDisk(C:)\Avg. Disk sec/Write"','"\LogicalDisk(D:)\Avg. Disk sec/Write"','"\Processor(_Total)\% Processor Time"','-si','1','-o',"$env:RUNNER_TEMP\perf.csv",'-y' -WindowStyle Hidden
+      - name: Forced, the keep test with C loaded, temp on C then on D
         shell: pwsh
         run: |
-          Start-Process typeperf -ArgumentList '"\LogicalDisk(C:)\Avg. Disk sec/Write"','"\LogicalDisk(C:)\Disk Writes/sec"','"\LogicalDisk(C:)\Current Disk Queue Length"','"\LogicalDisk(D:)\Avg. Disk sec/Write"','"\Processor(_Total)\% Processor Time"','-si','1','-o',"$env:RUNNER_TEMP\perf.csv",'-y' -WindowStyle Hidden
-      - name: The keep test alone, three times on C and three on D
+          $churn = {
+            param($path, $seconds)
+            $fs = [IO.FileStream]::new($path, 'Create', 'ReadWrite', 'None', 4096, [IO.FileOptions]::WriteThrough)
+            $fs.SetLength(32MB)
+            $b = New-Object byte[] 4096
+            $r = [Random]::new()
+            $end = (Get-Date).AddSeconds($seconds)
+            while ((Get-Date) -lt $end) { $fs.Position = $r.Next(8192) * 4096; $fs.Write($b, 0, 4096) }
+            $fs.Close()
+          }
+          $jobs = 1..4 | ForEach-Object { Start-Job $churn -ArgumentList "$env:TEMP\churn$_.bin", 900 }
+          Start-Sleep 5
+          foreach ($i in 1..3) {
+            "== forced C $i $(Get-Date -Format T)"
+            python -m pytest $env:KEEP -q -p no:cacheprovider --durations=2 -rf 2>&1 | Select-String "s call|s setup|passed|failed|timed out|assert "
+          }
+          $env:TEMP = $env:RUNNER_TEMP; $env:TMP = $env:RUNNER_TEMP
+          foreach ($i in 1..3) {
+            "== forced D $i $(Get-Date -Format T)"
+            python -m pytest $env:KEEP -q -p no:cacheprovider --durations=2 -rf 2>&1 | Select-String "s call|s setup|passed|failed|timed out|assert "
+          }
+          $jobs | Stop-Job; $jobs | Remove-Job
+      - name: The suite with its temp on D, three times
         shell: bash
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: |
           for i in 1 2 3; do
-            echo "== C $i $(date +%T)"
-            python -m pytest "$KEEP" -q -p no:cacheprovider --durations=2 2>&1 | grep -e "s call" -e "s setup" -e passed -e failed
-          done
-          for i in 1 2 3; do
-            echo "== D $i $(date +%T)"
-            python -m pytest "$KEEP" -q -p no:cacheprovider --durations=2 --basetemp="$RUNNER_TEMP/pt$i" 2>&1 | grep -e "s call" -e "s setup" -e passed -e failed
-          done
-      - name: The keep test beside three suite workers, five times
-        shell: bash
-        run: |
-          python -m pytest -n 3 --dist loadfile -q -p no:cacheprovider -m "not alone" \
-            --deselect tests/test_data_path_stream_kept_v1.py > suite.log 2>&1 &
-          suite=$!
-          sleep 30
-          for i in 1 2 3 4 5; do
-            echo "== beside $i $(date +%T)"
-            python -m pytest "$KEEP" -q -p no:cacheprovider --durations=2 2>&1 | grep -e "s call" -e "s setup" -e passed -e failed -e "timed out"
-          done
-          wait $suite || true
-          tail -2 suite.log
-      - name: The suite as CI runs it, three times
-        shell: bash
-        run: |
-          for i in 1 2 3; do
-            echo "== suite $i $(date +%T)"
+            echo "== suite on D $i $(date +%T)"
             python -m pytest -n "$(nproc)" --dist loadfile -q -p no:cacheprovider -m "not alone" \
-              --durations=40 2>&1 | grep -e stream_kept -e " passed" -e " failed" | tail -6
+              -rf --durations=40 2>&1 | grep -e stream_kept -e FAILED -e " passed" -e " failed" | tail -25
           done
-      - name: Disk and CPU samples
+      - name: Disk samples
         if: always()
         shell: pwsh
         run: |
