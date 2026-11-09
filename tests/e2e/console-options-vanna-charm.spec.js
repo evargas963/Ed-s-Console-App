@@ -120,6 +120,23 @@ test.describe('Vanna and Charm by strike: the panels on the page\'s socket', () 
     expect(s.subscribes.slice(before).map((r) => r.panels.vanna)).toContainEqual(AUTO);
   });
 
+  // live_ui._produce's frame for a producer that raised: the panel's words, nothing else
+  const FAILED = { failed: "the program could not produce this panel: TypeError: 'NoneType' object is not iterable" };
+
+  test('a panel the program could not produce says why; the other panels and the prices keep coming', async ({ page }) => {
+    await open(page, 'vanna', (ws, req) => {
+      ws.send(frame('vanna', 'CRWD', FAILED));
+      ws.send(frame('expiries', 'CRWD', FAILED));
+      ws.send(JSON.stringify({ type: 'quotes', rows: [priceRow('CRWD', 269.4)] }));
+      if (req.panels.charm) ws.send(frame('charm', 'CRWD', PANELS.charm));
+    });
+    await expect(page.locator('#vnBody .placeholder')).toHaveText(FAILED.failed);
+    await expect(page.locator('#expSel option[disabled]')).toHaveText(FAILED.failed);
+    await expect(page.locator('#hPx')).toContainText('269.40');
+    await page.evaluate(() => window.EdShell.setSubview('charm'));   // the same socket, still open
+    await expect.poll(() => strikes(page, '#chmBody')).toEqual(sentStrikes('charm'));
+  });
+
   test('leaving the tab drops the panel from the subscribe', async ({ page }) => {
     const s = await open(page, 'vanna', answerCrwd);
     await expect.poll(() => strikes(page, '#vnBody')).toEqual(sentStrikes('vanna'));
