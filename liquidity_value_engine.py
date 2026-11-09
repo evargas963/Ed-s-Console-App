@@ -196,11 +196,10 @@ def compute_opening_range(
     Schwab's /markets answer for it is not held (the open is unknown), or when no bar falls in it.
     """
     regular = _regular(session_date)
-    if regular is None:
-        return {}
-    opened = regular[0]
-    ends = opened + timedelta(minutes=config.opening_range_minutes)
-    orb_bars = [b for b in bars_norm if opened <= b["_dt"] < ends]
+    span = timedelta(minutes=config.opening_range_minutes)
+    orb_bars = [
+        b for b in bars_norm if regular is not None and regular[0] <= b["_dt"] < regular[0] + span
+    ]
 
     if not orb_bars:
         return {}
