@@ -3,7 +3,8 @@ the capture daemon's connection (capture.Daemon.run) on the real schwab-py Strea
 to Schwab's streamer played locally (tests/schwab_stream_standin.py) through Schwab's REST host
 played locally (tests/schwab_rest_standin.py); the daemon's local socket (live_push); the console
 in the daemon's program (streaming.bind_daemon, its feed reading the daemon's bus) and its routes
-(server.post_watchlist, delete_watchlist, get_watchlist).
+(server.post_watchlist, delete_watchlist); the list the page's socket carries on each beat, the
+daemon's status (capture.Daemon.status).
 
 Real data: Schwab's /quotes answers to SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as
 the watchlist check asks (2026-10-07; ZQZQZ is named in errors.invalidSymbols); Schwab's answers to
@@ -350,21 +351,27 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
             added = json.loads((await server.post_watchlist("tsla")).body)
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
             swept_after_add = list(daemon.chains.watchlist)
+            beat_after_add = daemon.status(time_et.now())["watchlist"]
             invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
             removed = json.loads((await server.delete_watchlist("TSLA")).body)
+            beat_after_removal = daemon.status(time_et.now())["watchlist"]
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
         finally:
             ofs.stop_order_flow_stream()
             ofs.bind_daemon(None)
             stop.set()
             await asyncio.gather(*tasks)
-        return added, invalid, removed, swept_after_add
+        return added, invalid, removed, swept_after_add, beat_after_add, beat_after_removal
 
     try:
-        added, invalid, removed, swept_after_add = asyncio.run(go())
+        added, invalid, removed, swept_after_add, beat_after_add, beat_after_removal = asyncio.run(
+            go()
+        )
     finally:
         schwab.close()
     assert swept_after_add == ["SPY", "TSLA"], "the chain sweep fetches an added ticker"
+    # the page's next beat carries each change (live_ui beat: the daemon's status)
+    assert beat_after_add == ["SPY", "TSLA"] and beat_after_removal == ["SPY"]
     assert added == {
         "ok": True,
         "op": "added",
