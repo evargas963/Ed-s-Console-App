@@ -381,6 +381,11 @@ class ChainSweep:
         self._optioned: set[str] = set()  # tickers Schwab has answered a chain for
         self._fetched: dict[str, float] = {}  # ticker -> when its newest delivered chain began
         self._candled: dict[str, float] = {}  # ticker -> when its newest whole price history began
+        # (ticker, expiry) -> (ET date, underlyingPrice, contracts): Schwab's /chains answer for
+        # it that date. Asked once per ET date: its contracts and their open interest are the
+        # prior session's (Schwab support, 2026-10-12, item 5); every live value is the stream's
+        # or /quotes', asked each rotation.
+        self._listing: dict[tuple[str, str], tuple[date, float | None, list[dict]]] = {}
         self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
@@ -603,21 +608,29 @@ class ChainSweep:
             for expiry in listed[1]:
                 if stop.is_set():
                     return None
-                resp = safe_get_chain(
-                    client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
-                )
-                if resp.status_code == 429:  # one refused expiry does not cost the ticker a round
+                key = (ticker, expiry.isoformat())
+                if key not in self._listing or self._listing[key][0] != today:
                     resp = safe_get_chain(
                         client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
                     )
-                if resp.status_code != 200:
-                    return self.fail(
-                        [chain], f"chain for {expiry} returned HTTP {resp.status_code}"
+                    if resp.status_code == 429:  # one refused expiry does not cost a round
+                        resp = safe_get_chain(
+                            client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
+                        )
+                    if resp.status_code != 200:
+                        return self.fail(
+                            [chain], f"chain for {expiry} returned HTTP {resp.status_code}"
+                        )
+                    payload = resp.json()
+                    self._listing[key] = (
+                        today,
+                        schwab_number(payload.get("underlyingPrice")),
+                        flatten_chain_contracts(payload),
                     )
-                payload = resp.json()
                 self._optioned.add(ticker)
-                chain.spots[expiry.isoformat()] = schwab_number(payload.get("underlyingPrice"))
-                chain.by_expiry[expiry.isoformat()] = flatten_chain_contracts(payload)
+                _day, chain.spots[key[1]], listed_contracts = self._listing[key]
+                # a copy: the sweep writes each contract's live values into it
+                chain.by_expiry[key[1]] = [dict(ct) for ct in listed_contracts]
         except Exception as e:  # that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
@@ -629,6 +642,7 @@ class ChainSweep:
         A contract is queued for its quote; the chain is delivered at once when none is queued.
         """
         for ct in chain.contracts():
+            ct["totalVolume"] = None  # the stream's (laid over by the console) or the quote's
             entry = self.streamed(ct["symbol"])
             if (
                 entry is not None
@@ -694,6 +708,7 @@ class ChainSweep:
             if quote is not None:
                 ct["quote"] = quote  # Schwab's /quotes answer for the contract, as sent
                 ct.update({f: quote.get(f) for f in GREEK_FIELDS})
+                ct["totalVolume"] = quote.get("totalVolume")  # the quote's, not the listing's
                 ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
             elif ct["symbol"] in named:
                 chain.named_invalid.add(ct["symbol"])
