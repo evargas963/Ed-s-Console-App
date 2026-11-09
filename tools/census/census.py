@@ -21,6 +21,7 @@ import collections
 import copy
 import dataclasses
 import datetime as dt
+import functools
 import hashlib
 import io
 import json
@@ -1265,12 +1266,62 @@ for f, n, name, _length, node in func_index:
         )
 all_tests = "\n".join(TEXT[f] for f in TEST_FILES)
 product_mods = {f[:-3].replace("/", ".") for f in PRODUCT_PY}
+CAPTURED = r"fixtures?[/\\\"']|FIXTURE|captured|real_chains|real_\w+\.json"
+
+
+def test_module(node):
+    """Return the file of the test module an import statement takes names from, or None."""
+    if not isinstance(node, ast.ImportFrom) or not (node.module or "").startswith("tests."):
+        return None
+    path = f"{node.module.replace('.', '/')}.py"
+    return path if path in trees else None
+
+
+@functools.cache
+def captured_names(f):
+    """Return the top-level names of test module `f` that hold or read captured Schwab data.
+
+    A name whose own code reads a fixture, one imported from a test module where it does, or one
+    that uses such a name of the same module.
+    """
+    tops = {}
+    found = set()
+    for node in trees[f].body:
+        names = [node.name] if hasattr(node, "name") else []
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names = [t.id for t in targets if isinstance(t, ast.Name)]
+        for name in names:
+            tops[name] = node
+        if (source := test_module(node)) and source != f:
+            found |= {a.asname or a.name for a in node.names} & captured_names(source)
+    found |= {n for n, node in tops.items() if re.search(CAPTURED, ast.unparse(node))}
+    while True:
+        more = {
+            n
+            for n, node in tops.items()
+            if n not in found
+            and any(isinstance(x, ast.Name) and x.id in found for x in ast.walk(node))
+        }
+        if not more:
+            return found
+        found |= more
+
+
+def uses_captured_data(f):
+    """Return whether test file `f` reads a fixture, or imports a test module's name that does."""
+    if re.search(CAPTURED, TEXT[f]):
+        return True
+    return any(
+        (source := test_module(node)) and {a.name for a in node.names} & captured_names(source)
+        for node in ast.walk(trees[f])
+    )
+
+
 for f in [
     f
     for f in TEST_FILES
-    if f.endswith(".py")
-    and "def test_" in TEXT[f]
-    and not re.search(r"fixtures?[/\\\"']|FIXTURE|captured|real_chains", TEXT[f])
+    if f.endswith(".py") and "def test_" in TEXT[f] and not uses_captured_data(f)
 ]:
     imported = {n for n, us in imports_of.items() if f in us}
     hits = {
