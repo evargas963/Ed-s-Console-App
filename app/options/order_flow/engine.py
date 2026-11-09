@@ -222,9 +222,8 @@ def _resolve_bid_ask_prices(data: dict) -> tuple[float | None, float | None]:
 
 
 def _resolve_quote_mark(data: dict) -> float | None:
-    """Streamed MARK, the spread-fraction denominator (a MARK of 0 divides nothing)."""
-    mark_p = _top(data).get("mark")
-    return mark_p if mark_p is not None and mark_p > 0 else None
+    """LEVELONE_OPTIONS MARK as Schwab sent it; a reported 0 is 0 (AGENTS.md rule 2)."""
+    return _top(data).get("mark")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -427,7 +426,8 @@ def _microstructure_structural(cb: dict) -> dict:
     microprice = _microprice(bid, ask, bid_size, ask_size)
     spread_pts = ask - bid if have_quotes else None
     mark = cb["mark"]
-    spread_frac = spread_pts / mark if (spread_pts is not None and mark is not None) else None
+    # the spread over a MARK of 0 is undefined: no value
+    spread_frac = spread_pts / mark if spread_pts is not None and mark else None
 
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
     # totals and imbalance), carried; slope and concentration reuse its top-5 totals.
