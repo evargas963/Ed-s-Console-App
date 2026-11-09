@@ -52,7 +52,7 @@ class VolumeProfile:
     bars_without_volume: int
 
 
-def _spread(vol_by_idx: dict[int, float], lo_i: int, hi_i: int, vol: int) -> None:
+def _spread(vol_by_idx: dict[int, float], lo_i: int, hi_i: int, vol: float) -> None:
     """Spread one bar's volume evenly over the tick bins `lo_i`..`hi_i` (a flat bar: one bin).
 
     A bar spanning more than MAX_BINS_PER_BAR bins is spread over that many bins evenly spaced
