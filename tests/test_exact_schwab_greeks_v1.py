@@ -117,7 +117,7 @@ def test_no_cell_with_open_interest_and_greeks_reads_zero_unless_its_exact_gamma
     def zero_cells(contracts):
         cells = _column(contracts)
         oi = {
-            k: sum(schwab_count(c["openInterest"]) or 0 for c in cts)
+            k: sum(schwab_count(c["openInterest"]) for c in cts)  # every contract sent its OI
             for k, (_g, cts) in cells.items()
         }
         return cells, {k for k, (g, _cts) in cells.items() if oi[k] > 0 and g == 0}
@@ -126,12 +126,10 @@ def test_no_cell_with_open_interest_and_greeks_reads_zero_unless_its_exact_gamma
     assert len(rounded_zero) >= 40, len(rounded_zero)  # the defect, on the chain's values
     cells, exact_zero = zero_cells(fetched())
     for k in exact_zero:
-        assert all(c["gamma"] * (schwab_count(c["openInterest"]) or 0) == 0 for c in cells[k][1]), k
+        assert all(c["gamma"] * schwab_count(c["openInterest"]) == 0 for c in cells[k][1]), k
     assert len(exact_zero) < len(rounded_zero)
     with_oi = [
-        k
-        for k, (_g, cts) in cells.items()
-        if any((schwab_count(c["openInterest"]) or 0) > 0 for c in cts)
+        k for k, (_g, cts) in cells.items() if any(schwab_count(c["openInterest"]) > 0 for c in cts)
     ]
     assert all(cells[k][0] is not None for k in with_oi), (
         "every cell with open interest has its GEX"
