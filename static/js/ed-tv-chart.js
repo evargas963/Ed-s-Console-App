@@ -15,7 +15,7 @@
      - the crosshair follows the mouse; the readout BOX appears only on click (pinned, with a
        close control) -- never a hover tooltip.
    Every number drawn here is the server's (bars from /api/bars1m, levels from /api/levels +
-   /api/terrain). Choosing WHICH levels to draw (the nearest few inside the visible range) and
+   the terrain panel). Choosing WHICH levels to draw (the nearest few inside the visible range) and
    placing a 1m series point on the bar that contains it are presentation, not computation. */
 (function () {
   'use strict';

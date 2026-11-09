@@ -95,11 +95,11 @@ async function setup(page, ctx) {
       view: { centre: 367.5, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } };
     else if (url.includes('/api/terrain/strikes')) body = { spot: 367, levels_state: 'LIVE', today: { all: [[367.5, 1, 1]] },
       views: { all: { centre: 367.5, note: null, max_abs: 1 } } };
-    else if (url.includes('/api/terrain')) body = { spot: 367, gamma_flip: 366, levels_state: 'LIVE', levels_mark: 'LIVE' };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['TSLA']);
-  await pushExpiries(page, ['2026-08-31']);
+  await pushExpiries(page, ['2026-08-31'], undefined,
+    { terrain: { spot: 367, gamma_flip: 366, levels_state: 'LIVE', levels_mark: 'LIVE' } });
 }
 
 async function selectCallAndOpenFlow(page) {

@@ -136,7 +136,7 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
 
     The chain basis, and ATR (from the bars, none here) absent, with no sentence in its place.
     """
-    t = server.get_terrain(ticker=tk)
+    t = server.terrain(ticker_storage_key(tk), time_et.now(), {})
     assert t["chain_basis"] == CAPTURE_BASIS
     for horizon in ("daily", "weekly", "monthly"):
         assert t[f"atr_{horizon}"] is None and f"atr_{horizon}_reason" not in t, horizon
@@ -148,7 +148,7 @@ def test_with_no_levels_the_atr_is_absent():
 
     A ticker with no levels published still serves it (here absent, and no sentence in its place).
     """
-    t = server.get_terrain(ticker="ZZNOLEVELSATR")
+    t = server.terrain("ZZNOLEVELSATR", time_et.now(), {})
     assert t["atr_daily"] is None and "atr_daily_reason" not in t
 
 

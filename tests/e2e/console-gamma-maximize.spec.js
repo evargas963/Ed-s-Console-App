@@ -29,12 +29,11 @@ async function intercept(page) {
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
-    else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
     else if (url.includes('/api/chain')) body = CHAIN;    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18'], { '2026-09-11': 2, '2026-09-18': 9 });
+  await pushExpiries(page, ['2026-09-11', '2026-09-18'], { '2026-09-11': 2, '2026-09-18': 9 }, { terrain: TERRAIN });
 }
 
 test.describe('#8 Gamma panel maximize', () => {

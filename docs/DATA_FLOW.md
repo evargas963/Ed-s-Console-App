@@ -538,8 +538,11 @@ the program.
   are unmeasured (`ACTIVE_PROGRAM.md` SPEED).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
-  a new chain arrived, with the ticker's expiry list sent on `/ws`) → the browser reads
-  `/api/terrain` and four other slice routes. Not stored; at startup they are computed from the
+  a new chain arrived, with the ticker's expiry list sent on `/ws`) → the browser reads four
+  slice routes, and the program sends the levels themselves on `/ws` (`server.terrain`, the
+  `terrain` panel, one per reader: `terrain:levels` Key Levels, `terrain:chart` the Gamma chart,
+  `terrain:desk` Right Now, `terrain:map` the Desk map; marked changed by `server._levels_changed`
+  wherever the `levels` push is). Not stored; at startup they are computed from the
   newest chain capture of each watchlist ticker the daemon has not yet delivered a chain for (once the
   daemon's heartbeat says what the watchlist is), queued on the pricing thread behind the delivered
   chains while the console
@@ -550,11 +553,11 @@ the program.
   DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
   served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open
   Interest. The book's values at spot (gamma at spot, regime, posture, confidence, headline) are
-  computed in that one publication at that publication's price; `/api/terrain` serves them as
+  computed in that one publication at that publication's price; the terrain panel sends them as
   published and recomputes none. Each relation of the live price to the levels is served beside
   them, at the live price (below).
   A publication carries the same fields whatever its chain's source (a live download or a stored
-  capture). `/api/terrain` adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
+  capture). The terrain panel adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
   Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
   inside Schwab's regular window, and the weeks and months those make. The day-over-day
   open-interest change has one producer: the forces, from the stored captures (`/api/forces`,
@@ -597,14 +600,14 @@ the program.
   checks every GET route that answers a ticker). Every relation of the price to the levels is at
   that live price, computed when served, never stored with the publication: each wall's state
   and lean, the price's side of the flip, the pin candidate and the read's lines
-  (`terrain_engine.price_relations`, a `PriceRelations` record, on `/api/terrain`, `/api/levels`
+  (`terrain_engine.price_relations`, a `PriceRelations` record, on the terrain panel, `/api/levels`
   and the chart's markers); each level's distance (level minus price), side and the words for
   both (`from_spot_text`, "1.30 below spot") on `/api/levels`, the one distance the desk's nearest
   level and its Box line print; the price inside, above or below each liquidity zone
   (`terrain_read.within`); and the level crosses (below). One side rule, exact values:
   `terrain_read.level_side` (ABOVE, AT, BELOW), with `price_side` (the price's side of a level),
   `within` and `crossed` built on it (`tests/test_level_crosses_wire.py`,
-  `tests/test_trade_desk_served_v1.py`). Each route serving them (`/api/terrain`, `/api/levels`,
+  `tests/test_trade_desk_served_v1.py`). Each answer serving them (the terrain panel, `/api/levels`,
   `/api/confluence`) serves the price's mark beside them (`server.price_mark`: whether Schwab's
   feed delivers the price, why not, its trade time and age, and the words the page prints,
   `spot_not_live_text`, "not live · last trade Thu 10/22 03:39 PM CT, 81m old", from the one age

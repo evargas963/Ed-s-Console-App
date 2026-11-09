@@ -5,7 +5,7 @@
  * Proves the FRONTEND presentation contract in a real browser: the heatmap renders the
  * canonical /api/options/gamma-surface payload VERBATIM (cell text == formatted backend value,
  * invariant E), sign -> colour with no inversion (invariant D), spot row highlight, and the Key
- * Levels rail reflects /api/terrain. The endpoint==faucet equality (the projected payload equals
+ * Levels rail reflects the terrain panel on the page's socket. The endpoint==faucet equality (the projected payload equals
  * compute_exposures_by_strike) is proven separately in tests/test_gamma_surface_projection_v1.py.
  *
  * Independent-review finding (2026-09-13), REPRODUCED: this docstring previously claimed the two
@@ -145,7 +145,7 @@ const CHAIN = {
 };
 
 // The capture daemon's price socket, stood in for (tests/e2e/fixtures/price_socket.js).
-const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
+const { mockPriceSocket, priceRow, served, panelFrame } = require('./fixtures/price_socket');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 // The page's requests, watched until its work runs out (tests/e2e/fixtures/settled.js).
@@ -170,6 +170,14 @@ async function routeOneLevelsPush(page, ticker = 'SPY') {
   return () => { release(); return sent; };
 }
 
+// The panels the page's socket sends this test (a test sets its own before the page opens), and
+// the program's side of that socket: `sock.changed(kind)` sends the kind's panels again, as the
+// program does when they change; `sock.subscribes` is every subscribe the page sent.
+let panels, sock;
+// the page's socket with these panels and the pushed price `rows`
+async function socketWith(page, rows) {
+  sock = await mockPriceSocket(page, rows, [], undefined, panels);
+}
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
@@ -177,13 +185,13 @@ async function intercept(page) {
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
-    else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18']);
+  panels = { terrain: TERRAIN };
+  sock = await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, panels);
 }
 
 test.describe('Ed Console shell + gamma heatmap', () => {
@@ -384,7 +392,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   const PANELS = [
     { name: 'GEX by strike', host: '#gbsBody', route: '/api/terrain/strikes' },
     { name: 'the tape', host: '#ofBody', route: '/api/options/tape' },
-    { name: 'Key Levels', host: '#klSrc', route: '/api/terrain' },
     { name: 'Strike Detail', host: '#sdBody', route: '/api/chain' },
     { name: 'the levels view', host: '#levelsBody', route: '/api/levels', view: 'levels' },
     { name: 'the chain', host: '#chainBody', route: '/api/chain', sub: 'chain' },
@@ -439,21 +446,19 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     });
   }
 
-  test('Key Levels: a read that fails after a stale answer keeps none of its tooltip or colour', async ({ page }) => {
-    // Induced condition: the first answer is marked stale with a reason (served status labels).
-    let failing = false;
-    await page.route('**/api/terrain?**', (route) => failing
-      ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
-      : route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify(Object.assign({}, TERRAIN, { levels_state: 'STALE', levels_mark: 'STALE',
-          levels_stale_reason: 'chain 12m old', levels_mark_reason: 'chain 12m old' })) }));
-    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);                    // the pushed price
+  test('Key Levels: a panel the program could not produce after a stale one keeps none of its tooltip or colour', async ({ page }) => {
+    // Induced condition: the first panel is marked stale with a reason (served status labels);
+    // then the program's producer raises, and the socket sends its words (live_ui `failed`).
+    const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
+    panels.terrain = Object.assign({}, TERRAIN, { levels_state: 'STALE', levels_mark: 'STALE',
+      levels_stale_reason: 'chain 12m old', levels_mark_reason: 'chain 12m old' });
+    await socketWith(page, [priceRow('SPY', 601.23)]);                    // the pushed price
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'chain 12m old');
     await expect(page.locator('#klSpot')).toHaveText('601.23');
-    failing = true;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
-    await expect(page.locator('#klSrc')).toHaveText('the console answered /api/terrain with 500');
+    panels.terrain = { failed: words };
+    sock.changed('terrain');
+    await expect(page.locator('#klSrc')).toHaveText(words);
     await expect(page.locator('#klSrc')).toHaveAttribute('title', '');
     for (const id of ['#klSrc', '#klNet', '#klRegime']) {
       expect(await page.locator(id).evaluate((el) => el.style.color), id).toBe('');
@@ -803,7 +808,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#subnav .wtitle')).toContainText('SYSTEM');
   });
 
-  test('key levels rail reflects /api/terrain', async ({ page }) => {
+  test('key levels rail reflects the terrain panel', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('582.90');
     await expect(page.locator('#klCall')).toHaveText('586.00');
@@ -824,11 +829,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a level built from a price that has stopped stays, and the rail says OFFLINE', async ({ page }) => {
-    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, {
-        call_wall: 586, spot_feed_live: false, spot_feed_label: 'OFFLINE', levels_mark: 'OFFLINE',
-        spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
-        levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+    panels.terrain = Object.assign({}, TERRAIN, {
+      call_wall: 586, spot_feed_live: false, spot_feed_label: 'OFFLINE', levels_mark: 'OFFLINE',
+      spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+      levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
     await expect(page.locator('#klSrc')).toHaveText('OFFLINE');
@@ -838,11 +842,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('key levels rail keeps the chain time when the price has stopped', async ({ page }) => {
     const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
-    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_age_sec: 4, levels_age_text: '4s', levels_time_ct: CHAIN_TIME, call_wall: 586,
-        spot_feed_live: false, spot_feed_label: 'OFFLINE', spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
-        levels_mark: 'OFFLINE', levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' })) }));
+    panels.terrain = Object.assign({}, TERRAIN, {
+      levels_age_sec: 4, levels_age_text: '4s', levels_time_ct: CHAIN_TIME, call_wall: 586,
+      spot_feed_live: false, spot_feed_label: 'OFFLINE', spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+      levels_mark: 'OFFLINE', levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
     await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE · 4s');
@@ -850,10 +853,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('key levels rail after its own option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
-    // /api/terrain for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
+    // the terrain panel for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
     const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_terrain_at_a_stopped_price_2026_10_22.json'));
-    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(CLOSED) }));
+    panels.terrain = CLOSED;
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klSrc')).toHaveText(CLOSED.levels_time_ct + ' · CLOSE · ' + CLOSED.levels_age_text);
     await expect(page.locator('#klSrc')).not.toContainText('live');
@@ -871,8 +873,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('PCR: a ticker whose terrain carries no ratio paints none, never a number', async ({ page }) => {
-    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, { pcr_by_expiry: {}, pcr_all: null })) }));
+    panels.terrain = Object.assign({}, TERRAIN, { pcr_by_expiry: {}, pcr_all: null });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('582.90');
     await expect(page.locator('#klPcr')).toHaveText('-');
@@ -931,9 +932,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
-    // The chart's spot is the header's price row (audit of #280 removed the /api/terrain copy,
+    // The chart's spot is the header's price row (audit of #280 removed the terrain's copy,
     // a second producer): the daemon's price socket delivers it.
-    await mockPriceSocket(page, [priceRow('SPY', 583.41, { trade_time_ct: '14:00:01 CT' })]);
+    await socketWith(page, [priceRow('SPY', 583.41, { trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
@@ -976,7 +977,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('header paints the daemon price row the moment it arrives', async ({ page }) => {
     // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
     // (live_price_rows.price_row) straight to the page; the console is not in the path.
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
+    await socketWith(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
       chg_pct_regular: 0.4 })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
@@ -988,14 +989,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('before the session the regular-session percent reads absent, the extended one live', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
+    await socketWith(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
     await expect(page.locator('#hChgReg')).toHaveText('REG -');
   });
 
   test('a price that stops arriving stays, and the chip says OFFLINE', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_text: '4s',
+    await socketWith(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_text: '4s',
       quote_time_ct: '14:00:02 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
@@ -1012,7 +1013,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a price whose market is not trading reads NOT LIVE in the header and on Key Levels\' Spot', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_text: '4s',
+    await socketWith(page, [priceRow('SPY', 601.23, { trade_time_ct: '14:00:01 CT', trade_age_text: '4s',
       feed_live: false, feed_label: 'NOT LIVE', outage: "outside Schwab's market hours" })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hFeed')).toHaveText('NOT LIVE');
@@ -1021,7 +1022,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a ticker switch clears the last ticker\'s price from the header and Key Levels\' Spot', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);
+    await socketWith(page, [priceRow('SPY', 601.23)]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klSpot')).toHaveText('601.23');
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
@@ -1031,7 +1032,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25, trade_time_ct: '14:00:01 CT' })]);
+    await socketWith(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25, trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
@@ -1306,7 +1307,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   const MISSING_0925 = Object.assign({}, SURFACE, { expirations: [],
     cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [] })), view: view({ missing_expiry: '2026-09-25' }) });
   test('a selected expiry absent from the surface reads unavailable (no substitute expiries)', async ({ page }) => {
-    await pushExpiries(page, ['2026-09-11', '2026-09-18', '2026-09-25']);
+    sock = await pushExpiries(page, ['2026-09-11', '2026-09-18', '2026-09-25'], undefined, panels);
     await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? MISSING_0925 : SURFACE) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1320,7 +1321,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('recovers automatically once the requested expiry appears in a later surface poll', async ({ page }) => {
     let missing = MISSING_0925;   // SURFACE only has 2026-09-11/2026-09-18 -- 09-25 is initially missing
-    await pushExpiries(page, ['2026-09-11', '2026-09-18', '2026-09-25']);
+    sock = await pushExpiries(page, ['2026-09-11', '2026-09-18', '2026-09-25'], undefined, panels);
     await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? missing : SURFACE) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1361,7 +1362,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     };
     await page.route('**/api/options/gamma-surface**', track('gamma-surface'));
     await page.route('**/api/terrain/strikes**', track('terrain-strikes'));
-    await page.route('**/api/terrain?**', track('terrain'));
     await page.route('**/api/options/tape**', track('tape'));
     await page.route('**/api/chain**', track('chain'));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1369,19 +1369,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // Any accidental second trigger (a stray immediate self-call racing the deferred
     // dispatch) has made its read by the time the page's reads have all landed.
     await requests.settled();
-    for (const path of ['gamma-surface', 'terrain-strikes', 'terrain', 'tape', 'chain']) {
+    for (const path of ['gamma-surface', 'terrain-strikes', 'tape', 'chain']) {
       expect(counts[path], `${path} must hydrate exactly once on cold start`).toBe(1);
     }
   });
 
   test('one levels push refetches only levels-derived endpoints, not unrelated ones', async ({ page }) => {
     const requests = watchRequests(page);
-    let gammaCalls = 0, strikesCalls = 0, terrainCalls = 0;
+    let gammaCalls = 0, strikesCalls = 0;
     const unrelated = { tape: 0, chain: 0 };
     // fallback() (not continue()) -- see the identical note in the cold-start test above.
     await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
     await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
-    await page.route('**/api/terrain?**', (route) => { terrainCalls += 1; return route.fallback(); });
     await page.route('**/api/options/tape**', (route) => { unrelated.tape += 1; return route.fallback(); });
     await page.route('**/api/chain**', (route) => { unrelated.chain += 1; return route.fallback(); });
     const push = await routeOneLevelsPush(page);
@@ -1392,13 +1391,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.evaluate(() => window.EdShell.setStrike(null));
     await requests.settled();
     const beforeUnrelated = Object.assign({}, unrelated);
-    const gammaBefore = gammaCalls, strikesBefore = strikesCalls, terrainBefore = terrainCalls;
+    const gammaBefore = gammaCalls, strikesBefore = strikesCalls, subscribesBefore = sock.subscribes.length;
     push();                           // lands after the baseline
     await expect.poll(() => gammaCalls).toBeGreaterThan(gammaBefore);
     await expect.poll(() => strikesCalls).toBeGreaterThan(strikesBefore);
-    await expect.poll(() => terrainCalls).toBeGreaterThan(terrainBefore);
     await requests.settled();   // every read the push made has gone out
     expect(unrelated).toEqual(beforeUnrelated);
+    // the levels (Key Levels) are the program's to send on the socket: the push asks for nothing
+    expect(sock.subscribes.length).toBe(subscribesBefore);
   });
 
   test('two panels reacting to the same push for the same endpoint make one network call', async ({ page }) => {
@@ -1421,37 +1421,38 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('one levels push with a strike selected fetches each levels endpoint exactly once', async ({ page }) => {
     const requests = watchRequests(page);
-    let gammaCalls = 0, strikesCalls = 0, chainCalls = 0, terrainCalls = 0;
+    let gammaCalls = 0, strikesCalls = 0, chainCalls = 0;
     await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
     await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
     await page.route('**/api/chain**', (route) => { chainCalls += 1; return route.fallback(); });
-    await page.route('**/api/terrain?**', (route) => { terrainCalls += 1; return route.fallback(); });
     const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await requests.settled();   // cold-start hydration (including auto-select) has landed
-    const before = { gamma: gammaCalls, strikes: strikesCalls, chain: chainCalls, terrain: terrainCalls };
+    const before = { gamma: gammaCalls, strikes: strikesCalls, chain: chainCalls, subscribes: sock.subscribes.length };
     push();
     await expect.poll(() => Math.min(gammaCalls - before.gamma, strikesCalls - before.strikes,
-      chainCalls - before.chain, terrainCalls - before.terrain)).toBeGreaterThan(0);
+      chainCalls - before.chain)).toBeGreaterThan(0);
     await requests.settled();   // every read the push made has gone out and landed
     expect(gammaCalls - before.gamma).toBe(1);
     expect(strikesCalls - before.strikes).toBe(1);
     expect(chainCalls - before.chain).toBe(1);
-    expect(terrainCalls - before.terrain).toBe(1);
+    // the levels are the program's to send on the socket: the push asks for nothing there
+    expect(sock.subscribes.length - before.subscribes).toBe(0);
     const totalDelta = (gammaCalls - before.gamma) + (strikesCalls - before.strikes)
-      + (chainCalls - before.chain) + (terrainCalls - before.terrain);
-    expect(totalDelta).toBeLessThanOrEqual(4);
+      + (chainCalls - before.chain);
+    expect(totalDelta).toBeLessThanOrEqual(3);
+    await expect(page.locator('#klFlip')).toHaveText('582.90');
   });
 
   test('the Gamma Chart spot line moves with each price row (the header\'s price), not a terrain refetch', async ({ page }) => {
-    // Was (2026-09-17): the chart's spot came from /api/terrain and moved only when a gamma
+    // Was (2026-09-17): the chart's spot came from the terrain route and moved only when a gamma
     // push refetched it. Audit of #280: that was a second producer that could show a different
     // price than the header. Required now: the chart's spot line/label IS the header's price
-    // row and follows every tick; /api/terrain carries flip/walls only.
+    // row and follows every tick; the terrain panel carries flip/walls only.
     const rows = [priceRow('SPY', 583.41)];
     for (let i = 0; i < 20; i++) rows.push(priceRow('SPY', 601.23));   // the next ticks
-    await mockPriceSocket(page, rows);
+    await socketWith(page, rows);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#chartBody .gchart-head')).toContainText(/spot (583\.41|601\.23)/);
@@ -1462,13 +1463,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('the Key Levels rail shows regular and 0DTE in the same row', async ({ page }) => {
-    await page.route('**/api/terrain?**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, {
-        same_day: { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
-          absolute_gamma_strike: 572.5, net_gex_peak: 570 },
-      })),
-    }));
+    panels.terrain = Object.assign({}, TERRAIN, {
+      same_day: { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
+        absolute_gamma_strike: 572.5, net_gex_peak: 570 },
+    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klBody .kl-pairs .h').nth(0)).toHaveText('Regular');
     await expect(page.locator('#klBody .kl-pairs .h').nth(1)).toHaveText('0DTE');
@@ -1483,26 +1481,44 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klNet')).toBeVisible();
   });
 
-  test('the Key Levels rail updates on a levels push', async ({ page }) => {
-    let terrainFlip = 582.90;
-    await page.route('**/api/terrain?**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, { gamma_flip: terrainFlip })),
-    }));
-    const push = await routeOneLevelsPush(page);
+  test('Key Levels after a ticker switch: "-" until the new ticker\'s levels; a late frame of the old one is never drawn', async ({ page }) => {
+    // the program's side: SPY's levels on SPY's subscribe; on QQQ's, a frame of SPY's that was
+    // already on its way, and QQQ's own only when the test sends it
+    let sendQqq = null;
+    await page.routeWebSocket(/\/ws$/, (ws) => {
+      ws.onMessage((m) => {
+        const req = JSON.parse(String(m));
+        if (req.op !== 'subscribe') return;
+        ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
+        if (!req.panels || !req.panels['terrain:levels']) return;
+        if (req.ticker === 'SPY') { ws.send(panelFrame('terrain:levels', 'SPY', TERRAIN)); return; }
+        ws.send(panelFrame('terrain:levels', 'SPY', Object.assign({}, TERRAIN, { gamma_flip: 111 })));
+        sendQqq = () => ws.send(panelFrame('terrain:levels', req.ticker, Object.assign({}, TERRAIN, { gamma_flip: 480.5 })));
+      });
+    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('582.90');
-    terrainFlip = 590.00;
-    push();
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(page.locator('#klFlip')).toHaveText('-');
+    await expect(page.locator('#klSrc')).toHaveText('-');
+    await expect.poll(() => sendQqq !== null).toBe(true);
+    await expect(page.locator('#klFlip')).toHaveText('-');              // SPY's late frame not drawn
+    sendQqq();
+    await expect(page.locator('#klFlip')).toHaveText('480.50');
+  });
+
+  test('the Key Levels rail updates on a levels push', async ({ page }) => {
+    // the program sends the terrain panel again when the levels change (_levels_changed)
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klFlip')).toHaveText('582.90');
+    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 590.00 });
+    sock.changed('terrain');
     await expect(page.locator('#klFlip')).toHaveText('590.00');
   });
 
   test('Key Levels Spot is the header price, not the levels fetch', async ({ page }) => {
-    await page.route('**/api/terrain?**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, { spot: 583.41 })),   // the fetch's copy
-    }));
-    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);                    // the pushed price
+    panels.terrain = Object.assign({}, TERRAIN, { spot: 583.41 });   // the panel's copy
+    await socketWith(page, [priceRow('SPY', 601.23)]);                    // the pushed price
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#klSpot')).toHaveText('601.23');

@@ -657,7 +657,7 @@ class PublishedLevels:
     count_capture_ts: float | None
 
     def served(self) -> dict:
-        """Return the levels as /api/terrain serves them, before the live price's relations."""
+        """Return the levels as the terrain panel sends them, before the live price's relations."""
         return self.snap.to_dict() | {
             "computed_ts_utc": self.computed_ts_utc,
             "levels_ts_utc": self.levels_ts_utc,
@@ -1113,7 +1113,7 @@ _last_feed_stamp: tuple | None = None
 
 
 #: the page's socket panels (PAGE_PANELS) read from the published levels and the live price
-LEVELS_PANELS = ("vanna", "charm")
+LEVELS_PANELS = ("vanna", "charm", "terrain")
 
 
 def _levels_changed(tk: str) -> None:
@@ -2807,22 +2807,21 @@ def gamma_surface_payload(
     )
 
 
-@app.get("/api/terrain")
-def get_terrain(ticker: str = Query(...)):
-    """Serve the ticker's published levels, now."""
-    return terrain_answer(ticker_storage_key(_required_ticker(ticker)), now_et())  # SPX -> $SPX
+def terrain(tk: str, now: float, _params: dict) -> dict:
+    """Return `tk`'s published levels at `now`, at the live price (the `terrain` panel).
 
-
-def terrain_answer(tk: str, at: datetime) -> dict:
-    """`tk`'s published levels as served at `at`."""
-    cached, staleness = terrain_cache_get(tk, at.timestamp())
+    `tk` is the levels' own key ($SPX); the levels take no parameters. The page's socket sends
+    them to Key Levels, the Gamma chart, the Trade Desk's Right Now and its map (live_ui,
+    PAGE_PANELS), at once and each time the levels change (_levels_changed).
+    """
+    at = datetime.fromtimestamp(now, ET)
+    cached, staleness = terrain_cache_get(tk, now)
     if cached is not None:
         # the levels as the producer published them, at the publication's price (priced_at_spot);
-        # `spot` is the live price, as on every route, and every relation of the price to the
-        # levels is at it (price_relations); internal fields (the kept chain, the heatmap grid,
-        # per-strike rows) have their own routes
+        # `spot` is the live price, and every relation of the price to the levels is at it
+        # (price_relations); internal fields (the kept chain, the heatmap grid, per-strike rows)
+        # are their own panels
         out = cached.served() | staleness
-        now = at.timestamp()
         out.update(
             priced_at_spot=cached.snap.spot,
             priced_at_spot_source=cached.spot_source,
@@ -2835,10 +2834,10 @@ def terrain_answer(tk: str, at: datetime) -> dict:
         # is a separate fact: the numbers stay, marked with whether that price is live
         out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
         return out | levels_mark(out)
-    spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
+    spot, spot_source, spot_ts = resolve_spot(tk, now=now)
     _why = _terrain_refresh_last_error.get(tk)
     empty = compute_terrain(tk, None, spot, now=at).to_dict()
-    mark = price_mark(tk, spot_ts, at.timestamp())
+    mark = price_mark(tk, spot_ts, now)
     return (
         empty
         | price_relations(empty, spot).to_dict()
@@ -2939,7 +2938,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     newest_at = {it["price"]: it for it in items}
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
-    t = terrain_answer(tk, now)  # the same payload the terrain route serves
+    t = terrain(tk, now.timestamp(), {})  # the levels the page's terrain panel is sent
     tts = t.get("levels_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
         if t.get(f"{side}_wall_state") == "breached":  # at the live price (price_relations)
@@ -2952,7 +2951,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                     "title": f"Spot through the {word} wall",
                     "detail": f"{word} wall {price_text(t[f'{side}_wall'])} · spot "
                     f"{price_text(t['spot'])}",
-                    "src": "/api/terrain",
+                    "src": "gamma levels",
                 }
             )
     if t.get("levels_state") == LEVELS_STALE:
@@ -2965,7 +2964,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                 "warn": True,
                 "title": "Gamma levels are stale",
                 "detail": t["levels_stale_reason"],
-                "src": "/api/terrain",
+                "src": "gamma levels",
             }
         )
     # the book's size walls, stamped with the book's own time (BOOK_TIME); a book that is not live
@@ -3395,7 +3394,12 @@ def expiries(ticker: str, now: float, _params: dict) -> dict:
 #: the panels the page's socket sends for the page's selected ticker (live_ui.LiveUiServer):
 #: each kind's producer, (ticker, now, the page's parameters) -> its body; _publish_levels marks
 #: the expiry list changed on each new chain, and _levels_changed the levels' panels
-PAGE_PANELS = {"expiries": expiries, "vanna": vanna_by_strike, "charm": charm_by_strike}
+PAGE_PANELS = {
+    "expiries": expiries,
+    "vanna": vanna_by_strike,
+    "charm": charm_by_strike,
+    "terrain": terrain,
+}
 
 
 #: /api/chain's reason while no chain of the ticker is held and no chain error is recorded

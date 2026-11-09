@@ -8,6 +8,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { mockPriceSocket } = require('./fixtures/price_socket');
 const { watchRequests } = require('./fixtures/settled');
 
 // spot 100, 41 strikes 80..120; the stand-in's window per scope, as the server serves it
@@ -39,11 +40,11 @@ async function intercept(page, asked) {
       const scope = new URL(url).searchParams.get('scope');
       asked.push(scope);
       body = strikesFor(scope);
-    } else if (url.includes('/api/terrain')) body = TERRAIN;
-    else if (url.includes('/api/bars1m')) body = BARS;
+    } else if (url.includes('/api/bars1m')) body = BARS;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
+  await mockPriceSocket(page, [], [], undefined, { terrain: TERRAIN });
 }
 
 test.describe('the Gamma presentation scope', () => {

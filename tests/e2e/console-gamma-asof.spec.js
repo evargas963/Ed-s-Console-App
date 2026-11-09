@@ -9,6 +9,7 @@
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
+const { mockPriceSocket } = require('./fixtures/price_socket');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
   levels_state: 'LIVE', levels_age_sec: 6, chain_basis: 'full', complete: false,
@@ -38,11 +39,11 @@ function routes(over = {}) {
       let body = { available: false };
       if (url.includes('/api/options/gamma-surface')) body = over.surface || SURFACE;
       else if (url.includes('/api/terrain/strikes')) body = over.strikes || STRIKES;
-      else if (url.includes('/api/terrain')) body = over.terrain || TERRAIN;
       else if (url.includes('/api/bars1m')) body = BARS;
       else if (url.includes('/api/chain')) body = over.chain || CHAIN;      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await routeWatchlist(page, ['SPY']);
+    await mockPriceSocket(page, [], [], undefined, { terrain: TERRAIN });
   };
 }
 

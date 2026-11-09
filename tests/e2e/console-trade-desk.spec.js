@@ -13,6 +13,7 @@ const { watchRequests } = require('./fixtures/settled');
 
 const {
   EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, LIVE_COMP, MICRO, LIQ, STRIKES, BARS, intercept, watchErrors,
+  deskPanels, deskSocket,
 } = require('./fixtures/trade_desk');
 
 test('every chart is the one TradingView-style chart, with its controls', async ({ page }) => {
@@ -41,7 +42,8 @@ test('every chart is the one TradingView-style chart, with its controls', async 
 
 // 2026-09-29 RTH, measured in the operator's browser: a fresh desk load asked for every value twice
 // (start() ran on ed:view and ed:ticker; the second saw no bars yet and loaded again), and a
-// timeframe switch re-asked for the terrain, zones, strikes, forces and flow bars, none of which
+// timeframe switch re-asked for the zones, strikes, forces and flow bars (and the terrain, now the
+// socket's panel), none of which
 // depend on the timeframe -- 6.8 s to redraw.
 test('a desk load asks for each value once; a timeframe switch asks only for that timeframe and says it is loading', async ({ page }) => {
   const errs = watchErrors(page);
@@ -59,7 +61,7 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
   await requests.settled();   // every read the load made has gone out and landed
   const count = (re) => asked.filter((u) => re.test(u)).length;
-  for (const re of [/^levels\?/, /^desk\/events\?/, /^terrain\?/, /^liquidity-snapshot\?/, /^terrain\/strikes\?/, /^forces\?/,
+  for (const re of [/^levels\?/, /^desk\/events\?/, /^liquidity-snapshot\?/, /^terrain\/strikes\?/, /^forces\?/,
     /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/, /^bars1m\?.*tf=1&/]) expect(count(re), String(re)).toBe(1);
 
   asked.length = 0;
@@ -169,7 +171,7 @@ test('the Gamma chart and the liquidity map carry the Trade Desk toolbar; a time
 
 test('Desk: an offline price keeps its last trade time on the map', async ({ page }) => {
   await intercept(page);
-  await mockPriceSocket(page, [
+  await deskSocket(page, [
     priceRow('$SPX', 5800.12, { trade_time_ct: '14:00:01 CT', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
     priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
     priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', total_volume: 1000 }),
@@ -191,7 +193,7 @@ test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'
   const requests = watchRequests(page);
   await intercept(page);
   // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row, and SPY's at 12 s
-  await mockPriceSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 12000, row: ROWS.SPY }]);
+  await deskSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 12000, row: ROWS.SPY }]);
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -267,15 +269,8 @@ test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
   const errs = watchErrors(page);
   const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
   await intercept(page);
-  await page.route('**/api/terrain**', (route) => {
-    const url = route.request().url();
-    if (url.includes('/api/terrain/strikes')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STRIKES) });
-    }
-    return route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, {
-        levels_age_sec: 4, levels_age_text: '4s', levels_state: 'LIVE', levels_time_ct: CHAIN_TIME,
-      })) });
+  deskPanels().terrain = Object.assign({}, TERRAIN, {
+    levels_age_sec: 4, levels_age_text: '4s', levels_state: 'LIVE', levels_time_ct: CHAIN_TIME,
   });
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); });
@@ -336,15 +331,19 @@ test.describe('Trade Desk renders served values', () => {
   });
 
   test('Desk: a failed request is named on its cards, never told as an empty market', async ({ page }) => {
-    // /api/terrain and the flow bars failing: the options, volatility and flow cards say the
-    // request failed; before, they said no expiry carries open interest and no bars for the symbol
+    // the terrain panel not produced (the program's words on the socket) and the flow bars
+    // failing: the options, volatility and flow cards say so; before, they said no expiry
+    // carries open interest and no bars for the symbol
     const errs = watchErrors(page);
+    const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
     await intercept(page);   // every route answered in its real shape, then the two that fail
-    await page.route(/\/api\/terrain\?|\/api\/bars1m\?.*tf=1&/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    deskPanels().terrain = { failed: words };
+    await page.route(/\/api\/bars1m\?.*tf=1&/, (route) => route.fulfill({ status: 500, body: 'x' }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#tdmCardOpt .tdm-plot-none')).toHaveText('the terrain request failed');
-    await expect(page.locator('#tdmCardVol .tdm-plot-none')).toHaveText('the terrain request failed');
+    await expect(page.locator('#tdmCardOpt .tdm-plot-none')).toHaveText(words);
+    await expect(page.locator('#tdmCardVol .tdm-plot-none')).toHaveText(words);
+    await expect(page.locator('#tdmTrust')).toContainText('GAMMA DOWN');
     await expect(page.locator('#tdmCardFlow .tdm-plot-none')).toHaveText('the bars request failed');
     expect(errs).toEqual([]);
   });
@@ -474,7 +473,7 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Desk: the live price line keeps its last trade time', async ({ page }) => {
     await intercept(page);
-    await mockPriceSocket(page, []);
+    await deskSocket(page, []);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
@@ -491,7 +490,7 @@ test.describe('Trade Desk renders served values', () => {
     const barReads = [];
     page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
     const requests = watchRequests(page);
-    await mockPriceSocket(page, []);            // the daemon answers what SPY is (its served key)
+    await deskSocket(page, []);            // the daemon answers what SPY is (its served key)
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.clock.install();                 // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -565,7 +564,7 @@ test.describe('Trade Desk renders served values', () => {
   async function routeStopped(page) {
     const terrain = Object.assign({}, TERRAIN, { spot_feed_live: false, spot_not_live_text: STOPPED.spot_not_live_text });
     await intercept(page);   // every route answered in its real shape, then the stopped price's two
-    await page.route(/\/api\/terrain\?/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(terrain) }));
+    deskPanels().terrain = terrain;
     await page.route('**/api/levels**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STOPPED) }));
   }
 
@@ -650,12 +649,12 @@ test.describe('Trade Desk renders served values', () => {
   });
 
   test('Right Now re-reads all five reads on every push', async ({ page }) => {
-    await intercept(page);
+    const sock = await intercept(page);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); });
     const reads = [];
     page.on('request', (r) => {
       const p = new URL(r.url()).pathname;
-      if (['/api/order-flow/microstructure', '/api/levels', '/api/terrain', '/api/liquidity-snapshot', '/api/terrain/strikes'].includes(p)) reads.push(p);
+      if (['/api/order-flow/microstructure', '/api/levels', '/api/liquidity-snapshot', '/api/terrain/strikes'].includes(p)) reads.push(p);
     });
     const requests = watchRequests(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -670,10 +669,14 @@ test.describe('Trade Desk renders served values', () => {
       return [...new Set(reads)].sort();
     };
     // each read serves values the server derives at read time (the live price, each level's
-    // distance, the staleness of the chain), so a push of any kind re-reads every one
-    const all = ['/api/levels', '/api/liquidity-snapshot', '/api/order-flow/microstructure', '/api/terrain', '/api/terrain/strikes'];
+    // distance, the staleness of the chain), so a push of any kind re-reads every one; the
+    // levels (CONFIRM) are the terrain panel the program sends on the socket when they change
+    const all = ['/api/levels', '/api/liquidity-snapshot', '/api/order-flow/microstructure', '/api/terrain/strikes'];
     for (const kind of ['flow', 'liquidity', 'levels', 'chain']) expect(await push(kind)).toEqual(all);
     await expect(body).toContainText('Max pain 770.00');
+    deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771 });
+    sock.changed('terrain');
+    await expect(body).toContainText('Gamma flip768.00Max pain771.00');   // CONFIRM's rows
   });
 
   test('Right Now: a new scope\'s strike window stays drawn through the next push', async ({ page }) => {
@@ -818,7 +821,6 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: null } });
       else if (url.includes('/api/forces')) body = { ticker: 'SPY', available: true, doi_below: 1200, doi_above: null,
         dex_below_dollars: 5e8, dex_above_dollars: null, charm_below: 0.0123, charm_above: null, older_et_date: '2026-10-07' };
-      else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' });
       else if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),
         by_distance: ['call_wall', 'max_pain', 'PDH', 'grc'] });
       else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
@@ -827,6 +829,8 @@ test.describe('Trade Desk renders served values', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await routeWatchlist(page, ['SPY']);
+    await mockPriceSocket(page, [], [], undefined,
+      { terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' }) });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
@@ -852,7 +856,6 @@ test.describe('Trade Desk renders served values', () => {
         let body = { available: false };
         if (url.includes('/api/desk/events')) body = EVENTS;
         else if (url.includes('/api/terrain/strikes')) body = STRIKES;
-        else if (url.includes('/api/terrain')) body = terrain;
         else if (url.includes('/api/levels')) body = LEVELS;
         else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
         else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
@@ -860,8 +863,9 @@ test.describe('Trade Desk renders served values', () => {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       });
       await routeWatchlist(page, ['SPY']);
-      await Promise.all([page.waitForResponse((r) => /\/api\/terrain\?/.test(r.url())),
-        page.goto('/', { waitUntil: 'domcontentloaded' })]);
+      await mockPriceSocket(page, [], [], undefined, { terrain: terrain });
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await expect(page.locator('#tdmCardOpt')).toContainText('775.00');   // the terrain panel has landed
       await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart && window.EdTradeDeskMap.state().chart.bars)).toBeGreaterThan(0);
       // the terrain's answer is painted on the next frames
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));

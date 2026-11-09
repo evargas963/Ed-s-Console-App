@@ -204,11 +204,10 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
     trade_ts = ofs.price_row("SPY", clock())["trade_ts"]
     try:
-        live = server.terrain_answer("SPY", datetime.fromtimestamp(clock(), ET))
+        live = server.terrain("SPY", clock(), {})
         lmp.record_feed_down()
-        at_et = datetime.fromtimestamp(clock(), ET)
-        at = at_et.timestamp()  # the instant as the route holds it
-        down = server.terrain_answer("SPY", at_et)
+        at = clock()
+        down = server.terrain("SPY", at, {})
         levels = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
         matrix = server.confluence_payload(
@@ -316,7 +315,7 @@ def stopped_price_answers() -> dict:
         bodies = {
             "levels": server.levels_payload("SPY", "1", at),
             "confluence": server.confluence_payload("SPY", "2026-10-22", at),
-            "terrain": server.terrain_answer("SPY", at),
+            "terrain": server.terrain("SPY", at.timestamp(), {}),
             "strikes": server.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
             "surface": surface,
             "strikes_next_close": server.terrain_strikes_payload(

@@ -1,6 +1,6 @@
 /* Ed Console — Options/Gamma Chart view. PRESENTATION ONLY.
    On the one TradingView-style chart every chart in the console uses (ed-tv-chart.js): the price
-   (/api/bars1m, completed Schwab bars at the toolbar's timeframe), the flip and the walls (/api/terrain) as level
+   (/api/bars1m, completed Schwab bars at the toolbar's timeframe), the flip and the walls (the `terrain:chart` panel on the page's socket) as level
    lines, the live price (the header's price row), and the selected measure's per-strike rows
    (/api/terrain/strikes: GEX `today.all`, DEX and OI `measures`) as a profile on the price axis --
    bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
@@ -63,25 +63,32 @@
     return Promise.all([
       fetch('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf],
         { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
-      fetch(strikesUrl(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
-      fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp)
+      fetch(strikesUrl(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp)
     ]).then(function (r) {
       if (!isChart() || ticker() !== tk) return;
-      _last = { bars: r[0], strikes: r[1], terrain: r[2] };
+      _last.bars = r[0]; _last.strikes = r[1];
       render();
     });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() { _loader.trigger(ticker()); }
+  function load() {
+    // the flip and the walls: the `terrain:chart` panel (server.terrain) on the page's socket while
+    // the chart is on, at once and each time the levels change
+    window.EdShell.showPanel('terrain:chart', isChart() ? {} : null);
+    _loader.trigger(ticker());
+  }
+  document.addEventListener('ed:panel', function (e) {
+    if (e.detail.type !== 'terrain:chart') return;
+    _last.terrain = e.detail;
+    if (isChart() && _last.bars !== undefined) render();
+  });
 
-  // the profile and the levels only (a levels push): the bars are unchanged
+  // the profile only (a levels push): the bars are unchanged
   function loadLevelsImpl(tk) {
     if (!isChart() || ticker() !== tk || !_chart) return;
-    var get = window.EdL1SseGuards.sharedFetchJson;
-    return Promise.all([get(strikesUrl(tk)).catch(nullp),
-      get('/api/terrain?ticker=' + encodeURIComponent(tk)).catch(nullp)]).then(function (r) {
-      if (!isChart() || ticker() !== tk || r[0] == null || r[1] == null) return;
-      _last.strikes = r[0]; _last.terrain = r[1];
+    return window.EdL1SseGuards.sharedFetchJson(strikesUrl(tk)).catch(nullp).then(function (sd) {
+      if (!isChart() || ticker() !== tk || sd == null) return;
+      _last.strikes = sd;
       render();
     });
   }
@@ -92,9 +99,13 @@
     var host = document.getElementById('chartBody');
     var P = c.palette(), barsD = _last.bars, sd = _last.strikes, t = _last.terrain;
     var prof = served(sd);
-    // each answer as served; a request that failed (null) draws nothing and is named, never drawn as empty
-    var failed = [[barsD, 'bars'], [sd, 'per-strike ' + prof.name], [t, 'terrain']]
+    // each answer as served; a request that failed (null) draws nothing and is named, never drawn
+    // as empty; the levels not sent yet (undefined) draw none, and the program's words when it
+    // could not produce them (`failed`) are said
+    var failed = [[barsD, 'bars'], [sd, 'per-strike ' + prof.name]]
       .filter(function (a) { return !a[0]; }).map(function (a) { return a[1]; });
+    var words = failed.length ? 'the ' + failed.join(', ') + ' request failed for ' + ticker() : '';
+    if (t && t.failed != null) words = (words ? words + ' · ' : '') + t.failed;
     var bars = barsD ? barsD.bars : [];
     var win = prof.rows.filter(function (r) { return r[1] != null; });   // the served window; unknown: nothing drawn
     c.setBars(bars, barsD ? barsD.tf : _tf, window.EdShell.getState().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
@@ -103,7 +114,7 @@
       prof.scale, _mode === 'dotmap' ? 'dots' : 'bars');
     c.selectProfile(window.EdShell.getState().selStrike == null ? null : Number(window.EdShell.getState().selStrike));
     var lv = [];
-    if (t && !t.error) {
+    if (t && !t.error && t.failed == null) {
       if (t.gamma_flip != null) lv.push({ id: 'gamma_flip', price: Number(t.gamma_flip), label: 'flip', color: P.accent, style: 2, width: 1 });
       if (t.call_wall != null) lv.push({ id: 'call_wall', price: Number(t.call_wall), label: 'call wall', color: P.down, style: 0, width: 1 });
       if (t.put_wall != null) lv.push({ id: 'put_wall', price: Number(t.put_wall), label: 'put wall', color: P.up, style: 0, width: 1 });
@@ -113,9 +124,8 @@
     var tradeTime = (_liveQuote && spot != null) ? _liveQuote.trade_time_ct : null;
     c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_text : null, tradeTime);
     var empty = host.querySelector('.gchart-empty');
-    empty.hidden = !failed.length && !!(bars.length || win.length);
-    empty.textContent = failed.length ? 'the ' + failed.join(', ') + ' request failed for ' + ticker()
-      : empty.hidden ? '' : 'no bars / per-strike ' + prof.name + ' for this symbol';
+    empty.hidden = !words && !!(bars.length || win.length);
+    empty.textContent = words || (empty.hidden ? '' : 'no bars / per-strike ' + prof.name + ' for this symbol');
     paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot, tradeTime);
   }
   function paintHead(el, bars, win, prof, sd, spot, tradeTime) {
@@ -160,7 +170,7 @@
   document.addEventListener('ed:ticker', function () { _last = { bars: undefined, strikes: undefined, terrain: undefined }; load(); });
   document.addEventListener('ed:scope', function () { if (isChart()) load(); });   // a new window: re-read it
   document.addEventListener('ed:measure', function () { if (_chart && isChart() && _last.strikes !== undefined) render(); });
-  document.addEventListener('ed:changed', function (e) {   // a new bar reloads all; new levels reload the levels
+  document.addEventListener('ed:changed', function (e) {   // a new bar reloads all; new levels reload the profile
     if (e.detail.kind === 'liquidity') load(); else if (e.detail.kind === 'levels') _levelsLoader.trigger(ticker());
   });
   document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(window.EdShell.getState().selStrike == null ? null : Number(window.EdShell.getState().selStrike)); });

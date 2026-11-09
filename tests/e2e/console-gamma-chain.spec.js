@@ -54,11 +54,11 @@ async function intercept(page) {
       view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } };
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] },
       views: { all: { centre: 100, note: null, max_abs: 1 } } };
-    else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11']);
+  await pushExpiries(page, ['2026-09-11'], undefined,
+    { terrain: { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' } });
 }
 
 async function toChain(page) {

@@ -950,3 +950,141 @@ def test_a_producer_that_raises_fails_its_panel_alone_in_words():
             assert "failed" in await _next(ws, "vanna")
 
     asyncio.run(_serve_panels(body))
+
+
+# -- the levels themselves: the terrain panel, one per reader (Key Levels, the chart, the desk) ---
+
+#: two readers of the terrain on one page: Key Levels and the Gamma chart (ed-gamma-panels.js,
+#: ed-gamma-chart.js), each its own panel of the one producer
+TERRAIN_READERS = {"terrain:levels": {}, "terrain:chart": {}}
+
+
+def _published_terrain(tk) -> dict:
+    """The levels the producer published for `tk`: what every terrain panel carries."""
+    snap = server.published_levels(tk).snap
+    return {"call_wall": snap.call_wall, "put_wall": snap.put_wall, "gamma_flip": snap.gamma_flip}
+
+
+def _terrain_of(frame) -> dict:
+    return {k: frame[k] for k in ("call_wall", "put_wall", "gamma_flip")}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_terrain_reader_gets_the_published_levels_at_once_with_no_get():
+    _publish(CRWD)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, CRWD.ticker.lower(), {**LIST, **TERRAIN_READERS})
+            seen = {}
+            while set(TERRAIN_READERS) - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            for name in TERRAIN_READERS:
+                assert seen[name]["ticker"] == A and seen[name]["error"] == ""
+                assert _terrain_of(seen[name]) == _published_terrain(A)
+                assert seen[name]["call_wall"] is not None
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/terrain" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_chain_the_terrain_says_why_with_no_level():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"terrain:levels": {}})
+            frame = await _next(ws, "terrain:levels")
+            assert frame["error"].startswith("terrain_not_ready: no chain from the daemon yet")
+            assert frame["regime"] == "UNAVAILABLE"
+            # unknown, never an empty or zero level standing for it
+            assert frame["call_wall"] is None and frame["gamma_flip"] is None
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_terrain_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"terrain:desk": {}})
+            await _select(on_b, B, {"terrain:desk": {}})
+            await _select(list_only, A)  # A's page, on a tab with no levels panel
+            for ws in (on_a, on_b):
+                assert "error" in await _next(ws, "terrain:desk")  # no levels of either yet
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)  # the pricing thread publishes A's levels
+            frame = await _next(on_a, "terrain:desk")
+            assert frame["ticker"] == A and _terrain_of(frame) == _published_terrain(A)
+            assert _kind(await _select(on_b, B, {}), "terrain:desk") == []
+            assert _kind(await _select(list_only, A), "terrain:desk") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_switch_sends_the_new_tickers_terrain_and_none_of_the_old():
+    _publish(CRWD)
+    _publish(MRVL)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"terrain:map": {}})
+            assert (await _next(ws, "terrain:map"))["ticker"] == A
+            await _select(ws, B, {"terrain:map": {}})
+            frame = await _next(ws, "terrain:map")
+            assert frame["ticker"] == B and _terrain_of(frame) == _published_terrain(B)
+            await asyncio.to_thread(_publish, CRWD)  # new levels on the ticker the page left
+            assert _kind(await _select(ws, B, {}), "terrain:map") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_page_that_drops_and_returns_gets_its_terrain_again():
+    _publish(CRWD)
+
+    async def body(url):
+        for _ in range(2):  # the page, then its reconnect and its subscribe
+            async with connect(url) as ws:
+                await _select(ws, A, {**LIST, "terrain:levels": {}})
+                frame = await _next(ws, "terrain:levels")
+                assert _terrain_of(frame) == _published_terrain(A)
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_terrain_producer_that_raises_fails_its_panel_alone_in_words():
+    """The panel says why; the socket stays open and the other panels keep coming.
+
+    Induced condition: CRWD's published snapshot holds a lock where its flip diagnostics go, so
+    the terrain raises copying it, as a defect in its producer would.
+    """
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        held = server._terrain_cache[A]
+        server._terrain_cache[A] = replace(
+            held, snap=replace(held.snap, flip_diag={"lock": threading.Lock()})
+        )
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {**LIST, "terrain:levels": {}, "charm": ALL})
+            seen = {}
+            while {"expiries", "terrain:levels", "charm"} - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert seen["terrain:levels"] == {
+                "type": "terrain:levels",
+                "ticker": A,
+                "failed": "the program could not produce this panel: "
+                "TypeError: cannot pickle '_thread.lock' object",
+            }
+            assert seen["charm"]["rows"] == _published_rows(A, "charm_rows")
+            assert seen["expiries"]["expiries"] == _expected(CRWD.chain)[0]
+            # the socket is open: the next subscribe is answered, and the failure said again
+            assert _kind(await _select(ws, A, {"terrain:levels": {}}), "symbols")
+            assert "failed" in await _next(ws, "terrain:levels")
+
+    asyncio.run(_serve_panels(body))

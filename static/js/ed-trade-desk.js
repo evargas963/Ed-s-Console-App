@@ -4,7 +4,7 @@
    new math, zero new producers:
      DETECT  <- /api/order-flow/microstructure  (same engine the Order Flow > Book/DOM tab reads)
      FRAME   <- /api/levels + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
-     CONFIRM <- /api/terrain                    (same regime/walls/headline the Gamma tab reads)
+     CONFIRM <- the page's socket's `terrain:desk` panel (the levels the Gamma tab is sent)
    The Context Summary panel is plain-English arrangement of those SAME four responses (e.g.
    "is spot presently between these two already-fetched zone bounds") -- a classification of
    already-canonical values, never a new computed truth, and never a fabricated confluence
@@ -113,8 +113,9 @@
   // a value computed from the live price, marked when that price is not live (served price_mark)
   function notLive(d) { return d && d.spot_not_live_text ? ' · ' + d.spot_not_live_text : ''; }
 
-  function confirmStage(d) {
-    if (!d) return stage(3, 'td-accent-amber', 'Confirm — options regime', 'No regime', '', 0, [], null);
+  function confirmStage(d) {   // d: the terrain panel as sent; undefined: none yet ('-')
+    if (d === undefined) return stage(3, 'td-accent-amber', 'Confirm — options regime', '-', '', 0, [], null);
+    if (d.failed != null) return stage(3, 'td-accent-amber', 'Confirm — options regime', 'No regime', d.failed, 0, [], null);
     // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
@@ -307,36 +308,52 @@
     if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; load(); });
   }
 
+  // CONFIRM's levels: the `terrain:desk` panel (server.terrain) the program sends on the page's
+  // socket while Right Now is on, at once and each time the levels change; undefined: none sent
+  // yet for the ticker on screen
+  var _terrain, _terrainTicker = null, _rest = null;   // _rest: the reads' answers, for its ticker
+  document.addEventListener('ed:panel', function (e) {
+    if (e.detail.type !== 'terrain:desk') return;
+    _terrain = e.detail;
+    if (isRightNow() && _rest && _rest.tk === ticker()) draw();
+  });
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillRightNow(tk)) return;
     return window.EdL1SseGuards.show(Promise.all([
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue, signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
       // the migration/volume section's window of the per-strike rows
       fetchJson(migStrikesUrl(tk), signal),
     ]), 'Right Now', function (results) {
       if (!stillRightNow(tk)) return;
-      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
-      // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
-      var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
-      var when = (levelsD && levelsD.spot_time_ct) ? (' · last trade ' + esc(levelsD.spot_time_ct)) : '';
-      h.innerHTML =
-        '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
-        '</span><span class="fl-meta">' + (isFinite(spot) ? ('spot ' + num(spot) + when) : '') + '</span></div></div>' +
-        '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD) + confirmStage(terrain) + '</div>' +
-        contextSummary(terrain, snap, levelsD) +
-        migrationSection(strikesD, terrain, spot, tk) +
-        '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
-        'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
-        'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
-      var migEl = document.getElementById('tdMigration');
-      if (migEl) wireMigration(migEl, tk);
+      _rest = { tk: tk, results: results };
+      draw();
     }, function (words) {
       if (stillRightNow(tk)) window.EdShell.placeholder(h, words);
     });
+  }
+  function draw() {
+    var h = host(), tk = _rest.tk;
+    if (!h) return;
+    var detect = _rest.results[0], levelsD = _rest.results[1], snap = _rest.results[2], strikesD = _rest.results[3];
+    // the levels drawn only as sent; none yet, or not produced, is no levels
+    var terrain = _terrain && _terrain.failed == null ? _terrain : null;
+    // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
+    var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
+    var when = (levelsD && levelsD.spot_time_ct) ? (' · last trade ' + esc(levelsD.spot_time_ct)) : '';
+    h.innerHTML =
+      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
+      '</span><span class="fl-meta">' + (isFinite(spot) ? ('spot ' + num(spot) + when) : '') + '</span></div></div>' +
+      '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD) + confirmStage(_terrain) + '</div>' +
+      contextSummary(terrain, snap, levelsD) +
+      migrationSection(strikesD, terrain, spot, tk) +
+      '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
+      'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
+      'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
+    var migEl = document.getElementById('tdMigration');
+    if (migEl) wireMigration(migEl, tk);
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   // every input of the read is in its key, so a change aborts the read in flight instead of
@@ -347,7 +364,9 @@
       '|scope=' + window.EdShell.getState().scope + '|pan=' + pan.centre + ',' + pan.shift;
   }
   function load() {
-    if (!isRightNow()) return;
+    if (!isRightNow()) { window.EdShell.showPanel('terrain:desk', null); return; }
+    if (_terrainTicker !== ticker()) { _terrainTicker = ticker(); _terrain = undefined; }
+    window.EdShell.showPanel('terrain:desk', {});
     _loader.trigger(_loadKey());
   }
 

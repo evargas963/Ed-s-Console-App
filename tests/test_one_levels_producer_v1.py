@@ -23,7 +23,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
@@ -190,15 +189,15 @@ def test_published_levels_equal_compute_terrain_on_the_same_inputs():
 
 
 def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal_fields():
-    """2026-09-26: the payload carried the snapshot object and /api/terrain served the whole entry.
+    """2026-09-26: the payload carried the snapshot object and the route served the whole entry.
 
-    HTTP 500 for every published ticker, and the kept chain on every poll.
+    HTTP 500 for every published ticker, and the kept chain on every poll. The terrain panel's
+    body is plain JSON as it is (the socket's frame), with no internal field.
     """
     _daemon()
     snap = _put_chain()
-    r = TestClient(server.app).get(f"/api/terrain?ticker={TK}")
-    assert r.status_code == 200, r.text[:300]
-    body = r.json()
+    body = server.terrain(TK, time_et.now(), {})
+    assert json.loads(json.dumps(body)) == body
     assert snap.gamma_flip is not None
     assert body["call_wall"] == snap.call_wall and body["gamma_flip"] == snap.gamma_flip
     assert not [k for k in body if k.startswith("_")]
@@ -483,7 +482,7 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
 
 
 def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_no_levels():
-    """/api/terrain serves the levels exactly as the producer published them.
+    """The terrain panel sends the levels exactly as the producer published them.
 
     None recomputed per request, the price they were computed at named `priced_at_spot` with its
     source and time, and `spot` the live price. Every relation of the price to the levels is at
@@ -494,7 +493,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     _put_chain()
     published = _cached().served()
     _daemon(price=None)  # the price is no longer live
-    out = server.get_terrain(ticker=TK)
+    out = server.terrain(TK, time_et.now(), {})
     for k in ("regime", "net_gex_at_spot", "call_wall", "headline"):
         assert out[k] == published[k], k
     for k in ("call_wall_state", "call_wall_lean", "flip_relation", "pin_candidate"):
@@ -503,7 +502,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     assert out["priced_at_spot_source"] == server.SPOT_SOURCE_PLANE
     assert out["spot"] is None and "spot_state" not in out
     _publish(_RECORDS, _T, chain_spot=(None, None))  # the next chain: no spot
-    out = server.get_terrain(ticker=TK)
+    out = server.terrain(TK, time_et.now(), {})
     assert (
         out["regime"] == "UNAVAILABLE"
         and out["call_wall"] is None

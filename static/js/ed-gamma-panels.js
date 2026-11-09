@@ -1,5 +1,5 @@
 /* Ed Console — Options/Gamma supporting panels. PRESENTATION ONLY.
-   Key Levels rail  <- GET /api/terrain      (canonical levels SSOT)
+   Key Levels rail  <- the page's socket      (the `terrain:levels` panel, the published levels)
    GEX by Strike    <- GET /api/terrain/strikes  (per-strike net_gex_1pct$)
    Strike Detail    <- GET /api/chain         (vendor per-contract OI/vol/greeks)
    Vanna / Charm    <- the page's socket      (the `vanna` / `charm` panels, per-strike net)
@@ -42,25 +42,29 @@
   };
   window.EdGammaRegime = REGIME;
 
-  // ---------- Key Levels rail ----------
-  function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
-  function loadLevelsImpl(tk, _signal) {
-    if (!stillLevelsCtx(tk)) return;
-    // shared with ed-gamma-chart.js's read of the same /api/terrain: one network call
-    var G = window.EdL1SseGuards;
-    return G.show(G.sharedFetchJson('/api/terrain?ticker=' + encodeURIComponent(tk)), '/api/terrain',
-      function (d) { if (stillLevelsCtx(tk)) renderLevels(d); },
-      function (words) { if (stillLevelsCtx(tk)) renderLevels(null, words); });
+  // ---------- Key Levels rail: the `terrain:levels` panel (server.terrain), sent on the page's
+  // socket while a Gamma tab is on, at once and each time the levels change ----------
+  var _levels, _levelsTicker = null;   // the panel as last sent for the ticker on screen
+  function loadLevels() {
+    if (!isGamma()) { window.EdShell.showPanel('terrain:levels', null); return; }
+    if (_levelsTicker !== ticker()) { _levelsTicker = ticker(); _levels = undefined; }
+    renderLevels(_levels);
+    window.EdShell.showPanel('terrain:levels', {});
   }
-  var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
-  function loadLevels() { _levelsLoader.trigger(ticker()); }
-  function renderLevels(d, failed) {   // failed: the words of a read that failed
+  document.addEventListener('ed:panel', function (e) {
+    if (e.detail.type !== 'terrain:levels') return;
+    _levels = e.detail;
+    if (isGamma()) renderLevels(_levels);
+  });
+  function renderLevels(d) {   // d: the panel as sent; undefined: none yet for this ticker
     var ids = ['klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',   // terrain's (Spot is the price row's)
       'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
-    paintPcr(d && !d.error ? d : null);
-    if (!d || d.error) {   // nothing current: no tooltip or colour of the last answer stays
+    // nothing to draw: none sent yet ('-'), the program could not produce it, or no levels yet
+    var why = d === undefined ? '-' : d.failed != null ? d.failed : d.error ? 'terrain not ready' : null;
+    paintPcr(why == null ? d : null);
+    if (why != null) {   // nothing current: no tooltip or colour of the last answer stays
       ids.forEach(function (id) { txt(id, '-'); var el = document.getElementById(id); if (el) el.style.color = ''; });
-      txt('klSrc', failed || 'terrain not ready');
+      txt('klSrc', why);
       var src0 = document.getElementById('klSrc'); if (src0) { src0.title = ''; src0.style.color = ''; }
       var klb0 = document.getElementById('klBody'); if (klb0) klb0.classList.add('recede');
       return;
@@ -111,7 +115,7 @@
     }
   }
 
-  // ---------- Put/Call OI and volume <- /api/terrain pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
+  // ---------- Put/Call OI and volume <- the terrain panel's pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
   function expiryFilter() { return window.EdShell.getExpiry(); }
   function paintPcr(d) {
     // the selected expiry, else the whole book -- both served on every terrain answer (TerrainSnapshot
@@ -479,7 +483,7 @@
   document.addEventListener('ed:changed', function (e) {
     if (e.detail.kind === 'flow') { loadOf(); return; }
     if (e.detail.kind !== 'levels') return;
-    loadLevels(); loadGbs(); loadStructures();
+    loadGbs(); loadStructures();
     var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
