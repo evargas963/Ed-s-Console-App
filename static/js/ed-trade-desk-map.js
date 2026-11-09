@@ -638,7 +638,7 @@
       'Bars: <b>' + (S.barsAnswered === S.gen && S.bars.length ? 'streamed 1m bars' : '-') + '</b>',
       'Book: <b>' + esc((m && m.provenance && m.provenance.book_source) || '-') + '</b>',
       'Levels: <b>' + esc((L && L.bar_source) || '-') + '</b>',
-      'Options: <b>' + esc(t && !why(t) ? (t.chain_basis || '-') + ' chain · ' + (t.strikes_used == null ? '-' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + ' contracts' : '-') + '</b>',
+      'Options: <b>' + esc(t && !why(t) ? (t.chain_basis == null ? '-' : t.chain_basis) + ' chain · ' + (t.strikes_used == null ? '-' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + ' contracts' : '-') + '</b>',
       'Clock: <b>Central</b>'
     ].map(function (x) { return '<span>' + x + '</span>'; }).join('');
   }
