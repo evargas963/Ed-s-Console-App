@@ -375,6 +375,10 @@ jobs:
           ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+          # the tests' files on the runner's local disk (D:), as production's databases are on
+          # its machine's own disk; the default temp is on C:, the runner's network disk
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         # pinned to nproc as in pytest-full: `-n auto` started 2 workers on this 4-core runner
         run: python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
 
@@ -387,6 +391,8 @@ jobs:
           ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: python -m pytest --durations=1 -rs -m alone
 
       - name: Upload Playwright failure traces and the E2E log
