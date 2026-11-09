@@ -56,8 +56,9 @@ WAIT_TIMEOUT = 0x102
 
 @dataclass(frozen=True)
 class Ports:
-    """The port the program's socket holds: the console's pages and routes and the page's price
-    socket (/ws).
+    """The port the program's socket holds.
+
+    It serves the console's pages and routes and the page's price socket (/ws).
     """
 
     console: int
@@ -126,9 +127,9 @@ def _holder(text: str) -> int | None:
 
 
 def stop_event_name(db_path: str | Path | None = None) -> str:
-    """The name of the stop event of the program whose lock is at owner_lock_path(`db_path`).
+    r"""Return the stop event's name for the program whose lock is at owner_lock_path(`db_path`).
 
-    In the session namespace (Local\\); the rest is a hash of the lock's whole path, so two
+    It is in the session namespace (Local\); the rest is a hash of the lock's whole path, so two
     runtimes never share a name.
     """
     lock = os.path.normcase(str(owner_lock_path(db_path).resolve()))
@@ -136,11 +137,12 @@ def stop_event_name(db_path: str | Path | None = None) -> str:
 
 
 class StopRequest:
-    """The program's stop request, made before it takes its lock (capture.main), so a program
-    whose pid the lock holds can always be asked; launch.py stop sets it (ask_to_stop).
+    """The program's stop request, which launch.py stop sets (ask_to_stop).
 
-    On Windows it is a named manual-reset event (stop_event_name), made by kernel32's
-    CreateEventW with default security: only processes of this user's logon session can open it.
+    It is made before the program takes its lock (capture.main), so a program whose pid the lock
+    holds can always be asked. On Windows it is a named manual-reset event (stop_event_name),
+    made by kernel32's CreateEventW with default security: only processes of this user's logon
+    session can open it.
     It needs no port and no secret, and set twice it stays set. Elsewhere (Linux CI) the request
     is SIGTERM to the process holding the lock, the platform's own ask to stop, taken by this
     request's handler; close restores the handler it replaced.
@@ -177,9 +179,10 @@ class StopRequest:
 
 
 def ask_to_stop(db_path: str | Path | None = None) -> None:
-    """Set the stop request (StopRequest) of the program whose lock is at owner_lock_path(
-    `db_path`). Raises OSError when there is none to set: no program runs there, or it has not
-    made its request yet.
+    """Set the stop request (StopRequest) of the program whose lock is at `db_path`'s runtime.
+
+    The lock is owner_lock_path(`db_path`). Raises OSError when there is no request to set: no
+    program runs there, or it has not made its request yet.
     """
     if _KERNEL32 is None:
         pid = _holder(owner_lock_path(db_path).read_text())  # FileNotFoundError: no lock

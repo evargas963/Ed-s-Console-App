@@ -1137,12 +1137,12 @@ STOP_WAIT_SEC = 0.25
 
 
 async def stop_on_request(stop: asyncio.Event, request: StopRequest) -> None:
-    """The one waiter on the program's stop request (program_lock.StopRequest, which launch.py
-    stop sets): once asked, it sets the program's one stop, the one Ctrl+C sets, so everything
-    held is written and the program exits EXIT_STOPPED.
+    """Wait on the program's stop request and, once asked, set the program's one stop.
 
-    It waits on its own thread, STOP_WAIT_SEC at a time, so a stop from anywhere else ends it
-    within that; a request asked twice stops it once.
+    This is the one waiter on the request (program_lock.StopRequest, which launch.py stop sets);
+    the stop it sets is the one Ctrl+C sets, so everything held is written and the program exits
+    EXIT_STOPPED. It waits on its own thread, STOP_WAIT_SEC at a time, so a stop from anywhere
+    else ends it within that; a request asked twice stops it once.
     """
     while not stop.is_set():
         if await asyncio.to_thread(request.wait, STOP_WAIT_SEC):
@@ -1448,13 +1448,14 @@ def open_sockets() -> socket.socket:
 
 
 async def run(lock_fd: int, request: StopRequest) -> int:
-    """Run the whole daemon until the stop: Ctrl+C in its window (stop_on_interrupt) or its stop
-    `request` set by launch.py stop (stop_on_request).
+    """Run the whole daemon until the stop.
 
-    Its writer, its web server, the price rows' beat, the chain sweep, the market follower, the
-    stop request's waiter and the Schwab connection each run until the stop; one that ends first
-    ends the daemon with an error naming it, which start_capture_daemon.bat restarts. The port
-    its socket holds goes in its lock (`lock_fd`), where launch.py reads it.
+    The stop is Ctrl+C in its window (stop_on_interrupt) or its stop `request` set by launch.py
+    stop (stop_on_request). Its writer, its web server, the price rows' beat, the chain sweep,
+    the market follower, the stop request's waiter and the Schwab connection each run until the
+    stop; one that ends first ends the daemon with an error naming it, which
+    start_capture_daemon.bat restarts. The port its socket holds goes in its lock (`lock_fd`),
+    where launch.py reads it.
     """
     pages = open_sockets()
     record_ports(lock_fd, Ports(console=pages.getsockname()[1]))

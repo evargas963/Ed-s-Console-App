@@ -543,9 +543,10 @@ def test_a_repeated_add_an_unlisted_removal_and_an_add_with_no_sign_in_change_no
 
 
 def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
-    """Two adds of TSLA in flight together (a request sent twice): each is checked with Schwab's
-    /quotes, the first answer adds it, and the other, finding it added during its check, is
-    answered ON_LIST; the list holds TSLA once.
+    """Two adds of TSLA in flight together (a request sent twice): the list holds TSLA once.
+
+    Each is checked with Schwab's /quotes, the first answer adds it, and the other, finding it
+    added during its check, is answered ON_LIST.
     """
     schwab = LocalSchwab("ws://127.0.0.1:1")  # REST only: no stream connection is opened
     bus = MessageBus()

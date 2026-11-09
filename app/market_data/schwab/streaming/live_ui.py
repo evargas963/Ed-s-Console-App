@@ -266,11 +266,11 @@ async def serve_live_ui(
     record_heartbeat=lmp.record_feed_heartbeat,
     clock=time_et.now,
 ) -> None:
-    """Serve the pages' price socket (page_socket) until `stop` is set: the price server is the
-    web server's app `state.prices` while it serves, None before and after.
+    """Serve the pages' price socket (page_socket) until `stop` is set.
 
-    Each beat is recorded with `record_heartbeat` (the daemon's own plane). The pages' connections
-    end with the program's web server (capture.serve_console).
+    The price server is the web server's app `state.prices` while it serves, None before and
+    after. Each beat is recorded with `record_heartbeat` (the daemon's own plane). The pages'
+    connections end with the program's web server (capture.serve_console).
     """
     stats = stats if stats is not None else {}
     srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock)
