@@ -1,5 +1,6 @@
-"""Static assets must force browser revalidation (Cache-Control: no-cache), not rely on
-heuristic caching. MEASURED (2026-09-11): a browser served a stale ed-gamma.js across
+"""Static assets must force browser revalidation (Cache-Control: no-cache).
+
+Not rely on heuristic caching. MEASURED (2026-09-11): a browser served a stale ed-gamma.js across
 three full navigations after a real code change + server restart, with zero requests
 reaching the server for that file -- a plain StaticFiles mount sends no Cache-Control at
 all. ETag/Last-Modified still make an unchanged file a cheap 304 under no-cache; this

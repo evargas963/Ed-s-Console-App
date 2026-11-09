@@ -1,6 +1,7 @@
-"""The price is one row, built by the capture daemon from its plane (live_price_rows.price_row),
-pushed to the browser (live_ui.py, the page's socket) and read by the console in the same
-program: a price on screen and a price in a console calculation are the same value.
+"""The price is one row: on screen and in a console calculation it is the same value.
+
+The row is built by the capture daemon from its plane (live_price_rows.price_row), pushed to the
+browser (live_ui.py, the page's socket) and read by the console in the same program.
 """
 
 from __future__ import annotations
@@ -17,8 +18,10 @@ from tests.feed_live_helper import daemon_status
 
 
 def test_a_symbol_the_daemon_does_not_hold_keeps_the_last_price_and_is_not_live() -> None:
-    """The Schwab socket is open but the symbol is not held (docs/DATA_FLOW.md §2 D5): the last
-    price stands, the row is not live, and it names the outage, the market open or closed.
+    """The Schwab socket is open but the symbol is not held (docs/DATA_FLOW.md §2 D5).
+
+    The last price stands, the row is not live, and it names the outage, the market open or
+    closed.
     """
     try:
         for now in (1790780400.0, 1790820000.0):  # 11:00 ET, 22:00 ET
@@ -36,9 +39,10 @@ def test_a_symbol_the_daemon_does_not_hold_keeps_the_last_price_and_is_not_live(
 
 
 def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy() -> None:
-    """Measured 2026-09-28: the console's spot differed from the header's in 25 of 200
-    same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages. Real TSLA
-    quote as Schwab sent it (tests/fixtures/real_equity_book.json), received now.
+    """Measured 2026-09-28: the console's spot differed from the header's in 25 of 200 checks.
+
+    Those were same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages.
+    Real TSLA quote as Schwab sent it (tests/fixtures/real_equity_book.json), received now.
     """
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8")

@@ -1,6 +1,5 @@
-"""
-liquidity_models.py — Data models for Liquidity & Value Playbook Engine
-========================================================================
+"""liquidity_models.py — Data models for Liquidity & Value Playbook Engine.
+
 Enums and dataclasses for structural snapshots, zones, and price levels.
 Ticker-agnostic; works for any instrument.
 """
@@ -36,11 +35,12 @@ MAX_BINS_PER_BAR: int = 5000
 
 @dataclass(frozen=True)
 class VolumeProfile:
-    """Volume by price from bars, each bar's volume spread evenly over its [low, high] in tick
-    bins -- a derived distribution from 1-minute bars, not traded volume at a price from trade
-    prints -- and the value area read from it. `bins`: ((price, volume), ...) in price order.
-    `bars`: the bars given; `bars_without_volume`: those Schwab sent with no volume, which the
-    profile cannot place and does not contain.
+    """Volume by price from bars, each bar's volume spread evenly over its [low, high].
+
+    Spread in tick bins -- a derived distribution from 1-minute bars, not traded volume at a
+    price from trade prints -- and the value area read from it. `bins`: ((price, volume), ...)
+    in price order. `bars`: the bars given; `bars_without_volume`: those Schwab sent with no
+    volume, which the profile cannot place and does not contain.
     """
 
     tick_size: float
@@ -58,9 +58,10 @@ def volume_profile(
     tick_size: float = 0.01,
     ndigits: int = 4,
 ) -> VolumeProfile | None:
-    """The volume profile built by DISTRIBUTING each bar across [low, high], with its POC and
-    value area; None when no usable volume exists -- absence reads as absence, never a
-    fabricated level.
+    """Return the volume profile built by DISTRIBUTING each bar across [low, high].
+
+    It comes with its POC and value area; None when no usable volume exists -- absence reads as
+    absence, never a fabricated level.
 
     Bins are addressed by INTEGER index (round(price / tick_size)) so that binning is exact:
     accumulating float bin prices as dict keys lets 724.9999999 and 725.0 become two bins for

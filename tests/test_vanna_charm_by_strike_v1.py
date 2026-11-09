@@ -1,5 +1,6 @@
-"""/api/options/vanna-by-strike and /api/options/charm-by-strike (operator field-inventory
-audit, 2026-09-13): both wrap ALREADY-canonical, already-tested faucets --
+"""/api/options/vanna-by-strike and /api/options/charm-by-strike.
+
+Operator field-inventory audit, 2026-09-13: both wrap ALREADY-canonical, already-tested faucets --
 math_exposure_core.compute_exposures_by_strike's own call_vanna/put_vanna (RC-211's exact
 BS-vanna faucet) and math_levels.compute_charm_by_strike (the same function /api/forces's
 charm_below/charm_above already sum) -- read off the snapshot _publish_levels last

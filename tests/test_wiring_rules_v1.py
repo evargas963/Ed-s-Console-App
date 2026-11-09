@@ -1,5 +1,6 @@
-"""tools/wiring_rules.py: the operator's three rules reach the agent on every message he sends, run
-as `.claude/settings.json` wires it.
+"""tools/wiring_rules.py: the operator's three rules reach the agent on every message he sends.
+
+Run as `.claude/settings.json` wires it.
 """
 
 from __future__ import annotations

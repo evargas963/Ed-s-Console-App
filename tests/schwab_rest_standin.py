@@ -1,5 +1,7 @@
-"""Schwab's REST host, played by a local server, for tests that run the daemon's chain sweep through
-the real schwab-py client (schwab_client.client_from_token_file_atomic, as the daemon builds it).
+"""Schwab's REST host, played by a local server.
+
+For tests that run the daemon's chain sweep through the real schwab-py client
+(schwab_client.client_from_token_file_atomic, as the daemon builds it).
 
 It answers the expiration chain (each ticker's captured expiry, and PASSED, which has passed), the
 chain of a captured expiry in Schwab's chain shape, the quotes of the symbols asked for from the
@@ -115,7 +117,7 @@ INVALID_TOKEN = (
 
 
 def chain_payload(ticker: str) -> dict:
-    """The captured chain in Schwab's chain shape."""
+    """Return the captured chain in Schwab's chain shape."""
     expiry, contracts, spot = CHAINS[ticker]
     out = {
         "symbol": ticker,
@@ -134,8 +136,10 @@ def chain_payload(ticker: str) -> dict:
 
 
 class LocalSchwab:
-    """The local server, on HTTP/1.1. `quotes_status`: the quotes endpoint's answer while not 200;
-    `quotes_body`: while set, the quotes endpoint answers 200 with these bytes as its body;
+    """The local server, on HTTP/1.1.
+
+    `quotes_status`: the quotes endpoint's answer while not 200; `quotes_body`: while set, the
+    quotes endpoint answers 200 with these bytes as its body;
     `refuse_chain`: tickers whose next chain request is answered 502; `throttle_chain`: tickers
     whose next chain request is answered 429; `withheld`: symbols the
     quotes answer leaves out; `invalid`: SPY contracts (their /chains entries) served in SPY's
@@ -315,18 +319,19 @@ class LocalSchwab:
         return 200, answer
 
     def asked(self, path: str) -> list[dict]:
-        """The query of each request to `path`, in order."""
+        """Return the query of each request to `path`, in order."""
         return [q for p, q, *_ in self.requests if p == path]
 
     def client(self, tmp_path, expires_in_sec: float = 3600):
-        """The daemon's client, its requests delivered here, from token_file's file."""
+        """Return the daemon's client, its requests delivered here, from token_file's file."""
         return self.delivering_here(
             sc.client_from_token_file_atomic(self.token_file(tmp_path, expires_in_sec), "k", "s")
         )
 
     def delivering_here(self, client):
-        """`client`, every request it sends delivered here instead of Schwab's host, the token
-        refresh included (schwab-py and the token endpoint name that host themselves).
+        """`client`, every request it sends delivered here instead of Schwab's host.
+
+        The token refresh included (schwab-py and the token endpoint name that host themselves).
         """
         port = self.server.server_address[1]
 
@@ -337,9 +342,10 @@ class LocalSchwab:
         return client
 
     def token_file(self, tmp_path, expires_in_sec: float = 3600) -> str:
-        """A token file (tmp_path / schwab_token.json) whose token expires in `expires_in_sec` (far
-        from expiry by default), saved whole as every writer of it saves one
-        (sc.write_token_file_atomically).
+        """Write a token file (tmp_path / schwab_token.json) expiring in `expires_in_sec`.
+
+        Its token is far from expiry by default; it is saved whole as every writer of it saves
+        one (sc.write_token_file_atomically).
         """
         tok = tmp_path / "schwab_token.json"
         sc.write_token_file_atomically(
@@ -362,7 +368,7 @@ class LocalSchwab:
 
 
 def delivered(published: list, ticker: str) -> dict[str, dict]:
-    """The ticker's contracts in the chain the sweep published, by symbol."""
+    """Return the ticker's contracts in the chain the sweep published, by symbol."""
     return {
         ct["symbol"]: ct
         for topic, msg in published

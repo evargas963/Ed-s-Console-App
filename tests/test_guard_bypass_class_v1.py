@@ -1,6 +1,7 @@
-"""Guard bypass class — mandatory controls are not subject-disableable: an acting agent
-cannot switch off its own guards. The test runs the real hook process with the prohibited
-action and requires it to refuse.
+"""Guard bypass class — mandatory controls are not subject-disableable.
+
+An acting agent cannot switch off its own guards. The test runs the real hook process with the
+prohibited action and requires it to refuse.
 """
 
 from __future__ import annotations

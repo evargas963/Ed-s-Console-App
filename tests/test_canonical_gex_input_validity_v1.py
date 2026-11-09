@@ -43,8 +43,9 @@ def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0):
 
 
 def _gamma(gamma, iv):
-    """INDUCED: SPY's real same-day contract of 2026-10-07 (tests/real_chains.py) with this gamma
-    and volatility: the gamma the one reader takes from it.
+    """INDUCED: SPY's real same-day contract of 2026-10-07 with this gamma and volatility.
+
+    The contract is from tests/real_chains.py. Returns the gamma the one reader takes from it.
     """
     return read_contract({**SPY_0DTE.chain[0], "gamma": gamma, "volatility": iv}).gamma
 
@@ -62,9 +63,10 @@ def test_schwabs_no_value_code_is_not_a_number():
 
 
 def test_a_no_value_contract_leaves_its_leg_and_the_strikes_net_unknown():
-    """A put with open interest and no value: the put leg's sums and the strike's net are not
-    known (the call's GEX is not the strike's net); the call leg stands. Open interest 0 adds a
-    known 0 whatever its Greeks.
+    """A put with open interest and no value: the put leg's sums and the strike's net are unknown.
+
+    The call's GEX is not the strike's net; the call leg stands. Open interest 0 adds a known 0
+    whatever its Greeks.
     """
     none = _ct(100.0, "PUT", 700, iv=SCHWAB_NO_VALUE)
     call = _ct(100.0, "CALL", 500, gamma=0.04)
@@ -80,8 +82,9 @@ def test_a_no_value_contract_leaves_its_leg_and_the_strikes_net_unknown():
 
 
 def test_real_spy_capture_is_used_as_schwab_sent_it():
-    """SPY's same-day chain of 2026-10-07 12:32 ET (tests/real_chains.py), as Schwab sent it,
-    valued at its capture: the in-the-money 767-769 calls report delta 1 / gamma 0 and count as
+    """SPY's same-day chain of 2026-10-07 12:32 ET (tests/real_chains.py), as Schwab sent it.
+
+    Valued at its capture: the in-the-money 767-769 calls report delta 1 / gamma 0 and count as
     reported; the 777 strike's call and put gamma are Schwab's own times open interest.
     """
     exp, diag = compute_exposures_by_strike(

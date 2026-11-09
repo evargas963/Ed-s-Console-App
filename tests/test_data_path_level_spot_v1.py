@@ -14,7 +14,9 @@ from time_et import ET
 
 
 def test_a_down_price_marks_the_levels_and_the_wall_stays():
-    """The chain is current, so the levels are not stale. The equity feed is down, so the rail
+    """The chain is current, so the levels are not stale.
+
+    The equity feed is down, so the rail
     is told the price they were built from has stopped. The wall is the last one published
     (CRWD's real chain, published by the one producer as fetched then, valued at its capture).
     Served in regular hours (RTH_INSTANT).

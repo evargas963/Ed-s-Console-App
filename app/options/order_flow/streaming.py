@@ -1,5 +1,6 @@
-"""
-The console's live-plane feed for every watchlist ticker: it reads the capture daemon's one bus
+"""The console's live-plane feed for every watchlist ticker.
+
+It reads the capture daemon's one bus
 (app.market_data.schwab.streaming.capture), in the same program. It opens no Schwab connection:
 the daemon holds the one Schwab socket and is the one producer.
 
@@ -53,8 +54,9 @@ log = logging.getLogger(__name__)
 
 
 def price_row(ticker: str, now: float) -> dict:
-    """`ticker`'s price row at `now`: the daemon's one row (live_price_rows.price_row), the one
-    the browser reads.
+    """Return `ticker`'s price row at `now`.
+
+    It is the daemon's one row (live_price_rows.price_row), the one the browser reads.
     """
     return live_price_rows.price_row(ticker, now)
 
@@ -62,10 +64,11 @@ def price_row(ticker: str, now: float) -> dict:
 def price_state(
     ticker: str, now: float, service: str = "LEVELONE_EQUITIES"
 ) -> tuple[str, str | None]:
-    """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`: the one live
-    rule (live_market_plane.live_state) on that service while it is not LIVE (the feed down, the
-    symbol not held, its market not trading); while it is LIVE, the quote's own state, which
-    alone holds Schwab's SECURITY_STATUS.
+    """Return `ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`.
+
+    It is the one live rule (live_market_plane.live_state) on that service while it is not LIVE
+    (the feed down, the symbol not held, its market not trading); while it is LIVE, the quote's
+    own state, which alone holds Schwab's SECURITY_STATUS.
     """
     label, why = _lmp.live_state(ticker, service, now)
     if label != _lmp.LIVE:
@@ -86,10 +89,12 @@ WATCHLIST_ANSWER_SEC = 30.0
 
 
 async def watchlist_request(action: str, ticker: str) -> dict:
-    """An add or a removal ("add" | "remove") of `ticker`, sent to the daemon, which keeps the
-    watchlist; its record once the daemon has answered (capture.watchlist_message: the list, what
-    happened, Schwab's /quotes answer to an add's check). Raises ConnectionError while no daemon
-    runs in this program, TimeoutError when no record comes in WATCHLIST_ANSWER_SEC.
+    """Send an add or a removal ("add" | "remove") of `ticker` to the daemon.
+
+    The daemon keeps the watchlist; this returns its record once the daemon has answered
+    (capture.watchlist_message: the list, what happened, Schwab's /quotes answer to an add's
+    check). Raises ConnectionError while no daemon runs in this program, TimeoutError when no
+    record comes in WATCHLIST_ANSWER_SEC.
     """
     if _daemon is None:
         raise ConnectionError("no capture daemon runs in this program")
@@ -105,8 +110,10 @@ async def watchlist_request(action: str, ticker: str) -> dict:
 
 
 async def select_flow_contract(contract: str | None) -> None:
-    """The Flow panel's selection (None: none), told to the daemon, which keeps it
-    (capture.Daemon.flow_contract) and streams it on both option services on top of its rule.
+    """Tell the daemon the Flow panel's selection (None: none).
+
+    The daemon keeps it (capture.Daemon.flow_contract) and streams it on both option services on
+    top of its rule.
     """
     if _daemon is not None:
         _daemon.console_frame({"op": "flow_contract", "contract": contract})
@@ -140,8 +147,9 @@ _chain_parts: dict[str, dict] = {}
 def assemble_chain_part(
     msg: dict,
 ) -> list[tuple[str, list | None, float, str | None, tuple | None]]:
-    """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it
-    settles, in order: a chain whose parts did not all arrive before the next one began
+    """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it settles.
+
+    In order: a chain whose parts did not all arrive before the next one began
     (ticker, None, ts, reason, None); a fetch that failed (ticker, None, ts, Schwab's answer, None);
     the whole chain once its last part is in (ticker, contracts, fetched_ts, None, (spot, spot_ts)),
     with the chain's one spot and its trade time. A chain missing a part is never returned.
@@ -205,9 +213,10 @@ def _tick(sym: str, ts: float) -> None:
 
 
 def _service_feed(symbol: str, service: str, now: float) -> dict:
-    """One Schwab option service's feed for contract `symbol` at `now`, as the page shows it: its
-    state by the one live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and how
-    long ago the daemon last received anything on that service (its own report).
+    """One Schwab option service's feed for contract `symbol` at `now`, as the page shows it.
+
+    Its state by the one live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and
+    how long ago the daemon last received anything on that service (its own report).
     """
     status = _lmp.daemon_status(now)
     reports = status.get("health") if status is not None else None
@@ -320,11 +329,12 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
 
 
 async def _bus_loop(bus) -> None:
-    """Every Schwab record on the daemon's bus, as it changes, applied the moment it does
-    (_ingest_pushed): the console runs in the daemon's program and reads its one bus, no copy
-    sent over a socket. A chain's record is its parts, in order. Each record handed over yields,
-    so a burst of them never holds the loop: the daemon's status beat and every route take a
-    turn.
+    """Every Schwab record on the daemon's bus, as it changes, applied the moment it does.
+
+    Applied by _ingest_pushed: the console runs in the daemon's program and reads its one bus,
+    no copy sent over a socket. A chain's record is its parts, in order. Each record handed over
+    yields, so a burst of them never holds the loop: the daemon's status beat and every route
+    take a turn.
     """
     sub = bus.subscribe("", policy=LATEST)
     try:
@@ -340,8 +350,9 @@ async def _bus_loop(bus) -> None:
 
 
 async def _beat_loop() -> None:
-    """Every HEARTBEAT_SEC, the daemon's status beat (live_ui, the one record of whether the
-    daemon and Schwab are live): the console restamps what is live.
+    """Every HEARTBEAT_SEC, the daemon's status beat: the console restamps what is live.
+
+    The beat is live_ui's, the one record of whether the daemon and Schwab are live.
     """
     while _feed_running:
         await asyncio.sleep(HEARTBEAT_SEC)
@@ -355,9 +366,11 @@ SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 
 def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> dict[str, Any]:
-    """Whether the daemon streams `for_contract` and is receiving it at `now`, distinct from the
-    book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
-    from the symbols on the latest beat), and each feed by the one live rule
+    """Whether the daemon streams `for_contract` and is receiving it at `now`.
+
+    This is distinct from the book's own content ages (options_live_payload): its subscription
+    (SUBSCRIBED / NOT STREAMED, from the symbols on the latest beat), and each feed by the one
+    live rule
     (live_market_plane.live_state). A missing beat keeps that last subscription.
     The feed health says whether it is live. The page paints ACTIVE only while that feed is live.
     """
@@ -380,14 +393,15 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
 
 
 def _feed_changed(now: float) -> None:
-    """The daemon's heartbeat changed: the console restamps what is live."""
+    """Restamp what is live in the console: the daemon's heartbeat changed."""
     if _on_feed_callback is not None:
         _on_feed_callback(now)
 
 
 def bind_daemon(daemon) -> None:
-    """The capture daemon this console runs in (capture.run, before the web server starts): its
-    bus is the console's one source, and its requests go to it.
+    """Bind the capture daemon this console runs in (capture.run, before the web server starts).
+
+    Its bus is the console's one source, and its requests go to it.
     """
     global _daemon
     _daemon = daemon
@@ -398,8 +412,9 @@ def start_order_flow_stream(
     on_chain_callback: Callable[..., None] | None = None,
     on_feed_callback: Callable[[float], None] | None = None,
 ) -> bool:
-    """Start reading the daemon's bus (bind_daemon) on the event loop; False when no daemon
-    runs in this program.
+    """Start reading the daemon's bus (bind_daemon) on the event loop.
+
+    False when no daemon runs in this program.
     """
     global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback
     if _daemon is None:
@@ -424,8 +439,9 @@ async def _run_feed(bus) -> None:
 
 
 def stop_order_flow_stream() -> None:
-    """Clear the live state the feed fed and cancel its task; the task logs FEED_LOOP_STOP_DONE
-    when it ends.
+    """Clear the live state the feed fed and cancel its task.
+
+    The task logs FEED_LOOP_STOP_DONE when it ends.
     """
     global _feed_running, _feed_task
     _feed_running = False

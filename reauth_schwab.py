@@ -1,5 +1,5 @@
-"""
-Schwab OAuth reauth script.
+"""Schwab OAuth reauth script.
+
 Run: python reauth_schwab.py  (or: python -m reauth_schwab)
 
 1. Deletes the existing token file (if present)

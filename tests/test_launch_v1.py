@@ -1,5 +1,7 @@
-"""The launcher (launch.py): the commit check before a start; and the start and the clean stop of
-the one program, at the ports it wrote in its lock.
+"""The launcher (launch.py).
+
+The commit check before a start; and the start and the clean stop of the one program, at the
+ports it wrote in its lock.
 
 Before it starts the program it brings the checkout to origin/main: local changes leave it where
 it is, the check refused; an origin out of reach, or a git that does not answer, leaves the check
@@ -45,7 +47,7 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 def _merge(work: Path, name: str) -> str:
-    """A commit merged on origin's main; its id."""
+    """Merge a commit on origin's main; return its id."""
     (work / name).write_text(name, encoding="utf-8")
     _git(work, "add", name)
     _git(work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", name)
@@ -93,15 +95,17 @@ def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp
 
 @windows_only
 def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_it(tmp_path):
-    """The real start_capture_daemon.bat and launch.py in a folder of their own, with a virtual
-    environment beside them (no Schwab token, no origin to fetch, ports the system picks as the
-    program binds them). `python launch.py` starts the one program in its window, reads the ports
-    it wrote in its lock, waits for its pages to answer /api/health and opens the default browser
-    at them; run again while it runs, it does not run the commit check
+    """The real start_capture_daemon.bat and launch.py in a folder of their own.
+
+    With a virtual environment beside them (no Schwab token, no origin to fetch, ports the
+    system picks as the program binds them). `python launch.py` starts the one program in its
+    window, reads the ports it wrote in its lock, waits for its pages to answer /api/health and
+    opens the default browser at them; run again while it runs, it does not run the commit check
     and opens the browser at the same pages. `python launch.py stop` ends the program, and its
     pages end with it: one program. Induced test condition: the default browser is a Python of
     this test's own (the BROWSER setting Python's webbrowser reads) that writes down the address
-    it is given."""
+    it is given.
+    """
     home = tmp_path / "checkout"
     home.mkdir()
     for name in ("launch.py", "start_capture_daemon.bat"):
@@ -127,8 +131,11 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
     stream_db = tmp_path / "data" / "stream_capture.db"  # the program's lock is beside it
 
     def launcher(*args: str) -> subprocess.CompletedProcess:
-        """`python launch.py *args`, its output to files: the program's window inherits the
-        launcher's handles, so a pipe would stay open as long as the program runs."""
+        """`python launch.py *args`, its output to files.
+
+        The program's window inherits the launcher's handles, so a pipe would stay open as long
+        as the program runs.
+        """
         out, err = tmp_path / "launcher.out", tmp_path / "launcher.err"
         with out.open("w", encoding="utf-8") as o, err.open("w", encoding="utf-8") as e:
             done = subprocess.run(

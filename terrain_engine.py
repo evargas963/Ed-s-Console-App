@@ -207,8 +207,10 @@ class TerrainSnapshot:
     computed_ts_utc: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """The per-poll payload: every field except the heavy maps (profile, per_strike,
-        books, charm_by_strike), which the server reads off the snapshot.
+        """Return the per-poll payload.
+
+        It holds every field except the heavy maps (profile, per_strike, books,
+        charm_by_strike), which the server reads off the snapshot.
         """
         light = replace(self, **{n: None for n in _HEAVY_FIELDS})
         return {k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS}
@@ -238,8 +240,9 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
 
 
 def side_total(values: list[float | None]) -> float | None:
-    """A total of strikes: unknown with a strike not known or no strike at all, never the sum of
-    the rest.
+    """Return a total of strikes.
+
+    Unknown with a strike not known or no strike at all, never the sum of the rest.
     """
     return None if not values or None in values else sum(values)
 
@@ -279,8 +282,10 @@ MIGRATION_DRIFT_STRIKES = 0.15
 
 
 def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict:
-    """Day-over-day positioning for one DTE scope, from GEX-by-strike rows
-    [strike, net_gex_1pct$, volume] of today and of the prior capture.
+    """Return day-over-day positioning for one DTE scope.
+
+    It is built from GEX-by-strike rows [strike, net_gex_1pct$, volume] of today and of the
+    prior capture.
 
     rows: [strike, gex today, gex prior, change] (None where either day has no value); drift:
     the positive-gamma-weighted strike today against the prior day, UP / DOWN / FLAT (None
@@ -343,8 +348,9 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
 
 
 def nearest_strike(strikes, spot) -> float | None:
-    """The listed strike nearest `spot` (the lower one on a tie): the row every panel marks as
-    spot. None without a spot or a strike.
+    """Return the listed strike nearest `spot` (the lower one on a tie).
+
+    It is the row every panel marks as spot. None without a spot or a strike.
     """
     ks = sorted(float(k) for k in strikes)
     if spot is None or not ks:
@@ -358,11 +364,13 @@ SCOPE_ROWS = {"auto": 11, "wider": 23}
 
 
 def strike_window(strikes, centre, scope: str, shift: int = 0) -> tuple[int, int, float | None]:
-    """The rows a per-strike panel shows, for every panel and the heatmap alike: (first index,
-    last index, the centre strike) into `strikes` (ascending). `scope`'s count of strikes centred
-    on the listed strike nearest `centre` (the operator's panned strike, else the price) moved
-    `shift` rows (a drag), held inside the list; every strike for "all"; the middle of the list
-    when there is no centre (no price). (0, -1, None) for no strikes.
+    """Return the rows a per-strike panel shows, for every panel and the heatmap alike.
+
+    They are (first index, last index, the centre strike) into `strikes` (ascending).
+    `scope`'s count of strikes centred on the listed strike nearest `centre` (the operator's
+    panned strike, else the price) moved `shift` rows (a drag), held inside the list; every
+    strike for "all"; the middle of the list when there is no centre (no price). (0, -1, None)
+    for no strikes.
     """
     ks = [float(k) for k in strikes]
     if not ks:
@@ -380,8 +388,10 @@ def strike_window(strikes, centre, scope: str, shift: int = 0) -> tuple[int, int
 def chain_ladder(
     contracts: list[OptionContract], spot, shown: list[dict]
 ) -> tuple[list[dict], int]:
-    """One expiry's chain as the ladder draws it, and how many contracts it could not place (no
-    strike, or a putCall other than CALL/PUT). Strikes high to low; per strike one row per listed
+    """Return one expiry's chain as the ladder draws it, and how many contracts it could not place.
+
+    A contract it cannot place has no strike, or a putCall other than CALL/PUT. Strikes high to
+    low; per strike one row per listed
     contract index (a second contract at one strike and side gets its own row), each contract as
     `shown` (option_contract.chain_row, in the order of `contracts`); `call_itm` / `put_itm`
     against `spot` (None without one); `spot` marks the first row of the strike nearest spot.
@@ -415,7 +425,7 @@ def chain_ladder(
 def compute_wall_value_area(
     exposures: dict, wall: float | None, side: str, frac: float = 0.682
 ) -> dict | None:
-    """The wall's EARNED range — Market-Profile value-area math on SIDE gamma mass.
+    """Compute the wall's EARNED range — Market-Profile value-area math on SIDE gamma mass.
 
     THE STANDARD, named: the Value Area algorithm (CQG-documented, the Market/Volume Profile
     industry method) — start at the point of control and expand one strike at a time toward
@@ -465,12 +475,13 @@ def compute_wall_value_area(
 def atm_sigma_by_expiry(
     contracts: list[OptionContract], spot: float
 ) -> dict[tuple[str, float | None], float | None]:
-    """Each expiry's ATM implied vol as a fraction, keyed like exposure_books ((expiry, days to
-    expiry)): the mean of the call and the put IV, each at its side's strike nearest
-    spot. Both legs or None: one side's IV never stands in for the mean,
-    and a leg whose nearest contract has no IV from Schwab (-999, or 0: no sigma) has none --
-    the next strike's IV never stands in for it. Schwab `volatility` is a percent, converted by
-    schwab_iv_to_sigma.
+    """Return each expiry's ATM implied vol as a fraction, keyed like exposure_books.
+
+    The key is (expiry, days to expiry). The value is the mean of the call and the put IV, each
+    at its side's strike nearest spot. Both legs or None: one side's IV never stands in for the
+    mean, and a leg whose nearest contract has no IV from Schwab (-999, or 0: no sigma) has
+    none -- the next strike's IV never stands in for it. Schwab `volatility` is a percent,
+    converted by schwab_iv_to_sigma.
     """
     legs: dict[tuple[str, float | None], dict[str, tuple[float, float | None]]] = {}
     for c in contracts:
@@ -491,7 +502,7 @@ def atm_sigma_by_expiry(
 def compute_implied_one_day_move(
     contracts: list[OptionContract], spot: float | None
 ) -> dict | None:
-    """The institutional sigma band: EM_1d = S x sigma_ATM x sqrt(1/252).
+    """Compute the institutional sigma band: EM_1d = S x sigma_ATM x sqrt(1/252).
 
     THE STANDARD, named: SpotGamma — whose levels product ships on Bloomberg — treats the
     wall as a single strike, the RANGE as the put-wall-to-call-wall corridor, and overlays
@@ -533,10 +544,11 @@ def compute_implied_one_day_move(
 
 
 def _per_strike_measure_rows(exposures: dict) -> dict:
-    """`{"dex": [[strike, net DEX $], …], "oi": [[strike, total OI], …]}`: every strike whose value
-    is known, by the heatmap cell's own readers (net_dex_dollars of a dollarized book;
-    strike_total_oi). Open interest keeps every digit; the screen rounds the count. A strike
-    whose value is unknown has no row.
+    """`{"dex": [[strike, net DEX $], …], "oi": [[strike, total OI], …]}` per known strike.
+
+    Every strike whose value is known, by the heatmap cell's own readers (net_dex_dollars of a
+    dollarized book; strike_total_oi). Open interest keeps every digit; the screen rounds the
+    count. A strike whose value is unknown has no row.
     """
     dex: list[list] = []
     oi: list[list] = []
@@ -557,11 +569,12 @@ def _per_strike_measure_rows(exposures: dict) -> dict:
 
 
 def per_strike_view(books: dict, exposures: dict) -> dict:
-    """`{all, near, far}` GEX rows -- the ALL / <=7DTE / MONTHLY+ chips -- from the chain's
-    exposure_books and their merged full book `exposures` (one pricing pass), and the full
-    book's DEX and OI rows (`dex`, `oi`: _per_strike_measure_rows). A contract whose
-    days-to-expiry cannot be read belongs to `all` only: a maturity split it cannot answer is
-    not answered for it.
+    """`{all, near, far}` GEX rows -- the ALL / <=7DTE / MONTHLY+ chips -- and DEX and OI rows.
+
+    The GEX rows come from the chain's exposure_books and their merged full book `exposures`
+    (one pricing pass), and the full book's DEX and OI rows (`dex`, `oi`:
+    _per_strike_measure_rows). A contract whose days-to-expiry cannot be read belongs to `all`
+    only: a maturity split it cannot answer is not answered for it.
     """
 
     def rows(keep) -> list:
@@ -584,11 +597,12 @@ WALL_CONTAINS, WALL_BREACHED = "contains", "breached"
 
 
 def wall_geometry_state(spot: float | None, wall: float | None, side: str) -> str | None:
-    """Whether this wall is in the configuration its support/resistance label claims, by
-    level_side: WALL_CONTAINS = a call wall above the price / a put wall below it, the only
-    geometry in which dealer-hedging containment language is true; WALL_BREACHED = the price at or
-    through the wall (a wall at the price contains nothing). None when the wall or the price is
-    unknown.
+    """Tell whether this wall is in the configuration its support/resistance label claims.
+
+    By level_side: WALL_CONTAINS = a call wall above the price / a put wall below it, the only
+    geometry in which dealer-hedging containment language is true; WALL_BREACHED = the price at
+    or through the wall (a wall at the price contains nothing). None when the wall or the price
+    is unknown.
     """
     where = level_side(wall, spot)
     if where is None:
@@ -622,10 +636,11 @@ PRICE_RELATIONS = frozenset(f.name for f in fields(PriceRelations))
 
 
 def price_relations(terrain: dict, price: float | None) -> PriceRelations:
-    """Every relation of `price` to the published levels (`terrain`, a snapshot's to_dict): each
-    wall's state and lean, the price's side of the flip, the pin candidate and the read's lines.
-    The levels are the publication's; the price is the one given, the live price on every route.
-    A level's distance from the price is served with the level (/api/levels).
+    """Return every relation of `price` to the published levels (`terrain`, a snapshot's to_dict).
+
+    Each wall's state and lean, the price's side of the flip, the pin candidate and the read's
+    lines. The levels are the publication's; the price is the one given, the live price on
+    every route. A level's distance from the price is served with the level (/api/levels).
     """
     call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
     call_lean, put_lean = wall_lean(call, put, price, terrain["regime"], terrain["confidence"])
@@ -661,10 +676,12 @@ def price_relations(terrain: dict, price: float | None) -> PriceRelations:
 
 
 def wall_lean(call_wall, put_wall, price, regime, confidence) -> tuple:
-    """(call, put) wall labels as the chart states them at `price`: one strike holding both walls
-    is TWO-SIDED (a magnet, not a barrier); a breached wall says where the price is (above, at or
-    below it); a containing wall earns the dealer lean (resistance: dealers sell, support: dealers
-    buy) only on a TRUSTED flip with a regime; otherwise None.
+    """(call, put) wall labels as the chart states them at `price`.
+
+    One strike holding both walls is TWO-SIDED (a magnet, not a barrier); a breached wall says
+    where the price is (above, at or below it); a containing wall earns the dealer lean
+    (resistance: dealers sell, support: dealers buy) only on a TRUSTED flip with a regime;
+    otherwise None.
     """
     if call_wall is not None and call_wall == put_wall:
         return ("TWO-SIDED — magnet, not a barrier",) * 2
@@ -700,8 +717,9 @@ def qualify_pin_candidate(
     net_gex_at_spot: float | None,
     front_dte: float | None,
 ) -> tuple[float | None, list[str]]:
-    """Publish `pin_candidate` ONLY after regime, proximity,
-    DTE, liquidity and completeness qualification.
+    """Publish `pin_candidate` ONLY after qualification.
+
+    The qualification is regime, proximity, DTE, liquidity and completeness.
 
     The raw absolute-gamma strike is a gross gamma concentration — a pin CANDIDATE input,
     never a demonstrated magnet (magnitude sizes the hedging flow; the unobservable
@@ -786,8 +804,10 @@ def same_day_levels(
     now: datetime,
     held_charm: dict | None = None,
 ) -> dict[str, float | None]:
-    """Nearest listed expiry, its open interest and implied volatility kept, gamma and
-    delta rebuilt to today's option close for this ticker. Every ticker, one function.
+    """Return the nearest listed expiry, rebuilt to today's option close for this ticker.
+
+    Its open interest and implied volatility are kept, gamma and delta rebuilt to today's option
+    close for this ticker. Every ticker, one function.
     Absent when that close is not held or has passed, or the chain has no expiry left.
     Charm walls of a front expiry that settles today are that expiry's map. A later front
     expiry is repriced to today's close, one call.

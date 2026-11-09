@@ -1,6 +1,5 @@
-"""
-liquidity_value_engine.py — Liquidity & Value Playbook Engine
-============================================================
+"""liquidity_value_engine.py — Liquidity & Value Playbook Engine.
+
 Deterministic institutional intraday zone mapper. Works for any ticker.
 The price levels (prior day, overnight, opening range, VWAP, value area) are computed once per
 generation into the materialized PriceLevelSnapshot (build_price_level_snapshot); the zones
@@ -44,8 +43,9 @@ DAILY_CANDLE_BASIS = "Schwab's daily candle (/pricehistory, frequencyType daily)
 
 
 def _regular(d: date) -> tuple[datetime, datetime] | None:
-    """`d`'s regular session (open, close) as Schwab's /markets sent it (time_et.session); None:
-    no regular session that day, or Schwab's answer for it is not held.
+    """`d`'s regular session (open, close) as Schwab's /markets sent it (time_et.session).
+
+    None: no regular session that day, or Schwab's answer for it is not held.
     """
     s = session(d.isoformat())
     if s is None or not s.regular:
@@ -80,9 +80,10 @@ LEVEL_NAMES = {
 
 
 def bars_from_candles(candles) -> list[dict]:
-    """The bars every level function takes, from the bar writer's Candles, each field already
-    checked once as Schwab sent it, where it came in (server._schwab_bar): {timestamp (ms), _dt
-    (its ET time), open, high, low, close, volume}.
+    """Return the bars every level function takes, from the bar writer's Candles.
+
+    Each field is already checked once as Schwab sent it, where it came in (server._schwab_bar):
+    {timestamp (ms), _dt (its ET time), open, high, low, close, volume}.
     """
     return [
         {
@@ -104,19 +105,23 @@ def bars_from_candles(candles) -> list[dict]:
 
 
 def prior_session(daily: list, session_date: date):
-    """THE prior session, for the previous-day levels and the overnight window: the newest of
-    Schwab's daily candles (the bar writer's, server._daily) dated before `session_date`. Schwab
-    sends a daily candle for each session that traded, so a weekend, a holiday or a closure has
-    none. None: no such candle held (not received), never a guessed date.
+    """Return THE prior session, for the previous-day levels and the overnight window.
+
+    It is the newest of Schwab's daily candles (the bar writer's, server._daily) dated before
+    `session_date`. Schwab sends a daily candle for each session that traded, so a weekend, a
+    holiday or a closure has none. None: no such candle held (not received), never a guessed
+    date.
     """
     before = [c for c in daily if datetime.fromtimestamp(c.ts, ET).date() < session_date]
     return max(before, key=lambda c: c.ts) if before else None
 
 
 def get_previous_day_levels(bars_norm: list, prior, config: PlaybookConfig) -> dict:
-    """The prior session's levels: its high, low and close as Schwab sent them on its daily candle
-    (`prior`, prior_session), and its POC, VAH and VAL estimated from its RTH 1-minute bars
-    (Schwab sends no volume profile), with the count of those bars. No prior session: {}.
+    """Return the prior session's levels.
+
+    Its high, low and close as Schwab sent them on its daily candle (`prior`, prior_session),
+    and its POC, VAH and VAL estimated from its RTH 1-minute bars (Schwab sends no volume
+    profile), with the count of those bars. No prior session: {}.
     """
     if prior is None:
         return {}
@@ -140,11 +145,13 @@ def get_overnight_levels(
     session_date: date,
     prev_session: date | None,
 ) -> dict:
-    """Overnight range over normalized bars (bars_from_candles): the continuous interval from the
-    prior session's (`prev_session`, prior_session's candle date) regular close to this session's
-    regular open, as Schwab's /markets sent them -- a weekend's or holiday's bars included. With
-    no prior session the interval has no start, so only this session's pre-open bars are used.
-    No bars in the window, or a session's hours not held: {}.
+    """Overnight range over normalized bars (bars_from_candles).
+
+    The continuous interval from the prior session's (`prev_session`, prior_session's candle
+    date) regular close to this session's regular open, as Schwab's /markets sent them -- a
+    weekend's or holiday's bars included. With no prior session the interval has no start, so
+    only this session's pre-open bars are used. No bars in the window, or a session's hours not
+    held: {}.
     """
     today = _regular(session_date)
     prev = None if prev_session is None else _regular(prev_session)
@@ -182,9 +189,7 @@ def compute_opening_range(
     session_date: date,
     config: PlaybookConfig,
 ) -> dict:
-    """
-    First N minutes of RTH (default 15), from normalized bars (bars_from_candles).
-    """
+    """First N minutes of RTH (default 15), from normalized bars (bars_from_candles)."""
     orb_min = config.opening_range_minutes
 
     orb_bars = []
@@ -214,10 +219,10 @@ def compute_session_vwap_series(
     bars_norm: list,
     session_date: date,
 ) -> list[tuple[float, float, float, float, float, float]]:
-    """Running session VWAP and σ bands after each RTH bar, from normalized bars
-    (bars_from_candles).
+    """Return running session VWAP and σ bands after each RTH bar.
 
-    Returns [(bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ), ...] using the standard
+    From normalized bars (bars_from_candles). Returns
+    [(bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ), ...] using the standard
     cumulative moments VWAP_t = Σ(tp·v)/Σv and σ_t² = Σ(tp²·v)/Σv − VWAP_t².
 
     The one VWAP accumulation: the served VWAP level and bands are its last point; the chart's
@@ -265,8 +270,9 @@ def compute_volume_profile_levels(
     session_date: date,
     config: PlaybookConfig,
 ) -> VolumeProfile | None:
-    """The current day's volume profile with its POC, VAH, VAL, from normalized bars
-    (bars_from_candles). RTH only, no lookahead.
+    """Return the current day's volume profile with its POC, VAH, VAL.
+
+    From normalized bars (bars_from_candles). RTH only, no lookahead.
     """
     return volume_profile(
         _filter_rth_bars(bars_norm, session_date),
@@ -285,10 +291,10 @@ def cluster_price_levels_into_zones(
     levels: list[tuple[float, str]],
     config: PlaybookConfig,
 ) -> list[tuple[float, float, float, list[str], list[tuple[float, str]]]]:
-    """
-    Cluster nearby levels into zones. Returns list of (zone_low, zone_high, zone_mid, source_tags,
-    source_pairs). source_pairs = [(price, tag), ...] for correct source_levels (actual level
-    values, not zone mid).
+    """Cluster nearby levels into zones.
+
+    Returns list of (zone_low, zone_high, zone_mid, source_tags, source_pairs). source_pairs =
+    [(price, tag), ...] for correct source_levels (actual level values, not zone mid).
 
     Adjacent levels merge while the gap is within config.clustering_threshold_pct of the lower one.
     """
@@ -571,10 +577,10 @@ def build_live_snapshot(
     now: datetime,
     extra_levels: list[tuple[float, str]],
 ) -> SnapshotOutput:
-    """
-    The session's zones from the one materialized price-level snapshot (``canonical``), with
-    optional ``extra_levels`` (the option levels and spot) fused in; no level helper runs here.
-    Before the session's regular open it is the premarket shape, as it is while the session's
+    """Build the session's zones from the one materialized price-level snapshot (``canonical``).
+
+    Optional ``extra_levels`` (the option levels and spot) are fused in; no level helper runs
+    here. Before the session's regular open it is the premarket shape, as it is while the session's
     hours are not held: the regular session Schwab's /markets sent.
     """
     session_date = canonical.session_date
@@ -789,8 +795,10 @@ class PriceLevelValue:
 
 
 class PriceLevelSnapshot:
-    """The ONE materialized result for (ticker, session scope, generation). `input_fingerprint`
-    is set by materialize_price_level_snapshot, which decides the generation from it.
+    """The ONE materialized result for (ticker, session scope, generation).
+
+    `input_fingerprint` is set by materialize_price_level_snapshot, which decides the generation
+    from it.
     """
 
     __slots__ = (
@@ -842,7 +850,10 @@ class PriceLevelSnapshot:
         self.volume_profile = volume_profile  # the session's profile the value area is read from
 
     def price(self, level_id: str) -> float | None:
-        """The canonical value, or None. Absence is absence — never spot, zero or a sibling."""
+        """Return the canonical value, or None.
+
+        Absence is absence — never spot, zero or a sibling.
+        """
         lv = self.levels.get(level_id)
         return None if lv is None else lv.price
 
@@ -895,9 +906,11 @@ def build_price_level_snapshot(
     config: PlaybookConfig | None = None,
     generation: int = 0,
 ) -> PriceLevelSnapshot:
-    """THE level producer, from normalized bars (bars_from_candles) and the prior session's Schwab
-    daily candle (`prior`, prior_session; None when none is held). The only production caller
-    of the canonical helpers.
+    """Build the levels: THE level producer.
+
+    From normalized bars (bars_from_candles) and the prior session's Schwab daily candle
+    (`prior`, prior_session; None when none is held). The only production caller of the
+    canonical helpers.
 
     Absent input stays absent: a family with no bars in its window is declared in
     `families_absent` and its ids are simply not present. Nothing substitutes spot,
@@ -1114,8 +1127,10 @@ def materialize_price_level_snapshot(
     bar_source: str,
     config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
-    """Materialize once per generation from normalized bars (bars_from_candles) and Schwab's daily
-    candles (`daily`, server._daily); return the SAME object within a generation.
+    """Materialize once per generation; return the SAME object within a generation.
+
+    Built from normalized bars (bars_from_candles) and Schwab's daily candles (`daily`,
+    server._daily).
 
     A new market generation (the bar input or the prior session's candle changed) invokes the
     producer exactly once. Every later ask in that generation is a read, never a recomputation.

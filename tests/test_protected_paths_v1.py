@@ -1,6 +1,7 @@
-"""Deleting, moving, overwriting or unprotecting a file under data/ is refused at the agent
-layer: data/ is gitignored, so nothing in it has a history to restore from. The guard judges
-what a command RUNS, not text that mentions the folder; restores into it and reads stay legal.
+"""Deleting, moving, overwriting or unprotecting a file under data/ is refused at the agent layer.
+
+data/ is gitignored, so nothing in it has a history to restore from. The guard judges what a
+command RUNS, not text that mentions the folder; restores into it and reads stay legal.
 """
 
 from __future__ import annotations
@@ -61,9 +62,10 @@ def test_restore_read_and_ordinary_cleanup_pass(cmd):
 
 
 def test_a_commit_message_quoting_a_destructive_command_is_not_blocked():
-    """A commit message that quotes a destructive command is not refused: `git commit`
-    cannot remove a file, so it is exempt — by verb, not by channel: heredocs stay watched
-    everywhere else because they are a real write path.
+    """A commit message that quotes a destructive command is not refused.
+
+    `git commit` cannot remove a file, so it is exempt — by verb, not by channel: heredocs stay
+    watched everywhere else because they are a real write path.
     """
     msg = (
         f"git commit -F - <<'MSG'\n"
@@ -86,8 +88,9 @@ def test_the_commit_exemption_is_by_verb_not_by_heredoc():
 
 
 def test_the_protected_tree_is_guarded_and_backups_is_not():
-    """Destructive is defined by the TARGET's recoverability, not by the verb. No database
-    backups are kept (operator's decision), so backups/ is no protected tree.
+    """Destructive is defined by the TARGET's recoverability, not by the verb.
+
+    No database backups are kept (operator's decision), so backups/ is no protected tree.
     """
     assert any(f"under {D}" in b for b in G.bash_violations(f"rm -rf {D}x"))
     assert not any(f"under {D}" in b for b in G.bash_violations(f"rm -rf {B}x"))

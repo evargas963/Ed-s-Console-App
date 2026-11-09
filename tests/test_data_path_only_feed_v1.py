@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 @pytest.fixture
 def head(tmp_path: Path) -> Path:
-    """The tracked Python files, in a checkout named as `locks` names it."""
+    """Return the tracked Python files, in a checkout named as `locks` names it."""
     tracked = subprocess.run(
         ["git", "ls-files", "-z", "*.py"], cwd=ROOT, check=True, capture_output=True, text=True
     )

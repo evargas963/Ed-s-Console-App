@@ -34,8 +34,8 @@ SQLITE_CACHE_SIZE_KIB = -131072  # 128 MiB (negative = KiB in SQLite's PRAGMA co
 
 
 def configure_sqlite_connection(conn: sqlite3.Connection, *, busy_timeout_ms: int = 30000) -> None:
-    """
-    Production pragmas for any sqlite3 connection touching the console DB.
+    """Set the production pragmas for any sqlite3 connection touching the console DB.
+
     Safe to call on every new connection (WAL is idempotent once enabled on the file).
 
     PRAGMA failures are rare (each pragma is well-formed) but possible if the DB file
@@ -86,8 +86,8 @@ DB_PATH = _resolve_console_db_path()
 
 @dataclass
 class LevelCrossEvent:
-    """
-    Logged every time price crosses a key level.
+    """Logged every time price crosses a key level.
+
     Used for breach log + pattern detection.
     """
 
@@ -105,7 +105,9 @@ class LevelCrossEvent:
 
 @dataclass(frozen=True)
 class ColumnInventory:
-    """One column as SQLite's table_info reports it. `default_sql` is the DEFAULT clause SQLite
+    """One column as SQLite's table_info reports it.
+
+    `default_sql` is the DEFAULT clause SQLite
     holds for it, None when the column has none.
     """
 
@@ -124,8 +126,9 @@ class TableInventory:
 
 
 def inventory(db_path: Path) -> tuple[TableInventory, ...]:
-    """Every table of the database at `db_path`, read through a read-only connection, so the
-    census counts it without writing to it. A file that is not there raises.
+    """Return every table of the database at `db_path`, read through a read-only connection.
+
+    Read-only, so the census counts it without writing to it. A file that is not there raises.
     """
     conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
     try:
@@ -160,8 +163,8 @@ def inventory(db_path: Path) -> tuple[TableInventory, ...]:
 
 
 class EdDB:
-    """
-    Main database interface for Ed Console.
+    """Main database interface for Ed Console.
+
     Reads use a fresh connection per call (WAL allows concurrent readers). Writes use
     ordinary connections + SQLite busy_timeout/WAL.
     """
@@ -226,9 +229,10 @@ class EdDB:
     # ════════════════════════════════════════════════════════════════════════
 
     def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[dict]:
-        """Store the level crosses of one price (server._log_level_crosses decides them), all in
-        one transaction: every one is stored, or none is and the error is raised. Returns the
-        rows stored, each as get_recent_crosses reads it back.
+        """Store the level crosses of one price, all in one transaction.
+
+        server._log_level_crosses decides them. Every one is stored, or none is and the error is
+        raised. Returns the rows stored, each as get_recent_crosses reads it back.
         """
         cols = [f.name for f in fields(LevelCrossEvent)]
         sql = (
@@ -243,7 +247,7 @@ class EdDB:
         return logged
 
     def get_recent_crosses(self, ticker: str, n: int = 20) -> list:
-        """The most recent level crosses, each the row record_level_crosses returns."""
+        """Return the most recent level crosses, each the row record_level_crosses returns."""
         cols = ", ".join(["cross_id", *(f.name for f in fields(LevelCrossEvent))])
         with self._connect() as conn:
             rows = conn.execute(

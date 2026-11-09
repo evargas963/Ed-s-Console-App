@@ -1,4 +1,6 @@
-"""The market's sessions are Schwab's GET /markets answers (operator 2026-10-07): the daemon asks
+"""The market's sessions are Schwab's GET /markets answers (operator 2026-10-07).
+
+The daemon asks
 for equity and option once per date per ET day -- today, the 7 days before it Schwab answers, and
 each expiry date of the chains, whatever the number of tickers -- records every answer as sent, and
 the console takes each 200 as that date's sessions. What Schwab streams is shown whatever the
@@ -41,10 +43,11 @@ def _et(s: str) -> datetime:
 
 
 def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_path):
-    """The real sweep on the daemon's thread (capture.run_chains, the wall clock), SPY and TSLA on
-    the watchlist: each of today and the 7 days before it, and each expiry from today on, asked
-    once -- not once per ticker -- each answer published and written by the one writer into
-    stream_markets_raw exactly as Schwab sent it, with its status.
+    """The real sweep on the daemon's thread, SPY and TSLA on the watchlist.
+
+    The sweep is capture.run_chains, on the wall clock. Each of today and the 7 days before it,
+    and each expiry from today on, asked once -- not once per ticker -- each answer published and
+    written by the one writer into stream_markets_raw exactly as Schwab sent it, with its status.
     """
     db = tmp_path / "stream_capture.db"
     schwab = LocalSchwab()
@@ -105,8 +108,9 @@ def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_pat
 
 
 def test_the_console_holds_each_200_answer_and_never_a_400():
-    """The console's intake (streaming._ingest_pushed) takes a 200 as that date's sessions, as the
-    daemon publishes it; Schwab's 400 (more than 7 days back) is no session: the date stays
+    """The console's intake (streaming._ingest_pushed) takes a 200 as that date's sessions.
+
+    As the daemon publishes it; Schwab's 400 (more than 7 days back) is no session: the date stays
     unknown.
     """
     for day in ("2026-09-29", "2026-10-07"):
@@ -155,9 +159,11 @@ def test_the_label_follows_schwabs_windows():
 
 
 def test_the_option_sessions_are_the_windows_schwab_sent():
-    """Schwab's /markets answer of 2026-11-02 sends each option market's preMarket (07:30 to 09:25
-    ET) and stock options' postMarket (to 16:15), the schedule of its Extended Hours agreement of
-    2026-10-30: options are open inside those windows, as sent, and not between them.
+    """Schwab's /markets answer of 2026-11-02 sends the options' extended windows.
+
+    It sends each option market's preMarket (07:30 to 09:25 ET) and stock options' postMarket
+    (to 16:15), the schedule of its Extended Hours agreement of 2026-10-30: options are open
+    inside those windows, as sent, and not between them.
     """
     fx = json.loads((FX / "real_schwab_markets_2026_11_02.json").read_text(encoding="utf-8"))
     time_et.record_markets(fx["body"])
@@ -176,7 +182,9 @@ def test_the_option_sessions_are_the_windows_schwab_sent():
 
 
 def test_no_market_time_is_typed_in_the_product():
-    """The market's sessions are Schwab's /markets answers (AGENTS.md rule 8): no product file
+    """The market's sessions are Schwab's /markets answers (AGENTS.md rule 8).
+
+    No product file
     builds a clock time from a literal, as `time(4)` did for a market day Schwab never sent.
     """
     repo = Path(__file__).resolve().parent.parent
@@ -194,8 +202,10 @@ def test_no_market_time_is_typed_in_the_product():
 
 
 def test_the_options_are_open_until_the_last_option_market_closes():
-    """Schwab's /markets: EQO to 16:00 ET, IND to 16:15 ET (SPY's, QQQ's and IWM's options trade
-    to 16:15 too); the options are open until the last of them closes.
+    """Schwab's /markets: EQO to 16:00 ET, IND to 16:15 ET.
+
+    SPY's, QQQ's and IWM's options trade to 16:15 too; the options are open until the last of
+    them closes.
     """
     assert time_et.option_market_open(_et("2026-10-07 16:05")) is True
     assert time_et.option_market_open(_et("2026-10-07 16:15")) is False
@@ -205,9 +215,10 @@ def test_the_options_are_open_until_the_last_option_market_closes():
 
 
 def test_a_chain_is_valued_at_its_close_for_the_rest_of_that_day_and_on_the_clock_otherwise():
-    """After Friday 2026-10-09's close the book is valued at that close (IND 16:15 ET, EQO 16:00)
-    for the rest of Friday. On the weekend, on Monday 2026-10-12 before the open, inside the window
-    and on a date whose answer is not held, it is the clock.
+    """After Friday 2026-10-09's close the book is valued at that close for the rest of Friday.
+
+    The close is IND 16:15 ET, EQO 16:00. On the weekend, on Monday 2026-10-12 before the open,
+    inside the window and on a date whose answer is not held, it is the clock.
     """
     after = _et("2026-10-09 18:00")
     assert time_et.valuation_instant(after, time_et.INDEX_OPTIONS) == _et("2026-10-09 16:15")
@@ -224,8 +235,10 @@ def test_a_chain_is_valued_at_its_close_for_the_rest_of_that_day_and_on_the_cloc
 
 
 def test_a_closed_day_is_outside_every_option_market():
-    """Saturday 2026-10-10, held: Schwab's /markets answer for it is a closed day with no option
-    window, so no option market, and neither EQO nor IND, is open at any hour of it.
+    """Saturday 2026-10-10, held: Schwab's /markets answer for it is a closed day.
+
+    A closed day with no option window, so no option market, and neither EQO nor IND, is open at
+    any hour of it.
     """
     for hour in (9, 12, 16):
         at = _et(f"2026-10-10 {hour:02d}:00")
@@ -237,12 +250,14 @@ def test_a_closed_day_is_outside_every_option_market():
 
 
 def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
-    """Schwab's expirationDate is not the settlement (an AM-settled $SPX monthly carries 16:00 ET
-    of its date): T runs to the EQO regular close Schwab's /markets sent for the expiry date --
-    13:00 on the 2026-11-27 early close -- or its 09:30 open for settlementType "A"; none on a
-    date Schwab says has no session. Beyond the year /markets answers every contract runs to
-    Schwab's expirationDate as sent. On a nearer date with no answer held (a request that failed),
-    a PM-settled one does and an AM-settled one has none: its settlement may have passed.
+    """Schwab's expirationDate is not the settlement.
+
+    An AM-settled $SPX monthly carries 16:00 ET of its date. T runs to the EQO regular close
+    Schwab's /markets sent for the expiry date -- 13:00 on the 2026-11-27 early close -- or its
+    09:30 open for settlementType "A"; none on a date Schwab says has no session. Beyond the year
+    /markets answers every contract runs to Schwab's expirationDate as sent. On a nearer date
+    with no answer held (a request that failed), a PM-settled one does and an AM-settled one has
+    none: its settlement may have passed.
     """
     year = time_et.YEAR_SECONDS
     at = _et("2026-11-27 10:00")
@@ -272,7 +287,9 @@ def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
 
 
 def test_a_stock_quote_before_schwabs_pre_market_is_shown():
-    """Operator 2026-10-07: stock quotes from 04:00 ET come through. At 05:00 ET Schwab's /markets
+    """Operator 2026-10-07: stock quotes from 04:00 ET come through.
+
+    At 05:00 ET Schwab's /markets
     says Closed (pre-market opens 07:00): CRWD's quote, received then, is the price served.
     """
     fx = json.loads((FX / "real_crwd_quote_2026_10_07.json").read_text(encoding="utf-8"))

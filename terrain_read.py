@@ -54,10 +54,11 @@ CROSSED_UP, CROSSED_DOWN = "up", "down"
 
 
 def level_side(level: float | None, price: float | None) -> str | None:
-    """Where `level` sits against `price`: LEVEL_ABOVE, LEVEL_AT or LEVEL_BELOW, from the exact
-    values (rounding happens only on screen); None when either is unknown. The one side rule of
-    every relation of a price to a level: the wall states, the flip side, the levels' sides and
-    the crosses.
+    """Where `level` sits against `price`: LEVEL_ABOVE, LEVEL_AT or LEVEL_BELOW.
+
+    From the exact values (rounding happens only on screen); None when either is unknown. The
+    one side rule of every relation of a price to a level: the wall states, the flip side, the
+    levels' sides and the crosses.
     """
     if level is None or price is None:
         return None
@@ -69,8 +70,10 @@ def level_side(level: float | None, price: float | None) -> str | None:
 
 
 def price_side(level: float | None, price: float | None) -> str | None:
-    """Where `price` sits against `level` (the other way round from level_side): LEVEL_ABOVE when
-    the price is over the level, LEVEL_AT, LEVEL_BELOW; None when either is unknown.
+    """Where `price` sits against `level` (the other way round from level_side).
+
+    LEVEL_ABOVE when the price is over the level, LEVEL_AT, LEVEL_BELOW; None when either is
+    unknown.
     """
     return {LEVEL_ABOVE: LEVEL_BELOW, LEVEL_AT: LEVEL_AT, LEVEL_BELOW: LEVEL_ABOVE, None: None}[
         level_side(level, price)
@@ -78,8 +81,10 @@ def price_side(level: float | None, price: float | None) -> str | None:
 
 
 def from_spot_text(distance: float | None, side: str | None) -> str | None:
-    """A level's distance from the live price (level minus price) and its side (level_side), as
-    the screen words it: "at spot", "1.30 above spot", "1.30 below spot". None when unknown.
+    """Word a level's distance from the live price (level minus price) and its side.
+
+    The side is level_side's, as the screen words it: "at spot", "1.30 above spot", "1.30 below
+    spot". None when unknown.
     """
     if side is None:
         return None
@@ -89,8 +94,9 @@ def from_spot_text(distance: float | None, side: str | None) -> str | None:
 
 
 def within(low: float | None, high: float | None, price: float | None) -> bool:
-    """Whether `price` is inside the range from `low` to `high`, either edge included
-    (level_side).
+    """Whether `price` is inside the range from `low` to `high`, either edge included.
+
+    By level_side.
     """
     return level_side(low, price) in (LEVEL_BELOW, LEVEL_AT) and level_side(high, price) in (
         LEVEL_ABOVE,
@@ -99,8 +105,10 @@ def within(low: float | None, high: float | None, price: float | None) -> bool:
 
 
 def crossed(level: float | None, before: float | None, after: float | None) -> str | None:
-    """CROSSED_UP when the price moved from under `level` to at or over it, CROSSED_DOWN from over
-    it to at or under it (level_side); None otherwise.
+    """CROSSED_UP or CROSSED_DOWN when the price crossed `level`; None otherwise.
+
+    CROSSED_UP when the price moved from under `level` to at or over it, CROSSED_DOWN from over
+    it to at or under it (level_side).
     """
     was, now = level_side(level, before), level_side(level, after)
     if was == LEVEL_ABOVE and now in (LEVEL_AT, LEVEL_BELOW):
@@ -144,11 +152,13 @@ def _fmt(label: str, level: float | None, spot: float) -> str:
 
 
 def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
-    """THE authority for the gamma-regime SIGN THRESHOLD. Positive dealer
-    gamma is LONG_GAMMA_CHOP (dealers damp moves); negative is SHORT_GAMMA_TREND (dealers
-    amplify). Returns None when the sign is absent or exactly zero, so every caller shares
-    one threshold instead of re-deriving `> 0` locally. build_terrain_read and
-    institutional_behavior both consume this — there is no second sign authority.
+    """Return the regime: THE authority for the gamma-regime SIGN THRESHOLD.
+
+    Positive dealer gamma is LONG_GAMMA_CHOP (dealers damp moves); negative is
+    SHORT_GAMMA_TREND (dealers amplify). Returns None when the sign is absent or exactly zero,
+    so every caller shares one threshold instead of re-deriving `> 0` locally.
+    build_terrain_read and institutional_behavior both consume this — there is no second sign
+    authority.
     """
     if signed_gamma is None or signed_gamma == 0:
         return None
@@ -212,8 +222,10 @@ def build_terrain_read(
     gamma_at_spot: float | None = None,
     flip_curve_agrees: bool | None = None,
 ) -> TerrainRead:
-    """Deterministic terrain read. Fail-closed on missing spot, or on coverage below the
-    conservative floor at which this repo declines to speak at all (NARROW / UNAVAILABLE).
+    """Deterministic terrain read.
+
+    Fail-closed on missing spot, or on coverage below the conservative floor at which this repo
+    declines to speak at all (NARROW / UNAVAILABLE).
 
     That floor is NOT evidence that the sign is otherwise sound — see
     math_levels.GAMMA_FLIP_MIN_SPAN_PCT for the measurement.

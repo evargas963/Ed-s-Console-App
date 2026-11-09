@@ -22,7 +22,7 @@ _CDE_CONTRACTS = _CDE["chain"]
 
 
 def _chain_json_for(contracts):
-    """The Schwab callExpDateMap/putExpDateMap payload a flat contract list came from."""
+    """Return the Schwab callExpDateMap/putExpDateMap payload a flat contract list came from."""
     out = {"callExpDateMap": {}, "putExpDateMap": {}}
     for c in contracts:
         side = "callExpDateMap" if c.get("putCall") == "CALL" else "putExpDateMap"
