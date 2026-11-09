@@ -357,6 +357,45 @@ class _Lexer:
         value.append(self.s[i : j + 1])
         return j + 1
 
+    def sigil(self, i: int, value: list[str], nested: list[str]) -> int | None:
+        """Read what the `$` or `@` at `i` opens into `value`, its commands into `nested`.
+
+        That is bash's $'...', a PowerShell here-string @'...'@ (data), a substitution $( ) / @( ),
+        or ${var} / a PowerShell @{} table. Returns the index past it; None when it opens none.
+        """
+        s = self.s
+        if not self.ps and s.startswith("$'", i):
+            return self.ansi(i + 2, value)
+        if self.ps and (m := _HERE_STRING.match(s, i)):
+            end = s.find("\n" + m.group(1) + "@", m.end() - 1)
+            end = len(s) if end < 0 else end
+            value.append(s[m.end() : end])
+            return min(end + 3, len(s))
+        if s[i + 1 : i + 2] == "(":
+            return self.substitution(i, value, nested)
+        if s[i + 1 : i + 2] == "{":
+            j = self.close(i + 2, "{", "}")
+            nested += self.substituted(s[i + 2 : j])
+            value.append(s[i : j + 1])
+            return j + 1
+        return None
+
+    def escaped(self, i: int, value: list[str]) -> int:
+        """Read the escape character at `i`, outside quotes, into `value`.
+
+        Before a line break it joins the lines; before a character it escapes, that character.
+        Otherwise it is kept as "\\0": bash drops it, a Windows path keeps it, and both readings
+        are judged. Returns the index past it.
+        """
+        nxt = self.s[i + 1 : i + 2]
+        if nxt == "\n":
+            return i + 2
+        if nxt and (self.ps or nxt in _ESCAPED):
+            value.append(nxt)
+            return i + 2
+        value.append("\0")
+        return i + 1
+
     def substituted(self, text: str) -> list[str]:
         """Return the commands substituted inside `text`.
 
@@ -382,32 +421,12 @@ class _Lexer:
                 i = self.single(i + 1, value)
             elif c == '"':
                 i = self.double(i + 1, value, nested)
-            elif not self.ps and s.startswith("$'", i):
-                i = self.ansi(i + 2, value)
-            elif self.ps and (m := _HERE_STRING.match(s, i)):  # @' ... '@: data
-                end = s.find("\n" + m.group(1) + "@", m.end() - 1)
-                end = len(s) if end < 0 else end
-                value.append(s[m.end() : end])
-                i = min(end + 3, len(s))
+            elif c in "$@" and (past := self.sigil(i, value, nested)) is not None:
+                i = past
             elif c == self.escape:
-                nxt = s[i + 1 : i + 2]
-                if nxt == "\n":
-                    i += 2
-                elif nxt and (self.ps or nxt in _ESCAPED):
-                    value.append(nxt)
-                    i += 2
-                else:  # kept, but bash drops it: both readings are judged
-                    value.append("\0")
-                    i += 1
+                i = self.escaped(i, value)
             elif c == "`":
                 i = self.backtick(i, value, nested)
-            elif c in "$@" and s[i + 1 : i + 2] == "(":
-                i = self.substitution(i, value, nested)
-            elif c in "$@" and s[i + 1 : i + 2] == "{":  # ${var}, a PowerShell @{} table
-                j = self.close(i + 2, "{", "}")
-                nested += self.substituted(s[i + 2 : j])
-                value.append(s[i : j + 1])
-                i = j + 1
             elif c in "({":  # inside a word: `.Kill()`, `::Start('x')`, `a=(x y)`
                 j = self.close(i + 1, c, ")" if c == "(" else "}")
                 if (
@@ -758,14 +777,19 @@ def _skip_wrapper(vals: list[str], i: int) -> int | None:
     return i + 1 if name == "timeout" else i
 
 
-def _command(
-    vals: list[str],
-    raws: list[str],
-    redirects: tuple,
-    heredoc: str | None,
-    ctx: dict,
-    upstream: Statement | None,
-) -> list[Statement]:
+def _env_split(vals: list[str], i: int) -> int | None:
+    """Return the index of the -S of an `env -S 'cmd args'` at `vals[i]`, or None."""
+    if i >= len(vals) or program_name(vals[i]) != "env":
+        return None
+    return next((j for j in range(i + 1, len(vals)) if vals[j] in ("-S", "--split-string")), None)
+
+
+def _prefix(vals: list[str]) -> tuple[int, list[str]]:
+    """Return the index of the program in `vals` and the assignments written before it.
+
+    Passed over: keywords, VAR=val and PowerShell `$x =` assignments, export and its options, and
+    wrappers with their options. An `env -S` is not passed: its string is the command.
+    """
     env: list[str] = []
     i = 0
     while i < len(vals):
@@ -774,9 +798,7 @@ def _command(
         elif _ASSIGNMENT.match(vals[i]):
             env.append(vals[i])
             i += 1
-        elif vals[i].startswith("$") and vals[i + 1 : i + 2] == [
-            "="
-        ]:  # PowerShell `$x = <command>`
+        elif vals[i].startswith("$") and vals[i + 1 : i + 2] == ["="]:  # PowerShell `$x = <cmd>`
             env.append(vals[i] + "=")
             i += 2
         elif vals[i] in _EXPORTS:
@@ -784,22 +806,27 @@ def _command(
             while i < len(vals) and vals[i].startswith("-"):
                 i += 1
         elif (
-            program_name(vals[i]) == "env"
-            and (
-                split := next(
-                    (j for j in range(i + 1, len(vals)) if vals[j] in ("-S", "--split-string")),
-                    None,
-                )
-            )
-            is not None
+            (program_name(vals[i]) in _WRAPPERS or program_name(vals[i]) in _RUNNERS)
+            and _env_split(vals, i) is None
+            and (past := _skip_wrapper(vals, i)) is not None
         ):
-            return _nested(" ".join(vals[split + 1 :]), ctx)  # env -S 'cmd args'
-        elif (program_name(vals[i]) in _WRAPPERS or program_name(vals[i]) in _RUNNERS) and (
-            past := _skip_wrapper(vals, i)
-        ) is not None:
             i = past
         else:
             break
+    return i, env
+
+
+def _command(
+    vals: list[str],
+    raws: list[str],
+    redirects: tuple,
+    heredoc: str | None,
+    ctx: dict,
+    upstream: Statement | None,
+) -> list[Statement]:
+    i, env = _prefix(vals)
+    if (split := _env_split(vals, i)) is not None:
+        return _nested(" ".join(vals[split + 1 :]), ctx)  # env -S 'cmd args'
     vals, raws = vals[i:], raws[i:]
     if not (vals or env or redirects or heredoc is not None):
         return []
@@ -908,6 +935,42 @@ def python_code(st: Statement) -> list[str]:
     return [st.stdin] if st.stdin is not None and reads_stdin(st) else []
 
 
+def _python_reads_stdin(args: list[str]) -> bool:
+    """Return whether python given `args` reads its program on stdin.
+
+    It does when its options end with no -c, -m, information option or script, or with `-` /
+    `/dev/stdin` as the script.
+    """
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in _STDIN_FILES:
+            return True
+        if a.startswith(("-c", "-m")) or a in _PY_INFO or not a.startswith("-"):
+            return False
+        i += 2 if a in _PY_VALUE_OPTIONS else 1
+    return True
+
+
+def _sh_reads_stdin(args: list[str]) -> bool:
+    """Return whether a shell given `args` reads its commands on stdin.
+
+    It does with no -c among its options and no script after them, a script `-` / `/dev/stdin`,
+    or an -s among its options.
+    """
+    j = 0  # past the options: `-x`, `+x` (off), `-o name`, `-eo name`, `--`
+    while j < len(args) and args[j][:1] in "-+" and args[j] not in ("-", "+"):
+        if args[j] == "--":
+            j += 1
+            break
+        j += 2 if _SH_VALUED.fullmatch(args[j]) else 1
+    if any(_SH_COMMAND.fullmatch(a) for a in args[:j]):
+        return False
+    return (
+        j >= len(args) or args[j] in _STDIN_FILES or any(_SH_STDIN.fullmatch(a) for a in args[:j])
+    )
+
+
 def reads_stdin(st: Statement) -> bool:
     """Return whether a shell, cmd, PowerShell, python or node statement reads its program on stdin.
 
@@ -916,29 +979,9 @@ def reads_stdin(st: Statement) -> bool:
     """
     name, args = st.program, list(st.words[1:])
     if PYTHON.fullmatch(name):
-        i = 0
-        while i < len(args):
-            a = args[i]
-            if a in _STDIN_FILES:
-                return True
-            if a.startswith(("-c", "-m")) or a in _PY_INFO or not a.startswith("-"):
-                return False
-            i += 2 if a in _PY_VALUE_OPTIONS else 1
-        return True
+        return _python_reads_stdin(args)
     if name in _SH:
-        j = 0  # past the options: `-x`, `+x` (off), `-o name`, `-eo name`, `--`
-        while j < len(args) and args[j][:1] in "-+" and args[j] not in ("-", "+"):
-            if args[j] == "--":
-                j += 1
-                break
-            j += 2 if _SH_VALUED.fullmatch(args[j]) else 1
-        if any(_SH_COMMAND.fullmatch(a) for a in args[:j]):
-            return False
-        return (
-            j >= len(args)
-            or args[j] in _STDIN_FILES
-            or any(_SH_STDIN.fullmatch(a) for a in args[:j])
-        )
+        return _sh_reads_stdin(args)
     if name == "cmd":
         return not any(a.lower() in ("/c", "/k", "//c", "//k") for a in args)
     if name in PWSH:

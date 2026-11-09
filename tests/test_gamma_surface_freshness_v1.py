@@ -84,7 +84,8 @@ def published():
     lmp.record_feed_down()
 
 
-def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(published):
+@pytest.mark.usefixtures("published")
+def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named():
     _daemon(206.0, _AT.timestamp(), _ON)  # the price has moved since
     d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
     surface = server.published_levels(_ON).gamma_surface
@@ -98,7 +99,8 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
     assert d["provenance"]["spot_basis"] == "live_resolve_spot"
 
 
-def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
+@pytest.mark.usefixtures("published")
+def test_freshness_is_the_one_terrain_authority_not_a_second_policy():
     _levels, live = server.terrain_cache_get(_ON, time_et.now())  # the one authority
     d = _call(_ON)
     assert (d["levels_state"], d["levels_stale_reason"]) == (
@@ -109,8 +111,9 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(published):
     assert d["chain_as_of_ts_utc"] == _AT.timestamp()
 
 
+@pytest.mark.usefixtures("published")
 @pytest.mark.parametrize("tk", [_ON, _OFF])
-def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(published, tk):
+def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(tk):
     """2026-09-28 audit: "viewed" was a 300 s timer renewed only by some routes.
 
     The page's one connection is the one viewing signal: a route read does not make a ticker
@@ -122,14 +125,13 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(published, t
     try:
         assert server._gamma_surface_wanted(tk)
     finally:
-        push_changes.unsubscribe(tk, client)  # the page closed or changed ticker
+        push_changes.unsubscribe(client)  # the page closed or changed ticker
     assert not server._gamma_surface_wanted(tk)
 
 
+@pytest.mark.usefixtures("published")
 @pytest.mark.parametrize("tk", [_ON, _OFF])
-def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a_sentence(
-    published, tk
-):
+def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a_sentence(tk):
     """On the watchlist or not, a publication carries the same fields.
 
     The chain basis, and ATR (from the bars, none here) absent, with no sentence in its place.

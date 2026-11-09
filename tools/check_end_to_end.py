@@ -625,55 +625,56 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
     found: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.ExceptHandler, ast.If, ast.With)):
-            if node.lineno not in added:  # an old block with a line added inside it
-                continue
-            if isinstance(node, ast.ExceptHandler):
-                if _reports(node):
-                    continue
-                if _catches_everything(node):
-                    found.append((node.lineno, "an except that catches everything"))
-                if len(node.body) == 1 and _swallows(node.body[0]) and id(node) not in absences:
-                    found.append((node.lineno, "an except that swallows the error"))
-            elif isinstance(node, ast.If):
-                if (
-                    _none_check(node.test)
-                    and len(node.body) == 1
-                    and _literal_fallback(node.body[0])
-                ):
-                    found.append(
-                        (
-                            node.lineno,
-                            "a missing value replaced by a literal "
-                            "(`if x is None:` then a literal)",
-                        )
-                    )
-            elif any(
-                isinstance(i.context_expr, ast.Call)
-                and "suppress"
-                in (
-                    getattr(i.context_expr.func, "id", None),
-                    getattr(i.context_expr.func, "attr", None),
-                )
-                for i in node.items
-            ):
-                found.append((node.lineno, "an error swallowed (`contextlib.suppress`)"))
-        elif isinstance(node, (ast.BoolOp, ast.IfExp, ast.Call)) and _spans_added(node, added):
-            if isinstance(node, ast.BoolOp):
-                if isinstance(node.op, ast.Or) and _literal(node.values[-1]):
-                    found.append(
-                        (node.lineno, "a missing value replaced by a literal (`or <literal>`)")
-                    )
-            elif isinstance(node, ast.IfExp):
-                if _none_check(node.test) and (_literal(node.body) or _literal(node.orelse)):
-                    found.append(
-                        (
-                            node.lineno,
-                            "a missing value replaced by a literal (a None-check ternary)",
-                        )
-                    )
-            elif id(node) not in totals and (what := _call_patch(node)) is not None:
-                found.append((node.lineno, what))
+            if node.lineno in added:  # an old block with a line added inside it is not judged
+                found += [(node.lineno, what) for what in _block_patches(node, absences)]
+        elif (
+            isinstance(node, (ast.BoolOp, ast.IfExp, ast.Call))
+            and _spans_added(node, added)
+            and (what := _expr_patch(node, totals)) is not None
+        ):
+            found.append((node.lineno, what))
     return sorted(set(found))
+
+
+def _block_patches(node: ast.ExceptHandler | ast.If | ast.With, absences: set[int]) -> list[str]:
+    """Return the patch shapes of an except, if or with block."""
+    if isinstance(node, ast.ExceptHandler):
+        if _reports(node):
+            return []
+        whats = []
+        if _catches_everything(node):
+            whats.append("an except that catches everything")
+        if len(node.body) == 1 and _swallows(node.body[0]) and id(node) not in absences:
+            whats.append("an except that swallows the error")
+        return whats
+    if isinstance(node, ast.If):
+        if _none_check(node.test) and len(node.body) == 1 and _literal_fallback(node.body[0]):
+            return ["a missing value replaced by a literal (`if x is None:` then a literal)"]
+        return []
+    calls = [i.context_expr.func for i in node.items if isinstance(i.context_expr, ast.Call)]
+    if any(
+        (isinstance(f, ast.Name) and f.id == "suppress")
+        or (isinstance(f, ast.Attribute) and f.attr == "suppress")
+        for f in calls
+    ):
+        return ["an error swallowed (`contextlib.suppress`)"]
+    return []
+
+
+def _expr_patch(node: ast.BoolOp | ast.IfExp | ast.Call, totals: set[int]) -> str | None:
+    """Return the patch shape of an `or`, a ternary or a call, or None.
+
+    A call in `totals` (a running total or a port setting) is allowed.
+    """
+    if isinstance(node, ast.BoolOp):
+        if isinstance(node.op, ast.Or) and _literal(node.values[-1]):
+            return "a missing value replaced by a literal (`or <literal>`)"
+        return None
+    if isinstance(node, ast.IfExp):
+        if _none_check(node.test) and (_literal(node.body) or _literal(node.orelse)):
+            return "a missing value replaced by a literal (a None-check ternary)"
+        return None
+    return None if id(node) in totals else _call_patch(node)
 
 
 def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]:
