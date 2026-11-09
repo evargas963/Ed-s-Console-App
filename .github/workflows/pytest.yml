@@ -221,7 +221,8 @@ jobs:
             if grep -q "failed" logs/test_e2e_last.log; then
               echo "=== pass $pass failed: socket events by process and kind, from Windows' own Winsock trace"
               MSYS_NO_PATHCONV=1 tracerpt afd.etl -o afd.csv -of CSV -y > /dev/null
-              pwsh -NoProfile -Command '$rows = Import-Csv afd.csv; "events: $($rows.Count)"; $rows | Group-Object { "$($_."Process ID") $($_."Event Name") $($_.Type)" } | Sort-Object Count -Descending | Select-Object -First 25 Count, Name | Format-Table -AutoSize | Out-String -Width 200; $pids = $rows | Group-Object "Process ID" | Sort-Object Count -Descending | Select-Object -First 8; foreach ($g in $pids) { $id = [Convert]::ToInt32(($g.Name -replace "\s",""), 16); "pid $id ($((Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction Ignore).CommandLine)) events=$($g.Count)" }'
+              head -c 600 afd.csv; echo
+              pwsh -NoProfile -Command '$rows = Import-Csv afd.csv; $col = ($rows[0].PSObject.Properties.Name | Where-Object { $_.Trim() -match "^(PID|Process ID|ProcessId)$" } | Select-Object -First 1); "pid column: [$col] events: $($rows.Count)"; $rows | Where-Object { $_.Type -match "Connected" } | Group-Object $col | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { $raw = $_.Name.Trim(); $id = if ($raw -match "^0x") { [Convert]::ToInt32($raw.Substring(2), 16) } else { [int]$raw }; "connected=$($_.Count) pid $id $((Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction Ignore).CommandLine)" }'
             fi
             rm -f afd.etl afd.csv
             if grep -q "failed" logs/test_e2e_last.log; then
