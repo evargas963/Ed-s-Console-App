@@ -85,7 +85,7 @@
     scope: _lsScope(),
     // the one Schwab book every book panel shows; the two are never combined
     bookVenue: _ls('ed_book_venue', 'NYSE_BOOK') === 'NASDAQ_BOOK' ? 'NASDAQ_BOOK' : 'NYSE_BOOK',
-    expiryFilter: null,   // null = All Expirations; else a single 'YYYY-MM-DD' from /api/expiries
+    expiryFilter: null,   // null = All Expirations; else a single 'YYYY-MM-DD' from the socket's `expiries`
     selStrike: null, selExpiry: null,
     // The Gamma heatmap grid, Strike Detail's native fields, and the strike x expiry
     // PROJECTION (server.py project_gamma_surface) carry dex/vanna/oi/volume per cell
@@ -590,7 +590,8 @@
     paintIdentity(state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
-    loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
+    // this ticker's list is not received yet (the socket sends it on the subscribe below): '-'
+    paintExpiries({ expiries: null, labels: null, dte_text: null, reason: '-' });
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     // just asked for this ticker: WAITING (not OFFLINE) until PRICE_SILENCE_MS passes with no row
     _priceConnecting = true; clearTimeout(_priceConnectTimer);
@@ -618,30 +619,36 @@
     input.blur();
   }
 
-  // ---- expiry dropdown: populated ONLY from the canonical /api/expiries (never hard-coded) ----
-  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration); asked again on
-  // each new chain the console pushes for the ticker
-  function loadExpiries(tk) {
+  // ---- expiry dropdown: the selected ticker's listed expiries as the program pushes them on the
+  // page's socket (an `expiries` frame, server.expiries), at each subscribe and on each new chain;
+  // each option's texts are served (MM/DD/YYYY and Schwab's daysToExpiration). An expiry belongs to
+  // its ticker: while the ticker's list is unknown (`expiries` null: not received since a switch,
+  // or no chain priced yet) none is in force, so no read carries another ticker's, and the
+  // operator's pick waits for a known list, which keeps it while it lists it, else All ----
+  var _expiryPick = null;
+  function paintExpiries(d) {
+    var exps = d.expiries, labels = d.labels, dteText = d.dte_text;
+    if (exps === null) {
+      if (state.expiryFilter !== null) _expiryPick = state.expiryFilter;
+      state.expiryFilter = null;
+      var ctx = document.getElementById('aiCtxExp'); if (ctx) ctx.textContent = 'All';
+    }
     var sel = document.getElementById('expSel'); if (!sel) return;
-    fetch('/api/expiries?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error('expiries unavailable: HTTP ' + r.status); return r.json(); })
-      .then(function (d) {
-        if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
-        var exps = d.expiries, labels = d.labels;
-        var opts = '<option value="">All Expirations</option>';
-        exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
-        if (!exps.length && d.reason) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
-        sel.innerHTML = opts;
-        var cur = state.expiryFilter;   // CURRENT selection, not one captured before this fetch started
-        if (cur && exps.indexOf(cur) !== -1) { sel.value = cur; }   // keep a still-valid selection
-        else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid current expiry -> All (honest)
-        relabelExpiryDefault();
-      })
-      .catch(function (e) {
-        if (state.ticker !== tk) return;
-        sel.innerHTML = '<option value="">All Expirations</option><option value="" disabled>' +
-          _escBadge((e && e.message) || 'expiries unavailable') + '</option>';
-      });
+    var opts = '<option value="">All Expirations</option>';
+    // the date, then Schwab's days to expiration ('-' when Schwab sent none)
+    if (exps !== null) exps.forEach(function (e) {
+      opts += '<option value="' + e + '">' + _escBadge(labels[e] + ' · ' + (dteText[e] !== null ? dteText[e] : '-')) + '</option>';
+    });
+    if (exps === null || !exps.length) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
+    sel.innerHTML = opts;
+    if (exps !== null) {
+      var pick = _expiryPick !== null ? _expiryPick : state.expiryFilter;
+      _expiryPick = null;
+      var keep = pick !== null && exps.indexOf(pick) !== -1;
+      sel.value = keep ? pick : '';
+      setExpiry(keep ? pick : '');
+    }
+    relabelExpiryDefault();
   }
   function setExpiry(v) {   // v: an expiry, or '' -- the select's "All Expirations", no filter
     var nv = v === '' ? null : v;
@@ -770,7 +777,8 @@
   }
   function subscribePrices() {
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() }));
+    // the selected ticker: the program sends its panels (the expiry list) at once, then on change
+    _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols(), ticker: state.ticker }));
   }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
   // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '-'.
@@ -789,6 +797,8 @@
     ws.onmessage = function (ev) {
       var msg = JSON.parse(ev.data);
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
+      // a list for a ticker the page has left is not this ticker's
+      if (msg && msg.type === 'expiries') { if (msg.ticker === state.key) paintExpiries(msg); return; }
       if (msg && msg.type === 'feed') {
         paintRecord(msg.feed && msg.feed.writer);
         if (msg.feed && typeof msg.feed.ts === 'number') { _serverNow = msg.feed.ts; tickClock(); }
@@ -872,10 +882,7 @@
     _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
     _changes.addEventListener('session', function (ev) { paintSession(ev.data, ''); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
-      _changes.addEventListener(kind, function () {
-        if (kind === 'chain') loadExpiries(state.ticker);
-        emit('ed:changed', { kind: kind });
-      });
+      _changes.addEventListener(kind, function () { emit('ed:changed', { kind: kind }); });
     });
   }
 
@@ -953,7 +960,7 @@
       reflectMeasure();
       measureSel.addEventListener('change', function () { setMeasure(measureSel.value); });
     }
-    // operator dropdowns: ticker (one symbol state) + expiry (from /api/expiries)
+    // operator dropdowns: ticker (one symbol state) + expiry (the socket's `expiries`)
     buildSymList();
     var symInput = document.getElementById('symInput');
     if (symInput) {

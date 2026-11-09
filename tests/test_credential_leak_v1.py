@@ -252,3 +252,66 @@ def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
     assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="main")] == [
         ["app.py", "bearer_token"]
     ]
+
+
+def _resolved_merge(root):
+    """A pull request branch `pr` whose merge of `main` was resolved by hand in two places.
+
+    main's side of the first conflict carries an operator-home path, which the resolution keeps:
+    that line is main's, not the PR's. The second conflict is resolved with a token neither side
+    has: that line is the PR's.
+    """
+    git = lambda *a: subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *a],
+        cwd=root,
+        capture_output=True,
+    )
+    middle = "".join(f"line {n}\n" for n in range(20))  # keeps the two conflicts apart
+    _staged(root, {"app.py": "a = 1\n" + middle + "b = 1\n"})
+    git("commit", "-q", "-m", "base")
+    git("branch", "-M", "main")
+    git("checkout", "-q", "-b", "pr")
+    (root / "app.py").write_text("a = 2\n" + middle + "b = 2\n", encoding="utf-8")
+    git("commit", "-q", "-am", "pr side")
+    git("checkout", "-q", "main")
+    (root / "app.py").write_text(HOME + middle + "b = 3\n", encoding="utf-8")
+    git("commit", "-q", "-am", "main side")
+    git("checkout", "-q", "pr")
+    assert git("merge", "main").returncode != 0, "the merge must conflict"
+    (root / "app.py").write_text(HOME + middle + "b = 4\n" + SECRET, encoding="utf-8")
+    git("add", "app.py")
+    assert git("commit", "-q", "--no-edit").returncode == 0
+    return root
+
+
+def test_a_merge_is_read_for_its_own_lines_in_every_hunk(tmp_path):
+    """A resolution that keeps main's line adds nothing of the PR's; one that types new text does.
+
+    Both conflicts are in one file, in two hunks of the merge's diff.
+    """
+    root = _resolved_merge(tmp_path)
+    assert [h.split(": ")[:2] for h in find_credential_leaks(root, base="main")] == [
+        ["app.py", "bearer_token"]
+    ]
+
+
+def test_a_merge_is_read_in_a_clone_without_old_file_versions(tmp_path):
+    """CI checks out a partial clone (`filter: blob:none`): file versions are fetched as read.
+
+    The scan reads only objects the server holds, so the clone can fetch each one; a diff that
+    asked for an object no one stored would be refused by the server and nothing scanned.
+    """
+    (tmp_path / "server").mkdir()
+    server = _resolved_merge(tmp_path / "server")
+    subprocess.run(["git", "config", "uploadpack.allowFilter", "true"], cwd=server, check=True)
+    subprocess.run(
+        ["git", "clone", "-q", "--filter=blob:none", "--no-checkout", "-b", "pr"]
+        + [server.as_uri(), "clone"],
+        cwd=tmp_path,
+        check=True,
+    )
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "checkout", "-q", "pr"], cwd=clone, check=True)
+    assert [h.split(": ")[:2] for h in find_credential_leaks(clone, base="origin/main")] == [
+        ["app.py", "bearer_token"]
+    ]
