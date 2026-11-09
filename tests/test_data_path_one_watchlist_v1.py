@@ -4,7 +4,8 @@ The capture daemon's connection (capture.Daemon.run) on the real schwab-py Strea
 to Schwab's streamer played locally (tests/schwab_stream_standin.py) through Schwab's REST host
 played locally (tests/schwab_rest_standin.py); the console in the daemon's program
 (streaming.bind_daemon, its feed reading the daemon's bus) and its routes (server.post_watchlist,
-delete_watchlist, get_watchlist).
+delete_watchlist); the list the page's socket carries on each beat, the daemon's status
+(capture.Daemon.status).
 
 Real data: Schwab's /quotes answers to SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as
 the watchlist check asks (2026-10-07; ZQZQZ is named in errors.invalidSymbols); Schwab's answers to
@@ -369,30 +370,42 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
         ofs.bind_daemon(daemon)  # the console in the daemon's program (capture.serve_console)
         assert ofs.start_order_flow_stream()
+        records = bus.subscribe("watchlist", policy=LOG)
         try:
+            beats = [daemon.status(time_et.now())]  # a beat built before the add
             added = json.loads((await server.post_watchlist("tsla")).body)
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
             swept_after_add = list(daemon.chains.watchlist)
+            beats.append(daemon.status(time_et.now()))
             invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
             removed = json.loads((await server.delete_watchlist("TSLA")).body)
+            beats.append(daemon.status(time_et.now()))
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
         finally:
             ofs.stop_order_flow_stream()
             ofs.bind_daemon(None)
             stop.set()
             await asyncio.gather(*tasks)
-        return added, invalid, removed, swept_after_add
+        sent = [records.queue.get_nowait()[1] for _ in range(records.queue.qsize())]
+        return added, invalid, removed, swept_after_add, beats, sent
 
     try:
-        added, invalid, removed, swept_after_add = asyncio.run(go())
+        added, invalid, removed, swept_after_add, beats, sent = asyncio.run(go())
     finally:
         schwab.close()
     assert swept_after_add == ["SPY", "TSLA"], "the chain sweep fetches an added ticker"
+    # the page's next beat carries each change (live_ui beat: the daemon's status)
+    assert [b["watchlist"] for b in beats] == [["SPY"], ["SPY", "TSLA"], ["SPY"]]
+    # each answer is stamped as its record was, on the clock each beat is stamped by: a beat built
+    # before the add is older than the add's answer, one built after it is not
+    assert [r["op"] for r in sent] == ["added", "invalid", "removed"]
+    assert beats[0]["ts"] < added["ts"] <= beats[1]["ts"]
     assert added == {
         "ok": True,
         "op": "added",
         "ticker": "TSLA",
         "tickers": ["SPY", "TSLA"],
+        "ts": sent[0]["ts_recv"],
         "status": 200,
         "answer": CHECKS["TSLA"]["body"],
     }
@@ -401,6 +414,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "op": "invalid",
         "ticker": "ZQZQZ",
         "tickers": ["SPY", "TSLA"],
+        "ts": sent[1]["ts_recv"],
         "status": 200,
         "answer": {"errors": {"invalidSymbols": ["ZQZQZ"]}},
     }
@@ -409,6 +423,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "op": "removed",
         "ticker": "TSLA",
         "tickers": ["SPY"],
+        "ts": sent[2]["ts_recv"],
         "status": None,
         "answer": None,
     }
