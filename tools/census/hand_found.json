@@ -147,10 +147,6 @@
     },
     {
       "category": "one value, several producers",
-      "item": "tick-rule walk coded twice in l1_trade_observation.py"
-    },
-    {
-      "category": "one value, several producers",
       "item": "touch imbalance: book level 1 vs Level 1 sizes"
     },
     {
@@ -164,18 +160,6 @@
     {
       "category": "one value, several producers",
       "item": "max-metric strike: ties broken two ways"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "age text: server, fmtAge, trade-desk age, 4 inline copies"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "page number formatting: 5 copies, different decimals"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "heat color: server linear, page pow(t, 0.34)"
     },
     {
       "category": "one value, several producers",
@@ -250,18 +234,6 @@
       "item": "prior-day test passed while checking our close, not Schwab's: every test's expected value needs a source check"
     },
     {
-      "category": "clock typed by hand",
-      "item": "9:30 in liquidity_value_engine.py (census D counts it)"
-    },
-    {
-      "category": "clock typed by hand",
-      "item": "index list time_et._INDEX_CLOSE_UNDERLYINGS (operator-decided: confirm)"
-    },
-    {
-      "category": "rounding in calculation",
-      "item": "value area rounds inside liquidity_models 129-131 (rule 5: round only on screen)"
-    },
-    {
       "category": "Schwab sends it",
       "item": "weekly and monthly candles, today's candle, isInTheMoney computed by us"
     },
@@ -277,7 +249,6 @@
       "category": "Schwab sends it twice",
       "item": "/chains still sends a streamed contract's open interest, volume and quote fields, which the stream already pushes (STREAM-ONE, rule 3)"
     },
-    { "category": "too big", "item": "_publish_levels 150 lines, mixed jobs" },
     { "category": "flaky test", "item": "Liquidity-card browser test" },
     {
       "category": "flaky test",
@@ -286,14 +257,6 @@
     {
       "category": "database",
       "item": "which tables take the 82.8 GB of ed_console.db: not measured"
-    },
-    {
-      "category": "database",
-      "item": "old 113 GB stream_capture file kept aside in data/old_stream_capture_2026-10-13/ (STREAM-DB-SWITCH)"
-    },
-    {
-      "category": "not counted: no checker",
-      "item": "Makefile: no make or checkmake on this machine"
     },
     {
       "category": "needs market",
@@ -305,7 +268,7 @@
     },
     {
       "category": "contradiction: rule vs guard",
-      "item": "the rule against polling CI lives only in the agent's notes: tools/operator_law_guard.py:209,222 allow gh pr checks and gh run watch"
+      "item": "AGENTS.md:309 the agent never polls CI itself vs tools/operator_law_guard.py:222,235 allowing gh pr checks and gh run watch"
     },
     {
       "category": "contradiction: rule vs hook",
@@ -324,36 +287,12 @@
       "item": "AGENTS.md:47 and CLAUDE.md:20 'no change reaches production without Ed's approval' vs AGENTS.md:290 merges and deploys without waiting on the operator"
     },
     {
-      "category": "contradiction: doc vs rule",
-      "item": ".github/pull_request_template.md:28-33 requires a reviewer verdict; AGENTS.md:133 and :48 say no reviewer verdict is required"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:192-193 and :212 'both reviews pass' vs ACTIVE_PROGRAM.md:260 and AGENTS.md:133 no reviewer verdict since 2026-11-05"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:68 ENF-12 'enforced by the operator's review' vs AGENTS.md:48,133 the builder audits, reviewers are not used"
-    },
-    {
-      "category": "contradiction: value disagrees",
-      "item": "AGENTS.md:219-223 'the operator's three rules' vs tools/wiring_rules.py:1,15 injects five rules"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:8 status values NEXT|IN PROGRESS|QUEUED|BLOCKED|OPERATOR vs rows using ACTIVE (:261, :262) and a date (:270)"
-    },
-    {
       "category": "contradiction: doc vs doc",
       "item": "docs/DATA_FLOW.md:22 'the program is two ... joined by two local sockets' vs DATA_FLOW.md:212-215 and capture.py:1148-1156 one program"
     },
     {
       "category": "contradiction: doc vs code",
-      "item": "README.md:3,7-8 a console and a separate daemon on port 8000 vs start_capture_daemon.bat:4 and capture.serve_console, one program"
-    },
-    {
-      "category": "contradiction: doc vs code",
-      "item": "SHAPE step 3 (ACTIVE_PROGRAM.md:260, ARCHITECTURE.md:48) deletes live_push :8799; live_push.py:39-40 still serves it and launch.py:36,129 use it"
+      "item": "SHAPE step 3 (ACTIVE_PROGRAM.md:260) deletes live_push :8799; app/market_data/schwab/streaming/live_push.py still serves it (capture.py:1455,1482) and launch.py:147 uses it"
     },
     {
       "category": "contradiction: doc vs doc",
@@ -408,36 +347,12 @@
       "item": "AGENTS.md:3,121 no bound of ours vs history.py:19 TAPE_KEPT = 500, :21 BOOKS_KEPT_SEC and server.py:194 BARS_KEPT"
     },
     {
-      "category": "contradiction: rule vs code",
-      "item": "AGENTS.md:55,126 every ticker treated the same vs time_et.py:102 _INDEX_CLOSE_UNDERLYINGS = SPY, QQQ, IWM"
-    },
-    {
-      "category": "contradiction: rule vs code",
-      "item": "AGENTS.md:127 says test_markets_sessions refuses a clock time in product code; liquidity_value_engine.py:190 has one and the test reads only root and app/"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "DATA_FLOW.md:716-718 no hand-typed table exists vs time_et.py:102 a hand-typed ticker list that decides the close"
-    },
-    {
       "category": "contradiction: doc vs code",
       "item": "DATA_FLOW.md:887-889 no inferred buy/sell side is computed or shown vs DATA_FLOW.md:673 and ed-gamma-flow.js:114 Cum delta (proxy, tick rule)"
     },
     {
       "category": "contradiction: rule vs code",
-      "item": "AGENTS.md:124 rule 5 shows '-' vs 13 page scripts drawing an em dash and DATA_FLOW.md:726-727 saying the label reads an em dash"
-    },
-    {
-      "category": "contradiction: rule vs code",
-      "item": "AGENTS.md:123 rule 4 and DATA_FLOW.md:646-647 the page computes nothing vs static/js Math. and toFixed( calls"
-    },
-    {
-      "category": "contradiction: rule vs code",
-      "item": "AGENTS.md:130 rule 11 the page reads no clock vs ed-core.js:764 PRICE_SILENCE_MS and :605 a timer deciding WAITING or OFFLINE"
-    },
-    {
-      "category": "contradiction: rule vs code",
-      "item": "AGENTS.md:120 rule 1 allows only three port settings vs live_ui.py:50-51 os.environ.get(\"ED_LIVE_UI_HOST\", \"0.0.0.0\")"
+      "item": "AGENTS.md rule 11 the page reads no clock vs ed-core.js:745-746,798 PRICE_SILENCE_MS and :597 timers deciding WAITING or OFFLINE"
     },
     {
       "category": "contradiction: doc vs doc",
@@ -452,10 +367,6 @@
       "item": ".claude/rules/tests.md:8 a test never reads source text vs tests/test_markets_sessions_v1.py:182-183 parses product source"
     },
     {
-      "category": "contradiction: rule vs tests",
-      "item": ".claude/rules/tests.md:6,10 'enforced' never patches vs 14 test files using monkeypatch or mock.patch"
-    },
-    {
       "category": "contradiction: rule vs doc",
       "item": "AGENTS.md:54,128 no fake data, no stand-ins vs ACTIVE_PROGRAM.md:95 STAND-INS records operator-allowed made-up values"
     },
@@ -468,16 +379,8 @@
       "item": "ACTIVE_PROGRAM.md:243-244 code_identical read by check_fails_before vs ACTIVE_PROGRAM.md:260 check_fails_before removed 2026-11-05"
     },
     {
-      "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:262 index.html comments wait on a failing-test gate vs ACTIVE_PROGRAM.md:56 that gate was removed 2026-11-05"
-    },
-    {
       "category": "contradiction: doc vs code",
       "item": "process_lock_guard.py:11-12,198-199 a push to main is operator_yes_guard's vs operator_yes_guard.py:16 judges no push: no guard handles it"
-    },
-    {
-      "category": "contradiction: doc vs config",
-      "item": "tools/hook_chain.py:5 runs two guards vs .claude/settings.json and .cursor/hooks.json running three"
     },
     {
       "category": "contradiction: config vs config",
@@ -493,7 +396,7 @@
     },
     {
       "category": "contradiction: value disagrees",
-      "item": "ACTIVE_PROGRAM.md:67 ENF-23 second readers 19 and :272 12 vs check_one_reader --list 4"
+      "item": "ACTIVE_PROGRAM.md:68 ENF-23 second readers 19 and :273 12 vs check_one_reader --list 4"
     },
     {
       "category": "contradiction: doc vs tool",
@@ -501,27 +404,11 @@
     },
     {
       "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:314 the console drops its copy of the price rows vs DATA_FLOW.md:234,255 the console keeps no price of its own"
-    },
-    {
-      "category": "contradiction: doc vs code",
-      "item": "ACTIVE_PROGRAM.md:133 M-16 and :263 name _iv_ok as an open defect; no _iv_ok exists in any .py file"
-    },
-    {
-      "category": "contradiction: value disagrees",
-      "item": "ACTIVE_PROGRAM.md:104 launch.running at launch.py:121-133; it is launch.py:104-119"
-    },
-    {
-      "category": "contradiction: doc vs config",
-      "item": "DATA_FLOW.md:834-836 pyproject's selection without BLE or TID251; pyproject.toml:8 selects both"
-    },
-    {
-      "category": "contradiction: doc vs doc",
       "item": "DATA_FLOW.md:843-844 a gap gets a check only after a failure vs AGENTS.md:19-21 every requirement names its enforcement"
     },
     {
       "category": "contradiction: value disagrees",
-      "item": "docs/playwright.md:11-12 and run-pytest-full.mjs:115 -n auto vs pytest.yml -n $(nproc) and flaky-test-fix SKILL.md:8 -n 8"
+      "item": "flaky-test-fix SKILL.md:8 -n 8 vs pytest.yml:127,216 -n $(nproc) and scripts/run-pytest-full.mjs:118 one worker per processor"
     }
   ]
 }

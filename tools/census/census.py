@@ -221,26 +221,64 @@ SHAPED = [f for f in FILES if f.endswith(e2e.SHAPED_SUFFIXES) and f in TEXT]
 SWALLOW = re.compile(r"except|swallow|suppress|silenced|thrown away|let pass")
 
 
+#: what a JS `||`/`??` reads when it is the program's own setting, not a value Schwab or the server
+#: sent: a DOM attribute, size or input, a stored preference, the environment, a constant table
+JS_SETTING = re.compile(
+    r"getAttribute\(|clientWidth|\.value\b|\bsget\(|process\.env|\b[A-Z][A-Z0-9_]*\["
+)
+
+
+def js_fallback(text, m):
+    """Return whether a check_end_to_end JS literal match puts a value where one is missing.
+
+    It does when its literal is a value of the data's kind: an empty list that flows on (a missing
+    list read as none), a number or boolean in place of a value sent (not the program's own
+    setting, not a running total's 0), or a string that reads as data (a date, a count, a price).
+    It does not when the literal is rule 5's '-' or a label ending in it, text for a person, '' or
+    null (nothing drawn), an empty object or a list only read through (the result still missing),
+    or a word of the page's own (a tab, class, colour, glyph, file name).
+    """
+    lit = re.sub(r"^(\|\||\?\?)=?\s*", "", m.group(0))
+    after = text[m.end() :]
+    before = text[text.rfind("\n", 0, m.start()) + 1 : m.start()]
+    if lit == "[]":
+        return not re.match(r"\s*\)\s*(\[|\.forEach\()", after)
+    if lit[0] in "'\"":
+        return bool(re.match(r"[+-]?\d", lit[1:-1]))
+    if lit in ("{}", "null"):
+        return False
+    return not (JS_SETTING.search(before) or (lit == "0" and re.match(r"\s*\)\s*\+", after)))
+
+
 def patch_kind(f, line, kind):
-    """Return whether a patch shape is a fallback or a swallow.
+    """Return whether a patch shape is a fallback, a swallow, or a literal that is neither.
 
     A fallback puts an invented value where one is missing; a swallow throws an error away.
-    check_end_to_end gives JS one label for both: a JS line holding a catch is a swallow.
+    check_end_to_end gives JS one label for all three: a JS line holding a catch is a swallow, one
+    with a literal js_fallback reads as a value a fallback, and the rest is reported apart.
     """
-    text = kind if f.endswith(".py") else TEXT[f].splitlines()[line - 1]
-    return "swallows" if SWALLOW.search(text) or "catch" in text else "fallbacks"
+    if f.endswith(".py"):
+        return "swallows" if SWALLOW.search(kind) else "fallbacks"
+    text = TEXT[f]
+    ln = text.splitlines()[line - 1]
+    if SWALLOW.search(ln) or "catch" in ln:
+        return "swallows"
+    starts = [m for m in e2e.JS_PATCH.finditer(text) if text.count("\n", 0, m.start()) + 1 == line]
+    return "fallbacks" if any(js_fallback(text, m) for m in starts) else NOT_FALLBACK
 
 
+NOT_FALLBACK = "literals that are not fallbacks ('-', text, '', read through, a setting)"
 for f in SHAPED:
     for what in ("fallbacks", "swallows"):
-        add(S, f"{what}: {lang(f)} {area(f)}", "1", "check_end_to_end.shapes")
+        add(S, f"{what}: {lang(f)} {area(f)}", "1", "check_end_to_end.shapes + js_fallback")
 for f in SHAPED:
     for line, kind in e2e.shapes(f, TEXT[f]):
+        what = patch_kind(f, line, kind)
         add(
             S,
-            f"{patch_kind(f, line, kind)}: {lang(f)} {area(f)}",
+            f"{what}: {lang(f)} {area(f)}" + (" (reported)" if what == NOT_FALLBACK else ""),
             "1",
-            "check_end_to_end.shapes",
+            "check_end_to_end.shapes + js_fallback",
             f"{f}:{line}: {kind}",
         )
 OTHER = {
@@ -884,6 +922,7 @@ JS_KIND = {
 }
 for cat in JS_KIND.values():
     add(S, cat, "4", "acorn")
+ROUNDING = "a value rounded to digits in product Python (rounding only on screen)"
 for cat, rule, tool in (
     ("clock time typed in code", "8", "ast"),
     ("prose in code: history, dates, PRs, incidents", "1", "regex"),
@@ -893,6 +932,7 @@ for cat, rule, tool in (
     ("a ticker typed into code (every ticker treated the same)", "7", "ast"),
     ("product files over 1,000 lines", "1", "wc"),
     ("computing functions not in docs/derived_register.md (check each)", "First gate 2", "ast"),
+    (ROUNDING, "5", "ast"),
 ):
     add(S, cat, rule, tool)
 parsed = subprocess.run(
@@ -988,6 +1028,14 @@ for f in PRODUCT_PY:
             add(
                 S, "clock time typed in code", "8", "ast", f"{f}:{node.lineno}: {ast.unparse(node)}"
             )
+        # round(x, ndigits) drops digits from a value; round(x) alone is an index or a count
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "round"
+            and len(node.args) + len(node.keywords) == 2
+        ):
+            add(S, ROUNDING, "5", "ast", f"{f}:{node.lineno}: {ast.unparse(node)[:100]}")
 by_line("clock time typed in code", " | ")
 lines_matching(
     PAGE_JS,
