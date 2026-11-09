@@ -9,8 +9,9 @@ frames read (capture._TimedStream.schwab_ts).
 
 Real data: SPY's whole chain as Schwab sent it, every expiry, 12,904 contracts (production's
 newest complete capture, 2026-11-09 10:06:10 CT), with the spot captured with it; Schwab's
-LEVELONE_EQUITIES data entry of 2026-10-12 and stored SPY books of 2026-11-02, taken back to the
-field numbers Schwab sends by schwab-py's own field enums. STAND-INS (named in the stand-ins):
+LEVELONE_EQUITIES data entry of 2026-10-12; the stored SPY books of 2026-11-02 and the stored
+LEVELONE items of 2026-10-05 14:00 CT, taken back to the field numbers Schwab sends by the Feed's
+field names (capture.FIELD_NAMES, capture.BOOK_SIDES). STAND-INS (named in the stand-ins):
 the streamer's login, its heartbeat every 0.1 s (BEAT_SEC), each price reaching the daemon as a
 LEVELONE_EQUITIES LAST_PRICE.
 """
@@ -23,8 +24,6 @@ import json
 import sys
 import threading
 from pathlib import Path
-
-from schwab.streaming import StreamClient
 
 import live_market_plane as lmp
 import server
@@ -41,6 +40,7 @@ from tests.schwab_stream_standin import FIELD_REPLIES, LocalStreamer
 _FX = Path(__file__).parent / "fixtures"
 SPY = json.loads((_FX / "real_spy_full_chain_2026_11_09.json").read_text(encoding="utf-8"))
 BOOKS = json.loads((_FX / "real_spy_books_2026_11_02.json").read_text(encoding="utf-8"))
+_MIX = json.loads((_FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))
 #: the streamer's heartbeat: a frame every 0.1 s, so a reader held up shows within one
 BEAT_SEC = 0.1
 
@@ -60,14 +60,15 @@ def _read_sec() -> float:
 
 
 def _numbered(item: dict, fields) -> dict:
-    """An item schwab-py named, back to the field numbers Schwab sends (its enums' values)."""
+    """An item as stored (named), back to the field numbers Schwab sends (the names' values)."""
     return {k if k == "key" else str(fields[k].value): v for k, v in item.items()}
 
 
 def _book_numbered(item: dict) -> dict:
-    out = _numbered(item, StreamClient.BookFields)
+    book_fields = capture.FIELD_NAMES["NYSE_BOOK"]
+    out = _numbered(item, book_fields)
     for side, level_fields, venue_fields in capture.BOOK_SIDES:
-        number = str(StreamClient.BookFields[side].value)
+        number = str(book_fields[side].value)
         if number in out:
             out[number] = [
                 {
@@ -81,26 +82,34 @@ def _book_numbered(item: dict) -> dict:
     return out
 
 
-def test_each_frame_is_named_as_schwab_pys_label_message_names_it_without_its_copy():
-    """_label names an entry in place, as schwab-py's handlers name it after copying it whole."""
-    stream = StreamClient(None)
-    stream.add_level_one_equity_handler(lambda m: m)
-    stream.add_nyse_book_handler(lambda m: m)
-    stream.add_nasdaq_book_handler(lambda m: m)
-    entries = [FIELD_REPLIES["level_one_equities_data"]]
-    for svc in ("NYSE_BOOK", "NASDAQ_BOOK"):
-        items = [_book_numbered(native) for _ts, s, native in BOOKS["rows"] if s == svc][:20]
-        entries.append({"service": svc, "timestamp": 0, "command": "SUBS", "content": items})
-    named = []
-    for entry in entries:
-        [handler] = stream._handlers[entry["service"]]
-        theirs = handler.label_message(copy.deepcopy(entry))
-        ours = copy.deepcopy(entry)
-        assert capture._label(ours) is ours, "named in place, never copied"
-        assert json.dumps(ours) == json.dumps(theirs), entry["service"]
-        named.append(ours)
-    assert any(level["BIDS"] for e in named[1:] for i in e["content"] for level in i["BIDS"])
-    assert named[1]["content"][0] == BOOKS["rows"][0][2], "Schwab's book as stored"
+def test_each_frame_is_named_as_the_daemon_stored_schwabs_items():
+    """_label names an entry in place, exactly as the daemon named and stored Schwab's items.
+
+    Production stored each item named by schwab-py's label_message (a copy of the whole entry,
+    then named): SPY's NYSE and NASDAQ books of 2026-11-02 with their levels and venues, and the
+    LEVELONE_EQUITIES and LEVELONE_OPTIONS items of 2026-10-05 14:00 CT. Each, taken back to
+    Schwab's field numbers, is named again here: the same names, values and order.
+    """
+    stored = {svc: [n for _ts, s, n in BOOKS["rows"] if s == svc][:20] for svc in ("NYSE_BOOK",)}
+    stored["NASDAQ_BOOK"] = [n for _ts, s, n in BOOKS["rows"] if s == "NASDAQ_BOOK"][:20]
+    for svc in ("LEVELONE_EQUITIES", "LEVELONE_OPTIONS"):
+        stored[svc] = [m["item"] for m in _MIX["messages"] if m["service"] == svc][:200]
+    for svc, items in stored.items():
+        numbered = [
+            _book_numbered(i) if svc.endswith("BOOK") else _numbered(i, capture.FIELD_NAMES[svc])
+            for i in items
+        ]
+        entry = {"service": svc, "timestamp": 0, "command": "SUBS", "content": numbered}
+        assert capture._label(entry) is entry, "named in place, never copied"
+        assert json.dumps(entry["content"]) == json.dumps(items), svc
+    assert any(level["BIDS"] for i in stored["NYSE_BOOK"] for level in i["BIDS"]), "with venues"
+    assert all(len(items) > 1 for items in stored.values())
+    raw = copy.deepcopy(FIELD_REPLIES["level_one_equities_data"])  # Schwab's own numbers, sent
+    named = {f.value for f in capture.FIELD_NAMES["LEVELONE_EQUITIES"]}
+    left = {k for i in capture._label(raw)["content"] for k in i if k.isdigit()}
+    assert left and not {int(k) for k in left} & named, (
+        "each field with a name named, the rest as sent"
+    )
 
 
 def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
