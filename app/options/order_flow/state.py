@@ -48,10 +48,10 @@ class OrderFlowState:
         self._lock = threading.RLock()
         # each symbol's newest book from each Schwab service, the newest arrival last: a book
         # Schwab has not changed stands, however many the other service sends
-        self._book: defaultdict[str, dict[str, dict]] = defaultdict(dict)
+        self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
         self._tape: dict[str, deque] = {}
         self._top: dict[str, dict] = {}
-        self._prev_trade: dict[str, dict] = {}
+        self._prev_trade: dict[str, tuple[int | None, float | None, float | None]] = {}
         self._receive_seq: dict[str, int] = {}
         self._stream_greeks: dict[str, dict] = {}
 

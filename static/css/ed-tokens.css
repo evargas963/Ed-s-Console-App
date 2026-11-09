@@ -8,10 +8,11 @@
    are RED in BOTH themes; blue is interaction; amber is warning/stale. */
 :root {
   /* ---- shared, theme-independent ---- */
+
   /* the Trade Desk reference is set in one DIN-style face everywhere, with tabular
      figures for numeric columns; Bahnschrift is Windows' own DIN, so no font is fetched. Panel and
      card titles are the same face condensed, in capitals. */
-  --ed-sans: 'Bahnschrift', 'DIN Alternate', 'Barlow', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --ed-sans: 'Bahnschrift', 'DIN Alternate', 'Barlow', 'Inter', system-ui, -apple-system, 'Segoe UI', roboto, arial, sans-serif;
   --ed-mono: var(--ed-sans);
   --ed-title-stretch: 87.5%; --ed-title-spacing: .06em;
   --ed-r: 4px; --ed-r-lg: 6px;
@@ -31,6 +32,7 @@
   --ed-native:#22c55e; --ed-derived:#2f8cff; --ed-proxy:#f2c230; --ed-research:#b44dff;
   --ed-native-bg:#10281b; --ed-derived-bg:#0f2338; --ed-proxy-bg:#2c2410; --ed-research-bg:#241635;
   --ed-heat-pos:#22c55e; --ed-heat-neg:#ef4444; --ed-heat-zero:#0f1723;
+
   color-scheme: dark;
 }
 
@@ -46,5 +48,6 @@
   --ed-native:#0f7a45; --ed-derived:#1f5fd0; --ed-proxy:#8a6300; --ed-research:#6d28d9;
   --ed-native-bg:#d8efe0; --ed-derived-bg:#dce7fb; --ed-proxy-bg:#f2e8cd; --ed-research-bg:#ebe0fb;
   --ed-heat-pos:#1a9e5c; --ed-heat-neg:#d63b3b; --ed-heat-zero:#e6ebf1;
+
   color-scheme: light;
 }

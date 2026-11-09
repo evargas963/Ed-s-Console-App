@@ -6,10 +6,12 @@
 // one in `invalid`, which is answered as Schwab answered ZQZQZ on 2026-10-07
 // (tests/fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json: {"errors": {"invalidSymbols": [T]}});
 // the beat carries the watchlist alone and no rows, so a test's price silence stays its own, and
-// this socket answers no subscribe (mockPriceSocket, registered after it, does, with the same beat).
+// this socket answers no subscribe. A page whose socket is already stood in for (mockPriceSocket,
+// which beats the same list) keeps that one; one registered after this one replaces it.
 // Returns the list it keeps, so a test can read what the daemon holds or change it as the daemon
 // would for another page.
 const lists = new WeakMap();
+const socketed = new WeakSet();   // the pages whose socket a stand-in already answers
 
 // the program's beat to the page on `ws`: at once, then every second, the list kept for `page`
 function beat(page, ws) {
@@ -27,7 +29,10 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
   const list = tickers.slice();
   const bad = new Set(invalid);
   lists.set(page, list);
-  await page.routeWebSocket(/\/ws$/, (ws) => beat(page, ws));
+  if (!socketed.has(page)) {
+    socketed.add(page);
+    await page.routeWebSocket(/\/ws$/, (ws) => beat(page, ws));
+  }
   await page.route('**/api/watchlist**', (route) => {
     const req = route.request();
     // stamped as the daemon's record is, on the clock its beats are stamped by
@@ -51,4 +56,4 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
   });
   return list;
 }
-module.exports = { routeWatchlist, beat };
+module.exports = { routeWatchlist, beat, socketed };

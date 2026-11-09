@@ -5,10 +5,12 @@
 .tvc{position:relative;width:100%;height:100%;min-height:0;overflow:hidden}
 .tvc-plot{position:absolute;inset:0}
 .tvc.tvc-drawing .tvc-plot{cursor:crosshair}
+
 .tvc-edge{position:absolute;left:8px;z-index:3;display:flex;gap:10px;font-size:11px;font-weight:600;
   font-variant-numeric:tabular-nums;pointer-events:none}
 .tvc-edge-top{top:26px}
 .tvc-edge-bot{bottom:34px;left:64px}
+
 .tvc-legend{position:absolute;left:8px;top:6px;z-index:3;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;
   font:12px/1.3 var(--ed-sans);color:var(--ed-ink-2);pointer-events:none;max-width:calc(100% - 80px)}
 .tvc-legend b{font-weight:600;font-variant-numeric:tabular-nums}
@@ -16,8 +18,9 @@
 .tvc-legend .tvc-tf{color:var(--ed-ink-3)}
 .tvc-legend .up,.tvc-pin .up{color:var(--ed-pos-ink)}
 .tvc-legend .dn,.tvc-pin .dn{color:var(--ed-neg-ink)}
+
 .tvc-pin{position:absolute;left:8px;top:28px;z-index:4;min-width:200px;background:var(--ed-panel-2);border:1px solid var(--ed-edge-strong);
-  border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.35);font:12px/1.35 var(--ed-sans);color:var(--ed-ink)}
+  border-radius:6px;box-shadow:0 6px 18px rgb(0 0 0 / 35%);font:12px/1.35 var(--ed-sans);color:var(--ed-ink)}
 .tvc-pin-h{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 9px;border-bottom:1px solid var(--ed-edge);font-weight:600}
 .tvc-pin-x{margin-left:auto;background:none;border:0;color:var(--ed-ink-2);font-size:16px;line-height:1;cursor:pointer;padding:0 4px}
 .tvc-pin-x:hover{color:var(--ed-ink)}
@@ -25,6 +28,7 @@
 .tvc-pin-g span{color:var(--ed-ink-3)}
 .tvc-pin-g b{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
 .tvc-ctl{position:absolute;right:2px;bottom:2px;z-index:3;display:flex;gap:2px}
+
 .tvc-btn{min-width:22px;height:22px;padding:0 5px;border-radius:4px;border:1px solid var(--ed-edge);background:var(--ed-panel-2);
   color:var(--ed-ink-2);font:600 11px var(--ed-sans);cursor:pointer}
 .tvc-btn:hover{color:var(--ed-ink);border-color:var(--ed-edge-strong)}
@@ -62,6 +66,7 @@
 .tdm-idx em{font-style:normal;font-size:11.5px}
 .tdm-trust-l{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--ed-ink-3)}
 .tdm-trust{display:flex;flex-wrap:wrap;gap:5px}
+
 .tdm-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ed-ink-2);padding:2px 7px;border-radius:10px;
   background:var(--ed-panel-2);border:1px solid var(--ed-edge-soft)}
 .tdm-pill b{color:var(--ed-ink);font-weight:600}
@@ -73,14 +78,17 @@
 .tdm-map{display:flex;flex-direction:column;min-height:0;overflow:hidden;background:var(--ed-panel)}
 .tdm-map:fullscreen{width:100vw;height:100vh;border-radius:0}
 .tdm-map-h{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;border-bottom:1px solid var(--ed-edge);flex-wrap:wrap}
+
 /* panel and card titles, as the reference sets them */
 .tdm-map-h .t,.tdm-card-h .t,.tdm-agree-t{font-weight:700;text-transform:uppercase;
   font-stretch:var(--ed-title-stretch);letter-spacing:var(--ed-title-spacing);color:var(--ed-ink)}
 .tdm-map-h .t,.tdm-queue .panel-h .t{font-size:19px}
+
 /* the one chart toolbar (ed-tv-chart toolbar()), on every chart */
 .tvc-toolbar{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap;min-width:0}
 .tvc-tfs,.tvc-slot{display:flex;align-items:center;gap:2px}
 .tvc-grow{flex:1}
+
 .tvc-tb{min-width:26px;height:24px;padding:0 7px;border-radius:4px;border:1px solid transparent;background:none;color:var(--ed-ink-2);
   font:600 12px var(--ed-sans);cursor:pointer}
 .tvc-tb:hover{background:var(--ed-panel-2);color:var(--ed-ink)}
@@ -88,14 +96,16 @@
 .tvc-sep{width:1px;height:18px;background:var(--ed-edge);margin:0 4px}
 .tvc-nsel{font-size:11.5px;color:var(--ed-ink-3);display:inline-flex;gap:5px;align-items:center}
 .tvc-nsel select{background:var(--ed-panel-2);color:var(--ed-ink);border:1px solid var(--ed-edge);border-radius:4px;font-size:11.5px;padding:1px 3px}
+
 /* the chart key, as the reference sets it: a swatch, the name, the served value; a click hides or shows */
 .tdm-families{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;padding:6px 14px;border-bottom:1px solid var(--ed-edge-soft)}
+
 .tdm-fam{display:inline-flex;align-items:center;gap:7px;font:500 12.5px var(--ed-sans);color:var(--ed-ink-3);background:none;
   border:0;padding:1px 0;cursor:pointer}
 .tdm-fam.on{color:var(--ed-ink)}
 .tdm-fam b{font-weight:600;color:var(--ed-warn);font-variant-numeric:tabular-nums}
 .tdm-fam.fam-vwap b{color:var(--ed-accent-2)}
-.tdm-fam i{width:18px;height:2px;background:currentColor}
+.tdm-fam i{width:18px;height:2px;background:currentcolor}
 .tdm-fam.fam-value_area i{background:var(--ed-warn)} .tdm-fam.fam-vwap i{background:var(--ed-accent)}
 .tdm-fam.fam-gamma i{background:linear-gradient(90deg,var(--ed-pos) 50%,var(--ed-neg) 50%)}
 .tdm-fam.fam-prior_day i{height:10px;width:12px;background:var(--ed-warn);opacity:.8}
@@ -105,6 +115,7 @@
 .tdm-fam-note:empty{display:none}
 .tdm-chart-wrap{position:relative;flex:1;min-height:240px}
 .tdm-chart{position:absolute;inset:0}
+
 .tdm-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ed-warn);font-size:13px;z-index:5;
   background:var(--ed-panel);padding:20px;text-align:center}
 .tdm-chart-empty[hidden]{display:none}
@@ -114,9 +125,12 @@
 .tdm-count:empty{display:none}
 .tdm-queue-b{flex:1;overflow:auto;padding:4px}
 .tdm-empty{padding:14px 10px;color:var(--ed-ink-3);font-size:12px;line-height:1.45}
+
 /* a queue item: a coloured edge and a large number in the event's colour (up green, down red,
    warning amber, otherwise blue), the domain above the title, the source and time below */
-.tdm-q{--q:var(--ed-accent);display:flex;gap:12px;width:100%;text-align:left;background:var(--ed-panel-2);border:1px solid var(--ed-edge-soft);
+.tdm-q{--q:var(--ed-accent);
+
+display:flex;gap:12px;width:100%;text-align:left;background:var(--ed-panel-2);border:1px solid var(--ed-edge-soft);
   border-left:4px solid var(--q);border-radius:6px;padding:10px 12px 10px 10px;cursor:pointer;color:var(--ed-ink);margin-bottom:8px}
 .tdm-q.up{--q:var(--ed-pos)} .tdm-q.dn{--q:var(--ed-neg)} .tdm-q.warn{--q:var(--ed-warn)}
 .tdm-q:hover{border-color:var(--ed-edge-strong);border-left-color:var(--q)}
@@ -132,6 +146,7 @@
    served lines need more grows the row, the four together, so nothing is cut */
 .tdm-cards{display:grid;grid-template-columns:minmax(0,1.35fr) repeat(3,minmax(0,1fr));gap:10px;align-items:stretch}
 .tdm-cards>.tdm-card{min-height:312px}
+
 /* a card, as the reference sets it: title and Open tab; source and age; Current state beside
    Change (1h); the chart and its caption; one line of facts, the most useful first */
 .tdm-card{padding:9px 14px;display:flex;flex-direction:column;gap:4px;min-height:0;overflow:hidden}
@@ -139,6 +154,7 @@
 .tdm-card-h{display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap}
 .tdm-card-h .t{font-size:19px;min-width:0}
 .tdm-card-h .bookvenue{display:inline-flex;gap:3px}
+
 .tdm-open{margin-left:auto;font:600 11.5px var(--ed-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-2);
   border:1px solid var(--ed-edge-strong);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap}
 .tdm-open:hover{color:var(--ed-accent-2);border-color:var(--ed-accent-edge)}
@@ -154,6 +170,7 @@
 .tdm-rows{display:flex;flex-wrap:wrap;gap:0 12px;font-size:11.5px;color:var(--ed-ink-3)}
 .tdm-r{min-width:0}
 .tdm-r b{color:var(--ed-ink-2);font-weight:600;font-variant-numeric:tabular-nums}
+
 /* each card's chart, as the reference draws them: the plot, then its caption */
 .tdm-chartbox{margin:2px 0 0;display:flex;flex-direction:column;gap:3px;flex:none}
 .tdm-plot{height:46px;border-bottom:1px solid var(--ed-edge-soft);position:relative}
@@ -162,12 +179,14 @@
 .tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3)}
 
 /* the Liquidity card: the order-imbalance readout, drawn from the served readout */
+
 /* laid out and lettered as the other cards: the switches are their buttons, the state and number
    their Current state, the bars their chart and the sentence its caption, the facts their rows */
 .tdm-card.liq{position:relative}
 .liq .tdm-card-h{gap:6px}
 .liq .tdm-card-h .bookvenue{margin-left:auto}
 .liq .tdm-card-h .tdm-open{margin-left:0}
+
 .liq .scbtn{font:600 11.5px var(--ed-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-2);background:none;
   border:1px solid var(--ed-edge-strong);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap}
 .liq .scbtn.on{background:none;color:#c9a227;border-color:#c9a227}
@@ -176,7 +195,8 @@
 .liq-depth small{font-size:11.5px;color:var(--ed-ink-3)}
 .liq-depth span{display:inline-flex;gap:3px}
 .liq-body{display:flex;flex-direction:column;gap:2px;min-height:0}
-.liq-body.stale>:not(.liq-keep):not(.liq-depth),.liq-body.stale .liq-now>:not(.liq-keep),
+
+.liq-body.stale>:not(.liq-keep, .liq-depth),.liq-body.stale .liq-now>:not(.liq-keep),
 .liq-body.stale .liq-facts>:not(.liq-keep){opacity:.55;filter:grayscale(1)}
 .liq-lbl{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11.5px;color:var(--ed-ink-3);text-transform:uppercase;white-space:nowrap}
 .liq-lbl b{color:var(--ed-ink-2);font-weight:600}
@@ -208,7 +228,7 @@
 .liq-dot{position:absolute;top:1px;width:12px;height:12px;margin-left:-6px;border-radius:50%}
 .liq-dot.sel{box-shadow:0 0 0 2px #fff}
 .liq-dot.NYSE_BOOK{background:#3fb950} .liq-dot.NASDAQ_BOOK{background:#f85149} .liq-dot.COMPOSITE{background:#c9a227}
-.liq-gauge{height:12px;border-radius:6px;background:linear-gradient(to right,rgba(248,81,73,.35) 50%,rgba(63,185,80,.35) 50%)}
+.liq-gauge{height:12px;border-radius:6px;background:linear-gradient(to right,rgb(248 81 73 / 35%) 50%,rgb(63 185 80 / 35%) 50%)}
 .liq-gauge::after{top:0}
 .liq-gauge i{position:absolute;top:0;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:#fff}
 .liq-lean{display:grid;grid-template-columns:20px 1fr 20px 1fr;gap:0 4px;align-items:center;font-size:11.5px;color:var(--ed-ink-3)}
@@ -218,13 +238,14 @@
 .liq-none{font-size:17px;font-weight:700;color:var(--ed-ink);padding:6px 0}
 .liq-none p{margin:4px 0 0;font-size:12px;font-weight:500;color:var(--ed-ink-3)}
 
-.tdm-agree.panel{display:flex;flex-direction:row;align-items:center;gap:12px;padding:7px 12px;flex-wrap:wrap;min-height:min-content}
+.tdm-agree.panel{display:flex;flex-flow:row wrap;align-items:center;gap:12px;padding:7px 12px;min-height:min-content}
 .tdm-agree-t{font-size:17px}
 .tdm-agree-row{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;flex:1}
 .tdm-ag{display:flex;gap:6px;align-items:baseline;font-size:12px}
 .tdm-ag span{color:var(--ed-ink-3);font-weight:700;letter-spacing:.05em;font-size:10.5px}
 .tdm-ag b{color:var(--ed-ink);font-weight:600;text-transform:capitalize}
 .tdm-ag-note{font-size:11px;color:var(--ed-ink-3);margin-left:auto}
+
 .tdm-foot{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ed-ink-3);
   padding:6px 12px;background:var(--ed-panel);border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg)}
 .tdm-foot{align-items:center}
@@ -232,15 +253,19 @@
 .tdm-foot-src>span+span{border-left:1px solid var(--ed-edge);padding-left:18px}
 .tdm-foot b{color:var(--ed-ink);font-weight:600;text-transform:none;letter-spacing:0}
 
-@media (max-width:1100px){.tdm-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tdm{grid-template-rows:minmax(420px,1fr) auto auto auto}}
-@media (max-width:900px){.tdm-main{grid-template-columns:1fr}.tdm-queue{max-height:320px}.tdm{grid-template-rows:auto auto auto auto}.tdm-map{height:460px}}
-@media (max-width:560px){.tdm-cards{grid-template-columns:1fr}}
+@media (width <=1100px){.tdm-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tdm{grid-template-rows:minmax(420px,1fr) auto auto auto}}
+
+@media (width <=900px){.tdm-main{grid-template-columns:1fr}.tdm-queue{max-height:320px}.tdm{grid-template-rows:auto auto auto auto}.tdm-map{height:460px}}
+
+@media (width <=560px){.tdm-cards{grid-template-columns:1fr}}
 
 .cm-host.panel-b{padding:0;background:#080d14}
+
 .cm-page{box-sizing:border-box;max-width:1740px;margin:0 auto;padding:14px;background:#080d14;color:#fff;
   font-family:'Arial Narrow','Segoe UI',Arial,sans-serif;font-size:13px;font-weight:600;line-height:1.4}
 .cm-page p{color:#fff;line-height:1.5;margin:6px 0;font-size:13px;font-weight:600}
 .cm-page .expiry-pick{display:flex;flex-direction:row;align-items:center;gap:8px;font-size:11px;color:#fff;font-weight:600;flex:none}
+
 .cm-page select{background:#142031;color:#fff;padding:6px 8px;border:1px solid #2b3c54;border-radius:4px;
   font-family:inherit;font-size:13px;font-weight:600}
 .cm-page button{font-family:inherit;background:#172231;color:#fff;border:1px solid #2b394d;border-radius:5px;cursor:pointer}
@@ -261,6 +286,7 @@
 .cm-page table{border-collapse:collapse;width:100%;min-width:1564px;table-layout:fixed;font-variant-numeric:tabular-nums}
 .cm-page th{font-weight:750;color:#fff;font-size:11px;background:#111a27;height:44px;text-align:center;padding:4px}
 .cm-page th small{display:block;color:#fff;font-size:10px;font-weight:600;margin-top:3px}
+
 .cm-page th.group{height:30px;text-transform:uppercase;letter-spacing:1.5px;font-size:9px;text-align:left;
   padding-left:15px;background:#152031;border-bottom:1px solid #28364b;font-weight:750}
 .cm-page td{height:52px;border:1px solid #0c131b;text-align:center;font-size:12px;padding:4px;font-weight:700;color:#fff}
@@ -282,9 +308,11 @@
 .cm-page .price-line{pointer-events:none}
 .cm-page .price-line.lit{stroke:#8dc6ff;stroke-width:2.5;opacity:1}
 .cm-page #spotline{position:absolute;left:0;right:0;z-index:4;border-top:1px solid #5796ff;pointer-events:none;height:0}
+
 .cm-page #spotline span{position:absolute;left:6px;top:-9px;background:#0c121c;color:#fff;border:1px solid #5796ff;
   border-radius:2px;padding:1px 5px;font-size:10px;line-height:14px;font-weight:600;white-space:nowrap}
 .cm-page .legend{display:flex;justify-content:space-between;gap:25px;line-height:1.6;margin:12px 0;color:#fff;font-size:10px;font-weight:600}
+
 .cm-page .scale{display:inline-block;width:120px;height:9px;vertical-align:middle;margin-right:8px;
   background:linear-gradient(90deg,#e0232f,#111822,#09a643)}
 .cm-page .detail{margin-top:18px;padding:20px;background:#111a27;border:1px solid #2b3c54;border-radius:4px}
@@ -297,4 +325,5 @@
 .cm-page .card span{color:#fff;font-size:11px;font-weight:600}
 .cm-page .detail .note,.cm-page .foot{font-size:11px;line-height:1.5;margin-top:14px;color:#fff;white-space:pre-line}
 .cm-page .foot{margin-top:16px}
-@media (max-width:900px){.cm-page .cards{grid-template-columns:repeat(3,1fr)}}
+
+@media (width <=900px){.cm-page .cards{grid-template-columns:repeat(3,1fr)}}

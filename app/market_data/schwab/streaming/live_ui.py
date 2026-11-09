@@ -10,13 +10,20 @@ The page's socket is /ws on the program's own web server (server.app, page_socke
 address the page talks to. A page that stops reading is dropped (PageSocket).
 
 Protocol (JSON text frames):
-  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
+  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...],   (replaces the set and the
+              "ticker": "SPY"}                                      page's selected ticker, or
+                                                                     null for none)
   server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
                                                                      what each asked-for symbol
                                                                      is -- "SPX" is key "$SPX",
                                                                      shown "SPX")
   server  -> {"type": "quotes", "rows": [price_row, ...]}            (snapshot on subscribe,
                                                                      then every change)
+  server  -> {"type": <kind>, "ticker": key, ...body}                (each panel of the selected
+                                                                     ticker, its producer's body
+                                                                     (`panels`, server.PAGE_
+                                                                     PANELS): on subscribe, then
+                                                                     each time it changes)
   server  -> {"type": "feed", "feed": {...}, "rows": [...]}           (every HEARTBEAT_SEC:
                                                                      the daemon's whole status
                                                                      and a fresh row per symbol,
@@ -93,25 +100,33 @@ class PageSocket(WebSocketsSansIOProtocol):
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "wake")
+    __slots__ = ("ws", "symbols", "pending", "identity", "ticker", "panels", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()  # symbols changed since the last send
         self.identity: list[dict] | None = None  # the last subscribe's answer, not yet sent
+        self.ticker: str | None = None  # the page's selected ticker (its key); None: none
+        self.panels: set[str] = set()  # the selected ticker's panels changed since the last send
         self.wake = asyncio.Event()
 
 
 class LiveUiServer:
+    #: the event loop it serves on (serve_live_ui), where a producer's change is marked (changed)
+    loop: asyncio.AbstractEventLoop
+
     def __init__(
         self,
         heartbeat_fn,
         stats: dict,
         record_heartbeat=lmp.record_feed_heartbeat,
         clock=time_et.now,
+        *,
+        panels: dict,
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
+        self.panels = panels  # each panel's producer, (ticker, now) -> its body
         self.clock = clock  # the time each row is finished at, and each beat
         self.record_heartbeat = (
             record_heartbeat  # where the daemon keeps its own record of each beat
@@ -133,6 +148,13 @@ class LiveUiServer:
         for c in self.clients:
             if ticker in c.symbols:
                 c.pending.add(ticker)
+                c.wake.set()
+
+    def mark_changed(self, ticker: str, kind: str) -> None:
+        """Mark panel `kind` changed for every browser whose selected ticker is `ticker`."""
+        for c in self.clients:
+            if c.ticker == ticker:
+                c.panels.add(kind)
                 c.wake.set()
 
     def beat(self) -> dict:
@@ -162,8 +184,12 @@ class LiveUiServer:
             if c.identity is not None:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
-            syms, c.pending = c.pending, set()
             now = self.clock()
+            kinds, c.panels = c.panels, set()
+            for kind in sorted(kinds):
+                body = self.panels[kind](c.ticker, now)
+                await self._send(c, {"type": kind, "ticker": c.ticker, **body})
+            syms, c.pending = c.pending, set()
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
@@ -195,6 +221,12 @@ class LiveUiServer:
             c.symbols = frozenset(keys)
             c.identity = identity  # what each asked-for symbol is, before its rows
             c.pending = set(keys)  # snapshot: the current row for each, now
+            selected = req.get("ticker")
+            c.ticker = None
+            c.panels = set()
+            if isinstance(selected, str) and selected.strip():
+                c.ticker = ticker_storage_key(selected)
+                c.panels = set(self.panels)  # snapshot: each panel's current body, now
             c.wake.set()
 
     async def serve_client(self, ws) -> None:
@@ -243,6 +275,17 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
+def changed(state, ticker: str, kind: str) -> None:
+    """Mark panel `kind` of `ticker` (its key) changed for the pages on it.
+
+    While the program serves the pages (`state.prices`, the web server's app state); callable
+    from any thread: the pricing thread's producer calls it.
+    """
+    prices = state.prices
+    if prices is not None:
+        prices.loop.call_soon_threadsafe(prices.mark_changed, ticker, kind)
+
+
 async def page_socket(ws: WebSocket) -> None:
     """Serve the page's socket, /ws on the program's web server (server.app).
 
@@ -262,6 +305,7 @@ async def serve_live_ui(
     *,
     state,
     heartbeat_fn,
+    panels: dict,
     stats: dict | None = None,
     record_heartbeat=lmp.record_feed_heartbeat,
     clock=time_et.now,
@@ -269,13 +313,15 @@ async def serve_live_ui(
     """Serve the pages' price socket (page_socket) until `stop` is set.
 
     The price server is the web server's app `state.prices` while it serves, None before and
-    after. Each beat is recorded with `record_heartbeat` (the daemon's own plane). The pages'
-    connections end with the program's web server (capture.serve_console).
+    after. Each beat is recorded with `record_heartbeat` (the daemon's own plane); `panels` are
+    the selected ticker's panels (server.PAGE_PANELS). The pages' connections end with the
+    program's web server (capture.serve_console).
     """
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock)
+    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock, panels=panels)
     lmp.add_row_listener(srv.on_row)
     beats = asyncio.create_task(srv.beat_loop())
+    srv.loop = asyncio.get_running_loop()
     state.prices = srv
     log.info("live ui: serving price rows to the pages on /ws")
     try:
