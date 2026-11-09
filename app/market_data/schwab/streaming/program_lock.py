@@ -1,7 +1,7 @@
 """The program's lock: one program at a time, and where it listens.
 
 The lock file sits beside the stream database. Its first line is the program's pid, written when
-the program takes the lock; its second, written once the program has opened its three sockets, is
+the program takes the lock; its second, written once the program has opened its sockets, is
 the ports they hold (record_ports). The launcher reads them there (program_ports), so the port a
 page or a stop goes to is the one the program holds, never one chosen before it bound.
 """
@@ -25,10 +25,9 @@ EXIT_OWNER_LOCK_HELD = 3
 
 @dataclass(frozen=True)
 class Ports:
-    """The ports the program's three sockets hold."""
+    """The ports the program's sockets hold."""
 
-    console: int  # the console's pages and routes
-    live_ui: int  # the browser's price socket
+    console: int  # the console's pages and routes, and the page's price socket (/ws)
     live_push: int  # the local control socket (launch.py's stop)
 
 

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import psutil
 import pytest
+import uvicorn
 from websockets.asyncio.client import connect
 from websockets.exceptions import InvalidStatus
 
@@ -34,7 +35,6 @@ import push_changes
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_push, live_ui
-from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from app.market_data.schwab.streaming.program_lock import Ports, program_ports
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
@@ -44,7 +44,7 @@ from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.capture_store import store_capture
 from tests.real_chains import CRWD, MRVL, NFLX
-from tests.test_live_push_channel_v1 import listener
+from tests.test_live_push_channel_v1 import listener, serve_page_socket
 
 REPO = Path(__file__).resolve().parent.parent
 #: Windows console input mode: selecting text with the mouse (SetConsoleMode)
@@ -86,6 +86,30 @@ def test_a_web_page_cannot_reach_the_daemons_local_socket():
                 pass
         stop.set()
         await pushing
+        return refused.value.response.status_code
+
+    assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
+
+
+def test_a_page_is_refused_while_the_program_serves_no_prices():
+    """The program's web server answers the page's price socket (/ws) only while the program
+    serves prices (live_ui.serve_live_ui): a page that comes before is refused, and its reconnect
+    keeps its schedule, never served rows nobody produces.
+    """
+
+    async def go():
+        sock, url = listener()
+        web = capture._PagesServer(
+            uvicorn.Config(server.app, **{**capture.PAGES, "lifespan": "off"})
+        )
+        serving = asyncio.create_task(web.serve(sockets=[sock]))
+        try:
+            with pytest.raises(InvalidStatus) as refused:
+                async with connect(f"{url}/ws"):
+                    pass
+        finally:
+            web.should_exit = True
+            await serving
         return refused.value.response.status_code
 
     assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
@@ -153,7 +177,6 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_PORT": "0",
         "ED_LIVE_PUSH_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
     }
@@ -442,13 +465,13 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
 
     async def go():
         stop = asyncio.Event()
-        ui = asyncio.create_task(serve_live_ui(stop, sock, heartbeat_fn=daemon.status))
+        ui = asyncio.create_task(serve_page_socket(stop, sock, {"heartbeat_fn": daemon.status}))
         run = asyncio.create_task(daemon.run(schwab_client, stop))
         await _until(
             lambda: daemon.status(time_et.now())["schwab_down"].startswith("NOT CONNECTED")
         )
         await asyncio.sleep(0.2)
-        async with connect(url, max_size=None) as ws:
+        async with connect(f"{url}/ws", max_size=None) as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
             while (msg := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "feed":
                 pass
@@ -479,15 +502,18 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
     ), reason
 
 
-def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_stop_is_not_held():
-    """The daemon's price socket (serve_live_ui, its heartbeat the daemon's own status) and two
-    real browser sockets: one reads every frame, one stops reading once its one-message queue is
-    full. The one that stopped reading is found once (its beat not taken within HEARTBEAT_SEC),
-    dropped (its connection aborted: a close frame cannot be written to a browser that does not
-    read), and its handler ends; the reading browser takes each of the next four beats in time
-    (no other beat fails); the daemon's stop ends
-    the server with no error. Induced test condition: each beat carries a 2 MB pad, so the
-    stalled socket's buffers fill in seconds (the real status, a few KB, takes far longer)."""
+def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_stop_is_not_held(
+    caplog,
+):
+    """The daemon's price socket (serve_live_ui, its heartbeat the daemon's own status, at /ws on
+    the program's web server) and two real browser sockets: one reads every frame, one stops
+    reading once its one-message queue is full. The one that stopped reading is found once (its
+    buffers full for HEARTBEAT_SEC, so its beat is not taken), dropped (its connection aborted by
+    live_ui.PageSocket: a close frame cannot be written to a browser that does not read), and its
+    handler ends; the reading browser takes each of the next four beats in time (no other beat
+    fails); the daemon's stop ends the server with no error. Induced test condition: each beat
+    carries a 2 MB pad, so the stalled socket's buffers fill in seconds (the real status, a few
+    KB, takes far longer)."""
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
 
     async def go():
@@ -495,17 +521,19 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
         stats: dict = {}
         sock, url = listener()
         daemon_side = asyncio.create_task(
-            serve_live_ui(
+            serve_page_socket(
                 stop,
                 sock,
-                heartbeat_fn=lambda now: {**daemon.status(now), "pad": "x" * 2_000_000},
-                stats=stats,
+                {
+                    "heartbeat_fn": lambda now: {**daemon.status(now), "pad": "x" * 2_000_000},
+                    "stats": stats,
+                },
             )
         )
         beats: list[float] = []
         async with (
-            connect(url, max_size=None) as reading,
-            connect(url, max_queue=1, max_size=None, close_timeout=1),
+            connect(f"{url}/ws", max_size=None) as reading,
+            connect(f"{url}/ws", max_queue=1, max_size=None, close_timeout=1),
         ):
 
             async def read_all():
@@ -514,22 +542,24 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
                         beats.append(time_et.elapsed())
 
             reader = asyncio.create_task(read_all())
-            await _until(lambda: stats.get("beat_send_failures"), 15)
-            await _until(lambda: stats.get("clients") == 1, 3)
-            dropped_at = time_et.elapsed()
+            await _until(lambda: stats.get("clients") == 2, 3)
+            await _until(lambda: stats.get("clients") == 1, 15)  # the stalled one dropped
+            dropped_at, at_drop = time_et.elapsed(), stats["beat_send_failures"]
             await _until(
                 lambda: sum(t > dropped_at for t in beats) >= 4, 10 * live_ui.HEARTBEAT_SEC
             )
-            failures = stats["beat_send_failures"]
+            missed = stats["beat_send_failures"] - at_drop
             stop.set()
             await asyncio.wait_for(daemon_side, 5)
             reader.cancel()
-        return failures
+        return at_drop, missed
 
-    failures = asyncio.run(asyncio.wait_for(go(), 40))
-    assert failures == 1, (
-        f"{failures} beats were not taken: the reading browser missed {failures - 1}"
-    )
+    at_drop, missed = asyncio.run(asyncio.wait_for(go(), 40))
+    # the stalled page's beat that was waiting when it was dropped, if one was, ended with it
+    assert at_drop <= 1, f"{at_drop} beats failed before the stalled page was dropped"
+    assert missed == 0, f"the reading browser missed {missed} beats"
+    dropped = [r.getMessage() for r in caplog.records if "stopped reading" in r.getMessage()]
+    assert dropped == ["live ui: a page stopped reading (a beat unread); dropping it"], dropped
 
 
 def _end(process: subprocess.Popen) -> None:
@@ -545,8 +575,10 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
     the stop reaches nothing else; no Schwab token, ports the system picks as it binds them.
     Another checkout's stop leaves it alone. A stop that cannot ask it, its lock naming a port
     nothing serves or one that closes at once, says so and that the daemon is still running, exit
-    1. A stop at the port the daemon wrote in its lock ends it, exit 0. Induced test condition:
-    the lock a stop reads, in a runtime folder of its own, names the daemon and the port."""
+    1. A page on the daemon's own pages' port, /ws, is answered with what it subscribed to and
+    takes the daemon's beat; a stop at the port the daemon wrote in its lock, that page connected,
+    ends the daemon and the page's socket with it, exit 0. Induced test condition: the lock a stop
+    reads, in a runtime folder of its own, names the daemon and the port."""
     home, other = tmp_path / "checkout", tmp_path / "other_checkout"
     for folder in (home, other):
         folder.mkdir()
@@ -559,7 +591,6 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         **os.environ,
         "PYTHONPATH": str(launch.ROOT),
         "ED_RUNTIME_ROOT": str(tmp_path),
-        "ED_LIVE_UI_PORT": "0",
         "ED_LIVE_PUSH_PORT": "0",
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
     }
@@ -579,7 +610,7 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         """Make a runtime folder whose lock names the daemon and `port` as its control socket's."""
         runtime = tmp_path / f"lock_naming_{port}"
         (runtime / "data").mkdir(parents=True)
-        ports = asdict(Ports(console=port, live_ui=port, live_push=port))
+        ports = asdict(Ports(console=port, live_push=port))
         (runtime / "data" / "stream_capture.lock").write_text(
             f"{daemon.pid}\n{json.dumps(ports)}\n", encoding="utf-8"
         )
@@ -600,7 +631,25 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
             assert p.returncode == 1, (out, err)
             assert "Ed Console: not asked to stop: " in err
             assert "Ed Console: still running (" in out
-        stopping = stop(home)
+        console = program_ports(tmp_path / "data" / "stream_capture.db").console
+
+        async def page_through_the_stop():
+            # unread frames queue without bound, so the page still reads the program's close
+            async with connect(f"ws://127.0.0.1:{console}/ws", max_queue=None) as page:
+                await page.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
+                frames = [json.loads(await asyncio.wait_for(page.recv(), 30))]
+                while frames[-1]["type"] != "feed":
+                    frames.append(json.loads(await asyncio.wait_for(page.recv(), 30)))
+                stopping = stop(home)
+                await asyncio.wait_for(page.wait_closed(), 60)
+            return frames, stopping
+
+        frames, stopping = asyncio.run(page_through_the_stop())
+        assert frames[0] == {
+            "type": "symbols",
+            "symbols": [{"requested": "spy", "key": "SPY", "display": "SPY"}],
+        }, frames
+        assert frames[-1]["feed"]["schwab_socket_open"] is False  # no token: Schwab not reached
         assert daemon.wait(60) == capture.EXIT_STOPPED  # reaped: the stop sees it gone on Linux too
         out, err = stopping.communicate(timeout=60)
         assert (stopping.returncode, out) == (0, "Ed Console: stopped\n"), err
@@ -638,7 +687,7 @@ def test_the_stop_reads_no_process_parent(tmp_path):
 
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
     """The real daemon found while it loads, its ports not opened yet, then ending on its own
-    because its live UI's port is held, the code its window restarts on: the stop could not ask
+    because its pages' port is held, the code its window restarts on: the stop could not ask
     it, so it does not read "stopped" and exits 1. Induced test condition: the daemon's load is
     held until the stop has found it and said it could not ask it, however late the stop starts."""
     home, site = tmp_path / "checkout", tmp_path / "site"
@@ -653,12 +702,12 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
         "        time.sleep(0.05)\n",
         encoding="utf-8",
     )
-    with socket.create_server((live_ui.LIVE_UI_HOST, 0)) as held:  # where the daemon binds
+    with socket.create_server((live_ui.CONSOLE_HOST, 0)) as held:  # where the daemon binds
         env = {
             **os.environ,
             "PYTHONPATH": str(launch.ROOT),
             "ED_RUNTIME_ROOT": str(tmp_path),
-            "ED_LIVE_UI_PORT": str(held.getsockname()[1]),
+            "ED_CONSOLE_PORT": str(held.getsockname()[1]),
             "ED_LIVE_PUSH_PORT": "0",
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         }
@@ -758,18 +807,19 @@ def test_a_module_that_fails_to_load_shows_its_reason_in_the_daemons_window(tmp_
     assert "ModuleNotFoundError: No module named 'schwab'" in done.stderr, done.stderr
 
 
-def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(
+def test_a_daemon_whose_pages_port_is_held_ends_at_once_with_why_and_its_window_restarts_it(
     tmp_path,
 ):
-    """Another socket holds the live UI's port: the daemon, run as its window runs it, ends as it
-    opens its sockets, with the bind's error naming the port in its log and an exit code its
-    window restarts on (not EXIT_STOPPED), instead of running with no browser served."""
-    with socket.create_server((live_ui.LIVE_UI_HOST, 0)) as held:  # where the daemon binds
+    """Another socket holds the pages' port (the page's price socket's too): the daemon, run as
+    its window runs it, ends as it opens its sockets, with the bind's error naming the port in its
+    log and an exit code its window restarts on (not EXIT_STOPPED), instead of running with no
+    browser served."""
+    with socket.create_server((live_ui.CONSOLE_HOST, 0)) as held:  # where the daemon binds
         port = held.getsockname()[1]
         env = {
             **os.environ,
             "ED_RUNTIME_ROOT": str(tmp_path),
-            "ED_LIVE_UI_PORT": str(port),
+            "ED_CONSOLE_PORT": str(port),
             "ED_LIVE_PUSH_PORT": "0",
             "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
         }
@@ -784,7 +834,7 @@ def test_a_daemon_whose_live_ui_port_is_held_ends_at_once_with_why_and_its_windo
     log = path.read_text(encoding="utf-8")
     assert done.returncode == 1, (done.returncode, log)
     assert "capture daemon: ended by an error" in log, log
-    assert f"({live_ui.LIVE_UI_HOST!r}, {port})" in log, log  # the bind names its address
+    assert f"({live_ui.CONSOLE_HOST!r}, {port})" in log, log  # the bind names its address
     assert "OSError" in log, log
 
 

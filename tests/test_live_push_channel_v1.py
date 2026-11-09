@@ -27,11 +27,13 @@ import time
 from pathlib import Path
 
 import pytest
+import uvicorn
 from websockets.asyncio.client import connect
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_push, live_ui
 from calibration.complete_chain_capture import chain_messages
@@ -99,6 +101,23 @@ def listener() -> tuple[socket.socket, str]:
     return sock, f"ws://127.0.0.1:{sock.getsockname()[1]}"
 
 
+async def serve_page_socket(stop: asyncio.Event, sock: socket.socket, prices: dict, **settings):
+    """The page's price socket as the program serves it, until `stop`: the daemon's side
+    (live_ui.serve_live_ui, `prices` its arguments) and /ws on the program's web server
+    (capture._PagesServer with capture.PAGES, `settings` over them) on `sock`. The console's
+    startup work is not run (lifespan off): the page socket alone.
+    """
+    web = capture._PagesServer(
+        uvicorn.Config(server.app, **{**capture.PAGES, "lifespan": "off", **settings})
+    )
+    serving = asyncio.create_task(web.serve(sockets=[sock]))
+    try:
+        await live_ui.serve_live_ui(stop, **prices)
+    finally:
+        web.should_exit = True
+        await serving
+
+
 def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
     """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES, each
     beat stamped by `clock`.
@@ -129,7 +148,6 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
     ui = asyncio.create_task(
         live_ui.serve_live_ui(
             stop,
-            listener()[0],
             heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
             stats=ui_stats,
         )
