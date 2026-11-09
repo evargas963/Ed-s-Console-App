@@ -4,11 +4,13 @@
     "book_stale": true,
     "quote_age_sec": 0.44310522079467773
   },
+  "book_age_text": "0s",
   "book_slope": {
     "ask": 1006.6666666666665,
     "bid": 10033.333333333361
   },
   "book_time_ct": "Mon 08/31 01:50 PM CT",
+  "book_when_age_text": "Mon 08/31 01:50 PM CT \u00b7 0s",
   "classification": {
     "ages.book_age_sec": "DERIVED",
     "ages.book_stale": "DERIVED",
@@ -124,18 +126,19 @@
   },
   "put_call": null,
   "quote_time_ct": "Mon 08/31 01:50 PM CT",
+  "quote_when_age_text": "Mon 08/31 01:50 PM CT \u00b7 0s",
   "spread_frac": 0.05042016806722694,
   "spread_pts": 0.030000000000000027,
   "status": "ok",
   "streaming_plane": {
     "feed_health": {
       "book": {
-        "age_sec": null,
-        "state": "NOT LIVE"
+        "state": "NOT LIVE",
+        "text": "NOT LIVE"
       },
       "l1": {
-        "age_sec": null,
-        "state": "NOT LIVE"
+        "state": "NOT LIVE",
+        "text": "NOT LIVE"
       },
       "replay": "not connected"
     },

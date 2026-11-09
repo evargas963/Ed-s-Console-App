@@ -12,15 +12,14 @@
   var usd = window.EdGamma.formatUsd;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function ctTime(sec) { try { return new Date(sec * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
-  function st() { return window.EdShell.getState(); }
   function isChart() {
-    var s = st();
+    var s = window.EdShell.getState();
     return s.workspace === 'options' && ['gamma', 'dex', 'oi'].indexOf(s.subview) !== -1 && s.view === 'chart';
   }
   // the served profile for the selected measure: {rows (the window), its scale (the window's
   // largest |value|), max_abs_row, name}
   function served(sd) {
-    var m = st().measure, x = sd && sd.measures && sd.measures[m];
+    var m = window.EdShell.getState().measure, x = sd && sd.measures && sd.measures[m];
     if (x) return { rows: x.rows || [], scale: (x.view || {}).max_abs, max_abs_row: x.max_abs_row,
       name: m === 'oi' ? 'OI' : 'DEX', signed: m !== 'oi' };
     return { rows: (sd && sd.today && sd.today.all) || [], scale: sd && sd.views && sd.views.all && sd.views.all.max_abs,
@@ -29,7 +28,7 @@
   function strikesUrl(tk) {   // the same window GEX by Strike reads unpanned: one shared read
     return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(null);
   }
-  function ticker() { return st().ticker; }
+  function ticker() { return window.EdShell.getState().ticker; }
 
   var _mode = 'profile';          // 'profile' (bars) | 'dotmap' (dots)
   var _chart = null;
@@ -41,7 +40,7 @@
 
   function liveSpot() {   // the row whose served key is the selected instrument's (EdShell state.key)
     var q = _liveQuote;
-    return (q && q.ticker === st().key && q.spot != null) ? Number(q.spot) : null;
+    return (q && q.ticker === window.EdShell.getState().key && q.spot != null) ? Number(q.spot) : null;
   }
   function ensureChart() {
     var host = document.getElementById('chartBody');
@@ -98,11 +97,11 @@
       .filter(function (a) { return !a[0]; }).map(function (a) { return a[1]; });
     var bars = barsD ? barsD.bars : [];
     var win = prof.rows.filter(function (r) { return r[1] != null; });   // the served window; unknown: nothing drawn
-    c.setBars(bars, barsD ? barsD.tf : _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(bars, barsD ? barsD.tf : _tf, window.EdShell.getState().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       prof.scale, _mode === 'dotmap' ? 'dots' : 'bars');
-    c.selectProfile(st().selStrike == null ? null : Number(st().selStrike));
+    c.selectProfile(window.EdShell.getState().selStrike == null ? null : Number(window.EdShell.getState().selStrike));
     var lv = [];
     if (t && !t.error) {
       if (t.gamma_flip != null) lv.push({ id: 'gamma_flip', price: Number(t.gamma_flip), label: 'flip', color: P.accent, style: 2, width: 1 });
@@ -112,7 +111,7 @@
     c.setLevels(lv);
     var spot = liveSpot();
     var tradeTime = (_liveQuote && spot != null) ? _liveQuote.trade_time_ct : null;
-    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null, tradeTime);
+    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_text : null, tradeTime);
     var empty = host.querySelector('.gchart-empty');
     empty.hidden = !failed.length && !!(bars.length || win.length);
     empty.textContent = failed.length ? 'the ' + failed.join(', ') + ' request failed for ' + ticker()
@@ -153,7 +152,7 @@
 
   window.addEventListener('ed:quote_tick', function (ev) {
     var q = (ev && ev.detail) || {};
-    if (q.ticker !== st().key) return;
+    if (q.ticker !== window.EdShell.getState().key) return;
     _liveQuote = q;
     if (isChart() && _chart && _last.strikes !== undefined) render();
   });
@@ -164,7 +163,7 @@
   document.addEventListener('ed:changed', function (e) {   // a new bar reloads all; new levels reload the levels
     if (e.detail.kind === 'liquidity') load(); else if (e.detail.kind === 'levels') _levelsLoader.trigger(ticker());
   });
-  document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(st().selStrike == null ? null : Number(st().selStrike)); });
+  document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(window.EdShell.getState().selStrike == null ? null : Number(window.EdShell.getState().selStrike)); });
   bindModes();
   // read-only view for tests (e2e) -- never a control surface
   window.EdGammaChart = {

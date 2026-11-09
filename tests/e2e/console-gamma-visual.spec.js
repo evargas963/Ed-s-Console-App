@@ -9,6 +9,7 @@
  * Captures DARK and LIGHT at 2560x1440 and 1920x1080 (full viewport, not cropped).
  */
 const { test, expect } = require('@playwright/test');
+const { expiriesAnswer } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SPOT = 5000;
@@ -50,6 +51,7 @@ const BARS = { ticker: '$SPX', bars: Array.from({ length: 80 }, function (_v, i)
   const c = SPOT - 12 + Math.sin(i / 6) * 9 + i * 0.12;
   return { t: 1757000000 + i * 60, o: c - 1, h: c + 2, l: c - 2, c: c, v: 1000 + i }; }) };
 const CHAIN = { ticker: '$SPX', spot: SPOT, expiry: '2026-09-11', status: 'ok',
+  scope: { kind: 'complete_single_expiry' }, net_gex_by_strike: [], adjusted_deliverable_symbols: [],
   contracts: [
     { putCall: 'CALL', strikePrice: 5000, openInterest: 12400, totalVolume: 5400, gamma: 0.0021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 5000, openInterest: 9800, totalVolume: 4100, gamma: 0.0019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' } ] };
@@ -63,7 +65,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
-    else if (url.includes('/api/expiries')) body = { expiries: EXPS.map(function (e) { return e.expiry; }) };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = expiriesAnswer(EXPS.map((e) => e.expiry), Object.fromEntries(EXPS.map((e) => [e.expiry, e.dte])));    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
 }

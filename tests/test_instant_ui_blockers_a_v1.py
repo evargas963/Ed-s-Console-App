@@ -160,7 +160,7 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
         and ev["spot"] == 42.0
         and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
     )
-    assert 6.0 <= ev["trade_age_sec"] <= 9.0
+    assert ev["trade_age_text"] == "7s"  # the trade 7 s before `now`, by the one age formatter
     assert "forming_1m" not in ev
     held_no_trade = live_price_rows.price_row("ZZNOTRADE", now)
     assert held_no_trade["spot"] is None

@@ -4,12 +4,14 @@
   "book_stale": true,
   "quote_age_sec": 846205.7660000324
  },
+ "book_age_text": "1s",
  "book_feed_label": "OFFLINE",
  "book_slope": {
   "ask": 7866.666666664878,
   "bid": 4857.142857143331
  },
  "book_time_ct": "Mon 11/02 09:02 AM CT",
+ "book_when_age_text": "Mon 11/02 09:02 AM CT \u00b7 1s",
  "classification": {
   "ages.book_age_sec": "DERIVED",
   "ages.book_stale": "DERIVED",
@@ -148,6 +150,7 @@
   "server_received_ts": 1793631750.0
  },
  "quote_time_ct": "Fri 10/23 02:59 PM CT",
+ "quote_when_age_text": "Fri 10/23 02:59 PM CT \u00b7 10d",
  "readout": {
   "auction": "NONE",
   "auction_text": null,
