@@ -485,7 +485,7 @@ def test_the_page_is_told_the_market_context_with_its_display_names():
     """The header's market context, which the daemon streams whatever the watchlist holds, is
     served in the page with each symbol's display name.
     """
-    html = server._with_live_ui_port(server._LIVE_UI_PORT_META + server._MARKET_CONTEXT_META)
+    html = server._with_page_settings(server._MARKET_CONTEXT_META)
     assert (
         '[{"key": "$SPX", "display": "SPX"}, {"key": "$NDX", "display": "NDX"}, '
         '{"key": "$VIX", "display": "VIX"}]' in html.replace("&quot;", '"')
