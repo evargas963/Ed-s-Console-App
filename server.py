@@ -63,7 +63,6 @@ from calibration.complete_chain_capture import (
     last_capture_per_day,
     newest_capture_ts,
 )
-from config import token_path
 from confluence_composite import at_price, build_matrix, window_rows
 from db import LevelCrossEvent, get_db
 from db_authority import canonical_stream_db_path
@@ -702,62 +701,6 @@ def terrain_cache_get(ticker: str, now: float) -> tuple[PublishedLevels | None, 
 TERRAIN_STALE_AFTER_SEC: float = 180.0
 
 
-#: Schwab refresh tokens end at 7 days: warned from day 5, red from day 6.
-_SCHWAB_TOKEN_WARN_DAYS = 5.0
-_SCHWAB_TOKEN_RED_DAYS = 6.0
-
-
-def schwab_token_countdown(token: tuple[float | None, str | None], now: float) -> dict:
-    """Return the token's urgency at `now` from the token file's creation_timestamp.
-
-    When the file gives none, why (_schwab_token_creation_ts).
-    """
-    creation_ts, unreadable = token
-    if creation_ts is None:
-        return {
-            "schwab_token_age_days": None,
-            "schwab_token_urgency": "unknown",
-            "schwab_token_note": f"{unreadable} — collection may be dead",
-        }
-    age_days = (now - float(creation_ts)) / 86400.0
-    if age_days >= _SCHWAB_TOKEN_RED_DAYS:
-        urgency, note = (
-            "red",
-            (
-                f"Schwab token is {age_days:.1f} days old (7-day hard limit) — "
-                f"re-auth NOW: python reauth_schwab.py --manual"
-            ),
-        )
-    elif age_days >= _SCHWAB_TOKEN_WARN_DAYS:
-        urgency, note = (
-            "warn",
-            (
-                f"Schwab token is {age_days:.1f} days old — re-auth before "
-                f"day 7 kills collection: python reauth_schwab.py --manual"
-            ),
-        )
-    else:
-        urgency, note = "ok", ""
-    return {
-        "schwab_token_age_days": age_days,
-        "schwab_token_urgency": urgency,
-        "schwab_token_note": note,
-    }
-
-
-def _schwab_token_creation_ts() -> tuple[float | None, str | None]:
-    """creation_timestamp from schwab_token.json, or None (never a fake age) with why.
-
-    Why the file gives none, by its error's type, which the screen's note shows (its message names
-    a path).
-    """
-    try:
-        raw = json.loads(Path(token_path()).read_text(encoding="utf-8"))
-        return float(raw["creation_timestamp"]), None
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        return None, f"token file unreadable ({type(e).__name__})"
-
-
 def terrain_staleness(
     computed_ts_utc: float | None,
     ticker: str,
@@ -780,7 +723,6 @@ def terrain_staleness(
     option value the levels hold (`levels_ts_utc`: the chain, or a value pushed since) and its
     age.
     """
-    token = schwab_token_countdown(_schwab_token_creation_ts(), now)  # warned before it expires
     failure = _terrain_refresh_last_error.get(ticker_storage_key(ticker))
     state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
     age = None if levels_ts_utc is None else now - float(levels_ts_utc)
@@ -793,7 +735,6 @@ def terrain_staleness(
         # actively FAILING is a different action (the chain fetch is erroring, the levels
         # will not come back on their own)
         "levels_failing": bool(state == LEVELS_STALE and failure),
-        **token,
     }
 
 
