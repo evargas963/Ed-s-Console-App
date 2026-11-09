@@ -666,7 +666,5 @@ def flatten_chain_contracts(c_json: dict) -> list[dict]:
             for strike_list in exp_map.values():
                 if not isinstance(strike_list, list):
                     continue
-                for ct in strike_list:
-                    if isinstance(ct, dict):
-                        out.append({**chain_fields, **ct})
+                out.extend({**chain_fields, **ct} for ct in strike_list if isinstance(ct, dict))
     return out
