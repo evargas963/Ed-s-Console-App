@@ -1,6 +1,7 @@
-"""The Stop hook (AGENTS.md Authority: work continues until SHAPE is finished): while
-ACTIVE_PROGRAM.md's SHAPE row is IN PROGRESS, the agent's attempt to end its turn is refused and it
-is sent back to the next step.
+"""The Stop hook (AGENTS.md Authority: work continues until SHAPE is finished).
+
+While ACTIVE_PROGRAM.md's SHAPE row is IN PROGRESS, the agent's attempt to end its turn is refused
+and it is sent back to the next step.
 
 The way through is a stop the rules allow: the agent's final message begins
 `WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5).
@@ -76,9 +77,11 @@ def _last_assistant(text: str) -> dict | None:
 
 
 def last_message(transcript: Path) -> str:
-    """The text of the transcript's last assistant entry (JSON lines); "" when that entry carries
-    no text (a turn ending on a tool call), so an older message never stands in for it. The end of
-    the file is read first; the whole file only when the end holds no assistant entry.
+    """Return the text of the transcript's last assistant entry (JSON lines).
+
+    "" when that entry carries no text (a turn ending on a tool call), so an older message never
+    stands in for it. The end of the file is read first; the whole file only when the end holds no
+    assistant entry.
     """
     with transcript.open("rb") as f:
         size = f.seek(0, 2)
@@ -112,8 +115,10 @@ SESSION = re.compile(r"[\w-]+")
 
 
 def session(payload: dict) -> str:
-    """The payload's session id as sent; one that is missing or not a plain name raises, so the
-    hook fails closed instead of filing the session under a name of its own.
+    """Return the payload's session id as sent.
+
+    One that is missing or not a plain name raises, so the hook fails closed instead of filing the
+    session under a name of its own.
     """
     sid = payload["session_id"]
     if not isinstance(sid, str) or not SESSION.fullmatch(sid):
@@ -132,9 +137,10 @@ def _entries(ledger: Path) -> list[dict]:
 
 
 def record_message(payload: dict, orders: Path = ORDERS) -> int | None:
-    """Record the operator's message as the session's next message and return its number; None
-    for an event the app sends as a message (`<task-notification>`, `<ci-monitor-event>`), which
-    no one sent.
+    """Record the operator's message as the session's next message and return its number.
+
+    None for an event the app sends as a message (`<task-notification>`, `<ci-monitor-event>`),
+    which no one sent.
     """
     said = payload.get("prompt")
     if not isinstance(said, str) or not said.strip() or said.lstrip().startswith("<"):
@@ -148,8 +154,9 @@ def record_message(payload: dict, orders: Path = ORDERS) -> int | None:
 
 
 def standing_orders(payload: dict, orders: Path = ORDERS) -> list[tuple[int, str]]:
-    """The session's messages read as orders, each with its text: what a new message is checked
-    against for a conflict.
+    """Return the session's messages read as orders, each with its text.
+
+    They are what a new message is checked against for a conflict.
     """
     entries = _entries(_ledger(payload, orders))
     given = {e["n"]: e["message"] for e in entries if "message" in e}
@@ -157,8 +164,9 @@ def standing_orders(payload: dict, orders: Path = ORDERS) -> list[tuple[int, str
 
 
 def open_messages(payload: dict, last: str, orders: Path = ORDERS) -> list[tuple[int, str, str]]:
-    """The session's messages not yet read ("read") and its orders not yet answered ("answer"),
-    after keeping the readings and answers `last` gives.
+    """Return the session's messages not yet read ("read") and orders not yet answered ("answer").
+
+    They are taken after keeping the readings and answers `last` gives.
     """
     ledger = _ledger(payload, orders)
     entries = _entries(ledger)
@@ -189,8 +197,10 @@ CONSOLE_PORT = int(os.environ.get("ED_CONSOLE_PORT", "8000"))
 
 
 def production_wrong(repo: Path = REPO, port: int = CONSOLE_PORT) -> str | None:
-    """Why production is not running main, or None when it is: the checkout at `repo` beside its
-    `origin/main`, or nothing listening on 127.0.0.1 `port`.
+    """Return why production is not running main, or None when it is.
+
+    The reasons are the checkout at `repo` beside its `origin/main`, or nothing listening on
+    127.0.0.1 `port`.
     """
     head, main = (
         subprocess.run(
@@ -220,10 +230,11 @@ def decide(
     open_orders: list[tuple[int, str, str]] = (),
     production: str | None = None,
 ) -> str | None:
-    """Why the stop is refused, or None when it may end; `in_a_row` is which refusal in a row this
-    would be, and from BEDROCK_AT on the reason sends the agent to the cause, not back to the
-    same attempt. An unread message or an unanswered order refuses the stop, whatever the SHAPE
-    row says.
+    """Return why the stop is refused, or None when it may end.
+
+    `in_a_row` is which refusal in a row this would be, and from BEDROCK_AT on the reason sends the
+    agent to the cause, not back to the same attempt. An unread message or an unanswered order
+    refuses the stop, whatever the SHAPE row says.
     """
     if open_orders:
         return (
@@ -272,8 +283,10 @@ COUNTS = Path(tempfile.gettempdir()) / "ed_keep_going"
 
 
 def in_a_row(payload: dict, counts: Path = COUNTS) -> int:
-    """Which refusal in a row this stop would be: 1 after a stop the hook did not refuse, else one
-    more than the session's count in `counts`. The count is replaced whole, never half-written.
+    """Return which refusal in a row this stop would be.
+
+    1 after a stop the hook did not refuse, else one more than the session's count in `counts`.
+    The count is replaced whole, never half-written.
     """
     count = counts / session(payload)
     active = payload.get("stop_hook_active") is True
