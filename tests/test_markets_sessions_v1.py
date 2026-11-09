@@ -87,12 +87,14 @@ def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_pat
         deadline = asyncio.get_running_loop().time() + 30
         while {r[0] for r in rows()} < wanted and asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.1)
-        await asyncio.sleep(1.0)
         stop.set()
-        await asyncio.gather(written, sweep)
+        await asyncio.gather(written, sweep)  # the sweep's pass in progress ends first
+        return daemon.chains
 
     try:
-        asyncio.run(go())
+        sweep = asyncio.run(go())
+        # the sweep's next pass asks for the same dates (ChainSweep.step): none is asked again
+        sweep.fetch_markets(lambda: client, sorted(wanted))
     finally:
         schwab.close()
     asked = [q["date"] for q in schwab.asked(MARKETS)]

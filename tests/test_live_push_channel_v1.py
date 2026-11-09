@@ -238,8 +238,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
                 bus.publish(topic, msg)
         sampler = threading.Thread(target=sample, args=(7.0,))
         sampler.start()
-        while sampler.is_alive():
-            await asyncio.sleep(0.05)
+        await asyncio.to_thread(sampler.join)  # the loop keeps working through the chains
 
     asyncio.run(
         _run(
@@ -260,7 +259,8 @@ def test_a_closed_schwab_socket_is_not_live():
         ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
-        await asyncio.sleep(1.3)  # at least one heartbeat arrived
+        # a heartbeat arrived: the daemon's status, its Schwab socket closed, is recorded
+        assert await _until(lambda: lmp.daemon_status(time_et.now()) is not None)
         assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time_et.now())
 
     asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
@@ -388,7 +388,8 @@ def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(caplog):
         with caplog.at_level("ERROR", logger=ofs.log.name):
             assert ofs.start_order_flow_stream() is False
         bus.publish("quote.SPY", _spy_trade(504.0, time_et.now()))
-        await asyncio.sleep(0.3)
+        # nothing runs on this loop but this test that could apply it
+        assert asyncio.all_tasks() == {asyncio.current_task()}
         assert ofls.get_content_for_symbol("SPY") == []
         ofs.bind_daemon(capture.Daemon(bus, HealthRegistry(), []))
         assert ofs.start_order_flow_stream() is True
@@ -479,8 +480,7 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time():
                 ts_recv=t_quote,
                 native={"key": "SPY", "BID_PRICE": 504.9, "ASK_PRICE": 505.1},
             ),
-        )
-        await asyncio.sleep(0.05)
+        )  # publish is synchronous: both are the bus's current record now
         assert ofs.start_order_flow_stream()
         try:
             assert await _until(_received(t_trade))  # the trade, at its own receive time
