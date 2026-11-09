@@ -4,12 +4,14 @@
   "book_stale": null,
   "quote_age_sec": 846205.7660000324
  },
+ "book_age_text": null,
  "book_feed_label": "LIVE",
  "book_slope": {
   "ask": null,
   "bid": null
  },
  "book_time_ct": null,
+ "book_when_age_text": null,
  "classification": {
   "ages.book_age_sec": "DERIVED",
   "ages.book_stale": "DERIVED",
@@ -96,6 +98,7 @@
   "server_received_ts": 1793631750.0
  },
  "quote_time_ct": "Fri 10/23 02:59 PM CT",
+ "quote_when_age_text": "Fri 10/23 02:59 PM CT \u00b7 10d",
  "readout": {
   "auction": "NONE",
   "auction_text": null,

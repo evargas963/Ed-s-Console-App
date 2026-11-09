@@ -17,9 +17,8 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
-  function st() { return window.EdShell.getState(); }
-  function isRightNow() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
-  function ticker() { return st().ticker; }
+  function isRightNow() { var s = window.EdShell.getState(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
+  function ticker() { return window.EdShell.getState().ticker; }
   function host() { return document.getElementById('tdBody'); }
   function stillRightNow(tk) { return isRightNow() && ticker() === tk; }
 
@@ -66,20 +65,16 @@
   }
 
   function detectStage(d) {
-    if (!d || d.status === 'no_book') {
+    if (!d) {   // the read failed: said so, never told as a book Schwab did not send
+      return stage(1, 'td-accent-blue', 'Detect — book microstructure', 'The book request failed', '', 0, [], 'FAILED', 'warn');
+    }
+    if (d.status === 'no_book') {
       return stage(1, 'td-accent-blue', 'Detect — book microstructure', 'No book yet', '', 0, [], 'NO BOOK', 'warn');
     }
-    var tob = d.top_of_book || {}, depth = d.depth || {}, cls = d.classification || {};
+    var tob = d.top_of_book, depth = d.depth, cls = d.classification;   // always served (engine.compute_book_microstructure)
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
-    var ages = d.ages || {};
-    // Schwab's book time stands beside the seconds. The seconds stay when no book time was
-    // sent, and the time stays when the age is missing. Neither sent shows "-".
-    var bookSec = ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : null;
-    var bookWhen = d.book_time_ct != null ? d.book_time_ct : null;
-    var bookAge = '-';
-    if (bookWhen != null && bookSec != null) bookAge = bookWhen + ' · ' + bookSec;
-    else if (bookWhen != null) bookAge = bookWhen;
-    else if (bookSec != null) bookAge = bookSec;
+    // Schwab's book time and its age, as served; neither sent shows "-"
+    var bookAge = d.book_when_age_text == null ? '-' : d.book_when_age_text;
     var rows = [
       ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
@@ -95,18 +90,19 @@
     var side = zone == null || zone === 'BALANCED' ? null : /BID/.test(zone) ? 'BID' : 'ASK';
     // the served words: the top of book's while it is not live, else the book's (book_feed_label);
     // no book age served reads AGE UNKNOWN, never live
-    var bs = ages.book_stale;
+    var bs = d.ages.book_stale;
     var badge = d.top_outage ? d.top_feed_label : (bs == null ? 'AGE UNKNOWN' : d.book_feed_label);
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
       rows, badge, d.top_outage || bs !== false ? 'stale' : 'live');
   }
 
   function frameStage(levelsD) {
-    var levels = (levelsD && levelsD.levels) || [];
+    if (!levelsD) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'The levels request failed', '', 0, [], null);
+    var levels = levelsD.levels;   // always served (levels_payload)
     if (!levels.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No levels', '', 0, [], null);
     // served: levels ordered by distance to the live price (by_distance), each with its distance and side
     var byId = {}; levels.forEach(function (r) { byId[r.id] = r; });
-    var sorted = ((levelsD && levelsD.by_distance) || []).map(function (id) { return byId[id]; }).filter(Boolean);
+    var sorted = levelsD.by_distance.map(function (id) { return byId[id]; }).filter(Boolean);
     if (!sorted.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No priced levels', '', 0, [], null);
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
@@ -226,7 +222,7 @@
 
   function migrationSection(strikesD, terrain, spot, tk) {
     if (!strikesD) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
-      '<div class="placeholder"><div class="sm">no per-strike gamma for this symbol yet</div></div></div>';
+      '<div class="placeholder"><div class="sm">the per-strike request failed</div></div></div>';
     var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
     if (!todayAll.length) {
       var why = strikesD.levels_stale_reason;
@@ -315,7 +311,7 @@
     var h = host();
     if (!h || !stillRightNow(tk)) return;
     return window.EdL1SseGuards.show(Promise.all([
-      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
+      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue, signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
@@ -347,8 +343,8 @@
   // queueing behind it: the ticker, the venue, the migration chips, the Gamma scope and the pan
   function _loadKey() {
     var tk = ticker(), pan = migPan(tk);
-    return tk + '|venue=' + st().bookVenue + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) +
-      '|scope=' + st().scope + '|pan=' + pan.centre + ',' + pan.shift;
+    return tk + '|venue=' + window.EdShell.getState().bookVenue + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) +
+      '|scope=' + window.EdShell.getState().scope + '|pan=' + pan.centre + ',' + pan.shift;
   }
   function load() {
     if (!isRightNow()) return;

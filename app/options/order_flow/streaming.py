@@ -206,9 +206,12 @@ def _service_feed(symbol: str, service: str, now: float) -> dict:
     status = _lmp.daemon_status(now)
     reports = status.get("health") if status is not None else None
     health = reports.get(service) if reports is not None else None
+    state = _lmp.live_state(symbol, service, now)[0]
+    age = health.get("age_sec") if health is not None else None
     return {
-        "state": _lmp.live_state(symbol, service, now)[0],
-        "age_sec": health.get("age_sec") if health is not None else None,
+        "state": state,
+        # as the page shows it: "LIVE · 3s", or the state alone with no report from the daemon
+        "text": state if age is None else f"{state} · {time_et.age_text(age)}",
     }
 
 
