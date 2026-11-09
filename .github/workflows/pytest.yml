@@ -210,8 +210,15 @@ jobs:
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: |
-          ( for i in $(seq 1 100); do echo "$(date +%s) tw=$(netstat -an -p tcp | grep -c TIME_WAIT) est=$(netstat -an -p tcp | grep -c ESTABLISHED) all=$(netstat -an -p tcp | grep -c TCP)"; sleep 2; done > tcp_during_e2e.txt ) &
-          rc=0; npm run test:e2e || rc=$?
+          typeperf "\Memory\Available MBytes" "\Memory\Pool Nonpaged Bytes" "\Memory\Committed Bytes" "\Process(_Total)\Handle Count" -si 2 -sc 330 > mem_during_e2e.csv &
+          ( for i in $(seq 1 330); do echo "$(date -u +%H:%M:%S) tw=$(netstat -an -p tcp | grep -c TIME_WAIT) est=$(netstat -an -p tcp | grep -c ESTABLISHED)"; sleep 2; done > tcp_during_e2e.txt ) &
+          rc=0
+          for pass in 1 2 3; do
+            echo "=== pass $pass starts $(date -u +%H:%M:%S)"
+            npm run test:e2e || rc=$?
+            grep -h "NO_BUFFER_SPACE" logs/test_e2e_last.log && echo "=== pass $pass: NO_BUFFER_SPACE at $(date -u +%H:%M:%S)"
+          done
+          cat mem_during_e2e.csv
           cat tcp_during_e2e.txt
           exit $rc
 
