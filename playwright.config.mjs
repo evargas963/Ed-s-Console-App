@@ -58,6 +58,10 @@ export default defineConfig({
   use: {
     baseURL: e2eBaseURL,
     trace: 'retain-on-failure',
+    // Chromium on Windows asks for a random local port for each connection (SO_RANDOMIZE_PORT);
+    // Windows refuses that request now and then while most of the port range is free, and the
+    // page load fails with net::ERR_NO_BUFFER_SPACE. Without it Windows picks the port itself.
+    launchOptions: { args: ['--disable-features=TcpPortRandomizationWin'] },
     // The console has no built-in ticker (universality, operator 2026-09-23); these specs play
     // an operator who already chose SPY and a watchlist. A spec testing the first run clears it.
     storageState: {
