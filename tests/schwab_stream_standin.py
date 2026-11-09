@@ -60,6 +60,31 @@ def refusal(service: str, limit: int, discarded: int) -> str:
     )
 
 
+class _Outbox:
+    """One connection's frames, each delivered `lag` seconds after it was made, in order."""
+
+    def __init__(self, ws) -> None:
+        self.ws = ws
+        self.lag = 0.0  # the login is answered at once
+        self.queue: asyncio.Queue = asyncio.Queue()
+
+    def send(self, frame: dict | None) -> None:
+        """Queue a frame; None closes the socket once every frame before it is sent."""
+        self.queue.put_nowait((time_et.elapsed() + self.lag, frame))
+
+    async def deliver(self) -> None:
+        while (item := await self.queue.get())[1] is not None:
+            if (wait := item[0] - time_et.elapsed()) > 0:
+                await asyncio.sleep(wait)
+            await self.ws.send(json.dumps(item[1]))
+        await self.ws.close()
+
+    async def beat(self) -> None:
+        while True:
+            await asyncio.sleep(HEARTBEAT_SEC)
+            self.send({"notify": [{"heartbeat": str(int(time_et.now() * 1000))}]})
+
+
 class LocalStreamer:
     """The streamer on 127.0.0.1 (`url`).
 
@@ -99,51 +124,38 @@ class LocalStreamer:
         ready.wait(10)
 
     async def _client(self, ws) -> None:
-        outbox: asyncio.Queue = asyncio.Queue()
-        lag = 0.0  # the login is answered at once
-
-        def send(frame: dict | None) -> None:  # None: close once every frame before it is sent
-            outbox.put_nowait((time_et.elapsed() + lag, frame))
-
-        async def deliver() -> None:
-            while (item := await outbox.get())[1] is not None:
-                if (wait := item[0] - time_et.elapsed()) > 0:
-                    await asyncio.sleep(wait)
-                await ws.send(json.dumps(item[1]))
-            await ws.close()
-
-        async def beat() -> None:
-            while True:
-                await asyncio.sleep(HEARTBEAT_SEC)
-                send({"notify": [{"heartbeat": str(int(time_et.now() * 1000))}]})
-
-        tasks = [asyncio.create_task(deliver()), asyncio.create_task(beat())]
+        out = _Outbox(ws)
+        tasks = [asyncio.create_task(out.deliver()), asyncio.create_task(out.beat())]
         try:
             async for raw in ws:
                 for req in json.loads(raw)["requests"]:
-                    self.requests.append(req)
-                    frames = self.answer(req)
-                    for frame in frames:
-                        self.answers.append(frame)
-                        send(frame)
-                    if req["command"] == "LOGIN":
-                        lag = self.lag
-                    if (
-                        req["command"] == "LOGOUT"
-                    ):  # "Streamer will close the connection" (Streamer API §1)
-                        send(None)
+                    if not self._take(req, out):  # "Streamer will close the connection" (§1)
                         await asyncio.wait([tasks[0]])
                         return
-                    if (
-                        req["command"] == "SUBS"
-                        and req["service"] in self.data
-                        and frames[-1]["response"][0]["content"]["code"] == 0
-                    ):
-                        send({"data": [self.data[req["service"]]]})
         finally:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _take(self, req: dict, out: _Outbox) -> bool:
+        """Answer one request; False once it is the LOGOUT, after which the socket closes."""
+        self.requests.append(req)
+        frames = self.answer(req)
+        for frame in frames:
+            self.answers.append(frame)
+            out.send(frame)
+        if req["command"] == "LOGIN":
+            out.lag = self.lag
+        if req["command"] == "LOGOUT":
+            out.send(None)
+            return False
+        if (
+            req["command"] == "SUBS"
+            and req["service"] in self.data
+            and frames[-1]["response"][0]["content"]["code"] == 0
+        ):
+            out.send({"data": [self.data[req["service"]]]})
+        return True
 
     def answer(self, req: dict) -> list[dict]:
         service, command = req["service"], req["command"]

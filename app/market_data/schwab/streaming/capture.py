@@ -454,9 +454,10 @@ def schwab_time(msg: dict) -> float | None:
         e["timestamp"] for k in ("response", "data") if k in msg for e in msg[k] if "timestamp" in e
     ]
     stamps = [v for v in map(schwab_number, sent) if v is not None]
-    for n in msg["notify"] if "notify" in msg else []:
-        if "heartbeat" in n and str(n["heartbeat"]).isdigit():
-            stamps.append(float(n["heartbeat"]))
+    beats = (
+        [str(n["heartbeat"]) for n in msg["notify"] if "heartbeat" in n] if "notify" in msg else []
+    )
+    stamps.extend(float(b) for b in beats if b.isdigit())
     return max(stamps) / 1000 if stamps else None
 
 
