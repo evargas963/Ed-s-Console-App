@@ -99,7 +99,7 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
             completeness_basis=cch.CAPTURE_BASIS,
             ts_utc=_FX["captured_utc"],
         )
-    server._publish_levels(tk, captures=cch.last_capture_per_day(db, tk, 2))
+    server._publish_levels(tk, captures=cch.last_capture_per_day(db, tk, 2), now=_CAPTURED)
     published = server.published_levels(tk).served()
     full = _levels(compute_terrain("MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED))
     window = _levels(compute_terrain("MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED))
