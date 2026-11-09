@@ -34,8 +34,9 @@ It does four things, in one loop:
              (stream_capture.db), the console and the pages' price socket (/ws on the
              program's port) all read from it.
   4. HEALTH  Any frame from Schwab -- data or Schwab's own heartbeat -- proves the connection
-             is alive. None for DEAD_SEC, or a request unanswered for REQUEST_TIMEOUT_SEC:
-             reconnect with backoff and subscribe once again. There is nothing else to recover.
+             is alive. None for DEAD_SEC, or a request unanswered while Schwab's stream, by the
+             time Schwab put on the frames read, moved on REQUEST_TIMEOUT_SEC past it: reconnect
+             with backoff and subscribe once again. There is nothing else to recover.
 
 What Schwab offers (its answers on the live connection): LEVELONE_EQUITIES, CHART_EQUITY, NYSE_BOOK
 (exchange book), NASDAQ_BOOK (market-maker quotes), LEVELONE_OPTIONS, OPTIONS_BOOK and
@@ -94,6 +95,7 @@ from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
 from instrument_identity import ticker_storage_key
+from numeric_contract import schwab_number
 from option_contract import OptionContract, read_chain
 from schwab_client import build_client_from_token, safe_get_quotes
 from stream_spine import (
@@ -128,7 +130,9 @@ DEAD_SEC = 30.0
 RECONNECT_BACKOFF_SEC = (1.0, 2.0, 5.0, 10.0, 30.0, 60.0)
 #: Schwab closes the socket on a request over 65,535 bytes; stay well under it.
 MAX_REQUEST_BYTES = 48_000
-#: A request Schwab does not answer in this long means the connection is broken.
+#: A request Schwab does not answer in this long, by Schwab's time on the frames read, means the
+#: connection is broken. Schwab's time, not the reader's: an answer Schwab sent waits behind the
+#: frames before it until the reader takes them, and a reader running behind is not Schwab silent.
 REQUEST_TIMEOUT_SEC = 15.0
 
 SERVICES = (
@@ -439,21 +443,43 @@ def streaming_fields() -> dict[str, list[str]]:
     }
 
 
+def schwab_time(msg: dict) -> float | None:
+    """Return the time Schwab put on a frame, in seconds since the epoch.
+
+    The newest of its answers' and data's `timestamp` and its heartbeat (Streamer API §1.3:
+    milliseconds since the epoch, a heartbeat's sent as digits in text). None when it carries
+    none that is a number (rule 2).
+    """
+    sent = [
+        e["timestamp"] for k in ("response", "data") if k in msg for e in msg[k] if "timestamp" in e
+    ]
+    stamps = [v for v in map(schwab_number, sent) if v is not None]
+    for n in msg["notify"] if "notify" in msg else []:
+        if "heartbeat" in n and str(n["heartbeat"]).isdigit():
+            stamps.append(float(n["heartbeat"]))
+    return max(stamps) / 1000 if stamps else None
+
+
 class _TimedStream(StreamClient):
     """schwab-py's StreamClient, recording the time of every frame Schwab sends.
 
-    Data, responses and Schwab's heartbeats alike are timed. That one timestamp is the liveness
-    test.
+    Data, responses and Schwab's heartbeats alike are timed: when the reader took it
+    (last_frame_ts, the liveness test) and the newest time Schwab put on one (schwab_ts, how far
+    Schwab's stream has been read).
     """
 
     def __init__(self, client) -> None:
         super().__init__(client)
         self.last_frame_ts = time_et.now()
+        self.schwab_ts: float | None = None
 
     @override
     async def _receive(self):
         msg = await super()._receive()
         self.last_frame_ts = time_et.now()
+        t = schwab_time(msg)
+        if t is not None and (self.schwab_ts is None or t > self.schwab_ts):
+            self.schwab_ts = t
         return msg
 
 
@@ -1002,19 +1028,24 @@ class Daemon:
         """Run one connection's life until it dies or stop is set.
 
         Ask for everything once, then send what is queued and read. A request Schwab has not
-        answered in REQUEST_TIMEOUT_SEC means the connection is broken.
+        answered once the frames read reach REQUEST_TIMEOUT_SEC past it by Schwab's time means
+        the connection is broken (its send time is read on this computer's clock, which agreed
+        with Schwab's: of 18,358 answers logged 2026-11-03 to 11-09, Schwab's time on each was
+        0.005 s before to 3.5 s after its request's send, 0.02 s after at the median).
         """
         await self.connect(client)
         try:
             self.ask()
             while not stop.is_set():
-                now = time_et.now()
+                now, schwab_now = time_et.now(), self.stream.schwab_ts
                 if now - self.stream.last_frame_ts > DEAD_SEC:
                     raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
                 late = [
                     s
                     for s in self._sent.values()
-                    if s.answers == 0 and now - s.sent_ts > REQUEST_TIMEOUT_SEC
+                    if s.answers == 0
+                    and schwab_now is not None
+                    and schwab_now - s.sent_ts > REQUEST_TIMEOUT_SEC
                 ]
                 if late:
                     raise ConnectionError(
