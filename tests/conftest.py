@@ -59,8 +59,11 @@ os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
 
+#: fixtures several test files share, loaded by pytest after this module has set the environment
+pytest_plugins = ["tests.liquidity_friday"]
 
-def pytest_configure(config) -> None:
+
+def pytest_configure() -> None:
     """Hold the import-time runtime boundary in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
     assert "ED_CONSOLE_DB" not in os.environ  # RC-534: no ambient console-DB override

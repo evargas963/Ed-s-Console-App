@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 
+import pytest
 from websockets.asyncio.client import connect
 
 import app.options.order_flow.streaming as ofs
@@ -73,7 +74,8 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     assert "b'\\xff not text'" in warned, warned  # a binary frame, read as what it carries
 
 
-def test_a_silent_daemon_keeps_the_last_price(feed):
+@pytest.mark.usefixtures("feed")
+def test_a_silent_daemon_keeps_the_last_price():
     """The daemon's price push goes quiet between beats.
 
     The last price stays, and the feed is not live while the beat is missing.

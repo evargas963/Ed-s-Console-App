@@ -527,7 +527,8 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
     assert vp["basis"].startswith("Estimated volume by price")
 
 
-def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_levels):
+@pytest.mark.usefixtures("spy_levels")
+def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade():
     """Monday 2026-09-28 21:40 ET: the Trade Desk chart drew no key level at all after the close.
 
     /api/levels served 30 SPY levels and an empty by_distance, because it was measured only from a

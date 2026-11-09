@@ -306,7 +306,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
     daemon.chains = ChainSweep(
         tmp_path / "ed_console.db",
         daemon.watchlist,
-        lambda t, m: None,
+        lambda _t, _m: None,
         failures=CaptureWriter(db),
         streamed=daemon.option_record,
     )
@@ -389,10 +389,10 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
     sweep = ChainSweep(
         tmp_path / "ed_console.db",
         [],
-        lambda t, m: None,
+        lambda _t, _m: None,
         clock=lambda: datetime(2026, 10, 7, 10, 0, tzinfo=ET).timestamp(),
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda s: None,
+        streamed=lambda _s: None,
     )
     client = schwab.client(tmp_path)
     stop = threading.Event()
@@ -460,8 +460,8 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         assert "WATCHLIST UNKNOWN" not in server._status_line(time_et.now())
         assert "daemon not reporting" in server._status_line(time_et.now())
     finally:
-        for tk, page in zip((on, off), pages):
-            push_changes.unsubscribe(tk, page)
+        for page in pages:
+            push_changes.unsubscribe(page)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(off, None)
             server._terrain_cache.pop(on, None)
