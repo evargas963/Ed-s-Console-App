@@ -233,10 +233,10 @@ def js_fallback(text, m):
 
     It does when its literal is a value of the data's kind: an empty list that flows on (a missing
     list read as none), a number or boolean in place of a value sent (not the program's own
-    setting, not a running total's 0), or a string that reads as data (a date, a count, a price).
-    It does not when the literal is rule 5's '-' or a label ending in it, text for a person, '' or
-    null (nothing drawn), an empty object or a list only read through (the result still missing),
-    or a word of the page's own (a tab, class, colour, glyph, file name).
+    setting, not a running total's 0), or a string that reads as data (a date, a count, a price,
+    a symbol). It does not when the literal is rule 5's '-' or a label ending in it, text for a
+    person, '' or null (nothing drawn), an empty object or a list only read through (the result
+    still missing), or a word of the page's own (a tab, class, colour, glyph, file name).
     """
     lit = re.sub(r"^(\|\||\?\?)=?\s*", "", m.group(0))
     after = text[m.end() :]
@@ -244,7 +244,7 @@ def js_fallback(text, m):
     if lit == "[]":
         return not re.match(r"\s*\)\s*(\[|\.forEach\()", after)
     if lit[0] in "'\"":
-        return bool(re.match(r"[+-]?\d", lit[1:-1]))
+        return bool(re.match(r"[+-]?\d|\$?[A-Z]{1,6}$", lit[1:-1]))
     if lit in ("{}", "null"):
         return False
     return not (JS_SETTING.search(before) or (lit == "0" and re.match(r"\s*\)\s*\+", after)))
