@@ -1,7 +1,8 @@
 name: DO NOT MERGE diag keep on Windows
 
-# Measures the daily keep's test scenario on the Windows runner: per part, per poll, alone and
-# beside the suite's workers, on C: (pytest's temp) and D: (the runner's temp).
+# Measures tests/test_data_path_stream_kept_v1.py's keep test on the Windows runner: alone on C:
+# (pytest's temp) and on D: (the runner's temp), and beside the suite's other workers, with the
+# disks' write latency and the CPU sampled every second.
 
 on:
   pull_request:
@@ -9,13 +10,14 @@ on:
 jobs:
   keep-probe:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       CI: "true"
       ED_CI_OFFLINE: "1"
       ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
       SCHWAB_API_KEY: "ci-not-live-placeholder"
       SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+      KEEP: "tests/test_data_path_stream_kept_v1.py::test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -36,34 +38,47 @@ jobs:
           Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, AntivirusEnabled | Format-List
           Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
           Get-PSDrive C, D | Format-Table
-          "TEMP=$env:TEMP RUNNER_TEMP=$env:RUNNER_TEMP"
-      - name: Probe alone, C and D, modes 0 1 2
+          Get-PhysicalDisk | Format-Table FriendlyName, MediaType, Size
+          "TEMP=$env:TEMP RUNNER_TEMP=$env:RUNNER_TEMP nproc=$env:NUMBER_OF_PROCESSORS"
+      - name: Start the disk and CPU sampler
+        shell: pwsh
+        run: |
+          Start-Process typeperf -ArgumentList '"\LogicalDisk(C:)\Avg. Disk sec/Write"','"\LogicalDisk(C:)\Disk Writes/sec"','"\LogicalDisk(C:)\Current Disk Queue Length"','"\LogicalDisk(D:)\Avg. Disk sec/Write"','"\Processor(_Total)\% Processor Time"','-si','1','-o',"$env:RUNNER_TEMP\perf.csv",'-y' -WindowStyle Hidden
+      - name: The keep test alone, three times on C and three on D
         shell: bash
         run: |
-          mkdir -p "$TEMP/keepc" "$RUNNER_TEMP/keepd"
-          for folder in "$TEMP/keepc" "$RUNNER_TEMP/keepd"; do
-            for mode in 0 1 2 1; do
-              echo "== alone folder=$folder mode=$mode"
-              python -m diag.probe_keep . "$mode" "$folder" 2>&1 | grep -v -e httpx -e _compat
-            done
+          for i in 1 2 3; do
+            echo "== C $i $(date +%T)"
+            python -m pytest "$KEEP" -q -p no:cacheprovider --durations=2 2>&1 | grep -e "s call" -e "s setup" -e passed -e failed
           done
-      - name: Probe beside three suite workers, modes 1 0 1 0 1
+          for i in 1 2 3; do
+            echo "== D $i $(date +%T)"
+            python -m pytest "$KEEP" -q -p no:cacheprovider --durations=2 --basetemp="$RUNNER_TEMP/pt$i" 2>&1 | grep -e "s call" -e "s setup" -e passed -e failed
+          done
+      - name: The keep test beside three suite workers, five times
         shell: bash
         run: |
           python -m pytest -n 3 --dist loadfile -q -p no:cacheprovider -m "not alone" \
             --deselect tests/test_data_path_stream_kept_v1.py > suite.log 2>&1 &
           suite=$!
-          sleep 45
-          for mode in 1 0 1 0 1; do
-            echo "== beside folder=$TEMP/keepc mode=$mode $(date +%T)"
-            python -m diag.probe_keep . "$mode" "$TEMP/keepc" 2>&1 | grep -v -e httpx -e _compat
+          sleep 30
+          for i in 1 2 3 4 5; do
+            echo "== beside $i $(date +%T)"
+            python -m pytest "$KEEP" -q -p no:cacheprovider --durations=2 2>&1 | grep -e "s call" -e "s setup" -e passed -e failed -e "timed out"
           done
           wait $suite || true
-          tail -3 suite.log
-      - name: The test itself in the suite as CI runs it, three times
+          tail -2 suite.log
+      - name: The suite as CI runs it, three times
         shell: bash
         run: |
           for i in 1 2 3; do
+            echo "== suite $i $(date +%T)"
             python -m pytest -n "$(nproc)" --dist loadfile -q -p no:cacheprovider -m "not alone" \
-              --durations=5 2>&1 | grep -e stream_kept -e passed -e failed | tail -6
+              --durations=40 2>&1 | grep -e stream_kept -e " passed" -e " failed" | tail -6
           done
+      - name: Disk and CPU samples
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process typeperf -ErrorAction SilentlyContinue | Stop-Process
+          Get-Content "$env:RUNNER_TEMP\perf.csv"
