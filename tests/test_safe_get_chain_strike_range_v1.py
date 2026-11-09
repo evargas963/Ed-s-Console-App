@@ -55,6 +55,18 @@ def test_strike_range_omits_strike_count_entirely():
     assert kwargs["to_date"] == d
 
 
+def test_the_stock_quote_the_stream_pushes_is_not_asked_of_chains():
+    """A chain request does not ask for the underlying's quote: LEVELONE_EQUITIES pushes it.
+
+    Every chain request the program sends, in both shapes, leaves `include_underlying_quote` out.
+    """
+    client = _FakeClient()
+    d = date(2026, 8, 31)
+    safe_get_chain(client, "SPY", strike_count=20)
+    safe_get_chain(client, "TSLA", strike_range="ALL", from_date=d, to_date=d)
+    assert [k.get("include_underlying_quote") for _s, k in client.calls] == [None, None]
+
+
 def test_strike_range_takes_precedence_if_both_somehow_given():
     """Defensive: if a caller passes both, the vendor-proven shape (range only) wins.
 
