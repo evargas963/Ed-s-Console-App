@@ -44,7 +44,7 @@ jobs:
           for folder in "$TEMP/keepc" "$RUNNER_TEMP/keepd"; do
             for mode in 0 1 2 1; do
               echo "== alone folder=$folder mode=$mode"
-              python diag/probe_keep.py . "$mode" "$folder" 2>&1 | grep -v -e httpx -e _compat
+              python -m diag.probe_keep . "$mode" "$folder" 2>&1 | grep -v -e httpx -e _compat
             done
           done
       - name: Probe beside three suite workers, modes 1 0 1 0 1
@@ -56,7 +56,7 @@ jobs:
           sleep 45
           for mode in 1 0 1 0 1; do
             echo "== beside folder=$TEMP/keepc mode=$mode $(date +%T)"
-            python diag/probe_keep.py . "$mode" "$TEMP/keepc" 2>&1 | grep -v -e httpx -e _compat
+            python -m diag.probe_keep . "$mode" "$TEMP/keepc" 2>&1 | grep -v -e httpx -e _compat
           done
           wait $suite || true
           tail -3 suite.log

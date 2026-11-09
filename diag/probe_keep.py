@@ -1,7 +1,8 @@
 """Probe: the test's scenario, timed per phase and per keep part.
 
-usage: probe_keep.py <worktree> <poll: 0|1> [slow_ms]
-poll=1 polls _old_rows every 20 ms as the test does; poll=0 polls nothing until the keep ends.
+usage, from the repository root: python -m diag.probe_keep <root> <mode: 0|1|2> <folder>
+mode 1 polls _old_rows every 20 ms as the test does; 0 polls nothing until the keep ends; 2 adds
+two readers that keep a snapshot open.
 """
 
 import asyncio
@@ -9,16 +10,15 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
-ROOT = Path(sys.argv[1])
-sys.path.insert(0, str(ROOT))
-POLL = sys.argv[2] == "1"
+import stream_spine
+import time_et
+from tests import test_data_path_stream_kept_v1 as t
 
-import stream_spine  # noqa: E402
-import time_et  # noqa: E402
-from tests import test_data_path_stream_kept_v1 as t  # noqa: E402
+POLL = sys.argv[2] == "1"
 
 parts: list[tuple[float, float, int]] = []
 
@@ -71,8 +71,6 @@ def main():
         n = t._old_rows(db)
         poll_max[0] = max(poll_max[0], time_et.elapsed() - a)
         return n
-
-    import threading
 
     hold = threading.Event()
 
