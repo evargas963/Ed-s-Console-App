@@ -42,7 +42,7 @@ def test_key_delta_strike_is_the_total_dex_argmax_on_real_chain():
 
     # Independent recompute: no other strike may carry more total |DEX$|.
     def total_dex(s):
-        b = exposures.get(s, {})
+        b = exposures[s]
         c = bucket_metric_abs(b, "call_dex_dollars")
         p = bucket_metric_abs(b, "put_dex_dollars")
         return -1.0 if c is None or p is None else c + p
@@ -61,7 +61,7 @@ def test_volatility_points_are_signed_extremes_on_real_chain():
     exposures, _ = _dollarized_exposures()
     strikes = sorted(exposures.keys())
     hvp, lvp = pick_volatility_point_strikes(exposures)
-    signed = {s: net_gex_dollars_at_strike(exposures.get(s, {})) for s in strikes}
+    signed = {s: net_gex_dollars_at_strike(exposures[s]) for s in strikes}
     signed = {s: v for s, v in signed.items() if v is not None}
     negatives = {s: v for s, v in signed.items() if v < 0}
     positives = {s: v for s, v in signed.items() if v > 0}
@@ -102,7 +102,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
         assert fld in d, fld + " missing from terrain payload"
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
     assert d["net_gex_at_spot"] is not None, "the chain must price (valued at its capture)"
-    assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
+    assert d["net_gex_at_spot"] == d["flip_diag"]["gamma_at_spot"]
     exposures, _ = compute_exposures_by_strike(_SPY, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
     assert d["key_delta_strike"] == pick_key_delta_strike(exposures)
     assert (d["hvp"], d["lvp"]) == pick_volatility_point_strikes(exposures)
