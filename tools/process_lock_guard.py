@@ -280,27 +280,36 @@ def _shell_write_dest_paths(st: Statement) -> list[str]:
         dests += [a[3:] for a in args if a.startswith("of=")]
     elif verb in ("curl", "wget"):
         # a download that lands on a path is a write: curl -o FILE / --output FILE, wget -O FILE
-        for flag, nxt in zip(args, args[1:]):
-            if flag in ("-o", "--output", "-O", "--output-document"):
-                dests.append(nxt)
+        dests += [
+            nxt
+            for flag, nxt in zip(args, args[1:])
+            if flag in ("-o", "--output", "-O", "--output-document")
+        ]
     elif verb in ("awk", "gawk"):
-        if any(a == "inplace" or a.startswith("inplace") for a in args):
+        if any(a.startswith("inplace") for a in args):
             dests += positionals
-    # An explicit write-intent flag handed to ANY command — a repo codemod invoked as
-    # `python tools/rewrite.py --write server.py`, `ruff check --fix server.py`, a formatter.
-    # The operands AFTER the flag are what it rewrites; operands before it (the script being
-    # RUN) are reads. LONG FORMS ONLY: a bare `-i` collides with grep/sort/pip, and sed's own
-    # in-place flag is handled by its branch above.
-    for idx, a in enumerate(args):
-        name, _, inline = a.partition("=")
-        if name not in ("--write", "--in-place", "--inplace", "--fix", "--apply", "--output"):
-            continue
-        if inline:
-            dests.append(inline)
-        dests += [t for t in args[idx + 1 :] if not t.startswith("-")]
-        break
+    dests += _write_flag_dest_paths(args)
     dests += _ps_write_dest_paths(st)
     return dests
+
+
+#: the long forms of an explicit write-intent flag (a bare `-i` collides with grep/sort/pip)
+_WRITE_FLAGS = frozenset({"--write", "--in-place", "--inplace", "--fix", "--apply", "--output"})
+
+
+def _write_flag_dest_paths(args: list[str]) -> list[str]:
+    """Return the operands an explicit write-intent flag handed to ANY command rewrites.
+
+    For example a repo codemod invoked as `python tools/rewrite.py --write server.py`, `ruff check
+    --fix server.py`, a formatter. The first such flag's inline value and the operands AFTER it
+    are written; operands before it (the script being RUN) are reads.
+    """
+    for idx, a in enumerate(args):
+        flag, _, inline = a.partition("=")
+        if flag in _WRITE_FLAGS:
+            operands = [t for t in args[idx + 1 :] if not t.startswith("-")]
+            return [inline, *operands] if inline else operands
+    return []
 
 
 #: PowerShell write-cmdlet destination parameter, keyed by cmdlet name (lower-case). Copy-Item

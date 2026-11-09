@@ -24,6 +24,7 @@ import logging
 import sqlite3
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 import time_et
@@ -422,16 +423,12 @@ def main() -> int:
     with OUT.open("w", encoding="utf-8", newline="\n") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS, lineterminator="\n")
         w.writeheader()
-        for field in sorted(rows):
-            # a field this run added has no schwab_doc or sample yet: written empty
-            w.writerow(rows[field])
+        # a field this run added has no schwab_doc or sample yet: written empty
+        w.writerows(rows[field] for field in sorted(rows))
 
     n_today = sum(1 for r in rows.values() if r["last_seen"] == today)
-    by_endpoint: dict[str, int] = {}
-    for r in rows.values():
-        by_endpoint[r["endpoint"]] = by_endpoint.get(r["endpoint"], 0) + 1
     print(f"fields {len(rows)} (seen today {n_today})")
-    for e, n in sorted(by_endpoint.items(), key=lambda x: -x[1]):
+    for e, n in Counter(r["endpoint"] for r in rows.values()).most_common():
         print(f"  {e}: {n}")
     print("calls:", status)
     return 0
