@@ -50,10 +50,14 @@ The operator's answers to the live-path audit's questions, in his words:
 - (5) "yes", corrected the same day: "does schwab provide 1 minute bars? if so i think they are
   supposed to be the canonical 1 minute candles, where we can reconstruct or build any time frame
   from there". The 1-minute candle is the one source of the intraday bars (BARS-1M).
+- Confirmed the same day (his message 59, as relayed): daily and longer bars come from Schwab's
+  own daily candle, the official session record, with weekly and monthly built from the daily;
+  the intraday timeframes from the 1-minute bar. Schwab's Greeks stay taken as sent, with no
+  validity rule of ours.
 
 | ID | Status | Work item |
 |---|---|---|
-| BARS-1M | NEXT | The 1-minute candle is the one source of every intraday timeframe: live from CHART_EQUITY (Streamer §5.1), history from `/pricehistory` minute/1; 3/5/15/30/60-minute bars built from it by exact OHLCV aggregation, one registered derived producer; no other intraday frequency fetched. Daily and longer: Schwab's own daily candles, weekly and monthly built from them (the agent's recommendation, his to overrule). |
+| BARS-1M | NEXT | The 1-minute candle is the one source of every intraday timeframe: live from CHART_EQUITY (Streamer §5.1), history from `/pricehistory` minute/1; 3/5/15/30/60-minute bars built from it by exact OHLCV aggregation, one registered derived producer; no other intraday frequency fetched. Daily and longer: Schwab's own daily candles, weekly and monthly built from them (confirmed, message 59). |
 | FLAT-COPIES | QUEUED | The flat LEVELONE and CHART columns that duplicate `native`: proven exact on production's `stream_capture.db` (read only), then their writers and readers deleted; a column that is not an exact duplicate stays and is reported. |
 
 ## Data path (operator 2026-10-02: one rule the whole way through, end to end)
