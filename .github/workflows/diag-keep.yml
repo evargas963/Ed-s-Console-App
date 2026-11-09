@@ -1,0 +1,69 @@
+name: DO NOT MERGE diag keep on Windows
+
+# Measures the daily keep's test scenario on the Windows runner: per part, per poll, alone and
+# beside the suite's workers, on C: (pytest's temp) and D: (the runner's temp).
+
+on:
+  pull_request:
+
+jobs:
+  keep-probe:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      CI: "true"
+      ED_CI_OFFLINE: "1"
+      ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+      SCHWAB_API_KEY: "ci-not-live-placeholder"
+      SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+        with:
+          enable-cache: true
+      - name: Install Python dependencies
+        shell: bash
+        run: uv pip install --system -r requirements-dev.txt -r requirements.txt
+      - name: Runner
+        shell: pwsh
+        run: |
+          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, AntivirusEnabled | Format-List
+          Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
+          Get-PSDrive C, D | Format-Table
+          "TEMP=$env:TEMP RUNNER_TEMP=$env:RUNNER_TEMP"
+      - name: Probe alone, C and D, modes 0 1 2
+        shell: bash
+        run: |
+          mkdir -p "$TEMP/keepc" "$RUNNER_TEMP/keepd"
+          for folder in "$TEMP/keepc" "$RUNNER_TEMP/keepd"; do
+            for mode in 0 1 2 1; do
+              echo "== alone folder=$folder mode=$mode"
+              python diag/probe_keep.py . "$mode" "$folder" 2>&1 | grep -v -e httpx -e _compat
+            done
+          done
+      - name: Probe beside three suite workers, modes 1 0 1 0 1
+        shell: bash
+        run: |
+          python -m pytest -n 3 --dist loadfile -q -p no:cacheprovider -m "not alone" \
+            --deselect tests/test_data_path_stream_kept_v1.py > suite.log 2>&1 &
+          suite=$!
+          sleep 45
+          for mode in 1 0 1 0 1; do
+            echo "== beside folder=$TEMP/keepc mode=$mode $(date +%T)"
+            python diag/probe_keep.py . "$mode" "$TEMP/keepc" 2>&1 | grep -v -e httpx -e _compat
+          done
+          wait $suite || true
+          tail -3 suite.log
+      - name: The test itself in the suite as CI runs it, three times
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            python -m pytest -n "$(nproc)" --dist loadfile -q -p no:cacheprovider -m "not alone" \
+              --durations=5 2>&1 | grep -e stream_kept -e passed -e failed | tail -6
+          done
