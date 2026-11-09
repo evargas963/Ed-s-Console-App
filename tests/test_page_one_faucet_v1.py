@@ -189,9 +189,10 @@ def test_days_to_expiry_are_schwabs_as_sent():
     body = server.expiries(TK, time_et.now())
     assert body["expiries"] == [EXPIRY]
     assert body["dte"] == {EXPIRY: _CONTRACTS[0]["daysToExpiration"]}
-    # the dropdown's label is served (the page reformatted the date itself)
+    # the dropdown's texts are served (the page reformatted the date itself)
     y, m, d = EXPIRY.split("-")
-    assert body["labels"] == {EXPIRY: f"{m}/{d}/{y} · {_CONTRACTS[0]['daysToExpiration']:g}DTE"}
+    assert body["labels"] == {EXPIRY: f"{m}/{d}/{y}"}
+    assert body["dte_text"] == {EXPIRY: f"{_CONTRACTS[0]['daysToExpiration']:g}DTE"}
 
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():

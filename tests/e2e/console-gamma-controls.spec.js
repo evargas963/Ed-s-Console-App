@@ -7,7 +7,7 @@
  * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
  */
 const { test, expect } = require('@playwright/test');
-const { pushExpiries } = require('./fixtures/expiries');
+const { expiriesAnswer, pushExpiries } = require('./fixtures/expiries');
 const { expiriesFrame, served } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 const { watchRequests } = require('./fixtures/settled');
@@ -79,10 +79,8 @@ test.describe('ticker / expiry / measure controls', () => {
   test('a new chain pushed for the ticker on screen replaces the expiry list (2026-10-08: yesterday\'s list stayed)', async ({ page }) => {
     // The program held yesterday's chain when the page subscribed; today's chain lands, and the
     // program pushes today's list on the page's socket, with no request from the page.
-    const YESTERDAY = { expiries: ['2026-10-07', '2026-10-08'],
-      labels: { '2026-10-07': '10/07/2026 · 0DTE', '2026-10-08': '10/08/2026 · 1DTE' }, reason: null };
-    const TODAY = { expiries: ['2026-10-08', '2026-10-09'],
-      labels: { '2026-10-08': '10/08/2026 · 0DTE', '2026-10-09': '10/09/2026 · 1DTE' }, reason: null };
+    const YESTERDAY = expiriesAnswer(['2026-10-07', '2026-10-08'], { '2026-10-07': 0, '2026-10-08': 1 });
+    const TODAY = expiriesAnswer(['2026-10-08', '2026-10-09'], { '2026-10-08': 0, '2026-10-09': 1 });
     const asked = [];
     page.on('request', (r) => { if (r.url().includes('/api/expiries')) asked.push(r.url()); });
     let program;
@@ -221,8 +219,8 @@ test.describe('ticker / expiry / measure controls', () => {
   // An expiry belongs to its ticker: right after a switch, before the new ticker's list is known,
   // the page asked for the NEW ticker's chain and surface at the OLD ticker's expiry.
   test('a ticker switch reads no old expiry; the new list re-applies a still-valid one, else All', async ({ page }) => {
-    const LIST = { expiries: EXPS, labels: Object.fromEntries(EXPS.map((e) => [e, e])), reason: null };
-    const IWM_LIST = { expiries: ['2026-09-18'], labels: { '2026-09-18': '2026-09-18' }, reason: null };
+    const LIST = expiriesAnswer(EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 });
+    const IWM_LIST = expiriesAnswer(['2026-09-18'], { '2026-09-18': 9 });
     const PICK = '2026-09-12';
     const read = [];   // [ticker, expiry] of every read that names both
     page.on('request', (r) => {

@@ -591,7 +591,7 @@
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     // this ticker's list is not received yet (the socket sends it on the subscribe below): '-'
-    paintExpiries({ expiries: null, labels: null, reason: '-' });
+    paintExpiries({ expiries: null, labels: null, dte_text: null, reason: '-' });
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     // just asked for this ticker: WAITING (not OFFLINE) until PRICE_SILENCE_MS passes with no row
     _priceConnecting = true; clearTimeout(_priceConnectTimer);
@@ -621,13 +621,13 @@
 
   // ---- expiry dropdown: the selected ticker's listed expiries as the program pushes them on the
   // page's socket (an `expiries` frame, server.expiries), at each subscribe and on each new chain;
-  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration). An expiry belongs to
+  // each option's texts are served (MM/DD/YYYY and Schwab's daysToExpiration). An expiry belongs to
   // its ticker: while the ticker's list is unknown (`expiries` null: not received since a switch,
   // or no chain priced yet) none is in force, so no read carries another ticker's, and the
   // operator's pick waits for a known list, which keeps it while it lists it, else All ----
   var _expiryPick = null;
   function paintExpiries(d) {
-    var exps = d.expiries, labels = d.labels;
+    var exps = d.expiries, labels = d.labels, dteText = d.dte_text;
     if (exps === null) {
       if (state.expiryFilter !== null) _expiryPick = state.expiryFilter;
       state.expiryFilter = null;
@@ -635,7 +635,10 @@
     }
     var sel = document.getElementById('expSel'); if (!sel) return;
     var opts = '<option value="">All Expirations</option>';
-    if (exps !== null) exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
+    // the date, then Schwab's days to expiration ('-' when Schwab sent none)
+    if (exps !== null) exps.forEach(function (e) {
+      opts += '<option value="' + e + '">' + _escBadge(labels[e] + ' · ' + (dteText[e] !== null ? dteText[e] : '-')) + '</option>';
+    });
     if (exps === null || !exps.length) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
     sel.innerHTML = opts;
     if (exps !== null) {

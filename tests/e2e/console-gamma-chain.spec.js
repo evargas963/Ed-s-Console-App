@@ -7,7 +7,7 @@
  * reconstructed.
  */
 const { test, expect } = require('@playwright/test');
-const { pushExpiries } = require('./fixtures/expiries');
+const { expiriesAnswer, pushExpiries } = require('./fixtures/expiries');
 const { expiriesFrame, priceRow, served: servedSymbol } = require('./fixtures/price_socket');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
@@ -335,8 +335,8 @@ test.describe('expiry dropdown (register P-03): the list on the page\'s socket',
   // it formatted each date on the page and ignored the served reason when none is listed; the
   // list is the program's, sent on /ws after each subscribe on the selected ticker and again on
   // each new chain (server.expiries), and the page asks no route for it
-  const SPY_LIST = { expiries: ['2026-10-16'], labels: { '2026-10-16': '10/16/2026 · 18DTE' }, reason: null };
-  const QQQ_LIST = { expiries: ['2026-10-17'], labels: { '2026-10-17': '10/17/2026 · 19DTE' }, reason: null };
+  const SPY_LIST = expiriesAnswer(['2026-10-16'], { '2026-10-16': 18 });
+  const QQQ_LIST = expiriesAnswer(['2026-10-17'], { '2026-10-17': 19 });
   const LISTS = { SPY: SPY_LIST, QQQ: QQQ_LIST };
   // `onSocket(ws, n)`: the stand-in for the program's side of the page's n-th connection
   async function open(page, onSocket) {
@@ -369,7 +369,7 @@ test.describe('expiry dropdown (register P-03): the list on the page\'s socket',
   });
 
   test('a ticker with no chain yet shows the served reason', async ({ page }) => {
-    await open(page, (ws) => answering(ws, { SPY: { expiries: null, dte: null, labels: null, reason: 'market closed; no chain capture of this ticker yet' } }));
+    await open(page, (ws) => answering(ws, { SPY: { expiries: null, dte: null, labels: null, dte_text: null, reason: 'market closed; no chain capture of this ticker yet' } }));
     await expect(page.locator('#expSel option[disabled]')).toHaveText('market closed; no chain capture of this ticker yet');
   });
 
@@ -399,7 +399,7 @@ test.describe('expiry dropdown (register P-03): the list on the page\'s socket',
     await open(page, (ws, n) => {
       if (n === 1) { first = ws; answering(ws, LISTS); return; }
       // the program's list after the drop: the next chain's, so the page shows the one resent
-      answering(ws, { SPY: { expiries: ['2026-10-30'], labels: { '2026-10-30': '10/30/2026 · 23DTE' }, reason: null } });
+      answering(ws, { SPY: expiriesAnswer(['2026-10-30'], { '2026-10-30': 23 }) });
     });
     await expect(page.locator('#expSel option[value="2026-10-16"]')).toHaveCount(1);
     first.close();

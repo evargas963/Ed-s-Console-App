@@ -150,14 +150,8 @@ class LiveUiServer:
                 c.pending.add(ticker)
                 c.wake.set()
 
-    def changed(self, ticker: str, kind: str) -> None:
-        """Mark panel `kind` of `ticker` (its key) changed for the pages on it.
-
-        Callable from any thread: the pricing thread's producer calls it.
-        """
-        self.loop.call_soon_threadsafe(self._mark_changed, ticker, kind)
-
-    def _mark_changed(self, ticker: str, kind: str) -> None:
+    def mark_changed(self, ticker: str, kind: str) -> None:
+        """Mark panel `kind` changed for every browser whose selected ticker is `ticker`."""
         for c in self.clients:
             if c.ticker == ticker:
                 c.panels.add(kind)
@@ -279,6 +273,17 @@ class LiveUiServer:
                         "live ui beat to one browser: %s: %s", type(e).__name__, e, exc_info=True
                     )
             await asyncio.sleep(HEARTBEAT_SEC)
+
+
+def changed(state, ticker: str, kind: str) -> None:
+    """Mark panel `kind` of `ticker` (its key) changed for the pages on it.
+
+    While the program serves the pages (`state.prices`, the web server's app state); callable
+    from any thread: the pricing thread's producer calls it.
+    """
+    prices = state.prices
+    if prices is not None:
+        prices.loop.call_soon_threadsafe(prices.mark_changed, ticker, kind)
 
 
 async def page_socket(ws: WebSocket) -> None:
