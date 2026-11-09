@@ -35,7 +35,8 @@ def _exp_key(ct: dict) -> str:
 
 def _heaviest(rows: list[dict]) -> dict:
     """The row with the largest open interest Schwab sent; a row it sent none for is not ranked
-    (missing is not zero)."""
+    (missing is not zero).
+    """
     return max(
         (ct for ct in rows if ct.get("openInterest") is not None), key=lambda ct: ct["openInterest"]
     )
@@ -46,7 +47,8 @@ E1, E2 = sorted({_exp_key(ct) for ct in MRVL.chain})[:2]  # 2026-10-09, 2026-10-
 
 def _raw_chain() -> list[dict]:
     """The two expiries' contracts as the sweep delivers them (an induced condition changes one
-    of these, then reads it)."""
+    of these, then reads it).
+    """
     return [dict(ct) for ct in MRVL.chain if _exp_key(ct) in (E1, E2)]
 
 
@@ -237,7 +239,8 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
 
 def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_wrong_value():
     """A contract missing its own `symbol` field must never silently borrow a strike-mate's
-    symbol or fall back to a stale cached value -- it must report None."""
+    symbol or fall back to a stale cached value -- it must report None.
+    """
     probe = _heaviest(_raw_slice(E1))
     no_symbol = dict(probe)
     no_symbol.pop("symbol", None)
@@ -316,7 +319,8 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
 def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zero():
     """A strike in E2's real book with no contract in E1's slice reports None for
     dex/vanna/oi/volume in the E1 column -- never a silent 0.0, which would read as "genuinely
-    zero dealer DEX/vanna/OI/volume at this strike", a real, different fact."""
+    zero dealer DEX/vanna/OI/volume at this strike", a real, different fact.
+    """
     chain = _chain()
     surface = _surface(chain, SPOT)
     e1_col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
@@ -340,7 +344,8 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute():
     """The identity the heatmap, per-strike rows and levels rely on: partitioning the two-expiry
     chain by expiry and merging the per-expiry exposures must reproduce
     compute_exposures_by_strike's own single-call result over the WHOLE chain, strike for
-    strike, field for field, at the same valuation instant."""
+    strike, field for field, at the same valuation instant.
+    """
     from math_exposure_core import merge_exposure_books
 
     chain = _chain()
@@ -363,7 +368,8 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute():
 def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     """Operator 2026-09-29: the Delta / DEX and Open Interest Chart views were blank. The chart's
     DEX and OI profiles (/api/terrain/strikes `measures`, from the terrain publication) are the
-    heatmap's own cells summed across expiries -- one computation, two views."""
+    heatmap's own cells summed across expiries -- one computation, two views.
+    """
     import server
 
     chain = _chain()

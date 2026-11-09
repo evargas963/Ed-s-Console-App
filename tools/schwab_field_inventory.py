@@ -132,7 +132,8 @@ def rest_rows(
     c, roster: list[str]
 ) -> tuple[dict[tuple[str, str], set[str]], dict[str, str], dict[str, object]]:
     """({(path, type): variants}, {path: endpoint}, {call: status}). Every endpoint, with every
-    option it takes; the widest date range each accepts."""
+    option it takes; the widest date range each accepts.
+    """
     now = dt.datetime.fromtimestamp(time_et.now())
     today = now.date()
     P, M = c.Instrument.Projection, c.Movers
@@ -321,7 +322,8 @@ def rest_rows(
 
 def captured_stream_paths(db: Path) -> dict[tuple[str, str], set[str]]:
     """Every path the daemon received (the newest 20,000 messages of each table), as
-    streaming.content.*.<path>, the form the stream's content items take."""
+    streaming.content.*.<path>, the form the stream's content items take.
+    """
     tables = {
         "stream_quotes_raw": "LEVELONE_EQUITIES",
         "stream_options_quotes_raw": "LEVELONE_OPTIONS",

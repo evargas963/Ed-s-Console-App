@@ -67,7 +67,8 @@ def fetched(tmp_path):
 
 def _column(contracts: list[dict]) -> dict:
     """The heatmap's 2026-11-20 column as the levels producer projects it: {strike: (cell's gex,
-    its contracts)}."""
+    its contracts)}.
+    """
     records = read_chain(contracts)
     snap = compute_terrain("SPY", records, _SPOT, now=_CAPTURED)
     surface = server.project_gamma_surface(records, snap.books)
@@ -81,7 +82,8 @@ def _column(contracts: list[dict]) -> dict:
 def test_the_875_call_cell_is_its_exact_quote_gamma_times_open_interest(fetched):
     """The measured defect: the chain sends this call's gamma as 0.0, so its cell read $0 with
     23,235 contracts open. The cell is now Schwab's quote gamma x OI x 100 x spot^2 x 1%, exactly
-    (its put has no open interest)."""
+    (its put has no open interest).
+    """
     chain_ct = next(c for c in SPY["chain"] if c["symbol"] == _CALL_875)
     assert chain_ct["gamma"] == 0.0 and chain_ct["openInterest"] == 23235  # what the chain sends
     gamma = _QUOTED[_CALL_875]["gamma"]
@@ -112,7 +114,8 @@ def test_no_cell_with_open_interest_and_greeks_reads_zero_unless_its_exact_gamma
     fetched,
 ):
     """Across the whole column: on the chain's rounded gamma, cells with open interest read $0;
-    on the quotes' gamma, a cell reads 0 only where its contracts' exact gamma x OI is 0."""
+    on the quotes' gamma, a cell reads 0 only where its contracts' exact gamma x OI is 0.
+    """
 
     def zero_cells(contracts):
         cells = _column(contracts)
@@ -138,7 +141,8 @@ def test_no_cell_with_open_interest_and_greeks_reads_zero_unless_its_exact_gamma
 
 def test_a_contract_whose_quote_did_not_come_back_has_no_greek_never_the_chains(fetched):
     """The 875 call's quote withheld: its Greeks are absent and its cell has no GEX -- never the
-    chain's rounded 0.0."""
+    chain's rounded 0.0.
+    """
     contracts = fetched(withheld={_CALL_875})
     call = next(c for c in contracts if c["symbol"] == _CALL_875)
     assert all(call[f] is None for f in GREEK_FIELDS)

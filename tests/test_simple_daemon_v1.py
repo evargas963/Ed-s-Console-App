@@ -1,7 +1,8 @@
 """The simple capture daemon: it publishes every Schwab message as sent, records every answer, and
 runs as one daemon at a time (its log: tests/test_daemon_log_v1.py). Its subscriptions and its
 connection's life are held by tests/test_data_path_one_watchlist_v1.py on the local Schwab
-streamer."""
+streamer.
+"""
 
 from __future__ import annotations
 
@@ -91,7 +92,8 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
     Two of TSLA's captured 2026-10-07 contracts, judged by TSLA's own option market. STAND-IN
-    (named): the daemon's status. Judged in regular hours (RTH_INSTANT)."""
+    (named): the daemon's status. Judged in regular hours (RTH_INSTANT).
+    """
     import live_market_plane as lmp
     from app.options.order_flow import streaming as ofs
     from tests.feed_live_helper import RTH_INSTANT
@@ -190,7 +192,8 @@ def test_the_lock_holds_the_ports_the_program_opened_while_it_runs(tmp_path):
 def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(tmp_path):
     """The daemon started, as launch.py starts it, with its runtime root another checkout (a
     directory holding `.git`): it refuses and exits 2, with no lock, no log and no stream database
-    written there."""
+    written there.
+    """
     other = tmp_path / "other_checkout"
     (other / ".git").mkdir(parents=True)
     env = {**os.environ, "ED_RUNTIME_ROOT": str(other)}

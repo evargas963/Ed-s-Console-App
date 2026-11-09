@@ -54,7 +54,8 @@ log = logging.getLogger(__name__)
 
 def price_row(ticker: str, now: float) -> dict:
     """`ticker`'s price row at `now`: the daemon's one row (live_price_rows.price_row), the one
-    the browser reads."""
+    the browser reads.
+    """
     return live_price_rows.price_row(ticker, now)
 
 
@@ -64,7 +65,8 @@ def price_state(
     """`ticker`'s state on Schwab `service` (its quote, or a venue's book) at `now`: the one live
     rule (live_market_plane.live_state) on that service while it is not LIVE (the feed down, the
     symbol not held, its market not trading); while it is LIVE, the quote's own state, which
-    alone holds Schwab's SECURITY_STATUS."""
+    alone holds Schwab's SECURITY_STATUS.
+    """
     label, why = _lmp.live_state(ticker, service, now)
     if label != _lmp.LIVE:
         return label, why
@@ -87,7 +89,8 @@ async def watchlist_request(action: str, ticker: str) -> dict:
     """An add or a removal ("add" | "remove") of `ticker`, sent to the daemon, which keeps the
     watchlist; its record once the daemon has answered (capture.watchlist_message: the list, what
     happened, Schwab's /quotes answer to an add's check). Raises ConnectionError while no daemon
-    runs in this program, TimeoutError when no record comes in WATCHLIST_ANSWER_SEC."""
+    runs in this program, TimeoutError when no record comes in WATCHLIST_ANSWER_SEC.
+    """
     if _daemon is None:
         raise ConnectionError("no capture daemon runs in this program")
     rid = next(_request_ids)
@@ -103,7 +106,8 @@ async def watchlist_request(action: str, ticker: str) -> dict:
 
 async def select_flow_contract(contract: str | None) -> None:
     """The Flow panel's selection (None: none), told to the daemon, which keeps it
-    (capture.Daemon.flow_contract) and streams it on both option services on top of its rule."""
+    (capture.Daemon.flow_contract) and streams it on both option services on top of its rule.
+    """
     if _daemon is not None:
         _daemon.console_frame({"op": "flow_contract", "contract": contract})
 
@@ -140,7 +144,8 @@ def assemble_chain_part(
     settles, in order: a chain whose parts did not all arrive before the next one began
     (ticker, None, ts, reason, None); a fetch that failed (ticker, None, ts, Schwab's answer, None);
     the whole chain once its last part is in (ticker, contracts, fetched_ts, None, (spot, spot_ts)),
-    with the chain's one spot and its trade time. A chain missing a part is never returned."""
+    with the chain's one spot and its trade time. A chain missing a part is never returned.
+    """
     tk, ts = msg.get("ticker"), msg.get("ts_recv")
     if not tk or not isinstance(ts, (int, float)):
         return []
@@ -202,7 +207,8 @@ def _tick(sym: str, ts: float) -> None:
 def _service_feed(symbol: str, service: str, now: float) -> dict:
     """One Schwab option service's feed for contract `symbol` at `now`, as the page shows it: its
     state by the one live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and how
-    long ago the daemon last received anything on that service (its own report)."""
+    long ago the daemon last received anything on that service (its own report).
+    """
     status = _lmp.daemon_status(now)
     reports = status.get("health") if status is not None else None
     health = reports.get(service) if reports is not None else None
@@ -247,7 +253,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     Every equity quote, and every option quote carrying a _REPRICE_FIELDS value, is passed to the
     tick callback. A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
-    part."""
+    part.
+    """
     if not isinstance(msg, dict):
         return None
     if topic.startswith("chain."):
@@ -317,7 +324,8 @@ async def _bus_loop(bus) -> None:
     (_ingest_pushed): the console runs in the daemon's program and reads its one bus, no copy
     sent over a socket. A chain's record is its parts, in order. Each record handed over yields,
     so a burst of them never holds the loop: the daemon's status beat and every route take a
-    turn."""
+    turn.
+    """
     sub = bus.subscribe("", policy=LATEST)
     try:
         while _feed_running:
@@ -333,7 +341,8 @@ async def _bus_loop(bus) -> None:
 
 async def _beat_loop() -> None:
     """Every HEARTBEAT_SEC, the daemon's status beat (live_ui, the one record of whether the
-    daemon and Schwab are live): the console restamps what is live."""
+    daemon and Schwab are live): the console restamps what is live.
+    """
     while _feed_running:
         await asyncio.sleep(HEARTBEAT_SEC)
         _feed_changed(time_et.now())
@@ -350,7 +359,8 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     book's own content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED,
     from the symbols on the latest beat), and each feed by the one live rule
     (live_market_plane.live_state). A missing beat keeps that last subscription.
-    The feed health says whether it is live. The page paints ACTIVE only while that feed is live."""
+    The feed health says whether it is live. The page paints ACTIVE only while that feed is live.
+    """
     c = ticker_storage_key(for_contract)
     levelone = _lmp.feed_now(now).held.get("LEVELONE_OPTIONS")
     l1 = _service_feed(c, "LEVELONE_OPTIONS", now)
@@ -377,7 +387,8 @@ def _feed_changed(now: float) -> None:
 
 def bind_daemon(daemon) -> None:
     """The capture daemon this console runs in (capture.run, before the web server starts): its
-    bus is the console's one source, and its requests go to it."""
+    bus is the console's one source, and its requests go to it.
+    """
     global _daemon
     _daemon = daemon
 
@@ -388,7 +399,8 @@ def start_order_flow_stream(
     on_feed_callback: Callable[[float], None] | None = None,
 ) -> bool:
     """Start reading the daemon's bus (bind_daemon) on the event loop; False when no daemon
-    runs in this program."""
+    runs in this program.
+    """
     global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback
     if _daemon is None:
         log.error("no capture daemon runs in this program: the console has no data")
@@ -413,7 +425,8 @@ async def _run_feed(bus) -> None:
 
 def stop_order_flow_stream() -> None:
     """Clear the live state the feed fed and cancel its task; the task logs FEED_LOOP_STOP_DONE
-    when it ends."""
+    when it ends.
+    """
     global _feed_running, _feed_task
     _feed_running = False
     _option_contract_last_update_ts.clear()
