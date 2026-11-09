@@ -54,7 +54,10 @@ PY = sys.executable
 
 
 def exe(name):
-    """A checker's program: the census's npm tools, then the running Python's scripts, then PATH."""
+    """Return a checker's program.
+
+    It is looked for in the census's npm tools, then the running Python's scripts, then PATH.
+    """
     for d in (CENSUS / "node_modules" / ".bin", Path(PY).parent):
         for n in (f"{name}.cmd", f"{name}.exe", name):
             if (d / n).exists():
@@ -157,9 +160,10 @@ page_text = "\n".join(TEXT[f] for f in PAGE_ALL)
 
 @dataclasses.dataclass
 class Row:
-    """One category of the census: the rule it checks, what counts it, and its items. A check
-    declares its row before it looks, so a row with no items is a check that ran and found 0;
-    `counted` is a count a tool gave whole, its items elsewhere.
+    """One category of the census: the rule it checks, what counts it, and its items.
+
+    A check declares its row before it looks, so a row with no items is a check that ran and found
+    0; `counted` is a count a tool gave whole, its items elsewhere.
     """
 
     rule: str
@@ -218,7 +222,9 @@ SWALLOW = re.compile(r"except|swallow|suppress|silenced|thrown away|let pass")
 
 
 def patch_kind(f, line, kind):
-    """A fallback puts an invented value where one is missing; a swallow throws an error away.
+    """Return whether a patch shape is a fallback or a swallow.
+
+    A fallback puts an invented value where one is missing; a swallow throws an error away.
     check_end_to_end gives JS one label for both: a JS line holding a catch is a swallow.
     """
     text = kind if f.endswith(".py") else TEXT[f].splitlines()[line - 1]
@@ -350,8 +356,9 @@ for f in [
 
 
 class _Unnamed(ast.NodeTransformer):
-    """A formula with its names set aside: two functions computing the same thing from
-    differently named inputs read the same.
+    """A formula with its names set aside.
+
+    Two functions computing the same thing from differently named inputs read the same.
     """
 
     def visit_Name(self, node):
@@ -1010,7 +1017,7 @@ lines_matching(
 
 
 def enclosing(f, line):
-    """The innermost function holding `line`, marked when it is a route."""
+    """Return the innermost function holding `line`, marked when it is a route."""
     holders = sorted(
         (
             n
@@ -1223,7 +1230,7 @@ helpers_that_check = {
 
 
 def checks(f, node):
-    """The test asserts, expects a raise, or calls a helper of its file that asserts."""
+    """Return whether the test asserts, expects a raise, or calls its file's helper that asserts."""
     return any(
         isinstance(x, ast.Assert)
         or (
@@ -1608,9 +1615,10 @@ def rel(p):
 
 
 def reconcile(name, own_total, prefix, tool):
-    """The census's count of a checker's findings must equal the checker's own total. The row
-    carries the checker's tool name, so it also shows the checker ran: a rule of it with no row
-    found nothing.
+    """Record whether the census's count of a checker's findings equals the checker's own total.
+
+    The two must be equal. The row carries the checker's tool name, so it also shows the checker
+    ran: a rule of it with no row found nothing.
     """
     ours = sum(r.count for k, r in rows.items() if k[0] == S and k[1].startswith(prefix))
     if own_total == ours:
@@ -1643,8 +1651,9 @@ for cat, tool in (
 
 
 def json_findings(name, cmd):
-    """A checker's JSON report, written to a file by the checker's own output option: a Node
-    tool's report sent through a pipe can lose its end when the tool exits (seen in CI: html-
+    """Return a checker's JSON report, written to a file by the checker's own output option.
+
+    A Node tool's report sent through a pipe can lose its end when the tool exits (seen in CI: html-
     validate's cut at 15,992 characters). `cmd` holds `{out}` where the report file goes.
     """
     report_file = LINT / f"{name}.json"

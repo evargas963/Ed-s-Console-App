@@ -53,9 +53,10 @@ class DiffUnreadable(RuntimeError):
 
 
 def _added_text(root: Path, base: str | None = None) -> str:
-    """The staged diff, or with `base` every commit's diff in `base..HEAD` (a line one commit adds
-    and a later one removes is still published in main's history), RAISING when git could not
-    produce it.
+    """Return the staged diff, or with `base` every commit's diff in `base..HEAD`.
+
+    With `base`, every commit is read because a line one commit adds and a later one removes is
+    still published in main's history. RAISES when git could not produce the diff.
 
     Any failure of git — a broken or locked index, a corrupt object, an unknown base, git absent
     from PATH — raises: an unread diff would scan clean and let the change through unread. "I
@@ -96,8 +97,9 @@ def _git(root: Path, *args: str, given: bytes | None = None) -> bytes:
 
 
 def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[str]:
-    """Every secret or operator-home path on a line `root`'s staged diff adds (with `base`, a line
-    any commit in `base..HEAD` adds).
+    """Return every secret or operator-home path on a line `root`'s staged diff adds.
+
+    With `base`, it is every such path on a line any commit in `base..HEAD` adds.
     """
     text = _added_text(root, base)
     hits: list[str] = []
