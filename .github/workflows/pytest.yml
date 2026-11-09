@@ -222,6 +222,7 @@ jobs:
             MSYS_NO_PATHCONV=1 logman stop afdtrace -ets > /dev/null
             kill $procs_pid 2>/dev/null || true
             if grep -q "failed" logs/test_e2e_last.log; then
+              mkdir -p kept-failures/pass-$pass && cp -r test-results logs/test_e2e_last.log kept-failures/pass-$pass/ || true
               echo "=== pass $pass failed: socket events by process and kind, from Windows' own Winsock trace"
               MSYS_NO_PATHCONV=1 tracerpt afd.etl -o afd.csv -of CSV -y > /dev/null
               head -c 600 afd.csv; echo
@@ -270,6 +271,7 @@ jobs:
         with:
           name: playwright-failures-windows
           path: |
+            kept-failures/**
             test-results/**/trace.zip
             test-results/**/error-context.md
             logs/test_e2e_last.log
