@@ -796,6 +796,25 @@ SAME_DAY_LEVELS = (
 )
 
 
+def _repriced_to_close(
+    c: OptionContract, spot: float, now: datetime, t_close: float
+) -> tuple[OptionContract, tuple | None]:
+    """Return `c` with gamma and delta rebuilt to today's option close, and its pricing inputs.
+
+    Both Greeks None, with no inputs, when its inputs (_contract_inputs) or either Greek cannot
+    be had.
+    """
+    row = _contract_inputs(c, now, t_years=t_close)
+    if not isinstance(row, tuple):
+        return replace(c, gamma=None, delta=None), None
+    strike, _oi, _mult, t_years, sigma, sign = row
+    gamma = bs_gamma(spot, strike, t_years, sigma)
+    delta = bs_delta(spot, strike, t_years, sigma, call=sign > 0)
+    if gamma is None or delta is None:
+        return replace(c, gamma=None, delta=None), None
+    return replace(c, gamma=gamma, delta=delta), row
+
+
 def same_day_levels(
     ticker: str,
     contracts: list[OptionContract] | None,
@@ -824,27 +843,13 @@ def same_day_levels(
     )
     if front is None:
         return blank
-    parsed: list = []
-    priced: list[OptionContract] = []
-    repriced: list[OptionContract] = []
-    for c in contracts:
-        if c.expiry != front:
-            continue
-        row = _contract_inputs(c, now, t_years=t_close)
-        gamma = delta = None
-        if isinstance(row, tuple):
-            _strike, _oi, _mult, t_years, sigma, sign = row
-            gamma = bs_gamma(float(spot), _strike, t_years, sigma)
-            delta = bs_delta(float(spot), _strike, t_years, sigma, call=sign > 0)
-        if gamma is None or delta is None:
-            gamma = delta = None
-        ours = replace(c, gamma=gamma, delta=delta)
-        repriced.append(ours)
-        if gamma is not None:
-            parsed.append(row)
-            priced.append(ours)
-    if not repriced:
-        return blank
+    # `front` is a contract's expiry, so it has at least one contract
+    front_rows = [
+        _repriced_to_close(c, float(spot), now, t_close) for c in contracts if c.expiry == front
+    ]
+    repriced = [ours for ours, _row in front_rows]
+    priced = [ours for ours, row in front_rows if row is not None]
+    parsed = [row for _ours, row in front_rows if row is not None]
     books = exposure_books(repriced, spot=spot, now=now)
     exposures, _diag = merge_exposure_books(books.values())
     (call_wall, _), (put_wall, _) = pick_gamma_wall_strikes(exposures)
@@ -854,11 +859,8 @@ def same_day_levels(
         profile = compute_gamma_profile(priced, float(spot), now=now, parsed=parsed)
         flip, _confidence, _flip_diag = compute_gamma_flip_v2(priced, float(spot), profile=profile)
         support = compute_gamma_support_levels(profile, float(spot))
-        part = None
-        if front == today and isinstance(held_charm, dict):
-            found = held_charm.get(front)
-            if isinstance(found, dict):
-                part = found
+        # a front expiry that settles today: the charm map already priced for it, when held
+        part = held_charm.get(front) if front == today and isinstance(held_charm, dict) else None
         if not isinstance(part, dict):
             part = compute_charm_by_strike(repriced, float(spot), now=now, t_years=t_close)
         call_charm, put_charm = pick_charm_wall_strikes(part)

@@ -647,34 +647,22 @@ def compute_max_pain(exposures_by_strike: dict[float, dict]) -> float | None:
         legs = strike_oi_legs(b)
         if legs is None:
             return None
-        w = []
-        for oi, key in ((legs[0], "call_oi_mult"), (legs[1], "put_oi_mult")):
-            if oi <= 0:
-                w.append(0.0)
-                continue
-            m = bucket_metric(b, key)
-            if m is None:
-                return None
-            w.append(float(m))
-        weights[float(k)] = (w[0], w[1])
+        call_w, put_w = (
+            0.0 if oi <= 0 else bucket_metric(b, key)
+            for oi, key in zip(legs, ("call_oi_mult", "put_oi_mult"), strict=True)
+        )
+        if call_w is None or put_w is None:
+            return None
+        weights[float(k)] = (call_w, put_w)
 
     def _pain_at(settlement: float) -> float:
         pain = 0.0
         for k in strikes:
             call_w, put_w = weights[float(k)]
-            if call_w <= 0 and put_w <= 0:
-                continue
             if call_w > 0 and settlement > k:
                 pain += (settlement - k) * call_w
             if put_w > 0 and settlement < k:
                 pain += (k - settlement) * put_w
         return pain
 
-    best_s: float | None = None
-    best_pain: float | None = None
-    for s in strikes:
-        p = _pain_at(s)
-        if best_pain is None or p < best_pain:
-            best_pain = p
-            best_s = s
-    return best_s
+    return min(strikes, key=_pain_at)  # of equal pains, the lowest strike

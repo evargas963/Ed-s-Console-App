@@ -48,6 +48,7 @@ from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.capture_store import store_capture
 from tests.real_chains import CRWD, MRVL, NFLX
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
+from tests.test_one_levels_producer_v1 import _drain
 
 REPO = Path(__file__).resolve().parent.parent
 #: Windows console input mode: selecting text with the mouse (SetConsoleMode)
@@ -849,6 +850,23 @@ def test_a_daemon_whose_pages_port_is_held_ends_at_once_with_why_and_its_window_
     assert "OSError" in log, log
 
 
+def _store_as_the_daemon_writes(chain) -> None:
+    """Store a real capture as the daemon writes it: one row per expiry, at the capture's time."""
+    by_expiry: dict = {}
+    for ct in chain.chain:
+        by_expiry.setdefault(ct["expirationDate"][:10], []).append(dict(ct))
+    for expiry, cts in by_expiry.items():
+        store_capture(
+            server.get_db().db_path,
+            ticker=chain.ticker,
+            expiry=expiry,
+            contracts=cts,
+            spot=chain.spot,
+            completeness_basis=CAPTURE_BASIS,
+            ts_utc=chain.now.timestamp(),
+        )
+
+
 def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks():
     """At a console start, stored captures are priced while a page views a streamed ticker.
 
@@ -865,19 +883,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
     names = tuple(c.ticker for c in stored)
     contracts = [dict(ct) for ct in CRWD.chain]
     for chain in stored:
-        by_expiry: dict = {}
-        for ct in chain.chain:
-            by_expiry.setdefault(ct["expirationDate"][:10], []).append(dict(ct))
-        for expiry, cts in by_expiry.items():
-            store_capture(
-                server.get_db().db_path,
-                ticker=chain.ticker,
-                expiry=expiry,
-                contracts=cts,
-                spot=chain.spot,
-                completeness_basis=CAPTURE_BASIS,
-                ts_utc=chain.now.timestamp(),
-            )
+        _store_as_the_daemon_writes(chain)
     with server._terrain_cache_lock:  # held by another test on this worker
         for name in names:
             server._terrain_cache.pop(name, None)
@@ -917,11 +923,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             ticker.join(10)
     finally:
         push_changes.unsubscribe(page)
-        while True:  # what still waits is priced
-            server._chain_pricing.submit(lambda: None).result(timeout=60)
-            with server._chains_waiting_lock:
-                if not server._chains_waiting:
-                    break
+        _drain()  # what still waits is priced
         with server._terrain_cache_lock:
             for name in (tk, *names):
                 server._terrain_cache.pop(name, None)
