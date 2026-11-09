@@ -2,6 +2,9 @@
 
 Fewer than two market days, or no
 published levels, leaves each number absent. The producer attaches no sentence.
+
+Real data: CRWD's 2026-10-16 expiry, every strike, captured 2026-10-07 10:38:40 ET with Schwab's
+underlying price (tests/real_chains.py): one capture day.
 """
 
 from __future__ import annotations
@@ -9,11 +12,20 @@ from __future__ import annotations
 import json
 
 import server
+from option_contract import read_chain
+from tests.real_chains import CRWD
 
 
 def test_forces_before_two_capture_days_are_absent():
-    one = [{"et_date": "2026-09-28", "spot": 5.0, "contracts": [], "ts_utc": 1.0}]
-    forces = server._forces_from_captures("ZZ", one)
+    one = [
+        {
+            "et_date": CRWD.now.date().isoformat(),
+            "spot": CRWD.spot,
+            "contracts": read_chain(CRWD.chain),
+            "ts_utc": CRWD.now.timestamp(),
+        }
+    ]
+    forces = server._forces_from_captures("CRWD", one)
     assert forces["available"] is False
     assert (
         forces["doi_below"],

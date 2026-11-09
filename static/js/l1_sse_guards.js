@@ -1,7 +1,6 @@
 /**
  * The page's reads of the console: makeCoalescedLoader (one read in flight per panel), readJson
- * (one read, its failure named), show (an answer drawn, or why not) and sharedFetchJson (one
- * network call for concurrent identical GETs). globalThis.EdL1SseGuards.
+ * (one read, its failure named) and show (an answer drawn, or why not). globalThis.EdL1SseGuards.
  */
 (function (g) {
   'use strict';
@@ -92,24 +91,9 @@
     });
   }
 
-  /**
-   * Concurrent GETs of the same URL share one request (readJson); not a cache (the next call
-   * after it settles fetches again). No AbortSignal: one caller leaving must not cancel the others.
-   */
-  var _sharedFetchInFlight = Object.create(null);
-  function sharedFetchJson(url) {
-    if (_sharedFetchInFlight[url]) return _sharedFetchInFlight[url];
-    var p = readJson(url);
-    p.then(function () { delete _sharedFetchInFlight[url]; },
-           function () { delete _sharedFetchInFlight[url]; });
-    _sharedFetchInFlight[url] = p;
-    return p;
-  }
-
   g.EdL1SseGuards = {
     makeCoalescedLoader: makeCoalescedLoader,
     readJson: readJson,
     show: show,
-    sharedFetchJson: sharedFetchJson,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

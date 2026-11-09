@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -129,7 +129,7 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
     closed and a chain fetched after that close stands.
     """
     published(tk, chain, delivered)
-    body = server.terrain_answer(tk, at)
+    body = server.terrain(tk, at.timestamp(), {})
     assert body["levels_state"] == state
     assert body["levels_age_sec"] == pytest.approx(at.timestamp() - delivered.timestamp())
     assert body["levels_time_ct"] is not None
@@ -138,7 +138,7 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
 def test_levels_with_no_markets_answer_held_are_not_live(published):
     """2026-09-20: no /markets answer held for that date, so the levels are not live."""
     published("TSLA", TSLA, _et(11, 0, "2026-09-20"))
-    body = server.terrain_answer("TSLA", _et(11, 1, "2026-09-20"))
+    body = server.terrain("TSLA", _et(11, 1, "2026-09-20").timestamp(), {})
     assert (body["levels_state"], body["levels_stale_reason"]) == (
         "NOT LIVE",
         "the market session is unknown",
@@ -172,7 +172,7 @@ def test_a_late_heartbeat_does_not_shorten_the_round_a_chain_is_judged_by(
     lmp.record_feed_heartbeat(
         daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=245.0)
     )
-    body = server.terrain_answer("TSLA", delivered + timedelta(seconds=after))
+    body = server.terrain("TSLA", delivered.timestamp() + after, {})
     assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)
 
 
@@ -253,7 +253,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
             now=at,
         )
         priced = {c.symbol: c for c in server.published_levels("SPY").priced_chain}
-        same_day = server.terrain_answer("SPY", at)["same_day"]
+        same_day = server.terrain("SPY", at.timestamp(), {})["same_day"]
     finally:
         _forget()
         with sqlite3.connect(
@@ -304,7 +304,7 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
     quote = _QUOTES["TSLA"]
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     published("TSLA", TSLA, at)
-    assert server.terrain_answer("TSLA", at)["levels_state"] == "LIVE"
+    assert server.terrain("TSLA", at.timestamp(), {})["levels_state"] == "LIVE"
     assert _told("TSLA", at) == set()
     published("TSLA", TSLA, _et(16, 1))
     later = _et(16, 5)
@@ -315,5 +315,5 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
             held={"LEVELONE_EQUITIES": ["TSLA"]},
         )
     )
-    assert server.terrain_answer("TSLA", later)["levels_state"] == "CLOSE"
+    assert server.terrain("TSLA", later.timestamp(), {})["levels_state"] == "CLOSE"
     assert _told("TSLA", later) == {push_changes.LEVELS}

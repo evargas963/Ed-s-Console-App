@@ -179,8 +179,6 @@ assert(typeof G.makeCoalescedLoader === 'function', 'makeCoalescedLoader missing
   await assert.rejects(G.show(G.readJson(base + '/api/ok', aborted.signal), '/api/ok', () => said.push('drawn'), (w) => said.push(w)),
     (e) => e.name === 'AbortError');
   assert.deepStrictEqual(said, [], 'a superseded read says nothing');
-  await assert.rejects(G.sharedFetchJson(base + '/api/error?x=1'), (e) => e.words === 'the console answered /api/error with 500',
-    'the shared read names where it failed too');
   server.close();
 }
 

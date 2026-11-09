@@ -1,14 +1,14 @@
 /* Ed Console — Options/Gamma "Levels" view (D). PRESENTATION ONLY.
    One glance table: the level, the regular price, and the same-day price. The page
    joins rows the server already paired (zero_dte carries both prices) and draws the
-   other served levels under them. It computes no level. /api/levels is the authority. */
+   other served levels under them. It computes no level. The levels panel is the authority. */
 (function () {
   'use strict';
 
   function px(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  // Two homes render the SAME canonical /api/levels contract, same function, same host-id
+  // Two homes render the SAME canonical levels contract, same function, same host-id
   // resolution pattern -- Options > Gamma > Levels and Liquidity > Levels. Never two renderers
   // for one contract -- see this file's own docstring.
   function activeHostId() {
@@ -19,18 +19,22 @@
   }
   function ticker() { return window.EdShell.getState().ticker; }
 
-  function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
-  function loadImpl(tk, signal) {
-    var hostId = activeHostId();
-    var host = hostId && document.getElementById(hostId);
-    if (!host || !stillLevels(tk)) return;
-    var G = window.EdL1SseGuards;
-    return G.show(G.readJson('/api/levels?ticker=' + encodeURIComponent(tk), signal), '/api/levels',
-      function (d) { if (stillLevels(tk)) render(host, d); },
-      function (words) { if (stillLevels(tk)) window.EdShell.placeholder(host, words); });
+  // The levels are the `levels:view` panel (server.levels) the program sends on the page's
+  // socket while a Levels view is on, at once and each time the levels change. Nothing received
+  // yet for the ticker on screen is '-'.
+  var _shownTicker = null;
+  function load() {
+    var hostId = activeHostId(), host = hostId && document.getElementById(hostId);
+    if (!host) { _shownTicker = null; window.EdShell.showPanel('levels:view', null); return; }
+    if (_shownTicker !== ticker()) { _shownTicker = ticker(); window.EdShell.placeholder(host, '-'); }
+    window.EdShell.showPanel('levels:view', { tf: '1' });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  function load() { _loader.trigger(ticker()); }
+  document.addEventListener('ed:panel', function (e) {
+    var d = e.detail, hostId = activeHostId(), host = hostId && document.getElementById(hostId);
+    if (d.type !== 'levels:view' || !host) return;
+    if (d.failed != null) { window.EdShell.placeholder(host, d.failed); return; }
+    render(host, d);
+  });
 
   function levelName(r) {
     if (r.label != null && r.label !== '') return r.label;
@@ -108,7 +112,7 @@
     if (degradedFoot != null && degradedFoot.length) {
       foot += '<span class="lv-absent">degraded: ' + esc(degradedFoot.join(', ')) + '</span>';
     }
-    foot += '<span class="lv-provsrc">/api/levels · schema v' + esc(d.schema_version) + '</span></div>';
+    foot += '<span class="lv-provsrc">the levels panel · schema v' + esc(d.schema_version) + '</span></div>';
     host.innerHTML = head + table + foot;
     // A canonical level PRICE (VWAP / value / liquidity / structural) is NOT necessarily a listed
     // option strike, so a level click must never write selStrike (that identity belongs to a real
@@ -125,7 +129,6 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
     // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
     // (that file's init() comment)
   }

@@ -19,6 +19,11 @@ NULL and prove the zero never reaches the fact table, the sum, or the frame.
 
 THE TEST THAT WOULD HAVE CAUGHT IT is not a stricter regex. It is this: write a NULL into the
 source table and read what comes out the other end.
+
+Real data: CRWD's 2026-10-16 expiry captured 2026-10-07 10:38:40 ET (tests/real_chains.py), summed
+per strike by math_exposure_core.compute_exposures_by_strike; SPY's CHART_EQUITY bars of 2026-10-01
+as the capture daemon recorded them (real_daemon_bars_spy_tsla_2026_10_01_02.json). Induced
+(named): a field taken out of a real contract or bar, as Schwab leaves a field out.
 """
 
 from __future__ import annotations
@@ -27,10 +32,21 @@ import pytest
 
 import terrain_engine as TE
 from liquidity_models import volume_profile
+from math_exposure_core import compute_exposures_by_strike
+from option_contract import read_chain
+from tests.feed_live_helper import daemon_bars
+from tests.real_chains import CRWD
 
-#: what every strike bucket holds whatever it is testing (math_exposure_core builds each so): a
-#: dollarized book, its volumes known, no contract listed on either side
-_KNOWN = {"dollarized": True, "volume_unreported": 0, "call_volume": 0.0, "put_volume": 0.0}
+_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY")
+
+
+def _exposures(chain: list[dict]) -> dict[float, dict]:
+    return compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)[0]
+
+
+def _at(strike: float) -> dict[str, dict]:
+    return {ct["putCall"]: ct for ct in CRWD.chain if ct["strikePrice"] == strike}
+
 
 # ---------------------------------------- an unknown gamma is not a flat gamma bar ----
 
@@ -47,16 +63,30 @@ def test_a_strike_with_no_resolvable_gamma_draws_no_bar():
 
 
 def test_a_measured_gamma_still_draws_its_bar():
-    """Negative control: absence is refused, presence is not."""
-    rows = TE._per_strike_rows({500.0: {**_KNOWN, "net_gex_1pct": 1_234_567.0}})
+    """Negative control: absence is refused, presence is not.
+
+    Strike 270's net GEX per 1%: gamma * open interest * multiplier * spot^2 * 0.01, calls less
+    puts, worked out from Schwab's fields.
+    """
+    legs = _at(270.0)
+    gex = {
+        side: ct["gamma"] * ct["openInterest"] * ct["multiplier"] * CRWD.spot * CRWD.spot * 0.01
+        for side, ct in legs.items()
+    }
+    rows = [r for r in TE._per_strike_rows(_exposures(CRWD.chain)) if r[0] == 270.0]
     assert len(rows) == 1
-    assert rows[0][0] == pytest.approx(500.0)
-    assert rows[0][1] == pytest.approx(1_234_567.0, rel=1e-6)
+    assert rows[0][0] == pytest.approx(270.0)
+    assert rows[0][1] == pytest.approx(gex["CALL"] - gex["PUT"], rel=1e-12)
+    assert rows[0][1] != 0.0
 
 
 def test_a_genuine_zero_gamma_still_draws_its_bar():
-    """A strike measured at flat gamma is information and must remain on the chart."""
-    rows = TE._per_strike_rows({500.0: {**_KNOWN, "net_gex_1pct": 0.0}})
+    """A strike measured at flat gamma is information and must remain on the chart.
+
+    Strike 297.5: Schwab sent open interest 0 on both sides.
+    """
+    assert [ct["openInterest"] for ct in _at(297.5).values()] == [0, 0]
+    rows = [r for r in TE._per_strike_rows(_exposures(CRWD.chain)) if r[0] == 297.5]
     assert len(rows) == 1 and rows[0][1] == pytest.approx(0.0)
 
 
@@ -65,10 +95,12 @@ def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_has_gex_unknown(
 
     The strike's GEX is not known, whatever its accumulator holds.
     """
-    rows = TE._per_strike_rows(
-        {500.0: {**_KNOWN, "call_gamma_unreported": 1, "net_gex_1pct": 1_234_567.0}}
-    )
-    assert [r[:2] for r in rows] == [[500.0, None]]
+    chain = [dict(ct) for ct in CRWD.chain]
+    call = next(c for c in chain if c["strikePrice"] == 270.0 and c["putCall"] == "CALL")
+    assert call["openInterest"] > 0
+    del call["gamma"]
+    rows = TE._per_strike_rows(_exposures(chain))
+    assert [r[:2] for r in rows if r[0] == 270.0] == [[270.0, None]]
 
 
 # ------------------------------------- a NULL bar volume is not zero traded volume ----
@@ -76,15 +108,14 @@ def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_has_gex_unknown(
 
 def test_a_null_volume_bar_does_not_enter_the_volume_profile():
     """One bar priced and one bar absent must give the priced bar's POC, not a blend."""
-    bars = [
-        {"high": 100.0, "low": 100.0, "volume": None},
-        {"high": 200.0, "low": 200.0, "volume": 5_000.0},
-    ]
-    assert volume_profile(bars).poc == pytest.approx(200.0), (
+    priced, other = _BARS[0], next(b for b in _BARS if b["low"] > _BARS[0]["high"])
+    absent = dict(other, volume=None)
+    assert volume_profile([absent, priced]).poc == pytest.approx(volume_profile([priced]).poc), (
         "an unmeasured bar moved the point of control"
     )
+    assert volume_profile([other, priced]).poc != volume_profile([priced]).poc
 
 
 def test_no_usable_volume_still_reads_as_absence():
     """The docstring's own promise: absence reads as absence, never a fabricated level."""
-    assert volume_profile([{"high": 100.0, "low": 99.0, "volume": None}]) is None
+    assert volume_profile([dict(_BARS[0], volume=None)]) is None
