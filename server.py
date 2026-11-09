@@ -1380,7 +1380,7 @@ def _publish_levels(
     *,
     chain_spot: tuple = (None, None),
     captures: list | None = None,
-    now: datetime | None = None,
+    now: datetime,
 ) -> TerrainSnapshot | None:
     """Produce a ticker's levels, per-strike rows and gamma-surface grid: THE producer of them.
 
@@ -1408,7 +1408,6 @@ def _publish_levels(
     newer, and each leg's age is taken.
     Returns the snapshot, or None when there is no chain to price.
     """
-    at = now if now is not None else now_et()
     previous = published_levels(tk)
     capture = captures[0] if captures else None
     if capture is not None:
@@ -1420,7 +1419,7 @@ def _publish_levels(
         chain, fetched_ts = previous.chain, previous.computed_ts_utc
     begun = datetime.fromtimestamp(fetched_ts, ET)
     product = option_close_product(tk)
-    valued_at = valuation_instant(begun if capture is not None else at, product)
+    valued_at = valuation_instant(begun if capture is not None else now, product)
     count_capture, count_capture_ts = (
         (None, None) if previous is None else (previous.count_capture, previous.count_capture_ts)
     )
@@ -1447,12 +1446,12 @@ def _publish_levels(
             source = SPOT_SOURCE_NONE
         priced_at = (chain_spot[0], source, chain_spot[1])
     else:  # a streamed tick: the live price, newer than any the levels hold
-        priced_at = resolve_spot(tk, now=at.timestamp())
+        priced_at = resolve_spot(tk, now=now.timestamp())
         if priced_at[0] is None:  # Schwab has sent this program no price: the last one stands
             priced_at = previous.priced_at
     if (
         capture is None
-        and valued_at < at
+        and valued_at < now
         and previous is not None
         and previous.snap.spot is not None
     ):
@@ -1469,15 +1468,15 @@ def _publish_levels(
         frozenset(c.symbol for c in chain if c.symbol) if new_chain else previous.contract_symbols
     )
     # one read of the heartbeat: pricing and the cell stamp share it
-    feed = lmp.feed_now(at.timestamp())
-    streamed = _streamed_greeks_for_ticker(listed, at.timestamp(), feed)
-    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", at.timestamp())
-    held = set(_held_option_symbols_for_ticker(listed, at.timestamp(), feed))
+    feed = lmp.feed_now(now.timestamp())
+    streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
+    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
+    held = set(_held_option_symbols_for_ticker(listed, now.timestamp(), feed))
     # a streamed contract's open interest and volume are the stream's, every other the chain's.
     # The cell stamp says whether that stream is live.
     priced, n_live = overlay_streamed_contract_fields(chain, streamed, held)
-    if option_market_open(at, product) is False:
-        priced = _keep_last_reported(priced, chain, at, product)
+    if option_market_open(now, product) is False:
+        priced = _keep_last_reported(priced, chain, now, product)
     live_syms = _overlaid_symbols(chain, priced)
     pushed_ts = [
         ts
@@ -1512,12 +1511,12 @@ def _publish_levels(
             spot_as_of_ts_utc=spot_ts,
             stream_overlay_contracts=n_live,
             stream_overlay_symbols=live_syms,
-            stream_overlay_computed_ts_utc=at.timestamp(),
+            stream_overlay_computed_ts_utc=now.timestamp(),
         )
         surface = _stamp_gamma_surface_cell_stream_state(
-            projected, streamed, feed_live, held, at.timestamp()
+            projected, streamed, feed_live, held, now.timestamp()
         )
-        surface["surface_seq"] = _next_gamma_surface_seq(tk, at.timestamp())
+        surface["surface_seq"] = _next_gamma_surface_seq(tk, now.timestamp())
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
@@ -1688,7 +1687,7 @@ def _on_stream_tick(sym: str, ts: float) -> None:
                 spot,
                 crosses,
                 now,
-                now_et().strftime("%Y-%m-%d %H:%M:%S ET"),
+                datetime.fromtimestamp(now, ET).strftime("%Y-%m-%d %H:%M:%S ET"),
             )
     if tk:
         _wait_to_price(tk, REPRICE, ts=ts)
@@ -1770,7 +1769,7 @@ def _price_waiting_chain() -> None:
         delivered = any(what == DELIVERED for what, *_ in _chains_waiting.values())
         tk = next(t for t in waiting if not (delivered and _chains_waiting[t][0] == STORED))
         what, contracts, ts, spot = _chains_waiting.pop(tk)
-    _price_chain(tk, what, contracts, ts, spot)
+    _price_chain(tk, what, contracts, ts, spot, now_et())
 
 
 def _price_chain(
@@ -1778,9 +1777,10 @@ def _price_chain(
     what: str,
     contracts: list | None,
     fetched_ts: float | None,
-    spot: tuple | None = None,
+    spot: tuple | None,
+    now: datetime,
 ) -> None:
-    """Price a ticker's levels through THE producer of them (_publish_levels).
+    """Price a ticker's levels through THE producer of them (_publish_levels), at `now`.
 
     From a newly fetched chain, with the chain's own fetch time as its as-of (an older streamed
     value never overrides it); from the held chain with the newest streamed values, as of the
@@ -1797,10 +1797,10 @@ def _price_chain(
         if what == STORED:
             captures = last_capture_per_day(get_db().db_path, tk, 2)
             if captures:
-                _publish_levels(tk, captures=captures)
+                _publish_levels(tk, captures=captures, now=now)
             return
         # read here, on the pricing thread: a whole chain, never on the event loop
-        _publish_levels(tk, read_chain(contracts), fetched_ts, chain_spot=spot)
+        _publish_levels(tk, read_chain(contracts), fetched_ts, chain_spot=spot, now=now)
         _terrain_refresh_last_error.pop(tk, None)
     except Exception as e:  # kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
