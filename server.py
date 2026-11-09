@@ -873,9 +873,9 @@ def _streamed_greeks_for_ticker(
     """
     out: dict = {}
     for sym in _held_option_symbols_for_ticker(listed, now, feed):
-        pushed = {**(get_stream_greeks(sym) or {}), **(option_top(sym) or {})}
-        if pushed:
-            out[sym] = pushed
+        held = [r for r in (get_stream_greeks(sym), option_top(sym)) if r is not None]
+        if held:
+            out[sym] = {k: v for r in held for k, v in r.items()}
     return out
 
 
