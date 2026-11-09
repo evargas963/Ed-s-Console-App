@@ -1,6 +1,7 @@
-"""GET /api/chain: one expiry of the full chain the daemon delivered (strike_range=ALL), every
-Schwab field as sent. A newer streamed open interest or volume replaces the chain's. Gamma, delta,
-and volatility stay the chain's, as the sweep took them.
+"""GET /api/chain: one expiry of the full chain the daemon delivered (strike_range=ALL).
+
+Every Schwab field as sent. A newer streamed open interest or volume replaces the chain's.
+Gamma, delta, and volatility stay the chain's, as the sweep took them.
 
 Through the real code: the levels producer holds the chain (server._publish_levels), the daemon's
 status and pushed option messages reach the console (live_market_plane.record_feed_heartbeat,
@@ -57,9 +58,11 @@ def _clean():
 
 
 def _hold(tk, contracts, fetched_ts, price, streamed=()):
-    """The daemon's status (Schwab's socket open, `tk` and the `streamed` contracts held), each
-    streamed (symbol, fields, receive time) pushed, and `tk`'s chain published at _AT; the status
-    beats at _AT (the publication's time) and again now (the routes' time).
+    """Hold the daemon's status, push each streamed contract, and publish `tk`'s chain at _AT.
+
+    The status: Schwab's socket open, `tk` and the `streamed` contracts held; each streamed
+    (symbol, fields, receive time) pushed, and `tk`'s chain published at _AT; the status beats
+    at _AT (the publication's time) and again now (the routes' time).
     """
     held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
     lmp.record_feed_heartbeat(daemon_status(_AT.timestamp(), schwab_socket_open=True, held=held))
@@ -133,9 +136,10 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
 
 
 def test_a_later_streamed_gamma_does_not_replace_the_quote():
-    """A streamed contract's volume is the stream's, even one streamed before the chain. Gamma
-    stays the chain's, as the sweep took it: a gamma streamed after the chain does not replace
-    it. Open interest is the chain's.
+    """A streamed contract's volume is the stream's, even one streamed before the chain.
+
+    Gamma stays the chain's, as the sweep took it: a gamma streamed after the chain does not
+    replace it. Open interest is the chain's.
     """
     now = _AT.timestamp()
     target = _TSLA_CONTRACTS[0]

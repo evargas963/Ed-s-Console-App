@@ -168,8 +168,10 @@ def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
 
 
 def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
-    """ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what
-    it asked for, and kept its own list of index roots. The daemon answers each subscribe with
+    """A subscribe is answered with what each symbol is, before its rows.
+
+    ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what it
+    asked for, and kept its own list of index roots. The daemon answers each subscribe with
     each asked-for symbol's key (what its rows carry) and display name, from instrument_identity,
     for an index typed bare or with "$", an ETF and a single name alike.
     """
@@ -191,8 +193,10 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
 
 
 def test_an_index_typed_bare_is_served_under_its_storage_key():
-    """The operator types "SPX"; Schwab keys "$SPX". The subscription goes through
-    ticker_storage_key, so the typed form gets the index's rows. In regular hours (_RTH).
+    """The operator types "SPX"; Schwab keys "$SPX".
+
+    The subscription goes through ticker_storage_key, so the typed form gets the index's rows. In
+    regular hours (_RTH).
     """
     clock = _clock_from(_RTH)
 
@@ -210,17 +214,19 @@ _RTH, _CLOSED = 1790780400.0, 1790820000.0
 
 
 def _clock_from(start: float):
-    """A clock running from `start` (the session the test is in); time still passes."""
+    """Return a clock running from `start` (the session the test is in); time still passes."""
     began = time_et.elapsed()
     return lambda: start + time_et.elapsed() - began
 
 
 @pytest.mark.parametrize("start", [_RTH, _CLOSED], ids=["rth", "closed"])
 def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
-    """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): the last price and
-    bid stand, and the row reads OFFLINE and names the outage, the market open or closed. Before
-    the socket closes the row is LIVE in regular hours and NOT LIVE at 22:00, the market closed.
-    The server's clock runs from `start` so the session is that hour, and time still passes.
+    """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5).
+
+    The last price and bid stand, and the row reads OFFLINE and names the outage, the market open
+    or closed. Before the socket closes the row is LIVE in regular hours and NOT LIVE at 22:00,
+    the market closed. The server's clock runs from `start` so the session is that hour, and time
+    still passes.
     """
     clock = _clock_from(start)
 
@@ -255,8 +261,9 @@ def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
 
 
 def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
-    """A browser that is behind gets the newest value of each symbol, never a stale backlog
-    (latest-value-per-symbol per client).
+    """A browser that is behind gets the newest value of each symbol, never a stale backlog.
+
+    Latest-value-per-symbol per client.
     """
 
     async def body(bus, ws, _feed, stats):
@@ -285,8 +292,9 @@ def test_shutdown_is_not_held_up_by_a_connected_browser():
 
 
 def test_a_page_before_the_first_schwab_quote_reads_no_price_until_one_comes():
-    """A page that subscribes before the daemon holds any quote for its symbol is answered at
-    once with the row as it is: no price ("-" on the page), never a filler; Schwab's first quote
+    """A page that subscribes before the daemon holds any quote for its symbol is answered at once.
+
+    It gets the row as it is: no price ("-" on the page), never a filler; Schwab's first quote
     then reaches it.
     """
 
@@ -304,8 +312,9 @@ def test_a_page_before_the_first_schwab_quote_reads_no_price_until_one_comes():
 
 
 def test_a_page_that_goes_away_mid_send_ends_only_its_own_connection():
-    """One page's connection is cut (no close) while rows are being pushed to it: its handler
-    ends, and the other page keeps its rows and its beats.
+    """One page's connection is cut (no close) while rows are being pushed to it.
+
+    Its handler ends, and the other page keeps its rows and its beats.
     """
 
     async def body(bus, ws, _feed, stats):
@@ -338,8 +347,10 @@ _WATCHED = ["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META",
 
 
 def _page_that_never_reads(port: int) -> socket.socket:
-    """A page's connection that subscribes and then never reads (a frozen tab), its receive
-    window 1 KB."""
+    """Open a page's connection that subscribes and then never reads (a frozen tab).
+
+    Its receive window is 1 KB.
+    """
     page = socket.socket()
     page.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024)  # before connecting: the window
     page.connect(("127.0.0.1", port))
@@ -358,9 +369,10 @@ def _page_that_never_reads(port: int) -> socket.socket:
 
 
 def _held_by_this_program(server_port: int, page: socket.socket) -> bool:
-    """Whether the program still holds the server side of `page`'s connection open: once it lets
-    go, the system closes it (FIN_WAIT_1, its unsent bytes still offered to the page, which reads
-    them and the end when it thaws, then reconnects), never ESTABLISHED.
+    """Whether the program still holds the server side of `page`'s connection open.
+
+    Once it lets go, the system closes it (FIN_WAIT_1, its unsent bytes still offered to the page,
+    which reads them and the end when it thaws, then reconnects), never ESTABLISHED.
     """
     page_port = page.getsockname()[1]
     return any(
@@ -373,15 +385,16 @@ def _held_by_this_program(server_port: int, page: socket.socket) -> bool:
 
 
 def test_a_page_that_stops_reading_while_little_is_sent_is_dropped_at_the_keepalive_ping(caplog):
-    """A page that stops reading while its buffers are not full is found by the keepalive ping
-    it does not answer, and its connection is aborted (live_ui.PageSocket): uvicorn's own close
-    waits for bytes the page never takes, holding the connection for as long as the page stays
-    frozen. The program then holds no connection to it, its handler has ended, and the stop is
-    not held. Induced test conditions: the program's socket buffers no bytes in the kernel
-    (SO_SNDBUF 0) and each beat carries a 15 KB pad, so the page's window fills at once and a
-    write it does not take stays pending in the program, short of the buffer that pauses writing
-    (64 KiB); and the keepalive ping every 0.5 s, answered within 0.5 s (production: uvicorn's
-    20 s and 20 s).
+    """A page that stops reading while its buffers are not full is dropped at the keepalive ping.
+
+    It is found by the keepalive ping it does not answer, and its connection is aborted
+    (live_ui.PageSocket): uvicorn's own close waits for bytes the page never takes, holding the
+    connection for as long as the page stays frozen. The program then holds no connection to it,
+    its handler has ended, and the stop is not held. Induced test conditions: the program's socket
+    buffers no bytes in the kernel (SO_SNDBUF 0) and each beat carries a 15 KB pad, so the page's
+    window fills at once and a write it does not take stays pending in the program, short of the
+    buffer that pauses writing (64 KiB); and the keepalive ping every 0.5 s, answered within
+    0.5 s (production: uvicorn's 20 s and 20 s).
     """
     feed = _Feed()
 

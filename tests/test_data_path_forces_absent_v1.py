@@ -1,4 +1,6 @@
-"""The Trade Desk forces are the two-day capture diff. Fewer than two market days, or no
+"""The Trade Desk forces are the two-day capture diff.
+
+Fewer than two market days, or no
 published levels, leaves each number absent. The producer attaches no sentence.
 """
 

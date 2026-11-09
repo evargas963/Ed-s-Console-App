@@ -114,8 +114,9 @@ def _fixture_book():
 
 
 def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
-    """Premise: the two pin-shaped definitions disagree on this chain (778 vs 775; SPY 2026-10-07
-    12:32 ET).
+    """Premise: the two pin-shaped definitions disagree on this chain.
+
+    They give 778 vs 775; SPY 2026-10-07 12:32 ET.
 
     RC-292 measured live SPY where they AGREED (775 == 775) and named the coincidence the
     finding: nothing could tell two definitions apart. This fixture is the book where they
@@ -137,8 +138,9 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
 
 
 def test_terrain_names_carry_their_declared_definitions():
-    """absolute_gamma_strike ≡ pick_pin_and_strength; net_gex_peak ≡
-    pick_net_gex_peak_strike — same book, same strikes, ONE faucet per definition.
+    """absolute_gamma_strike ≡ pick_pin_and_strength; net_gex_peak ≡ pick_net_gex_peak_strike.
+
+    Same book, same strikes, ONE faucet per definition.
     """
     chain, spot = _fixture_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
@@ -154,8 +156,9 @@ def test_terrain_names_carry_their_declared_definitions():
 
 
 def test_pin_candidate_is_published_only_through_the_qualification_gates():
-    """RC-292 operator disposition, executed: every gate flips the claim off; all five
-    passing publishes the strike; the real fixture withholds with named blockers.
+    """RC-292 operator disposition, executed: every gate flips the claim off.
+
+    All five passing publishes the strike; the real fixture withholds with named blockers.
     """
     passing = dict(
         spot=100.0,
@@ -195,8 +198,9 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
 
 
 def test_every_level_shaped_payload_name_is_declared():
-    """Coverage: a new level-bearing field cannot ship without a (definition, scope)
-    declaration — the omission RC-303 names as the root becomes a failing test.
+    """Coverage: a new level-bearing field cannot ship without a (definition, scope) declaration.
+
+    The omission RC-303 names as the root becomes a failing test.
     """
     chain, spot = _fixture_book()
     published = compute_terrain("SPY", chain, spot, now=NOW).to_dict()

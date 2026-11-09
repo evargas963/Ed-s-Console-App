@@ -1,7 +1,8 @@
-"""The daemon's Schwab sign-in, whose one record is the token file: a sign-in saved there is taken
-without a restart (while Schwab refuses the old one, at the next request; while signed in, when
-the next refresh is due); once Schwab refuses the sign-in, nothing more is sent to Schwab until a
-new one is saved.
+"""The daemon's Schwab sign-in, whose one record is the token file.
+
+A sign-in saved there is taken without a restart (while Schwab refuses the old one, at the next
+request; while signed in, when the next refresh is due); once Schwab refuses the sign-in, nothing
+more is sent to Schwab until a new one is saved.
 
 Through the real schwab-py client (schwab_client.client_from_token_file_atomic) against the local
 stand-in for Schwab's host (tests/schwab_rest_standin.py: its real data and stand-ins are named
@@ -50,8 +51,9 @@ def _asked(schwab: LocalSchwab) -> list:
 
 
 def _every_request(client) -> list:
-    """Each kind of request the daemon sends Schwab, as it sends it: the stream's login first
-    asks for the user's preferences (schwab-py StreamClient.login).
+    """Each kind of request the daemon sends Schwab, as it sends it.
+
+    The stream's login first asks for the user's preferences (schwab-py StreamClient.login).
     """
     return [
         lambda: client.get_user_preferences(),
@@ -64,8 +66,10 @@ def _every_request(client) -> list:
 
 
 def _new_sign_in(token_path, access: str) -> int:
-    """A new sign-in saved to the token file by the writer of every sign-in python
-    reauth_schwab.py saves (sc.write_token_file_atomically): its creation time.
+    """Save a new sign-in to the token file; return its creation time.
+
+    It is saved by the writer of every sign-in python reauth_schwab.py saves
+    (sc.write_token_file_atomically).
     """
     created = int(time_et.now()) + 1
     sc.write_token_file_atomically(
@@ -85,8 +89,9 @@ def _new_sign_in(token_path, access: str) -> int:
 
 
 class _Turns(threading.Event):
-    """The sweep's stop event, set after `n` of the sweep's idle waits; each wait returns at once
-    (the sweep's second between looks, not waited out).
+    """The sweep's stop event, set after `n` of the sweep's idle waits.
+
+    Each wait returns at once (the sweep's second between looks, not waited out).
     """
 
     def __init__(self, n: int):
@@ -113,8 +118,9 @@ def _sweep(tmp_path):
 
 
 def _work(sweep, schwab_client, turns: int) -> bool:
-    """The sweep's thread, stopped after `turns` idle looks; whether it ended within 20 s by that
-    stop (not by an exception ending the thread).
+    """Run the sweep's thread, stopped after `turns` idle looks.
+
+    Returns whether it ended within 20 s by that stop (not by an exception ending the thread).
     """
     stop = _Turns(turns)
     worker = threading.Thread(target=sweep.work, args=(schwab_client, stop), daemon=True)
@@ -124,10 +130,11 @@ def _work(sweep, schwab_client, turns: int) -> bool:
 
 
 def test_a_token_schwab_calls_invalid_is_refreshed_once_whatever_its_expiry_says(tmp_path):
-    """Measured 2026-11-05 07:07 to 07:32 CT: a token whose expires_at said 30 more minutes, and
-    Schwab answering every request 401 invalid_token. Schwab's answer decides: the token is
-    refreshed once, the refused request is answered with the new one, and the next request
-    carries it.
+    """Measured 2026-11-05 07:07 to 07:32 CT: a token Schwab answered 401 invalid_token.
+
+    The token's expires_at said 30 more minutes, and Schwab answered every request 401
+    invalid_token. Schwab's answer decides: the token is refreshed once, the refused request is
+    answered with the new one, and the next request carries it.
     """
     schwab = LocalSchwab()
     schwab.expired = {"a"}
@@ -147,11 +154,13 @@ def test_a_token_schwab_calls_invalid_is_refreshed_once_whatever_its_expiry_says
 
 
 def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(tmp_path):
-    """The token in its refresh window and Schwab refusing it: the first request's refresh is
-    refused (SignInRefused), and every kind of request the daemon sends after it, the stream's
-    login among them, raises the same, sending nothing: one POST in all, no data request. Each
-    refusal raised is its own, carrying only its own request's frames (one held and raised again
-    would grow its traceback by every request's frames, for as long as Schwab refuses).
+    """The token in its refresh window and Schwab refusing it.
+
+    The first request's refresh is refused (SignInRefused), and every kind of request the
+    daemon sends after it, the stream's login among them, raises the same, sending nothing: one
+    POST in all, no data request. Each refusal raised is its own, carrying only its own
+    request's frames (one held and raised again would grow its traceback by every request's
+    frames, for as long as Schwab refuses).
     """
     schwab = LocalSchwab()
     schwab.token = "refuses"
@@ -172,8 +181,10 @@ def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(t
 
 
 def test_a_new_sign_in_saved_after_the_refusal_is_taken_without_a_restart(tmp_path):
-    """After the refusal, a new sign-in saved to the token file: the next request carries its
-    token, and the client's token and creation time (the streamer's login reads them) are its.
+    """After the refusal, a new sign-in saved to the token file.
+
+    The next request carries its token, and the client's token and creation time (the
+    streamer's login reads them) are its.
     """
     schwab = LocalSchwab()
     schwab.token = "refuses"
@@ -191,9 +202,11 @@ def test_a_new_sign_in_saved_after_the_refusal_is_taken_without_a_restart(tmp_pa
 
 
 def test_a_new_sign_in_saved_while_signed_in_is_taken_when_the_refresh_is_due(tmp_path):
-    """A sign-in saved while the daemon still holds the old one: while the old token is not yet due
-    for its refresh, requests carry it; once it is due, the new sign-in is taken in place of the
-    refresh: no token request, the request carries the new token, the token file still holds it.
+    """A sign-in saved while the daemon still holds the old one.
+
+    While the old token is not yet due for its refresh, requests carry it; once it is due, the
+    new sign-in is taken in place of the refresh: no token request, the request carries the new
+    token, the token file still holds it.
     """
     schwab = LocalSchwab()
     try:
@@ -242,8 +255,9 @@ _FRESH = {
 
 
 def _saving(token) -> subprocess.Popen:
-    """The other process, holding the token file's lock once this returns, saving a sign-in newer
-    than the one the file holds.
+    """Start the other process, holding the token file's lock once this returns.
+
+    It is saving a sign-in newer than the one the file holds.
     """
     newer = {
         **_FRESH,
@@ -266,8 +280,9 @@ def _saving(token) -> subprocess.Popen:
 
 
 def test_a_refresh_due_while_a_sign_in_is_being_saved_takes_it_and_never_writes_over_it(tmp_path):
-    """A refresh due while another process is saving a sign-in (holding the token file's lock):
-    nothing writes the file while it is held, and the session takes the saved sign-in instead of
+    """A refresh due while another process is saving a sign-in (holding the token file's lock).
+
+    Nothing writes the file while it is held, and the session takes the saved sign-in instead of
     refreshing the old one: no token request, the request carries the new sign-in's token.
     """
     schwab = LocalSchwab()
@@ -284,9 +299,10 @@ def test_a_refresh_due_while_a_sign_in_is_being_saved_takes_it_and_never_writes_
 
 
 def test_a_client_built_while_a_sign_in_is_being_saved_holds_that_sign_in(tmp_path):
-    """The daemon's client built while another process is saving a sign-in (holding the token
-    file's lock): the client is built from the saved sign-in, never from the one it replaces, and
-    its first request carries it.
+    """The daemon's client built while another process is saving a sign-in.
+
+    The other process holds the token file's lock. The client is built from the saved sign-in,
+    never from the one it replaces, and its first request carries it.
     """
     schwab = LocalSchwab()
     token = tmp_path / "schwab_token.json"
@@ -304,8 +320,10 @@ def test_a_client_built_while_a_sign_in_is_being_saved_holds_that_sign_in(tmp_pa
 
 
 def test_a_sign_in_in_progress_removes_the_token_file_and_nothing_breaks(tmp_path):
-    """Python reauth_schwab.py removes the token file before it saves the new sign-in: while it
-    is not there the session holds no sign-in and raises nothing else; once saved, it is taken.
+    """Python reauth_schwab.py removes the token file before it saves the new sign-in.
+
+    While it is not there the session holds no sign-in and raises nothing else; once saved, it
+    is taken.
     """
     schwab = LocalSchwab()
     schwab.token = "refuses"
@@ -326,8 +344,10 @@ def test_a_sign_in_in_progress_removes_the_token_file_and_nothing_breaks(tmp_pat
 
 
 def test_schwabs_edge_page_at_the_token_endpoint_is_not_a_refusal(tmp_path):
-    """Schwab's edge answering the refresh with its 403 page: the request fails and the next one
-    asks again; only Schwab's answer refusing the sign-in stops the requests.
+    """Schwab's edge answering the refresh with its 403 page.
+
+    The request fails and the next one asks again; only Schwab's answer refusing the sign-in
+    stops the requests.
     """
     schwab = LocalSchwab()
     schwab.token = "edge"
@@ -344,8 +364,9 @@ def test_schwabs_edge_page_at_the_token_endpoint_is_not_a_refusal(tmp_path):
 
 
 def test_a_token_endpoint_that_cannot_be_reached_is_not_a_refusal(tmp_path):
-    """Schwab's host not answering at all (a network failure: its port closed): the request fails,
-    the session still holds its sign-in, and the next request tries again.
+    """Schwab's host not answering at all (a network failure: its port closed).
+
+    The request fails, the session still holds its sign-in, and the next request tries again.
     """
     schwab = LocalSchwab()
     client = schwab.client(tmp_path, 100)
@@ -361,9 +382,11 @@ def test_a_token_endpoint_that_cannot_be_reached_is_not_a_refusal(tmp_path):
 def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_sign_in(
     tmp_path, caplog
 ):
-    """The daemon's chain sweep over SPY while Schwab refuses the sign-in: its first round meets
-    the refusal (one POST), then it only looks, 50 times, sending nothing and logging nothing more
-    (a round per look would log every request's failure); a new sign-in saved, it asks Schwab.
+    """The daemon's chain sweep over SPY while Schwab refuses the sign-in.
+
+    Its first round meets the refusal (one POST), then it only looks, 50 times, sending nothing
+    and logging nothing more (a round per look would log every request's failure); a new
+    sign-in saved, it asks Schwab.
     """
     schwab = LocalSchwab()
     schwab.token = "refuses"
@@ -389,8 +412,10 @@ def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_s
 
 
 def _verdict(daemon, computed: float | None, at: datetime) -> tuple:
-    """The console's verdict on SPY's levels computed at `computed`, judged at `at` with the
-    daemon's status stamped then taken in by the plane: (levels_state, levels_stale_reason).
+    """Return the console's verdict on SPY's levels computed at `computed`, judged at `at`.
+
+    Judged with the daemon's status stamped then taken in by the plane: (levels_state,
+    levels_stale_reason).
     """
     now = at.timestamp()
     lmp.record_feed_heartbeat(daemon.status(now))
@@ -403,11 +428,12 @@ def _verdict(daemon, computed: float | None, at: datetime) -> tuple:
 
 
 def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_not_live(tmp_path):
-    """Schwab refusing the sign-in (REFUSED): the daemon's chain sweep asks for nothing and keeps
-    why, and the daemon's status carries it. The console's verdict on SPY's levels names the
-    refusal and what to run: past due during 2026-10-07's session, after its option close before
-    the close values were fetched, never computed, and on 2026-09-20, a date Schwab's /markets
-    answer is not held for. A new sign-in saved, the sweep's why is gone.
+    """Schwab refusing the sign-in (REFUSED): the daemon's chain sweep asks for nothing.
+
+    The sweep keeps why, and the daemon's status carries it. The console's verdict on SPY's
+    levels names the refusal and what to run: past due during 2026-10-07's session, after its
+    option close before the close values were fetched, never computed, and on 2026-09-20, a date
+    Schwab's /markets answer is not held for. A new sign-in saved, the sweep's why is gone.
     """
     schwab = LocalSchwab()
     schwab.token = "refuses"
@@ -458,10 +484,12 @@ with sc.token_file_lock(sys.argv[2]):
 
 
 def test_a_build_that_fails_is_logged_once_by_the_sweep_with_its_cause(tmp_path, caplog):
-    """A usable sign-in whose file another process holds locked past the builder's wait
-    (schwab_client.TOKEN_LOCK_WAIT_SEC): the real builder, through the daemon's real client holder
-    (capture.one_schwab_client), fails inside the build. The sweep's one warning carries the
-    traceback with the lock's own TimeoutError as its cause, and a second ask adds no warning.
+    """A usable sign-in whose file another process holds locked past the builder's wait.
+
+    The wait is schwab_client.TOKEN_LOCK_WAIT_SEC. The real builder, through the daemon's real
+    client holder (capture.one_schwab_client), fails inside the build. The sweep's one warning
+    carries the traceback with the lock's own TimeoutError as its cause, and a second ask adds
+    no warning.
     """
     token = tmp_path / "schwab_token.json"
     _new_sign_in(token, "a")
@@ -492,8 +520,9 @@ def test_a_build_that_fails_is_logged_once_by_the_sweep_with_its_cause(tmp_path,
 def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_built(
     tmp_path, caplog
 ):
-    """The daemon's client holder (capture.one_schwab_client, the real one) while its client
-    cannot be built: the real builder's answer for a token file that is not there
+    """The daemon's client holder (capture.one_schwab_client, the real one), client unbuildable.
+
+    While its client cannot be built: the real builder's answer for a token file that is not there
     (schwab_client.build_client_from_token), which the holder raises as ConnectionError and
     builds again on the next ask. The sweep keeps looking, logs it once and asks Schwab for
     nothing; once the token file is saved and the client built, it asks. STAND-IN (named): the
@@ -534,9 +563,10 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
 
 
 def test_a_token_file_that_is_not_utf8_text_is_reported_unreadable(tmp_path):
-    """A token file saved as UTF-16 (as Windows PowerShell 5.1's Out-File saves text): the daemon's
-    builder reads it as a token file that is not valid, a client it cannot build (the sweep waits
-    for one: the test above), never an error that ends the sweep's thread.
+    """A token file saved as UTF-16 (as Windows PowerShell 5.1's Out-File saves text).
+
+    The daemon's builder reads it as a token file that is not valid, a client it cannot build
+    (the sweep waits for one: the test above), never an error that ends the sweep's thread.
     """
     token = tmp_path / "schwab_token.json"
     token.write_bytes(json.dumps(_FRESH).encode("utf-16"))
@@ -561,9 +591,10 @@ def test_a_token_file_that_is_not_utf8_text_is_reported_unreadable(tmp_path):
 def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(
     tmp_path, caplog, held
 ):
-    """Schwab having refused the sign-in, the token file then holding what is not a sign-in: the
-    chain sweep keeps looking (each look reads the file for a new sign-in), it is logged once,
-    and the sign-in saved after it is taken.
+    """Schwab having refused the sign-in, the token file then holding what is not a sign-in.
+
+    The chain sweep keeps looking (each look reads the file for a new sign-in), it is logged
+    once, and the sign-in saved after it is taken.
     """
     schwab = LocalSchwab()
     schwab.token = "refuses"
@@ -588,8 +619,10 @@ def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(
 
 
 def test_a_sign_in_a_client_cannot_use_is_not_taken(tmp_path, caplog):
-    """A token file with an access token and a refresh token but no expiry is not a sign-in the
-    builder can use. The sweep logs it once, does not take it, and takes the sign-in saved after.
+    """A token file with an access and a refresh token but no expiry is not a usable sign-in.
+
+    It is not a sign-in the builder can use. The sweep logs it once, does not take it, and takes
+    the sign-in saved after.
     """
     held = '{"token": {"access_token": "a", "refresh_token": "r"}, "creation_timestamp": 1}'
     schwab = LocalSchwab()

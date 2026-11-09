@@ -1,7 +1,8 @@
-"""A strike whose open interest Schwab did not report never shows its 0.0 accumulator as a
-computed exposure; a strike whose open interest Schwab reported as 0 shows 0 (operator ruling
-2026-09-27, take what Schwab sends -- superseding the 2026-09-14 rule that showed a reported 0 as
-absent); a genuinely netted zero shows 0.
+"""A strike whose open interest Schwab did not report never shows its 0.0 accumulator.
+
+It never shows it as a computed exposure; a strike whose open interest Schwab reported as 0
+shows 0 (operator ruling 2026-09-27, take what Schwab sends -- superseding the 2026-09-14 rule
+that showed a reported 0 as absent); a genuinely netted zero shows 0.
 """
 
 from __future__ import annotations
@@ -55,8 +56,10 @@ SPOT = 100.0
 
 
 def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
-    """Real CRWD chain (tests/real_chains.py), valued at its capture. Stand-in: open interest
-    removed from every contract at one strike, as Schwab never omitted it in the captures.
+    """Real CRWD chain (tests/real_chains.py), valued at its capture.
+
+    Stand-in: open interest removed from every contract at one strike, as Schwab never omitted
+    it in the captures.
     """
     chain = copy.deepcopy(CRWD.chain)
     ois = {}

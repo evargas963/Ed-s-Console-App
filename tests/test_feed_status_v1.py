@@ -1,6 +1,8 @@
-"""Once a minute the daemon records per feed: checked at X, socket open, when Schwab last sent
-anything, subscribed symbols, and when the feed last carried data -- a quiet feed and a dead one
-read differently in the database (operator question 2026-09-27).
+"""Once a minute the daemon records the state of each feed.
+
+Per feed: checked at X, socket open, when Schwab last sent anything, subscribed symbols, and when
+the feed last carried data -- a quiet feed and a dead one read differently in the database
+(operator question 2026-09-27).
 """
 
 from __future__ import annotations

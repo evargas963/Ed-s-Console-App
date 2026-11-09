@@ -1,6 +1,8 @@
-"""The console's push: the levels producer, the stream handler and the bar writer mark what
-changed for a ticker; a page on that ticker receives each kind once, and no other page does.
-Stream input is Schwab's captured TSLA book and quote (tests/fixtures/real_equity_book.json).
+"""The console's push.
+
+The levels producer, the stream handler and the bar writer mark what changed for a ticker; a
+page on that ticker receives each kind once, and no other page does. Stream input is Schwab's
+captured TSLA book and quote (tests/fixtures/real_equity_book.json).
 """
 
 from __future__ import annotations

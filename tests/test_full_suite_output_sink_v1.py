@@ -1,8 +1,10 @@
-"""The full-suite command never blocks on the caller's terminal pipe: scripts/run-pytest-full.mjs
-(and the Playwright step in scripts/run-playwright-e2e.mjs) give the child file descriptors on a
-log file, never the terminal, and echo only a bounded tail. One test drives it with a reader that
-never drains and proves the child still completes; the others check, with an ordinary reader,
-that the exit code is exact, the log is kept and the terminal output is bounded.
+"""The full-suite command never blocks on the caller's terminal pipe.
+
+scripts/run-pytest-full.mjs (and the Playwright step in scripts/run-playwright-e2e.mjs) give the
+child file descriptors on a log file, never the terminal, and echo only a bounded tail. One test
+drives it with a reader that never drains and proves the child still completes; the others
+check, with an ordinary reader, that the exit code is exact, the log is kept and the terminal
+output is bounded.
 """
 
 from __future__ import annotations
@@ -36,8 +38,9 @@ _OUTER_SESSION_RUNTIME_SELECTORS = frozenset({"ED_RUNTIME_ROOT"})
 
 
 def _child_env(log_dir: Path) -> dict[str, str]:
-    """Env for the nested run: this suite's own pytest/xdist variables must not leak in,
-    and the runner's log goes to a private directory, never the checkout's logs/.
+    """Return the env for the nested run: this suite's own pytest/xdist variables must not leak in.
+
+    The runner's log goes to a private directory, never the checkout's logs/.
 
     The runtime selector tests/conftest.py exports (ED_RUNTIME_ROOT) is dropped too, for the
     same reason the conftest states: every pytest process owns a fresh runtime root; the nested
@@ -65,9 +68,11 @@ def _noisy_test_file(tmp_path: Path) -> Path:
 
 
 def _runner_cmd(*pytest_args: str, rootdir: Path) -> list[str]:
-    """`rootdir` pins pytest's rootdir to the directory that holds the target file: otherwise, with
-    the target under %TEMP% and cwd at the repo, pytest takes their common ancestor as rootdir
-    and walks %TEMP%, where other xdist workers create and delete their runtime roots.
+    """`rootdir` pins pytest's rootdir to the directory that holds the target file.
+
+    Otherwise, with the target under %TEMP% and cwd at the repo, pytest takes their common
+    ancestor as rootdir and walks %TEMP%, where other xdist workers create and delete their
+    runtime roots.
     """
     assert NODE, "node is required (the canonical runner is a Node script)"
     return [
@@ -96,8 +101,10 @@ def _spawn_with_non_draining_reader(cmd: list[str], env: dict[str, str]) -> subp
 
 
 def _stop_tree(proc: subprocess.Popen) -> None:
-    """Stop `proc` and every process it started (the runner's pytest), then reap it; a process that
-    has already ended is stopped already, so it is passed over rather than raised.
+    """Stop `proc` and every process it started (the runner's pytest), then reap it.
+
+    A process that has already ended is stopped already, so it is passed over rather than
+    raised.
     """
     with contextlib.suppress(psutil.NoSuchProcess):
         for child in psutil.Process(proc.pid).children(recursive=True):
@@ -108,8 +115,9 @@ def _stop_tree(proc: subprocess.Popen) -> None:
 
 
 def test_stopping_the_runner_stops_what_it_started_and_one_already_ended_raises_nothing():
-    """The timeout path's cleanup: a parent whose child sleeps leaves nothing running once stopped;
-    a runner that has already exited is stopped without an error.
+    """The timeout path's cleanup: a parent whose child sleeps leaves nothing running once stopped.
+
+    A runner that has already exited is stopped without an error.
     """
     sleeper = (
         "import subprocess, sys, time; "
@@ -189,11 +197,12 @@ def test_success_is_visible_and_exit_code_zero(tmp_path):
 
 
 def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path):
-    """run-playwright-e2e.mjs spawns Playwright's own CLI with no shell
-    (`runWithFileSink(..., shell: false)`), so the caller's selection arguments arrive as sent:
-    arguments a shell would change (a space, an embedded double quote, `$(...)` and backtick
-    substitution, a Windows `%VAR%`, and `;`, `|`, `&`) reach the child byte for byte, in
-    order, each as its own argv entry.
+    """run-playwright-e2e.mjs spawns Playwright's own CLI with no shell.
+
+    It spawns it with `runWithFileSink(..., shell: false)`, so the caller's selection arguments
+    arrive as sent: arguments a shell would change (a space, an embedded double quote,
+    `$(...)` and backtick substitution, a Windows `%VAR%`, and `;`, `|`, `&`) reach the child
+    byte for byte, in order, each as its own argv entry.
     """
     marker = tmp_path / "argv_dump.json"
     log_path = tmp_path / "probe.log"
@@ -253,8 +262,9 @@ def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path)
 
 
 def test_a_failed_browser_run_echoes_why_each_test_failed(tmp_path):
-    """A failed Playwright run's terminal output carries Playwright's numbered failure reports,
-    not only a 700-byte tail, so a CI log says why a test failed (2026-11-07: two CI failures,
+    """A failed Playwright run's terminal output carries Playwright's numbered failure reports.
+
+    Not only a 700-byte tail, so a CI log says why a test failed (2026-11-07: two CI failures,
     on #768 and #775, showed only the test's name). The relayed server lines stay in the log
     alone. The lines are a real failing run's, as Playwright and the console printed them.
     """

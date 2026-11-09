@@ -1,6 +1,8 @@
-"""docs/DATA_FLOW.md §2 D4 (the one writer records every message Schwab sends): a message the
-writer cannot store is kept as sent, a database that refuses writes holds the writer instead of
-ending it, and the writer's state reaches the heartbeat the console and the browser read.
+"""docs/DATA_FLOW.md §2 D4: the one writer records every message Schwab sends.
+
+A message the writer cannot store is kept as sent, a database that refuses writes holds the
+writer instead of ending it, and the writer's state reaches the heartbeat the console and the
+browser read.
 
 Real data: captured LEVELONE_OPTIONS quotes
 (tests/fixtures/real_options_stream_history_samples.json) and a captured TSLA LEVELONE_EQUITIES item
@@ -53,7 +55,10 @@ _TSLA = json.loads(
 
 
 def _failures(db) -> list:
-    """The kept failures, (topic, message as stored, error); none where no table keeps them."""
+    """Return the kept failures, (topic, message as stored, error).
+
+    None where no table keeps them.
+    """
     with closing(sqlite3.connect(db)) as conn, conn:
         if not conn.execute(
             "SELECT 1 FROM sqlite_master WHERE name='stream_write_failures'"
@@ -68,8 +73,10 @@ def _count(db, table: str) -> int:
 
 
 def _beat(daemon: capture.Daemon) -> dict:
-    """The heartbeat as the browser's price socket sends it (live_ui's feed beat) and as the
-    console records it (live_market_plane.daemon_status); the console's record is cleared after.
+    """Return the heartbeat as the browser's price socket sends it and as the console records it.
+
+    The socket sends live_ui's feed beat; the console records it in
+    live_market_plane.daemon_status; the console's record is cleared after.
     """
     beat = LiveUiServer(daemon.status, {}).beat()
     try:
@@ -92,10 +99,11 @@ async def _until(pred, limit: float = 10.0) -> None:
 
 
 def test_the_writer_handed_the_consoles_database_refuses_it_naming_the_file(tmp_path):
-    """The one writer records into stream_capture.db only: handed a file named ed_console.db, it
-    refuses before opening it, and says which file in plain words. INDUCED CONDITION: the writer
-    handed a file named ed_console.db (in a temp folder), which the daemon's own path
-    (resolve_stream_db_path) never resolves to.
+    """The one writer records into stream_capture.db only.
+
+    Handed a file named ed_console.db, it refuses before opening it, and says which file in
+    plain words. INDUCED CONDITION: the writer handed a file named ed_console.db (in a temp
+    folder), which the daemon's own path (resolve_stream_db_path) never resolves to.
     """
     db = tmp_path / "ed_console.db"
     with pytest.raises(ValueError) as refused:
@@ -108,11 +116,13 @@ def test_the_writer_handed_the_consoles_database_refuses_it_naming_the_file(tmp_
 
 
 def test_a_writer_whose_thread_is_not_running_records_on_connections_it_closes(tmp_path):
-    """A writer whose thread is not running (not started) records a message itself (insert) and
+    """A writer whose thread is not running records on connections it closes.
+
+    A writer whose thread is not running (not started) records a message itself (insert) and
     keeps a failure itself (keep_failure), each on a connection of its own that it closes: no
     connection is left for the collector, which Python 3.13 reports ("unclosed database"). The
-    writer runs in a Python of its own, so no other code's connection can be counted. Real data:
-    the captured TSLA LEVELONE_EQUITIES item.
+    writer runs in a Python of its own, so no other code's connection can be counted. Real
+    data: the captured TSLA LEVELONE_EQUITIES item.
     """
     db = tmp_path / "stream_capture.db"
     code = (
@@ -150,8 +160,9 @@ def test_a_writer_whose_thread_is_not_running_records_on_connections_it_closes(t
 def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches_the_heartbeat(
     tmp_path,
 ):
-    """INDUCED CONDITION: one captured option quote published with no symbol, so the NOT NULL
-    symbol column refuses its row.
+    """INDUCED CONDITION: one captured option quote published with no symbol.
+
+    So the NOT NULL symbol column refuses its row.
     """
     db = tmp_path / "stream_capture.db"
     bad = verbatim_msg(
@@ -200,8 +211,10 @@ def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches
 
 
 def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_path):
-    """INDUCED CONDITION: the captured TSLA quote's TOTAL_VOLUME set to 2**64, more than SQLite's
-    64-bit INTEGER holds (OverflowError while binding). The captured quote after it is stored.
+    """INDUCED CONDITION: the captured TSLA quote's TOTAL_VOLUME set to 2**64.
+
+    That is more than SQLite's 64-bit INTEGER holds (OverflowError while binding). The captured
+    quote after it is stored.
     """
     db = tmp_path / "stream_capture.db"
     big = {**_TSLA["native"], "TOTAL_VOLUME": 2**64}
@@ -227,9 +240,10 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
 
 
 def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on_after(tmp_path):
-    """INDUCED CONDITION: another connection holds the stream database's write lock
-    (BEGIN IMMEDIATE) for 1.5 s, longer than the writer's lock wait (timeout_sec 0.2 s, an
-    input). The writer reads blocked with SQLite's refusal, holds the captured quotes, and
+    """INDUCED CONDITION: another connection holds the stream database's write lock for 1.5 s.
+
+    The lock is taken with BEGIN IMMEDIATE, for longer than the writer's lock wait (timeout_sec
+    0.2 s, an input). The writer reads blocked with SQLite's refusal, holds the captured quotes, and
     writes every one of them once the lock is released.
     """
     db = tmp_path / "stream_capture.db"
@@ -272,11 +286,12 @@ def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on
 
 
 def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_writes(tmp_path):
-    """INDUCED CONDITION: the stream database file is read-only before the writer starts
-    (standing in for a disk that refuses writes) and made writable again 1.5 s later, with the
-    WAL files SQLite created beside it meanwhile (SQLite gives them the database file's mode).
-    Every captured quote published meanwhile is held, all of them counted as waiting, and
-    written once the files accept writes.
+    """INDUCED CONDITION: the stream database file is read-only before the writer starts.
+
+    It stands in for a disk that refuses writes, and is made writable again 1.5 s later, with
+    the WAL files SQLite created beside it meanwhile (SQLite gives them the database file's
+    mode). Every captured quote published meanwhile is held, all of them counted as waiting,
+    and written once the files accept writes.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
@@ -320,8 +335,10 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
 
 
 class _Defect(dict):
-    """STAND-IN for a defect in the writer: a message whose row builder raises an error no row
-    can raise (RuntimeError), so the writer thread ends.
+    """STAND-IN for a defect in the writer.
+
+    A message whose row builder raises an error no row can raise (RuntimeError), so the writer
+    thread ends.
     """
 
     def get(self, key, default=None):
@@ -341,9 +358,11 @@ def _defect() -> _Defect:
 
 
 def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_once(tmp_path):
-    """INDUCED CONDITIONS: the stream database is read-only before the writer starts, holding 3
-    captured TSLA quotes and one _Defect message, then made writable: the retry stores the 3 in
-    its open batch and ends on the 4th. Each of the 4 is not recorded, counted once.
+    """INDUCED CONDITIONS: the stream database is read-only before the writer starts.
+
+    The writer holds 3 captured TSLA quotes and one _Defect message, then the database is made
+    writable: the retry stores the 3 in its open batch and ends on the 4th. Each of the 4 is not
+    recorded, counted once.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db)
@@ -378,9 +397,10 @@ def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_onc
 
 
 def test_a_writer_that_dies_while_recording_counts_the_message_that_ended_it(tmp_path):
-    """INDUCED CONDITION: 3 captured TSLA quotes in the open batch (no commit inside 60 s), then a
-    _Defect message, then 4 more queued; after the writer dies, 6 more. Not recorded: 3 + 1 + 4,
-    then 14.
+    """INDUCED CONDITION: 3 captured TSLA quotes in the open batch, then a _Defect message.
+
+    No commit inside 60 s; after the _Defect message, 4 more queued; after the writer dies, 6
+    more. Not recorded: 3 + 1 + 4, then 14.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1000, batch_sec=60.0)
@@ -408,10 +428,11 @@ def test_a_writer_that_dies_while_recording_counts_the_message_that_ended_it(tmp
 
 
 def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(tmp_path):
-    """INDUCED CONDITION: a trigger on the quotes table raises SQLite's "integer overflow"
-    (OperationalError, SQLITE_ERROR) for TSLA's rows only. That refusal is the row's, not the
-    database's: the captured TSLA quote is kept as sent and the captured option quotes after it
-    are stored; the writer is never blocked.
+    """INDUCED CONDITION: a trigger on the quotes table raises SQLite's "integer overflow".
+
+    It raises OperationalError, SQLITE_ERROR, for TSLA's rows only. That refusal is the row's,
+    not the database's: the captured TSLA quote is kept as sent and the captured option quotes
+    after it are stored; the writer is never blocked.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
@@ -442,11 +463,12 @@ def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(t
 
 
 def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_failure(tmp_path):
-    """INDUCED CONDITION: the chain history table carries an extra NOT NULL column the writer
-    does not fill, so SQLite refuses each row with IntegrityError, standing in for the refusal of
-    a repeated capture key. The chain is delivered and never published as failed, the
-    sweep fetches the next chain at once (no pause: a second chain request reaches the host), and
-    the daemon's writer keeps the chain as delivered.
+    """INDUCED CONDITION: the chain history table carries an extra NOT NULL column.
+
+    The writer does not fill it, so SQLite refuses each row with IntegrityError, standing in for
+    the refusal of a repeated capture key. The chain is delivered and never published as
+    failed, the sweep fetches the next chain at once (no pause: a second chain request reaches
+    the host), and the daemon's writer keeps the chain as delivered.
     """
     db = tmp_path / "ed_console.db"
     with closing(sqlite3.connect(db)) as conn, conn:
@@ -521,8 +543,10 @@ _SMALL_CAP = 4000
 
 
 async def _held_past_the_cap(writer, bus, health, daemon) -> dict:
-    """The captured option quotes published while the database is locked; returns the writer's
-    status, as the heartbeat carries it, once every one is held in memory or in the spill file.
+    """Publish the captured option quotes while the database is locked.
+
+    Returns the writer's status, as the heartbeat carries it, once every one is held in memory
+    or in the spill file.
     """
     _publish_options(bus, health, _EVENTS)
 
@@ -535,9 +559,11 @@ async def _held_past_the_cap(writer, bus, health, daemon) -> dict:
 
 
 def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_order(tmp_path):
-    """INDUCED CONDITION: another connection holds the stream database's write lock
-    (BEGIN IMMEDIATE) while the captured option quotes arrive, against a writer whose hold cap is
-    _SMALL_CAP (an input) and whose lock wait is 0.2 s; then releases it. Past the cap the quotes
+    """INDUCED CONDITION: another connection holds the write lock while the quotes arrive.
+
+    It holds the stream database's write lock (BEGIN IMMEDIATE) while the captured option quotes
+    arrive, against a writer whose hold cap is _SMALL_CAP (an input) and whose lock wait is 0.2
+    s; then releases it. Past the cap the quotes
     go to a spill file beside the database, the Record says so with the file's size, and once the
     lock is released every quote is in the database exactly once, in arrival order, and the spill
     file is gone once its rows are committed.
@@ -620,9 +646,10 @@ def _run_until_no_spill(writer: CaptureWriter) -> dict:
 
 
 def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp_path):
-    """INDUCED CONDITIONS: a fully written-back spill file left beside the database (its progress
-    row counts every record: a kill between its last part and its deletion), and the database
-    read-only. The writer starts; once the database takes writes it deletes the file and its row
+    """INDUCED CONDITIONS: a fully written-back spill file left beside a read-only database.
+
+    The spill file's progress row counts every record: a kill between its last part and its
+    deletion. The writer starts; once the database takes writes it deletes the file and its row
     without writing it again. SQLite makes the -wal and -shm files a connection opens with the
     database file's mode, so the database takes writes again when all three are writable.
     """
@@ -660,9 +687,10 @@ def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp
 
 
 def _undeletable(path: Path):
-    """INDUCED CONDITION: the disk refuses to delete `path`, as Windows does while another handle
-    holds the file open (a viewer, a virus scan); elsewhere its folder read-only. Returns the
-    release.
+    """INDUCED CONDITION: the disk refuses to delete `path`.
+
+    As Windows does while another handle holds the file open (a viewer, a virus scan);
+    elsewhere its folder read-only. Returns the release.
     """
     if sys.platform == "win32":
         return open(path, "rb").close
@@ -671,10 +699,12 @@ def _undeletable(path: Path):
 
 
 def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_start(tmp_path):
-    """INDUCED CONDITIONS: as in the spill test, and, before the lock is released, the spill file
-    undeletable (_undeletable). Every quote is written back once and the writer goes on recording
-    what arrives after; the file stays with its progress row. Released, the next writer's start
-    deletes it and its row without writing it again.
+    """INDUCED CONDITIONS: as in the spill test, with the spill file undeletable.
+
+    Before the lock is released, the spill file is made undeletable (_undeletable). Every quote
+    is written back once and the writer goes on recording what arrives after; the file stays
+    with its progress row. Released, the next writer's start deletes it and its row without
+    writing it again.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(
@@ -722,12 +752,13 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
 
 
 def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record_is_kept(tmp_path):
-    """INDUCED CONDITIONS: two spill files beside the database, as a kill leaves them, holding the
-    captured option quotes: the older's first 4 records committed (its progress row says 4) and
-    half a record after its last whole one; the newer fully committed (killed between its last
-    part and its deletion). A new writer writes the older's other records once, in order, deletes
-    it, keeps the cut record's bytes as sent in stream_write_failures, and deletes the newer
-    without writing it again; no progress row is left.
+    """INDUCED CONDITIONS: two spill files beside the database, as a kill leaves them.
+
+    They hold the captured option quotes: the older's first 4 records committed (its progress
+    row says 4) and half a record after its last whole one; the newer fully committed (killed
+    between its last part and its deletion). A new writer writes the older's other records
+    once, in order, deletes it, keeps the cut record's bytes as sent in stream_write_failures,
+    and deletes the newer without writing it again; no progress row is left.
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
@@ -786,11 +817,12 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
 
 
 def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_bytes(tmp_path):
-    """INDUCED CONDITIONS: a spill file left beside the database holding one captured option quote
-    and 3 bytes a crash cut off after it; the database locked while the writer starts and the
-    other captured quotes arrive. Released: the found quote is written, its cut bytes kept as one
-    row, and every quote that arrived is written as its own row, in order (they went to a new
-    spill file, not behind the cut bytes).
+    """INDUCED CONDITIONS: a spill file left beside the database, a quote and 3 cut-off bytes.
+
+    It holds one captured option quote and 3 bytes a crash cut off after it; the database
+    locked while the writer starts and the other captured quotes arrive. Released: the found
+    quote is written, its cut bytes kept as one row, and every quote that arrived is written as
+    its own row, in order (they went to a new spill file, not behind the cut bytes).
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
@@ -847,10 +879,11 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
 
 
 def test_a_found_spill_whose_cut_bytes_were_kept_is_deleted_without_keeping_them_again(tmp_path):
-    """INDUCED CONDITION: a spill file left beside the database with one quote and 3 cut bytes
-    after it, its progress row counting both (written back, the cut bytes kept, then the disk
-    would not delete it, or a kill came between the commit and the delete). The next writer
-    deletes it and its row, writing nothing again.
+    """INDUCED CONDITION: a spill file left beside the database with one quote and 3 cut bytes.
+
+    The cut bytes come after the quote, its progress row counting both (written back, the cut
+    bytes kept, then the disk would not delete it, or a kill came between the commit and the
+    delete). The next writer deletes it and its row, writing nothing again.
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
@@ -881,10 +914,12 @@ def test_a_found_spill_whose_cut_bytes_were_kept_is_deleted_without_keeping_them
 
 
 def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
-    """INDUCED CONDITION: a spill file left beside the database whose second record's length is
-    damaged (0xFFFFFFFF; STAND-IN for a damaged disk), whole records after it. A new writer writes
-    the first record; every byte from the damaged length to the end is kept as sent, exactly, in
-    stream_write_failures (it places no record after it), never cut from the file unrecorded.
+    """INDUCED CONDITION: a spill file left beside the database, a record's length damaged.
+
+    The damaged length is the second record's, 0xFFFFFFFF (STAND-IN for a damaged disk), whole
+    records after it. A new writer writes the first record; every byte from the damaged length
+    to the end is kept as sent, exactly, in stream_write_failures (it places no record after
+    it), never cut from the file unrecorded.
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
@@ -935,8 +970,10 @@ def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
 
 
 def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_finishes(tmp_path):
-    """INDUCED CONDITIONS: as in the spill tests, and, while the lock is held, the spill file's last
-    record's length damaged in place (0xFFFFFFFF). On release every record before it is written,
+    """INDUCED CONDITIONS: as in the spill tests, with the last record's length damaged.
+
+    While the lock is held, the spill file's last record's length is damaged in place
+    (0xFFFFFFFF). On release every record before it is written,
     the bytes from the damaged length on are kept as one row, the spill finishes, and what arrives
     after is written to the database.
     """
@@ -988,8 +1025,10 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
 
 
 def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
-    """INDUCED CONDITIONS: as in the hold-cap test, the database locked while the captured option
-    quotes arrive, and a stop while it is still locked, so the writer opens the spill file and, at
+    """INDUCED CONDITIONS: as in the hold-cap test, and a stop while the database is locked.
+
+    The database is locked while the captured option quotes arrive, and a stop comes while it
+    is still locked, so the writer opens the spill file and, at
     the stop, a file for what memory held; beforehand every name a spill file could take in the
     1.5 s from the writer's clock (a millisecond each, in every form) is already taken by a file of
     its own. The writer opens neither over any of them: each stays as it was, and the writer's two
@@ -1051,9 +1090,11 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
 
 
 def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_start(tmp_path):
-    """A new database gets the receipt-time indexes on quotes, books and option quotes; a database
-    made before them (its tables indexed by symbol, as production's) keeps its indexes as they are
-    when a writer starts on it: the change is made by hand at the production step.
+    """A new database gets the receipt-time indexes on quotes, books and option quotes.
+
+    A database made before them (its tables indexed by symbol, as production's) keeps its
+    indexes as they are when a writer starts on it: the change is made by hand at the
+    production step.
     """
     new = tmp_path / "new" / "stream_capture.db"
     CaptureWriter(new)
@@ -1117,7 +1158,7 @@ _MIX_TABLES = {
 
 
 def _mix_frames() -> list:
-    """The mix as the wire carries it: (service, the frame's JSON), one frame per message."""
+    """Return the mix as the wire carries it: (service, the frame's JSON), one frame per message."""
     return [
         (m["service"], json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}))
         for m in _MIX["messages"]
@@ -1129,10 +1170,12 @@ def _mix_rows(db) -> int:
 
 
 def _pages_for_the_mix(db, *, indexes: bool) -> int:
-    """Database pages the writer writes for one copy of the mix (_MIX), through the daemon's
-    handlers and bus, onto tables that already hold 8 copies of it: the WAL frames the burst adds,
-    a reader holding its snapshot from before so no checkpoint resets the WAL. `indexes` False:
-    the mix's tables without their indexes, the rows' own pages.
+    """Count the database pages the writer writes for one copy of the mix (_MIX).
+
+    Written through the daemon's handlers and bus, onto tables that already hold 8 copies of
+    it: the WAL frames the burst adds, a reader holding its snapshot from before so no
+    checkpoint resets the WAL. `indexes` False: the mix's tables without their indexes, the
+    rows' own pages.
     """
     writer = CaptureWriter(db)
     with closing(sqlite3.connect(db)) as conn, conn:
@@ -1182,8 +1225,10 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
 
 
 def test_the_indexes_add_no_more_pages_than_the_rows_they_index(tmp_path):
-    """The pages the indexes of the mix's tables add for one copy of production's mix are no more
-    than the pages of the rows themselves (an index by symbol puts each of the mix's 3,000-odd
+    """The indexes of the mix's tables add no more pages than the rows they index.
+
+    The pages the indexes add for one copy of production's mix are no more than the pages of
+    the rows themselves (an index by symbol puts each of the mix's 3,000-odd
     option symbols on a page of its own, one written per row).
     """
     rows = _pages_for_the_mix(tmp_path / "rows" / "stream_capture.db", indexes=False)
@@ -1194,7 +1239,9 @@ def test_the_indexes_add_no_more_pages_than_the_rows_they_index(tmp_path):
 
 
 def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
-    """The cap counts each held message's memory once, when it is held. INDUCED CONDITIONS: the
+    """The cap counts each held message's memory once, when it is held.
+
+    INDUCED CONDITIONS: the
     production mix (_MIX) is published once and written; then another connection holds the
     write lock while the mix arrives three more times, each frame decoded from its JSON as the
     stream decodes it, through the daemon's handler for its service, against a writer whose cap
@@ -1273,8 +1320,10 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
 
 
 class _ArmedDefect(dict):
-    """STAND-IN for a defect in the writer that shows only once armed: before, its row builds as
-    the captured TSLA quote's; after, its row builder raises RuntimeError.
+    """STAND-IN for a defect in the writer that shows only once armed.
+
+    Before, its row builds as the captured TSLA quote's; after, its row builder raises
+    RuntimeError.
     """
 
     def __init__(self, armed: threading.Event, *args):
@@ -1288,8 +1337,10 @@ class _ArmedDefect(dict):
 
 
 def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(tmp_path):
-    """INDUCED CONDITIONS: the write lock held while an _ArmedDefect message (first, held in
-    memory) and the 12 captured option quotes arrive, against a cap that holds it and a few
+    """INDUCED CONDITIONS: the write lock held while an _ArmedDefect message and 12 quotes arrive.
+
+    The _ArmedDefect message comes first, held in memory, then the 12 captured option quotes,
+    against a cap that holds it and a few
     quotes, so the rest spill; then the defect is armed and the writer ends on it at its next
     try. The Record reads DEAD; the spill file stays, listed as left on disk with its message
     count and size; not recorded counts only what memory held, not what is in the file.
@@ -1354,12 +1405,13 @@ def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(t
 
 
 def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_written(tmp_path):
-    """INDUCED CONDITIONS: as in the spill tests, and, while the lock is held, the spill file's
-    last record damaged in place (its last two JSON bytes overwritten with 0xFF; STAND-IN for a
-    damaged disk), then one more quote received, which the same spill file takes after it. On
-    release memory is written, then every spill record in order: the damaged one kept as sent in
-    stream_write_failures with where and why, the quote after it written; the file is deleted and
-    the writer goes on recording.
+    """INDUCED CONDITIONS: as in the spill tests, with the last spill record damaged in place.
+
+    While the lock is held, the spill file's last record is damaged in place (its last two JSON
+    bytes overwritten with 0xFF; STAND-IN for a damaged disk), then one more quote received,
+    which the same spill file takes after it. On release memory is written, then every spill
+    record in order: the damaged one kept as sent in stream_write_failures with where and why,
+    the quote after it written; the file is deleted and the writer goes on recording.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(
@@ -1426,11 +1478,12 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
 
 
 def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path):
-    """INDUCED CONDITION: a writer stopped while the database was locked leaves its held messages
-    in spill files (memory's file, named for when the block began, then the spill file). A new
-    writer on the same database writes them back when it runs, oldest file first: every quote
-    once, in arrival order, with the receipt time it was received at, then what arrives after;
-    each file is deleted once its rows are committed.
+    """INDUCED CONDITION: a writer stopped while the database was locked leaves spill files.
+
+    Its held messages are in spill files (memory's file, named for when the block began, then
+    the spill file). A new writer on the same database writes them back when it runs, oldest
+    file first: every quote once, in arrival order, with the receipt time it was received at,
+    then what arrives after; each file is deleted once its rows are committed.
     """
     db = tmp_path / "stream_capture.db"
     first = CaptureWriter(
@@ -1496,11 +1549,13 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
 
 
 def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_ends(tmp_path):
-    """The daemon's clean stop (launch.py stop): {"op": "stop"} sent by launch.ask_daemon_to_stop
-    to a live_push server on a free port, as the daemon runs it with the daemon's console_frame,
-    INDUCED CONDITION: while another connection holds the stream database's write lock and the
-    captured option quotes are held in memory and the spill file. The daemon's stop is set, every
-    task it ends returns, and every quote is on disk in spill files beside the database.
+    """The daemon's clean stop (launch.py stop) writes what it holds to spill files.
+
+    {"op": "stop"} is sent by launch.ask_daemon_to_stop to a live_push server on a free port,
+    as the daemon runs it with the daemon's console_frame, INDUCED CONDITION: while another
+    connection holds the stream database's write lock and the captured option quotes are held
+    in memory and the spill file. The daemon's stop is set, every task it ends returns, and
+    every quote is on disk in spill files beside the database.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(

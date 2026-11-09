@@ -1,5 +1,7 @@
-"""Single ET authority: DST-aware America/New_York, and T to each contract's own settlement as
-Schwab's /markets sends it (tests/conftest.py holds the answers captured 2026-10-07).
+"""Single ET authority: DST-aware America/New_York, and T to each contract's own settlement.
+
+The settlement as Schwab's /markets sends it (tests/conftest.py holds the answers captured
+2026-10-07).
 """
 
 from __future__ import annotations
@@ -23,8 +25,10 @@ from time_et import (
 
 
 def test_a_wait_for_an_event_answers_whether_it_was_set_and_leaves_no_task_behind():
-    """time_et.set_within: False once the time passes with the event unset, True as soon as it is
-    set (not at the end of the time), and no waiting task is left running after either.
+    """time_et.set_within: False once the time passes with the event unset, True once it is set.
+
+    True as soon as it is set (not at the end of the time), and no waiting task is left running
+    after either.
     """
 
     async def go():
@@ -74,10 +78,12 @@ def test_time_to_expiry_years_uses_timestamp_elapsed_not_civil_timedelta():
 
 
 def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
-    """TICK-05 (2026-09-28 audit): T ran to 16:00 for every contract, so an AM-settled $SPX
-    monthly (Schwab settlementType "A", lastTradingDay the Thursday before) kept gamma all
-    expiration Friday after its value was set at the open. One rule, read from each contract:
-    real $SPX (A) and SPXW (P) contracts of the same expiration, and a real TSLA (P) one.
+    """TICK-05 (2026-09-28 audit): T ran to 16:00 for every contract.
+
+    So an AM-settled $SPX monthly (Schwab settlementType "A", lastTradingDay the Thursday
+    before) kept gamma all expiration Friday after its value was set at the open. One rule, read
+    from each contract: real $SPX (A) and SPXW (P) contracts of the same expiration, and a real
+    TSLA (P) one.
     """
     fx = Path(__file__).parent / "fixtures"
     spx = json.loads((fx / "real_spx_chain_contracts_2026_09_28.json").read_text(encoding="utf-8"))[

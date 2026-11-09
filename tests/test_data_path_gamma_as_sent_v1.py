@@ -1,5 +1,6 @@
-"""Schwab -> the chain, the heatmap and the option rule: a gamma is taken as Schwab sends it,
-whatever its size (operator 2026-11-04: "we take what schwab gives and we wire it up. plain and
+"""Schwab -> the chain, the heatmap and the option rule: a gamma is taken as Schwab sends it.
+
+Whatever its size (operator 2026-11-04: "we take what schwab gives and we wire it up. plain and
 simple"); only Schwab's own no-value code, -999 on the Greek or on the contract's volatility, is
 no value.
 

@@ -1,8 +1,10 @@
-"""tools/operator_yes_guard.py (CLAUDE.md rule 5). A start or a clean stop of the daemon or the
-console passes at any hour (operator 2026-11-03: restarts in regular hours need no yes); killing
-the daemon, the console or launch.py is refused, whatever its flags; a stop of any other process
-passes; a stop of the machine asks; a merge, and every other action, a change to a test included,
-passes. Judged on real payloads and through the hook chain the settings run.
+"""tools/operator_yes_guard.py (CLAUDE.md rule 5).
+
+A start or a clean stop of the daemon or the console passes at any hour (operator 2026-11-03:
+restarts in regular hours need no yes); killing the daemon, the console or launch.py is refused,
+whatever its flags; a stop of any other process passes; a stop of the machine asks; a merge, and
+every other action, a change to a test included, passes. Judged on real payloads and through the
+hook chain the settings run.
 
 STAND-INS: python processes whose command lines carry the daemon's module, the console's app and
 launch.py (the guard reads command lines, as of production).
@@ -47,8 +49,9 @@ def _chain(payload: dict) -> subprocess.CompletedProcess:
 
 
 def _stand_in(*marks: str, exe: str = sys.executable, cwd: Path | None = None) -> subprocess.Popen:
-    """A sleeping process whose command line carries `marks`, running in `cwd` (production's
-    checkout by default, as the daemon and the console run).
+    """Start a sleeping process whose command line carries `marks`, running in `cwd`.
+
+    `cwd` is production's checkout by default, as the daemon and the console run.
     """
     return subprocess.Popen(
         [exe, "-c", "import time; time.sleep(600)", *marks],
@@ -58,8 +61,10 @@ def _stand_in(*marks: str, exe: str = sys.executable, cwd: Path | None = None) -
 
 @pytest.fixture(scope="module")
 def procs(tmp_path_factory):
-    """Running stand-ins: the daemon, the console, launch.py, a process of no production, and a
-    test console in another checkout (as Playwright's in a worktree).
+    """Run the stand-ins: the daemon, the console, launch.py, and two more.
+
+    A process of no production, and a test console in another checkout (as Playwright's in a
+    worktree).
     """
     running = {
         "daemon": _stand_in("-m", "app.market_data.schwab.streaming.capture_main"),
@@ -320,8 +325,9 @@ def test_the_machine_a_merge_and_a_push(cmd, answer):
     ],
 )
 def test_every_merge_route_goes_ahead_without_a_question(cmd, tool):
-    """A merge does not wait on the operator (AGENTS.md Authority): branch protection's green CI
-    and the two reviewers decide.
+    """A merge does not wait on the operator (AGENTS.md Authority).
+
+    Branch protection's green CI decides.
     """
     assert _decide(cmd, tool) == guard.PASS, cmd
 
@@ -411,9 +417,10 @@ def test_everything_else_passes_at_any_hour(payload):
 
 
 def test_the_hook_chain_answers_ask_refuses_and_passes_ordinary_work():
-    """The real wiring: .claude/settings.json runs hook_chain with this guard; an action that
-    needs a yes gets Claude Code's "ask" on stdout, a refused one exit 2 with the reason, other
-    actions nothing.
+    """The real wiring: .claude/settings.json runs hook_chain with this guard.
+
+    An action that needs a yes gets Claude Code's "ask" on stdout, a refused one exit 2 with the
+    reason, other actions nothing.
     """
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     commands = [h["command"] for e in settings["hooks"]["PreToolUse"] for h in e["hooks"]]

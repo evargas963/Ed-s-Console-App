@@ -1,5 +1,7 @@
-"""The daemon's chain sweep (DATA_FLOW decisions 1 and 7): the one fetcher of every watchlist
-ticker's chain, what it hands the console, and the chain history it writes.
+"""The daemon's chain sweep (DATA_FLOW decisions 1 and 7).
+
+The one fetcher of every watchlist ticker's chain, what it hands the console, and the chain
+history it writes.
 
 Real data: SPY's 2026-11-20 contracts from the capture daemon's full-chain capture of 2026-09-30
 15:31:57 ET and Schwab's quotes for every one of them, served by Schwab's host as a local server
@@ -71,8 +73,9 @@ def _et(ts: float) -> str:
     ],
 )
 def test_the_capture_window_a_fetch_is_written_for(now, slot):
-    """The windows are the regular option sessions Schwab's /markets sent for the day
-    (tests/conftest.py holds the answers captured 2026-10-07).
+    """The windows are the regular option sessions Schwab's /markets sent for the day.
+
+    tests/conftest.py holds the answers captured 2026-10-07.
     """
     got = cch.capture_slot(_ts(now))
     assert (_et(got) if got is not None else None) == slot
@@ -100,7 +103,7 @@ def schwab():
 
 
 def _sweep(tmp_path, schwab, clock):
-    """The daemon's sweep over SPY on `clock`, with the daemon's client of the stand-in host."""
+    """Run the daemon's sweep over SPY on `clock`, with the daemon's client of the stand-in host."""
     sqlite3.connect(tmp_path / "ed_console.db").close()  # the daemon's database exists
     published: list = []
     sweep = cch.ChainSweep(
@@ -125,8 +128,9 @@ def _assembled(published):
 
 
 def _parts(ts: float):
-    """MRVL's chain as the sweep publishes it: 5 parts of CHAIN_PART_CONTRACTS, at no spot (a
-    daemon holding no price).
+    """MRVL's chain as the sweep publishes it: 5 parts of CHAIN_PART_CONTRACTS.
+
+    At no spot (a daemon holding no price).
     """
     return cch.chain_messages("MRVL", _MRVL, ts, None, None)
 
@@ -149,8 +153,9 @@ def test_a_chain_missing_a_part_is_never_priced_and_says_why():
 
 
 def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part():
-    """2026-10-01 audit: when the next chain completed in its first part, the report of the
-    incomplete one before it was lost.
+    """2026-10-01 audit: the report of an incomplete chain was lost.
+
+    It was lost when the next chain completed in its first part.
     """
     early = _parts(_ts("2026-09-30 15:31:57"))[:2]  # two of five parts arrived
     one_part = cch.chain_messages(
@@ -162,8 +167,9 @@ def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part
 
 
 def test_a_chain_begun_before_the_console_connected_is_no_failure():
-    """2026-10-01 audit: a console connecting mid-chain got its last parts only and reported the
-    chain as arriving incomplete.
+    """2026-10-01 audit: a console connecting mid-chain got its last parts only.
+
+    It reported the chain as arriving incomplete.
     """
     published = _parts(_ts("2026-09-30 15:31:57"))[2:]  # the console connected after part 1
     published += _parts(_ts("2026-09-30 15:35:57"))
@@ -212,8 +218,9 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
 
 
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
-    """Operator 2026-10-06: every ticker the same, in one rotation; none has priority. TSLA added
-    to the watchlist beside SPY: SPY first, then TSLA, in sorted order.
+    """Operator 2026-10-06: every ticker the same, in one rotation; none has priority.
+
+    TSLA added to the watchlist beside SPY: SPY first, then TSLA, in sorted order.
     """
     sweep, published, client = _sweep(tmp_path, schwab, lambda: _ts("2026-08-28 09:05"))
     sweep.watchlist = ["TSLA", "SPY"]  # the daemon's list after an add
@@ -228,9 +235,10 @@ def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
 
 
 def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_path, schwab):
-    """2026-10-01 audit: the capture window was judged by when a fetch finished, so an $SPX
-    fetch begun at 16:14:30 (options still trading) and finished at 16:15:10 became the 16:15
-    close capture. A chain is written for the window it began in.
+    """2026-10-01 audit: the capture window was judged by when a fetch finished.
+
+    So an $SPX fetch begun at 16:14:30 (options still trading) and finished at 16:15:10 became
+    the 16:15 close capture. A chain is written for the window it began in.
     """
     clock = {"times": iter([])}
     sweep, _published, client = _sweep(tmp_path, schwab, lambda: next(clock["times"]))
@@ -248,8 +256,10 @@ def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_pat
 
 
 def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again(tmp_path, schwab):
-    """2026-10-01 audit: a history write that failed after the chain was delivered was published
-    to the console as a failed chain. The history table refuses the write (a NOT NULL column the
+    """2026-10-01 audit: a failed history write after delivery was published as a failed chain.
+
+    A history write that failed after the chain was delivered was published to the console as
+    a failed chain. The history table refuses the write (a NOT NULL column the
     writer does not fill); once it takes writes, the same window's next chain is written.
     """
     db = tmp_path / "ed_console.db"
@@ -278,10 +288,12 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
 
 
 def test_a_round_is_timed_only_when_it_asked_for_the_whole_watchlist(tmp_path, schwab):
-    """Production 2026-11-06 08:29:29 CT: a rotation before the open asked for one of the eight
-    watchlist tickers ("1 of 1 tickers delivered in 32 s"), that became the round every ticker's
-    chain was judged by, and at 08:31 every ticker's levels read STALE against the 180 s floor
-    while a whole round takes 234 to 268 s. A round of part of the watchlist is not timed.
+    """Production 2026-11-06 08:29:29 CT: a rotation of one ticker timed every ticker's chain.
+
+    A rotation before the open asked for one of the eight watchlist tickers ("1 of 1 tickers
+    delivered in 32 s"), that became the round every ticker's chain was judged by, and at 08:31
+    every ticker's levels read STALE against the 180 s floor while a whole round takes 234 to
+    268 s. A round of part of the watchlist is not timed.
     """
     ticks = itertools.count(_ts("2026-09-30 15:31:57"), 1.0)
     sweep, _published, client = _sweep(tmp_path, schwab, lambda: next(ticks))
@@ -294,8 +306,10 @@ def test_a_round_is_timed_only_when_it_asked_for_the_whole_watchlist(tmp_path, s
 
 
 def test_a_stop_asked_inside_a_ticker_asks_schwab_for_nothing_more(tmp_path, schwab):
-    """Production's stop of 2026-11-06 06:41:51 CT: the sweep went on asking for the chain in hand
-    and its quotes for 28 s, past launch.py's 30 s wait. A stop asked once the ticker's sessions
+    """Production's stop of 2026-11-06 06:41:51 CT: the sweep went on asking for 28 s.
+
+    The sweep went on asking for the chain in hand and its quotes for 28 s, past launch.py's
+    30 s wait. A stop asked once the ticker's sessions
     are in (its first publish, before its first expiry is asked) ends the rotation there: no chain
     and no quotes request reaches Schwab, and no chain is published, whole or failed.
     """
@@ -345,9 +359,11 @@ def test_the_daemon_task_stops_when_told(tmp_path):
 
 
 def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in():
-    """The sweep publishes a chain in parts on the daemon's bus; the chain becomes the ticker's
-    current record only once every part is in, and a console that connects later starts with that
-    whole chain (docs/DATA_FLOW.md §2 D3), every part in order -- never a partial one.
+    """The sweep publishes a chain in parts on the daemon's bus.
+
+    The chain becomes the ticker's current record only once every part is in, and a console that
+    connects later starts with that whole chain (docs/DATA_FLOW.md §2 D3), every part in order --
+    never a partial one.
     """
     bus = MessageBus()
 
@@ -402,8 +418,9 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
 
 
 def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
-    """2026-09-28: the only 09-25 captures were the partial morning chains (expiries to 37 days),
-    so the forces diffed Monday's full chain against them and every later expiry read as new open
+    """2026-09-28: the only 09-25 captures were the partial morning chains (expiries to 37 days).
+
+    So the forces diffed Monday's full chain against them and every later expiry read as new open
     interest (SPY: +1.4M below and above spot in one day). Only full captures are read: with no
     full prior day the forces numbers are absent.
     """

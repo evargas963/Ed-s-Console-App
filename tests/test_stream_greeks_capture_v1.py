@@ -1,5 +1,6 @@
-"""OrderFlowState.push_level_one previously discarded GAMMA/DELTA/OPEN_INTEREST entirely --
-confirmed present in the installed schwab-py SDK's LEVELONE_OPTIONS field enum
+"""OrderFlowState.push_level_one previously discarded GAMMA/DELTA/OPEN_INTEREST entirely.
+
+They are confirmed present in the installed schwab-py SDK's LEVELONE_OPTIONS field enum
 (.venv/Lib/site-packages/schwab/streaming.py LevelOneOptionFields: DELTA=28, GAMMA=29,
 OPEN_INTEREST=9), and these are exactly the per-contract inputs
 math_exposure_core.compute_exposures_by_strike needs (gamma * oi * multiplier * spot^2 * 0.01)
@@ -17,8 +18,10 @@ from app.options.order_flow.state import OrderFlowState as LiveOrderFlowState
 
 
 def test_total_volume_is_captured_alongside_the_greeks():
-    """Independent-review finding (2026-09-12): 'the current hook is triggered by
-    GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update delivery.'
+    """Independent-review finding (2026-09-12): volume-only updates were not delivered.
+
+    'the current hook is triggered by GAMMA/DELTA/OPEN_INTEREST; that does not complete
+    volume-only update delivery.'
     TOTAL_VOLUME is captured into the SAME per-symbol record, with its own freshness stamp,
     so the exposure/per-strike overlay can apply the same newer-than-REST precedence rule to
     it that gamma/delta/open_interest already get.
@@ -65,8 +68,9 @@ def test_never_observed_symbol_returns_none_not_a_dict_of_nones():
 
 
 def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
-    """A quote tick that carries BID_PRICE/ASK_PRICE but not GAMMA must not erase a gamma
-    value learned on an earlier tick -- explicit per-field presence, not a group overwrite.
+    """A quote tick that carries BID_PRICE/ASK_PRICE but not GAMMA must not erase a gamma.
+
+    A gamma value learned on an earlier tick -- explicit per-field presence, not a group overwrite.
     """
     st = LiveOrderFlowState()
     st.push_level_one(
@@ -105,8 +109,10 @@ def test_a_negative_open_interest_is_rejected_not_stored():
 
 
 def test_the_streams_open_interest_is_not_kept_the_chains_is_the_one_producer():
-    """Schwab's stream does not send OPEN_INTEREST for every contract it streams, so the chain
-    sends it for every contract and is its one producer; a streamed one is not kept beside it.
+    """Schwab's stream does not send OPEN_INTEREST for every contract it streams.
+
+    So the chain sends it for every contract and is its one producer; a streamed one is not kept
+    beside it.
     """
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": 0}, ts_recv=time_et.now())

@@ -1,7 +1,8 @@
-"""One gamma source: the regime's gamma at spot is Schwab's gamma as sent, summed over the same
-book the walls use (2026-09-27: it was a recomputed gamma, and on Friday's SPY chain the two
-disagreed in sign). The chain's rate and dividend travel with each contract as sent; the option
-stream keeps IV beside the gamma it overlays.
+"""One gamma source: the regime's gamma at spot is Schwab's gamma as sent.
+
+It is summed over the same book the walls use (2026-09-27: it was a recomputed gamma, and on
+Friday's SPY chain the two disagreed in sign). The chain's rate and dividend travel with each
+contract as sent; the option stream keeps IV beside the gamma it overlays.
 """
 
 from __future__ import annotations

@@ -83,8 +83,9 @@ def _rth(rows: list[dict], tk: str, day: str) -> list[dict]:
 
 
 def test_api_levels_b1_contract_single_session_prior_day():
-    """The B1 read-adapter serves the prior_day family from the RC-153 single-session
-    authority, with per-level provenance naming the window, unique ids, honest
+    """The B1 read-adapter serves the prior_day family from the RC-153 single-session authority.
+
+    It serves it with per-level provenance naming the window, unique ids, honest
     families_absent — and never the multi-session union values (the RC-213 defect). A tape of
     tiny sessions tests window selection (their prior day is stamped degraded, and still
     served); stand-in: ticker ZZB1.
@@ -174,10 +175,12 @@ def test_api_levels_b1_contract_single_session_prior_day():
 
 
 def test_strikes_payload_carries_server_side_sums():
-    """STRIP server half: /api/terrain/strikes serves today_side_sums computed against the
-    payload's own spot — the one aggregator. SPY's same-day chain (tests/real_chains.SPY_0DTE)
-    published by the levels producer at its captured price, the price row there with the feed
-    live; each side's sum is its strikes' GEX and volume from the same chain's book.
+    """STRIP server half: /api/terrain/strikes serves today_side_sums against its own spot.
+
+    Computed against the payload's own spot — the one aggregator. SPY's same-day chain
+    (tests/real_chains.SPY_0DTE) published by the levels producer at its captured price, the
+    price row there with the feed live; each side's sum is its strikes' GEX and volume from the
+    same chain's book.
     """
     srv._publish_levels(
         C.ticker, read_chain(C.chain), C.now.timestamp(), chain_spot=(C.spot, 1.0), now=C.now
@@ -210,8 +213,9 @@ def test_strikes_payload_carries_server_side_sums():
 
 
 def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
-    """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
-    live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
+    """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session.
+
+    Measured live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
     matched. The prior day's high, low and close are Schwab's daily candle for it, as sent: its
     high and low are the whole session's 1-minute extremes, and its close is the official close,
     which the last 1-minute bar's is not. Schwab's SPY and TSLA bars of Thu 2026-10-01 as recorded
@@ -247,11 +251,13 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
 
 
 def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
-    """The bar writer publishes a ticker's price levels after each of its bars -- every ticker,
-    viewed or not, so a page switching to it finds them current; a new session is built by the
-    levels loop; the route serves what was published and reads no bar. Schwab's SPY and TSLA
-    bars of 2026-10-01/02 as the capture daemon recorded them: each ticker's newest receipt
-    arrives as a pushed bar, valued at Fri 10-02 19:59:30 ET, the rest streamed before it.
+    """The bar writer publishes a ticker's price levels after each of its bars.
+
+    Every ticker, viewed or not, so a page switching to it finds them current; a new session is
+    built by the levels loop; the route serves what was published and reads no bar. Schwab's SPY
+    and TSLA bars of 2026-10-01/02 as the capture daemon recorded them: each ticker's newest
+    receipt arrives as a pushed bar, valued at Fri 10-02 19:59:30 ET, the rest streamed before
+    it.
     """
     tk, other = _PAIR
     now = _dt(2026, 10, 2, 19, 59, 30, tzinfo=ET)

@@ -1,7 +1,8 @@
-"""tools/check_one_reader.py (ENF-23) on real git repositories, with the repository's own Schwab
-field list (docs/schwab_fields.csv): a pull request may not add a module that reads a Schwab
-field raw. The refused shape is the daemon's option rule reading LAST_PRICE itself
-(app/market_data/schwab/streaming/capture.py), beside the price plane's reader.
+"""tools/check_one_reader.py (ENF-23) on real git repositories.
+
+With the repository's own Schwab field list (docs/schwab_fields.csv): a pull request may not add
+a module that reads a Schwab field raw. The refused shape is the daemon's option rule reading
+LAST_PRICE itself (app/market_data/schwab/streaming/capture.py), beside the price plane's reader.
 """
 
 from __future__ import annotations
@@ -135,8 +136,9 @@ def test_a_rest_field_in_camel_case_is_read_from_any_mapping(tmp_path):
 
 
 def test_our_own_records_keys_named_like_a_plain_schwab_word_are_not_judged(tmp_path):
-    """`status`, `type` and `symbol` are in Schwab's field list and are our own records' keys
-    too.
+    """`status`, `type` and `symbol` are in Schwab's field list.
+
+    They are our own records' keys too.
     """
     root = _pr(
         tmp_path,

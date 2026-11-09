@@ -1,6 +1,6 @@
 """
-micro_structure.py — Micro Price-Action Analysis Engine
-========================================================
+micro_structure.py — Micro Price-Action Analysis Engine.
+
 Reads 1-min and 5-min OHLCV candle data and classifies the current
 micro regime for the "Right Now" card.
 

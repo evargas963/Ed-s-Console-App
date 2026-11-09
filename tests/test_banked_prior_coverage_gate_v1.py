@@ -1,6 +1,7 @@
-"""Audit round 2 (2026-08-25) — the prior session's bars carry coverage honesty. (The console's
-1-minute bars -- Schwab's price history and its streamed bars, held in the console's memory --
-are the ONE bar history, so this stamp guards every level read.)
+"""Audit round 2 (2026-08-25) — the prior session's bars carry coverage honesty.
+
+(The console's 1-minute bars -- Schwab's price history and its streamed bars, held in the
+console's memory -- are the ONE bar history, so this stamp guards every level read.)
 
 WHAT WAS MEASURED: the >=LEVELS_PRIOR_SESSION_MIN_BARS floor existed only on the
 accumulator path (t12/RC-227), while the banked fallback fires precisely WHEN coverage
@@ -28,8 +29,9 @@ _PAIR = ("SPY", "TSLA")
 
 
 def _published(now: datetime) -> dict:
-    """Each ticker's price levels published at `now` from the recorded bars, streamed to the
-    console as the daemon pushed them; nothing is left behind.
+    """Each ticker's price levels published at `now` from the recorded bars.
+
+    The bars are streamed to the console as the daemon pushed them; nothing is left behind.
     """
 
     def forget():

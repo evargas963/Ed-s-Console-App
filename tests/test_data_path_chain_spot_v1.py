@@ -1,4 +1,6 @@
-"""Schwab -> the levels. A chain's one spot (operator 2026-10-23): Schwab's LAST_PRICE with its
+"""Schwab -> the levels.
+
+A chain's one spot (operator 2026-10-23): Schwab's LAST_PRICE with its
 trade time, as the daemon's price row holds it when the chain is complete. The daemon's chain sweep
 sends it with the chain and stores it with the capture (each expiry's underlyingPrice kept as sent
 beside it); the console prices the chain at it; the stored-capture reader gives it back. A capture

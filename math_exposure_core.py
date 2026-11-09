@@ -1,5 +1,5 @@
-"""
-math_exposure_core.py
+"""Base exposure engine (math_exposure_core.py).
+
 Base exposure engine — raw and normalized exposure values derived
 from the chain and position structure.
 """
@@ -28,7 +28,7 @@ SQRT_2PI = math.sqrt(2.0 * math.pi)
 def norm_pdf[Num: (float, NDArray[np.float64])](
     x: Num, *, exp: Callable[[Num], Num] = math.exp
 ) -> Num:
-    """The standard normal density. A number, or a numpy array with exp=np.exp."""
+    """Return the standard normal density. A number, or a numpy array with exp=np.exp."""
     return exp(-0.5 * x * x) / SQRT_2PI
 
 
@@ -42,8 +42,9 @@ def d1_vt[Num: (float, NDArray[np.float64])](
     log: Callable[[Num], Num] = math.log,
     sqrt: Callable[[Num], Num] = math.sqrt,
 ) -> tuple[Num, Num]:
-    """THE Black-Scholes d1 and sigma*sqrt(T), with `carry` = r - q (0 unless given). Numbers,
-    or numpy arrays with log=np.log and sqrt=np.sqrt.
+    """Return THE Black-Scholes d1 and sigma*sqrt(T), with `carry` = r - q (0 unless given).
+
+    Numbers, or numpy arrays with log=np.log and sqrt=np.sqrt.
     """
     vt = sigma * sqrt(t_years)
     return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
@@ -52,8 +53,9 @@ def d1_vt[Num: (float, NDArray[np.float64])](
 def _priced_d1(
     spot: float, strike: float, t_years: float, sigma: float, carry: float = 0.0
 ) -> tuple[float, float] | None:
-    """d1 and sigma*sqrt(T) for one contract, or None when it cannot be priced (a value that is
-    not positive, or a d1 that is not finite).
+    """Return d1 and sigma*sqrt(T) for one contract, or None when it cannot be priced.
+
+    It cannot be priced with a value that is not positive, or a d1 that is not finite.
     """
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
         return None
@@ -130,7 +132,7 @@ def bs_charm(
 
 
 def schwab_iv_to_sigma(iv: float | None) -> float | None:
-    """The ONE conversion from Schwab's `volatility` field (a PERCENT) to a decimal sigma.
+    """Convert Schwab's `volatility` field (a PERCENT) to a decimal sigma: the ONE conversion.
 
     Measured on 49,244 contracts across the 43-ticker board: min 7.967, median 51.0, max 4,256.8
     -- every value a percent, so one fixed conversion. Schwab's IV is carried as sent; a model input
@@ -142,9 +144,10 @@ def schwab_iv_to_sigma(iv: float | None) -> float | None:
 
 
 def book_net_gex(exposures: dict) -> float | None:
-    """Net dealer GEX per 1% move at spot: the sum of every strike's net_gex_1pct -- Schwab's
-    gamma as sent, +call/-put. The one gamma at spot (regime, headline, pin gate). None when no
-    strike carried a valid gamma.
+    """Net dealer GEX per 1% move at spot: the sum of every strike's net_gex_1pct.
+
+    Schwab's gamma as sent, +call/-put. The one gamma at spot (regime, headline, pin gate). None
+    when no strike carried a valid gamma.
     """
     vals = [v for b in exposures.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None]
     return sum(vals) if vals else None
@@ -169,8 +172,10 @@ _GREEK_FIELD_UNREPORTED = {
 
 
 def bucket_metric(bucket: dict, key: str) -> float | None:
-    """One exposure-bucket field, or None when it is not known: absent, not finite, or a Greek
-    field on a leg where a contract's term is not known (see _GREEK_FIELD_UNREPORTED).
+    """One exposure-bucket field, or None when it is not known.
+
+    Not known: absent, not finite, or a Greek field on a leg where a contract's term is not known
+    (see _GREEK_FIELD_UNREPORTED).
     """
     if not isinstance(bucket, dict) or key not in bucket:
         return None
@@ -252,8 +257,9 @@ def compute_exposures_by_strike(
     now: datetime,
     product: str = "EQO",
 ) -> tuple[dict[float, dict], ExposureDiagnostics]:
-    """
-    Produces per-strike aggregated, over every listed contract with a strike and a side:
+    """Produce per-strike aggregates over every listed contract with a strike and a side.
+
+    The aggregates:
       - call/put OI
       - call/put delta exposure (scaled)
       - call/put gamma exposure (scaled)
@@ -368,10 +374,11 @@ def compute_exposures_by_strike(
 
 
 def _finish_bucket(b: dict) -> None:
-    """A strike bucket's net fields from its call and put legs, +call/-put (dealer-signed, the
-    same convention as net GEX and the terrain's dex_dollars -- one meaning of each on every
-    screen): the one place they are computed, for a book and for a merge of books. A dollar
-    field or vanna needs spot (`dollarized`): none without it.
+    """Compute a strike bucket's net fields from its call and put legs, +call/-put.
+
+    Dealer-signed (the same convention as net GEX and the terrain's dex_dollars -- one meaning of
+    each on every screen): the one place they are computed, for a book and for a merge of books.
+    A dollar field or vanna needs spot (`dollarized`): none without it.
     """
     b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
     b["net_delta"] = b["call_delta"] - b["put_delta"]
@@ -400,7 +407,9 @@ def exposure_books(
     now: datetime,
     product: str = "EQO",
 ) -> dict[tuple[str, float | None], tuple[dict[float, dict], ExposureDiagnostics]]:
-    """compute_exposures_by_strike once per (expiry, days to expiry) group. Every contract is
+    """Run compute_exposures_by_strike once per (expiry, days to expiry) group.
+
+    Every contract is
     priced once; any subset of expiries is then a merge_exposure_books of its groups (the full
     book, 0DTE, the front expiry, <=7 / >7 days).
     """
@@ -414,7 +423,9 @@ def exposure_books(
 
 
 def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]:
-    """One book from books over DISJOINT contracts: every leg field a sum of the books' legs (a
+    """Merge books over DISJOINT contracts into one book.
+
+    Every leg field a sum of the books' legs (a
     sum not known in one book is not known in the merge), each flag an OR, and each net field
     computed from the merged legs by the book's own rule (_finish_bucket). The legs are the same
     sums one compute_exposures_by_strike call over all the contracts gives, up to float addition
@@ -449,8 +460,9 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 def overlay_streamed_contract_fields(
     contracts: list[OptionContract], streamed_by_symbol: dict[str, dict], held: set[str]
 ) -> tuple[list[OptionContract], int]:
-    """Each contract Schwab streams (`held`) with the values the stream pushed it
-    (`streamed_by_symbol`, its newest streamed record): the pushed field is its one producer
+    """Give each contract Schwab streams (`held`) the values the stream pushed it.
+
+    `streamed_by_symbol` holds its newest streamed record; the pushed field is its one producer
     (AGENTS.md rule 3). Its volume is the stream's `total_volume`, None until the stream sends one.
     Its Greeks and volatility are the stream's newest once the stream holds all six (the set the
     chain sweep takes, option_contract.streamed_greek_set); until then they are the chain's, which
@@ -478,7 +490,7 @@ def overlay_streamed_contract_fields(
 
 
 def strike_total_oi(bucket: dict) -> float | None:
-    """THE total open interest at one strike, or None when it is not known.
+    """Return THE total open interest at one strike, or None when it is not known.
 
     Known = every contract at the strike reported openInterest (oi_unreported == 0). A leg
     with no positive-OI contract then contributes a real 0 (its contracts reported 0 OI, or
@@ -493,6 +505,7 @@ def strike_total_oi(bucket: dict) -> float | None:
 
 def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
     """(call OI, put OI) at one strike when its OI is known (see strike_total_oi), else None.
+
     A leg with no contract listed is a known 0.0, the sum of none.
     """
     if bucket["oi_unreported"] != 0:
@@ -501,8 +514,9 @@ def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
 
 
 def strike_volume_legs(bucket: dict) -> tuple[float, float] | None:
-    """(call, put) session volume at one strike when every contract there reported totalVolume
-    (0 is a real zero), else None. A leg with no listed contract is a known 0.0. THE one reader:
+    """(call, put) session volume at one strike when every contract there reported totalVolume.
+
+    0 is a real zero; else None. A leg with no listed contract is a known 0.0. THE one reader:
     GEX-by-Strike rows, heatmap cells and the put/call volume ratio.
     """
     if bucket["volume_unreported"] != 0:
@@ -511,7 +525,10 @@ def strike_volume_legs(bucket: dict) -> tuple[float, float] | None:
 
 
 def strike_total_volume(bucket: dict) -> float | None:
-    """THE total session volume at one strike, or None when a contract there did not report it."""
+    """Return THE total session volume at one strike.
+
+    None when a contract there did not report it.
+    """
     legs = strike_volume_legs(bucket)
     if legs is None:
         return None
@@ -533,8 +550,9 @@ def book_total_oi(exposures: dict[float, dict]) -> float | None:
 
 
 def _put_call_ratio(legs: Iterable[tuple[float, float] | None]) -> float | None:
-    """Total put / total call over the book's strikes; None if any strike's legs are unknown or
-    the calls total 0 (an empty book included).
+    """Total put / total call over the book's strikes.
+
+    None if any strike's legs are unknown or the calls total 0 (an empty book included).
     """
     calls = puts = 0.0
     for leg in legs:
@@ -546,15 +564,17 @@ def _put_call_ratio(legs: Iterable[tuple[float, float] | None]) -> float | None:
 
 
 def put_call_oi_ratio(exposures: dict[float, dict]) -> float | None:
-    """Total put OI / total call OI of the book -- the positions held; None if any strike's OI is
-    unknown or call OI is 0.
+    """Total put OI / total call OI of the book -- the positions held.
+
+    None if any strike's OI is unknown or call OI is 0.
     """
     return _put_call_ratio(strike_oi_legs(b) for b in exposures.values())
 
 
 def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
-    """Total put volume / total call volume of the book -- today's trading, Cboe's convention
-    (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
+    """Total put volume / total call volume of the book -- today's trading.
+
+    Cboe's convention (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
     None when any contract in the book did not report its volume, or no call traded. A strike with
     no call (or put) contract listed has no volume on that side, not a zero.
     """
@@ -562,7 +582,9 @@ def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
 
 
 def exposures_have_dollar_gex(exposures: dict[float, dict]) -> bool:
-    """True when the book was built WITH spot (its dollar fields are real). Read from the
+    """Return True when the book was built WITH spot (its dollar fields are real).
+
+    Read from the
     explicit `dollarized` flag, never inferred from the dollar GEX values, so a spot-built book
     whose gammas are all invalid still reads as dollarized.
     """
@@ -663,8 +685,9 @@ def _pick_strike_max_metric(
 
 
 def pick_pin_and_strength(exposures: dict[float, dict]) -> tuple[float | None, float | None]:
-    """Max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its
-    decisiveness. NOT a demonstrated magnet.
+    """Max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its decisiveness.
+
+    NOT a demonstrated magnet.
 
     WHAT IT MEASURES. The strike carrying the largest absolute call GEX dollars plus
     absolute put GEX dollars — i.e. where the most dealer re-hedging activity sits. This is
@@ -707,10 +730,10 @@ def pick_pin_and_strength(exposures: dict[float, dict]) -> tuple[float | None, f
 
 
 def pick_net_gex_peak_strike(exposures: dict[float, dict]) -> float | None:
-    """
-    Net-GEX peak: strike with largest |net GEX$| per 1% (calls minus puts) -- where the SIGNED
-    book concentrates (the standard pin is total gamma, pick_pin_and_strength). None when the
-    book has no dollar GEX (no spot).
+    """Net-GEX peak: strike with largest |net GEX$| per 1% (calls minus puts).
+
+    Where the SIGNED book concentrates (the standard pin is total gamma, pick_pin_and_strength).
+    None when the book has no dollar GEX (no spot).
     """
     if not exposures_have_dollar_gex(exposures):
         return None

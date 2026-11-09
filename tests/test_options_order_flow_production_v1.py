@@ -56,7 +56,7 @@ FLOW_CONTRACT = "TSLA  260831C00367500"
 
 
 def build_flow_e2e_fixture_response() -> dict:
-    """The route's payload for FLOW_CONTRACT after its real messages, at the newest one's time."""
+    """Build the route's payload for FLOW_CONTRACT after its real messages, at the newest's time."""
     events = next(
         c
         for c in json.loads(_HISTORY.read_text(encoding="utf-8"))["contracts"]
@@ -101,8 +101,9 @@ def build_flow_e2e_fixture_response() -> dict:
 
 
 def build_side_e2e_fixture_response() -> dict:
-    """Contract -> the route's payload for the SPY call and put after their stored messages, at the
-    newest one's time.
+    """Build contract -> the route's payload for the SPY call and put after their stored messages.
+
+    Each is taken at the newest one's time.
     """
     contracts = json.loads(_SIDES.read_text(encoding="utf-8"))["contracts"]
     out = {}
@@ -149,8 +150,10 @@ def build_side_e2e_fixture_response() -> dict:
 
 
 def write_flow_e2e_fixture() -> None:
-    """Regeneration utility (never called by a test), in a child process with the same private
-    runtime boundary tests/conftest.py applies, so the fixture never carries a live DB or token.
+    """Regeneration utility (never called by a test).
+
+    It runs in a child process with the same private runtime boundary tests/conftest.py
+    applies, so the fixture never carries a live DB or token.
     """
     root = tempfile.mkdtemp(prefix="ed-e2e-fixture-regen-")
     env = {
@@ -196,8 +199,9 @@ def write_flow_e2e_fixture() -> None:
 
 
 def _same(fixture, live):
-    """Every key and value equal; a float to 1e-6 relative (a least-squares slope, `np.polyfit`,
-    differs in its last digits between machines).
+    """Check every key and value equal; a float to 1e-6 relative.
+
+    A least-squares slope, `np.polyfit`, differs in its last digits between machines.
     """
     if isinstance(fixture, dict) and isinstance(live, dict):
         return fixture.keys() == live.keys() and all(_same(fixture[k], live[k]) for k in fixture)
@@ -209,8 +213,10 @@ def _same(fixture, live):
 
 
 def test_flow_e2e_fixture_is_the_route_contract():
-    """The committed Playwright fixture is what the route serves for these messages, every key and
-    value, so the Flow spec proves the real API's output; the flow values it shows are served.
+    """The committed Playwright fixture is what the route serves for these messages.
+
+    Every key and value, so the Flow spec proves the real API's output; the flow values it
+    shows are served.
     """
     fixture = json.loads(_FLOW_E2E_FIXTURE.read_text(encoding="utf-8"))
     live = build_flow_e2e_fixture_response()
@@ -232,8 +238,9 @@ def test_flow_e2e_fixture_is_the_route_contract():
 
 
 def test_side_e2e_fixture_is_the_route_contract():
-    """The Playwright side payloads are what the route serves for the SPY call and put, every key
-    and value: the side the header shows is the route's CALL and PUT.
+    """The Playwright side payloads are what the route serves for the SPY call and put.
+
+    Every key and value: the side the header shows is the route's CALL and PUT.
     """
     fixture = json.loads(_SIDES_E2E_FIXTURE.read_text(encoding="utf-8"))
     assert _same(fixture, build_side_e2e_fixture_response()), (

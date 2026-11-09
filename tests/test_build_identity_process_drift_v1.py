@@ -1,8 +1,10 @@
-"""The running process's identity (server.capture_process_identity, captured once at import) and
-/api/build's answer (server.build_identity_answer): `git_sha` is the code the process loaded,
-stable for its life; the checkout's HEAD now is reported apart, and the drift between them is
-explicit, None while either is unknown. Real git repositories made by git in a temporary folder;
-git's own answers are the expected values.
+"""The running process's identity and /api/build's answer.
+
+The identity is server.capture_process_identity, captured once at import; the answer is
+server.build_identity_answer. `git_sha` is the code the process loaded, stable for its life;
+the checkout's HEAD now is reported apart, and the drift between them is explicit, None while
+either is unknown. Real git repositories made by git in a temporary folder; git's own answers
+are the expected values.
 """
 
 from __future__ import annotations
@@ -87,9 +89,10 @@ def test_a_folder_that_is_no_checkout_has_no_identity(tmp_path):
 
 
 def test_the_identity_stands_while_the_checkout_moves_and_the_drift_is_explicit(tmp_path):
-    """The process loaded commit A; the checkout moves to B: git_sha stays A on every answer, the
-    HEAD now is B, and the drift says so; the same HEAD is no drift; an unknown HEAD is unknown
-    drift, never "no drift".
+    """The process loaded commit A; the checkout moves to B: git_sha stays A on every answer.
+
+    The HEAD now is B, and the drift says so; the same HEAD is no drift; an unknown HEAD is
+    unknown drift, never "no drift".
     """
     repo = _repo(tmp_path)
     ident = srv.capture_process_identity(repo)

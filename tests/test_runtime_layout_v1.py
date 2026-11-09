@@ -1,7 +1,9 @@
 # institutional-synthetic-ok: temp directories stand in for a relocated runtime root.
-"""Runtime state is rooted in `runtime_layout`, not the source files (docs/ARCHITECTURE.md
-"Runtime state is not source"). The controls of an environment variable drive the real modules
-through a subprocess with it set and unset, so each starts from its own environment.
+"""Runtime state is rooted in `runtime_layout`, not the source files.
+
+docs/ARCHITECTURE.md "Runtime state is not source". The controls of an environment variable
+drive the real modules through a subprocess with it set and unset, so each starts from its own
+environment.
 """
 
 from __future__ import annotations
@@ -77,9 +79,10 @@ def test_runtime_root_cannot_be_a_linked_worktree(tmp_path):
 
 
 def test_a_runtime_root_set_after_the_imports_places_the_token_and_the_databases(tmp_path):
-    """The token, the console database and the stream database follow ED_RUNTIME_ROOT as the
-    environment holds it when they are asked for, not as it held when their modules were
-    imported: an entry point that loads `.env` after its imports gets `.env`'s runtime.
+    """The token and both databases follow ED_RUNTIME_ROOT as it is when they are asked for.
+
+    Not as it was when their modules were imported: an entry point that loads `.env` after its
+    imports gets `.env`'s runtime.
     """
     sandbox = tmp_path / "runtime"
     script = f"""

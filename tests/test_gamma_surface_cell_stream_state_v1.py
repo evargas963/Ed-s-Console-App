@@ -1,7 +1,9 @@
-"""The heatmap says which cells Schwab's stream backs now (question 2: the screen shows it
-correctly): each leg live (the feed delivers it), stale (it streamed, the feed is not delivering
-it), pending (the daemon holds it, no update yet) or unavailable (the daemon does not stream it),
-each cell's state from its legs, and the header's chip counting the cells drawn.
+"""The heatmap says which cells Schwab's stream backs now.
+
+Question 2: the screen shows it correctly. Each leg live (the feed delivers it), stale (it
+streamed, the feed is not delivering it), pending (the daemon holds it, no update yet) or
+unavailable (the daemon does not stream it), each cell's state from its legs, and the header's
+chip counting the cells drawn.
 
 End to end through the real code: the daemon's status (live_market_plane.record_feed_heartbeat),
 its pushed option messages applied by the console (streaming._ingest_pushed), its price row,
@@ -52,7 +54,9 @@ def _clean():
 
 
 def _publish(held, ticked, *, at=_AT, socket_open=True):
-    """The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent a GAMMA for each of
+    """Return the route's coverage of every strike, and the published surface.
+
+    The daemon holding `held` on LEVELONE_OPTIONS, Schwab having sent a GAMMA for each of
     `ticked` a second before `at`, CRWD's chain published at `at`; the route's coverage of every
     strike, and the published surface.
     """
@@ -107,7 +111,9 @@ def test_a_contract_the_feed_delivers_is_live_with_its_own_age():
 
 
 def test_every_cell_streaming_reads_all_streaming_and_one_cell_short_never_does():
-    """ALL STREAMING only when every cell drawn is live; one cell short (its put held, no update)
+    """ALL STREAMING only when every cell drawn is live.
+
+    One cell short (its put held, no update)
     is the share rounded down, never 100%, and the cell says pending.
     """
     every = CALLS + PUTS
@@ -133,8 +139,9 @@ def test_one_live_cell_of_many_reads_under_one_percent_never_zero():
 
 
 def test_a_contract_that_streamed_reads_stale_while_schwabs_socket_is_closed():
-    """Closed (22:00 ET), Schwab's socket closed: the chain's gamma prices the cell, its volume
-    is the stream's last, and its legs say they are not streaming now.
+    """Closed (22:00 ET), Schwab's socket closed: the chain's gamma prices the cell.
+
+    Its volume is the stream's last, and its legs say they are not streaming now.
     """
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym], at=_CLOSED, socket_open=False)

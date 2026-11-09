@@ -1,5 +1,7 @@
-"""A tool the repository says to run as a script (`python tools/x.py`) imports nothing from the
-repository root or from `tools`: run that way, Python puts `tools/` on the import path, not the
+"""A tool run as a script (`python tools/x.py`) imports nothing from the root or from `tools`.
+
+A tool the repository says to run as a script imports nothing from the repository root or from
+`tools`: run that way, Python puts `tools/` on the import path, not the
 root, and the import fails before the tool starts. tools/cpu_load.py and
 tools/schwab_field_inventory.py were documented so after both came to import time_et, and the
 flaky-test procedure ran its suites with no load at all (2026-11-07). A tool that needs the root

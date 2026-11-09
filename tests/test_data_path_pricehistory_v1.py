@@ -1,10 +1,11 @@
-"""Schwab's price history, Schwab to the console's memory, through the real code: the daemon's
-chain sweep asks /pricehistory for each ticker (tests/schwab_rest_standin.py, on the real schwab-py
-client as the daemon builds it) as docs/schwab lists it -- 1-minute bars and two years of daily
-candles, once per ET date, each request ending at the sweep's clock -- and publishes each series
-as Schwab sent it on the daemon's bus; the console reads it there and its bar writer takes it:
-the 1-minute bars every reader reads, and the daily candles the daily, weekly and monthly ATR are
-computed from, today's candle rolled up live from the 1-minute bars.
+"""Schwab's price history, Schwab to the console's memory, through the real code.
+
+The daemon's chain sweep asks /pricehistory for each ticker (tests/schwab_rest_standin.py, on the
+real schwab-py client as the daemon builds it) as docs/schwab lists it -- 1-minute bars and two
+years of daily candles, once per ET date, each request ending at the sweep's clock -- and
+publishes each series as Schwab sent it on the daemon's bus; the console reads it there and its
+bar writer takes it: the 1-minute bars every reader reads, and the daily candles the daily,
+weekly and monthly ATR are computed from, today's candle rolled up live from the 1-minute bars.
 
 Real data: SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 (tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json). Inputs, named: the clock.
@@ -116,8 +117,9 @@ def _true_range_mean(candles: list[dict]) -> float:
 
 
 def _grouped(candles: list[dict], key) -> list[dict]:
-    """Candles worked out here, one per `key` of each candle's ET date: first open, highest high,
-    lowest low, last close.
+    """Candles worked out here, one per `key` of each candle's ET date.
+
+    First open, highest high, lowest low, last close.
     """
     out: dict = {}
     for c in candles:
@@ -128,8 +130,9 @@ def _grouped(candles: list[dict], key) -> list[dict]:
 
 
 def _held(tk: str, series: str, now: datetime, candles: list | None = None) -> None:
-    """Schwab's captured `series` answer for `tk` (its `candles` only, when given), published,
-    pushed and taken by the console.
+    """Publish Schwab's captured `series` answer for `tk`, pushed and taken by the console.
+
+    Its `candles` only, when given.
     """
     a = HISTORY[(tk, *_SERIES[series])]
     body = a["body"] if candles is None else dict(a["body"], candles=candles)
@@ -140,7 +143,7 @@ def _held(tk: str, series: str, now: datetime, candles: list | None = None) -> N
 
 
 def _told(tk: str, takes) -> list:
-    """What the page open on `tk` is told after each of `takes` (callables run in turn)."""
+    """Return what the page open on `tk` is told after each of `takes` (callables run in turn)."""
 
     async def main():
         push_changes.bind(asyncio.get_running_loop())
@@ -159,8 +162,9 @@ def _told(tk: str, takes) -> list:
 
 
 def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
-    """At 2026-10-06 16:30 ET, after Schwab's regular window for that day (09:30-16:00 ET): the
-    daily ATR is Schwab's daily candles before that day plus the day's candle rolled up from its
+    """At 2026-10-06 16:30 ET, after Schwab's regular window for that day (09:30-16:00 ET).
+
+    The daily ATR is Schwab's daily candles before that day plus the day's candle rolled up from its
     1-minute bars inside the window. Its high and low are Schwab's own daily candle's for the
     day.
     """
@@ -198,12 +202,12 @@ def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
 
 
 def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_the_atr_from_them():
-    """Each series published on the daemon's bus, read by the console as Schwab's (live_push.
-    is_forwarded, the console's _bus_loop) and taken by it (streaming._ingest_pushed -> the bar
-    writer): the
-    1-minute bars every reader reads are Schwab's candles, each field as sent; the daily, weekly and
-    monthly ATR are those of Schwab's daily candles, of the weeks and of the months they make (at
-    the answer's time, before the session: no candle of today yet).
+    """Each series published on the daemon's bus, read by the console as Schwab's, taken by it.
+
+    Read by live_push.is_forwarded, the console's _bus_loop; taken (streaming._ingest_pushed ->
+    the bar writer): the 1-minute bars every reader reads are Schwab's candles, each field as
+    sent; the daily, weekly and monthly ATR are those of Schwab's daily candles, of the weeks and
+    of the months they make (at the answer's time, before the session: no candle of today yet).
     """
     bus = MessageBus()
     sub = bus.subscribe("pricehistory.", policy=LATEST)
@@ -254,9 +258,11 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
 
 
 def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
-    """The daemon pushes a ticker's price history again (it asks once per ET date and again after
-    its own restart): the console's bars stay Schwab's candles as first taken, and the ticker's
-    open page is told of no change (no liquidity push, no levels rebuilt for it).
+    """The daemon pushes a ticker's price history again.
+
+    It asks once per ET date and again after its own restart: the console's bars stay Schwab's
+    candles as first taken, and the ticker's open page is told of no change (no liquidity push,
+    no levels rebuilt for it).
     """
     for tk in ("SPY", "TSLA"):
         now = datetime.fromtimestamp(HISTORY[(tk, "minute", "1")]["answered_utc"], ET)
@@ -278,9 +284,10 @@ def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
 
 
 def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
-    """An earlier answer held without its newest session and without every seventh minute; the
-    next answer brings them: the bars are Schwab's whole answer, each minute once, in time order,
-    and the page is told the bars changed.
+    """An earlier answer held without its newest session and without every seventh minute.
+
+    The next answer brings them: the bars are Schwab's whole answer, each minute once, in time
+    order, and the page is told the bars changed.
     """
     for tk in ("SPY", "TSLA"):
         sent = HISTORY[(tk, "minute", "1")]["body"]["candles"]
@@ -304,7 +311,9 @@ def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
 
 
 def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not():
-    """The daily candles the ATR is computed from: an answer with a candle the console does not
+    """The daily candles the ATR is computed from.
+
+    An answer with a candle the console does not
     hold tells the open page (the trade desk re-reads its ATR); the same answer again tells it
     nothing.
     """
@@ -351,9 +360,10 @@ print(json.dumps({"loaded": sorted(set(sys.modules) - before),
 
 
 def test_a_console_just_started_takes_its_first_price_history_without_loading_a_module():
-    """The first price history after the console starts reaches its bars and price levels with
-    nothing loaded on the way (a module loaded there holds up the first answer beside the pricing
-    thread).
+    """The first price history after the console starts reaches its bars and price levels.
+
+    With nothing loaded on the way (a module loaded there holds up the first answer beside the
+    pricing thread).
     """
     done = subprocess.run(
         [
@@ -381,10 +391,12 @@ def test_before_schwab_sends_the_candles_the_atr_is_absent():
 
 
 def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
-    """Schwab's /pricehistory answers are recorded like every stream message (docs/DATA_FLOW.md §2
-    D4): the daemon's chain sweep (capture.run_chains, on its thread) publishes each series on the
-    daemon's bus, and the one writer (CaptureWriter, the bus's LOG reader) writes each answer whole,
-    as sent, into stream_pricehistory_raw: SPY's 1-minute, 15-minute and daily answers.
+    """Schwab's /pricehistory answers are recorded like every stream message.
+
+    docs/DATA_FLOW.md §2 D4: the daemon's chain sweep (capture.run_chains, on its thread)
+    publishes each series on the daemon's bus, and the one writer (CaptureWriter, the bus's LOG
+    reader) writes each answer whole, as sent, into stream_pricehistory_raw: SPY's 1-minute,
+    15-minute and daily answers.
     """
     db = tmp_path / "stream_capture.db"
     schwab = LocalSchwab()

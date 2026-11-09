@@ -1,4 +1,6 @@
-"""A restart prices the stored chains on Schwab's stored /markets answers. $SPX's AM-settled monthly
+"""A restart prices the stored chains on Schwab's stored /markets answers.
+
+$SPX's AM-settled monthly
 contracts of 2026-10-16 as captured 2026-09-28, and Schwab's answers of 2026-10-07 as the daemon
 stores them, in a fresh console process, which holds no answer when it starts.
 """
@@ -31,10 +33,11 @@ EXPIRY = "2026-10-16"
 
 
 def _record_answers(path: Path) -> int:
-    """Schwab's answers as the daemon's writer stores them, each with a later time; before them,
-    inserted last, an older answer for the expiry with no option session (induced test condition:
-    two answers for one date, as the daemon's asks of two days are, the older cut). Returns how
-    many are 200s.
+    """Store Schwab's answers as the daemon's writer stores them, each with a later time.
+
+    Before them, inserted last, an older answer for the expiry with no option session (induced
+    test condition: two answers for one date, as the daemon's asks of two days are, the older
+    cut). Returns how many are 200s.
     """
     path.parent.mkdir(parents=True)
     rows = [(n + 1.0, d, a["status"], a["body"]) for n, (d, a) in enumerate(ANSWERS.items())]
@@ -122,10 +125,11 @@ def test_a_stored_chain_is_priced_on_the_stored_market_answers(tmp_path):
 
 @pytest.mark.parametrize("store", ["answers", "none yet"])
 def test_the_console_holds_the_answers_before_its_loops_and_its_feed(tmp_path, store):
-    """The real program (capture_main: the daemon and the console's pages in one process), its
-    window as Ed sees it, with no Schwab token: the answers the daemon recorded are held before the
-    console's loop and its feed start; with none recorded yet (the program's writer makes the
-    tables at its start), it holds 0.
+    """The real program, its window as Ed sees it, with no Schwab token.
+
+    capture_main: the daemon and the console's pages in one process. The answers the daemon
+    recorded are held before the console's loop and its feed start; with none recorded yet (the
+    program's writer makes the tables at its start), it holds 0.
     """
     path = tmp_path / "data" / "stream_capture.db"
     held = _record_answers(path) if store == "answers" else 0

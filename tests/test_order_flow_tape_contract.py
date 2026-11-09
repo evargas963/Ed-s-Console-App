@@ -1,5 +1,6 @@
-"""The engine's tape must preserve a missing trade size as missing, not coerce it to zero -- the
-same missing-vs-zero contract as the live tape state, proved at the print seam. Each trade is a
+"""The engine's tape must preserve a missing trade size as missing, not coerce it to zero.
+
+The same missing-vs-zero contract as the live tape state, proved at the print seam. Each trade is a
 LEVELONE message as Schwab sends it, taken through the live state (state.push_level_one: the one
 reader of LAST_PRICE, LAST_SIZE and TRADE_TIME_MILLIS) in receive order.
 """
@@ -11,7 +12,7 @@ from app.options.order_flow.state import OrderFlowState
 
 
 def _data(*messages: dict) -> dict:
-    """The engine's input: the tape a fresh live state recorded from `messages`, in order."""
+    """Return the engine's input: the tape a fresh live state recorded from `messages`, in order."""
     state = OrderFlowState()
     for i, msg in enumerate(messages):
         state.push_level_one("TAPE", {"key": "TAPE", **msg}, ts_recv=1000.0 + i)
@@ -37,10 +38,11 @@ def test_cum_delta_proxy_returns_none_when_all_print_sizes_missing():
 
 
 def test_a_tape_of_zero_size_prints_sums_to_zero_and_serves_its_window():
-    """Prints Schwab sent with LAST_SIZE 0 sum to a cumulative delta of 0, not "no value" (operator
-    2026-10-01: "shouldn't be a dash should be 0"); the window it sums is served beside it -- no
-    clock resets it. Stand-in prints (named): two 0-size trades at 09:30:00 and 09:31:00 ET
-    2026-10-01.
+    """Prints Schwab sent with LAST_SIZE 0 sum to a cumulative delta of 0, not "no value".
+
+    Operator 2026-10-01: "shouldn't be a dash should be 0". The window it sums is served beside
+    it -- no clock resets it. Stand-in prints (named): two 0-size trades at 09:30:00 and
+    09:31:00 ET 2026-10-01.
     """
     t0 = 1_790_861_400_000  # 2026-10-01 09:30:00 ET
     data = _data(
@@ -63,7 +65,9 @@ def test_tape_pressure_skips_missing_print_size():
 
 
 def test_an_old_tape_has_no_current_window_pressure():
-    """Audit O-08: the 30s/2m/5m windows were anchored to the LAST print, so a tape whose last
+    """Audit O-08: the 30s/2m/5m windows were anchored to the LAST print.
+
+    So a tape whose last
     trade was an hour ago still reported "30-second" pressure as current. Windows end at now;
     prints outside them count for nothing. Stand-in prints (named): two trades at t=1 s and 2 s.
     """

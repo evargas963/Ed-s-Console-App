@@ -46,14 +46,15 @@ def is_adjacent_restatement(
     prev: tuple[Any, ...] | None,
     curr: tuple[Any, ...],
 ) -> bool:
-    """True only when the immediately previous observation equals this vendor triple."""
+    """Return True only when the immediately previous observation equals this vendor triple."""
     return prev is not None and prev == curr
 
 
 def extract_vendor_print(item: dict[str, Any]) -> dict[str, Any] | None:
-    """The one reader of a LEVELONE message's last print (LAST_PRICE, LAST_SIZE,
-    TRADE_TIME_MILLIS), each by rule 2: {price, size, time_millis}. Missing LAST_PRICE is not a
-    trade observation (None).
+    """Read a LEVELONE message's last print; the one reader of it.
+
+    The print is LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS, each by rule 2: {price, size,
+    time_millis}. Missing LAST_PRICE is not a trade observation (None).
     """
     price = schwab_number(item.get(VENDOR_LAST_PRICE))
     if price is None:
@@ -66,9 +67,11 @@ def extract_vendor_print(item: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def canonical_tape_prints(content_items: list) -> list[dict[str, Any]]:
-    """The tape's prints among `content_items` (each one the live state recorded: a genuinely
-    new print, an adjacent restatement never recorded), in receive order. Never sorts by
-    TRADE_TIME_MILLIS: out-of-order vendor clocks stay in receive order.
+    """Return the tape's prints among `content_items`, in receive order.
+
+    Each one is what the live state recorded: a genuinely new print, an adjacent restatement
+    never recorded. Never sorts by TRADE_TIME_MILLIS: out-of-order vendor clocks stay in
+    receive order.
     """
     return [item for item in content_items if isinstance(item, dict)]
 
@@ -78,8 +81,10 @@ def tick_rule_signed_size(
     price: float | None,
     size: float | None,
 ) -> float | None:
-    """PROXY tick-rule signed size. Not native aggressor. None without a size or a price to
-    compare (Schwab sent none); a size of 0 signs 0.
+    """Return the PROXY tick-rule signed size.
+
+    Not native aggressor. None without a size or a price to compare (Schwab sent none); a size
+    of 0 signs 0.
     """
     if size is None or price is None or prev_price is None:
         return None
@@ -91,9 +96,11 @@ def tick_rule_signed_size(
 
 
 def _signed_walk(prints: list[dict[str, Any]], cutoff_ms: float | None):
-    """THE one tick-rule walk: each print with a size, traded at or after `cutoff_ms` (every
-    one when None; a print with no trade time cannot be placed after it), as (x, size, signed
-    size or None). x is the trade time in seconds, else the receive index (not a trade id). A
+    """Walk the prints by the tick rule; THE one tick-rule walk.
+
+    Each print with a size, traded at or after `cutoff_ms` (every one when None; a print with
+    no trade time cannot be placed after it), as (x, size, signed size or None). x is the
+    trade time in seconds, else the receive index (not a trade id). A
     print before the window still sets the price the first one in it is signed against.
     """
     prev_price: float | None = None
@@ -112,8 +119,10 @@ def iter_signed_cum_points(
     window_sec: float | None = None,
     now_ms: float | None = None,
 ) -> list[tuple[float, float]]:
-    """The cumulative signed size at each print of the walk (_signed_walk), for CVD and its
-    slope; with a window, the prints traded in the `window_sec` before `now_ms`.
+    """Return the cumulative signed size at each print of the walk (_signed_walk).
+
+    It is for CVD and its slope; with a window, the prints traded in the `window_sec` before
+    `now_ms`.
     """
     cutoff = None if window_sec is None else now_ms - int(window_sec * 1000)
     points: list[tuple[float, float]] = []
@@ -126,7 +135,8 @@ def iter_signed_cum_points(
 
 
 def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> float | None:
-    """The tick-rule signed size summed over every print with a size (a size of 0 adds 0);
+    """Sum the tick-rule signed size over every print with a size (a size of 0 adds 0).
+
     None when no print carried one. The prints it sums are cum_delta_window's.
     """
     points = iter_signed_cum_points(prints)
@@ -136,8 +146,10 @@ def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> float | None:
 
 
 def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[float | None, float | None]:
-    """(first, last) Schwab trade time, epoch seconds, of the prints compute_cum_delta_proxy
-    sums (those with a size and a trade time): the window the cumulative delta covers. It is
+    """(first, last) Schwab trade time, epoch seconds, of the prints compute_cum_delta_proxy sums.
+
+    Those are the prints with a size and a trade time: the window the cumulative delta covers.
+    It is
     what the tape holds -- no clock resets it -- so it is served beside the number.
     """
     times = [
@@ -151,8 +163,9 @@ def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[float | None, float 
 def compute_tape_pressure(
     prints: list[dict[str, Any]], window_sec: float, now_ms: float
 ) -> float | None:
-    """Tick-rule signed size over total size for the prints traded in the `window_sec` before
-    `now_ms` (_signed_walk); None when none traded in it.
+    """Return tick-rule signed size over total size for the prints traded in the window.
+
+    The window is the `window_sec` before `now_ms` (_signed_walk); None when none traded in it.
     """
     walk = list(_signed_walk(prints, now_ms - int(window_sec * 1000)))
     total_sz = sum(size for _x, size, _signed in walk)
