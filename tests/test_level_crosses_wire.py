@@ -262,7 +262,7 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
                 seen.append(await push_changes.next_changes(page, 0.3))
             return seen
         finally:
-            push_changes.unsubscribe("SPY", page)
+            push_changes.unsubscribe(page)
             push_changes.bind(None)
 
     try:

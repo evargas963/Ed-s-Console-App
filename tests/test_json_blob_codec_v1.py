@@ -8,7 +8,6 @@ from __future__ import annotations
 import datetime
 import gzip
 import json
-import time
 
 import pytest
 
@@ -66,9 +65,10 @@ def test_encode_json_blob_is_deterministic_across_calls():
     """
     obj = {"a": 1, "b": [1, 2, 3]}
     first = encode_json_blob(obj, default=str)
-    time.sleep(1.1)  # gzip's mtime field has 1-second resolution
     second = encode_json_blob(obj, default=str)
     assert first == second
+    # gzip's MTIME field (RFC 1952 §2.3, bytes 4-7) holds no time: no call depends on when it runs
+    assert first[4:8] == b"\x00\x00\x00\x00"
 
 
 def test_a_table_can_hold_both_pre_and_post_migration_rows_at_once():

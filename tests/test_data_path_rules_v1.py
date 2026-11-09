@@ -14,7 +14,6 @@ import json
 import sqlite3
 import sys
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -300,7 +299,9 @@ def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(t
         h = capture._publisher("LEVELONE_OPTIONS", bus, health)
         for e in _EVENTS:
             h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
-        await asyncio.sleep(0.3)
+        deadline = time_et.elapsed() + 10  # written while the writer runs, before any stop
+        while writer.status()["rows_written"] < len(_EVENTS) and time_et.elapsed() < deadline:
+            await asyncio.sleep(0.01)
         stop.set()
         await task
 
@@ -478,7 +479,7 @@ class _Swept:
         self.delivered: list[float] = []
         self.schwab = LocalSchwab()
 
-        def publish(topic, msg):
+        def publish(_topic, msg):
             if "contracts" in msg and msg["part"] == 0:
                 self.chains.append(msg["ticker"])
                 self.delivered.append(msg["ts_recv"])
@@ -489,7 +490,7 @@ class _Swept:
             publish,
             clock=lambda: self.clock["now"],
             failures=CaptureWriter(tmp_path / "stream_capture.db"),
-            streamed=lambda symbol: None,
+            streamed=lambda _symbol: None,
         )
         self.client = self.schwab.client(tmp_path)
         self.stop = threading.Event()
@@ -757,25 +758,23 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
             else _et("2026-10-07 16:10")
         )
 
-    def publish(topic, msg):
+    def publish(_topic, msg):
         if "contracts" in msg and msg["part"] == 0:
             delivered.append(msg["ts_recv"])
 
     db = tmp_path / "ed_console.db"
     writer = CaptureWriter(tmp_path / "stream_capture.db")
     sweep = ChainSweep(
-        db, ["SPY"], publish, clock=clock, failures=writer, streamed=lambda symbol: None
+        db, ["SPY"], publish, clock=clock, failures=writer, streamed=lambda _symbol: None
     )
     client = schwab.client(tmp_path)
     stop = threading.Event()
-    worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
-    worker.start()
-    deadline = time_et.elapsed() + 10
-    while len(delivered) < 2 and time_et.elapsed() < deadline:
-        time.sleep(0.02)
-    time.sleep(1.0)  # nothing more is asked
-    stop.set()
-    worker.join(10)
+    # the passes of the sweep's thread (ChainSweep.work), until one asks for nothing, and the
+    # next: nothing more is asked
+    for _ in range(PASSES):
+        if not sweep.step(lambda: client, stop):
+            break
+    assert not sweep.step(lambda: client, stop)
     asked = [r[1]["fromDate"] for r in schwab.requests if r[0] == chains]
     with sqlite3.connect(db) as conn:
         stored = sorted(
@@ -1324,9 +1323,9 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
     sweep = ChainSweep(
         tmp_path / "ed_console.db",
         ["AAA", "BBB", "CCC", "DDD", "EEE"],
-        lambda topic, msg: failed.append(msg["failed"]),
+        lambda _topic, msg: failed.append(msg["failed"]),
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed=lambda _symbol: None,
     )
     halt = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
@@ -1359,10 +1358,10 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
     sweep = ChainSweep(
         tmp_path / "ed_console.db",
         ["AAA", "BBB"],
-        lambda topic, msg: published.append(msg),
+        lambda _topic, msg: published.append(msg),
         clock=lambda: now,
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
-        streamed=lambda symbol: None,
+        streamed=lambda _symbol: None,
     )
     client = schwab.client(tmp_path)
     try:

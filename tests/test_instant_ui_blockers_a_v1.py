@@ -182,7 +182,7 @@ def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
     finally:
         gate.set()
         srv._chain_pricing.submit(lambda: None).result(timeout=10)
-        push_changes.unsubscribe("ZZVIEW", page)
+        push_changes.unsubscribe(page)
         push_changes.bind(loop)
     assert waiting == {
         "ZZNOTVIEWED": (srv.REPRICE, None, RTH_INSTANT, None),

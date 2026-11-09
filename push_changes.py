@@ -46,8 +46,8 @@ def subscribe(tk: str, c: Client | None = None) -> Client:
     return c
 
 
-def unsubscribe(tk: str, c: Client) -> None:
-    """Record that the page closed (on the event loop)."""
+def unsubscribe(c: Client) -> None:
+    """Record that the page on connection `c` closed (on the event loop)."""
     _open[:] = [(t, x) for t, x in _open if x is not c]
 
 
