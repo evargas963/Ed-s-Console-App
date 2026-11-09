@@ -25,26 +25,10 @@ GREEKS = ("gamma", "delta", "theta", "vega", "rho")
 #: docs/schwab/schwab_support_emails_2026_10_06.txt item 6), and its quotes and its
 #: LEVELONE_OPTIONS stream send as computed
 GREEK_FIELDS = (*GREEKS, "volatility")
-#: the fields read into the record; every other field is the listing, shown as sent
-READ = frozenset(
-    {
-        "symbol",
-        "putCall",
-        "strikePrice",
-        "expirationDate",
-        "daysToExpiration",
-        "settlementType",
-        "openInterest",
-        "totalVolume",
-        "multiplier",
-        "volatility",
-        "nonStandard",
-        "bid",
-        "ask",
-        "quote",
-        *GREEKS,
-    }
-)
+#: the contract's terms from /chains the Structures tab shows as sent, beside those read into
+#: the record, and the time of its Greeks (the chain sweep's `greeksTime`, AGENTS.md rule 5);
+#: no other /chains field reaches the screen
+LISTED = ("pennyPilot", "exerciseType", "expirationType", "lastTradingDay", "greeksTime")
 
 
 @dataclass(frozen=True)
@@ -81,7 +65,7 @@ class OptionContract:
     rho: float | None
     #: Schwab's nonStandard flag (an adjusted deliverable); None when not sent as true or false
     non_standard: bool | None
-    #: every other field, each number by rule 2, for the screen only
+    #: the LISTED terms Schwab sent, as sent, for the screen only
     listing: Mapping[str, Any] = field(repr=False)
     #: the fields Schwab sent: the screen shows a field Schwab did not send only with a value
     sent: frozenset[str] = field(repr=False, default=frozenset())
@@ -167,7 +151,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         volatility=schwab_number(vol_sent),
         **{g: _greek(raw, g, void) for g in GREEKS},
         non_standard=flag if isinstance(flag := raw.get("nonStandard"), bool) else None,
-        listing={k: _shown(v) for k, v in raw.items() if k not in READ},
+        listing={k: _shown(raw[k]) for k in LISTED if k in raw},
         sent=frozenset(raw),
     )
 
