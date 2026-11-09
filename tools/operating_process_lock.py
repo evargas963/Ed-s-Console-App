@@ -114,7 +114,7 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     `git checkout -b` and `push --force-with-lease` stay legal. Text a command only carries (a
     commit message, a heredoc nothing runs) is not a statement.
     """
-    gits = [st.words for st in read(command or "", powershell=powershell) if st.program == "git"]
+    gits = [st.words for st in read(command, powershell=powershell) if st.program == "git"]
     if any(_hard(*git_subcommand(words)) for words in gits):
         return [
             "RESET_GUARD: destructive git can discard operator work — "

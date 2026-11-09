@@ -58,7 +58,8 @@ def _part(name: str) -> str:
 def _outside_the_contracts(tree: Path, name: str) -> bool:
     """Whether `name`, a file Python can load, is not one import-linter is sure to read: a `.py`
     named as a module, in folders that are packages. grimp also reads a folder with no
-    `__init__.py` at the top, until a root `__init__.py` stops it, so this is the stricter rule."""
+    `__init__.py` at the top, until a root `__init__.py` stops it, so this is the stricter rule.
+    """
     parts = name.removesuffix(".py").split("/")
     return not (
         name.endswith(".py")

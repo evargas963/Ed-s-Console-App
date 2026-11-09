@@ -164,7 +164,7 @@ class Statement:
 def read(cmd: str, cwd: str = "", powershell: bool = False) -> list[Statement]:
     """Every statement `cmd` runs, in order; `cwd` is the directory it starts in; `powershell`
     reads it as PowerShell (the PowerShell tool), else as bash."""
-    return _read(cmd or "", {"cwd": str(cwd or ""), "last": None, "ps": powershell}, None)
+    return _read(cmd, {"cwd": cwd, "last": None, "ps": powershell}, None)
 
 
 # ── lexing ───────────────────────────────────────────────────────────────────────────────────
@@ -958,13 +958,13 @@ def _python_shell_commands(code: str) -> list[str]:
         return []
     out = []
     for n in ast.walk(tree):
-        f = getattr(n, "func", None)
-        if not (
-            isinstance(n, ast.Call)
-            and n.args
-            and (f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", ""))
-            in _PY_SHELL_CALLS
-        ):
+        if not isinstance(n, ast.Call) or not n.args:
+            continue
+        f = n.func  # the name called: os.system -> system, run -> run; a call of a call has none
+        called = (
+            f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else None
+        )
+        if called not in _PY_SHELL_CALLS:
             continue
         arg = n.args[0]
         if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
