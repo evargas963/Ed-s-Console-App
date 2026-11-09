@@ -42,7 +42,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
+from typing import override
 
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
@@ -55,10 +55,9 @@ from instrument_identity import display_symbol, ticker_storage_key
 log = logging.getLogger(__name__)
 
 #: The console's pages and routes (server.app) and the page's socket (/ws), served by the program
-#: on every address: the page is served to whatever address the operator opened it on;
-#: ED_CONSOLE_PORT points a test's program at a free port of its own
+#: on every address: the page is served to whatever address the operator opened it on (its port:
+#: capture.open_sockets)
 CONSOLE_HOST = "0.0.0.0"
-CONSOLE_PORT = int(os.environ.get("ED_CONSOLE_PORT", "8000"))
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
 
@@ -75,17 +74,21 @@ class PageSocket(WebSocketsSansIOProtocol):
 
     _stalled: asyncio.TimerHandle | None = None
 
+    @override
     def pause_writing(self) -> None:
         super().pause_writing()
         self._stalled = self.loop.call_later(HEARTBEAT_SEC, self._drop, "a beat unread")
 
+    @override
     def resume_writing(self) -> None:
         super().resume_writing()
         self._stalled.cancel()
 
+    @override
     def keepalive_timeout(self) -> None:
         self._drop("the keepalive ping unanswered")
 
+    @override
     def connection_lost(self, exc: Exception | None) -> None:
         if self._stalled is not None:
             self._stalled.cancel()
@@ -147,8 +150,14 @@ class LiveUiServer:
                 c.pending.add(ticker)
                 c.wake.set()
 
-    def on_change(self, ticker: str, kind: str) -> None:
-        """Mark panel `kind` changed for every browser whose selected ticker is `ticker`."""
+    def changed(self, ticker: str, kind: str) -> None:
+        """Mark panel `kind` of `ticker` (its key) changed for the pages on it.
+
+        Callable from any thread: the pricing thread's producer calls it.
+        """
+        self.loop.call_soon_threadsafe(self._mark_changed, ticker, kind)
+
+    def _mark_changed(self, ticker: str, kind: str) -> None:
         for c in self.clients:
             if c.ticker == ticker:
                 c.panels.add(kind)
@@ -272,37 +281,24 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
-#: the price server while the program serves the pages' socket (serve_live_ui); None before and
-#: after
-_serving: LiveUiServer | None = None
-
-
-def changed(ticker: str, kind: str) -> None:
-    """Mark panel `kind` of `ticker` (its key) changed for the pages on it.
-
-    Callable from any thread: the pricing thread's producer calls it.
-    """
-    srv = _serving
-    if srv is not None:
-        srv.loop.call_soon_threadsafe(srv.on_change, ticker, kind)
-
-
 async def page_socket(ws: WebSocket) -> None:
     """Serve the page's socket, /ws on the program's web server (server.app).
 
-    Served while the program serves prices (serve_live_ui); refused before and after, and the
-    page's reconnect keeps its schedule.
+    Served while the program serves prices (serve_live_ui, the app's state `prices`); refused
+    before and after, and the page's reconnect keeps its schedule.
     """
-    if _serving is None:
+    prices = ws.app.state.prices
+    if prices is None:
         await ws.close()
         return
     await ws.accept()
-    await _serving.serve_client(ws)
+    await prices.serve_client(ws)
 
 
 async def serve_live_ui(
     stop: asyncio.Event,
     *,
+    state,
     heartbeat_fn,
     panels: dict,
     stats: dict | None = None,
@@ -311,22 +307,22 @@ async def serve_live_ui(
 ) -> None:
     """Serve the pages' price socket (page_socket) until `stop` is set.
 
-    Each beat is recorded with `record_heartbeat` (the daemon's own plane); `panels` are the
-    selected ticker's panels (server.PAGE_PANELS). The pages' connections end with the program's
-    web server (capture.serve_console).
+    The price server is the web server's app `state.prices` while it serves, None before and
+    after. Each beat is recorded with `record_heartbeat` (the daemon's own plane); `panels` are
+    the selected ticker's panels (server.PAGE_PANELS). The pages' connections end with the
+    program's web server (capture.serve_console).
     """
-    global _serving
     stats = stats if stats is not None else {}
     srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock, panels=panels)
     lmp.add_row_listener(srv.on_row)
     beats = asyncio.create_task(srv.beat_loop())
     srv.loop = asyncio.get_running_loop()
-    _serving = srv
+    state.prices = srv
     log.info("live ui: serving price rows to the pages on /ws")
     try:
         await stop.wait()
     finally:
-        _serving = None
+        state.prices = None
         beats.cancel()
         await asyncio.gather(beats, return_exceptions=True)
         lmp.remove_row_listener(srv.on_row)

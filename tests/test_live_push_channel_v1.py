@@ -1,8 +1,8 @@
 """Daemon -> console in one program, end to end, with no database in the live path.
 
-The REAL daemon (capture.Daemon on a real stream_spine.MessageBus, its market follower, its
-browser price socket live_ui.serve_live_ui, whose beat records the daemon's status, and its local
-socket live_push.serve_live_push) and the REAL console feed
+The REAL daemon (capture.Daemon on a real stream_spine.MessageBus, its market follower, and its
+browser price socket live_ui.serve_live_ui on the program's web server, whose beat records the
+daemon's status) and the REAL console feed
 (app.options.order_flow.streaming.start_order_flow_stream: _bus_loop reading the daemon's bus,
 bound with bind_daemon) run on one event loop, as capture.run runs them. These tests prove:
 
@@ -12,8 +12,7 @@ bound with bind_daemon) run on one event loop, as capture.run runs them. These t
     not);
   * a console that starts late first takes the bus's current records, then each that changes;
   * the live loop never opens the capture database;
-  * with no daemon in the program nothing is served, and the feed starts once one is bound;
-  * the daemon's local socket does not hold its stop behind a connected client.
+  * with no daemon in the program nothing is served, and the feed starts once one is bound.
 """
 
 from __future__ import annotations
@@ -28,7 +27,6 @@ from pathlib import Path
 
 import pytest
 import uvicorn
-from websockets.asyncio.client import connect
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
@@ -48,20 +46,6 @@ from stream_spine import (
 from tests.feed_live_helper import RTH_INSTANT, clock_from
 
 _CONTRACT = "SPY   260918C00500000"
-
-
-@pytest.fixture
-def feed():
-    """Clear the console's state before and after, and leave no daemon bound after."""
-    ofs.stop_order_flow_stream()
-    ofs._option_contract_last_update_ts.clear()
-    ofls.clear_all_live_state()
-    lmp._by_ticker.clear()
-    yield
-    ofs.stop_order_flow_stream()
-    ofs.bind_daemon(None)
-    lmp._by_ticker.clear()
-    lmp.record_feed_down()
 
 
 def _spy_trade(last: float, ts: float) -> dict:
@@ -101,20 +85,32 @@ def listener() -> tuple[socket.socket, str]:
     return sock, f"ws://127.0.0.1:{sock.getsockname()[1]}"
 
 
-async def serve_page_socket(stop: asyncio.Event, sock: socket.socket, prices: dict, **settings):
+def program_web(**settings) -> capture._PagesServer:
+    """Return the program's web server with the console's startup work not run (lifespan off).
+
+    It is capture._PagesServer with capture.PAGES, `settings` over them: its page socket, /ws,
+    alone.
+    """
+    return capture._PagesServer(
+        uvicorn.Config(server.app, **{**capture.PAGES, "lifespan": "off", **settings})
+    )
+
+
+async def serve_page_socket(
+    stop: asyncio.Event, sock: socket.socket, prices: dict, web=None, **settings
+):
     """Serve the page's price socket as the program serves it, until `stop`.
 
     The daemon's side (live_ui.serve_live_ui, `prices` its arguments, with the program's panels,
-    server.PAGE_PANELS) and /ws on the program's
-    web server (capture._PagesServer with capture.PAGES, `settings` over them) on `sock`. The
-    console's startup work is not run (lifespan off): the page socket alone.
+    server.PAGE_PANELS) and /ws on the program's web server (`web`, a test's to watch, or
+    program_web with `settings`) on `sock`.
     """
-    web = capture._PagesServer(
-        uvicorn.Config(server.app, **{**capture.PAGES, "lifespan": "off", **settings})
-    )
+    web = web if web is not None else program_web(**settings)
     serving = asyncio.create_task(web.serve(sockets=[sock]))
     try:
-        await live_ui.serve_live_ui(stop, panels=server.PAGE_PANELS, **prices)
+        await live_ui.serve_live_ui(
+            stop, state=server.app.state, panels=server.PAGE_PANELS, **prices
+        )
     finally:
         web.should_exit = True
         await serving
@@ -136,38 +132,39 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
 async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
     """Run the daemon on one bus, as capture.run runs it, with the console's real feed.
 
-    Its local socket (live push), its browser price socket, whose beat records the daemon's
-    status (the one program's one plane), and its market follower feeding the plane -- with the
-    console's real feed started on the same loop, bound to that daemon (start_order_flow_stream,
-    with the tick and chain callbacks the console passes it).
+    The program's web server and its browser price socket (serve_page_socket), whose beat records
+    the daemon's status (the one program's one plane), and its market follower feeding the plane
+    -- with the console's real feed started on the same loop, bound to that daemon
+    (start_order_flow_stream, with the tick and chain callbacks the console passes it). `body`
+    takes the bus and the web server.
     """
     bus = MessageBus()
     stop = asyncio.Event()
-    stats: dict = {}
     ui_stats: dict = {}
     daemon = capture.Daemon(bus, HealthRegistry(), [])
-    push = asyncio.create_task(
-        live_push.serve_live_push(stop, daemon.console_frame, listener()[0], stats=stats)
-    )
+    web = program_web()
     ui = asyncio.create_task(
-        live_ui.serve_live_ui(
+        serve_page_socket(
             stop,
-            heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
-            panels=server.PAGE_PANELS,
-            stats=ui_stats,
+            listener()[0],
+            {
+                "heartbeat_fn": heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
+                "stats": ui_stats,
+            },
+            web=web,
         )
     )
     follower = asyncio.create_task(daemon.follow_market(stop))
-    assert await _until(lambda: "clients" in stats and "clients" in ui_stats)  # both serving
-    ofs.bind_daemon(daemon)
+    assert await _until(lambda: web.started and "clients" in ui_stats)  # both serving
+    ofs.bind_daemon(daemon)  # as capture.serve_console binds it
     assert ofs.start_order_flow_stream(on_tick_callback=on_tick, on_chain_callback=on_chain)
     try:
-        await body(bus, stats)
+        await body(bus, web)
     finally:
         ofs.stop_order_flow_stream()
         ofs.bind_daemon(None)
         stop.set()
-        await asyncio.gather(push, ui, follower, return_exceptions=True)
+        await asyncio.gather(ui, follower, return_exceptions=True)
 
 
 def _received(ts):
@@ -190,8 +187,8 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end():
     """
     clock = clock_from(RTH_INSTANT)
 
-    async def body(bus, stats):
-        assert stats["clients"] == 0  # the console reads the bus: no copy over the socket
+    async def body(bus, web):
+        assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = clock()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
@@ -233,7 +230,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
             samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
             time.sleep(0.05)
 
-    async def body(bus, _stats):
+    async def body(bus, _web):
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         for i in range(300):
             for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time_et.now(), None, None):
@@ -256,8 +253,8 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
 
 @pytest.mark.usefixtures("feed")
 def test_a_closed_schwab_socket_is_not_live():
-    async def body(bus, stats):
-        assert stats["clients"] == 0  # the console reads the bus: no copy over the socket
+    async def body(bus, web):
+        assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
@@ -278,8 +275,8 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded():
     only the non-Schwab message carried them).
     """
 
-    async def body(bus, stats):
-        assert stats["clients"] == 0  # the console reads the bus: no copy over the socket
+    async def body(bus, web):
+        assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         bus.publish(
             "quote.SPY",
             quote_msg(
@@ -318,8 +315,8 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks():
     """The console's tick callback, as start_order_flow_stream sets it, records each tick."""
     seen: list = []
 
-    async def body(bus, stats):
-        assert stats["clients"] == 0  # the console reads the bus: no copy over the socket
+    async def body(bus, web):
+        assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = time_et.now()
         bus.publish(
             f"optquote.{_CONTRACT}",
@@ -361,8 +358,8 @@ sys.addaudithook(
 
 @pytest.mark.usefixtures("feed")
 def test_the_live_loop_never_opens_the_capture_database():
-    async def body(bus, stats):
-        assert stats["clients"] == 0  # the console reads the bus: no copy over the socket
+    async def body(bus, web):
+        assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(503.0, ts))
         assert await _until(_received(ts))
@@ -420,33 +417,6 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
         ofls.get_content_for_symbol("ZZZNOTS") == []
         and ofls.get_content_for_symbol("ZZZNOPE") == []
     )
-
-
-@pytest.mark.usefixtures("feed")
-def test_daemon_shutdown_is_not_held_up_by_a_connected_console():
-    """A handler blocked waiting for its client's next frame must not keep the socket open.
-
-    The daemon's local socket: stopping the daemon with a client attached (launch.py stop's
-    connection, as a console's once was) hung forever before the fix.
-    """
-
-    async def run():
-        stop = asyncio.Event()
-        stats: dict = {}
-        sock, url = listener()
-        server = asyncio.create_task(live_push.serve_live_push(stop, [].append, sock, stats=stats))
-        assert await _until(lambda: "clients" in stats)  # serving
-        try:
-            async with connect(url):
-                assert await _until(lambda: stats["clients"] == 1)
-                stop.set()  # the client still connected
-                await asyncio.wait_for(asyncio.shield(server), timeout=3.0)
-                assert stats["clients"] == 0
-        finally:
-            stop.set()
-            await asyncio.gather(server, return_exceptions=True)
-
-    asyncio.run(run())
 
 
 @pytest.mark.usefixtures("feed")

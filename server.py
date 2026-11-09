@@ -457,6 +457,9 @@ async def _app_lifespan(_app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
+#: the price server the page's socket serves while the program serves prices
+#: (live_ui.serve_live_ui), None before and after
+app.state.prices = None
 
 
 class _RevalidateStaticFiles(StaticFiles):
@@ -1541,7 +1544,9 @@ def _publish_levels(
     push_changes.changed(tk, push_changes.LEVELS)
     if new_chain:
         push_changes.changed(tk, push_changes.CHAIN)
-        live_ui.changed(tk, "expiries")
+        prices = app.state.prices  # the page's socket, while the program serves it
+        if prices is not None:
+            prices.changed(tk, "expiries")
     return snap
 
 
