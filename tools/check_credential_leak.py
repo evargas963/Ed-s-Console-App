@@ -65,10 +65,12 @@ def _added_text(root: Path, base: str | None = None) -> str:
     # core.quotePath=true: a quoted name is all escapes, whatever the repository's own setting.
     # --text, --no-textconv, --no-ext-diff: the bytes the commit publishes, whatever its attributes
     # or diff settings. Read as bytes: git ends a line only at a line feed.
-    # --diff-merges=remerge: a merge commit shows only what it adds beyond git's own merge of its
-    # parents (a conflict resolved by hand), never the lines its other parent brings in.
+    # --diff-merges=dense-combined: a merge commit is shown against all its parents at once; a line
+    # it adds that matches no parent (a conflict resolved by hand) has `+` in every column, and a
+    # line one parent brings in does not. It reads only stored objects: remerge builds merges of
+    # its own, which a partial clone (CI's checkout) then asks GitHub for, and GitHub refuses them.
     which = (
-        ["log", "-p", "--diff-merges=remerge", "--format=", f"{base}..HEAD"]
+        ["log", "-p", "--diff-merges=dense-combined", "--format=", f"{base}..HEAD"]
         if base
         else ["diff", "--cached"]
     )
@@ -107,11 +109,13 @@ def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[st
     header = (
         False  # between a file's `diff --git` and its first hunk: an added line is not a header
     )
+    columns = 1  # one marker column per parent: `@@ ` one, a merge's `@@@ ` two
     for line in text.split("\n"):
-        if line.startswith("diff --git "):
+        if line.startswith(("diff --git ", "diff --cc ", "diff --combined ")):
             current_file, header = "?", True
             continue
-        if line.startswith("@@ "):
+        if line.startswith("@@"):  # a hunk: no line of a file's body starts with `@`
+            columns = len(line) - len(line.lstrip("@")) - 1
             header = False
             continue
         if header:
@@ -121,8 +125,8 @@ def find_credential_leaks(root: Path = REPO, base: str | None = None) -> list[st
                 except ToolError as e:
                     raise DiffUnreadable(str(e)) from e
             continue
-        if line.startswith("+"):
-            hits.extend(_leaks(current_file, line[1:]))
+        if line.startswith("+" * columns):  # added against every parent: this commit's own
+            hits.extend(_leaks(current_file, line[columns:]))
     return hits
 
 
