@@ -210,7 +210,72 @@ jobs:
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: |
-          PYTHONPATH=. python .github/diag/ports_probe.py 2400 > ports_probe.txt 2>&1 &
+          # every 50 ms ask Windows for one ephemeral port (bind port 0) and give it back; on a
+          # refusal print the whole TCP table as netstat -anoq lists it (BOUND included), by state
+          # and process; every second print the stack's cumulative counters (GetTcpStatisticsEx)
+          cat > "$RUNNER_TEMP/ports_probe.py" <<'PROBE'
+          import collections, ctypes, socket, subprocess, sys, time
+          from ctypes import wintypes
+          F = ("rto_alg rto_min rto_max max_conn active passive attempt_fails estab_resets "
+               "curr_estab in_segs out_segs retrans in_errs out_rsts num_conns").split()
+          class S(ctypes.Structure):
+              _fields_ = [(f, wintypes.DWORD) for f in F]
+          def stats(fam):
+              s = S(); ctypes.windll.iphlpapi.GetTcpStatisticsEx(ctypes.byref(s), fam)
+              return {f: getattr(s, f) for f in F}
+          def stamp():
+              t = time.time()
+              return time.strftime("%H:%M:%S", time.gmtime(t)) + ".%03d" % (int(t * 1000) % 1000)
+          def names():
+              out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True).stdout
+              d = {}
+              for line in out.splitlines():
+                  p = [x.strip('"') for x in line.split('","')]
+                  if len(p) > 1: d[p[1]] = p[0]
+              return d
+          def snap(why):
+              t0 = time.monotonic()
+              out = subprocess.run(["netstat", "-anoq", "-p", "TCP"], capture_output=True, text=True).stdout
+              rows = [r for r in (l.split() for l in out.splitlines()) if len(r) == 5 and r[0] == "TCP"]
+              st = collections.Counter(r[3] for r in rows)
+              bp = collections.Counter((r[3], r[4]) for r in rows)
+              eph = collections.Counter(r[4] for r in rows if int(r[1].rsplit(":", 1)[1]) >= 49152)
+              n = names()
+              print("### SNAPSHOT %s (%s) netstat %.2fs rows=%d" % (stamp(), why, time.monotonic() - t0, len(rows)), flush=True)
+              print("###   by state: %s" % dict(st), flush=True)
+              for (s, pid), c in bp.most_common(12):
+                  print("###   %6d %-12s pid %s %s" % (c, s, pid, n.get(pid, "?")), flush=True)
+              for pid, c in eph.most_common(6):
+                  print("###   local port 49152+: %6d pid %s %s" % (c, pid, n.get(pid, "?")), flush=True)
+              udp = subprocess.run(["netstat", "-ano", "-p", "UDP"], capture_output=True, text=True).stdout
+              print("###   UDP endpoints: %d" % sum(1 for x in udp.splitlines() if "UDP" in x), flush=True)
+          end = time.monotonic() + float(sys.argv[1])
+          p4, p6 = stats(socket.AF_INET), stats(socket.AF_INET6)
+          nxt, nsnap, nroutine, fails = time.monotonic() + 1, 0.0, time.monotonic() + 30, 0
+          while time.monotonic() < end:
+              s = socket.socket()
+              try:
+                  s.bind(("127.0.0.1", 0))
+              except OSError as e:
+                  fails += 1
+                  print("### PORT REFUSED %s %r" % (stamp(), e), flush=True)
+                  if time.monotonic() >= nsnap:
+                      snap("port refused"); nsnap = time.monotonic() + 2
+              finally:
+                  s.close()
+              now = time.monotonic()
+              if now >= nxt:
+                  s4, s6 = stats(socket.AF_INET), stats(socket.AF_INET6)
+                  print("%s v4 active+%d passive+%d fails+%d resets+%d estab=%d table=%d | v6 active+%d table=%d | refused=%d" % (
+                      stamp(), s4["active"] - p4["active"], s4["passive"] - p4["passive"],
+                      s4["attempt_fails"] - p4["attempt_fails"], s4["estab_resets"] - p4["estab_resets"],
+                      s4["curr_estab"], s4["num_conns"], s6["active"] - p6["active"], s6["num_conns"], fails), flush=True)
+                  p4, p6, nxt = s4, s6, now + 1
+              if now >= nroutine:
+                  snap("every 30 s"); nroutine = now + 30
+              time.sleep(0.05)
+          PROBE
+          python "$RUNNER_TEMP/ports_probe.py" 2400 > ports_probe.txt 2>&1 &
           probe_pid=$!
           rc=0
           for pass in 1 2 3 4 5 6 7 8 9 10; do
