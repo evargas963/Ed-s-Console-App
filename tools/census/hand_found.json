@@ -288,14 +288,6 @@
     },
     {
       "category": "contradiction: doc vs doc",
-      "item": "docs/DATA_FLOW.md:22 'the program is two ... joined by two local sockets' vs DATA_FLOW.md:212-215 and capture.py:1148-1156 one program"
-    },
-    {
-      "category": "contradiction: doc vs code",
-      "item": "SHAPE step 3 (ACTIVE_PROGRAM.md:260) deletes live_push :8799; app/market_data/schwab/streaming/live_push.py still serves it (capture.py:1455,1482) and launch.py:147 uses it"
-    },
-    {
-      "category": "contradiction: doc vs doc",
       "item": "DATA_FLOW.md:807 Calculators on one pricing thread (a pool measured no better) vs DATA_FLOW.md:852-854 and SHAPE step 3, a worker pool"
     },
     {
