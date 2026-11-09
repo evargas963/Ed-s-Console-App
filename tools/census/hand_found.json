@@ -270,10 +270,6 @@
       "item": "/api/health over 1 s in 103 of 677 samples"
     },
     {
-      "category": "second reader",
-      "item": "the token file read a second time (server._schwab_token_creation_ts)"
-    },
-    {
       "category": "Schwab sends it twice",
       "item": "/chains still sends a streamed contract's open interest, volume and quote fields, which the stream already pushes (STREAM-ONE, rule 3)"
     },
