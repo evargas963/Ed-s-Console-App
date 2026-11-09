@@ -121,8 +121,8 @@ from time_et import (
 
 log = logging.getLogger("capture")
 
-#: The longest the connection reads Schwab's frames before it checks for silence and for a
-#: request Schwab has not answered (a subscription to send wakes it at once).
+#: How often the connection checks for silence and for a request Schwab has not answered
+#: (Daemon.watch); its frames are read and its requests sent as they come.
 READ_SEC = 1.0
 #: No frame at all from Schwab (data or heartbeat) for this long -> the connection is dead.
 DEAD_SEC = 30.0
@@ -1006,30 +1006,26 @@ class Daemon:
                     exc_info=True,
                 )
 
-    async def read_for(self, seconds: float) -> None:
-        """Handle Schwab's frames for `seconds`, or until a request is waiting.
+    async def read(self) -> None:
+        """Handle every frame Schwab sends, as it comes, until the socket is gone.
 
-        Each answer goes to its request (answered), the data to the services' handlers. One
-        task does both reading and sending, and it alone reads, so every answer reaches it
-        (websockets' recv is safe to cancel, so ending early never loses a frame).
+        Each answer goes to its request (answered), the data to the services' publishers. This
+        task alone reads, so every answer reaches it; it awaits each frame with no timer of its
+        own (a stop cancels it, and websockets' recv is safe to cancel: no frame is lost).
         """
-        end = time_et.elapsed() + seconds
-        while (left := end - time_et.elapsed()) > 0 and not self.wake.is_set():
-            frame = asyncio.ensure_future(self.stream._receive())
-            change = asyncio.ensure_future(self.wake.wait())
-            await asyncio.wait({frame, change}, timeout=left, return_when=asyncio.FIRST_COMPLETED)
-            change.cancel()
-            if not frame.done():
-                frame.cancel()
-                await asyncio.gather(frame, return_exceptions=True)
-                return
-            e = frame.exception()
-            if e is not None:
+        while True:
+            try:
+                msg = await self.stream._receive()
+            except Exception as e:  # a frame Schwab sent that cannot be read: logged, next one
                 if _connection_lost(e):
-                    raise e
-                log.warning("schwab: skipped a frame (%s: %s)", type(e).__name__, str(e)[:250])
+                    raise
+                log.warning(
+                    "schwab: skipped a frame (%s: %s)",
+                    type(e).__name__,
+                    str(e)[:250],
+                    exc_info=True,
+                )
                 continue
-            msg = frame.result()
             for response in msg["response"] if "response" in msg else []:
                 self.answered(response)
             try:
@@ -1042,37 +1038,62 @@ class Daemon:
                     exc_info=True,
                 )
 
+    async def send(self) -> None:
+        """Send what is asked (ask), as soon as it is asked, until the connection ends."""
+        while True:
+            await self.wake.wait()
+            self.wake.clear()
+            await self.send_requests()
+
+    async def watch(self, stop: asyncio.Event) -> None:
+        """Check the connection every READ_SEC until `stop`; raise once it is broken.
+
+        Broken: no frame from Schwab for DEAD_SEC, or a request Schwab has not answered once the
+        frames read reach REQUEST_TIMEOUT_SEC past it by Schwab's time (its send time is read on
+        this computer's clock, which agreed with Schwab's: of 18,358 answers logged 2026-11-03 to
+        11-09, Schwab's time on each was 0.005 s before to 3.5 s after its request's send, 0.02 s
+        after at the median).
+        """
+        while not await time_et.set_within(stop, READ_SEC):
+            now, schwab_now = time_et.now(), self.stream.schwab_ts
+            if now - self.stream.last_frame_ts > DEAD_SEC:
+                raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
+            late = [
+                s
+                for s in self._sent.values()
+                if s.answers == 0
+                and schwab_now is not None
+                and schwab_now - s.sent_ts > REQUEST_TIMEOUT_SEC
+            ]
+            if late:
+                raise ConnectionError(
+                    f"no answer to {late[0].service} {late[0].command} in "
+                    f"{REQUEST_TIMEOUT_SEC:.0f} s"
+                )
+
     async def run_connection(self, client, stop: asyncio.Event) -> None:
         """Run one connection's life until it dies or stop is set.
 
-        Ask for everything once, then send what is queued and read. A request Schwab has not
-        answered once the frames read reach REQUEST_TIMEOUT_SEC past it by Schwab's time means
-        the connection is broken (its send time is read on this computer's clock, which agreed
-        with Schwab's: of 18,358 answers logged 2026-11-03 to 11-09, Schwab's time on each was
-        0.005 s before to 3.5 s after its request's send, 0.02 s after at the median).
+        Ask for everything once; then one task reads (read), one sends what is asked (send) and
+        one checks the connection (watch). The first to end ends the others: the stop, or the
+        connection's error, raised.
         """
         await self.connect(client)
         try:
             self.ask()
-            while not stop.is_set():
-                now, schwab_now = time_et.now(), self.stream.schwab_ts
-                if now - self.stream.last_frame_ts > DEAD_SEC:
-                    raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
-                late = [
-                    s
-                    for s in self._sent.values()
-                    if s.answers == 0
-                    and schwab_now is not None
-                    and schwab_now - s.sent_ts > REQUEST_TIMEOUT_SEC
-                ]
-                if late:
-                    raise ConnectionError(
-                        f"no answer to {late[0].service} {late[0].command} in "
-                        f"{REQUEST_TIMEOUT_SEC:.0f} s"
-                    )
-                self.wake.clear()
-                await self.send_requests()
-                await self.read_for(READ_SEC)
+            parts = {
+                asyncio.ensure_future(self.read()),
+                asyncio.ensure_future(self.send()),
+                asyncio.ensure_future(self.watch(stop)),
+            }
+            try:
+                done, _ = await asyncio.wait(parts, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for part in parts:
+                    part.cancel()
+                await asyncio.gather(*parts, return_exceptions=True)
+            for part in done:
+                part.result()  # the connection's error, raised for run to name
         finally:
             await self.disconnect()
 

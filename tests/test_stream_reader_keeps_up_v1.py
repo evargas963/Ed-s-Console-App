@@ -167,6 +167,54 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
     assert daemon._ranked[tk] == capture.by_gamma(read, MRVL.spot, now), "the rule: that read"
 
 
+class _TimerCountingLoop(asyncio.SelectorEventLoop):
+    """asyncio's own event loop, counting each timer scheduled on it (call_at); nothing else."""
+
+    timers = 0
+
+    def call_at(self, when, callback, *args, context=None):
+        self.timers += 1
+        return super().call_at(when, callback, *args, context=context)
+
+
+def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
+    """Schwab's heartbeat every 10 ms for 2 s: about 200 frames, each read as it comes.
+
+    The reader raced each frame against the wake for a request to send, with a timeout: two
+    tasks and a timer on the event loop for every frame. It now awaits each frame alone, a
+    task of its own sends what is asked, and the connection is checked once a second (READ_SEC):
+    over 2 s the loop schedules at most that check's timers and the websockets library's own
+    (its keepalive), never one per frame.
+    """
+    streamer = LocalStreamer({}, data={}, beat=0.01)
+    rest = LocalSchwab(streamer.url)
+    client = rest.client(tmp_path)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
+    loop = _TimerCountingLoop()
+
+    async def go() -> tuple[int, float]:
+        stop = asyncio.Event()
+        run = asyncio.create_task(daemon.run_connection(client, stop))
+        await _until(lambda: daemon.stream is not None and daemon.stream.schwab_ts is not None, 30)
+        before, started = loop.timers, time_et.now()
+        await time_et.set_within(stop, 2.0)  # this wait's own timer: one
+        scheduled = loop.timers - before - 1
+        behind = time_et.now() - daemon.stream.schwab_ts
+        assert time_et.now() - started >= 2.0
+        stop.set()
+        await asyncio.wait_for(run, 30)
+        return scheduled, behind
+
+    try:
+        scheduled, behind = loop.run_until_complete(go())
+    finally:
+        loop.close()
+        streamer.close()
+        rest.close()
+    assert behind < 0.5, f"the frames were not read as they came: {behind:.2f} s behind"
+    assert scheduled <= 2 / capture.READ_SEC + 2, f"{scheduled} timers in 2 s of ~200 frames"
+
+
 async def _until(cond, seconds: float, state=lambda: None) -> None:
     deadline = time_et.elapsed() + seconds
     while not cond():
