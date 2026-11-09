@@ -470,26 +470,31 @@
   // The page holds the list as the program's socket last carried it: every beat's `feed` is the
   // daemon's status, its `watchlist` the list (null until the first beat carries one: unknown, not
   // empty). An add or a removal is the daemon's (POST / DELETE /api/watchlist), and its answer
-  // carries the new list.
-  var _wl = null, _wlShown = null;
+  // carries the new list. Each list carries its time on the program's one clock (a beat's `ts`, an
+  // answer's `ts`): a list stamped before the one shown is older and is not drawn (a beat built
+  // before an add can arrive after the add's answer).
+  var _wl = null, _wlShown = null, _wlTs = null;
   function loadWL() { return _wl ? _wl.slice() : []; }
   function wlFetch(url, opts) {
     return fetch(url, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
   }
-  // a list carried to the page, drawn only when it is not the one already drawn
-  function setWL(list) {
+  // a list carried to the page at time `ts`: an older one is not taken, and one is drawn only
+  // when it is not the one already drawn
+  function setWL(list, ts) {
+    if (_wlTs !== null && ts < _wlTs) return;
+    _wlTs = ts;
     var shown = JSON.stringify(list);
     if (shown === _wlShown) return;
     _wlShown = shown; _wl = list; renderWatchlist();
   }
   // one beat's status: a beat with none (the daemon's status failed) keeps the list drawn
   function ingestWatchlist(feed) {
-    if (feed) setWL(feed.watchlist);
+    if (feed) setWL(feed.watchlist, feed.ts);
     else wlNotify('the capture daemon is not reporting');
   }
   // the daemon's answer to an add or a removal: the new list, or what happened instead
   function wlAnswer(a) {
-    if (a.j.tickers) setWL(a.j.tickers);
+    if (a.j.tickers) setWL(a.j.tickers, a.j.ts);
     if (a.j.ok) return true;
     if (a.j.op === 'invalid') wlNotify(a.j.ticker + ' is not added: Schwab does not quote it (' + JSON.stringify(a.j.answer) + ')');
     else wlNotify(a.j.error || (a.j.ticker + ': ' + a.j.op));

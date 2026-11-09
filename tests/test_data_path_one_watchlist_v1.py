@@ -359,36 +359,42 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
         ofs.bind_daemon(daemon)  # the console in the daemon's program (capture.serve_console)
         assert ofs.start_order_flow_stream()
+        records = bus.subscribe("watchlist", policy=LOG)
         try:
+            beats = [daemon.status(time_et.now())]  # a beat built before the add
             added = json.loads((await server.post_watchlist("tsla")).body)
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
             swept_after_add = list(daemon.chains.watchlist)
-            beat_after_add = daemon.status(time_et.now())["watchlist"]
+            beats.append(daemon.status(time_et.now()))
             invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
             removed = json.loads((await server.delete_watchlist("TSLA")).body)
-            beat_after_removal = daemon.status(time_et.now())["watchlist"]
+            beats.append(daemon.status(time_et.now()))
             await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
         finally:
             ofs.stop_order_flow_stream()
             ofs.bind_daemon(None)
             stop.set()
             await asyncio.gather(*tasks)
-        return added, invalid, removed, swept_after_add, beat_after_add, beat_after_removal
+        sent = [records.queue.get_nowait()[1] for _ in range(records.queue.qsize())]
+        return added, invalid, removed, swept_after_add, beats, sent
 
     try:
-        added, invalid, removed, swept_after_add, beat_after_add, beat_after_removal = asyncio.run(
-            go()
-        )
+        added, invalid, removed, swept_after_add, beats, sent = asyncio.run(go())
     finally:
         schwab.close()
     assert swept_after_add == ["SPY", "TSLA"], "the chain sweep fetches an added ticker"
     # the page's next beat carries each change (live_ui beat: the daemon's status)
-    assert beat_after_add == ["SPY", "TSLA"] and beat_after_removal == ["SPY"]
+    assert [b["watchlist"] for b in beats] == [["SPY"], ["SPY", "TSLA"], ["SPY"]]
+    # each answer is stamped as its record was, on the clock each beat is stamped by: a beat built
+    # before the add is older than the add's answer, one built after it is not
+    assert [r["op"] for r in sent] == ["added", "invalid", "removed"]
+    assert beats[0]["ts"] < added["ts"] <= beats[1]["ts"]
     assert added == {
         "ok": True,
         "op": "added",
         "ticker": "TSLA",
         "tickers": ["SPY", "TSLA"],
+        "ts": sent[0]["ts_recv"],
         "status": 200,
         "answer": CHECKS["TSLA"]["body"],
     }
@@ -397,6 +403,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "op": "invalid",
         "ticker": "ZQZQZ",
         "tickers": ["SPY", "TSLA"],
+        "ts": sent[1]["ts_recv"],
         "status": 200,
         "answer": {"errors": {"invalidSymbols": ["ZQZQZ"]}},
     }
@@ -405,6 +412,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "op": "removed",
         "ticker": "TSLA",
         "tickers": ["SPY"],
+        "ts": sent[2]["ts_recv"],
         "status": None,
         "answer": None,
     }

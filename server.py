@@ -3270,7 +3270,8 @@ def options_microstructure(c: str, now: float) -> dict:
 async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
     """Ask the daemon for an add or a removal (streaming.watchlist_request).
 
-    Its record is the answer: `ok` when it happened, else what happened (an invalid ticker with
+    Its record is the answer, stamped with the record's time (`ts`, the program's clock, as each
+    beat's status is): `ok` when it happened, else what happened (an invalid ticker with
     Schwab's /quotes answer, one already on the list, ...).
     """
     try:
@@ -3287,6 +3288,7 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
             "op": rec["op"],
             "ticker": rec["ticker"],
             "tickers": rec["tickers"],
+            "ts": rec["ts_recv"],
             "status": rec["status"],
             "answer": rec["answer"],
         }
