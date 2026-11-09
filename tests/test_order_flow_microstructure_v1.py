@@ -85,7 +85,9 @@ def test_top_of_book_is_native():
 
 def test_derived_scalars():
     m = _micro(_data(), now_ts=1787233772.0)
-    assert m["mid"] == 712.48
+    # the engine computes no mid: an equity's is its price row's (carried in the top), and an
+    # option's price between bid and ask is Schwab's MARK
+    assert m["mid"] is None
     # microprice weights each price by the OPPOSITE size: (712.47*500 + 712.49*300)/800.
     assert abs(m["microprice"] - 712.4775) < 1e-6
     assert m["spread_pts"] == 712.49 - 712.47  # exact, unrounded
@@ -281,8 +283,8 @@ def test_invalid_sizes_are_rejected():
     assert m["top_of_book"]["ask_size"] == 500
 
 
-def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
-    """A crossed book (bid > ask): Schwab sent both quotes, so mid and microprice are computed.
+def test_a_crossed_book_computes_microprice_and_says_it_is_crossed():
+    """A crossed book (bid > ask): Schwab sent both quotes, so the microprice is computed.
 
     Computed from them and the payload flags crossed ("we use what schwab gives us and we
     display it").
@@ -299,7 +301,7 @@ def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
     }
     m = _micro(crossed, now_ts=2.0)
     assert m["crossed"] is True
-    assert m["mid"] == (712.60 + 712.49) / 2.0
+    assert m["mid"] is None  # carried from the top, which holds none here
     assert m["microprice"] == (712.60 * 500 + 712.49 * 300) / 800
     assert m["classification"]["microprice"] == "DERIVED"
 
@@ -614,6 +616,12 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
         )
         payload = options_live_payload(sym, RTH_INSTANT)  # a TSLA option
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
+        # the option's price between bid and ask is Schwab's MARK as sent (LEVELONE_OPTIONS
+        # field 37, the newest one sent); nothing computes a mid beside it
+        sent = [ev["content"]["MARK"] for ev in c["events"][:4] if "MARK" in ev["content"]]
+        assert sent and payload["mark"] == sent[-1]
+        assert payload["classification"]["mark"] == "NATIVE"
+        assert payload["mid"] is None
     finally:
         lmp.record_feed_down()
         ofls.clear_all_live_state()
@@ -643,6 +651,9 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
         )
         body = server.order_flow_microstructure("ZZTB", "NYSE_BOOK", now)
         assert body["flow"]["top_book_pressure"] == (3 - 5) / 8 and body["top_outage"] is None
+        # an equity's MARK is its last trade, so its mid is computed from the bid and ask (the
+        # price row's), and its MARK is served as sent beside it
+        assert body["mid"] == (10.0 + 10.02) / 2.0 and body["mark"] == 10.01
     finally:
         lmp._by_ticker.pop("ZZTB", None)
         lmp._fields_by_ticker.pop("ZZTB", None)

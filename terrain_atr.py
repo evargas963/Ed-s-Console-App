@@ -3,9 +3,10 @@
 Percent means different things on different instruments (0.5% is a normal hour on SPY and noise
 on TSLA); ATR normalises distance into "can price get there".
 
-Daily, weekly and monthly ATR(14), all from Schwab's daily candles (/pricehistory, asked once a
-day): the weekly and monthly candles are the daily candles of each week and month rolled up, and
-today's candle is the live one the console rolls up from today's 1-minute bars (server._atr).
+Daily, weekly and monthly ATR(14) by Wilder's smoothing (math_volatility.compute_atr), all from
+Schwab's daily candles (/pricehistory, asked once a day): the weekly and monthly candles are the
+daily candles of each week and month rolled up, and today's candle is the live one the console
+rolls up from today's 1-minute bars (server._atr).
 """
 
 from __future__ import annotations
@@ -54,21 +55,19 @@ def roll_up(candles: list[Candle], key) -> list[Candle]:
     return out
 
 
-def _leg(candles: list) -> float | None:
-    """ATR(ATR_PERIOD) of `candles`.
-
-    None when fewer than ATR_PERIOD + 1 of them give a true range.
-    """
-    return compute_atr(candles, period=ATR_PERIOD)
-
-
 def compute_atrs(daily: list[Candle]) -> Atr:
-    """Daily, weekly and monthly ATR of one ticker from its daily candles.
+    """Daily, weekly and monthly Wilder ATR(14) of one ticker from its daily candles.
 
-    The candles are oldest first, today's the live one. A horizon that cannot be computed is None.
+    The candles are oldest first, today's the live one. A horizon with fewer than 14 true ranges
+    is None.
     """
     return Atr(
-        _leg(daily),
-        _leg(roll_up(daily, lambda day: day.isocalendar()[:2])),
-        _leg(roll_up(daily, lambda day: (day.year, day.month))),
+        *(
+            compute_atr(candles, period=ATR_PERIOD)
+            for candles in (
+                daily,
+                roll_up(daily, lambda day: day.isocalendar()[:2]),
+                roll_up(daily, lambda day: (day.year, day.month)),
+            )
+        )
     )

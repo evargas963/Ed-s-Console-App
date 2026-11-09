@@ -77,6 +77,7 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
 
     trade_ts = field("trade_ts")
     quote_ts = field("exchange_quote_ts")
+    bid, ask = field("bid"), field("ask")
     return {
         "ticker": tk,
         "spot": spot,
@@ -87,11 +88,13 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "feed_live": label == lmp.LIVE,
         "feed_label": label,
         "outage": outage,
-        "bid": field("bid"),
-        "ask": field("ask"),
+        "bid": bid,
+        "ask": ask,
         "bid_size": field("bid_size"),
         "ask_size": field("ask_size"),
-        "mark": field("mark"),  # Schwab MARK
+        "mark": field("mark"),  # Schwab MARK: an equity's is its last trade, not a mid
+        # the mid between Schwab's bid and ask, which Schwab does not send for an equity
+        "mid": None if bid is None or ask is None else (bid + ask) / 2.0,
         "quote_ts": quote_ts,  # Schwab QUOTE_TIME (epoch s)
         "quote_time_ct": ct_label(quote_ts) if quote_ts is not None else None,
         "last_size": field("last_size"),

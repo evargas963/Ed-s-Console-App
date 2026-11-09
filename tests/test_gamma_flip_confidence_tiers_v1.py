@@ -68,6 +68,9 @@ def _chain(span: float, spot: float = 100.0, n: int = 41):
                 "volatility": 20.0,
                 "daysToExpiration": 30,
                 "expirationDate": "2027-07-16T00:00:00.000+00:00",
+                # the rate and dividend yield every /chains answer carries (CRWD's of 2026-10-07)
+                "interestRate": 4.04,
+                "dividendYield": 0.0,
             }
             for side in ("CALL", "PUT")
         )

@@ -22,6 +22,7 @@
     "depth.*.imbalance": "DERIVED",
     "depth_pressure": "DERIVED",
     "liquidity_concentration": "DERIVED",
+    "mark": "NATIVE",
     "microprice": "DERIVED",
     "mid": "DERIVED",
     "provenance.book_time_ms": "NATIVE",
@@ -114,8 +115,9 @@
     "ask": 0.2913907284768212,
     "bid": 0.9601328903654485
   },
+  "mark": 0.595,
   "microprice": 0.6039130434782608,
-  "mid": 0.595,
+  "mid": null,
   "provenance": {
     "book_source": "OPTIONS_BOOK",
     "book_time_ms": 1788202221430.0,

@@ -221,12 +221,6 @@ def _resolve_bid_ask_prices(data: dict) -> tuple[float | None, float | None]:
     return t.get("bid"), t.get("ask")
 
 
-def _resolve_quote_mark(data: dict) -> float | None:
-    """Streamed MARK, the spread-fraction denominator (a MARK of 0 divides nothing)."""
-    mark_p = _top(data).get("mark")
-    return mark_p if mark_p is not None and mark_p > 0 else None
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # CANONICAL BOOK MICROSTRUCTURE  (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -290,7 +284,6 @@ def _extract_canonical_book(data: dict) -> dict:
 
     bid_levels = _sorted_valid_levels(snapshot.pairs("BIDS"), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(snapshot.pairs("ASKS"), descending=False) if snapshot else []
-    mark = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,
         "venue": snapshot.service if snapshot else None,
@@ -301,7 +294,12 @@ def _extract_canonical_book(data: dict) -> dict:
         "bid_levels": bid_levels,
         "ask_levels": ask_levels,
         "book_time_ms": snapshot.book_time_ms if snapshot else None,
-        "mark": mark,
+        # Schwab's MARK as sent: an option's is the price between its bid and ask (Schwab sends
+        # it on LEVELONE_OPTIONS and /chains); an equity's is its last trade
+        "mark": t.get("mark"),
+        # the equity's mid from its price row (live_price_rows.price_row); an option has none:
+        # its MARK is that price
+        "mid": t.get("mid"),
     }
 
 
@@ -322,6 +320,7 @@ def _canonical_book_identity(cb: dict) -> tuple:
         cb["bid_size"],
         cb["ask_size"],
         cb["mark"],
+        cb["mid"],
         tuple(cb["bid_levels"]),
         tuple(cb["ask_levels"]),
     )
@@ -425,11 +424,13 @@ def _microstructure_structural(cb: dict) -> dict:
     crossed = have_quotes and bid > ask
 
     # computed from Schwab's quotes as sent, a crossed book included (served with `crossed`)
-    mid = (bid + ask) / 2.0 if have_quotes else None
     microprice = _microprice(bid, ask, bid_size, ask_size)
     spread_pts = ask - bid if have_quotes else None
     mark = cb["mark"]
-    spread_frac = spread_pts / mark if (spread_pts is not None and mark is not None) else None
+    # a MARK of 0 divides nothing
+    spread_frac = (
+        spread_pts / mark if spread_pts is not None and mark is not None and mark > 0 else None
+    )
 
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
     # totals and imbalance), carried; slope and concentration reuse its top-5 totals.
@@ -451,7 +452,8 @@ def _microstructure_structural(cb: dict) -> dict:
         "status": "ok" if cb["has_book"] else "no_book",
         "top_of_book": {"bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size},
         "crossed": crossed,
-        "mid": mid,
+        "mark": mark,
+        "mid": cb["mid"],
         "microprice": microprice,
         "spread_pts": spread_pts,
         "spread_frac": spread_frac,
@@ -491,6 +493,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "top_of_book.ask": "NATIVE",
             "top_of_book.bid_size": "NATIVE",
             "top_of_book.ask_size": "NATIVE",
+            "mark": "NATIVE",
             "mid": "DERIVED",
             "microprice": "DERIVED",
             "crossed": "DERIVED",

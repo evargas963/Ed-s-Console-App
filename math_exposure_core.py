@@ -39,53 +39,18 @@ def d1_vt[Num: (float, NDArray[np.float64])](
     strike: Num,
     t_years: Num,
     sigma: Num,
-    carry: float = 0.0,
+    carry: Num | float = 0.0,
     *,
     log: Callable[[Num], Num] = math.log,
     sqrt: Callable[[Num], Num] = math.sqrt,
 ) -> tuple[Num, Num]:
     """Return THE Black-Scholes d1 and sigma*sqrt(T), with `carry` = r - q (0 unless given).
 
-    Numbers, or numpy arrays with log=np.log and sqrt=np.sqrt.
+    Numbers, or numpy arrays with log=np.log and sqrt=np.sqrt (`carry` then a number or an
+    array).
     """
     vt = sigma * sqrt(t_years)
     return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
-
-
-def _priced_d1(
-    spot: float, strike: float, t_years: float, sigma: float, carry: float = 0.0
-) -> tuple[float, float] | None:
-    """Return d1 and sigma*sqrt(T) for one contract, or None when it cannot be priced.
-
-    It cannot be priced with a value that is not positive, or a d1 that is not finite.
-    """
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
-        return None
-    d1, vt = d1_vt(spot, strike, t_years, sigma, carry)
-    return (d1, vt) if math.isfinite(d1) else None
-
-
-def bs_gamma(spot: float, strike: float, t_years: float, sigma: float) -> float | None:
-    """Black-Scholes gamma per share, r = q = 0. The same gamma the profile sums."""
-    priced = _priced_d1(spot, strike, t_years, sigma)
-    if priced is None:
-        return None
-    d1, vt = priced
-    g = norm_pdf(d1) / (spot * vt)
-    return g if math.isfinite(g) else None
-
-
-def bs_delta(
-    spot: float, strike: float, t_years: float, sigma: float, *, call: bool
-) -> float | None:
-    """Black-Scholes delta per share, r = q = 0. A put is the call delta minus one."""
-    priced = _priced_d1(spot, strike, t_years, sigma)
-    if priced is None:
-        return None
-    d1, _vt = priced
-    call_delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
-    d = call_delta if call else call_delta - 1.0
-    return d if math.isfinite(d) else None
 
 
 def bs_vanna_array(

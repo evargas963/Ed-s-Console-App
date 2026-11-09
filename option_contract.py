@@ -39,6 +39,8 @@ READ = frozenset(
         "multiplier",
         "volatility",
         "nonStandard",
+        "interestRate",
+        "dividendYield",
         *GREEKS,
     }
 )
@@ -74,6 +76,10 @@ class OptionContract:
     rho: float | None
     #: Schwab's nonStandard flag (an adjusted deliverable); None when not sent as true or false
     non_standard: bool | None
+    #: the chain's interestRate and dividendYield as sent, percents (schwab_client.
+    #: flatten_chain_contracts puts the chain's own on each contract)
+    interest_rate: float | None
+    dividend_yield: float | None
     #: every other field, each number by rule 2, for the screen only
     listing: Mapping[str, Any] = field(repr=False)
     #: the fields Schwab sent: the screen shows a field Schwab did not send only with a value
@@ -157,6 +163,8 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         volatility=schwab_number(vol_sent),
         **{g: _greek(raw, g, void) for g in GREEKS},
         non_standard=flag if isinstance(flag := raw.get("nonStandard"), bool) else None,
+        interest_rate=schwab_number(raw.get("interestRate")),
+        dividend_yield=schwab_number(raw.get("dividendYield")),
         listing={k: _shown(v) for k, v in raw.items() if k not in READ},
         sent=frozenset(raw),
     )
@@ -201,6 +209,8 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
         "multiplier": c.multiplier,
         "volatility": c.volatility,
         "nonStandard": c.non_standard,
+        "interestRate": c.interest_rate,
+        "dividendYield": c.dividend_yield,
         **{g: getattr(c, g) for g in GREEKS},
     }
     return {**c.listing, **{k: v for k, v in read.items() if k in c.sent or v is not None}}

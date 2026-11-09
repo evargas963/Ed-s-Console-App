@@ -3064,7 +3064,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     if _row["quote_ts"] is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = (
-        {k: _row[k] for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
+        {k: _row[k] for k in ("bid", "ask", "bid_size", "ask_size", "mark", "mid")}
         if _row["bid"] is not None or _row["ask"] is not None
         else None
     )
@@ -4166,7 +4166,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
-        # nearest expiry repriced to today's option close, beside the level it reprices.
+        # the nearest listed expiry's own levels, beside the whole book's level of the same name.
         # The time is the terrain's own compute time, the same instant the gamma rows carry.
         "zero_dte": [
             {

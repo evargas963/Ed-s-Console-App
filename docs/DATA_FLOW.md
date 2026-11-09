@@ -904,17 +904,17 @@ behavior (AGENTS.md).
 9. **No trade side** (operator 2026-09-28, ONE-12). Schwab supplies no aggressor side, so no
    inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
    Enforced by: no machine check — ENF-16.
-10. **Same-day levels, every ticker** (operator 2026-10-17). One producer
-    (`terrain_engine.same_day_levels`). The nearest listed expiry keeps its open interest and
-    implied volatility. Gamma and delta are rebuilt, Black-Scholes with no rate and no dividend,
-    at the time every other greek uses (`time_to_expiry_years`, including its 10-minute floor)
-    from the valuation instant to that day's option close. A contract with open interest whose
-    gamma cannot be rebuilt leaves its side and that strike's total unknown, as in the whole
+10. **Same-day levels, every ticker** (operator 2026-10-17; the repricing to today's close
+    deleted, operator 2026-11-09: "we need to get the calculation at the one producer right ...
+    there should not be any special circumstances"). One producer
+    (`terrain_engine.same_day_levels`): the whole book's own producers read on the nearest listed
+    expiry alone (today's, else the next listed), from Schwab's gamma and delta as sent, an
+    expiry that settles today included; its flip, GSF and GRC from that expiry's gamma profile,
+    and its charm walls from that expiry's charm map. A contract with open interest whose
+    gamma is not known leaves its side and that strike's total unknown, as in the whole
     book; the other side's known value still ranks (operator 2026-10-31: "you're guide is how
-    would a financial banking app work"). Charm follows the same rule, in both books. The close is
-    the regular window Schwab's /markets sent: the index window for an index it names with "$"
-    and for SPY, QQQ and IWM, the equity-option window for every other ticker. No window held,
-    or a close already passed, leaves the level absent.     The whole-book levels are unchanged.
+    would a financial banking app work"). Charm follows the same rule, in both books. No expiry
+    listed from today on leaves the level absent. The whole-book levels are unchanged.
     The 0DTE pin is `same_day.absolute_gamma_strike` only. The listed-expiry pin
     (`zero_dte_abs_gamma_strike`) is not produced: it was a second pin.
     The key levels rail draws each strike once, the regular price beside the same-day

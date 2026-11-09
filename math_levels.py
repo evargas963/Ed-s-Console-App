@@ -44,7 +44,8 @@ def compute_charm_by_strike(
     mechanism attributed to the end-of-day pin: dealers bleeding delta into the close.
 
     Convention matches net GEX exactly (+call / -put), so a positive net value means the
-    dealer book's delta decay creates BUYING pressure at that strike.
+    dealer book gains delta as time passes, which the dealer hedges by SELLING the underlying
+    (a negative net value: losing delta, hedged by buying).
 
     Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
 
@@ -139,19 +140,26 @@ _CHARM_SIDES = ("call_charm", "put_charm")
 def contract_inputs(
     contracts: list[OptionContract], now: datetime, product: str = "EQO"
 ) -> tuple[list, dict]:
-    """(priced, unpriced): _contract_inputs for every contract with open interest.
+    """(priced, unpriced): the gamma profile's inputs for every contract with open interest.
 
-    They are parsed once for the gamma profile (compute_terrain); `unpriced` counts the
-    contracts with open interest the profile could not price, by reason.
+    Each priced row is _contract_inputs' (strike, oi, mult, t_years, sigma, sign) and then the
+    contract's rate and dividend yield as decimals: Schwab's /chains `interestRate` (OptionChain,
+    docs/schwab/schwab_market_data_api_spec.pdf p. 27) and `dividendYield`, percents as sent. A
+    contract sent without either is not priced ("no_rate"). They are parsed once for the gamma
+    profile (compute_terrain); `unpriced` counts the contracts with open interest the profile
+    could not price, by reason.
     """
     priced, unpriced = [], {}
     tte = _expiry_years(now, product)
     for c in contracts:
-        r = _contract_inputs(c, now=now, t_years=tte(c.expiration, c.settlement), product=product)
-        if isinstance(r, tuple):
-            priced.append(r)
-        elif r != "zero_open_interest":
-            unpriced[r] = unpriced.get(r, 0) + 1
+        row = _contract_inputs(c, now=now, t_years=tte(c.expiration, c.settlement), product=product)
+        rate, dividend = c.interest_rate, c.dividend_yield
+        if isinstance(row, tuple) and rate is not None and dividend is not None:
+            priced.append((*row, rate / 100.0, dividend / 100.0))
+            continue
+        reason = row if isinstance(row, str) else "no_rate"
+        if reason != "zero_open_interest":
+            unpriced[reason] = unpriced.get(reason, 0) + 1
     return priced, unpriced
 
 
@@ -233,23 +241,23 @@ _GAMMA_PROFILE_BLOCK = 32
 
 
 def _gamma_profile_totals(parsed: list, grid: list[float]) -> list[float]:
-    """Sum over contracts of side_sign * bs_gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
+    """Sum over contracts of side_sign * gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
 
-    The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
-    passes), evaluated as arrays instead of one Python call per (price, contract) pair: on SPY's
-    full chain (13,290 contracts, 241 prices) a per-call loop over the contracts it could price
-    made 2.27M bs_gamma calls, 82% of compute_terrain's 17.8 s with that loop. A gamma that is not
-    finite contributes nothing, matching bs_gamma's None.
+    gamma is the Black-Scholes-Merton gamma with each contract's rate r and dividend yield q as
+    Schwab sent them (Hull, Options, Futures and Other Derivatives, ch. 19):
+    e^(-qT) * phi(d1) / (s * sigma * sqrt(T)), d1 = (ln(s/K) + (r - q + sigma^2/2) T) /
+    (sigma sqrt(T)). Evaluated as arrays, one block of prices at a time. A gamma that is not
+    finite contributes nothing.
     """
     arr = np.asarray(parsed, dtype=float)
-    strike, oi, mult, t_years, sigma, side = (arr[:, i] for i in range(6))
-    weight = side * oi * mult
+    strike, oi, mult, t_years, sigma, side, rate, dividend = (arr[:, i] for i in range(8))
+    weight = side * oi * mult * np.exp(-dividend * t_years)
     s_all = np.asarray(grid, dtype=float)
     out: list[float] = []
     with np.errstate(all="ignore"):
         for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
             s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
-            d1, vt = d1_vt(s, strike, t_years, sigma, log=np.log, sqrt=np.sqrt)
+            d1, vt = d1_vt(s, strike, t_years, sigma, rate - dividend, log=np.log, sqrt=np.sqrt)
             g = norm_pdf(d1, exp=np.exp) / (s * vt)
             g = np.where(np.isfinite(g), g, 0.0)
             out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
@@ -452,7 +460,7 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: The floor makes no claim about the at-spot SIGN: the flip-LEVEL convergence study measures
 #: |windowed flip - full-chain flip|, a LEVEL distance, and is silent about the SIGN of gamma at
 #: spot. MEASURED (260 seed-fixed chains from the study's reference cohort, at-spot gamma
-#: recomputed on truncated windows via _contract_inputs/bs_gamma, counting ONLY genuinely
+#: recomputed on truncated windows by Black-Scholes gamma at r = q = 0, counting ONLY genuinely
 #: truncated chains):
 #:   sign agreement with the full delivered chain — +/-1% 79.8% (n=233), +/-5% 86.2% (n=253,
 #:   95% CI [0.814, 0.899]), +/-10% 90.2% (n=254), +/-15% 92.7% (n=248).
