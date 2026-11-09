@@ -135,11 +135,12 @@ _option_contract_last_update_ts: dict[str, float] = {}
 _on_tick_callback: Callable[[str, float], None] | None = None
 _on_feed_callback: Callable[[float], None] | None = None
 _tick_callback_failures = 0
-#: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
-streamed_bars: queue.SimpleQueue[dict] = queue.SimpleQueue()
-#: Called on the event loop with (ticker, contracts, fetched_ts, None) for each whole chain the
-#: daemon fetched, and with (ticker, None, ts, reason) for one it could not deliver
-#: (server._on_chain).
+#: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write;
+#: None is server.stop_bar_writer's stop.
+streamed_bars: queue.SimpleQueue[dict | None] = queue.SimpleQueue()
+#: Called on the event loop with what assemble_chain_part settles: (ticker, contracts, fetched_ts,
+#: None, (spot, spot_ts)) for each whole chain the daemon fetched, and (ticker, None, ts, reason,
+#: None) for one it could not deliver (server._on_chain).
 _on_chain_callback: Callable[..., None] | None = None
 #: ticker -> the chain being received: {"ts", "parts", "got": {part: contracts}}
 _chain_parts: dict[str, dict] = {}
@@ -180,7 +181,7 @@ def assemble_chain_part(
         if int(msg["part"]) != 0:
             return out  # a chain begun before this console connected: not its chain
         cur = _chain_parts[tk] = {"ts": ts, "parts": int(msg["parts"]), "got": {}}
-    cur["got"][int(msg["part"])] = msg.get("contracts") or []
+    cur["got"][int(msg["part"])] = msg["contracts"]
     if len(cur["got"]) == cur["parts"]:
         del _chain_parts[tk]
         out.append(
