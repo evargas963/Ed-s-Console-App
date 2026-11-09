@@ -229,14 +229,14 @@ class RecentBooks:
         bids, asks = tuple(book.pairs("BIDS")), tuple(book.pairs("ASKS"))
         if not bids and not asks:
             return
-        book = (float(ts_recv), bids, asks)
+        kept = (float(ts_recv), bids, asks)
         with self._lock:
             held = self._books.setdefault((sym, venue), deque())
-            if held and int(held[-1][0]) == int(book[0]):
-                held[-1] = book
+            if held and int(held[-1][0]) == int(kept[0]):
+                held[-1] = kept
             else:
-                held.append(book)
-            while held[0][0] < book[0] - BOOKS_KEPT_SEC:
+                held.append(kept)
+            while held[0][0] < kept[0] - BOOKS_KEPT_SEC:
                 held.popleft()
 
     def forget(self, ticker: str) -> None:
@@ -328,7 +328,7 @@ def book_heatmap_for_ticker(
     n_buckets = 90
     bucket_sec = max(1.0, span / n_buckets)
 
-    cells: dict[tuple[int, float], dict[str, float]] = {}
+    cells: dict[tuple[int, float], dict[str, float | None]] = {}
     prices_seen: set[float] = set()
     for ts_recv, bids, asks in rows:
         bucket = min(n_buckets - 1, int((ts_recv - t0) / bucket_sec))

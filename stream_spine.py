@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -1150,7 +1151,7 @@ class CaptureWriter:
         self.left_on_disk: list = []
         #: which bus messages are recorded (topic, message) -> bool; the daemon sets its own
         #: (Daemon.saves: option quotes and option books of the contracts it keeps)
-        self.saves = _every_message
+        self.saves: Callable[[str, Any], bool] = _every_message
         #: the daily keep in progress (prune): rows received before `_prune_before` leave each
         #: table still in `_prune`, a part at a time; `_pruned` counts them per table
         self._prune: list[tuple[str, str]] = []
