@@ -1,5 +1,6 @@
-"""The one watchlist and the daemon's subscriptions, Schwab to the screen, through the real code:
-the capture daemon's connection (capture.Daemon.run) on the real schwab-py StreamClient, logged in
+"""The one watchlist and the daemon's subscriptions, Schwab to the screen, through the real code.
+
+The capture daemon's connection (capture.Daemon.run) on the real schwab-py StreamClient, logged in
 to Schwab's streamer played locally (tests/schwab_stream_standin.py) through Schwab's REST host
 played locally (tests/schwab_rest_standin.py); the daemon's local socket (live_push); the console
 in the daemon's program (streaming.bind_daemon, its feed reading the daemon's bus) and its routes
@@ -36,7 +37,7 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_liv
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from option_contract import read_chain
-from schwab_client import flatten_chain_contracts
+from schwab_client import build_client_from_token, flatten_chain_contracts
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
@@ -85,8 +86,9 @@ def _answers(log) -> list[tuple[str, str, int, str]]:
 
 
 def _market(bus, ticker: str, contracts: list[dict], price: float, ts: float) -> None:
-    """`ticker`'s chain and price on the daemon's bus, as the chain sweep and the stream publish
-    them: the option rule's inputs.
+    """`ticker`'s chain and price on the daemon's bus: the option rule's inputs.
+
+    As the chain sweep and the stream publish them.
     """
     for topic, msg in chain_messages(ticker, contracts, ts, price, ts):
         bus.publish(topic, msg)
@@ -99,13 +101,14 @@ def _market(bus, ticker: str, contracts: list[dict], price: float, ts: float) ->
 
 
 def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_request(tmp_path):
-    """2026-10-07 (stream_capture.log 04:40:39): Schwab answered a refused ADD twice, code 19 and
-    then code 24, and every request after it was logged "unexpected requestid": each answer had
-    been taken as the next request's. Now one reader matches each answer to its request by its
-    requestid. Every watchlist ticker is asked for on each equity service and the header's
-    market context on quotes, bars and news, in one request per service; SPY's 442 2026-11-20
-    contracts on LEVELONE_OPTIONS past a limit of 2 (a stand-in limit) get Schwab's refusal, both
-    answers recorded as sent, and nothing is asked again.
+    """2026-10-07 (stream_capture.log 04:40:39): Schwab answered a refused ADD twice.
+
+    Code 19 and then code 24, and every request after it was logged "unexpected requestid": each
+    answer had been taken as the next request's. Now one reader matches each answer to its
+    request by its requestid. Every watchlist ticker is asked for on each equity service and the
+    header's market context on quotes, bars and news, in one request per service; SPY's 442
+    2026-11-20 contracts on LEVELONE_OPTIONS past a limit of 2 (a stand-in limit) get Schwab's
+    refusal, both answers recorded as sent, and nothing is asked again.
     """
     schwab = _Schwab(
         tmp_path,
@@ -190,7 +193,9 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
 
 
 def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_path):
-    """MRVL's 2,432 contracts (its full chain as Schwab sent it, tests/fixtures/
+    """MRVL's 2,432 contracts are more than one request carries, so they are sent in parts.
+
+    MRVL's 2,432 contracts (its full chain as Schwab sent it, tests/fixtures/
     real_mrvl_full_chain_vs_strike_window.json), MRVL alone on the watchlist so the rule streams
     every one, are more than one request carries, so the subscription is sent in parts. A SUBS
     replaces all a service holds (measured live 2026-10-07: of 3,001 contracts sent as SUBS 2,181 +
@@ -231,8 +236,10 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
 
 
 def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(tmp_path):
-    """Schwab drops the socket: the daemon logs out, connects again (a new session that holds
-    nothing) and asks for everything once again; the frames are taken whole (no size cap).
+    """Schwab drops the socket: the daemon logs out, connects again and asks for everything.
+
+    It connects again (a new session that holds nothing) and asks for everything once again; the
+    frames are taken whole (no size cap).
     """
     schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
@@ -262,8 +269,10 @@ def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(t
 
 
 def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
-    """A request unanswered for REQUEST_TIMEOUT_SEC means the connection is broken: it ends with
-    that reason (Schwab's streamer here takes NYSE_BOOK requests and never answers them).
+    """A request unanswered for REQUEST_TIMEOUT_SEC means the connection is broken.
+
+    It ends with that reason (Schwab's streamer here takes NYSE_BOOK requests and never answers
+    them).
     """
     schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     answer = schwab.streamer.answer
@@ -287,8 +296,9 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
 
 
 def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
-    """The daemon's local socket reads every frame a client sends (launch.py stop's is one): one
-    that is not JSON, or JSON that is not an object, is logged with what arrived, never dropped
+    """The daemon's local socket reads every frame a client sends (launch.py stop's is one).
+
+    One that is not JSON, or JSON that is not an object, is logged with what arrived, never dropped
     unseen; a request after it still reaches the daemon.
     """
     got, stats = [], {}
@@ -317,7 +327,9 @@ def test_a_console_frame_the_daemon_cannot_read_is_logged_with_what_arrived(capl
 
 
 def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_no_more(tmp_path):
-    """Through the console's route, in the daemon's program: TSLA added is checked with one
+    """Through the console's route, in the daemon's program: tickers added and removed.
+
+    TSLA added is checked with one
     /quotes request (Schwab quotes it), added, asked for on every equity service and by the
     chain sweep, and stored; ZQZQZ (Schwab names it in errors.invalidSymbols) is not added; TSLA
     removed is asked for no more. The stored list is the daemon's after a restart.
@@ -410,8 +422,9 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
 
 
 def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path, caplog):
-    """An empty watchlist in an open session (Wednesday 2026-10-07 10:00 ET): no request to Schwab
-    and no rotation, until a ticker is added.
+    """An empty watchlist in an open session (Wednesday 2026-10-07 10:00 ET).
+
+    No request to Schwab and no rotation, until a ticker is added.
     """
     schwab = LocalSchwab()
     sweep = ChainSweep(
@@ -440,10 +453,12 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
 
 
 def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so_first():
-    """The gamma surface's reason for a ticker with no surface (server.get_options_gamma_surface):
-    on the watchlist it warms (its chain is coming); off it, it says it is not on the watchlist;
-    with the daemon's heartbeat late, the last list still stands and the reason says the daemon
-    is not reporting; a chain Schwab refused says Schwab's answer.
+    """The gamma surface's reason for a ticker with no surface.
+
+    From server.get_options_gamma_surface: on the watchlist it warms (its chain is coming); off
+    it, it says it is not on the watchlist; with the daemon's heartbeat late, the last list still
+    stands and the reason says the daemon is not reporting; a chain Schwab refused says Schwab's
+    answer.
     """
     on, off = "ZZWLON", "ZZWLOFF"
     pages = [push_changes.subscribe(tk) for tk in (on, off)]
@@ -489,8 +504,9 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
 
 
 def test_the_page_is_told_the_market_context_with_its_display_names():
-    """The header's market context, which the daemon streams whatever the watchlist holds, is
-    served in the page with each symbol's display name.
+    """The header's market context is served in the page with each symbol's display name.
+
+    The daemon streams it whatever the watchlist holds.
     """
     html = server._with_page_settings(server._MARKET_CONTEXT_META)
     assert (
@@ -500,7 +516,9 @@ def test_the_page_is_told_the_market_context_with_its_display_names():
 
 
 def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
-    """Over HTTP through the real app, with no daemon connected: a POST with no body, without its
+    """Over HTTP through the real app, with no daemon connected.
+
+    A POST with no body, without its
     field, with a field of the wrong type or with a body that is not a JSON object is refused
     before the route runs; one with its JSON reaches the route: an add says the daemon is away, no
     contract selected is taken, and a contract no chain lists is refused by the route.
@@ -520,3 +538,79 @@ def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
     unlisted = "ZZZZ  261120C00100000"
     refused = client.post("/api/flow-contract", json={"contract": unlisted})
     assert (refused.status_code, refused.json()["contract"]) == (409, unlisted)
+
+
+def test_a_repeated_add_an_unlisted_removal_and_an_add_with_no_sign_in_change_nothing(tmp_path):
+    """Each request the daemon cannot carry out is answered, once, and leaves the list as it was.
+
+    An add of a ticker already on the list (a request sent twice) is answered ON_LIST with no
+    check; a removal of one not on it, NOT_ON_LIST; an add when the daemon's one Schwab client
+    cannot be built (no usable sign-in: the real builder through capture.one_schwab_client), is
+    answered NOT_CHECKED with the reason, not added.
+    """
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+    missing = tmp_path / "schwab_token.json"
+    daemon.schwab_client = capture.one_schwab_client(
+        lambda: build_client_from_token(str(missing), "LiveLookingKey", "LiveLookingSecret")
+    )
+
+    async def go():
+        answers = bus.subscribe("watchlist", policy=LOG)
+        for rid, action, ticker in (
+            ("r1", "add", "spy"),
+            ("r2", "remove", "qqq"),
+            ("r3", "add", "qqq"),
+        ):
+            await daemon.watchlist_request(
+                {"op": "watchlist", "action": action, "ticker": ticker, "id": rid}
+            )
+        return [answers.queue.get_nowait()[1] for _ in range(answers.queue.qsize())]
+
+    got = asyncio.run(go())
+    assert [(m["request_id"], m["op"], m["ticker"], m["tickers"]) for m in got] == [
+        ("r1", capture.ON_LIST, "SPY", ["SPY"]),
+        ("r2", capture.NOT_ON_LIST, "QQQ", ["SPY"]),
+        ("r3", capture.NOT_CHECKED, "QQQ", ["SPY"]),
+    ]
+    assert got[2]["answer"].startswith("ConnectionError: no Schwab client ("), got[2]["answer"]
+    assert (got[0]["status"], got[0]["answer"], got[1]["status"], got[1]["answer"]) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert daemon.watchlist == ["SPY"]
+
+
+def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
+    """Two adds of TSLA in flight together (a request sent twice): each is checked with Schwab's
+    /quotes, the first answer adds it, and the other, finding it added during its check, is
+    answered ON_LIST; the list holds TSLA once.
+    """
+    schwab = LocalSchwab("ws://127.0.0.1:1")  # REST only: no stream connection is opened
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+    client = schwab.client(tmp_path)
+    daemon.schwab_client = lambda: client
+
+    async def go():
+        answers = bus.subscribe("watchlist", policy=LOG)
+        await asyncio.gather(
+            *(
+                daemon.watchlist_request(
+                    {"op": "watchlist", "action": "add", "ticker": "tsla", "id": rid}
+                )
+                for rid in ("r1", "r2")
+            )
+        )
+        return [answers.queue.get_nowait()[1] for _ in range(answers.queue.qsize())]
+
+    try:
+        got = asyncio.run(go())
+    finally:
+        schwab.close()
+    assert sorted(m["op"] for m in got) == sorted([capture.ADDED, capture.ON_LIST])
+    assert {m["request_id"] for m in got} == {"r1", "r2"}
+    assert daemon.watchlist == ["SPY", "TSLA"]
+    assert [q["symbols"] for q in schwab.asked(QUOTES)] == ["TSLA", "TSLA"], "each add checked"

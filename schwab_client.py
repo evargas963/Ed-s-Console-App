@@ -1,6 +1,7 @@
 # schwab_client.py
 """
 Centralized Schwab client construction and safe API wrappers.
+
 Token path is always absolute.
 """
 
@@ -75,10 +76,11 @@ ONE_CONNECTION = httpx.Limits(max_connections=1, max_keepalive_connections=1, ke
 
 
 def token_file_lock(token_path: str) -> FileLock:
-    """The token file's lock (beside it, `.lock`), held by one writer at a time across processes:
-    the daemon's session from its look at the file to its write, a sign-in being saved,
-    tools/schwab_field_inventory.py's client. One lock per path within a process, which its
-    holder takes again without waiting.
+    """Return the token file's lock (beside it, `.lock`).
+
+    It is held by one writer at a time across processes: the daemon's session from its look at
+    the file to its write, a sign-in being saved, tools/schwab_field_inventory.py's client. One
+    lock per path within a process, which its holder takes again without waiting.
     """
     return FileLock(
         _resolve_token_path(token_path) + ".lock", is_singleton=True, timeout=TOKEN_LOCK_WAIT_SEC
@@ -86,8 +88,9 @@ def token_file_lock(token_path: str) -> FileLock:
 
 
 def write_token_file_atomically(token_path: str, payload: dict) -> None:
-    """Write schwab_token.json via temp + fsync + os.replace, under the token file's lock: never a
-    partial file, never two writers at once.
+    """Write schwab_token.json via temp + fsync + os.replace, under the token file's lock.
+
+    Never a partial file, never two writers at once.
 
     The token writer: every Schwab client this repo builds refreshes through it
     (client_from_token_file_atomic) and every sign-in is saved by it (the OAuth exchange).
@@ -148,16 +151,17 @@ ERROR_BODY_LOGGED = 2000
 
 
 def request_sent(request: httpx.Request) -> None:
-    """The time a request leaves for Schwab (log_request reads it)."""
+    """Record the time a request leaves for Schwab (log_request reads it)."""
     request.extensions["sent"] = time_et.now()
 
 
 def log_request(response: httpx.Response) -> None:
-    """Every request to Schwab, once, when its answer is in: the endpoint, the symbol (or how many
-    symbols, and the expiration or market date asked for), the status, and when it was sent and
-    answered. An answer that is not a success also carries Schwab's body and headers as sent; the
-    token endpoint's body (it holds tokens) and the request's headers (the bearer token) never
-    are.
+    """Log every request to Schwab, once, when its answer is in.
+
+    The line holds the endpoint, the symbol (or how many symbols, and the expiration or market
+    date asked for), the status, and when it was sent and answered. An answer that is not a
+    success also carries Schwab's body and headers as sent; the token endpoint's body (it holds
+    tokens) and the request's headers (the bearer token) never are.
     """
     response.read()
     answered = time_et.now()
@@ -193,15 +197,19 @@ def log_request(response: httpx.Response) -> None:
 
 
 class SignInRefused(Exception):
-    """Schwab refused the sign-in (the refresh token: expired, revoked, invalid). Nothing is sent
-    to Schwab until a new sign-in is saved to the token file (python reauth_schwab.py).
+    """Schwab refused the sign-in (the refresh token: expired, revoked, invalid).
+
+    Nothing is sent to Schwab until a new sign-in is saved to the token file (python
+    reauth_schwab.py).
     """
 
 
 class OneRefreshSession(OAuth2Client):
-    """authlib's OAuth2Client, refreshing the token one request at a time: authlib's own (sync)
-    client lets every request that finds the token near expiry refresh it, all at once. The
-    first refreshes; each one after it finds the new token and sends its request with it.
+    """authlib's OAuth2Client, refreshing the token one request at a time.
+
+    authlib's own (sync) client lets every request that finds the token near expiry refresh it,
+    all at once. The first refreshes; each one after it finds the new token and sends its
+    request with it.
 
     The token file is the sign-in's one record. When a refresh is due, and while Schwab refuses
     the sign-in, the session first takes a sign-in saved there with a new creation time (python
@@ -253,8 +261,9 @@ class OneRefreshSession(OAuth2Client):
         return super().request(method, url, withhold_token=withhold_token, **kwargs)
 
     def refusal(self) -> "str | None":
-        """Why this session holds no sign-in Schwab accepts, with what to run, else None; while
-        refused, a new one saved to the token file is taken first.
+        """Return why this session holds no sign-in Schwab accepts, with what to run, else None.
+
+        While refused, a new one saved to the token file is taken first.
         """
         with self._refresh_lock:
             if self._refused is not None:
@@ -269,10 +278,11 @@ class OneRefreshSession(OAuth2Client):
         )
 
     def _take_saved(self) -> None:
-        """Take the sign-in saved to the token file when it is a new one (a creation time not the
-        one held): its token and creation time, the streamer's too. A file unchanged since the
-        last look is not read again. One that holds no usable sign-in (sign_in_problem) is logged
-        once.
+        """Take the sign-in saved to the token file when it is a new one.
+
+        A new one has a creation time not the one held. Taken are its token and creation time,
+        the streamer's too. A file unchanged since the last look is not read again. One that
+        holds no usable sign-in (sign_in_problem) is logged once.
         """
         seen = None
         try:
@@ -314,11 +324,12 @@ def client_from_token_file_atomic(
     *,
     enforce_enums: bool = False,
 ):
-    """schwab-py's client from the token file, built as auth.client_from_access_functions builds
-    it, with four differences: every token refresh is written atomically (schwab-py's writer
-    rewrites the file in place), the token is refreshed by one request at a time
-    (OneRefreshSession), the session holds one connection, and every request is logged once
-    (request_sent, log_request).
+    """Build schwab-py's client from the token file.
+
+    It is built as auth.client_from_access_functions builds it, with four differences: every
+    token refresh is written atomically (schwab-py's writer rewrites the file in place), the
+    token is refreshed by one request at a time (OneRefreshSession), the session holds one
+    connection, and every request is logged once (request_sent, log_request).
     """
     resolved = _resolve_token_path(token_path)
     with token_file_lock(resolved):  # a sign-in being saved: read once it is
@@ -399,13 +410,14 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
 
 
 def auth_is_refreshable(inspection: TokenInspectionResult) -> bool:
-    """True only if refresh_token is present and non-empty (inspection only; no I/O)."""
+    """Return True only if refresh_token is present and non-empty (inspection only; no I/O)."""
     return inspection.has_refresh_token
 
 
 def sign_in_problem(inspection: TokenInspectionResult, resolved: str) -> "str | None":
-    """Why `resolved` holds no sign-in a client can use, or None when it does. The one rule for a
-    client built from the file and for a sign-in saved while a client runs.
+    """Return why `resolved` holds no sign-in a client can use, or None when it does.
+
+    The one rule for a client built from the file and for a sign-in saved while a client runs.
     """
     if not inspection.file_exists:
         return f"Token file not found: {resolved}. {inspection.message}"
@@ -431,9 +443,10 @@ def sign_in_problem(inspection: TokenInspectionResult, resolved: str) -> "str | 
 def build_client_from_token(
     token_path: str, api_key: str | None, app_secret: str | None
 ) -> SchwabClientState:
-    """Build Schwab client from token file. token_path is normalized to absolute. A file that holds
-    no usable sign-in is a state with its reason; a build that fails on one that does raises
-    ConnectionError, its cause carried.
+    """Build Schwab client from token file.
+
+    token_path is normalized to absolute. A file that holds no usable sign-in is a state with
+    its reason; a build that fails on one that does raises ConnectionError, its cause carried.
     """
     if schwab_live_blocked_for(api_key, app_secret):
         return SchwabClientState(
@@ -480,8 +493,10 @@ def run_login_flow(
     api_key: str, app_secret: str, callback_url: str, token_path: str
 ) -> tuple[bool, str]:
     """
-    Browser-assisted login flow (blocking). Creates token file at token_path on success.
-    Waits for callback port to be ready before proceeding; verifies token exists after flow.
+    Run the browser-assisted login flow (blocking).
+
+    Creates token file at token_path on success. Waits for callback port to be ready before
+    proceeding; verifies token exists after flow.
     """
     exc_holder: list[BaseException] = []
 
@@ -535,8 +550,10 @@ def run_manual_flow(
     api_key: str, app_secret: str, callback_url: str, token_path: str
 ) -> tuple[bool, str]:
     """
-    Manual copy-paste login flow. No local server — you paste the redirect URL back.
-    Use when the browser callback fails (e.g. cert warning blocks the request).
+    Run the manual copy-paste login flow.
+
+    No local server — you paste the redirect URL back. Use when the browser callback fails
+    (e.g. cert warning blocks the request).
     """
     try:
         auth.client_from_manual_flow(
@@ -564,8 +581,10 @@ def complete_oauth_from_redirect_url(
     token_path: str,
 ) -> tuple[bool, str]:
     """
-    Finish OAuth when the browser already redirected but the local callback server
-    did not persist the token (common: self-signed cert warning on 127.0.0.1:8182).
+    Finish OAuth when the browser already redirected but the callback did not save the token.
+
+    The local callback server did not persist the token (common: self-signed cert warning on
+    127.0.0.1:8182).
     """
     url = redirect_url.strip()
     if not url:
@@ -621,9 +640,10 @@ def safe_get_chain(
 
 
 def option_expiries(client, ticker: str, today: date):
-    """Schwab's expiration chain (/marketdata/v1/expirationchain) for `ticker`: (its expiries
-    from `today` on, option_contract.listed_expiries, its response). The expiries are None when
-    Schwab does not answer 200.
+    """Return Schwab's expiration chain (/marketdata/v1/expirationchain) for `ticker`.
+
+    It is (its expiries from `today` on, option_contract.listed_expiries, its response). The
+    expiries are None when Schwab does not answer 200.
     """
     resp = client.get_option_expiration_chain(ticker)
     if resp.status_code != 200:
@@ -632,8 +652,9 @@ def option_expiries(client, ticker: str, today: date):
 
 
 def safe_get_quotes(client, symbols: "list[str]"):
-    """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`, the quote
-    fields only; Schwab's response.
+    """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`.
+
+    The quote fields only; Schwab's response.
     """
     return client.get_quotes(symbols, fields=["quote"])
 
@@ -666,7 +687,5 @@ def flatten_chain_contracts(c_json: dict) -> list[dict]:
             for strike_list in exp_map.values():
                 if not isinstance(strike_list, list):
                     continue
-                for ct in strike_list:
-                    if isinstance(ct, dict):
-                        out.append({**chain_fields, **ct})
+                out.extend({**chain_fields, **ct} for ct in strike_list if isinstance(ct, dict))
     return out

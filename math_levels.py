@@ -1,7 +1,7 @@
 """
-math_levels.py
-Chartable key-level engine — walls, pins, inflections, support/resistance
-derived from options exposure structure.
+math_levels.py: chartable key-level engine.
+
+Walls, pins, inflections, support/resistance derived from options exposure structure.
 """
 
 from __future__ import annotations
@@ -78,9 +78,10 @@ def _add_charm(bucket: dict, side: str, exposure: float | None) -> None:
 
 
 def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
-    """One strike map from per-expiry maps of the same function. A strike listed on more
-    than one expiry is the sum of those expiries, +call/−put, the same as one call over
-    every contract.
+    """Merge per-expiry maps of the same function into one strike map.
+
+    A strike listed on more than one expiry is the sum of those expiries, +call/−put, the same
+    as one call over every contract.
     """
     out: dict[float, dict] = {}
     for part in maps.values():
@@ -101,8 +102,9 @@ def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
 def pick_charm_wall_strikes(
     charm_by_strike: dict[float, dict],
 ) -> tuple[float | None, float | None]:
-    """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side
-    charm exposure. These are the strikes whose delta decay exerts the most mechanical
+    """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side charm exposure.
+
+    These are the strikes whose delta decay exerts the most mechanical
     pressure into the close.
     """
 
@@ -120,8 +122,9 @@ _CHARM_SIDES = ("call_charm", "put_charm")
 def contract_inputs(
     contracts: list[OptionContract], now: datetime, product: str = "EQO"
 ) -> tuple[list, dict]:
-    """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
-    for the gamma profile (compute_terrain); `unpriced` counts the
+    """(priced, unpriced): _contract_inputs for every contract with open interest.
+
+    They are parsed once for the gamma profile (compute_terrain); `unpriced` counts the
     contracts with open interest the profile could not price, by reason.
     """
     priced, unpriced = [], {}
@@ -268,9 +271,10 @@ GSF_STATE_UNAVAILABLE = "UNAVAILABLE"
 
 
 def _lerp(x: float, x0: float, x1: float, y0: float, y1: float) -> float:
-    """THE one linear interpolation of the profile: y at `x` on the segment (x0, y0)-(x1, y1);
-    y0 on a segment with no width. Read both ways: the value at a price, and the price at a
-    value (the flip, the support and resistance crossings).
+    """Return y at `x` on the segment (x0, y0)-(x1, y1); y0 on a segment with no width.
+
+    THE one linear interpolation of the profile. Read both ways: the value at a price, and the
+    price at a value (the flip, the support and resistance crossings).
     """
     if x1 == x0:
         return y0

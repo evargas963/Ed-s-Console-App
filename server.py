@@ -146,10 +146,11 @@ SPOT_SOURCE_NONE = "none"  # Schwab has sent no price
 
 
 def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
-    """Whether the live price is live at `now` (price_state), its word, why not, and its trade
-    time and age: served beside every value computed from that price, so a value from a price
-    that has stopped stands marked not live (AGENTS rule 5): `spot_not_live_text` is the mark the
-    page prints beside each such value, None while the price is live.
+    """Whether the live price is live at `now` (price_state), its word, why not, its time and age.
+
+    The time is its trade time. Served beside every value computed from that price, so a value
+    from a price that has stopped stands marked not live (AGENTS rule 5): `spot_not_live_text` is
+    the mark the page prints beside each such value, None while the price is live.
     """
     label, outage = price_state(ticker, now)
     live = label == lmp.LIVE
@@ -167,8 +168,9 @@ def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
 
 
 def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
-    """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
-    trade time. Why it is not live (price_state) does not remove it; the number stays.
+    """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent.
+
+    With its trade time. Why it is not live (price_state) does not remove it; the number stays.
     (None, the outage reason or SPOT_SOURCE_NONE, None) until Schwab has sent one.
     """
     row = price_row(ticker, now)
@@ -200,9 +202,10 @@ BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
 
 
 def _schwab_bar(start_ms, o, h, lo, c, volume) -> Candle | None:
-    """One Schwab CHART_EQUITY bar as a Candle, each field as Schwab sent it; None when its start
-    or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN or infinity). A volume
-    that is not a number, or negative, is absent.
+    """One Schwab CHART_EQUITY bar as a Candle, each field as Schwab sent it.
+
+    None when its start or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN or
+    infinity). A volume that is not a number, or negative, is absent.
     """
     start, o, h, lo, c = (
         schwab_number(start_ms),
@@ -217,12 +220,13 @@ def _schwab_bar(start_ms, o, h, lo, c, volume) -> Candle | None:
 
 
 def _write_price_history(msg: dict) -> str | None:
-    """One series of a ticker's price history as Schwab's /pricehistory answered it (pushed by the
-    capture daemon): its 1-minute bars into the ticker's bars, only the minutes not held taken (a
-    held minute, a streamed bar or an earlier history's, stands over Schwab's history of it); its
-    daily candles replacing the held ones. A candle without a valid field is not kept. The ticker
-    when the bars or candles it holds changed, else None. Runs on the bar writer, the one writer
-    of _bars and _daily.
+    """One series of a ticker's price history as Schwab's /pricehistory answered it.
+
+    Pushed by the capture daemon: its 1-minute bars into the ticker's bars, only the minutes not
+    held taken (a held minute, a streamed bar or an earlier history's, stands over Schwab's
+    history of it); its daily candles replacing the held ones. A candle without a valid field is
+    not kept. The ticker when the bars or candles it holds changed, else None. Runs on the bar
+    writer, the one writer of _bars and _daily.
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
@@ -268,8 +272,10 @@ def _write_price_history(msg: dict) -> str | None:
 
 
 def _keep_bar(tk: str, bar: Candle) -> None:
-    """A streamed bar into `tk`'s bars: a minute already held is replaced (Schwab's newest bar for
-    it), a new one takes its place in time; the oldest beyond BARS_KEPT leave.
+    """Put a streamed bar into `tk`'s bars.
+
+    A minute already held is replaced (Schwab's newest bar for it), a new one takes its place in
+    time; the oldest beyond BARS_KEPT leave.
     """
     with _bars_lock:
         held = _bars.setdefault(tk, [])
@@ -284,8 +290,10 @@ def _keep_bar(tk: str, bar: Candle) -> None:
 
 
 def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> list[Candle]:
-    """`tk`'s completed 1-minute bars, oldest first: Schwab's streamed CHART_EQUITY bars as the
-    bar writer keeps them. A minute the stream did not deliver is absent, never filled in.
+    """`tk`'s completed 1-minute bars, oldest first.
+
+    Schwab's streamed CHART_EQUITY bars as the bar writer keeps them. A minute the stream did not
+    deliver is absent, never filled in.
     """
     key = ticker_storage_key(tk)
     with _bars_lock:
@@ -297,8 +305,10 @@ def _bar_dict(c: Candle) -> dict:
 
 
 def _write_streamed_bar(msg: dict) -> bool:
-    """Keep one streamed 1-minute bar (Schwab CHART_EQUITY, pushed by the capture daemon, which
-    records it) with the ticker's bars; False when it lacks a valid field (then it is not kept).
+    """Keep one streamed 1-minute bar with the ticker's bars.
+
+    The bar is Schwab CHART_EQUITY, pushed by the capture daemon, which records it. False when it
+    lacks a valid field (then it is not kept).
     """
     bar = _schwab_bar(
         msg.get("bar_start_ms"),
@@ -317,10 +327,12 @@ def _write_streamed_bar(msg: dict) -> bool:
 
 
 def _write_streamed_bars(msgs: list, now: datetime) -> None:
-    """Write streamed bars and price histories (a message with a `series`), then build the price
-    levels of each ticker whose 1-minute bars were written, for the market's session at `now`:
-    everything that arrived together is written before any level is built (a minute's bars for
-    the whole watchlist arrive together).
+    """Write streamed bars and price histories, then build the price levels of each ticker.
+
+    A price history is a message with a `series`. The levels are built for each ticker whose
+    1-minute bars were written, for the market's session at `now`: everything that arrived
+    together is written before any level is built (a minute's bars for the whole watchlist arrive
+    together).
     """
     written = []
     for msg in msgs:
@@ -344,10 +356,11 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
 
 
 def _bar_writer() -> None:
-    """The bar writer, the one owner of the bars and candles in memory (_bars, _daily): every
-    streamed bar and price history the capture daemon pushes, as it arrives, with those already
-    waiting behind it. Ends at stop_bar_writer's None, once everything queued before it is
-    written.
+    """Run the bar writer, the one owner of the bars and candles in memory (_bars, _daily).
+
+    It writes every streamed bar and price history the capture daemon pushes, as it arrives, with
+    those already waiting behind it. Ends at stop_bar_writer's None, once everything queued before
+    it is written.
     """
     while True:
         msgs = [streamed_bars.get()]
@@ -379,9 +392,10 @@ def stop_bar_writer(thread: threading.Thread | None = None) -> None:
 
 
 def _watchlist() -> list[str] | None:
-    """The watchlist: the tickers the capture daemon asks Schwab for. A current heartbeat that
-    carries a list is that list; one that carries none is unknown. A late or missing heartbeat
-    keeps the list of the last beat.
+    """Return the watchlist: the tickers the capture daemon asks Schwab for.
+
+    A current heartbeat that carries a list is that list; one that carries none is unknown. A late
+    or missing heartbeat keeps the list of the last beat.
     """
     st = lmp.last_beat()
     return None if st is None else list(st["watchlist"])
@@ -394,8 +408,10 @@ def _watchlist() -> list[str] | None:
 
 @asynccontextmanager
 async def _app_lifespan(app):
-    """Startup and shutdown: the live-binding check, the signal handlers, the recorded market
-    sessions, the levels loop, the bar writer, the daemon's feed and the page push.
+    """Startup and shutdown.
+
+    The live-binding check, the signal handlers, the recorded market sessions, the levels loop,
+    the bar writer, the daemon's feed and the page push.
     """
     # ── Startup ─────────────────────────────────────────────────────────────
     # FIRST, before any worker, client or database is touched: a checkout whose runtime is
@@ -444,14 +460,14 @@ app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
 
 
 class _RevalidateStaticFiles(StaticFiles):
-    """StaticFiles sends no Cache-Control at all, leaving freshness to each browser's own
-    heuristic (commonly ~10% of Last-Modified age, RFC 7234). MEASURED: after a code change
+    """StaticFiles sends no Cache-Control at all, leaving freshness to each browser's own heuristic.
+
+    The heuristic is commonly ~10% of Last-Modified age, RFC 7234. MEASURED: after a code change
     and a server restart, a browser served a stale ed-gamma.js across THREE separate full
-    navigations with zero requests reaching this server for that file -- staleness a `curl`
-    or a direct no-store fetch never reveals. `no-cache`
-    forces revalidation on every load (the existing ETag/Last-Modified still make an
-    unchanged file a cheap 304, so this costs nothing beyond a round trip) instead of
-    trusting a heuristic a shipped fix cannot control.
+    navigations with zero requests reaching this server for that file -- staleness a `curl` or a
+    direct no-store fetch never reveals. `no-cache` forces revalidation on every load (the
+    existing ETag/Last-Modified still make an unchanged file a cheap 304, so this costs nothing
+    beyond a round trip) instead of trusting a heuristic a shipped fix cannot control.
     """
 
     async def get_response(self, path: str, scope):
@@ -481,9 +497,11 @@ app.add_api_websocket_route("/ws", live_ui.page_socket)
 
 
 def _with_page_settings(html: str) -> str:
-    """Tell the page which market-context symbols it always shows (live_push.MARKET_CONTEXT, each
-    with its display name), the scopes its strike windows take (terrain_engine.SCOPES, each with
-    its word) and the words for each streaming state (STREAM_WORDS).
+    """Tell the page its market-context symbols, strike-window scopes and streaming-state words.
+
+    The market-context symbols it always shows are live_push.MARKET_CONTEXT, each with its
+    display name; the scopes its strike windows take are terrain_engine.SCOPES, each with its
+    word; and the words for each streaming state are STREAM_WORDS.
     """
     context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
     scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
@@ -536,9 +554,10 @@ _crosses_lock = threading.Lock()
 
 
 def _held_crosses(tk: str) -> list[dict]:
-    """The ticker's held level crosses, oldest first: the one database read of them, the first
-    time they are needed (the console's start, or a cross found before it), then fed live.
-    Called holding _crosses_lock.
+    """Return the ticker's held level crosses, oldest first.
+
+    The one database read of them, the first time they are needed (the console's start, or a
+    cross found before it), then fed live. Called holding _crosses_lock.
     """
     if tk not in _crosses:
         _crosses[tk] = get_db().get_recent_crosses(ticker=tk, n=CROSSES_KEPT)[::-1]
@@ -546,17 +565,18 @@ def _held_crosses(tk: str) -> list[dict]:
 
 
 def _load_crosses(watchlist: list[str]) -> None:
-    """The watchlist's held level crosses, at the console's start."""
+    """Load the watchlist's held level crosses, at the console's start."""
     with _crosses_lock:
         for tk in watchlist:
             _held_crosses(tk)
 
 
 def _merged_recent_crosses(ticker: str, n: int) -> list[dict]:
-    """The newest `n` level crosses, each (time, value, direction) one event carrying every
-    level named there in `level_names`. The one reader of level crosses for every route.
-    Price crossing one strike writes one stored row per named level sitting there; they are
-    merged here, at the read, so the stored history keeps its per-level rows.
+    """Return the newest `n` level crosses, each (time, value, direction) one event.
+
+    Each event carries every level named there in `level_names`. The one reader of level crosses
+    for every route. Price crossing one strike writes one stored row per named level sitting
+    there; they are merged here, at the read, so the stored history keeps its per-level rows.
     """
     with _crosses_lock:
         raw = _crosses[ticker][::-1][: max(int(n) * 8, 64)] if ticker in _crosses else []
@@ -578,8 +598,9 @@ def _merged_recent_crosses(ticker: str, n: int) -> list[dict]:
 
 
 def _required_ticker(ticker: str) -> str:
-    """The ticker the caller asked for -- never a default one: every ticker is treated the same.
-    Blank -> HTTP 400.
+    """Return the ticker the caller asked for -- never a default one.
+
+    Every ticker is treated the same. Blank -> HTTP 400.
     """
     t = ticker.strip()
     if not t:
@@ -588,8 +609,9 @@ def _required_ticker(ticker: str) -> str:
 
 
 def unavailable(ticker: str, reason: str, **fields) -> dict:
-    """A route's answer when the value it serves is not held for `ticker`: why, with the
-    route's own `fields`.
+    """Return a route's answer when the value it serves is not held for `ticker`.
+
+    It says why, with the route's own `fields`.
     """
     return {"ticker": ticker, "available": False, **fields, "reason": reason}
 
@@ -632,7 +654,7 @@ class PublishedLevels:
     count_capture_ts: float | None
 
     def served(self) -> dict:
-        """The levels as /api/terrain serves them, before the live price's relations."""
+        """Return the levels as /api/terrain serves them, before the live price's relations."""
         return self.snap.to_dict() | {
             "computed_ts_utc": self.computed_ts_utc,
             "levels_ts_utc": self.levels_ts_utc,
@@ -654,14 +676,15 @@ _terrain_loop_thread: threading.Thread | None = None
 
 
 def published_levels(ticker: str) -> PublishedLevels | None:
-    """The ticker's levels as last published, or None before the first."""
+    """Return the ticker's levels as last published, or None before the first."""
     with _terrain_cache_lock:
         return _terrain_cache.get(ticker_storage_key(ticker))
 
 
 def terrain_cache_get(ticker: str, now: float) -> tuple[PublishedLevels | None, dict]:
-    """The ticker's published levels (None before the first) and their verdict at `now`
-    (terrain_staleness): the cache holds the chain's time, never a verdict.
+    """Return the ticker's published levels (None before the first) and their verdict at `now`.
+
+    The verdict is terrain_staleness's: the cache holds the chain's time, never a verdict.
     """
     levels = published_levels(ticker)
     if levels is None:
@@ -682,8 +705,9 @@ _SCHWAB_TOKEN_RED_DAYS = 6.0
 
 
 def schwab_token_countdown(token: tuple[float | None, str | None], now: float) -> dict:
-    """The token's urgency at `now` from the token file's creation_timestamp, or, when the file
-    gives none, why (_schwab_token_creation_ts).
+    """Return the token's urgency at `now` from the token file's creation_timestamp.
+
+    When the file gives none, why (_schwab_token_creation_ts).
     """
     creation_ts, unreadable = token
     if creation_ts is None:
@@ -719,8 +743,10 @@ def schwab_token_countdown(token: tuple[float | None, str | None], now: float) -
 
 
 def _schwab_token_creation_ts() -> tuple[float | None, str | None]:
-    """creation_timestamp from schwab_token.json, or None (never a fake age) with why the file
-    gives none, by its error's type, which the screen's note shows (its message names a path).
+    """creation_timestamp from schwab_token.json, or None (never a fake age) with why.
+
+    Why the file gives none, by its error's type, which the screen's note shows (its message names
+    a path).
     """
     try:
         raw = json.loads(Path(token_path()).read_text(encoding="utf-8"))
@@ -736,14 +762,15 @@ def terrain_staleness(
     now: float,
     levels_ts_utc: float | None = None,
 ) -> dict:
-    """The levels' state at `now`, THE levels verdict every screen shows (`levels_state`): LIVE
-    from the market day's start (time_et.options_open) until the ticker's own option market closes
-    (time_et.option_close_product: stock options at 16:00 ET, index-close options at 16:15) with
-    its chain current; CLOSE once that market has closed, and through the day's first round, with
-    a chain fetched after its close, however old (docs/DATA_FLOW.md §2 D5);
-    STALE, with WHY, when the chain is overdue or the close values were never fetched; NOT LIVE
-    when Schwab's /markets answer for today is not held. The daemon's last answer for the ticker's
-    chain (a failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
+    """Return the levels' state at `now`, THE levels verdict every screen shows (`levels_state`).
+
+    LIVE from the market day's start (time_et.options_open) until the ticker's own option market
+    closes (time_et.option_close_product: stock options at 16:00 ET, index-close options at 16:15)
+    with its chain current; CLOSE once that market has closed, and through the day's first round,
+    with a chain fetched after its close, however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY,
+    when the chain is overdue or the close values were never fetched; NOT LIVE when Schwab's
+    /markets answer for today is not held. The daemon's last answer for the ticker's chain (a
+    failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
     (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option market
     is open the daemon fetches every watchlist ticker's chain without end, so age past two of its
     delivered rounds is a gap, never a schedule. Served beside it: the time of the newest Schwab
@@ -770,8 +797,10 @@ def terrain_staleness(
 def _levels_state(
     computed_ts_utc: float | None, ticker: str, now: float, failure: str | None
 ) -> tuple[str, str]:
-    """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness. While the daemon asks
-    Schwab for nothing (its status's `chains_waiting`: a refused sign-in), that is the why.
+    """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness.
+
+    While the daemon asks Schwab for nothing (its status's `chains_waiting`: a refused sign-in),
+    that is the why.
     """
     status = lmp.daemon_status(now)
     waiting = None if status is None else status["chains_waiting"]
@@ -839,9 +868,11 @@ LEVELS_CLOSE, LEVELS_STALE = "CLOSE", "STALE"
 
 
 def levels_mark(levels: dict) -> dict:
-    """The one word the Key Levels line shows, from the levels' verdict and their price's
-    (terrain_staleness, price_mark): the levels' state while it is not LIVE, else the price's state
-    (the walls stand and are LIVE only while the price they are measured from is live), with why.
+    """Return the one word the Key Levels line shows, from the levels' verdict and their price's.
+
+    From terrain_staleness and price_mark: the levels' state while it is not LIVE, else the
+    price's state (the walls stand and are LIVE only while the price they are measured from is
+    live), with why.
     """
     if levels["levels_state"] != lmp.LIVE:
         return {
@@ -852,8 +883,9 @@ def levels_mark(levels: dict) -> dict:
 
 
 def levels_verdict(staleness: dict) -> dict:
-    """The levels verdict a screen shows, from terrain_staleness's answer: the word, the chain's
-    time, the age and why not live.
+    """Return the levels verdict a screen shows, from terrain_staleness's answer.
+
+    The word, the chain's time, the age and why not live.
     """
     return {
         k: staleness[k]
@@ -868,8 +900,10 @@ def levels_verdict(staleness: dict) -> dict:
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
-    """Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for
-    as long as it stays open: the heatmap's REQUESTED state. Every watchlist ticker's chain is
+    """Tell whether the ticker is viewed: the heatmap's REQUESTED state.
+
+    Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for as
+    long as it stays open. Every watchlist ticker's chain is
     fetched and priced alike, and every one is repriced on its streamed ticks.
     """
     return tk in push_changes.watched()
@@ -891,10 +925,11 @@ def _next_gamma_surface_seq(tk: str, now: float) -> int:
 def _streamed_greeks_for_ticker(
     listed: frozenset, now: float, feed: lmp.FeedNow | None = None
 ) -> dict:
-    """The newest streamed Greeks, OPEN_INTEREST and VOLUME of every contract the daemon's
-    latest beat holds of the ticker's chain (`listed`, the symbols Schwab listed in it). A
-    missing beat keeps that set. `feed` is one read of that heartbeat; omitted, this call reads
-    it.
+    """Return the newest streamed Greeks, OPEN_INTEREST and VOLUME of the ticker's held contracts.
+
+    The contracts are every one the daemon's latest beat holds of the ticker's chain (`listed`,
+    the symbols Schwab listed in it). A missing beat keeps that set. `feed` is one read of that
+    heartbeat; omitted, this call reads it.
     """
     out: dict = {}
     for sym in _held_option_symbols_for_ticker(listed, now, feed):
@@ -907,8 +942,9 @@ def _streamed_greeks_for_ticker(
 def _held_option_symbols_for_ticker(
     listed: frozenset, now: float, feed: lmp.FeedNow | None = None
 ) -> list[str]:
-    """Every contract of the ticker's chain (`listed`) on the daemon's latest LEVELONE_OPTIONS
-    beat. A missing or too-old beat keeps that set; it does not say the feed is live.
+    """Every contract of the ticker's chain (`listed`) on the daemon's latest LEVELONE_OPTIONS beat.
+
+    A missing or too-old beat keeps that set; it does not say the feed is live.
     `feed` is one read of that heartbeat; omitted, this call reads it.
     """
     if feed is None:
@@ -920,15 +956,19 @@ def _held_option_symbols_for_ticker(
 
 
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
-    """The contracts `post` holds as new records of `pre`'s (overlay_streamed_contract_fields
-    and _keep_last_reported pass an unchanged contract through as the same record).
+    """Return the contracts `post` holds as new records of `pre`'s.
+
+    overlay_streamed_contract_fields and _keep_last_reported pass an unchanged contract through as
+    the same record.
     """
     return [new.symbol for orig, new in zip(pre, post) if new is not orig and new.symbol]
 
 
 def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
-    """The freshest of a streamed contract's own per-field `_ts_recv` stamps (get_stream_greeks'
-    shape, app.options.order_flow.state), or None if `greeks` is absent/empty. Any one of these
+    """Return the freshest of a streamed contract's own per-field `_ts_recv` stamps.
+
+    The shape is get_stream_greeks', app.options.order_flow.state; None if `greeks` is
+    absent/empty. Any one of these
     fields ticking is evidence the contract is actively producing observations right now, so the
     MAX (not a single hardcoded field) is the contract's own last-observed instant.
     """
@@ -943,8 +983,10 @@ _STREAM_STATE_ORDER = ("stale", "pending")
 
 
 def _stream_state_of(states: list) -> str:
-    """One stream state for a set of leg (or cell) states: live when all are live, partial when
-    some are, else the first of _STREAM_STATE_ORDER present, else unavailable.
+    """One stream state for a set of leg (or cell) states.
+
+    Live when all are live, partial when some are, else the first of _STREAM_STATE_ORDER present,
+    else unavailable.
     """
     if not states:
         return "unavailable"
@@ -956,8 +998,9 @@ def _stream_state_of(states: list) -> str:
 
 
 def _stream_cell_title(state: str, age: float | None, ts_recv: float | None) -> str | None:
-    """The tooltip for a cell that is not live: the served word, Schwab's time in Central Time,
-    and the age. A live cell has no tooltip.
+    """Return the tooltip for a cell that is not live.
+
+    The served word, Schwab's time in Central Time, and the age. A live cell has no tooltip.
     """
     if state == "live":
         return None
@@ -975,8 +1018,9 @@ def _stream_cell_title(state: str, age: float | None, ts_recv: float | None) -> 
 def _stamp_gamma_surface_cell_stream_state(
     surface: dict, streamed: dict, overlay_symbols: set, held_symbols: set[str], now: float
 ) -> dict:
-    """`surface` with per-leg (call/put) and per-cell STREAM state on its cells and columns. It
-    never touches a cell's computed value (project_gamma_surface is the one exposure
+    """`surface` with per-leg (call/put) and per-cell STREAM state on its cells and columns.
+
+    It never touches a cell's computed value (project_gamma_surface is the one exposure
     computation); it says whether a streamed Schwab value backs it now.
 
     `streamed`: the streamed values of the contracts the daemon's latest beat holds of this
@@ -1129,11 +1173,13 @@ COVERAGE_LIVE, COVERAGE_PARTIAL, COVERAGE_WARMING, COVERAGE_EXPIRED = (
 
 
 def _stream_coverage(cells: list, cols: list[int], expired_only: bool) -> dict:
-    """How many of the heatmap's `cells` (the window on screen, _surface_view) are live, over the
-    columns `cols` that can stream (an expired column's contracts never will; `expired_only`:
-    every column drawn has expired). Only cells with a contract count (a strike an expiry does
-    not list was never a data point). Returns the counts by cell state, the share live rounded
-    down (100 only when every cell is live), and the header's words: `state`, `label`, `title`.
+    """How many of the heatmap's `cells` (the window on screen, _surface_view) are live.
+
+    Over the columns `cols` that can stream (an expired column's contracts never will;
+    `expired_only`: every column drawn has expired). Only cells with a contract count (a strike an
+    expiry does not list was never a data point). Returns the counts by cell state, the share live
+    rounded down (100 only when every cell is live), and the header's words: `state`, `label`,
+    `title`.
     """
     counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "unavailable": 0}
     for cell in cells:
@@ -1188,8 +1234,10 @@ WINDOW_NO_PRICE = "no live price: the middle strikes of the chain"
 
 
 def _window(strikes, spot_strike, scope: str, centre, shift: int) -> tuple[int, int, dict]:
-    """Every per-strike panel's rows: strike_window around the operator's panned `centre`, else
-    the strike nearest the live price (`spot_strike`), moved `shift` rows. Returns (first index,
+    """Every per-strike panel's rows.
+
+    strike_window around the operator's panned `centre`, else the strike nearest the live price
+    (`spot_strike`), moved `shift` rows. Returns (first index,
     last index, the view's {centre, note}): `note` says why the rows are not around the price
     (no price and no pan), else None.
     """
@@ -1207,7 +1255,9 @@ def _surface_view(
     cols: int | None,
     expiry: str | None,
 ) -> tuple[dict, dict]:
-    """The heatmap the page draws: (the surface cut to its window, the view). Rows: _window.
+    """Return the heatmap the page draws: (the surface cut to its window, the view).
+
+    Rows: _window.
     Columns: the selected `expiry` alone; else for Auto the nearest `cols` (as many as the page
     fits) that have not expired, for Wider twice that, expired ones after, for All every one;
     with none unexpired, the expired ones (drawn labelled EXPIRED, a past observation). Each cell:
@@ -1256,8 +1306,10 @@ def _surface_view(
 
 
 def _contract_ticker(sym: str) -> str | None:
-    """The ticker whose chain Schwab listed `sym` in, or None -- the same rule for every
-    instrument, whatever the contract's root (SPXW and SPX are both $SPX's).
+    """Return the ticker whose chain Schwab listed `sym` in, or None.
+
+    The same rule for every instrument, whatever the contract's root (SPXW and SPX are both
+    $SPX's).
     """
     with _terrain_cache_lock:
         return next(
@@ -1270,14 +1322,15 @@ _QUOTE_COUNTS = ("open_interest", "volume")
 
 
 def _positive(count: float | None) -> bool:
-    """A count Schwab reported above zero. Zero and no value are not one."""
+    """Tell whether a count is one Schwab reported above zero. Zero and no value are not one."""
     return count is not None and count > 0
 
 
 def _carried(newer: OptionContract, older: OptionContract | None, replaced) -> OptionContract:
-    """`newer`, with `older`'s greeks where Schwab sent `newer` no gamma and `older` one, and
-    each count of `older` above zero where `replaced` says `newer`'s is to be replaced. `newer`
-    itself when nothing is carried.
+    """`newer`, with `older`'s greeks where Schwab sent `newer` no gamma and `older` one.
+
+    And each count of `older` above zero where `replaced` says `newer`'s is to be replaced.
+    `newer` itself when nothing is carried.
     """
     if older is None:
         return newer
@@ -1291,10 +1344,11 @@ def _carried(newer: OptionContract, older: OptionContract | None, replaced) -> O
 
 
 def _keep_last_reported(chain, previous, at, product):
-    """Outside that ticker's option window, a quote that does not report a greek leaves the
-    greek the last quote reported, and a count of zero leaves the last count above zero.
-    During the window the quote stands, and Schwab's no-value code does not keep an older
-    greek.
+    """Keep the last reported greeks and counts outside that ticker's option window.
+
+    Outside the window, a quote that does not report a greek leaves the greek the last quote
+    reported, and a count of zero leaves the last count above zero. During the window the quote
+    stands, and Schwab's no-value code does not keep an older greek.
     """
     if option_market_open(at, product) is not False or not previous:
         return chain
@@ -1303,9 +1357,11 @@ def _keep_last_reported(chain, previous, at, product):
 
 
 def _previous_counts(memory, stored):
-    """The last reported contract per symbol: each count above zero and the greeks of its newest
-    quote that reported them (_carried), over the stored capture and the last published chain,
-    whichever exist. `memory` is newer than `stored`.
+    """Return the last reported contract per symbol.
+
+    Each count above zero and the greeks of its newest quote that reported them (_carried), over
+    the stored capture and the last published chain, whichever exist. `memory` is newer than
+    `stored`.
     """
     by_sym: dict[str, OptionContract] = {}
     for c in [c for chain in (stored, memory) if chain is not None for c in chain]:
@@ -1323,7 +1379,7 @@ def _publish_levels(
     captures: list | None = None,
     now: datetime | None = None,
 ) -> TerrainSnapshot | None:
-    """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
+    """Produce a ticker's levels, per-strike rows and gamma-surface grid: THE producer of them.
 
     Prices the ticker's chain once -- each streamed contract with the values Schwab pushed it
     (overlay_streamed_contract_fields) -- and publishes all three together, so the heatmap, Strike
@@ -1509,8 +1565,9 @@ _last_tick_spot: dict[str, float | None] = {}
 def _level_crosses_at(
     published: TerrainSnapshot, before: float | None, spot: float | None
 ) -> list[tuple]:
-    """(level value, level name, direction) for each `published` level the price crossed going
-    from `before` to `spot` (terrain_read.crossed).
+    """(level value, level name, direction) for each `published` level the price crossed.
+
+    Going from `before` to `spot` (terrain_read.crossed).
     """
     return [
         (getattr(published, k), name, side)
@@ -1527,9 +1584,11 @@ LEVEL_CROSS_HOLD_S = 60.0
 def _log_level_crosses(
     tk: str, spot: float, crosses: list[tuple], now: float, now_text: str
 ) -> None:
-    """Store the crosses _level_crosses_at found, each unless the ticker's held crosses have the
-    same level's cross in the same direction from the last LEVEL_CROSS_HOLD_S; hold them for the
-    live readers and tell the open pages. Runs on the pricing thread; a failed store is logged.
+    """Store the crosses _level_crosses_at found, hold them for live readers, tell the open pages.
+
+    Each is stored unless the ticker's held crosses have the same level's cross in the same
+    direction from the last LEVEL_CROSS_HOLD_S. Runs on the pricing thread; a failed store is
+    logged.
     """
     try:
         with _crosses_lock:
@@ -1568,8 +1627,9 @@ def _log_level_crosses(
 
 
 def _vanna_rows(snap: TerrainSnapshot) -> list:
-    """[strike, net dealer vanna] for every strike whose vanna is known, from the published book:
-    each strike's net_vanna exactly as compute_exposures_by_strike computed it (+call/-put).
+    """[strike, net dealer vanna] for every strike whose vanna is known, from the published book.
+
+    Each strike's net_vanna exactly as compute_exposures_by_strike computed it (+call/-put).
     """
     exposures, _diag = merge_exposure_books(snap.books.values())
     rows = []
@@ -1592,8 +1652,9 @@ def _charm_rows(snap: TerrainSnapshot) -> list:
 
 
 def _tick_ticker(sym: str) -> str | None:
-    """The cached ticker a streamed symbol moves: the equity itself, or an option contract's
-    underlying.
+    """Return the cached ticker a streamed symbol moves.
+
+    The equity itself, or an option contract's underlying.
     """
     if not vendor_option_root(sym):
         return ticker_storage_key(sym)
@@ -1601,9 +1662,11 @@ def _tick_ticker(sym: str) -> str | None:
 
 
 def _on_stream_tick(sym: str, ts: float) -> None:
-    """Called by the live feed, on the event loop, for every streamed equity quote and every
-    option quote carrying Greeks or volume, with the daemon's receive time of it (`ts`). An equity
-    quote checks the ticker's levels for a cross at the live price (stored off the event loop);
+    """Take one streamed tick of `sym`, received by the daemon at `ts`.
+
+    Called by the live feed, on the event loop, for every streamed equity quote and every option
+    quote carrying Greeks or volume, with the daemon's receive time of it (`ts`). An equity quote
+    checks the ticker's levels for a cross at the live price (stored off the event loop);
     the ticker, whichever it is, is queued for a reprice as of `ts` with every value Schwab has
     pushed (one waits per ticker, as of its newest tick, so the reprice that runs takes the
     newest). Returns at once.
@@ -1650,10 +1713,11 @@ _chains_delivered: set[str] = set()
 def _on_chain(
     ticker: str, contracts: list | None, ts: float, reason: str | None, spot: tuple | None
 ) -> None:
-    """The feed's chain callback (streaming.assemble_chain_part), on the event loop: a whole
-    chain the daemon fetched is priced on a pricing thread at its one spot (spot, trade time);
-    a chain it could not deliver keeps the ticker's last levels, which then say why no newer
-    chain came.
+    """Take one chain: the feed's chain callback (streaming.assemble_chain_part), on the event loop.
+
+    A whole chain the daemon fetched is priced on a pricing thread at its one spot (spot, trade
+    time); a chain it could not deliver keeps the ticker's last levels, which then say why no
+    newer chain came.
     """
     tk = ticker_storage_key(ticker)
     if contracts is None:
@@ -1669,11 +1733,12 @@ def _wait_to_price(
     ts: float | None = None,
     spot: tuple | None = None,
 ) -> bool:
-    """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread: a delivered
-    chain replaces whatever waits for the ticker; anything else waits only for a ticker with
-    nothing waiting, and stored captures only for one with nothing delivered. A reprice that
-    finds one waiting moves it to its own tick's time (`ts`), so the one that runs is as of the
-    newest tick. Returns whether it was queued.
+    """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread.
+
+    A delivered chain replaces whatever waits for the ticker; anything else waits only for a
+    ticker with nothing waiting, and stored captures only for one with nothing delivered. A
+    reprice that finds one waiting moves it to its own tick's time (`ts`), so the one that runs is
+    as of the newest tick. Returns whether it was queued.
     """
     with _chains_waiting_lock:
         held = _chains_waiting.get(tk)
@@ -1691,9 +1756,11 @@ def _wait_to_price(
 
 
 def _price_waiting_chain() -> None:
-    """Price one waiting ticker, every ticker the same: the longest waiting, a stored capture after
-    every delivered chain. A reprice takes its turn behind the stored captures queued before it: a
-    viewed ticker's ticks queue one again during each of its pricings.
+    """Price one waiting ticker, every ticker the same.
+
+    The longest waiting, a stored capture after every delivered chain. A reprice takes its turn
+    behind the stored captures queued before it: a viewed ticker's ticks queue one again during
+    each of its pricings.
     """
     with _chains_waiting_lock:
         waiting = list(_chains_waiting)
@@ -1710,10 +1777,12 @@ def _price_chain(
     fetched_ts: float | None,
     spot: tuple | None = None,
 ) -> None:
-    """THE producer of a ticker's levels (_publish_levels): from a newly fetched chain, with the
-    chain's own fetch time as its as-of (an older streamed value never overrides it); from the
-    held chain with the newest streamed values, as of the newest tick's receive time (REPRICE,
-    `fetched_ts`); or from the ticker's newest stored captures (STORED, DATA_FLOW decision 7).
+    """Price a ticker's levels through THE producer of them (_publish_levels).
+
+    From a newly fetched chain, with the chain's own fetch time as its as-of (an older streamed
+    value never overrides it); from the held chain with the newest streamed values, as of the
+    newest tick's receive time (REPRICE, `fetched_ts`); or from the ticker's newest stored
+    captures (STORED, DATA_FLOW decision 7).
     """
     if what == REPRICE:  # the held chain: the ticker's reason stays the chain's own
         try:
@@ -1741,8 +1810,9 @@ FEED_RECORD_STALE_SEC = 150.0
 
 
 def _feed_record_state(path: Path, now: float) -> str:
-    """How old the newest stream_feed_status row in the stream database at `path` is at `now`: it
-    proves the whole path (the daemon's loop, the bus, the writer, the database) wrote this
+    """How old the newest stream_feed_status row in the stream database at `path` is at `now`.
+
+    It proves the whole path (the daemon's loop, the bus, the writer, the database) wrote this
     minute.
     """
     if not path.is_file():
@@ -1805,8 +1875,9 @@ WAITING_LOG_EVERY_SEC = 5.0
 
 
 def _wait_for(what: str, ready) -> None:
-    """Wait until `ready()` (or the loop stops), logging what for and for how long, then how
-    long it took once ready.
+    """Wait until `ready()` (or the loop stops), logging what for and for how long.
+
+    Then log how long it took once ready.
     """
     started = time_et.elapsed()
     next_log = started
@@ -1820,11 +1891,13 @@ def _wait_for(what: str, ready) -> None:
 
 
 def refresh_not_live_pages(now: float) -> None:
-    """Tell each open page whose ticker's price (price_state) or published levels (levels_state)
-    are not live at `now` to read its levels again, so each not-live age (price_mark,
-    terrain_staleness) keeps counting while nothing new arrives: a stopped price, or the close
-    values after the ticker's own option close. The levels loop calls it every STATUS_EVERY_SEC; a
-    page whose price and levels are both live is told by each new price and chain instead.
+    """Tell each open page whose ticker's price or levels are not live at `now` to read again.
+
+    The price is price_state's, the published levels levels_state's; the page reads its levels
+    again, so each not-live age (price_mark, terrain_staleness) keeps counting while nothing new
+    arrives: a stopped price, or the close values after the ticker's own option close. The levels
+    loop calls it every STATUS_EVERY_SEC; a page whose price and levels are both live is told by
+    each new price and chain instead.
     """
     for tk in push_changes.watched():
         levels, verdict = terrain_cache_get(tk, now)
@@ -1835,9 +1908,11 @@ def refresh_not_live_pages(now: float) -> None:
 
 
 def _terrain_loop() -> None:
-    """The watchlist's stored levels once the daemon has said what the watchlist is (queued behind
-    the delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is
-    logged, each open page whose price or levels are not live is told to read its levels again
+    """Run the levels loop: the watchlist's stored levels, then the status every STATUS_EVERY_SEC.
+
+    The stored levels come once the daemon has said what the watchlist is (queued behind the
+    delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged,
+    each open page whose price or levels are not live is told to read its levels again
     (refresh_not_live_pages) and the price levels of a new session or a new ticker are published.
     The chains, and the bars each ticker's price levels are built from, arrive from the daemon
     (_on_chain, _bar_writer).
@@ -1875,10 +1950,11 @@ def _terrain_loop() -> None:
 
 
 def _load_stored_sessions(path: Path) -> None:
-    """Schwab's /markets answers as the daemon recorded them in the stream database at `path`,
-    oldest first, so a stored chain is priced on the sessions of its expiries. No database or table
-    yet, as at the first start before the daemon's, is no answer held. A database that cannot be
-    read, or a row that cannot be taken, stops the console's start with its error.
+    """Schwab's /markets answers as the daemon recorded them in the stream database at `path`.
+
+    Oldest first, so a stored chain is priced on the sessions of its expiries. No database or
+    table yet, as at the first start before the daemon's, is no answer held. A database that
+    cannot be read, or a row that cannot be taken, stops the console's start with its error.
     """
     if not path.is_file():
         return
@@ -1899,17 +1975,19 @@ def _load_stored_sessions(path: Path) -> None:
 
 
 def _load_stored_levels(watchlist: list[str]) -> int:
-    """At startup, each watchlist ticker's newest full chain capture is priced once (DATA_FLOW
-    decision 7), so a restart, a weekend or the close shows the last reading with its time: queued
-    for the pricing thread behind every delivered chain (_wait_to_price), never for a ticker the
-    daemon already delivered a chain for. Returns how many tickers were queued.
+    """At startup, each watchlist ticker's newest full chain capture is priced once.
+
+    DATA_FLOW decision 7, so a restart, a weekend or the close shows the last reading with its
+    time: queued for the pricing thread behind every delivered chain (_wait_to_price), never for a
+    ticker the daemon already delivered a chain for. Returns how many tickers were queued.
     """
     return sum(_wait_to_price(tk, STORED) for tk in watchlist)
 
 
 def start_terrain_loop() -> None:
-    """Start the levels thread. Refuses to start under pytest: tests call _terrain_loop's parts
-    directly.
+    """Start the levels thread.
+
+    Refuses to start under pytest: tests call _terrain_loop's parts directly.
     """
     global _terrain_loop_running, _terrain_loop_thread
     if os.environ.get("PYTEST_CURRENT_TEST"):
@@ -1928,10 +2006,11 @@ def stop_terrain_loop() -> None:
 
 
 def _atr(ticker: str, now: datetime) -> Atr:
-    """The ticker's daily, weekly and monthly ATR at `now`: Schwab's daily candles as the bar
-    writer holds them (_daily; none from Schwab yet: none held) up to yesterday, and today's
-    candle rolled up live from today's 1-minute bars inside Schwab's regular session for today
-    (none before it opens). Too few reads as None.
+    """Return the ticker's daily, weekly and monthly ATR at `now`.
+
+    From Schwab's daily candles as the bar writer holds them (_daily; none from Schwab yet: none
+    held) up to yesterday, and today's candle rolled up live from today's 1-minute bars inside
+    Schwab's regular session for today (none before it opens). Too few reads as None.
     """
     tk = ticker_storage_key(ticker)
     today = now.astimezone(ET).date()
@@ -1966,13 +2045,14 @@ LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"  # _publish_levels, the single prod
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
 def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict | None, str | None]:
-    """The previous market day's close before the day of the chain the ticker's rows came from,
-    as per-strike rows ({all, near, far}), with its source. On a closed market today's rows ARE
-    the newest capture, so the day before is the chain's day's, not the wall clock's (which
-    picks that same capture and compares it with itself). Run by _publish_levels when the
-    ticker's newest capture or its chain's day changes, on the same two newest market days'
-    captures the forces read: the chain's day is today or the newest capture's, so the day
-    before it is one of those two.
+    """Return the previous market day's close before the day of the chain the rows came from.
+
+    The rows are the ticker's; the close comes as per-strike rows ({all, near, far}), with its
+    source. On a closed market today's rows ARE the newest capture, so the day before is the
+    chain's day's, not the wall clock's (which picks that same capture and compares it with
+    itself). Run by _publish_levels when the ticker's newest capture or its chain's day changes,
+    on the same two newest market days' captures the forces read: the chain's day is today or the
+    newest capture's, so the day before it is one of those two.
     """
 
     def _per_strike(contracts: list, spot: float, at: datetime) -> dict:
@@ -2014,18 +2094,20 @@ ShiftQuery = Annotated[int, Query()]
 
 
 def _max_abs_row(rows) -> list | None:
-    """The row ([strike, value, ...]) with the largest |value| of every strike; None with no
-    known value.
+    """Return the row ([strike, value, ...]) with the largest |value| of every strike.
+
+    None with no known value.
     """
     known = [r for r in rows if r[1] is not None]
     return max(known, key=lambda r: abs(r[1])) if known else None
 
 
 def _windowed(rows: list, spot_strike, scope: str, centre, shift: int) -> tuple[list, dict]:
-    """`rows` ([strike, value, ...], ascending) as a panel draws them: _window's rows, with its
-    view {centre, note, max_abs}: the centre strike (send it back to pan from it), why the rows
-    are not around the price, and the largest |value| in the window (the bar and colour scale),
-    None when no value is known.
+    """`rows` ([strike, value, ...], ascending) as a panel draws them.
+
+    _window's rows, with its view {centre, note, max_abs}: the centre strike (send it back to pan
+    from it), why the rows are not around the price, and the largest |value| in the window (the
+    bar and colour scale), None when no value is known.
     """
     lo, hi, view = _window([r[0] for r in rows], spot_strike, scope, centre, shift)
     win = rows[lo : hi + 1]
@@ -2040,7 +2122,7 @@ def get_terrain_strikes(
     centre: CentreQuery = None,
     shift: ShiftQuery = 0,
 ):
-    """The per-strike panels' answer now (terrain_strikes_payload)."""
+    """Answer the per-strike panels now (terrain_strikes_payload)."""
     return JSONResponse(
         terrain_strikes_payload(
             ticker_storage_key(_required_ticker(ticker)), scope, centre, shift, time_et.now()
@@ -2049,10 +2131,11 @@ def get_terrain_strikes(
 
 
 def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float) -> dict:
-    """The per-strike rows of the published levels at `now`, each list windowed for its panel
-    (_windowed): today's GEX and volume (all, near, far expiries), the Chart view's DEX and OI,
-    with each list's view; the side sums, the largest-GEX strike and the day-over-day migration
-    are of every strike.
+    """Return the per-strike rows of the published levels at `now`, each windowed for its panel.
+
+    Windowed by _windowed: today's GEX and volume (all, near, far expiries), the Chart view's DEX
+    and OI, with each list's view; the side sums, the largest-GEX strike and the day-over-day
+    migration are of every strike.
     """
     # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
     # terrain_engine.per_strike_view: {all, near, far} of [strike, net_gex_1pct$, volume], and
@@ -2137,8 +2220,10 @@ def get_bars1m(
     limit: int = Query(default=780, ge=1, le=12000),
     tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$"),
 ):
-    """Completed Schwab 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts, rolled
-    up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label.
+    """Completed Schwab 1m bars, newest-last, rolled up to `tf` by aggregate_bars.
+
+    [{t,o,h,l,c,v}] epoch-seconds bar starts. `last_bar`: the newest completed minute and its
+    label.
     """
     tk = ticker_storage_key(_required_ticker(ticker))  # SPX -> $SPX
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
@@ -2156,14 +2241,18 @@ def get_bars1m(
 
 
 def _tf_bucket_key(t: float, tf: str):
-    """The chart bar a timestamp belongs to: its ET trading date ("D") or its tf-minute bucket."""
+    """Return the chart bar a timestamp belongs to.
+
+    Its ET trading date ("D") or its tf-minute bucket.
+    """
     return datetime.fromtimestamp(t, ET).date() if tf == "D" else int(t // (int(tf) * 60))
 
 
 def aggregate_vwap(rows: list, tf: str) -> list:
-    """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe exactly as
-    aggregate_bars rolls the bars: each bar takes the value as of its last minute, stamped with the
-    bar's first minute (the bar's own `t`).
+    """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe.
+
+    Exactly as aggregate_bars rolls the bars: each bar takes the value as of its last minute,
+    stamped with the bar's first minute (the bar's own `t`).
     """
     if tf == "1":
         return [list(r) for r in rows]
@@ -2179,10 +2268,11 @@ def aggregate_vwap(rows: list, tf: str) -> list:
 
 
 def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
-    """THE chart-timeframe roll-up of 1m bars ("1", "3", "5", "15", "30", "60" minutes, or "D" =
-    the ET trading date): first open, max high, min low, last close. Volume is the sum only
-    when every minute in the bucket reported one -- otherwise None (unknown), never a partial
-    sum or a 0.
+    """Roll up 1m bars to a chart timeframe: THE chart-timeframe roll-up.
+
+    The timeframe is "1", "3", "5", "15", "30", "60" minutes, or "D" = the ET trading date: first
+    open, max high, min low, last close. Volume is the sum only when every minute in the bucket
+    reported one -- otherwise None (unknown), never a partial sum or a 0.
     """
     if tf == "1":
         return list(bars)
@@ -2218,8 +2308,10 @@ STRIKE_BAR_METHODS = {
 
 
 def strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, now: float) -> dict:
-    """A per-strike bar panel's answer at `now` (vanna, charm): the published rows `key`,
-    windowed for the panel (_windowed), with the live price and the strike nearest it.
+    """Return a per-strike bar panel's answer at `now` (vanna, charm).
+
+    The published rows `key`, windowed for the panel (_windowed), with the live price and the
+    strike nearest it.
     """
     method = STRIKE_BAR_METHODS[key]
     levels = published_levels(tk)
@@ -2250,8 +2342,9 @@ def get_vanna_by_strike(
     centre: CentreQuery = None,
     shift: ShiftQuery = 0,
 ):
-    """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
-    put_vanna, aggregated across every expiry; no per-expiry surface yet).
+    """Per-strike dealer VANNA exposure from the published levels.
+
+    net_vanna = call_vanna - put_vanna, aggregated across every expiry; no per-expiry surface yet.
     """
     return JSONResponse(
         strike_bar_payload(
@@ -2272,8 +2365,10 @@ def get_charm_by_strike(
     centre: CentreQuery = None,
     shift: ShiftQuery = 0,
 ):
-    """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
-    own): net_charm = call_charm - put_charm per strike, delta-shares/day.
+    """Per-strike dealer CHARM exposure from the published levels' charm map.
+
+    The map is the charm walls' own: net_charm = call_charm - put_charm per strike,
+    delta-shares/day.
     """
     return JSONResponse(
         strike_bar_payload(
@@ -2293,8 +2388,9 @@ def get_options_tape(
     contract: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=TAPE_KEPT),
 ):
-    """Discrete option TRADE prints — the Options Flow tape, in the operator's required
-    columns: Time/Symbol/Expiry/
+    """Discrete option TRADE prints — the Options Flow tape, in the operator's required columns.
+
+    The columns: Time/Symbol/Expiry/
     Type/Strike/Bid x Size/Ask x Size/Trade/Size/Premium/Volume/OI/IV/Delta/provenance.
     Sourced from app.options.order_flow.history.TAPE, the prints the console builds from
     Schwab's LEVELONE_OPTIONS as the daemon pushes them — no derived/estimated field, no
@@ -2351,11 +2447,12 @@ def get_order_flow_book_heatmap(
     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
     minutes: float = Query(default=60.0, gt=0, le=BOOKS_KEPT_SEC / 60),
 ):
-    """Book-depth heatmap for one of the ticker's Schwab books, `venue`: delegates to
-    app.options.order_flow.history.book_heatmap_for_ticker, which bins the venue's recent books
-    in the console's memory into a time x price grid. The window ends at the newest book, never
-    wall-clock now. A window longer than the books the console keeps (history.BOOKS_KEPT_SEC),
-    or not above 0, is refused.
+    """Book-depth heatmap for one of the ticker's Schwab books, `venue`.
+
+    Delegates to app.options.order_flow.history.book_heatmap_for_ticker, which bins the venue's
+    recent books in the console's memory into a time x price grid. The window ends at the newest
+    book, never wall-clock now. A window longer than the books the console keeps
+    (history.BOOKS_KEPT_SEC), or not above 0, is refused.
     """
     tk = ticker_storage_key(_required_ticker(ticker))
     payload = book_heatmap_for_ticker(tk, venue, minutes=minutes)
@@ -2364,14 +2461,15 @@ def get_order_flow_book_heatmap(
 
 @app.get("/api/forces")
 def get_forces(ticker: str = Query(...)):
-    """The ticker's forces, as the levels producer computed them from its chain captures."""
+    """Serve the ticker's forces, as the levels producer computed them from its chain captures."""
     tk = ticker_storage_key(_required_ticker(ticker))
     levels = published_levels(tk)
     return JSONResponse(_forces_absent(tk) if levels is None else levels.forces)
 
 
 def _forces_absent(tk: str) -> dict:
-    """The forces numbers before two market days of captures exist, or when the read fails.
+    """Return the forces numbers before two market days of captures exist, or when the read fails.
+
     Each number is None. Nothing stands in for it.
     """
     return {
@@ -2387,12 +2485,13 @@ def _forces_absent(tk: str) -> dict:
 
 
 def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None = None) -> dict:
-    """Forces rows from banked chains: each day's OI totalled by side of the NEWER capture's spot
-    — bucketing each day by its own spot lets the moving boundary masquerade as OI change. DEX is
-    the newer capture's net_dex_dollars side sums; CHARM the dealer-signed
-    net_charm below and above spot on the newer banked chain. `charm_by_strike` is that
-    capture's map when this publication just priced it. Otherwise the same function runs once,
-    at that capture's valuation instant.
+    """Build the forces rows from banked chains.
+
+    Each day's OI totalled by side of the NEWER capture's spot — bucketing each day by its own
+    spot lets the moving boundary masquerade as OI change. DEX is the newer capture's
+    net_dex_dollars side sums; CHARM the dealer-signed net_charm below and above spot on the newer
+    banked chain. `charm_by_strike` is that capture's map when this publication just priced it.
+    Otherwise the same function runs once, at that capture's valuation instant.
     Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
     newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
@@ -2417,8 +2516,10 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
             spot1 = float(s1)
 
             def _oi_change(in_side) -> float | None:
-                """The side's open interest on the newer day less the older day's. It assumes each
-                capture is the whole chain, where a strike not listed holds no contracts.
+                """Return the side's open interest on the newer day less the older day's.
+
+                It assumes each capture is the whole chain, where a strike not listed holds no
+                contracts.
                 """
                 totals = [
                     side_total([strike_total_oi(b) for k, b in per.items() if in_side(k)])
@@ -2462,15 +2563,17 @@ def _forces_from_captures(tk: str, captures: list, charm_by_strike: dict | None 
 
 
 def _legs(legs: tuple | None) -> dict | None:
-    """A cell's call/put pair and their total; None when not known."""
+    """Return a cell's call/put pair and their total; None when not known."""
     if legs is None:
         return None
     return {"call": legs[0], "put": legs[1], "total": legs[0] + legs[1]}
 
 
 def _gamma_surface_cell_fields(bucket: dict | None, contracts: dict):
-    """ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its exposure
-    bucket, Schwab's values and the book's computed values exact; a value not known is None (no
+    """ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its bucket.
+
+    The bucket is its exposure bucket, Schwab's values and the book's computed values exact; a
+    value not known is None (no
     contract listed there, or Schwab sent nothing for it). Returns (gex, dex, vanna, oi, volume,
     contracts).
     """
@@ -2487,10 +2590,11 @@ def _gamma_surface_cell_fields(bucket: dict | None, contracts: dict):
 
 
 def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
-    """The strike × expiry grid the gamma heatmap draws, shaped from `books` -- the
-    exposure_books compute_terrain priced `chain` into, so every cell is the number the levels
-    and per-strike rows were computed from. No exposure math here. A contract with a missing
-    or malformed expiry is counted, never given a column.
+    """Shape the strike × expiry grid the gamma heatmap draws from `books`.
+
+    `books` are the exposure_books compute_terrain priced `chain` into, so every cell is the
+    number the levels and per-strike rows were computed from. No exposure math here. A contract
+    with a missing or malformed expiry is counted, never given a column.
     """
     by_expiry: dict[str, list] = {}
     for (exp, _dte), book in books.items():
@@ -2560,8 +2664,9 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
 
 
 def _stamp_columns(surface: dict, now: datetime) -> dict:
-    """The surface's expiration columns stamped at `now` (ET; a browser never decides what day it
-    is): `expired` (its expiry is before now's date) and `front` (the nearest expiry that has not
+    """Stamp the surface's expiration columns at `now` (ET; a browser never decides what day it is).
+
+    `expired` (its expiry is before now's date) and `front` (the nearest expiry that has not
     expired, by Schwab's daysToExpiration). No cell value is touched.
     """
     today = now.strftime("%Y-%m-%d")
@@ -2580,13 +2685,14 @@ def get_options_gamma_surface(
     cols: Annotated[int | None, Query(ge=1)] = None,
     expiry: Annotated[str | None, Query()] = None,
 ):
-    """The heatmap: the strike x expiration surface the levels producer projected (cell =
-    net_gex_1pct, compute_exposures_by_strike), cut to the window the page draws (_surface_view:
-    `scope`, the panned `centre` and a drag's `shift`, the `cols` the page fits, the selected
-    `expiry`), with its `view`: the centre, the coverage words, the contracts to stream and the
-    colour scale. With no live surface the answer is "unavailable" with the reason; there is no
-    second source. Served with the levels' verdict (levels_verdict) and the chain's and price's
-    times.
+    """Serve the heatmap: the strike x expiration surface the levels producer projected.
+
+    Cell = net_gex_1pct, compute_exposures_by_strike; cut to the window the page draws
+    (_surface_view: `scope`, the panned `centre` and a drag's `shift`, the `cols` the page fits,
+    the selected `expiry`), with its `view`: the centre, the coverage words, the contracts to
+    stream and the colour scale. With no live surface the answer is "unavailable" with the reason;
+    there is no second source. Served with the levels' verdict (levels_verdict) and the chain's
+    and price's times.
     """
     return JSONResponse(
         gamma_surface_payload(
@@ -2604,7 +2710,7 @@ def get_options_gamma_surface(
 def gamma_surface_payload(
     tk: str, scope: str, centre, shift: int, cols: int | None, expiry: str | None, now: datetime
 ) -> dict:
-    """The heatmap's answer for ticker `tk` at `now` (/api/options/gamma-surface)."""
+    """Return the heatmap's answer for ticker `tk` at `now` (/api/options/gamma-surface)."""
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live, verdict = terrain_cache_get(tk, now.timestamp())
     surf = None if live is None else live.gamma_surface
@@ -2680,7 +2786,7 @@ def gamma_surface_payload(
 
 @app.get("/api/terrain")
 def get_terrain(ticker: str = Query(...)):
-    """The ticker's published levels, now."""
+    """Serve the ticker's published levels, now."""
     return terrain_answer(ticker_storage_key(_required_ticker(ticker)), now_et())  # SPX -> $SPX
 
 
@@ -2743,9 +2849,10 @@ DESK_LOOKBACK = {
 
 
 def _desk_window_start(tf: str, now: datetime) -> float:
-    """Start of the Trade Desk's event window for chart timeframe `tf`: `now` minus its lookback,
-    or the open of the latest regular session that has begun (Schwab's /markets,
-    time_et.last_open).
+    """Start of the Trade Desk's event window for chart timeframe `tf`.
+
+    `now` minus its lookback, or the open of the latest regular session that has begun (Schwab's
+    /markets, time_et.last_open).
     """
     lb = DESK_LOOKBACK[tf][0]
     if lb != "session":
@@ -2764,20 +2871,21 @@ def get_desk_events(
     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
     tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "30",
 ):
-    """The Trade Desk's attention queue at this moment (desk_events_payload)."""
+    """Serve the Trade Desk's attention queue at this moment (desk_events_payload)."""
     return JSONResponse(
         desk_events_payload(ticker_storage_key(_required_ticker(ticker)), venue, tf, now_et())
     )
 
 
 def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
-    """The Trade Desk's attention queue at `now`: level crosses in the timeframe's window as
-    recorded (level, direction, price, spot, time), numbered oldest first, the newest cross at
-    each level for the newest DESK_MARKERS levels flagged for the chart; wall breaches and stale
-    levels from the terrain; the book's size walls at the book's own time -- newest first, an
-    item with no time last -- plus the window's up/down cross counts. One item is one event: the
-    chart's marker and the queue's entry are the same item. The page draws it; it selects,
-    numbers and orders nothing.
+    """Return the Trade Desk's attention queue at `now`.
+
+    Level crosses in the timeframe's window as recorded (level, direction, price, spot, time),
+    numbered oldest first, the newest cross at each level for the newest DESK_MARKERS levels
+    flagged for the chart; wall breaches and stale levels from the terrain; the book's size walls
+    at the book's own time -- newest first, an item with no time last -- plus the window's up/down
+    cross counts. One item is one event: the chart's marker and the queue's entry are the same
+    item. The page draws it; it selects, numbers and orders nothing.
     """
     start = _desk_window_start(tf, now)
     crosses = _merged_recent_crosses(tk, 200)
@@ -2884,11 +2992,12 @@ CHANGES_SESSION_SEC = 5.0
 
 @app.get("/api/changes")
 async def get_changes(ticker: str = Query(...)):
-    """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
-    ticker changed (the page reloads it), and `session` with the market session label. Prices
-    and bars come from the daemon's own push. The open connection is the page: a ticker an open
-    page shows is repriced on its ticks (push_changes.watched). Every page reconnects after a
-    console restart.
+    """Push the console's changes to the page.
+
+    `levels`, `flow` or `liquidity` when that value of the ticker changed (the page reloads it),
+    and `session` with the market session label. Prices and bars come from the daemon's own push.
+    The open connection is the page: a ticker an open page shows is repriced on its ticks
+    (push_changes.watched). Every page reconnects after a console restart.
     """
     t = ticker_storage_key(_required_ticker(ticker))
 
@@ -2928,16 +3037,18 @@ def api_order_flow_microstructure(
 
 
 def _when_age(when: str | None, sec: float | None) -> str | None:
-    """A clock's time and its age as the screen shows them ("Fri 09/25 06:59 PM CT · 4s"),
-    either alone when the other is missing; None when both are.
+    """Return a clock's time and its age as the screen shows them ("Fri 09/25 06:59 PM CT · 4s").
+
+    Either alone when the other is missing; None when both are.
     """
     shown = [x for x in (when, None if sec is None else age_text(sec)) if x is not None]
     return " · ".join(shown) or None
 
 
 def _stamp_book_times(payload: dict) -> None:
-    """Schwab's quote clock and book clock, as the screen shows them, each with its age (the
-    engine's `ages`). Absent stays absent.
+    """Schwab's quote clock and book clock, as the screen shows them, each with its age.
+
+    The age is the engine's `ages`. Absent stays absent.
     """
     prov = payload.get("provenance")
     quote_ts = prov.get("exchange_quote_ts") if isinstance(prov, dict) else None
@@ -2953,9 +3064,10 @@ def _stamp_book_times(payload: dict) -> None:
 
 
 def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
-    """Canonical L2 book microstructure at `now` (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
-    spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
-    liquidity concentration, wall_candidates, and ages — every field classified
+    """Canonical L2 book microstructure at `now` (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1).
+
+    Top-of-book, spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve,
+    book slope, liquidity concentration, wall_candidates, and ages — every field classified
     NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
     app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries
     the engine's already-computed structural state for the current book (memoized per ticker +
@@ -3032,8 +3144,9 @@ def _source(venue: str, r: dict) -> str:
 
 
 def _no_number(r: dict) -> tuple[str, str, str] | None:
-    """Why a venue has no number, as the source line, the card's line and the card's heading say
-    it; None when it has one.
+    """Why a venue has no number, as the source line, the card's line and the card's heading say it.
+
+    None when it has one.
     """
     status = r["status"]
     if status == "no_book":
@@ -3048,8 +3161,10 @@ def _no_number(r: dict) -> tuple[str, str, str] | None:
 
 
 def _source_text(venue: str, r: dict, window: str | None) -> str:
-    """The card's source line for `venue`: Schwab's book, then why it has no number, or live, or
-    its time and not live; and, when today's auction windows are not known, that.
+    """Return the card's source line for `venue`.
+
+    Schwab's book, then why it has no number, or live, or its time and not live; and, when today's
+    auction windows are not known, that.
     """
     parts = [_source(venue, r)]
     why = _no_number(r)
@@ -3068,8 +3183,9 @@ def _source_text(venue: str, r: dict, window: str | None) -> str:
 
 
 def _stood_from(points: list[tuple[float, dict]], venue: str) -> float:
-    """The receive time of the first reading from which `venue`'s readout has stood as it is
-    now: where a venue that is not live is read to (a book that stopped stands from its last
+    """Return the receive time of the first reading from which `venue`'s readout has stood as now.
+
+    That is where a venue that is not live is read to (a book that stopped stands from its last
     arrival; the composite of a stopped book and a running one still changes with the running
     one).
     """
@@ -3080,15 +3196,15 @@ def _stood_from(points: list[tuple[float, dict]], venue: str) -> float:
 
 
 def liquidity_readout(t: str, now: float) -> dict:
-    """The Desk Liquidity card's order-imbalance readout for ticker `t` at `now`: the newest
-    readout of both Schwab books and their deduped composite the console's intake computed
-    (engine.book_readout, kept in history.LEAN), read over the readouts kept
+    """Return the Desk Liquidity card's order-imbalance readout for ticker `t` at `now`.
+
+    The newest readout of both Schwab books and their deduped composite the console's intake
+    computed (engine.book_readout, kept in history.LEAN), read over the readouts kept
     (engine.readout_card). Each book is judged by the one live rule on its own service, the
-    composite live only while both are; a venue that is not live keeps its
-    last values, read to the reading its readout has stood from (`_stood_from`), with its book's
-    time and age. With the exchange auction
-    window of today's session as Schwab sent it (time_et.auction; None while Schwab's answer for
-    today is not held), and every word the card shows.
+    composite live only while both are; a venue that is not live keeps its last values, read to
+    the reading its readout has stood from (`_stood_from`), with its book's time and age. With the
+    exchange auction window of today's session as Schwab sent it (time_et.auction; None while
+    Schwab's answer for today is not held), and every word the card shows.
     """
     points = LEAN.points(t)
     readout = points[-1][1] if points else _NO_BOOKS
@@ -3121,14 +3237,15 @@ def liquidity_readout(t: str, now: float) -> dict:
 
 @app.get("/api/order-flow/options-microstructure")
 def api_order_flow_options_microstructure(contract: str = Query(...)):
-    """Same canonical L2 book microstructure as /api/order-flow/microstructure, for one
-    OPTION CONTRACT's live book. SERIALIZER, not a second producer: delegates to
-    app.options.order_flow.live_payload.options_live_payload, which reads
-    the SAME app.options.order_flow.engine.compute_book_microstructure the equity route reads — no
-    parallel book-imbalance computation for options. `contract` MUST be a chain response's
-    own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route neither builds
-    nor checks that format, it serializes what the console holds for the literal string given.
-    A contract symbol is not a ticker.
+    """Serve /api/order-flow/microstructure's canonical L2 book for one OPTION CONTRACT.
+
+    The same canonical L2 book microstructure, for the contract's live book. SERIALIZER, not a
+    second producer: delegates to app.options.order_flow.live_payload.options_live_payload, which
+    reads the SAME app.options.order_flow.engine.compute_book_microstructure the equity route
+    reads — no parallel book-imbalance computation for options. `contract` MUST be a chain
+    response's own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route neither
+    builds nor checks that format, it serializes what the console holds for the literal string
+    given. A contract symbol is not a ticker.
     """
     c = contract.strip()
     if not c:
@@ -3137,8 +3254,9 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
 
 
 def options_microstructure(c: str, now: float) -> dict:
-    """The Flow panel's payload for contract `c` at `now` (/api/order-flow/options-microstructure),
-    judged live by the one live rule.
+    """Return the Flow panel's payload for contract `c` at `now`, judged live by the one live rule.
+
+    It is /api/order-flow/options-microstructure's answer.
     """
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
@@ -3150,9 +3268,10 @@ def options_microstructure(c: str, now: float) -> dict:
 
 
 async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
-    """An add or a removal, made by the daemon (streaming.watchlist_request); its record as the
-    answer: `ok` when it happened, else what happened (an invalid ticker with Schwab's /quotes
-    answer, one already on the list, ...).
+    """Ask the daemon for an add or a removal (streaming.watchlist_request).
+
+    Its record is the answer: `ok` when it happened, else what happened (an invalid ticker with
+    Schwab's /quotes answer, one already on the list, ...).
     """
     try:
         rec = await watchlist_request(action, ticker)
@@ -3176,8 +3295,10 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
 
 @app.post("/api/watchlist")
 async def post_watchlist(ticker: Annotated[str, Body(embed=True)]):
-    """Add a ticker: the daemon checks it with one /quotes request and adds it unless Schwab
-    does not quote it (names it in errors.invalidSymbols).
+    """Add a ticker.
+
+    The daemon checks it with one /quotes request and adds it unless Schwab does not quote it
+    (names it in errors.invalidSymbols).
     """
     return await _watchlist_change("add", ticker)
 
@@ -3190,8 +3311,9 @@ async def delete_watchlist(ticker: str):
 
 @dataclass(frozen=True)
 class FlowContract:
-    """The body of /api/flow-contract: the field is required, null meaning none selected (a
-    required body parameter of its own would read null as missing).
+    """The body of /api/flow-contract: the field is required, null meaning none selected.
+
+    A required body parameter of its own would read null as missing.
     """
 
     contract: str | None
@@ -3199,9 +3321,10 @@ class FlowContract:
 
 @app.post("/api/flow-contract")
 async def post_flow_contract(selected: FlowContract):
-    """The contract selected on the Flow panel ({"contract": symbol}, or null for none): the daemon
-    streams it on LEVELONE_OPTIONS and OPTIONS_BOOK on top of its option rule. Only a contract
-    Schwab listed in a chain the console holds is taken.
+    """Select the contract on the Flow panel ({"contract": symbol}, or null for none).
+
+    The daemon streams it on LEVELONE_OPTIONS and OPTIONS_BOOK on top of its option rule. Only a
+    contract Schwab listed in a chain the console holds is taken.
     """
     contract = selected.contract
     if contract is not None and _contract_ticker(contract) is None:
@@ -3219,8 +3342,10 @@ async def post_flow_contract(selected: FlowContract):
 
 @app.get("/api/expiries")
 def get_expiries(ticker: str = Query(...)):
-    """The ticker's listed expiries with each one's dropdown label (MM/DD/YYYY and Schwab's
-    daysToExpiration, as sent); with none, the levels' own reason.
+    """Serve the ticker's listed expiries with each one's dropdown label.
+
+    The label is MM/DD/YYYY and Schwab's daysToExpiration, as sent; with none, the levels' own
+    reason.
     """
     ticker = ticker_storage_key(_required_ticker(ticker))  # SPX -> $SPX: the cache's own key
     now = time_et.now()
@@ -3255,12 +3380,14 @@ NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
 
 @app.get("/api/chain")
 def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)):
-    """One expiry of the ticker's full chain -- every contract Schwab listed, as the chain screens
-    show it (option_contract.chain_row: a value Schwab did not send is null) -- from the chain
-    the daemon delivered (strike_range=ALL), with each live streamed contract's streamed fields as
-    its values (the stream owns them), by the levels' own rule on the same inputs (the chain's
-    listed contracts, its fetch time). Every watchlist ticker's chain is kept. Answers `status:
-    unavailable` with a reason when no chain is held.
+    """One expiry of the ticker's full chain, from the chain the daemon delivered.
+
+    Every contract Schwab listed, as the chain screens show it (option_contract.chain_row: a value
+    Schwab did not send is null) -- from the chain the daemon delivered (strike_range=ALL), with
+    each live streamed contract's streamed fields as its values (the stream owns them), by the
+    levels' own rule on the same inputs (the chain's listed contracts, its fetch time). Every
+    watchlist ticker's chain is kept. Answers `status: unavailable` with a reason when no chain is
+    held.
     """
     t = ticker_storage_key(_required_ticker(ticker))
     now = time_et.now()
@@ -3392,8 +3519,9 @@ def health():
 
 
 def checkout_head(checkout: str | Path) -> str | None:
-    """`checkout`'s HEAD now, read from its git files as git lays them out
-    (gitrepository-layout): a worktree's `.git` file names its git directory, whose `commondir`
+    """`checkout`'s HEAD now, read from its git files as git lays them out (gitrepository-layout).
+
+    A worktree's `.git` file names its git directory, whose `commondir`
     holds the shared refs; HEAD holds a commit, or names a branch whose commit is in its ref file
     or in `packed-refs`. No process is started, so no request waits on one. None, logged with
     why, when it cannot be read.
@@ -3436,16 +3564,18 @@ _IDENTITY_SHA_HEX_CHARS = frozenset("0123456789abcdef")
 
 
 def _is_full_git_sha(value: str) -> bool:
-    """True only for a 40-char lowercase-hex string: a HEAD or ref file that holds anything else
-    is no commit (checkout_head).
+    """Tell whether `value` is a 40-char lowercase-hex string; only that is true.
+
+    A HEAD or ref file that holds anything else is no commit (checkout_head).
     """
     return len(value) == 40 and set(value) <= _IDENTITY_SHA_HEX_CHARS
 
 
 @dataclass(frozen=True)
 class ProcessIdentityV1:
-    """Immutable process-start identity (schema v1). Captured once; never
-    recomputed per request. identity_capture_error carries a sanitized fixed
+    """Immutable process-start identity (schema v1).
+
+    Captured once; never recomputed per request. identity_capture_error carries a sanitized fixed
     classification only — never raw subprocess output or stack traces.
     """
 
@@ -3462,9 +3592,11 @@ class ProcessIdentityV1:
 
 
 def capture_process_identity(checkout: str | Path) -> ProcessIdentityV1:
-    """The process's identity at its start: `checkout`'s HEAD (checkout_head), whether its tree
-    was dirty (`git status --porcelain` with any output, tracked changes or untracked files;
-    None, unknown and never clean, when git cannot say), and the process's id and start time.
+    """Capture the process's identity at its start.
+
+    `checkout`'s HEAD (checkout_head), whether its tree was dirty (`git status --porcelain` with
+    any output, tracked changes or untracked files; None, unknown and never clean, when git cannot
+    say), and the process's id and start time.
     """
     sha = checkout_head(checkout)
     short, dirty, source, error = None, None, "unavailable", "head_unreadable"
@@ -3504,9 +3636,11 @@ PROCESS_IDENTITY_V1: ProcessIdentityV1 = capture_process_identity(APP_DIR)
 
 
 def build_identity_answer(identity: ProcessIdentityV1, repo_head_now: str | None) -> dict:
-    """/api/build's answer: `git_sha` is the code the running process loaded (its identity,
-    stable for its life); the checkout's HEAD now is reported apart (repository_state_now), and
-    whether the checkout has moved past the process (None while either is unknown).
+    """/api/build's answer: `git_sha` is the code the running process loaded.
+
+    That is its identity, stable for its life; the checkout's HEAD now is reported apart
+    (repository_state_now), and whether the checkout has moved past the process (None while
+    either is unknown).
     """
     startup_sha = identity.startup_git_sha
     return {
@@ -3527,18 +3661,19 @@ def build_identity_answer(identity: ProcessIdentityV1, repo_head_now: str | None
 
 @app.get("/api/build")
 def api_build():
-    """The running process's identity and the checkout's HEAD now (build_identity_answer)."""
+    """Serve the running process's identity and the checkout's HEAD now (build_identity_answer)."""
     return build_identity_answer(PROCESS_IDENTITY_V1, checkout_head(APP_DIR))
 
 
 def _publish_price_levels(ticker: str, now: datetime) -> None:
-    """THE producer of a ticker's price-level snapshot: materialized for the market's
-    session at `now` (market_session_date: today's while a session is open, the newest one's
-    while Closed) from its completed Schwab 1m bars, by the bar writer after each of the
-    ticker's bars, and by the levels loop for a ticker with none yet for the session (a restart,
-    a new session). The routes read what it published (canonical_price_level_snapshot). A failed
-    build is logged; the routes serve the last published snapshot with its as-of time, or say
-    the levels are absent.
+    """Publish a ticker's price-level snapshot: THE producer of it.
+
+    Materialized for the market's session at `now` (market_session_date: today's while a session
+    is open, the newest one's while Closed) from its completed Schwab 1m bars, by the bar writer
+    after each of the ticker's bars, and by the levels loop for a ticker with none yet for the
+    session (a restart, a new session). The routes read what it published
+    (canonical_price_level_snapshot). A failed build is logged; the routes serve the last
+    published snapshot with its as-of time, or say the levels are absent.
     """
     tk = ticker_storage_key(_required_ticker(ticker))
     before = canonical_price_level_snapshot(tk, now)
@@ -3561,8 +3696,9 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
 
 
 def _publish_missing_price_levels(tickers, now: datetime) -> None:
-    """Build the price levels of each ticker with none published for the market's session at
-    `now` (the console's start, a new session).
+    """Build the price levels of each ticker with none published for the market's session at `now`.
+
+    As at the console's start, or a new session.
     """
     for tk in tickers:
         if canonical_price_level_snapshot(tk, now) is None:
@@ -3570,9 +3706,11 @@ def _publish_missing_price_levels(tickers, now: datetime) -> None:
 
 
 def canonical_price_level_snapshot(ticker: str, now: datetime):
-    """The ticker's price-level snapshot for the market's session at `now` (market_session_date)
-    as its producer published it (_publish_price_levels), or None when none is published yet.
-    Every server surface reads this; none computes a level.
+    """Return the ticker's price-level snapshot for the market's session at `now`.
+
+    The session is market_session_date's; the snapshot as its producer published it
+    (_publish_price_levels), or None when none is published yet. Every server surface reads this;
+    none computes a level.
     """
     return _MATERIALIZED_SNAPSHOTS.get(
         (ticker_storage_key(_required_ticker(ticker)), market_session_date(now).isoformat())
@@ -3667,8 +3805,9 @@ def _option_abbrev(label: str, same_day: bool) -> str:
 
 
 def _confluence_markers(live: TerrainSnapshot, tk: str, now: datetime, spot) -> list[dict]:
-    """Levels carried from this same priced snapshot, plus the session levels already published,
-    and the one-day move around the live price `spot`.
+    """Levels carried from this same priced snapshot, plus the session levels already published.
+
+    And the one-day move around the live price `spot`.
     """
     markers = []
     snap = canonical_price_level_snapshot(tk, now)
@@ -3737,8 +3876,10 @@ def _confluence_markers(live: TerrainSnapshot, tk: str, now: datetime, spot) -> 
 
 
 def expected_move(move: dict | None, spot) -> tuple[float, float] | None:
-    """The one-day move's upper and lower price: the live price plus and minus the terrain's
-    implied one-day move (TerrainSnapshot.implied_1d_move). None without either.
+    """Return the one-day move's upper and lower price.
+
+    The live price plus and minus the terrain's implied one-day move
+    (TerrainSnapshot.implied_1d_move). None without either.
     """
     if move is None or spot is None:
         return None
@@ -3786,8 +3927,9 @@ def _inside_move(strike, low, high) -> bool:
 
 
 def _ranked_matrices(snap: TerrainSnapshot) -> dict:
-    """One ranking of each expiry on this publication. The matrix request reads the expiry it
-    shows.
+    """One ranking of each expiry on this publication.
+
+    The matrix request reads the expiry it shows.
     """
     # a snapshot priced without a price holds no book, so it ranks nothing
     books, spot = snap.books, snap.spot
@@ -3813,7 +3955,7 @@ def _ranked_matrices(snap: TerrainSnapshot) -> dict:
 
 
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
-    """The ranking stored with the priced chain, for the expiry the operator picks."""
+    """Return the ranking stored with the priced chain, for the expiry the operator picks."""
     published = published_levels(tk)
     if published is None or not published.snap.books:  # a snapshot with a book has its price
         return unavailable(tk, "no priced chain is held for this ticker")
@@ -3886,7 +4028,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
 
 @app.get("/api/confluence")
 def get_confluence(ticker: str = Query(...), expiry: Annotated[str | None, Query()] = None):
-    """The confluence matrix. The chain already priced for this ticker; no database read."""
+    """Serve the confluence matrix. The chain already priced for this ticker; no database read."""
     return JSONResponse(
         confluence_payload(ticker_storage_key(_required_ticker(ticker)), expiry, now_et())
     )
@@ -3904,8 +4046,9 @@ def get_levels(
 
 
 def levels_payload(tk: str, tf: str, now: datetime) -> dict:
-    """/api/levels at `now`: the published price-level snapshot for the market's session, the
-    terrain's levels carried beside it, each with its distance from the live price.
+    """/api/levels at `now`: the published price-level snapshot for the market's session.
+
+    The terrain's levels carried beside it, each with its distance from the live price.
     """
     served_ts = now.timestamp()
     spot, spot_source, spot_ts = resolve_spot(tk, now=now.timestamp())
@@ -4092,7 +4235,7 @@ TERRAIN_FUSION_LEVELS = (
 
 
 def _liquidity_option_levels(tk: str) -> tuple[list[tuple[float, str]], str]:
-    """The ticker's option levels from its published terrain, tagged for the liquidity zones."""
+    """Return the ticker's option levels from its published terrain, tagged for liquidity zones."""
     published = published_levels(tk)
     if published is None:
         return [], "levels_not_ready"
@@ -4124,8 +4267,9 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: float | None) -> None:
 
 
 def _spot_location(zones: list, spot) -> dict | None:
-    """Where spot sits among the zones, by index into `zones`: the zone it is inside, else the
-    nearest zone above and below. None without a spot or a zone.
+    """Where spot sits among the zones, by index into `zones`.
+
+    The zone it is inside, else the nearest zone above and below. None without a spot or a zone.
     """
     if spot is None or not zones:
         return None
@@ -4148,10 +4292,11 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
 
 
 def liquidity_snapshot(ticker: str, now: datetime):
-    """The market session's liquidity & value zones for the ticker at `now`: built from the one
-    price-level snapshot (canonical_price_level_snapshot, the same values /api/levels serves)
-    with the terrain's option levels and the live price fused in. It computes no level of its
-    own.
+    """Return the market session's liquidity & value zones for the ticker at `now`.
+
+    Built from the one price-level snapshot (canonical_price_level_snapshot, the same values
+    /api/levels serves) with the terrain's option levels and the live price fused in. It computes
+    no level of its own.
     """
     try:
         ticker_upper = ticker_storage_key(ticker)

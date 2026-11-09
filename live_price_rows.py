@@ -26,8 +26,9 @@ SPOT_SOURCE = "streaming_plane"
 
 
 def with_change(bar: dict[str, Any]) -> dict[str, Any]:
-    """`bar` with its change over the bar (close - open) and that change as a percent of the
-    open: THE bar-change computation for every bar served.
+    """`bar` with its change over the bar (close - open) and that change as a percent of open.
+
+    THE bar-change computation for every bar served.
     """
     o, c = bar.get("o"), bar.get("c")
     bar["chg"] = c - o if c is not None and o is not None else None
@@ -36,31 +37,35 @@ def with_change(bar: dict[str, Any]) -> dict[str, Any]:
 
 
 def _trade_age_text(trade_ts: float | None, now: float) -> str | None:
-    """The age of Schwab's trade time as the screen shows it (time_et.age_text); None when no
-    trade is known (never a 0).
+    """Return the age of Schwab's trade time as the screen shows it (time_et.age_text).
+
+    None when no trade is known (never a 0).
     """
     return None if trade_ts is None else age_text(now - trade_ts)
 
 
 def _spot_of(row: dict[str, Any] | None) -> float | None:
-    """A plane row's live price: its Schwab LAST_PRICE as the stream sent it, None while the row
-    has none (never received, or sent as not a number).
+    """Return a plane row's live price: its Schwab LAST_PRICE as the stream sent it.
+
+    None while the row has none (never received, or sent as not a number).
     """
     return None if row is None else row["spot"]
 
 
 def spot(ticker: str) -> float | None:
-    """`ticker`'s live price, the price row's own (price_row's `spot`), for a reader that needs
-    only the price: the capture daemon's option rule.
+    """`ticker`'s live price, the price row's own (price_row's `spot`).
+
+    For a reader that needs only the price: the capture daemon's option rule.
     """
     tk = ticker_storage_key(ticker)
     return _spot_of(lmp.get_quote(tk) if tk else None)
 
 
 def price_row(ticker: str, now: float) -> dict[str, Any]:
-    """The finished row the screen paints for one symbol, as it is at `now`: each field the
-    last value Schwab sent. Not live, it sets `feed_live` false, `feed_label` and `outage`; the
-    fields stay (docs/DATA_FLOW.md §2 D5).
+    """Return the finished row the screen paints for one symbol, as it is at `now`.
+
+    Each field is the last value Schwab sent. Not live, it sets `feed_live` false, `feed_label`
+    and `outage`; the fields stay (docs/DATA_FLOW.md §2 D5).
     """
     tk = ticker_storage_key(ticker)
     label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", now)

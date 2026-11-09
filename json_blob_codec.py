@@ -16,15 +16,16 @@ _COMPRESSLEVEL = 6
 
 
 def encode_json_blob(obj: Any, *, default: Any) -> bytes:
-    """`obj` as gzip-compressed JSON (`default` as json.dumps takes it). `mtime=0`: the same
-    object always gives the same bytes.
+    """`obj` as gzip-compressed JSON (`default` as json.dumps takes it).
+
+    `mtime=0`: the same object always gives the same bytes.
     """
     raw = json.dumps(obj, default=default).encode("utf-8")
     return gzip.compress(raw, compresslevel=_COMPRESSLEVEL, mtime=0)
 
 
 def decode_json_blob(value: bytes | str) -> Any:
-    """The JSON a stored value holds: gzip bytes, or a pre-compression row's plain JSON."""
+    """Return the JSON a stored value holds: gzip bytes, or a pre-compression row's plain JSON."""
     if isinstance(value, bytes) and value[:2] == _GZIP_MAGIC:
         value = gzip.decompress(value)
     return json.loads(value)

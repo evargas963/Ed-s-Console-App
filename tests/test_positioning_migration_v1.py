@@ -1,7 +1,9 @@
-"""The Trade Desk's positioning migration is computed once, on the server (terrain_engine.
-positioning_migration), from two real days of Schwab's PCG chain (tests/fixtures, captured
-2026-09-24 and 2026-09-25), each valued at its capture. Expected values are worked out here from
-the rows themselves (question 3: a calculation Schwab does not send, against its definition).
+"""The Trade Desk's positioning migration is computed once, on the server.
+
+The producer is terrain_engine.positioning_migration, from two real days of Schwab's PCG chain
+(tests/fixtures, captured 2026-09-24 and 2026-09-25), each valued at its capture. Expected values
+are worked out here from the rows themselves (question 3: a calculation Schwab does not send,
+against its definition).
 """
 
 import json
@@ -82,12 +84,13 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
 
 
 def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
-    """On a weekend the terrain holds the newest capture (Friday). The prior day was picked by the
-    wall clock's date, so it was that same Friday capture: every change 0, served as `compared`
-    (2026-09-27). It is the capture before the day of the chain the rows came from; and a new
-    market day's first chain makes Friday's capture the prior day. Real PCG chains, stored as the
-    daemon writes them in the console's database. STAND-IN (named): Monday's price row, Friday's
-    capture price.
+    """On a weekend the terrain holds the newest capture (Friday).
+
+    The prior day was picked by the wall clock's date, so it was that same Friday capture: every
+    change 0, served as `compared` (2026-09-27). It is the capture before the day of the chain the
+    rows came from; and a new market day's first chain makes Friday's capture the prior day. Real
+    PCG chains, stored as the daemon writes them in the console's database. STAND-IN (named):
+    Monday's price row, Friday's capture price.
     """
     db = server.get_db().db_path
     for day in _FX["days"]:

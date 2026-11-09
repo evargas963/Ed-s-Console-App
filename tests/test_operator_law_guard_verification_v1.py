@@ -1,8 +1,9 @@
 # institutional-synthetic-ok: crafted command strings prove the action bans block and permit
 # correctly.
-"""operator_law_guard — the host-wide action bans (unrecoverable trees, lock disable, blind
-staging), in both directions: each blocks its action and stays quiet on the forms that only
-look like it.
+"""operator_law_guard — the host-wide action bans, in both directions.
+
+The bans are unrecoverable trees, lock disable, blind staging: each blocks its action and stays
+quiet on the forms that only look like it.
 """
 
 from __future__ import annotations

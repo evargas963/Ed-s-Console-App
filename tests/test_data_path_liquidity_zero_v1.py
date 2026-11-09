@@ -1,4 +1,6 @@
-"""Schwab -> the liquidity zones. A level at 0 is a level: a LAST_PRICE or bar price Schwab sends
+"""Schwab -> the liquidity zones.
+
+A level at 0 is a level: a LAST_PRICE or bar price Schwab sends
 as 0 is a price (AGENTS.md rule 2: a reported 0 is 0), never dropped. Real data and stand-ins as
 tests/test_liquidity_snapshot_spot_identity_v1.py: Schwab's SPY 1-minute bars of 2026-10-01 and
 10-02 under the stand-in ticker ZZLIQ, valued on Friday at 15:00 ET. The prices of 0 are stand-ins
@@ -29,8 +31,9 @@ BOTH = {1, 2}
 
 
 def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> dict:
-    """The route's answer at `at` on the bars before it, those of the October days in `zero_days`
-    with every price 0 but the bar at `keep`.
+    """Return the route's answer at `at` on the bars before it.
+
+    Those of the October days in `zero_days` with every price 0 but the bar at `keep`.
     """
     srv._bars.pop(TK, None)
     for b in _BARS:
@@ -123,8 +126,9 @@ def test_a_value_area_at_zero_is_compared_as_a_price(
 
 
 def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value(published):
-    """Friday's bars at 0 but its last, which keeps its prices: the POC is 0, VWAP above it. The
-    browser tests draw this answer (tests/e2e/console-trade-desk.spec.js).
+    """Friday's bars at 0 but its last, which keeps its prices: the POC is 0, VWAP above it.
+
+    The browser tests draw this answer (tests/e2e/console-trade-desk.spec.js).
     """
     last = max(b["timestamp"] for b in _BARS) / 1000
     body = _snapshot(FRIDAY_ON, FRIDAY, keep=last)

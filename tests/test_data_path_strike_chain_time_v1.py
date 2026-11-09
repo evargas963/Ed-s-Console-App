@@ -8,9 +8,11 @@ from tests.real_chains import CRWD
 
 
 def test_the_strike_panel_carries_the_chain_time():
-    """The per-strike rows' time is the newest Schwab value in them: the chain they were built
-    from when nothing was pushed since. The badge shows that instant beside the age. CRWD's
-    real chain, published by the one producer (_publish_levels) as chain time 1790380799.830.
+    """The per-strike rows' time is the newest Schwab value in them.
+
+    That is the chain they were built from when nothing was pushed since. The badge shows that
+    instant beside the age. CRWD's real chain, published by the one producer (_publish_levels)
+    as chain time 1790380799.830.
     """
     tk = "ZZSTRIKETIME"
     fetched = 1790380799.830

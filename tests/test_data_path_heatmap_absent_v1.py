@@ -1,5 +1,6 @@
-"""The gamma heatmap, Schwab to the screen: a cell with no value is served as None and drawn "-",
-with nothing saying why (AGENTS.md rule 5).
+"""The gamma heatmap, Schwab to the screen: a cell with no value is served as None, drawn "-".
+
+Nothing says why (AGENTS.md rule 5).
 
 Real data: NFLX's chain as production's complete_chain_captures held it (tests/real_chains.py
 NFLX): on 2027-12-17 and 2028-01-21, 8 contracts with open interest whose Greeks Schwab sent as
@@ -14,9 +15,10 @@ from tests.real_chains import NFLX
 
 
 def test_the_page_draws_every_cell_with_no_value_as_a_dash(tmp_path):
-    """Schwab's chain published by the levels producer, served by the heatmap's answer and drawn
-    by the page: every cell with no value draws "-", those with open interest whose Greeks Schwab
-    sent as -999 as the strikes no contract is listed at. Nothing says why a value is missing.
+    """Schwab's chain published by the levels producer, served by the heatmap, drawn by the page.
+
+    Every cell with no value draws "-", those with open interest whose Greeks Schwab sent as -999
+    as the strikes no contract is listed at. Nothing says why a value is missing.
     """
     surface, text = drawn(NFLX.ticker, read_chain(NFLX.chain), NFLX.spot, NFLX.now, tmp_path)
     exps = [e["expiry"] for e in surface["expirations"]]

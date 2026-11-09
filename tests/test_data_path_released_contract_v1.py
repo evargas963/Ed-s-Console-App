@@ -30,8 +30,10 @@ _AT = _MSG["ts_recv"] + 1.0
 
 
 def test_a_released_contract_keeps_its_last_bid_and_is_not_streamed():
-    """The option rule moves off the contract during the open session: the Flow panel still
-    shows Schwab's bid, marks the contract NOT STREAMED, and says the quote is OFFLINE.
+    """The option rule moves off the contract during the open session.
+
+    The Flow panel still shows Schwab's bid, marks the contract NOT STREAMED, and says the
+    quote is OFFLINE.
     """
     ofls.clear_all_live_state()
     try:

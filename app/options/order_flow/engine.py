@@ -1,6 +1,5 @@
-"""
-app/options/order_flow/engine.py — Order Flow Engine
-========================================
+"""Order Flow Engine (app/options/order_flow/engine.py).
+
 The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 
 Input: dict `data` with ``content`` (the streamed book and tape items), ``top`` (the top of
@@ -66,10 +65,12 @@ Exchanges = tuple[tuple[str, float, float | None], ...]
 
 
 def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
-    """A level's own rows, one per exchange or market maker, as sent: (EXCHANGE, BID_VOLUME or
-    ASK_VOLUME, its quote time; docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers: field 2,
-    "Quote time in milliseconds", which schwab-py names SEQUENCE; None when not sent). None when
-    the level carries none, or a row lacks its code or size.
+    """Return a level's own rows, one per exchange or market maker, as sent.
+
+    Each row is (EXCHANGE, BID_VOLUME or ASK_VOLUME, its quote time;
+    docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers: field 2, "Quote time in
+    milliseconds", which schwab-py names SEQUENCE; None when not sent). None when the level
+    carries none, or a row lacks its code or size.
     """
     if not isinstance(rows, list) or not rows:
         return None
@@ -90,8 +91,9 @@ Level = tuple[float, float, Exchanges | None]
 
 @dataclass(frozen=True)
 class Book:
-    """One Schwab book message (NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK), read once (read_book):
-    its service, BOOK_TIME, and each side's levels in the order Schwab sent them.
+    """One Schwab book message (NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK), read once (read_book).
+
+    Holds its service, BOOK_TIME, and each side's levels in the order Schwab sent them.
     """
 
     service: str
@@ -100,17 +102,18 @@ class Book:
     asks: tuple[Level, ...]
 
     def levels(self, side: str) -> tuple[Level, ...]:
-        """The levels of `side`, "BIDS" or "ASKS"."""
+        """Return the levels of `side`, "BIDS" or "ASKS"."""
         return self.bids if side == "BIDS" else self.asks
 
     def pairs(self, side: str) -> list[tuple[float, float]]:
-        """The (price, TOTAL_VOLUME) of each level of `side`, "BIDS" or "ASKS", as sent."""
+        """Return the (price, TOTAL_VOLUME) of each level of `side`, "BIDS" or "ASKS", as sent."""
         return [(p, v) for p, v, _ in self.levels(side)]
 
 
 def read_book(content_item: dict, service: str) -> Book | None:
-    """The one reader of a Schwab book message: None when it carries neither side (a side Schwab
-    sent no levels for is empty).
+    """Read a Schwab book message; this is its one reader.
+
+    None when it carries neither side (a side Schwab sent no levels for is empty).
     """
     if content_item.get("BIDS") is None and content_item.get("ASKS") is None:
         return None
@@ -123,9 +126,10 @@ def read_book(content_item: dict, service: str) -> Book | None:
 
 
 def _side_levels(content_item: dict, side: str) -> list[Level]:
-    """One side of a Schwab book, "BIDS" or "ASKS": (price, TOTAL_VOLUME, the level's per-exchange
-    sizes) for each level, as sent. A level without a number for both price and size is not a
-    level.
+    """Return one side of a Schwab book, "BIDS" or "ASKS".
+
+    (price, TOTAL_VOLUME, the level's per-exchange sizes) for each level, as sent. A level
+    without a number for both price and size is not a level.
     """
     price_key, size_key = (
         ("BID_PRICE", "BID_VOLUME") if side == "BIDS" else ("ASK_PRICE", "ASK_VOLUME")
@@ -151,8 +155,9 @@ def _side_levels(content_item: dict, side: str) -> list[Level]:
 
 
 def _latest_book_snapshot(items: list) -> Book | None:
-    """Return the most recent book (a one-sided book included: the side Schwab sent no levels for
-    is empty).
+    """Return the most recent book.
+
+    A one-sided book included: the side Schwab sent no levels for is empty.
     """
     for item in reversed(items):
         if isinstance(item, Book):
@@ -161,8 +166,9 @@ def _latest_book_snapshot(items: list) -> Book | None:
 
 
 def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> float | None:
-    """Σ TOTAL_VOLUME over the best `depth` levels (best-first). None when the side has no
-    levels. The microstructure depth ladder's one depth aggregation.
+    """Return Σ TOTAL_VOLUME over the best `depth` levels (best-first).
+
+    None when the side has no levels. The microstructure depth ladder's one depth aggregation.
     """
     if not levels:
         return None
@@ -170,8 +176,9 @@ def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> flo
 
 
 def _book_imbalance_from_totals(bid_total: float | None, ask_total: float | None) -> float | None:
-    """THE single book-imbalance formula: (bid - ask) / (bid + ask). None if a side total is
-    absent or the combined depth is non-positive.
+    """Return the book imbalance (bid - ask) / (bid + ask): THE single book-imbalance formula.
+
+    None if a side total is absent or the combined depth is non-positive.
     """
     if bid_total is None or ask_total is None:
         return None
@@ -187,8 +194,10 @@ def _book_imbalance_from_totals(bid_total: float | None, ask_total: float | None
 
 
 def _top(data: dict) -> dict:
-    """The top of book the caller supplies as ``data["top"]`` -- bid, ask, bid_size, ask_size,
-    mark -- each the last value Schwab sent; absent when Schwab has sent none.
+    """Return the top of book the caller supplies as ``data["top"]``.
+
+    Its bid, ask, bid_size, ask_size and mark are each the last value Schwab sent; absent when
+    Schwab has sent none.
     """
     t = data.get("top")
     return t if isinstance(t, dict) else {}
@@ -255,9 +264,11 @@ _MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
 def _sorted_valid_levels(
     levels: list[tuple[float, float]], *, descending: bool
 ) -> list[tuple[float, float]]:
-    """Normalize a raw book side ONCE: drop a level Schwab sent no price or size for (the raw
-    readers drop -999, text, NaN and a negative size), then SORT so `[:N]` is the true Top-N
-    regardless of the vendor's array order: bids DESCENDING, asks ASCENDING.
+    """Normalize a raw book side ONCE.
+
+    Drop a level Schwab sent no price or size for (the raw readers drop -999, text, NaN and a
+    negative size), then SORT so `[:N]` is the true Top-N regardless of the vendor's array
+    order: bids DESCENDING, asks ASCENDING.
     """
     valid = [(p, v) for (p, v) in levels if p is not None and v is not None]
     valid.sort(key=lambda pv: pv[0], reverse=descending)
@@ -265,9 +276,11 @@ def _sorted_valid_levels(
 
 
 def _extract_canonical_book(data: dict) -> dict:
-    """THE single extraction/normalization of the live book. Walks the content ONCE, validates
-    and sorts both sides, and carries the live top of book (``data["top"]``). Every downstream
-    metric reads this result; nothing else re-walks the raw book.
+    """Extract and normalize the live book: THE single extraction/normalization.
+
+    Walks the content ONCE, validates and sorts both sides, and carries the live top of book
+    (``data["top"]``). Every downstream metric reads this result; nothing else re-walks the raw
+    book.
     """
     snapshot = _latest_book_snapshot(_iter_content(data))
     bid, ask = _resolve_bid_ask_prices(data)
@@ -293,11 +306,13 @@ def _extract_canonical_book(data: dict) -> dict:
 
 
 def _canonical_book_identity(cb: dict) -> tuple:
-    """Hashable CONTENT identity of the canonical book — every field the structural state is
-    derived from. The carry cache validates on THIS, never on BOOK_TIME alone: if the same ticker
-    receives a changed ladder (or changed top-of-book / mark) under a repeated BOOK_TIME, the
-    identity differs and `compute_book_microstructure` recomputes instead of serving stale state.
-    BOOK_TIME is included, but only as one component — its uniqueness is not assumed.
+    """Return the hashable CONTENT identity of the canonical book.
+
+    It holds every field the structural state is derived from. The carry cache validates on
+    THIS, never on BOOK_TIME alone: if the same ticker receives a changed ladder (or changed
+    top-of-book / mark) under a repeated BOOK_TIME, the identity differs and
+    `compute_book_microstructure` recomputes instead of serving stale state. BOOK_TIME is
+    included, but only as one component — its uniqueness is not assumed.
     """
     return (
         cb["book_time_ms"],
@@ -315,7 +330,8 @@ def _canonical_book_identity(cb: dict) -> tuple:
 def _microprice(
     bid: float | None, ask: float | None, bid_size: float | None, ask_size: float | None
 ) -> float | None:
-    """Size-weighted top-of-book fair price:
+    """Return the size-weighted top-of-book fair price.
+
         microprice = (bid·ask_size + ask·bid_size) / (bid_size + ask_size)
     Each price is weighted by the OPPOSITE side's size, so heavier bid size pulls the fair
     price toward the ask (imminent buy pressure). DERIVED from Schwab's quotes as sent. None on
@@ -340,7 +356,8 @@ def _book_pressure_curve(levels: list[tuple[float, float]], max_levels: int) -> 
 
 
 def _book_slope(levels: list[tuple[float, float]], depth: int, total: float | None) -> float | None:
-    """Displayed depth density across the best `depth` levels:
+    """Return the displayed depth density across the best `depth` levels.
+
         book_slope = (canonical top-`depth` TOTAL_VOLUME) / |best_price − last_level_price|
     Units: shares per $1 of book depth = dVolume/dPrice (depth per unit price), NOT a
     price-impact slope. Higher = liquidity packed near the touch. Reuses the CANONICAL depth
@@ -357,7 +374,9 @@ def _book_slope(levels: list[tuple[float, float]], depth: int, total: float | No
 
 
 def _book_concentration(levels: list[tuple[float, float]], total: float | None) -> float | None:
-    """Fraction of the canonical top-`depth` displayed volume resting at the touch (best level):
+    """Return the fraction of the top-`depth` displayed volume resting at the touch.
+
+    The touch is the best level; the volume is the canonical top-`depth` displayed volume.
         liquidity_concentration = best_level_volume / (canonical top-`depth` TOTAL_VOLUME)
     Range [0, 1]. 1.0 = all near-book size at the inside (fragile); low = distributed down the
     ladder (resilient). Reuses the CANONICAL depth total (passed in), not a private re-sum. A
@@ -369,13 +388,14 @@ def _book_concentration(levels: list[tuple[float, float]], total: float | None) 
 
 
 def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: int) -> list[dict]:
-    """HEURISTIC displayed-size anomalies — candidates, NOT objectively-known liquidity walls.
-    A level is a candidate when its size ≥ OF_BOOK_WALL_MEDIAN_MULT × the MEDIAN level size
-    across the best `depth` levels: a relative size outlier in the DISPLAYED order book only
-    (it cannot see hidden/reserve size, and the multiple is a tunable convention, not a proven
-    boundary). Each entry carries `median_mult` (its size ÷ the median) so a consumer sees HOW
-    anomalous rather than a binary truth. Empty when there is no positive median or nothing
-    clears the multiple.
+    """Return HEURISTIC displayed-size anomalies as wall candidates.
+
+    They are candidates, NOT objectively-known liquidity walls. A level is a candidate when its
+    size ≥ OF_BOOK_WALL_MEDIAN_MULT × the MEDIAN level size across the best `depth` levels: a
+    relative size outlier in the DISPLAYED order book only (it cannot see hidden/reserve size,
+    and the multiple is a tunable convention, not a proven boundary). Each entry carries
+    `median_mult` (its size ÷ the median) so a consumer sees HOW anomalous rather than a binary
+    truth. Empty when there is no positive median or nothing clears the multiple.
     """
     lv = levels[:depth]
     vols = sorted(v for _, v in lv)
@@ -393,8 +413,9 @@ def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: i
 
 
 def _microstructure_structural(cb: dict) -> dict:
-    """Everything derivable from a single canonical book snapshot — no wall-clock `now`. Age
-    fields and the per-serialization timestamps are stamped by `compute_book_microstructure`,
+    """Return everything derivable from a single canonical book snapshot, no wall-clock `now`.
+
+    Age fields and the per-serialization timestamps are stamped by `compute_book_microstructure`,
     so this structural state is safe to carry/memoize per (ticker, BOOK_TIME).
     """
     bid, ask = cb["bid"], cb["ask"]
@@ -504,8 +525,10 @@ def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
 
 
 def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None = None) -> dict:
-    """Canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds) — the ONE
-    producer the engine and the `/api/order-flow/microstructure` route both read. `data.content`
+    """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
+
+    The ONE producer the engine and the `/api/order-flow/microstructure` route both read.
+    `data.content`
     carries the live streaming book + top-of-book
     (app.options.order_flow.state.get_content_for_symbol); `data.exchange_quote_ts` (optional) is
     the plane's exchange quote clock; `data.book_live` is the live rule's answer for the book's
@@ -623,7 +646,9 @@ Levels = list[tuple[float, float]]
 
 
 def _composite_side(books: dict[str, Book], side: str) -> tuple[Levels, bool]:
-    """One side of the composite of the books held: every quote, one per contributor (its code,
+    """Return one side of the composite of the books held.
+
+    Every quote, one per contributor (its code,
     matched without regard to case), from the book whose copy has the newer quote time (on an equal
     time, or neither sent, the first in BOOK_VENUES order), the shares summed at each distinct
     price, best first. A level that carries no per-exchange rows counts its TOTAL_VOLUME whole; it,
@@ -661,8 +686,9 @@ def _composite_side(books: dict[str, Book], side: str) -> tuple[Levels, bool]:
 
 
 def _weighted_total(levels: Levels) -> float | None:
-    """Σ weight × shares over the best five levels, OF_LEVEL_WEIGHTS renormalized to sum 1 over the
-    levels the side has; None for an empty side.
+    """Return Σ weight × shares over the best five levels.
+
+    OF_LEVEL_WEIGHTS renormalized to sum 1 over the levels the side has; None for an empty side.
     """
     if not levels:
         return None
@@ -671,8 +697,9 @@ def _weighted_total(levels: Levels) -> float | None:
 
 
 def _span(levels: Levels, depth: int) -> float | None:
-    """From the touch price to the `depth`-th level's, or the last level's when the side has
-    fewer; None for an empty side.
+    """Return the span from the touch price to the `depth`-th level's.
+
+    The last level's when the side has fewer; None for an empty side.
     """
     if not levels:
         return None
@@ -691,7 +718,9 @@ _ONE_SIDED = {
 
 
 def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
-    """One book's views: the flat totals of its best 1, 3 and 5 levels and their imbalance (the
+    """Return one book's views.
+
+    The flat totals of its best 1, 3 and 5 levels and their imbalance (the
     one producer of a book's depth ladder: the bars, difference and sentence here, and the
     microstructure's `depth`), and the headline percentage (the weighted view's flat totals are
     the top five's).
@@ -731,10 +760,11 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
 
 
 def book_readout(books: dict[str, Book | None]) -> dict[str, dict]:
-    """The imbalance readout of each Schwab book and of their composite, from each venue's newest
-    book (`state.newest_book`, every venue of BOOK_VENUES; None: no book). The composite is of the
-    books held (`books` names them): with one, that book; with none, no_book, `books` naming the
-    two it reads. Its time is its older book's.
+    """Return the imbalance readout of each Schwab book and of their composite.
+
+    Read from each venue's newest book (`state.newest_book`, every venue of BOOK_VENUES; None:
+    no book). The composite is of the books held (`books` names them): with one, that book; with
+    none, no_book, `books` naming the two it reads. Its time is its older book's.
     """
     out: dict[str, dict] = {}
     held: dict[str, Book] = {}
@@ -764,9 +794,10 @@ def _headline(readout: dict[str, dict], venue: str, view: str) -> float | None:
 
 
 def _standing(points: list[tuple[float, dict]], venue: str, view: str, first: int, last: int):
-    """The headline percentage of `venue` and `view` standing in each whole second first..last:
-    the newest readout received by that second's end (Schwab sends a book only when it changes,
-    so the last one stands).
+    """Return the headline percentage of `venue` and `view` standing in each second first..last.
+
+    Each whole second's value is the newest readout received by that second's end (Schwab sends
+    a book only when it changes, so the last one stands).
     """
     out, i, cur = [], 0, None
     for sec in range(first, last + 1):
@@ -800,7 +831,9 @@ def _zone(pct: float | None) -> str | None:
 
 
 def _dwelled(smoothed: list, first: int) -> list[tuple[str | None, int | None]]:
-    """Each second's zone shown: once the smoothed values have stood outside the shown zone
+    """Return each second's zone shown.
+
+    Once the smoothed values have stood outside the shown zone
     OF_ZONE_DWELL_SEC seconds in a row, whichever zones they crossed, the zone they stand in
     then, dated from the second they entered it. Each second's zone and that second; (None, None)
     while the value is unknown.
@@ -828,7 +861,9 @@ def _dwelled(smoothed: list, first: int) -> list[tuple[str | None, int | None]]:
 
 
 def _flips(shown: list[tuple[str | None, int | None]], first: int, last: int) -> int:
-    """The flips arriving in the two minutes to second `last`: the zone shown (`_dwelled`, from
+    """Count the flips arriving in the two minutes to second `last`.
+
+    A flip is the zone shown (`_dwelled`, from
     second `first`) reaching the side opposite the one it last held, bid to offer or back.
     BALANCED is no side, so bid, BALANCED, offer is one flip, on arrival; the first lean is none;
     after an unknown value the count of sides starts over.
@@ -862,8 +897,9 @@ def _lean(values: list) -> str | None:
 
 
 def _sentence(zone: str | None, bid: float | None, ask: float | None) -> str | None:
-    """Arithmetic about the displayed book: the flat shares one side would need to match the
-    other.
+    """Return arithmetic about the displayed book.
+
+    The flat shares one side would need to match the other.
     """
     if zone is None or bid is None or ask is None:
         return None
@@ -880,7 +916,9 @@ def _opposite(a: float | None, b: float | None) -> bool:
 
 
 def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], ends: dict) -> dict:
-    """The Liquidity card's values, every venue and view: the headline (the smoothed percentage at
+    """Return the Liquidity card's values, every venue and view.
+
+    The headline (the smoothed percentage at
     the venue's end second: now while its book is live, else its last value's), its live value,
     zone and side word held OF_ZONE_DWELL_SEC, the seconds the zone has held (held_open: at
     least that long, the zone standing since the first value known), the flat totals, the
@@ -1020,14 +1058,12 @@ def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -
 
 
 class OrderFlowEngine:
-    """
-    Order Flow Engine — computes metrics from Schwab data using only
-    identified field paths.
-    """
+    """Order Flow Engine: computes metrics from Schwab data using only identified field paths."""
 
     def compute(self, data: dict, *, now: float, ticker: str | None = None) -> dict:
-        """The book microstructure and the tape flow of one symbol at `now` (epoch seconds);
-        missing data yields None.
+        """Compute the book microstructure and the tape flow of one symbol at `now`.
+
+        `now` is in epoch seconds; missing data yields None.
         """
         # the book, extracted once by its one producer; `ticker` lets the route serialize this
         # same computed state (carry, not recompute)

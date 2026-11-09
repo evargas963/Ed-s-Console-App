@@ -17,8 +17,10 @@ from terrain_engine import TerrainSnapshot, per_strike_view
 
 
 def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
-    """Cursor-audit F8: the /api/terrain/strikes prior-day path split near/far with its OWN 999.0
-    sentinel, so a contract whose DTE could not be read was rendered in the far (MONTHLY+) chip and
+    """Cursor-audit F8: an unknown DTE belongs to neither the near nor the far scope.
+
+    The /api/terrain/strikes prior-day path split near/far with its OWN 999.0 sentinel, so a
+    contract whose DTE could not be read was rendered in the far (MONTHLY+) chip and
     omitted from the near (≤7DTE) chip. The contract record's `days_to_expiry` is None for an
     unreadable DTE (belonging to NEITHER scope). This locks that invariant on the record the
     endpoint splits by.
@@ -46,8 +48,10 @@ def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
 
 
 def test_per_strike_is_excluded_from_to_dict_but_timestamp_is_not():
-    """per_strike is hundreds of entries — too heavy for every poll (same reason `profile` is
-    excluded). computed_ts_utc MUST survive: every consumer has to be able to render an age.
+    """per_strike is hundreds of entries — too heavy for every poll.
+
+    Same reason `profile` is excluded. computed_ts_utc MUST survive: every consumer has to be
+    able to render an age.
     """
     snap = TerrainSnapshot(ticker="SPY", spot=740.0)
     d = snap.to_dict()

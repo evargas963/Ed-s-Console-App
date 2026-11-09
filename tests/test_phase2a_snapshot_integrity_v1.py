@@ -1,4 +1,4 @@
-"""The price-level producer (materialize_price_level_snapshot) serves one result per generation:
+"""The price-level producer (materialize_price_level_snapshot) serves one result per generation.
 
 (a) a change to any bar field, an interior one included, is a new generation with new levels;
     the same input is the same object;
@@ -25,7 +25,10 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def _bars(session, high_of_interior: float = 105.0) -> list:
-    """The prior trading session plus this one; the interior bar's HIGH is the mutation target."""
+    """Return the prior trading session plus this one.
+
+    The interior bar's HIGH is the mutation target.
+    """
     prior = most_recent_trading_day_et(on_or_before=session - timedelta(days=1))
     out = []
     for d in (prior, session):
@@ -49,13 +52,16 @@ def _bars(session, high_of_interior: float = 105.0) -> list:
 
 
 def _fresh():
-    """This test ticker's snapshots leave the producer's cache: the next one is generation 1."""
+    """Drop this test ticker's snapshots from the producer's cache: the next one is generation 1."""
     for key in [k for k in LVE._MATERIALIZED_SNAPSHOTS if k[0] == "ZZRC324"]:
         del LVE._MATERIALIZED_SNAPSHOTS[key]
 
 
 def _daily(session, bars) -> list:
-    """The prior session's daily candle as Schwab dates it (midnight ET), of its bars above."""
+    """Return the prior session's daily candle as Schwab dates it (midnight ET).
+
+    It is made of its bars above.
+    """
     prior = most_recent_trading_day_et(on_or_before=session - timedelta(days=1))
     held = [b for b in bars if datetime.fromtimestamp(b["timestamp"] / 1000, ET).date() == prior]
     return [

@@ -25,8 +25,9 @@ THIN_BOOK = 10
 
 @dataclass(frozen=True)
 class RankedStrike:
-    """One strike of an expiry's ranking: its factor magnitudes (magnitudes) and its score with
-    what it is missing (score_magnitudes).
+    """One strike of an expiry's ranking.
+
+    Its factor magnitudes (magnitudes) and its score with what it is missing (score_magnitudes).
     """
 
     factors: dict
@@ -215,7 +216,7 @@ def _legs_ok(bucket: dict, call_key: str, put_key: str) -> tuple[float, float] |
 def magnitudes(
     bucket: dict, charm: dict | None, iv: float | None, spot: float
 ) -> dict[str, float | None]:
-    """The scored magnitudes, plus the signed numbers the columns show."""
+    """Return the scored magnitudes, plus the signed numbers the columns show."""
     gex = _legs_ok(bucket, "call_gex_1pct", "put_gex_1pct")
     net_gex = bucket_metric(bucket, "net_gex_1pct")
     dex = bucket_metric(bucket, "net_dex_dollars")
@@ -284,15 +285,16 @@ def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
 
 
 def window_rows(matrix: dict, shown: list[float]) -> list[dict]:
-    """The rows of the ranked strikes `shown`, highest strike first; each cell shades against its
-    whole expiry's peak (the matrix's `peaks`).
+    """Return the rows of the ranked strikes `shown`, highest strike first.
+
+    Each cell shades against its whole expiry's peak (the matrix's `peaks`).
     """
     ranked = matrix["ranked"]
     return [_row(strike, ranked[strike]) for strike in sorted(shown, reverse=True)]
 
 
 def under_strike(price: float, strikes: list[float]) -> float | None:
-    """The lowest listed strike at or above `price`, where a marker sits."""
+    """Return the lowest listed strike at or above `price`, where a marker sits."""
     at_or_above = [s for s in strikes if s >= price]
     if not at_or_above:
         return None
@@ -306,8 +308,9 @@ def _text(n: float | None, digits: int) -> str | None:
 
 
 def at_price(rows: list[dict], strikes: list[float], spot: float | None) -> dict:
-    """Each shown row's distance from the live price and the strike the price sits under, and the
-    price's text: the matrix is ranked at the book's price, the price on screen is the live one.
+    """Each shown row's distance from the live price, the strike the price sits under, its text.
+
+    The matrix is ranked at the book's price, the price on screen is the live one.
     """
     under = None if spot is None else under_strike(spot, strikes)
     for row in rows:
@@ -317,7 +320,7 @@ def at_price(rows: list[dict], strikes: list[float], spot: float | None) -> dict
 
 
 def _signed(n: float | None, digits: int) -> str | None:
-    """A positive number keeps its plus. Zero and a rounded zero do not."""
+    """Format a number signed: a positive one keeps its plus. Zero and a rounded zero do not."""
     if n is None:
         return None
     shown = f"{float(n):.{digits}f}"
@@ -383,7 +386,7 @@ LEANS = {"pc_gex_lean": "_pc_gex", "pc_vol_lean": "_pc_vol"}
 
 
 def _shades(factors: dict) -> dict:
-    """The numbers the page shades each column's cell by, against the column's peak."""
+    """Return the numbers the page shades each column's cell by, against the column's peak."""
     out = {key: factors[name] for key, name in SHADED.items()}
     for key, name in LEANS.items():
         out[key] = None if factors[name] is None else 1 - factors[name]
@@ -425,8 +428,10 @@ def _factor_row(part: dict) -> dict:
 def build_matrix(
     exposures: dict, charm_by_strike: dict, ivs: dict[float, float | None], spot: float, dte: float
 ) -> dict:
-    """The ranking of one expiry's book: every strike's factors and score and the expiry's colour
-    scales. The rows the page shows are drawn from it (window_rows).
+    """Build the ranking of one expiry's book.
+
+    Every strike's factors and score and the expiry's colour scales. The rows the page shows are
+    drawn from it (window_rows).
     """
     name = preset_name(dte)
     weights = in_score_weights(name)
@@ -472,8 +477,9 @@ def build_matrix(
 
 
 def _row(strike: float, ranked: RankedStrike) -> dict:
-    """One strike's row of the matrix: each column's text and the number its cell shades by
-    (_shades), against the expiry's peaks.
+    """One strike's row of the matrix.
+
+    Each column's text and the number its cell shades by (_shades), against the expiry's peaks.
     """
     factors, result = ranked.factors, ranked.result
     score = result["score"]

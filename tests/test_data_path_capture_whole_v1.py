@@ -1,4 +1,6 @@
-"""Schwab's chain -> the stored capture -> the console. A capture is found whole or not at all, and
+"""Schwab's chain -> the stored capture -> the console.
+
+A capture is found whole or not at all, and
 it is stored before the console hears of its chain. MRVL's real chain, every expiry.
 """
 
@@ -64,8 +66,9 @@ def _refuse(db, expiry: str) -> None:
 
 
 def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_stored(tmp_path):
-    """The expiries before the refused one are not left standing as the day's capture, and the
-    chain still reaches the console and the failure log.
+    """The expiries before the refused one are not left standing as the day's capture.
+
+    And the chain still reaches the console and the failure log.
     """
     db = tmp_path / "ed_console.db"
     published: list = []
