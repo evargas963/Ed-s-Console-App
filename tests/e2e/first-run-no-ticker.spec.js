@@ -9,7 +9,7 @@ test('first run: no ticker is assumed, no ticker data is requested', async ({ pa
   const tickerCalls = [];
   page.on('request', (req) => {
     const u = req.url();
-    if (/[?&]ticker=/.test(u) || /\/api\/(chain|terrain|levels|options\/gamma-surface)/.test(u)) tickerCalls.push(u);
+    if (/[?&]ticker=/.test(u)) tickerCalls.push(u);
   });
   const requests = watchRequests(page);
   await page.clock.install();                          // the page's timers run when the test moves its time

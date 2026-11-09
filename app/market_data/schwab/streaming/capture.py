@@ -1490,6 +1490,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
                 state=server.app.state,
                 heartbeat_fn=daemon.status,
                 panels=server.PAGE_PANELS,
+                priced=server.PRICED_PANELS,
             ),
             name="live ui",
         ),

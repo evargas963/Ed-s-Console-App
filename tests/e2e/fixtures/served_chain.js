@@ -1,5 +1,5 @@
-// The /api/chain fields the server derives from `contracts` (terrain_engine.chain_ladder): a mock
-// carries them as the real route does. Mirrors the producer; tests/test_chain_ladder_v1.py holds
+// The chain panel's fields the program derives from `contracts` (terrain_engine.chain_ladder): a
+// mock carries them as the real panel does. Mirrors the producer; tests/test_chain_ladder_v1.py holds
 // the producer itself to real data.
 function served(d) {
   const byK = new Map();

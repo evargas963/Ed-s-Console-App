@@ -1,7 +1,8 @@
 /* Ed Console — Options/Gamma supporting panels. PRESENTATION ONLY.
-   Key Levels rail  <- GET /api/terrain      (canonical levels SSOT)
-   GEX by Strike    <- GET /api/terrain/strikes  (per-strike net_gex_1pct$)
-   Strike Detail    <- GET /api/chain         (vendor per-contract OI/vol/greeks)
+   Key Levels rail  <- the page's socket      (the `terrain:levels` panel, the published levels)
+   GEX by Strike    <- the page's socket      (the `strikes:gbs` panel, per-strike net_gex_1pct$)
+   Strike Detail    <- the page's socket      (the `chain:detail` panel, vendor per-contract OI/vol/greeks)
+   Vanna / Charm    <- the page's socket      (the `vanna` / `charm` panels, per-strike net)
    No trading semantics are computed here. Bar scaling is visual normalisation over the
    already-computed displayed values; distances/positions are formatting only. */
 (function () {
@@ -41,25 +42,29 @@
   };
   window.EdGammaRegime = REGIME;
 
-  // ---------- Key Levels rail ----------
-  function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
-  function loadLevelsImpl(tk, _signal) {
-    if (!stillLevelsCtx(tk)) return;
-    // shared with ed-gamma-chart.js's read of the same /api/terrain: one network call
-    var G = window.EdL1SseGuards;
-    return G.show(G.sharedFetchJson('/api/terrain?ticker=' + encodeURIComponent(tk)), '/api/terrain',
-      function (d) { if (stillLevelsCtx(tk)) renderLevels(d); },
-      function (words) { if (stillLevelsCtx(tk)) renderLevels(null, words); });
+  // ---------- Key Levels rail: the `terrain:levels` panel (server.terrain), sent on the page's
+  // socket while a Gamma tab is on, at once and each time the levels change ----------
+  var _levels, _levelsTicker = null;   // the panel as last sent for the ticker on screen
+  function loadLevels() {
+    if (!isGamma()) { window.EdShell.showPanel('terrain:levels', null); return; }
+    if (_levelsTicker !== ticker()) { _levelsTicker = ticker(); _levels = undefined; }
+    renderLevels(_levels);
+    window.EdShell.showPanel('terrain:levels', {});
   }
-  var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
-  function loadLevels() { _levelsLoader.trigger(ticker()); }
-  function renderLevels(d, failed) {   // failed: the words of a read that failed
+  document.addEventListener('ed:panel', function (e) {
+    if (e.detail.type !== 'terrain:levels') return;
+    _levels = e.detail;
+    if (isGamma()) renderLevels(_levels);
+  });
+  function renderLevels(d) {   // d: the panel as sent; undefined: none yet for this ticker
     var ids = ['klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',   // terrain's (Spot is the price row's)
       'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
-    paintPcr(d && !d.error ? d : null);
-    if (!d || d.error) {   // nothing current: no tooltip or colour of the last answer stays
+    // nothing to draw: none sent yet ('-'), the program could not produce it, or no levels yet
+    var why = d === undefined ? '-' : d.failed != null ? d.failed : d.error ? 'terrain not ready' : null;
+    paintPcr(why == null ? d : null);
+    if (why != null) {   // nothing current: no tooltip or colour of the last answer stays
       ids.forEach(function (id) { txt(id, '-'); var el = document.getElementById(id); if (el) el.style.color = ''; });
-      txt('klSrc', failed || 'terrain not ready');
+      txt('klSrc', why);
       var src0 = document.getElementById('klSrc'); if (src0) { src0.title = ''; src0.style.color = ''; }
       var klb0 = document.getElementById('klBody'); if (klb0) klb0.classList.add('recede');
       return;
@@ -110,7 +115,7 @@
     }
   }
 
-  // ---------- Put/Call OI and volume <- /api/terrain pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
+  // ---------- Put/Call OI and volume <- the terrain panel's pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
   function expiryFilter() { return window.EdShell.getExpiry(); }
   function paintPcr(d) {
     // the selected expiry, else the whole book -- both served on every terrain answer (TerrainSnapshot
@@ -125,21 +130,27 @@
     txt('klPcrVolScope', 'volume · ' + scope);
   }
 
-  // ---------- GEX by Strike ----------
-  function stillGbsCtx(tk) { var host = document.getElementById('gbsBody'); return isGamma() && !!host && ticker() === tk; }
-  function loadGbsImpl(tk, _signal) {
-    var host = document.getElementById('gbsBody');
-    if (!stillGbsCtx(tk)) return;
-    if (_gbsPanTicker !== tk) { _gbsPan.centre = null; _gbsPan.shift = 0; _gbsPanTicker = tk; }
-    // shared with ed-gamma-chart.js's read of the same window: one network call
-    var G = window.EdL1SseGuards;
-    return G.show(G.sharedFetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk) +
-        window.EdShell.windowQuery(_gbsPan)), '/api/terrain/strikes',
-      function (d) { if (stillGbsCtx(tk)) renderGbs(host, d, tk); },
-      function (words) { if (stillGbsCtx(tk)) { setGbsAsOf(null); window.EdShell.placeholder(host, words); } });
+  // ---------- GEX by Strike: the `strikes:gbs` panel (server.strikes) the program sends on the
+  // page's socket while a Gamma tab is on, in the window it asks (the scope and its pan), at once
+  // and each time the levels change; nothing received yet for the ticker on screen is '-' ----------
+  var _gbs;   // the panel as last sent for the ticker on screen
+  function loadGbs() {
+    if (!isGamma()) { window.EdShell.showPanel('strikes:gbs', null); return; }
+    if (_gbsPanTicker !== ticker()) {   // a new ticker: its own window, and nothing of the last one's
+      _gbsPan.centre = null; _gbsPan.shift = 0; _gbsPanTicker = ticker(); _gbs = undefined;
+      var host = document.getElementById('gbsBody');
+      setGbsAsOf(null); if (host) window.EdShell.placeholder(host, '-');
+    }
+    window.EdShell.showPanel('strikes:gbs', window.EdShell.windowParams(_gbsPan));
   }
-  var _gbsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); });
-  function loadGbs() { _gbsLoader.trigger(ticker()); }
+  function drawGbs() {
+    var host = document.getElementById('gbsBody');
+    if (host && isGamma() && _gbs !== undefined) renderGbs(host, _gbs);
+  }
+  document.addEventListener('ed:panel', function (e) {
+    if (e.detail.type !== 'strikes:gbs') return;
+    _gbs = e.detail; drawGbs();
+  });
   function setGbsAsOf(d) {
     var el = document.getElementById('gbsSrc'); if (!el) return;
     if (!d) { el.innerHTML = ''; return; }
@@ -175,7 +186,7 @@
       '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
       '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
     host.querySelectorAll('.gbs-row').forEach(function (rr) {   // click a strike: every panel follows it
-      rr.addEventListener('click', function () { window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
+      rr.addEventListener('click', function () { window.EdShell.setStrike(Number(rr.getAttribute('data-strike')), null); });   // every expiry's row: no expiry
     });
     var firstRow = host.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(host.querySelectorAll('.gbs-k'), host.querySelector('.gbs-scroll'), pan,
@@ -187,7 +198,11 @@
   // GEX by Strike shows the window the server sends (scope, and the operator's pan)
   var _gbsPan = window.EdShell.newPan(), _gbsPanTicker = null;
 
-  function renderGbs(host, d, tk) {
+  function renderGbs(host, d) {
+    if (d.failed != null || d.available === false) {   // not produced, or a window it cannot draw: why
+      setGbsAsOf(null); window.EdShell.placeholder(host, d.failed != null ? d.failed : d.reason);
+      return;
+    }
     setGbsAsOf(d);
     var rows = d.today && d.today.all;
     if (!rows || !rows.length) {
@@ -195,7 +210,7 @@
         'no banked per-strike gamma for this symbol</div></div>';
       return;
     }
-    // /api/terrain/strikes is aggregate across expiries; with one expiry selected, say so
+    // the strikes panel is aggregate across expiries; with one expiry selected, say so
     var expOn = window.EdShell.getExpiry();
     // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change])
     var chg = {}, mig = d.migration && d.migration.all;
@@ -226,28 +241,30 @@
     var s = window.EdShell.getState();
     return expiryFilter() || s.selExpiry;
   }
-  // loadStrike() records the desired (strike, expiry); the loader always fetches the current one
-  var _sdDesired = { strike: null, expiry: null };
-  function stillStrikeCtx(tk, strike, expiry) {
-    return ticker() === tk && _sdDesired.strike === strike && _sdDesired.expiry === expiry;
-  }
-  function loadStrikeImpl(strike, expiry, signal) {
+  // The selected strike's contracts: the `chain:detail` panel (server.chain) the program sends on
+  // the page's socket while a strike is selected, at its expiry (null: the chain's front one), at
+  // once and each time a chain is priced. loadStrike() records the desired (strike, expiry); a
+  // new strike at the same expiry is drawn from the chain already sent. A frame of an expiry no
+  // longer desired (sent before the page asked another) is not drawn.
+  var _sdDesired = { strike: null, expiry: null }, _sd;   // _sd: the panel as last sent
+  function sdCurrent(d) { return !_sdDesired.expiry || d.failed != null || d.expiry === _sdDesired.expiry; }
+  function drawStrike() {
     var host = document.getElementById('sdBody');
-    if (!host || !stillStrikeCtx(ticker(), strike, expiry)) return;
-    var tk = ticker();
-    var q = '/api/chain?ticker=' + encodeURIComponent(tk) + (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
-    var G = window.EdL1SseGuards;
-    return G.show(G.readJson(q, signal), '/api/chain',
-      function (d) { if (stillStrikeCtx(tk, strike, expiry)) renderStrike(host, d, strike, expiry); },
-      function (words) {
-        if (stillStrikeCtx(tk, strike, expiry)) { setSdAsOf(null); window.EdShell.placeholder(host, words); }
-      });
+    if (!host || _sdDesired.strike == null || _sd === undefined || !sdCurrent(_sd)) return;
+    if (_sd.failed != null) { setSdAsOf(null); window.EdShell.placeholder(host, _sd.failed); return; }
+    renderStrike(host, _sd, _sdDesired.strike, _sdDesired.expiry);
   }
-  var _sdLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry, signal); });
   function loadStrike(strike, expiry) {
+    var was = _sdDesired.expiry;
     _sdDesired = { strike: strike, expiry: expiry };
-    _sdLoader.trigger(ticker() + '|' + strike + '|' + expiry);
+    if (strike == null) { window.EdShell.showPanel('chain:detail', null); return; }
+    if (was === expiry) drawStrike();   // the chain at this expiry is on hand
+    window.EdShell.showPanel('chain:detail', { expiry: expiry });
   }
+  document.addEventListener('ed:panel', function (e) {
+    if (e.detail.type !== 'chain:detail') return;
+    _sd = e.detail; drawStrike();
+  });
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
     el.innerHTML = window.EdShell.chainScopeBadge(d);
@@ -269,7 +286,7 @@
     // d2: decimals; none: every digit Schwab sent (its Greeks)
     function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '-' : (typeof v === 'number' ? (d2 == null ? String(v) : v.toFixed(d2)) : esc(v)); }
     // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "-"; the
-    // NET row is this expiry's net GEX at this strike, served on the same /api/chain response --
+    // NET row is this expiry's net GEX at this strike, served on the same chain panel --
     // the heatmap's own cell, not GEX-by-Strike's all-expiry total beside one expiry's contracts.
     var net = null;   // served null: this expiry has no surface column, so no strike has one
     if (d.net_gex_by_strike !== null) d.net_gex_by_strike.forEach(function (r) {
@@ -284,71 +301,67 @@
       '</td><td>' + cell(put, 'gamma') + '</td><td class="dim">-</td><td>' + cell(put, 'delta') + '</td><td>' + cell(put, 'volatility') + '</td></tr>' +
       '<tr class="sd-net"><td class="side">Net</td><td>-</td><td>-</td><td>-</td><td class="' + netCls + '">' +
       (net == null ? '-' : usd(net)) + '</td><td>-</td><td>-</td></tr>' +
-      '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';
+      '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · the chain</div>';
   }
 
-  // A ticker switch must drop Strike Detail's in-flight /api/chain fetch and its rendered
-  // content: ed-core.js's setTicker() clears the SHARED selStrike (a fresh strike click is
-  // required before loadStrike fires again), but a chain fetch for the OLD ticker already in
-  // flight would otherwise land under the NEW ticker's context (AMD's values shown after a
-  // switch to NVDA). Clearing the desired (strike, expiry) makes `stillStrikeCtx`'s ticker
-  // check (the context-identity check) discard any in-flight response for the OLD ticker and
-  // leaves no pending strike to fetch under the new ticker without a fresh click; the Strike
-  // Detail placeholder is cleared the instant the ticker changes.
+  // A ticker switch drops Strike Detail's chain and its rendered content: ed-core.js's
+  // setTicker() clears the SHARED selStrike (a fresh strike click is required before loadStrike
+  // fires again), and the panel leaves the subscribe, so nothing of the old ticker is drawn
+  // under the new one (AMD's values shown after a switch to NVDA); the Strike Detail
+  // placeholder is cleared the instant the ticker changes.
   function resetStrikeDetailForTickerChange() {
-    _sdDesired = { strike: null, expiry: null };
+    loadStrike(null, null);
+    _sd = undefined;
     var host = document.getElementById('sdBody');
     if (host) {
       host.innerHTML = '<div class="placeholder"><div class="sm">Select a strike/expiry. '
-        + 'OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div>';
+        + 'OI · volume · gamma · delta · IV from the chain (vendor).</div></div>';
     }
   }
 
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
-  function _mkStrikeBar(kind, endpoint, hostId, srcId) {
+  // The program sends the panel on the page's socket (server.vanna_by_strike, charm_by_strike)
+  // while its tab is on, for the window it asks (the scope and its pan), at once and on each
+  // change of the levels; nothing received yet for the ticker on screen is '-'.
+  function _mkStrikeBar(kind, hostId, srcId) {
     function inSub() {
       var s = window.EdShell.getState();
       return s.workspace === 'options' && s.subview === kind;
     }
-    function stillCtx(tk) { var host = document.getElementById(hostId); return inSub() && !!host && ticker() === tk; }
     var pan = window.EdShell.newPan(), panTicker = null;
     function renderIt(host, d) {
       var src = document.getElementById(srcId); if (src) src.textContent = '';
-      if (!d.available) {
-        host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(d.reason) + '</div></div>';
+      if (d.failed != null || !d.available) {   // not produced, or nothing to draw: why
+        window.EdShell.placeholder(host, d.failed != null ? d.failed : d.reason);
         return;
       }
-      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, load, { top: '' });
+      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, { top: '' });
     }
-    function impl(tk, signal) {
+    function ask() {
+      if (!inSub()) { window.EdShell.showPanel(kind, null); return; }
+      if (panTicker !== ticker()) {   // a new ticker: its own window, and nothing of the last one's
+        pan.centre = null; pan.shift = 0; panTicker = ticker();
+        var host = document.getElementById(hostId); if (host) window.EdShell.placeholder(host, '-');
+      }
+      window.EdShell.showPanel(kind, window.EdShell.windowParams(pan));
+    }
+    document.addEventListener('ed:panel', function (e) {
       var host = document.getElementById(hostId);
-      if (!stillCtx(tk)) return;
-      if (panTicker !== tk) { pan.centre = null; pan.shift = 0; panTicker = tk; }
-      var G = window.EdL1SseGuards;
-      return G.show(G.readJson(endpoint + '?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(pan), signal), endpoint,
-        function (d) { if (stillCtx(tk)) renderIt(host, d); },
-        function (words) { if (stillCtx(tk)) renderIt(host, { available: false, reason: words }); });
-    }
-    var loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return impl(ticker(), signal); });
-    function load() { if (inSub()) loader.trigger(ticker()); }
-    return load;
+      if (e.detail.type === kind && host && inSub()) renderIt(host, e.detail);
+    });
+    return ask;
   }
-  var loadVanna = _mkStrikeBar('vanna', '/api/options/vanna-by-strike', 'vnBody', 'vnSrc');
-  var loadCharm = _mkStrikeBar('charm', '/api/options/charm-by-strike', 'chmBody', 'chmSrc');
+  var loadVanna = _mkStrikeBar('vanna', 'vnBody', 'vnSrc');
+  var loadCharm = _mkStrikeBar('charm', 'chmBody', 'chmSrc');
 
   // ---------- Structures — contract-safety metadata ------
-  // /api/chain fields (multiplier/nonStandard/deliverables/settlementType/
+  // the chain's fields (multiplier/nonStandard/deliverables/settlementType/
   // exerciseType/expirationType/lastTradingDay/pennyPilot) that the Chain ladder never
-  // surfaces -- one strike per row, both sides, no new computation, no second fetch shape
-  // (same /api/chain response Chain and Strike Detail already read).
+  // surfaces -- one strike per row, both sides, no new computation, no second shape
+  // (the same chain panel Chain and Strike Detail are sent).
   function inStructures() {
     var s = window.EdShell.getState();
     return s.workspace === 'options' && s.subview === 'structures';
-  }
-  function stillStructuresCtx(tk, exp) {
-    var host = document.getElementById('stBody');
-    return inStructures() && !!host && ticker() === tk &&
-      (exp == null || (window.EdShell.getExpiry()) === exp);
   }
   function _flag(label, on) { return '<span class="st-flag' + (on ? ' on' : '') + '">' + esc(label) + '</span>'; }
   // lastTradingDay is native epoch MILLISECONDS (the same convention as quoteTimeInLong/
@@ -361,7 +374,7 @@
     return d.toISOString().slice(0, 10);
   }
   // ADJUSTED DELIVERABLE: served per contract (Schwab's nonStandard flag, as sent)
-  function renderStructures(host, d, tk) {
+  function renderStructures(host, d) {
     var src = document.getElementById('stSrc'); if (src) src.textContent = '';
     // served: one row per strike, high to low; an 'unavailable' chain answer carries none
     if (d.status !== 'ok') {
@@ -388,23 +401,25 @@
     host.innerHTML = '<div class="gbs-scroll"><table class="sd st-tbl">' +
       '<thead><tr><th>Strike</th><th>Multiplier</th><th>Settlement</th><th>Exercise</th><th>Exp. Type</th><th>Last Trading Day</th><th>Flags</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table></div>' +
-      '<div class="sd-src">vendor per-contract · /api/chain — no field here is inferred or defaulted</div>';
+      '<div class="sd-src">vendor per-contract · the chain — no field here is inferred or defaulted</div>';
   }
-  function loadStructuresImpl(tk, exp, signal) {
-    var host = document.getElementById('stBody');
-    if (!stillStructuresCtx(tk, exp)) return;
-    var url = '/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : '');
-    var G = window.EdL1SseGuards;
-    return G.show(G.readJson(url, signal), '/api/chain',
-      function (d) { if (stillStructuresCtx(tk, exp)) renderStructures(host, d, tk); },
-      function (words) { if (stillStructuresCtx(tk, exp)) window.EdShell.placeholder(host, words); });
-  }
-  var _structuresLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
-    return loadStructuresImpl(ticker(), (window.EdShell.getExpiry()), signal); });
-  // keyed on ticker+expiry: a context change aborts the read in flight (makeCoalescedLoader)
+  // the `chain:structures` panel (server.chain) the program sends on the page's socket while the
+  // Structures tab is on, at the selected expiry (null: the chain's front one); nothing received
+  // yet for the ticker on screen is '-', and a frame of an expiry no longer selected is not drawn
+  var _stTicker = null;
+  document.addEventListener('ed:panel', function (e) {
+    var d = e.detail, host = document.getElementById('stBody'), exp = window.EdShell.getExpiry();
+    if (d.type !== 'chain:structures' || !host || !inStructures() || (exp && d.failed == null && d.expiry !== exp)) return;
+    if (d.failed != null) { window.EdShell.placeholder(host, d.failed); return; }
+    renderStructures(host, d);
+  });
   function loadStructures() {
-    if (!inStructures()) return;
-    _structuresLoader.trigger(ticker() + '|' + window.EdShell.getExpiry());
+    if (!inStructures()) { window.EdShell.showPanel('chain:structures', null); return; }
+    if (_stTicker !== ticker()) {
+      _stTicker = ticker();
+      var host = document.getElementById('stBody'); if (host) window.EdShell.placeholder(host, '-');
+    }
+    window.EdShell.showPanel('chain:structures', { expiry: window.EdShell.getExpiry() });
   }
 
   // ---------- Options Flow tape ------------
@@ -472,20 +487,14 @@
   document.addEventListener('ed:view', loadAll);
   // a new scope is a new window: every per-strike panel re-reads it from the server
   document.addEventListener('ed:scope', function () { loadGbs(); loadVanna(); loadCharm(); });
-  document.addEventListener('ed:changed', function (e) {
-    if (e.detail.kind === 'flow') { loadOf(); return; }
-    if (e.detail.kind !== 'levels') return;
-    loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures();
-    var sel = (window.EdShell.getState()).selStrike;
-    if (sel != null) loadStrike(sel, strikeDetailExpiry());
-  });
+  document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') loadOf(); });
   document.addEventListener('ed:strike', function (e) {
     var det = e.detail || {};
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
-    if (det.strike != null) loadStrike(det.strike, det.expiry);
+    loadStrike(det.strike == null ? null : det.strike, det.strike == null ? null : det.expiry);
   });
   document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
-    loadLevels(); loadGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail
+    loadLevels(); drawGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail
     var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });

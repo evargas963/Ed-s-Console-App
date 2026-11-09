@@ -36,7 +36,7 @@ ctx.globalThis = ctx;
 ctx.EdShell = {
   getState: () => ({}), getMeasure: () => 'gex', getExpiry: () => null, setStrike: () => {},
   newPan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
-  windowQuery: () => '&scope=auto', wireStrikeAxis: () => {},
+  wireStrikeAxis: () => {},
 };
 vm.createContext(ctx);
 vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });

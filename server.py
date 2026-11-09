@@ -656,7 +656,7 @@ class PublishedLevels:
     count_capture_ts: float | None
 
     def served(self) -> dict:
-        """Return the levels as /api/terrain serves them, before the live price's relations."""
+        """Return the levels as the terrain panel sends them, before the live price's relations."""
         return self.snap.to_dict() | {
             "computed_ts_utc": self.computed_ts_utc,
             "levels_ts_utc": self.levels_ts_utc,
@@ -1053,6 +1053,16 @@ STREAM_WORDS = {
 _last_feed_stamp: tuple | None = None
 
 
+#: the page's socket panels (PAGE_PANELS) read from the published levels and the live price
+LEVELS_PANELS = ("vanna", "charm", "terrain", "strikes", "surface", "chain", "levels")
+
+
+def _levels_changed(tk: str) -> None:
+    """Tell the pages on `tk` (its key) that its levels changed: the change push and the socket."""
+    push_changes.changed(tk, push_changes.LEVELS)
+    live_ui.changed(app.state, tk, *LEVELS_PANELS)
+
+
 def restamp_open_surfaces(now: float) -> None:
     """Mark every cached heatmap from the daemon's heartbeat at `now`, without repricing.
 
@@ -1101,7 +1111,7 @@ def restamp_open_surfaces(now: float) -> None:
     watching = set(push_changes.watched())
     for tk in bumped:
         if tk in watching:
-            push_changes.changed(tk, push_changes.LEVELS)
+            _levels_changed(tk)
 
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
@@ -1494,7 +1504,7 @@ def _publish_levels(
     )
     with _terrain_cache_lock:
         _terrain_cache[tk] = levels
-    push_changes.changed(tk, push_changes.LEVELS)
+    _levels_changed(tk)
     if new_chain:
         push_changes.changed(tk, push_changes.CHAIN)
         live_ui.changed(app.state, tk, "expiries")
@@ -1579,7 +1589,7 @@ def _log_level_crosses(
             held = _held_crosses(tk)
             held.extend(logged)
             del held[:-CROSSES_KEPT]
-        push_changes.changed(tk, push_changes.LEVELS)
+        _levels_changed(tk)
 
 
 def _vanna_rows(snap: TerrainSnapshot) -> list:
@@ -1863,7 +1873,7 @@ def refresh_not_live_pages(now: float) -> None:
         if price_state(tk, now)[0] != lmp.LIVE or (
             levels is not None and verdict["levels_state"] != lmp.LIVE
         ):
-            push_changes.changed(tk, push_changes.LEVELS)
+            _levels_changed(tk)
 
 
 def _terrain_loop() -> None:
@@ -2053,13 +2063,6 @@ def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict,
     return {"all": [], "near": [], "far": []}, None  # no prior day captured: no rows, no source
 
 
-#: a per-strike panel's window request: Auto / Wider / All, the operator's panned centre strike
-#: (none: the strike nearest the price) and the rows a drag moved from it
-ScopeQuery = Annotated[str, Query(pattern="^(" + "|".join(SCOPES) + ")$")]
-CentreQuery = Annotated[float | None, Query()]
-ShiftQuery = Annotated[int, Query()]
-
-
 def _max_abs_row(rows) -> list | None:
     """Return the row ([strike, value, ...]) with the largest |value| of every strike.
 
@@ -2082,19 +2085,17 @@ def _windowed(rows: list, spot_strike, scope: str, centre, shift: int) -> tuple[
     return win, {**view, "max_abs": max(known) if known else None}
 
 
-@app.get("/api/terrain/strikes")
-def get_terrain_strikes(
-    ticker: str = Query(...),
-    scope: ScopeQuery = "auto",
-    centre: CentreQuery = None,
-    shift: ShiftQuery = 0,
-):
-    """Answer the per-strike panels now (terrain_strikes_payload)."""
-    return JSONResponse(
-        terrain_strikes_payload(
-            ticker_storage_key(_required_ticker(ticker)), scope, centre, shift, time_et.now()
-        )
-    )
+def strikes(ticker: str, now: float, params: dict) -> dict:
+    """Return the per-strike rows at `now` in the window `params` ask for (the `strikes` panel).
+
+    `ticker` is the levels' own key; `params` the reader's window (_window_asked). The page's
+    socket sends it to GEX by Strike, the Gamma chart's profile, Right Now's migration and the
+    Desk map, each its own panel with its own window (terrain_strikes_payload).
+    """
+    window = _window_asked(params)
+    if isinstance(window, str):
+        return unavailable(ticker, window)
+    return terrain_strikes_payload(ticker, *window, now)
 
 
 def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float) -> dict:
@@ -2302,51 +2303,48 @@ def strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, now: f
     }
 
 
-@app.get("/api/options/vanna-by-strike")
-def get_vanna_by_strike(
-    ticker: str = Query(...),
-    scope: ScopeQuery = "auto",
-    centre: CentreQuery = None,
-    shift: ShiftQuery = 0,
-):
-    """Per-strike dealer VANNA exposure from the published levels.
+def _window_asked(params: dict) -> tuple[str, float | None, int] | str:
+    """Return the window a page's panel parameters ask for: (scope, centre, shift).
+
+    The page sends all three: the scope, one of SCOPES; the centre, a strike or None (follow the
+    price); the shift, a whole number of rows. Parameters that ask for none of these: the words
+    saying which.
+    """
+    scope, centre, shift = params.get("scope"), params.get("centre"), params.get("shift")
+    if scope not in SCOPES:
+        return f"scope {scope!r} is not one of {', '.join(SCOPES)}"
+    if centre is not None and (isinstance(centre, bool) or not isinstance(centre, int | float)):
+        return f"centre {centre!r} is not a strike"
+    if isinstance(shift, bool) or not isinstance(shift, int):
+        return f"shift {shift!r} is not a whole number of rows"
+    return scope, centre, shift
+
+
+def _strike_bars(key: str, tk: str, now: float, params: dict) -> dict:
+    """Return the per-strike bar panel `key` of `tk` at `now` in the window `params` ask for."""
+    window = _window_asked(params)
+    if isinstance(window, str):
+        return unavailable(tk, window)
+    return strike_bar_payload(tk, key, *window, now)
+
+
+def vanna_by_strike(ticker: str, now: float, params: dict) -> dict:
+    """Return the per-strike dealer VANNA exposure of the published levels (the Vanna panel).
 
     net_vanna = call_vanna - put_vanna, aggregated across every expiry; no per-expiry surface yet.
+    `ticker` is the levels' own key; `params` the panel's window (_window_asked).
     """
-    return JSONResponse(
-        strike_bar_payload(
-            ticker_storage_key(_required_ticker(ticker)),
-            "vanna_rows",
-            scope,
-            centre,
-            shift,
-            time_et.now(),
-        )
-    )
+    return _strike_bars("vanna_rows", ticker, now, params)
 
 
-@app.get("/api/options/charm-by-strike")
-def get_charm_by_strike(
-    ticker: str = Query(...),
-    scope: ScopeQuery = "auto",
-    centre: CentreQuery = None,
-    shift: ShiftQuery = 0,
-):
-    """Per-strike dealer CHARM exposure from the published levels' charm map.
+def charm_by_strike(ticker: str, now: float, params: dict) -> dict:
+    """Return the per-strike dealer CHARM exposure of the published levels' charm map.
 
     The map is the charm walls' own: net_charm = call_charm - put_charm per strike,
-    delta-shares/day.
+    delta-shares/day (the Charm panel). `ticker` is the levels' own key; `params` the panel's
+    window (_window_asked).
     """
-    return JSONResponse(
-        strike_bar_payload(
-            ticker_storage_key(_required_ticker(ticker)),
-            "charm_rows",
-            scope,
-            centre,
-            shift,
-            time_et.now(),
-        )
-    )
+    return _strike_bars("charm_rows", ticker, now, params)
 
 
 @app.get("/api/options/tape")
@@ -2643,41 +2641,37 @@ def _stamp_columns(surface: dict, now: datetime) -> dict:
     return {**surface, "expirations": [dict(e, front=e["expiry"] == front) for e in exps]}
 
 
-@app.get("/api/options/gamma-surface")
-def get_options_gamma_surface(
-    ticker: str = Query(...),
-    scope: ScopeQuery = "auto",
-    centre: CentreQuery = None,
-    shift: ShiftQuery = 0,
-    cols: Annotated[int | None, Query(ge=1)] = None,
-    expiry: Annotated[str | None, Query()] = None,
-):
-    """Serve the heatmap: the strike x expiration surface the levels producer projected.
+def gamma_surface(ticker: str, now: float, params: dict) -> dict:
+    """Return the heatmap: the strike x expiration surface the levels producer projected.
 
-    Cell = net_gex_1pct, compute_exposures_by_strike; cut to the window the page draws
-    (_surface_view: `scope`, the panned `centre` and a drag's `shift`, the `cols` the page fits,
-    the selected `expiry`), with its `view`: the centre, the coverage words, the contracts to
-    stream and the colour scale. With no live surface the answer is "unavailable" with the reason;
-    there is no second source. Served with the levels' verdict (levels_verdict) and the chain's
-    and price's times.
+    The `surface` panel. Cell = net_gex_1pct, compute_exposures_by_strike; cut to the window the
+    page draws (_surface_view: the scope, the panned centre and a drag's shift, _window_asked;
+    `cols`, the columns the page fits, a whole number from 1, or None for every column; `expiry`,
+    the selected expiry, or None for all), with its `view`: the centre, the coverage words, the
+    contracts to stream and the colour scale. Parameters that ask for none of these: the words
+    saying which. `ticker` is the levels' own key.
     """
-    return JSONResponse(
-        gamma_surface_payload(
-            ticker_storage_key(_required_ticker(ticker)),
-            scope,
-            centre,
-            shift,
-            cols,
-            expiry,
-            now_et(),
-        )
-    )
+    window = _window_asked(params)
+    cols, expiry = params.get("cols"), params.get("expiry")
+    if isinstance(window, str):
+        return unavailable(ticker, window)
+    if "cols" not in params or "expiry" not in params:
+        return unavailable(ticker, "the heatmap's window names no cols or no expiry")
+    if cols is not None and (isinstance(cols, bool) or not isinstance(cols, int) or cols < 1):
+        return unavailable(ticker, f"cols {cols!r} is not a whole number of columns")
+    if expiry is not None and not isinstance(expiry, str):
+        return unavailable(ticker, f"expiry {expiry!r} is not an expiry date")
+    return gamma_surface_payload(ticker, *window, cols, expiry, datetime.fromtimestamp(now, ET))
 
 
 def gamma_surface_payload(
     tk: str, scope: str, centre, shift: int, cols: int | None, expiry: str | None, now: datetime
 ) -> dict:
-    """Return the heatmap's answer for ticker `tk` at `now` (/api/options/gamma-surface)."""
+    """Return the heatmap's answer for ticker `tk` at `now` (the `surface` panel).
+
+    With no live surface the answer is "unavailable" with the reason; there is no second source.
+    Served with the levels' verdict (levels_verdict) and the chain's and price's times.
+    """
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live, verdict = terrain_cache_get(tk, now.timestamp())
     surf = None if live is None else live.gamma_surface
@@ -2751,22 +2745,21 @@ def gamma_surface_payload(
     )
 
 
-@app.get("/api/terrain")
-def get_terrain(ticker: str = Query(...)):
-    """Serve the ticker's published levels, now."""
-    return terrain_answer(ticker_storage_key(_required_ticker(ticker)), now_et())  # SPX -> $SPX
+def terrain(tk: str, now: float, _params: dict) -> dict:
+    """Return `tk`'s published levels at `now`, at the live price (the `terrain` panel).
 
-
-def terrain_answer(tk: str, at: datetime) -> dict:
-    """`tk`'s published levels as served at `at`."""
-    cached, staleness = terrain_cache_get(tk, at.timestamp())
+    `tk` is the levels' own key ($SPX); the levels take no parameters. The page's socket sends
+    them to Key Levels, the Gamma chart, the Trade Desk's Right Now and its map (live_ui,
+    PAGE_PANELS), at once and each time the levels change (_levels_changed).
+    """
+    at = datetime.fromtimestamp(now, ET)
+    cached, staleness = terrain_cache_get(tk, now)
     if cached is not None:
         # the levels as the producer published them, at the publication's price (priced_at_spot);
-        # `spot` is the live price, as on every route, and every relation of the price to the
-        # levels is at it (price_relations); internal fields (the kept chain, the heatmap grid,
-        # per-strike rows) have their own routes
+        # `spot` is the live price, and every relation of the price to the levels is at it
+        # (price_relations); internal fields (the kept chain, the heatmap grid, per-strike rows)
+        # are their own panels
         out = cached.served() | staleness
-        now = at.timestamp()
         out.update(
             priced_at_spot=cached.snap.spot,
             priced_at_spot_source=cached.spot_source,
@@ -2779,10 +2772,10 @@ def terrain_answer(tk: str, at: datetime) -> dict:
         # is a separate fact: the numbers stay, marked with whether that price is live
         out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
         return out | levels_mark(out)
-    spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
+    spot, spot_source, spot_ts = resolve_spot(tk, now=now)
     _why = _terrain_refresh_last_error.get(tk)
     empty = compute_terrain(tk, None, spot, now=at).to_dict()
-    mark = price_mark(tk, spot_ts, at.timestamp())
+    mark = price_mark(tk, spot_ts, now)
     return (
         empty
         | price_relations(empty, spot).to_dict()
@@ -2883,7 +2876,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     newest_at = {it["price"]: it for it in items}
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
-    t = terrain_answer(tk, now)  # the same payload the terrain route serves
+    t = terrain(tk, now.timestamp(), {})  # the levels the page's terrain panel is sent
     tts = t.get("levels_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
         if t.get(f"{side}_wall_state") == "breached":  # at the live price (price_relations)
@@ -2896,7 +2889,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                     "title": f"Spot through the {word} wall",
                     "detail": f"{word} wall {price_text(t[f'{side}_wall'])} · spot "
                     f"{price_text(t['spot'])}",
-                    "src": "/api/terrain",
+                    "src": "gamma levels",
                 }
             )
     if t.get("levels_state") == LEVELS_STALE:
@@ -2909,7 +2902,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                 "warn": True,
                 "title": "Gamma levels are stale",
                 "detail": t["levels_stale_reason"],
-                "src": "/api/terrain",
+                "src": "gamma levels",
             }
         )
     # the book's size walls, stamped with the book's own time (BOOK_TIME); a book that is not live
@@ -3309,10 +3302,11 @@ async def post_flow_contract(selected: FlowContract):
     return {"ok": True, "contract": contract}
 
 
-def expiries(ticker: str, now: float) -> dict:
+def expiries(ticker: str, now: float, _params: dict) -> dict:
     """Return the ticker's listed expiries at `now`, each with its dropdown texts.
 
-    `ticker` is the levels' own key ($SPX). Each expiry's label is its date, MM/DD/YYYY, and its
+    `ticker` is the levels' own key ($SPX); the list takes no parameters. Each expiry's label is
+    its date, MM/DD/YYYY, and its
     `dte_text` Schwab's daysToExpiration as sent (18DTE), None when Schwab sent none. Before the
     ticker's first chain is priced the list is unknown (None), with the levels' own reason; a
     chain listing none is an empty list with its reason. The page's socket sends it (live_ui,
@@ -3335,52 +3329,48 @@ def expiries(ticker: str, now: float) -> dict:
     }
 
 
-#: the panels the page's socket sends for the page's selected ticker (live_ui.LiveUiServer):
-#: each kind's producer, (ticker, now) -> its body; _publish_levels marks a kind changed
-PAGE_PANELS = {"expiries": expiries}
-
-
-#: /api/chain's reason while no chain of the ticker is held and no chain error is recorded
+#: the chain panel's reason while no chain of the ticker is held and no chain error is recorded
 NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
 
 
-@app.get("/api/chain")
-def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)):
-    """One expiry of the ticker's full chain, from the chain the daemon delivered.
+def chain(ticker: str, now: float, params: dict) -> dict:
+    """Return one expiry of the ticker's full chain at `now`, from the chain the daemon delivered.
 
-    Every contract Schwab listed, as the chain screens show it (option_contract.chain_row: a value
-    Schwab did not send is null) -- from the chain the daemon delivered (strike_range=ALL), with
-    each live streamed contract's streamed fields as its values (the stream owns them), by the
-    levels' own rule on the same inputs (the chain's listed contracts, its fetch time). Every
-    watchlist ticker's chain is kept. Answers `status: unavailable` with a reason when no chain is
-    held.
+    The `chain` panel: the Chain ladder, Strike Detail and Structures, each its own reader with
+    its own `expiry` (the selected expiry, or None for the chain's front one, the levels' first
+    listed). Every contract Schwab listed, as the chain screens show it (option_contract.chain_row:
+    a value Schwab did not send is null) -- from the chain the daemon delivered
+    (strike_range=ALL), with each live streamed contract's streamed fields as its values (the
+    stream owns them), by the levels' own rule on the same inputs (the chain's listed contracts,
+    its fetch time). Every watchlist ticker's chain is kept. Answers `status: unavailable` with a
+    reason when no chain is held. `ticker` is the levels' own key.
     """
-    t = ticker_storage_key(_required_ticker(ticker))
-    now = time_et.now()
+    t = ticker
+    expiry = params.get("expiry")
     held, staleness = terrain_cache_get(t, now)
     listed = held.snap.expiries if held is not None else None
-    requested = expiry.strip()[:10] if expiry else None
+    requested = expiry.strip()[:10] if isinstance(expiry, str) and expiry.strip() else None
     resolved_expiry = requested or (listed[0] if listed else None)
     # the chain's state is its levels' (terrain_staleness), the one verdict the screen shows
     verdict = levels_verdict(staleness)
 
-    def _unavailable(reason: str) -> JSONResponse:
-        return JSONResponse(
-            {
-                "ticker": t,
-                "spot": None,
-                "expiry": resolved_expiry,
-                "contracts": [],
-                "status": "unavailable",
-                **verdict,
-                "scope": {
-                    "kind": "unavailable",
-                    "requested_expiry": resolved_expiry,
-                    "reason": reason,
-                },
-            }
-        )
+    def _unavailable(reason: str) -> dict:
+        return {
+            "ticker": t,
+            "spot": None,
+            "expiry": resolved_expiry,
+            "contracts": [],
+            "status": "unavailable",
+            **verdict,
+            "scope": {
+                "kind": "unavailable",
+                "requested_expiry": resolved_expiry,
+                "reason": reason,
+            },
+        }
 
+    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
+        return _unavailable(f"expiry {expiry!r} is not an expiry date or null")
     if held is None:
         return _unavailable(_terrain_refresh_last_error.get(t) or NO_CHAIN_YET)
     chain = held.chain
@@ -3399,9 +3389,10 @@ def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)
         _streamed_greeks_for_ticker(listed, now, feed),
         set(_held_option_symbols_for_ticker(listed, now, feed)),
     )
-    at = now_et()
     product = option_close_product(t)
-    response_contracts = _keep_last_reported(response_contracts, contracts, at, product)
+    response_contracts = _keep_last_reported(
+        response_contracts, contracts, datetime.fromtimestamp(now, ET), product
+    )
     shown = [chain_row(c) for c in response_contracts]
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)
@@ -3421,40 +3412,36 @@ def get_chain(ticker: str = Query(...), expiry: str | None = Query(default=None)
         if col is None
         else [[c["strike"], c["gex"][col]] for c in surf["cells"] if c["gex"][col] is not None]
     )
-    return JSONResponse(
-        {
-            "ticker": t,
-            "spot": live_spot,
-            "priced_at_spot": held.snap.spot,
-            "spot_as_of_ts_utc": live_ts,
-            "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
-            "expiry": resolved_expiry,
-            "net_gex_by_strike": net_gex_by_strike,
-            "spot_strike": nearest_strike(
-                {c.strike for c in response_contracts if c.strike is not None}, live_spot
-            ),
-            # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
-            "adjusted_deliverable_symbols": [
-                c.symbol for c in response_contracts if c.non_standard
-            ],
-            # two contracts listed at one (strike, side): the chain is not strike-unique
-            "has_duplicate_contracts": len({(c.strike, c.side) for c in response_contracts})
-            < len(response_contracts),
-            "chain_as_of_ts_utc": held.computed_ts_utc,
-            **verdict,
-            "contracts": shown,
-            "status": "ok",
-            "ladder": ladder,
-            "n_strikes": len({r["strike"] for r in ladder}),
-            "contracts_not_on_ladder": not_on_ladder,  # no strike, or a putCall other than CALL/PUT
-            "stream_overlay_contracts": overlay_n,
-            "scope": {
-                "kind": "complete_single_expiry",
-                "requested_expiry": resolved_expiry,
-                "completeness_basis": held.chain_basis,
-            },  # the publication's own label
-        }
-    )
+    return {
+        "ticker": t,
+        "spot": live_spot,
+        "priced_at_spot": held.snap.spot,
+        "spot_as_of_ts_utc": live_ts,
+        "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
+        "expiry": resolved_expiry,
+        "net_gex_by_strike": net_gex_by_strike,
+        "spot_strike": nearest_strike(
+            {c.strike for c in response_contracts if c.strike is not None}, live_spot
+        ),
+        # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
+        "adjusted_deliverable_symbols": [c.symbol for c in response_contracts if c.non_standard],
+        # two contracts listed at one (strike, side): the chain is not strike-unique
+        "has_duplicate_contracts": len({(c.strike, c.side) for c in response_contracts})
+        < len(response_contracts),
+        "chain_as_of_ts_utc": held.computed_ts_utc,
+        **verdict,
+        "contracts": shown,
+        "status": "ok",
+        "ladder": ladder,
+        "n_strikes": len({r["strike"] for r in ladder}),
+        "contracts_not_on_ladder": not_on_ladder,  # no strike, or a putCall other than CALL/PUT
+        "stream_overlay_contracts": overlay_n,
+        "scope": {
+            "kind": "complete_single_expiry",
+            "requested_expiry": resolved_expiry,
+            "completeness_basis": held.chain_basis,
+        },  # the publication's own label
+    }
 
 
 #: /api/health's Schwab reason when the console has no current heartbeat from the daemon
@@ -3658,7 +3645,7 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
         log.warning("price levels for %s not built: %s", tk, e, exc_info=True)
         return
     if snap is not before:  # the same object when its bars did not change
-        push_changes.changed(tk, push_changes.LEVELS)
+        _levels_changed(tk)
 
 
 def _publish_missing_price_levels(tickers, now: datetime) -> None:
@@ -4000,19 +3987,48 @@ def get_confluence(ticker: str = Query(...), expiry: Annotated[str | None, Query
     )
 
 
-@app.get("/api/levels")
-# /api/levels serves the one published PriceLevelSnapshot: it serializes, it does not
-# compute. /api/liquidity-snapshot and /api/confluence's session levels carry their values from
-# the same snapshot (canonical_price_level_snapshot).
-def get_levels(
-    ticker: str = Query(...), tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "1"
-):
-    """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
-    return JSONResponse(levels_payload(ticker_storage_key(_required_ticker(ticker)), tf, now_et()))
+#: the chart timeframes the levels' VWAP curve is served in (aggregate_vwap)
+LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")
+
+
+def levels(ticker: str, now: float, params: dict) -> dict:
+    """Return the `levels` panel at `now`: levels_payload in the reader's timeframe `tf`.
+
+    The page's socket sends it (live_ui, PAGE_PANELS) to Key Levels' Levels views, the Liquidity
+    map, Right Now and the Desk map, at once and each time the levels change. It serializes the
+    one published PriceLevelSnapshot; /api/liquidity-snapshot and /api/confluence's session
+    levels carry their values from the same snapshot (canonical_price_level_snapshot). A `tf`
+    not in LEVEL_TIMEFRAMES raises: the socket sends that panel's words. `ticker` is the levels'
+    own key.
+    """
+    tf = params.get("tf")
+    if tf not in LEVEL_TIMEFRAMES:
+        raise ValueError(f"tf {tf!r} is not one of {', '.join(LEVEL_TIMEFRAMES)}")
+    return levels_payload(ticker, tf, datetime.fromtimestamp(now, ET))
+
+
+#: the panels the page's socket sends for the page's selected ticker (live_ui.LiveUiServer):
+#: each kind's producer, (ticker, now, the page's parameters) -> its body; _publish_levels marks
+#: the expiry list changed on each new chain, and _levels_changed the levels' panels
+#: (LEVELS_PANELS, the chain's and the price levels' among them) on each publication, a new
+#: chain's and a new bar's included
+PAGE_PANELS = {
+    "expiries": expiries,
+    "vanna": vanna_by_strike,
+    "charm": charm_by_strike,
+    "terrain": terrain,
+    "strikes": strikes,
+    "surface": gamma_surface,
+    "chain": chain,
+    "levels": levels,
+}
+#: the panels computed from the ticker's live price (each level's distance and side, the spot
+#: they are measured from): the socket sends them again with each of its price rows
+PRICED_PANELS = ("levels",)
 
 
 def levels_payload(tk: str, tf: str, now: datetime) -> dict:
-    """/api/levels at `now`: the published price-level snapshot for the market's session.
+    """The levels panel at `now`: the published price-level snapshot for the market's session.
 
     The terrain's levels carried beside it, each with its distance from the live price.
     """
