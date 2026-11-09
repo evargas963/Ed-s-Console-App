@@ -322,15 +322,20 @@ jobs:
           for k, n in by.most_common(60): print("%8d %s\n           e.g. %s" % (n, k, ex[k]))
           print("--- rows naming a failure")
           for h in hits: print(h)
+          # every row from 300 ms before to 50 ms after each failure, all processes
+          ts = sorted(int(h.split()[0]) for h in hits if h.split()[0].isdigit())
+          if ts:
+              with open(sys.argv[1], newline="", encoding="utf-8", errors="replace") as f, open("etw_failure_windows.csv", "w") as out:
+                  for row in csv.reader(f):
+                      if len(row) < 20 or not row[16].strip().isdigit(): continue
+                      t = int(row[16].strip())
+                      if any(-3000000 <= t - x <= 500000 for x in ts):
+                          out.write(",".join(x.strip() for x in row) + "\n")
           ETW
           # Windows' own TCP/IP and Winsock events at warning level and above, with the process
           MSYS_NO_PATHCONV=1 logman start tcpwarn -p Microsoft-Windows-TCPIP 0xffffffffffffffff 0x4 -o tcpwarn.etl -ets -mode circular -max 2048
-          # EXPERIMENT: a quarter of the dynamic range; if the refusals come from the share of
-          # the range the suite's TIME_WAIT ports hold, they become frequent here
-          netsh int ipv4 set dynamicport tcp start=49152 num=4096
-          netsh int ipv4 show dynamicport tcp
           rc=0
-          for pass in 1 2 3; do
+          for pass in 1 2 3 4 5 6 7 8 9 10; do
             echo "=== pass $pass starts $(date -u +%H:%M:%S)"
             npm run test:e2e || rc=$?
             echo "=== pass $pass ends $(date -u +%H:%M:%S)"
@@ -347,11 +352,12 @@ jobs:
             echo "=== $t: events by name, id, process and status"
             python "$RUNNER_TEMP/etw_status.py" $t.csv || true
             grep -a -E "^ *Microsoft-Windows-TCPIP *, *[A-Za-z]+ *, *(1006|1007|1008)," $t.csv > kept-failures/tcp_addr_events.csv || true
+            cp etw_failure_windows.csv kept-failures/ || true
             echo "=== $t: first 12 rows"
             head -12 $t.csv | cut -c1-700 || true
           done
           echo "=== Windows System log: Tcpip 4227 / 4231 since the job began"
-          pwsh -NoProfile -Command 'Get-WinEvent -FilterHashtable @{LogName="System"; ProviderName="Tcpip"; StartTime=(Get-Date).AddHours(-2)} -ErrorAction Ignore | Where-Object { $_.Id -in 4227,4231 } | ForEach-Object { "$($_.TimeCreated.ToUniversalTime().ToString("HH:mm:ss.fff")) Tcpip $($_.Id)" }'
+          pwsh -NoProfile -Command 'Get-WinEvent -FilterHashtable @{LogName="System"; ProviderName="Tcpip"; StartTime=(Get-Date).AddHours(-2)} -ErrorAction Ignore | Where-Object { $_.Id -in 4227,4231 } | ForEach-Object { "$($_.TimeCreated.ToUniversalTime().ToString("HH:mm:ss.fff")) Tcpip $($_.Id)" }' || true
           netsh int ipv4 show dynamicport tcp
           netsh int ipv4 show excludedportrange protocol=tcp
           echo "=== probe: refusals and snapshots"
