@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.state as ofls
+import app.options.order_flow.streaming as ofs
 import live_market_plane
 import push_changes
 from db_authority import canonical_console_db_path, canonical_stream_db_path
@@ -56,11 +58,6 @@ os.environ["ED_CONSOLE_PORT"] = "0"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
-
-# Fixtures every test file shares whose modules read the runtime boundary as they import
-# (runtime_layout.RUNTIME_ROOT): pytest imports these plugins after this file has run, so after
-# the boundary above
-pytest_plugins = ["tests.console_fixtures"]
 
 
 def pytest_configure(config) -> None:
@@ -110,6 +107,20 @@ def _live_feed_starts_down():
     with live_market_plane._lock:
         live_market_plane._feed["held"] = {}
         live_market_plane._feed["status"] = None
+
+
+@pytest.fixture
+def feed():
+    """The console's state cleared before and after, and no daemon bound after."""
+    ofs.stop_order_flow_stream()
+    ofs._option_contract_last_update_ts.clear()
+    ofls.clear_all_live_state()
+    live_market_plane._by_ticker.clear()
+    yield
+    ofs.stop_order_flow_stream()
+    ofs.bind_daemon(None)
+    live_market_plane._by_ticker.clear()
+    live_market_plane.record_feed_down()
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
