@@ -203,25 +203,29 @@
       fetchJson('/api/desk/events?ticker=' + q + '&venue=' + window.EdShell.getState().bookVenue + '&tf=' + encodeURIComponent(tf)).then(take('events'))
     ]);
   }
-  // the symbol's zones, strikes, forces and the Order Flow card's hour of bars
+  // the symbol's zones, forces and the Order Flow card's hour of bars
   function loadPerTicker() {
     var gen = S.gen, q = encodeURIComponent(S.ticker);
     return Promise.all([
       fetchJson('/api/liquidity-snapshot?ticker=' + q),
-      fetchJson('/api/terrain/strikes?ticker=' + q),
       fetchJson('/api/forces?ticker=' + q),
       fetchJson('/api/bars1m?ticker=' + q + '&tf=1&limit=' + FLOW_BARS)
     ]).then(function (r) {
       if (gen !== S.gen) return;
-      S.liq = r[0]; S.strikes = r[1]; S.forces = r[2];
-      S.flowBars = r[3] ? r[3].bars : null;
+      S.liq = r[0]; S.forces = r[1];
+      S.flowBars = r[2] ? r[2].bars : null;
       paintAll();
     });
   }
   function paintAll() { paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter(); }
-  // the symbol's option terrain: the `terrain:map` panel (server.terrain) the program sends on the
+  // the symbol's option terrain and its per-strike rows: the `terrain:map` and `strikes:desk`
+  // panels (server.terrain, server.strikes in the Gamma scope's window) the program sends on the
   // page's socket while the desk is on, at once and each time the levels change
-  function askTerrain() { window.EdShell.showPanel('terrain:map', onDesk() ? {} : null); }
+  var PANELS = { 'terrain:map': 'terrain', 'strikes:desk': 'strikes' };
+  function askPanels() {
+    window.EdShell.showPanel('terrain:map', onDesk() ? {} : null);
+    window.EdShell.showPanel('strikes:desk', onDesk() ? window.EdShell.windowParams(null) : null);
+  }
   // what an answer says with nothing to draw: the program could not produce the panel (`failed`),
   // or the answer's own error
   function why(x) { return x.failed != null ? x.failed : x.error; }
@@ -325,7 +329,7 @@
   }
 
   // ------------------------------------------------------------------ cards
-  // the FORCES split, served: GEX below/above spot (/api/terrain/strikes today_side_sums), and
+  // the FORCES split, served: GEX below/above spot (the strikes panel's today_side_sums), and
   // OI change, DEX and charm below/above from the last two market days' captures (/api/forces)
   function forcesRows() {
     var ss = S.strikes && S.strikes.today_side_sums, f = S.forces || {};
@@ -661,7 +665,7 @@
 
   // ------------------------------------------------------------------ lifecycle
   function start() {
-    askTerrain();
+    askPanels();
     if (!onDesk()) return;
     buildToolbar();
     if (!ensureChart()) return;
@@ -682,9 +686,11 @@
     document.addEventListener('ed:view', start);
     document.addEventListener('ed:ticker', start);
     document.addEventListener('ed:book_venue', function () { if (onDesk() && S.ticker) { loadFast(); loadSlow(); } });
+    document.addEventListener('ed:scope', askPanels);   // the strikes' window is the Gamma scope's
     document.addEventListener('ed:panel', function (e) {
-      if (e.detail.type !== 'terrain:map' || !onDesk()) return;
-      S.terrain = e.detail; paintAll();
+      var key = PANELS[e.detail.type];
+      if (!key || !onDesk()) return;
+      S[key] = e.detail; paintAll();
     });
     document.addEventListener('ed:changed', function (e) {
       if (!onDesk() || !S.ticker) return;

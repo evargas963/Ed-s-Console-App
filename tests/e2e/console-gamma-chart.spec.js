@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Options/Gamma "Chart" subview (Price + GEX Profile / GEX Dot Map). /api/terrain/strikes is a
+ * Options/Gamma "Chart" subview (Price + GEX Profile / GEX Dot Map). The strikes panel is a
  * genuine all-expiry aggregate -- no single mark has one real expiry to attribute, confirmed by
  * reading terrain_engine.py's _per_strike_rows and compute_exposures_by_strike (they collapse
  * call+put across EVERY expiry sharing a strike; there is no principled way to pick "the" call
@@ -52,14 +52,14 @@ const CHAIN = { spot: 100, spot_strike: 102, expiry: '2026-09-18', status: 'ok',
     { symbol: PUT_SYM, putCall: 'PUT', strikePrice: 102, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12 },
   ] };
 
-// the page's socket sends `terrain` (the flip and the walls) as the panel's body
-async function intercept(page, terrain = TERRAIN) {
+// the page's socket sends `terrain` (the flip and the walls) and `strikes` (the profile) as the
+// panels' bodies
+async function intercept(page, terrain = TERRAIN, strikes = STRIKES) {
   const chainRequests = [];
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
-    if (url.includes('/api/terrain/strikes')) body = STRIKES;
-    else if (url.includes('/api/bars1m')) body = BARS;
+    if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) {
       const u = new URL(url); chainRequests.push(u.searchParams.get('expiry'));
       body = CHAIN;
@@ -67,7 +67,7 @@ async function intercept(page, terrain = TERRAIN) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, { terrain: terrain });
+  await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, { terrain: terrain, strikes: strikes });
   return { chainRequests };
 }
 
@@ -128,10 +128,8 @@ test.describe('Options/Gamma Chart subview', () => {
   test('the GEX profile leaves a strike of GEX not known undrawn, with no page error', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    await intercept(page);
     const today = { all: [[98, -90000, 10], [100, null, 50], [102, -264500, 12]] };
-    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, STRIKES, { today })) }));
+    await intercept(page, TERRAIN, Object.assign({}, STRIKES, { today }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(2);

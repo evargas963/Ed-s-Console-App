@@ -21,6 +21,8 @@ from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning
 from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
 
+#: the strikes panel's window as the page asks it: Auto, following the price
+_AUTO = {"scope": "auto", "centre": None, "shift": 0}
 _FX = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_day_chain.json").read_text(
         encoding="utf-8"
@@ -118,7 +120,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
             )
             is not None
         )
-        body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
+        body = server.strikes("PCG", time_et.now(), _AUTO)
         # a new market day's first chain (Monday 2026-09-28 10:00 ET), before that day's first
         # capture: the prior day is recomputed against the new day
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
@@ -133,7 +135,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
             received_ts=monday.timestamp(),
         )
         server._publish_levels("PCG", newest["contracts"], monday.timestamp(), now=monday)
-        monday_body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
+        monday_body = server.strikes("PCG", time_et.now(), _AUTO)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("PCG", None)

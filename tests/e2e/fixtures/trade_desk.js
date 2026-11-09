@@ -72,7 +72,6 @@ async function intercept(page) {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/desk/events')) body = Object.assign({}, EVENTS, { tf: new URL(url).searchParams.get('tf') });
-    else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/levels')) body = LEVELS;
     else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
     else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
@@ -81,7 +80,7 @@ async function intercept(page) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  panels = { terrain: TERRAIN };
+  panels = { terrain: TERRAIN, strikes: STRIKES };
   return deskSocket(page);
 }
 

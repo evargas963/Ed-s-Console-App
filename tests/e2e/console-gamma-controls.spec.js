@@ -41,13 +41,13 @@ async function intercept(page) {
     const spot = dec === 'QQQ' ? 480 : 100;
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = surfaceFor(dec, spot, new URL(url).searchParams.get('expiry'));
-    else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { spot: spot });
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = { ticker: dec, spot: spot, expiry: EXPS[0], status: 'ok',
       scope: { kind: 'complete_single_expiry' }, contracts: [] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await pushExpiries(page, EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 },
-    { terrain: (key) => Object.assign({}, TERRAIN, { spot: key === 'QQQ' ? 480 : 100 }) });
+    { terrain: (key) => Object.assign({}, TERRAIN, { spot: key === 'QQQ' ? 480 : 100 }),
+      strikes: (key) => Object.assign({}, STRIKES, { spot: key === 'QQQ' ? 480 : 100 }) });
 }
 
 test.describe('ticker / expiry / measure controls', () => {
@@ -192,7 +192,7 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#chTicker')).toHaveText('AAPL');
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     await expect(page.locator('#flTicker')).toHaveText('AAPL');
-    const tabReads = ['options/gamma-surface', 'terrain/strikes', 'options/tape'].map(
+    const tabReads = ['options/gamma-surface', 'options/tape'].map(
       (path) => page.waitForRequest(new RegExp(`/api/${path}\\?ticker=AAPL`)));      // what opening the tab reads
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await expect(page.locator('#mvTicker')).toHaveText('AAPL');

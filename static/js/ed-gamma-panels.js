@@ -1,6 +1,6 @@
 /* Ed Console — Options/Gamma supporting panels. PRESENTATION ONLY.
    Key Levels rail  <- the page's socket      (the `terrain:levels` panel, the published levels)
-   GEX by Strike    <- GET /api/terrain/strikes  (per-strike net_gex_1pct$)
+   GEX by Strike    <- the page's socket      (the `strikes:gbs` panel, per-strike net_gex_1pct$)
    Strike Detail    <- GET /api/chain         (vendor per-contract OI/vol/greeks)
    Vanna / Charm    <- the page's socket      (the `vanna` / `charm` panels, per-strike net)
    No trading semantics are computed here. Bar scaling is visual normalisation over the
@@ -130,21 +130,27 @@
     txt('klPcrVolScope', 'volume · ' + scope);
   }
 
-  // ---------- GEX by Strike ----------
-  function stillGbsCtx(tk) { var host = document.getElementById('gbsBody'); return isGamma() && !!host && ticker() === tk; }
-  function loadGbsImpl(tk, _signal) {
-    var host = document.getElementById('gbsBody');
-    if (!stillGbsCtx(tk)) return;
-    if (_gbsPanTicker !== tk) { _gbsPan.centre = null; _gbsPan.shift = 0; _gbsPanTicker = tk; }
-    // shared with ed-gamma-chart.js's read of the same window: one network call
-    var G = window.EdL1SseGuards;
-    return G.show(G.sharedFetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk) +
-        window.EdShell.windowQuery(_gbsPan)), '/api/terrain/strikes',
-      function (d) { if (stillGbsCtx(tk)) renderGbs(host, d, tk); },
-      function (words) { if (stillGbsCtx(tk)) { setGbsAsOf(null); window.EdShell.placeholder(host, words); } });
+  // ---------- GEX by Strike: the `strikes:gbs` panel (server.strikes) the program sends on the
+  // page's socket while a Gamma tab is on, in the window it asks (the scope and its pan), at once
+  // and each time the levels change; nothing received yet for the ticker on screen is '-' ----------
+  var _gbs;   // the panel as last sent for the ticker on screen
+  function loadGbs() {
+    if (!isGamma()) { window.EdShell.showPanel('strikes:gbs', null); return; }
+    if (_gbsPanTicker !== ticker()) {   // a new ticker: its own window, and nothing of the last one's
+      _gbsPan.centre = null; _gbsPan.shift = 0; _gbsPanTicker = ticker(); _gbs = undefined;
+      var host = document.getElementById('gbsBody');
+      setGbsAsOf(null); if (host) window.EdShell.placeholder(host, '-');
+    }
+    window.EdShell.showPanel('strikes:gbs', window.EdShell.windowParams(_gbsPan));
   }
-  var _gbsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); });
-  function loadGbs() { _gbsLoader.trigger(ticker()); }
+  function drawGbs() {
+    var host = document.getElementById('gbsBody');
+    if (host && isGamma() && _gbs !== undefined) renderGbs(host, _gbs);
+  }
+  document.addEventListener('ed:panel', function (e) {
+    if (e.detail.type !== 'strikes:gbs') return;
+    _gbs = e.detail; drawGbs();
+  });
   function setGbsAsOf(d) {
     var el = document.getElementById('gbsSrc'); if (!el) return;
     if (!d) { el.innerHTML = ''; return; }
@@ -192,7 +198,11 @@
   // GEX by Strike shows the window the server sends (scope, and the operator's pan)
   var _gbsPan = window.EdShell.newPan(), _gbsPanTicker = null;
 
-  function renderGbs(host, d, tk) {
+  function renderGbs(host, d) {
+    if (d.failed != null || d.available === false) {   // not produced, or a window it cannot draw: why
+      setGbsAsOf(null); window.EdShell.placeholder(host, d.failed != null ? d.failed : d.reason);
+      return;
+    }
     setGbsAsOf(d);
     var rows = d.today && d.today.all;
     if (!rows || !rows.length) {
@@ -200,7 +210,7 @@
         'no banked per-strike gamma for this symbol</div></div>';
       return;
     }
-    // /api/terrain/strikes is aggregate across expiries; with one expiry selected, say so
+    // the strikes panel is aggregate across expiries; with one expiry selected, say so
     var expOn = window.EdShell.getExpiry();
     // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change])
     var chg = {}, mig = d.migration && d.migration.all;
@@ -483,7 +493,7 @@
   document.addEventListener('ed:changed', function (e) {
     if (e.detail.kind === 'flow') { loadOf(); return; }
     if (e.detail.kind !== 'levels') return;
-    loadGbs(); loadStructures();
+    loadStructures();
     var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
@@ -493,7 +503,7 @@
     if (det.strike != null) loadStrike(det.strike, det.expiry);
   });
   document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
-    loadLevels(); loadGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail
+    loadLevels(); drawGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail
     var sel = (window.EdShell.getState()).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });

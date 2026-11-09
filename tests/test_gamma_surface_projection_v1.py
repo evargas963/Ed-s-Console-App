@@ -13,8 +13,6 @@ capture instant (`now`, an input: every computation below prices at the same ins
 identity is exact).
 """
 
-import json
-
 import server
 from math_exposure_core import (
     bucket_metric,
@@ -375,7 +373,7 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute():
 def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     """Operator 2026-09-29: the Delta / DEX and Open Interest Chart views were blank.
 
-    The chart's DEX and OI profiles (/api/terrain/strikes `measures`, from the terrain
+    The chart's DEX and OI profiles (the strikes panel's `measures`, from the terrain
     publication) are the heatmap's own cells summed across expiries -- one computation, two
     views.
     """
@@ -385,9 +383,8 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     )
     surface = project_gamma_surface(chain, snap.books)
     try:
-        measures = json.loads(server.get_terrain_strikes(ticker="MRVL", scope="all").body)[
-            "measures"
-        ]
+        window = {"scope": "all", "centre": None, "shift": 0}
+        measures = server.strikes("MRVL", NOW.timestamp(), window)["measures"]
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("MRVL", None)

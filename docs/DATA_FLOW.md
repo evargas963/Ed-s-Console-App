@@ -548,10 +548,12 @@ the program.
   chains while the console
   already serves the page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer, each capture at its own time or at that ticker's option
-  close once the capture is past it, only when the ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
-  serve that result and read no stored chain. The same publication carries each strike's net
-  DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
-  served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open
+  close once the capture is past it, only when the ticker's newest capture or its chain's day changes; `/api/forces` and the strikes panel
+  (`server.strikes`, on `/ws`, one per reader in its own window: `strikes:gbs` GEX by Strike,
+  `strikes:chart` the Gamma chart's profile, `strikes:migration` Right Now, `strikes:desk` the
+  Desk map) serve that result and read no stored chain. The same publication carries each
+  strike's net DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap
+  cell's readers), sent as the strikes panel's `measures` for the Chart view of Delta / DEX and Open
   Interest. The book's values at spot (gamma at spot, regime, posture, confidence, headline) are
   computed in that one publication at that publication's price; the terrain panel sends them as
   published and recomputes none. Each relation of the live price to the levels is served beside

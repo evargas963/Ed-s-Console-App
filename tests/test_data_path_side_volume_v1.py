@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import live_market_plane as lmp
 import server as srv
 import time_et
@@ -31,14 +29,14 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
         tk, {"LAST_PRICE": spot, "TRADE_TIME_MILLIS": 1000}, received_ts=1.0
     )
     try:
-        resp = srv.get_terrain_strikes(ticker=tk)
+        body = srv.strikes(tk, time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
         lmp.record_feed_down()
-    return json.loads(bytes(resp.body))
+    return body
 
 
 def test_volume_below_and_above_spot_keeps_every_digit():

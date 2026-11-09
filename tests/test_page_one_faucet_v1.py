@@ -48,6 +48,8 @@ EXPIRY = str(CRWD.chain[0]["expirationDate"])[:10]  # 2026-10-16
 PUBLISHED = CRWD.spot  # Schwab's price in the chain answer
 LIVE = _QUOTE["native"]["LAST_PRICE"]  # Schwab's last trade, as the daemon received it
 _AT = CRWD.now
+#: a per-strike panel's window as the page asks it: Auto, following the price
+AUTO = {"scope": "auto", "centre": None, "shift": 0}
 
 
 def _daemon(at: float, held_options=()):
@@ -138,7 +140,7 @@ def test_strike_side_sums_split_at_the_live_spot(held):
     below = [r for r in rows if r[0] < LIVE]
     above = [r for r in rows if r[0] > LIVE]
     assert below and above, "the real chain has strikes on both sides of the live price"
-    sums = json.loads(server.get_terrain_strikes(ticker=TK).body)["today_side_sums"]
+    sums = server.strikes(TK, time_et.now(), AUTO)["today_side_sums"]
     assert sums["spot_basis"] == LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
     assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
@@ -207,9 +209,9 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
 @pytest.mark.parametrize(
     "route",
     [
-        lambda: server.get_chain(ticker="SPY", expiry="2026-10-22"),
-        lambda: server.get_options_gamma_surface(ticker="SPY"),
-        lambda: server.get_terrain_strikes(ticker="SPY"),
+        lambda: json.loads(server.get_chain(ticker="SPY", expiry="2026-10-22").body),
+        lambda: json.loads(server.get_options_gamma_surface(ticker="SPY").body),
+        lambda: server.strikes("SPY", time_et.now(), AUTO),
     ],
     ids=["chain", "gamma-surface", "terrain-strikes"],
 )
@@ -244,7 +246,7 @@ def test_the_spot_row_is_served(route):
         daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     try:
-        body = json.loads(route().body)
+        body = route()
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("SPY", None)
@@ -348,7 +350,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
 
 def test_the_largest_gex_strike_is_served(held):
     rows = held.snap.per_strike["all"]
-    body = json.loads(server.get_terrain_strikes(ticker=TK).body)
+    body = server.strikes(TK, time_et.now(), AUTO)
     assert body["max_abs_row"] == max(rows, key=lambda r: abs(r[1]))
 
 

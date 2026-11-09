@@ -141,7 +141,7 @@ test.describe('Vanna and Charm by strike: the panels on the page\'s socket', () 
     const s = await open(page, 'vanna', answerCrwd);
     await expect.poll(() => strikes(page, '#vnBody')).toEqual(sentStrikes('vanna'));
     await page.evaluate(() => window.EdShell.setSubview('gamma'));
-    // the Gamma tab's own panel (Key Levels) in its place
-    await expect.poll(() => s.last().panels).toEqual({ expiries: {}, 'terrain:levels': {} });
+    // the Gamma tab's own panels (Key Levels, GEX by Strike) in its place
+    await expect.poll(() => s.last().panels).toEqual({ expiries: {}, 'terrain:levels': {}, 'strikes:gbs': AUTO });
   });
 });

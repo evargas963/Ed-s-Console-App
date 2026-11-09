@@ -1113,7 +1113,7 @@ _last_feed_stamp: tuple | None = None
 
 
 #: the page's socket panels (PAGE_PANELS) read from the published levels and the live price
-LEVELS_PANELS = ("vanna", "charm", "terrain")
+LEVELS_PANELS = ("vanna", "charm", "terrain", "strikes")
 
 
 def _levels_changed(tk: str) -> None:
@@ -2141,19 +2141,17 @@ def _windowed(rows: list, spot_strike, scope: str, centre, shift: int) -> tuple[
     return win, {**view, "max_abs": max(known) if known else None}
 
 
-@app.get("/api/terrain/strikes")
-def get_terrain_strikes(
-    ticker: str = Query(...),
-    scope: ScopeQuery = "auto",
-    centre: CentreQuery = None,
-    shift: ShiftQuery = 0,
-):
-    """Answer the per-strike panels now (terrain_strikes_payload)."""
-    return JSONResponse(
-        terrain_strikes_payload(
-            ticker_storage_key(_required_ticker(ticker)), scope, centre, shift, time_et.now()
-        )
-    )
+def strikes(ticker: str, now: float, params: dict) -> dict:
+    """Return the per-strike rows at `now` in the window `params` ask for (the `strikes` panel).
+
+    `ticker` is the levels' own key; `params` the reader's window (_window_asked). The page's
+    socket sends it to GEX by Strike, the Gamma chart's profile, Right Now's migration and the
+    Desk map, each its own panel with its own window (terrain_strikes_payload).
+    """
+    window = _window_asked(params)
+    if isinstance(window, str):
+        return unavailable(ticker, window)
+    return terrain_strikes_payload(ticker, *window, now)
 
 
 def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float) -> dict:
@@ -3399,6 +3397,7 @@ PAGE_PANELS = {
     "vanna": vanna_by_strike,
     "charm": charm_by_strike,
     "terrain": terrain,
+    "strikes": strikes,
 }
 
 

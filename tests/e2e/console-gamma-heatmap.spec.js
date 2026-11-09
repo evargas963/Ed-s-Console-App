@@ -184,13 +184,12 @@ async function intercept(page) {
     if (url.includes('/api/changes')) return route.fallback();   // the test server's own push
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
-    else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  panels = { terrain: TERRAIN };
+  panels = { terrain: TERRAIN, strikes: STRIKES };
   sock = await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, panels);
 }
 
@@ -390,7 +389,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // Every panel that reads the console names where a read failed, the same words for each
   // (EdL1SseGuards.readJson). Induced conditions: the panel's route answers 500, or refuses.
   const PANELS = [
-    { name: 'GEX by strike', host: '#gbsBody', route: '/api/terrain/strikes' },
     { name: 'the tape', host: '#ofBody', route: '/api/options/tape' },
     { name: 'Strike Detail', host: '#sdBody', route: '/api/chain' },
     { name: 'the levels view', host: '#levelsBody', route: '/api/levels', view: 'levels' },
@@ -423,8 +421,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // A panel whose read fails leaves no as-of badge from its last answer beside the failure words.
   // Induced condition: the first answer marks itself live (the served status labels below).
   const BADGED = [
-    { name: 'GEX by strike', host: '#gbsBody', badge: '#gbsSrc', route: '/api/terrain/strikes', push: 'levels',
-      answer: STRIKES },
     { name: 'Strike Detail', host: '#sdBody', badge: '#sdSrc', route: '/api/chain', push: 'levels',
       answer: Object.assign({}, CHAIN, { scope: { kind: 'complete_single_expiry' } }) },
     { name: 'the chain', host: '#chainBody', badge: '#chSrc', route: '/api/chain', push: 'chain', sub: 'chain',
@@ -445,6 +441,29 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       await expect(page.locator(p.badge)).toBeEmpty();
     });
   }
+
+  test('GEX by strike: a panel the program could not produce after a good one says why and leaves no badge', async ({ page }) => {
+    const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#gbsSrc')).not.toBeEmpty();
+    panels.strikes = { failed: words };
+    sock.changed('strikes');
+    await expect(page.locator('#gbsBody')).toContainText(words);
+    await expect(page.locator('#gbsSrc')).toBeEmpty();
+    await expect(page.locator('#klFlip')).toHaveText('582.90');   // the other panels keep theirs
+  });
+
+  test('GEX by strike after a ticker switch: "-" until the new ticker\'s rows, the new ticker\'s window', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#gbsBody .gbs-row')).toHaveCount(STRIKES.today.all.length);
+    panels.strikes = (key) => (key === 'QQQ' ? undefined : STRIKES);   // QQQ's not sent yet
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(page.locator('#gbsBody')).toHaveText('-');
+    await expect(page.locator('#gbsSrc')).toBeEmpty();
+    const asked = sock.subscribes[sock.subscribes.length - 1];
+    expect(asked.ticker).toBe('QQQ');
+    expect(asked.panels['strikes:gbs']).toEqual({ scope: 'auto', centre: null, shift: 0 });
+  });
 
   test('Key Levels: a panel the program could not produce after a stale one keeps none of its tooltip or colour', async ({ page }) => {
     // Induced condition: the first panel is marked stale with a reason (served status labels);
@@ -470,8 +489,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({ page }) => {
     // Induced condition: the per-strike answer (this file's STRIKES) without its `views`, so
     // drawing the migration section raises a TypeError after every endpoint has answered.
-    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, STRIKES, { views: undefined })) }));
+    panels.strikes = Object.assign({}, STRIKES, { views: undefined });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
     const reported = page.waitForEvent('console', (m) => m.type() === 'error' && /TypeError/.test(m.text()));
@@ -643,9 +661,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // One value, one producer (2026-09-27): the Net row sits beside ONE expiry's contracts, so it
     // shows that expiry's net GEX at the strike -- the heatmap's own cell, served on the same
     // /api/chain response. It used to read GEX-by-Strike's rows (every expiry summed).
-    await page.route('**/api/terrain/strikes**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ ticker: '$SPX', spot: 583.41, today: { all: [[583, 777000, 5400]] },
-        views: { all: { centre: 583, note: null, max_abs: 777000 } } }) }));
+    panels.strikes = { ticker: '$SPX', spot: 583.41, today: { all: [[583, 777000, 5400]] },
+      views: { all: { centre: 583, note: null, max_abs: 777000 } } };
     await page.route('**/api/chain**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, CHAIN, { net_gex_by_strike: [[583, 3000]] })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1361,7 +1378,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fallback();
     };
     await page.route('**/api/options/gamma-surface**', track('gamma-surface'));
-    await page.route('**/api/terrain/strikes**', track('terrain-strikes'));
     await page.route('**/api/options/tape**', track('tape'));
     await page.route('**/api/chain**', track('chain'));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1369,18 +1385,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // Any accidental second trigger (a stray immediate self-call racing the deferred
     // dispatch) has made its read by the time the page's reads have all landed.
     await requests.settled();
-    for (const path of ['gamma-surface', 'terrain-strikes', 'tape', 'chain']) {
+    for (const path of ['gamma-surface', 'tape', 'chain']) {
       expect(counts[path], `${path} must hydrate exactly once on cold start`).toBe(1);
     }
   });
 
   test('one levels push refetches only levels-derived endpoints, not unrelated ones', async ({ page }) => {
     const requests = watchRequests(page);
-    let gammaCalls = 0, strikesCalls = 0;
+    let gammaCalls = 0;
     const unrelated = { tape: 0, chain: 0 };
     // fallback() (not continue()) -- see the identical note in the cold-start test above.
     await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
-    await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
     await page.route('**/api/options/tape**', (route) => { unrelated.tape += 1; return route.fallback(); });
     await page.route('**/api/chain**', (route) => { unrelated.chain += 1; return route.fallback(); });
     const push = await routeOneLevelsPush(page);
@@ -1391,58 +1406,39 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.evaluate(() => window.EdShell.setStrike(null));
     await requests.settled();
     const beforeUnrelated = Object.assign({}, unrelated);
-    const gammaBefore = gammaCalls, strikesBefore = strikesCalls, subscribesBefore = sock.subscribes.length;
+    const gammaBefore = gammaCalls, subscribesBefore = sock.subscribes.length;
     push();                           // lands after the baseline
     await expect.poll(() => gammaCalls).toBeGreaterThan(gammaBefore);
-    await expect.poll(() => strikesCalls).toBeGreaterThan(strikesBefore);
     await requests.settled();   // every read the push made has gone out
     expect(unrelated).toEqual(beforeUnrelated);
-    // the levels (Key Levels) are the program's to send on the socket: the push asks for nothing
+    // the levels (Key Levels) and the strikes (GEX by strike) are the program's to send on the
+    // socket: the push asks for nothing
     expect(sock.subscribes.length).toBe(subscribesBefore);
-  });
-
-  test('two panels reacting to the same push for the same endpoint make one network call', async ({ page }) => {
-    // Chart view: the chart's GEX profile and the GEX-by-strike rail both read /api/terrain/strikes
-    const requests = watchRequests(page);
-    let strikesCalls = 0;
-    await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
-    const push = await routeOneLevelsPush(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.hcell').first()).toBeVisible();
-    await page.locator('.vtab[data-view="chart"]').click();
-    await expect(page.locator('#chartBody .gchart-plot canvas').first()).toBeVisible();
-    await requests.settled();   // the view switch's own hydration has landed
-    const before = strikesCalls;
-    push();
-    await expect.poll(() => strikesCalls - before).toBeGreaterThan(0);
-    await requests.settled();   // every read the push made has gone out and landed
-    expect(strikesCalls - before).toBe(1);
+    await expect(page.locator('#gbsBody .gbs-row')).toHaveCount(STRIKES.today.all.length);
   });
 
   test('one levels push with a strike selected fetches each levels endpoint exactly once', async ({ page }) => {
     const requests = watchRequests(page);
-    let gammaCalls = 0, strikesCalls = 0, chainCalls = 0;
+    let gammaCalls = 0, chainCalls = 0;
     await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
-    await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
     await page.route('**/api/chain**', (route) => { chainCalls += 1; return route.fallback(); });
     const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await requests.settled();   // cold-start hydration (including auto-select) has landed
-    const before = { gamma: gammaCalls, strikes: strikesCalls, chain: chainCalls, subscribes: sock.subscribes.length };
+    const before = { gamma: gammaCalls, chain: chainCalls, subscribes: sock.subscribes.length };
     push();
-    await expect.poll(() => Math.min(gammaCalls - before.gamma, strikesCalls - before.strikes,
-      chainCalls - before.chain)).toBeGreaterThan(0);
+    await expect.poll(() => Math.min(gammaCalls - before.gamma, chainCalls - before.chain)).toBeGreaterThan(0);
     await requests.settled();   // every read the push made has gone out and landed
     expect(gammaCalls - before.gamma).toBe(1);
-    expect(strikesCalls - before.strikes).toBe(1);
     expect(chainCalls - before.chain).toBe(1);
-    // the levels are the program's to send on the socket: the push asks for nothing there
+    // the levels and the strikes are the program's to send on the socket: the push asks for
+    // nothing there
     expect(sock.subscribes.length - before.subscribes).toBe(0);
-    const totalDelta = (gammaCalls - before.gamma) + (strikesCalls - before.strikes)
-      + (chainCalls - before.chain);
-    expect(totalDelta).toBeLessThanOrEqual(3);
+    const totalDelta = (gammaCalls - before.gamma) + (chainCalls - before.chain);
+    expect(totalDelta).toBeLessThanOrEqual(2);
     await expect(page.locator('#klFlip')).toHaveText('582.90');
+    await expect(page.locator('#gbsBody .gbs-row')).toHaveCount(STRIKES.today.all.length);
   });
 
   test('the Gamma Chart spot line moves with each price row (the header\'s price), not a terrain refetch', async ({ page }) => {
