@@ -1271,7 +1271,9 @@ CAPTURED = r"fixtures?[/\\\"']|FIXTURE|captured|real_chains|real_\w+\.json"
 
 def test_module(node):
     """Return the file of the test module an import statement takes names from, or None."""
-    if not isinstance(node, ast.ImportFrom) or not (node.module or "").startswith("tests."):
+    if not isinstance(node, ast.ImportFrom) or node.module is None:
+        return None
+    if not node.module.startswith("tests."):
         return None
     path = f"{node.module.replace('.', '/')}.py"
     return path if path in trees else None
