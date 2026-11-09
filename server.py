@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Annotated
 
 import psutil
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -446,6 +446,10 @@ async def _app_lifespan(app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
+#: what the program serves while it runs, None before and after: the price server
+#: (live_ui.serve_live_ui) and the capture daemon (capture.serve_console)
+app.state.prices = None
+app.state.daemon = None
 
 
 class _RevalidateStaticFiles(StaticFiles):
@@ -483,6 +487,37 @@ SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 
 #: the page's price socket, on the program's own port (live_ui.page_socket)
 app.add_api_websocket_route("/ws", live_ui.page_socket)
+#: the one address the control route answers: this PC's own (launch.py connects from it)
+CONTROL_CLIENT = "127.0.0.1"
+
+
+@app.websocket("/control")
+async def control_socket(ws: WebSocket) -> None:
+    """The program's control route: launch.py's clean stop ({"op": "stop"}). Each frame that is a
+    JSON object goes to the daemon the program serves (the app's state `daemon`,
+    capture.Daemon.console_frame) until the connection closes; one that is not is logged with
+    what arrived.
+
+    Refused before it opens (403) with no daemon served, from another machine, and from a
+    browser: a page's browser always sends an Origin and launch.py none, so no web page can stop
+    the program.
+    """
+    daemon = ws.app.state.daemon
+    if daemon is None or "origin" in ws.headers or ws.client.host != CONTROL_CLIENT:
+        await ws.close()
+        return
+    await ws.accept()
+    while (msg := await ws.receive())["type"] == "websocket.receive":
+        frame = msg["text"] if "text" in msg else msg["bytes"]
+        try:
+            req = json.loads(frame)
+        except (TypeError, ValueError) as e:
+            log.warning("control: a frame that is not JSON (%s): %r", e, frame)
+            continue
+        if not isinstance(req, dict):
+            log.warning("control: a frame that is not a JSON object: %r", frame)
+        else:
+            daemon.console_frame(req)
 
 
 def _with_page_settings(html: str) -> str:

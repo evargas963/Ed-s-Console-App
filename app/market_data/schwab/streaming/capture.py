@@ -9,9 +9,9 @@ every watchlist ticker, each in its turn in one rotation.
   0. WATCHLIST The one list of tickers Schwab is asked for (Watchlist): the daemon holds it,
              is its only writer, and keeps every change as a `watchlist` record (the writer
              stores it in stream_capture.db stream_watchlist; the newest is read at startup).
-             The console asks for an add or a removal over the local console socket (live_push,
-             ws://127.0.0.1:8799): {"op": "watchlist", "action": "add"|"remove", "ticker": T,
-             "id": n}. An added ticker is checked with one /quotes request: one Schwab names in
+             The console, in this program, asks for an add or a removal (console_frame):
+             {"op": "watchlist", "action": "add"|"remove", "ticker": T, "id": n}. An added
+             ticker is checked with one /quotes request: one Schwab names in
              errors.invalidSymbols, or does not quote, is not added. The record carries the
              request's id and Schwab's answer back to the console.
 
@@ -53,6 +53,7 @@ import enum
 import json
 import logging
 import logging.handlers
+import os
 import queue
 import signal
 import socket
@@ -73,15 +74,9 @@ import push_changes
 import runtime_layout
 import server
 import time_et
-from app.market_data.schwab.streaming.live_push import (
-    LIVE_PUSH_HOST,
-    LIVE_PUSH_PORT,
-    MARKET_CONTEXT,
-    serve_live_push,
-)
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.market_data.schwab.streaming.live_ui import (
     CONSOLE_HOST,
-    CONSOLE_PORT,
     PageSocket,
     serve_live_ui,
 )
@@ -700,12 +695,12 @@ class Daemon:
             task.result()  # a follower's error, raised for run to name
 
     def console_frame(self, req: dict) -> None:
-        """A request from the console in this program, or a frame on the daemon's local socket
-        (live_push, 127.0.0.1, launch.py's stop): a watchlist request ({"op": "watchlist"},
-        answered on the bus), the contract selected on the Flow panel ({"op": "flow_contract",
-        "contract": symbol or null}), or the clean stop
-        ({"op": "stop"}, launch.py stop): every task ends, the writer writes what it holds (to the
-        spill files while the database refuses writes), and the daemon exits EXIT_STOPPED.
+        """A request from the console in this program, or a frame on the program's control route
+        (/control, server.control_socket, launch.py's stop): a watchlist request
+        ({"op": "watchlist"}, answered on the bus), the contract selected on the Flow panel
+        ({"op": "flow_contract", "contract": symbol or null}), or the clean stop ({"op": "stop"},
+        launch.py stop): every task ends, the writer writes what it holds (to the spill files
+        while the database refuses writes), and the daemon exits EXIT_STOPPED.
         """
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
@@ -716,7 +711,7 @@ class Daemon:
             self.pick_options()
             self._keep_options()
         elif req["op"] == "stop":
-            log.info("capture daemon: stop requested on its local socket")
+            log.info("capture daemon: stop requested on its control route")
             self.stop.set()
 
     async def watchlist_request(self, req: dict) -> None:
@@ -804,7 +799,7 @@ class Daemon:
         return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
     def status(self, now: float) -> dict:
-        """What the console and browsers are told every second (live_push / live_ui), at `now`."""
+        """What the console and browsers are told every second (live_ui's beat), at `now`."""
         return {
             "ts": now,
             # open while a stream exists and Schwab sent a frame within DEAD_SEC
@@ -1180,13 +1175,15 @@ PAGES = {
 
 
 async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket) -> None:
-    """Serve the console's pages and routes (server.app) and the page's socket on `sock` until
-    `stop`.
+    """Serve the console's pages and routes (server.app), the page's socket and the control route
+    on `sock` until `stop`.
 
     They read the daemon's one bus (console_feed.bind_daemon): one program, one copy of every
-    value.
+    value. The control route's frames go to the daemon, the app's state `daemon` while the server
+    serves. The open connections end with the server: uvicorn closes each socket as it shuts down.
     """
     console_feed.bind_daemon(daemon)
+    server.app.state.daemon = daemon
     web = _PagesServer(uvicorn.Config(server.app, **PAGES))
     host, port = sock.getsockname()[:2]
     log.info("console: serving the pages on http://%s:%s", host, port)
@@ -1195,6 +1192,7 @@ async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket
     push_changes.close_all()  # each open page's stream ends, so the server need not wait on it
     web.should_exit = True
     await serving
+    server.app.state.daemon = None
 
 
 #: the daemon's window alone (_start_log), never its log file
@@ -1361,32 +1359,28 @@ def one_schwab_client(build) -> callable:
     return schwab_client
 
 
-def open_sockets() -> tuple[socket.socket, socket.socket]:
-    """Open the program's two listening sockets before anything serves them.
+def open_sockets() -> socket.socket:
+    """Open the program's one listening socket before anything serves it.
 
-    They are the console's pages (with the page's price socket, /ws) and the local control
-    socket. The ports they hold are known at once (port 0: the system's pick as it binds, no gap
-    for another program to take it). A port another program holds ends the start here, naming it.
+    It serves the console's pages, the page's price socket (/ws) and the control route
+    (/control), on the port ED_CONSOLE_PORT names, read as it opens (a test's program: a free
+    port of its own). The port it holds is known at once (port 0: the system's pick as it binds,
+    no gap for another program to take it). A port another program holds ends the start here,
+    naming it.
     """
-    return (
-        socket.create_server((CONSOLE_HOST, CONSOLE_PORT)),
-        socket.create_server((LIVE_PUSH_HOST, LIVE_PUSH_PORT)),
-    )
+    return socket.create_server((CONSOLE_HOST, int(os.environ.get("ED_CONSOLE_PORT", "8000"))))
 
 
 async def run(lock_fd: int) -> int:
     """Run the whole daemon until the stop.
 
-    Its writer, its sockets, the price rows' beat, the chain sweep, the market follower and the
+    Its writer, its web server, the price rows' beat, the chain sweep, the market follower and the
     Schwab connection each run until the stop; one that ends first ends the daemon with an error
-    naming it, which start_capture_daemon.bat restarts. The ports its sockets hold go in its lock
-    (`lock_fd`), where launch.py reads them.
+    naming it, which start_capture_daemon.bat restarts. The port its socket holds goes in its lock
+    (`lock_fd`), where launch.py reads it.
     """
-    pages, control = open_sockets()
-    record_ports(
-        lock_fd,
-        Ports(console=pages.getsockname()[1], live_push=control.getsockname()[1]),
-    )
+    pages = open_sockets()
+    record_ports(lock_fd, Ports(console=pages.getsockname()[1]))
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(
@@ -1412,8 +1406,9 @@ async def run(lock_fd: int) -> int:
         asyncio.create_task(show_stream(bus, stop), name="stream window"),
         asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
-        asyncio.create_task(serve_live_push(stop, daemon.console_frame, control), name="live push"),
-        asyncio.create_task(serve_live_ui(stop, heartbeat_fn=daemon.status), name="live ui"),
+        asyncio.create_task(
+            serve_live_ui(stop, state=server.app.state, heartbeat_fn=daemon.status), name="live ui"
+        ),
         asyncio.create_task(serve_console(daemon, stop, pages), name="console"),
     ]
     try:

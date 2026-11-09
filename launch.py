@@ -13,8 +13,8 @@ start stops nothing.
 2. The default browser, at the pages' port the program wrote in its lock (program_ports), once
    they answer healthy (START_WAIT_SEC).
 
-`python launch.py stop` is the clean stop (stop): the program is asked to stop on its local socket
-and writes what it holds before it exits.
+`python launch.py stop` is the clean stop (stop): the program is asked to stop on its control route
+(/control on its port) and writes what it holds before it exits.
 """
 
 from __future__ import annotations
@@ -119,12 +119,12 @@ def daemon_window(batch: Path) -> list[str]:
 
 
 def ask_daemon_to_stop(port: int) -> None:
-    """Ask the daemon for its clean stop on its local control socket at `port`.
+    """Ask the daemon for its clean stop on its control route, /control on its port `port`.
 
     On {"op": "stop"} it writes what it holds, then exits, and start_capture_daemon.bat does not
     restart it.
     """
-    with connect(f"ws://127.0.0.1:{port}", open_timeout=10) as ws:
+    with connect(f"ws://127.0.0.1:{port}/control", open_timeout=10) as ws:
         ws.send(json.dumps({"op": "stop"}))
 
 
@@ -138,7 +138,7 @@ def stop() -> int:
     ports = program_ports()
     if program and ports is not None:
         try:
-            ask_daemon_to_stop(ports.live_push)
+            ask_daemon_to_stop(ports.console)
         except (OSError, WebSocketException) as e:
             log.warning("Ed Console: not asked to stop: %s: %s", type(e).__name__, e)
             ended = "ended, not asked by this stop"

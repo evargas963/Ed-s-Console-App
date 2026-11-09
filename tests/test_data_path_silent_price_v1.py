@@ -20,9 +20,6 @@ from tests.test_live_push_channel_v1 import (
     listener,
     serve_page_socket,
 )
-from tests.test_live_push_channel_v1 import (
-    feed as feed,
-)
 
 
 def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
@@ -85,8 +82,8 @@ def test_a_silent_daemon_keeps_the_last_price(feed):
     missing: list = []
     quiet: list = []
 
-    async def body(bus, stats):
-        assert stats["clients"] == 0  # the console reads the bus: no socket client
+    async def body(bus, web):
+        assert not web.server_state.connections  # the console reads the bus: no socket client
         bus.publish("quote.SPY", _spy_trade(501.0, time_et.now()))
         assert await _until(lambda: ofs.price_row("SPY", time_et.now())["spot"] == 501.0)
         end = time_et.elapsed() + 1.2

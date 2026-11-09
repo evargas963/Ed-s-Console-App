@@ -174,8 +174,8 @@ def test_the_lock_holds_the_ports_the_program_opened_while_it_runs(tmp_path):
     assert pl.program_ports(db) is None  # no program
     fd, lock = pl.acquire_owner_lock(db)
     try:
-        assert pl.program_ports(db) is None  # its sockets not opened yet
-        ports = pl.Ports(console=8000, live_push=8799)
+        assert pl.program_ports(db) is None  # its socket not opened yet
+        ports = pl.Ports(console=8000)
         pl.record_ports(fd, ports)
         assert pl.program_ports(db) == ports
         whole = lock.read_text()
