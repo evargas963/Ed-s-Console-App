@@ -1774,9 +1774,11 @@ def _price_waiting_chain() -> None:
 
     The longest waiting, a stored capture after every delivered chain. A reprice takes its turn
     behind the stored captures queued before it: a viewed ticker's ticks queue one again during
-    each of its pricings.
+    each of its pricings. Nothing, once the stop dropped what waited (stop_terrain_loop).
     """
     with _chains_waiting_lock:
+        if not _chains_waiting:
+            return
         waiting = list(_chains_waiting)
         delivered = any(what == DELIVERED for what, *_ in _chains_waiting.values())
         tk = next(t for t in waiting if not (delivered and _chains_waiting[t][0] == STORED))
@@ -2016,8 +2018,16 @@ def start_terrain_loop() -> None:
 
 
 def stop_terrain_loop() -> None:
+    """Stop the levels thread, and drop every pricing that waits (_chains_waiting).
+
+    The program is stopping: what waits would be priced for pages that are closing, and the
+    program's exit waits for the pricing thread, so only the pricing already running finishes.
+    The chains stay stored and are priced at the next start (_load_stored_levels).
+    """
     global _terrain_loop_running
     _terrain_loop_running = False
+    with _chains_waiting_lock:
+        _chains_waiting.clear()
 
 
 def _atr(ticker: str, now: datetime) -> Atr:
