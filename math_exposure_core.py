@@ -88,6 +88,23 @@ def bs_delta(
     return d if math.isfinite(d) else None
 
 
+def _each(
+    f: Callable[[float], float], priced: NDArray[np.bool_]
+) -> Callable[[NDArray[np.float64]], NDArray[np.float64]]:
+    """Return `f` (math.log, math.exp) taken on each priced element, NaN on the rest.
+
+    The platform's own function, as the scalar Greeks take it: numpy's exp and log round the
+    last bit differently on some processors, so a value would differ between machines.
+    """
+
+    def on(x: NDArray[np.float64]) -> NDArray[np.float64]:
+        out = np.full(x.shape, np.nan)
+        out[priced] = [f(v) for v in x[priced].tolist()]
+        return out
+
+    return on
+
+
 def bs_vanna_array(
     spot: float,
     strike: NDArray[np.float64],
@@ -107,9 +124,9 @@ def bs_vanna_array(
     """
     with np.errstate(all="ignore"):
         priced = (spot > 0) & (strike > 0) & (t_years > 0) & (sigma > 0)
-        d1, vt = d1_vt(spot, strike, t_years, sigma, log=np.log, sqrt=np.sqrt)
+        d1, vt = d1_vt(spot, strike, t_years, sigma, log=_each(math.log, priced), sqrt=np.sqrt)
         d2 = d1 - vt
-        v = -np.exp(-0.0 * t_years) * norm_pdf(d1, exp=np.exp) * d2 / sigma
+        v = -np.exp(-0.0 * t_years) * norm_pdf(d1, exp=_each(math.exp, priced)) * d2 / sigma
     return np.where(priced & np.isfinite(d1) & np.isfinite(v), v, np.nan)
 
 
@@ -131,9 +148,9 @@ def bs_charm_array(
     """
     with np.errstate(all="ignore"):
         priced = (spot > 0) & (strike > 0) & (t_years > 0) & (sigma > 0)
-        d1, vt = d1_vt(spot, strike, t_years, sigma, log=np.log, sqrt=np.sqrt)
+        d1, vt = d1_vt(spot, strike, t_years, sigma, log=_each(math.log, priced), sqrt=np.sqrt)
         d2 = d1 - vt
-        c = -norm_pdf(d1, exp=np.exp) * (0.0 / vt - d2 / (2.0 * t_years))
+        c = -norm_pdf(d1, exp=_each(math.exp, priced)) * (0.0 / vt - d2 / (2.0 * t_years))
     return np.where(priced & np.isfinite(d1) & np.isfinite(c), c, np.nan)
 
 
