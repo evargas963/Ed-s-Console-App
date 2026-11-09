@@ -62,6 +62,7 @@ import threading
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from typing import override
 
 import uvicorn
 from schwab.streaming import StreamClient
@@ -1167,6 +1168,7 @@ class _PagesServer(uvicorn.Server):
     the pages first and wait out every open page before the program heard it.
     """
 
+    @override
     @contextlib.contextmanager
     def capture_signals(self):
         yield

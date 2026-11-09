@@ -1,7 +1,7 @@
 # institutional-synthetic-ok: temp directories stand in for a relocated runtime root.
 """Runtime state is rooted in `runtime_layout`, not the source files (docs/ARCHITECTURE.md
 "Runtime state is not source"). The controls of an environment variable drive the real modules
-through a subprocess with it set and unset, because the roots are read at import.
+through a subprocess with it set and unset, so each starts from its own environment.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def test_ambient_db_override_is_refused(tmp_path):
     env = dict(os.environ)
     env.update({"ED_RUNTIME_ROOT": str(rt), "ED_CONSOLE_DB": str(explicit)})
     result = subprocess.run(
-        [sys.executable, "-c", "import db"],
+        [sys.executable, "-c", "import db; db.EdDB()"],
         cwd=str(REPO),
         env=env,
         capture_output=True,
@@ -65,7 +65,7 @@ def test_runtime_root_cannot_be_a_linked_worktree(tmp_path):
         env = dict(os.environ)
         env["ED_RUNTIME_ROOT"] = str(runtime_root)
         result = subprocess.run(
-            [sys.executable, "-c", "import runtime_layout"],
+            [sys.executable, "-c", "import runtime_layout; runtime_layout.runtime_root()"],
             cwd=str(REPO),
             env=env,
             capture_output=True,
@@ -76,18 +76,52 @@ def test_runtime_root_cannot_be_a_linked_worktree(tmp_path):
         assert "cannot select a linked source worktree" in result.stderr
 
 
+def test_a_runtime_root_set_after_the_imports_places_the_token_and_the_databases(tmp_path):
+    """The token, the console database and the stream database follow ED_RUNTIME_ROOT as the
+    environment holds it when they are asked for, not as it held when their modules were
+    imported: an entry point that loads `.env` after its imports gets `.env`'s runtime.
+    """
+    sandbox = tmp_path / "runtime"
+    script = f"""
+import json, os
+import config, db_authority, runtime_layout
+os.environ["ED_RUNTIME_ROOT"] = {str(sandbox)!r}
+print(json.dumps([
+    str(runtime_layout.runtime_root()),
+    config.token_path(),
+    str(db_authority.default_console_db_path()),
+    str(db_authority.canonical_stream_db_path()),
+]))
+"""
+    env = {k: v for k, v in os.environ.items() if k not in ("ED_RUNTIME_ROOT", "SCHWAB_TOKEN_PATH")}
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(REPO),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    root, token, console_db, stream_db = json.loads(result.stdout.strip().splitlines()[-1])
+    assert Path(root) == sandbox.resolve()
+    assert Path(token) == sandbox.resolve() / "schwab_token.json"
+    assert Path(console_db).parent == sandbox.resolve() / "data"
+    assert Path(stream_db).is_relative_to(sandbox.resolve())
+
+
 def _pytest_path_probe(worker: str | None) -> dict:
     script = r"""
 import json, runpy, shutil
 state = runpy.run_path("tests/conftest.py")
-import db, runtime_layout
+import db_authority, runtime_layout
 payload = {
-    "db": str(db.DB_PATH),
-    "runtime": str(runtime_layout.RUNTIME_ROOT),
+    "db": str(db_authority.default_console_db_path()),
+    "runtime": str(runtime_layout.runtime_root()),
     "worker": __import__("os").environ.get("PYTEST_XDIST_WORKER"),
 }
 print(json.dumps(payload))
-shutil.rmtree(runtime_layout.RUNTIME_ROOT, ignore_errors=True)
+shutil.rmtree(runtime_layout.runtime_root(), ignore_errors=True)
 """
     env = dict(os.environ)
     for name in ("ED_CONSOLE_DB", "ED_DB_PATH", "ED_RUNTIME_ROOT"):

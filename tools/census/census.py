@@ -655,6 +655,19 @@ param_lines = {
     ]
 }
 py_all_text = "\n".join(TEXT[f] for f in ALL_PY if area(f) in ("product", "tools", "tests"))
+#: methods marked @override (PEP 698): the base class's caller is their use, which vulture
+#: cannot see
+overrides = {
+    (f, n.name)
+    for f, t in trees.items()
+    for n in ast.walk(t)
+    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+    and any(
+        (isinstance(d, ast.Name) and d.id == "override")
+        or (isinstance(d, ast.Attribute) and d.attr == "override")
+        for d in n.decorator_list
+    )
+}
 for ln in out.splitlines():
     m = re.match(r"(.+?):(\d+): unused (\w+) '(\w+)' \((\d+)% confidence", ln)
     if m is None:
@@ -666,7 +679,11 @@ for ln in out.splitlines():
         re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", page_text)
         or len(re.findall(rf"\b{re.escape(name)}\b", py_all_text)) > 1
     )
-    if name in routes or (kind == "variable" and (f, name) in param_lines):
+    if (
+        name in routes
+        or (kind == "variable" and (f, name) in param_lines)
+        or (f, name) in overrides
+    ):
         continue  # FastAPI calls a route by its decorator; ruff ARG counts unused parameters
     if kind == "attribute" and conf < 90:
         add(
