@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Options/Gamma "Chart" subview (Price + GEX Profile / GEX Dot Map). /api/terrain/strikes is a
+ * Options/Gamma "Chart" subview (Price + GEX Profile / GEX Dot Map). The strikes panel is a
  * genuine all-expiry aggregate -- no single mark has one real expiry to attribute, confirmed by
  * reading terrain_engine.py's _per_strike_rows and compute_exposures_by_strike (they collapse
  * call+put across EVERY expiry sharing a strike; there is no principled way to pick "the" call
@@ -11,7 +11,7 @@
  * resolve one. Chart's click handler used to pass NO expiry at all, unconditionally clobbering
  * state.selExpiry to null (ed-core.js setStrike) even when the operator had a specific expiry
  * filter selected in the workspace -- silently discarding that context and sending Strike
- * Detail's /api/chain request to the server's own default-expiry resolution instead.
+ * Detail's chain panel to the server's own default-expiry resolution instead.
  *
  * Independent-review finding (2026-09-13), REPRODUCED. Fixed: the click now carries through
  * whatever workspace expiry filter (EdShell.getExpiry()) is currently set, matching the
@@ -27,7 +27,7 @@
  * usability fix, not a test-only shim -- a real pointer had the identical difficulty a
  * coordinate-based Playwright click did), so this file uses genuine `.click()` throughout; the
  * CHAIN fixture carries real native OSI-style symbols so the full path -- Chart click -> expiry
- * carried through -> Strike Detail's /api/chain fetch -> Strike Detail showing that strike's call
+ * carried through -> Strike Detail's chain panel -> Strike Detail showing that strike's call
  * and put -- is actually exercised end to end.
  */
 const { test, expect } = require('@playwright/test');
@@ -52,22 +52,22 @@ const CHAIN = { spot: 100, spot_strike: 102, expiry: '2026-09-18', status: 'ok',
     { symbol: PUT_SYM, putCall: 'PUT', strikePrice: 102, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12 },
   ] };
 
-async function intercept(page) {
-  const chainRequests = [];
+// the page's socket sends `terrain` (the flip and the walls) and `strikes` (the profile) as the
+// panels' bodies
+async function intercept(page, terrain = TERRAIN, strikes = STRIKES) {
+  const chainRequests = [];   // the expiry Strike Detail's chain panel asks, each time it is sent
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
-    if (url.includes('/api/terrain/strikes')) body = STRIKES;
-    else if (url.includes('/api/terrain')) body = TERRAIN;
-    else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/chain')) {
-      const u = new URL(url); chainRequests.push(u.searchParams.get('expiry'));
-      body = CHAIN;
-    }
+    if (url.includes('/api/bars1m')) body = BARS;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18']);
+  await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, { terrain: terrain, strikes: strikes,
+    chain: (key, params, name) => {
+      if (name === 'chain:detail') chainRequests.push(params.expiry);
+      return Object.assign({}, CHAIN, params.expiry ? { expiry: params.expiry } : {});
+    } });
   return { chainRequests };
 }
 
@@ -128,10 +128,8 @@ test.describe('Options/Gamma Chart subview', () => {
   test('the GEX profile leaves a strike of GEX not known undrawn, with no page error', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    await intercept(page);
     const today = { all: [[98, -90000, 10], [100, null, 50], [102, -264500, 12]] };
-    await page.route('**/api/terrain/strikes?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, STRIKES, { today })) }));
+    await intercept(page, TERRAIN, Object.assign({}, STRIKES, { today }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(2);
@@ -139,19 +137,21 @@ test.describe('Options/Gamma Chart subview', () => {
   });
 
   test('a failed request is named on the chart, never drawn as an empty answer', async ({ page }) => {
-    // /api/terrain failing while the bars and the profile arrive: the flip and the walls are not
-    // drawn and the chart says the terrain request failed; then the bars failing too
+    // the program unable to produce the terrain panel while the bars and the profile arrive: the
+    // flip and the walls are not drawn and the chart says the program's words; then the bars
+    // request failing too
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    await intercept(page);
-    await page.route(/\/api\/terrain\?/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
+    await intercept(page, { failed: words });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
-    await expect(page.locator('#chartBody .gchart-empty')).toHaveText('the terrain request failed for SPY');
+    await expect(page.locator('#chartBody .gchart-empty')).toHaveText(words);
+    await expect.poll(() => page.evaluate(() => window.EdGammaChart.state().levels.length)).toBe(0);
     await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 500, body: 'x' }));
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
-    await expect(page.locator('#chartBody .gchart-empty')).toHaveText('the bars, terrain request failed for SPY');
+    await expect(page.locator('#chartBody .gchart-empty')).toHaveText('the bars request failed for SPY · ' + words);
     expect(errors).toEqual([]);
   });
 

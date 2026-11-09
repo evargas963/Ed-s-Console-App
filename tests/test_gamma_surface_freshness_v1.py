@@ -23,7 +23,7 @@ import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
-from server import get_options_gamma_surface, ticker_storage_key
+from server import ticker_storage_key
 from tests.feed_live_helper import daemon_status
 from time_et import ET
 
@@ -37,7 +37,9 @@ _ON, _OFF = "ZZFRESHON", "ZZFRESHOFF"  # on the watchlist, and not
 
 
 def _call(tk):
-    return json.loads(get_options_gamma_surface(tk).body)
+    """The heatmap's panel for `tk` now: Auto, following the price, every column."""
+    window = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
+    return server.gamma_surface(ticker_storage_key(tk), time_et.now(), window)
 
 
 def _daemon(price: float, at: float, *tickers) -> None:
@@ -136,7 +138,7 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
 
     The chain basis, and ATR (from the bars, none here) absent, with no sentence in its place.
     """
-    t = server.get_terrain(ticker=tk)
+    t = server.terrain(ticker_storage_key(tk), time_et.now(), {})
     assert t["chain_basis"] == CAPTURE_BASIS
     for horizon in ("daily", "weekly", "monthly"):
         assert t[f"atr_{horizon}"] is None and f"atr_{horizon}_reason" not in t, horizon
@@ -148,7 +150,7 @@ def test_with_no_levels_the_atr_is_absent():
 
     A ticker with no levels published still serves it (here absent, and no sentence in its place).
     """
-    t = server.get_terrain(ticker="ZZNOLEVELSATR")
+    t = server.terrain("ZZNOLEVELSATR", time_et.now(), {})
     assert t["atr_daily"] is None and "atr_daily_reason" not in t
 
 

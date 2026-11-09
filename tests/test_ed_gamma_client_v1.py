@@ -1,6 +1,6 @@
 """RC-UI-1 — run Node assertions for the Options/Gamma heatmap presentation helpers.
 
-The helpers are static/js/ed-gamma.js; also confirm the canonical surface route is registered.
+The helpers are static/js/ed-gamma.js; also confirm the surface is the page socket's panel.
 """
 
 from __future__ import annotations
@@ -34,9 +34,10 @@ def test_ed_gamma_node_script():
     assert r.returncode == 0, r.stdout + "\n" + r.stderr
 
 
-def test_gamma_surface_route_registered():
+def test_gamma_surface_is_the_sockets_panel_and_no_route():
     paths = [getattr(route, "path", "") for route in srv.app.routes if hasattr(route, "path")]
-    assert "/api/options/gamma-surface" in paths
+    assert "/api/options/gamma-surface" not in paths
+    assert srv.PAGE_PANELS["surface"] is srv.gamma_surface
     # /console converged into `/` here (/console cutover, operator directive 2026-09-14) --
     # the dev route is gone, not aliased; the new console is served at `/` (see root()).
     assert "/" in paths

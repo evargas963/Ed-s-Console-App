@@ -15,9 +15,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 import server as srv
+import time_et
 
 
 def test_bars1m_endpoint_serves_canonical_bars_shape():
@@ -67,10 +66,8 @@ def test_terrain_strikes_endpoint_shape_and_scopes():
 
     For today + prior capture, sorted by strike, read-only.
     """
-    client = TestClient(srv.app)
-    r = client.get("/api/terrain/strikes?ticker=SPY")
-    assert r.status_code == 200
-    body = r.json()
+    body = srv.strikes("SPY", time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
+    assert json.loads(json.dumps(body)) == body  # the socket's frame, as it is
     assert body["ticker"] == "SPY"
     for side in ("today", "prior"):
         assert set(body[side]) == {"all", "near", "far"}
