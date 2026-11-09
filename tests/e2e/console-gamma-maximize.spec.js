@@ -7,6 +7,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const { pushExpiries } = require('./fixtures/expiries');
+const { chainAt } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
@@ -27,12 +28,12 @@ async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
-    if (url.includes('/api/options/gamma-surface')) body = SURFACE;
-    else if (url.includes('/api/bars1m')) body = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
-    else if (url.includes('/api/chain')) body = CHAIN;    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/api/bars1m')) body = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18'], { '2026-09-11': 2, '2026-09-18': 9 }, { terrain: TERRAIN, strikes: STRIKES });
+  await pushExpiries(page, ['2026-09-11', '2026-09-18'], { '2026-09-11': 2, '2026-09-18': 9 }, { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE,
+    chain: chainAt(CHAIN) });
 }
 
 test.describe('#8 Gamma panel maximize', () => {

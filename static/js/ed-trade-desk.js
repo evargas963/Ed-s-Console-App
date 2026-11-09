@@ -3,7 +3,7 @@
    first three stages from five already-canonical endpoints other workspaces already own -- one page, zero
    new math, zero new producers:
      DETECT  <- /api/order-flow/microstructure  (same engine the Order Flow > Book/DOM tab reads)
-     FRAME   <- /api/levels + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
+     FRAME   <- the socket's `levels:desk` panel + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
      CONFIRM <- the page's socket's `terrain:desk` panel (the levels the Gamma tab is sent)
    The Context Summary panel is plain-English arrangement of those SAME four responses (e.g.
    "is spot presently between these two already-fetched zone bounds") -- a classification of
@@ -96,8 +96,10 @@
       rows, badge, d.top_outage || bs !== false ? 'stale' : 'live');
   }
 
-  function frameStage(levelsD) {
-    if (!levelsD) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'The levels request failed', '', 0, [], null);
+  function frameStage(sent) {   // the levels panel as sent: undefined (none yet), failed, or the levels
+    if (sent === undefined) return stage(2, 'td-accent-green', 'Frame — liquidity levels', '-', '', 0, [], null);
+    if (sent.failed != null) return stage(2, 'td-accent-green', 'Frame — liquidity levels', sent.failed, '', 0, [], null);
+    var levelsD = sent;
     var levels = levelsD.levels;   // always served (levels_payload)
     if (!levels.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No levels', '', 0, [], null);
     // served: levels ordered by distance to the live price (by_distance), each with its distance and side
@@ -152,7 +154,7 @@
       if (loc.below) parts.push(esc(loc.below.zone_label) + ' zone below at ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
-    var walls = {};   // served: /api/levels' own rows
+    var walls = {};   // served: the levels panel's own rows
     if (levelsD && levelsD.levels) levelsD.levels.forEach(function (r) { walls[r.id] = r; });
     if (walls.put_wall && walls.call_wall && walls.put_wall.from_spot_text && walls.call_wall.from_spot_text) {
       lines.push(['Box', 'Put wall ' + walls.put_wall.from_spot_text + ', call wall ' + walls.call_wall.from_spot_text +
@@ -306,10 +308,11 @@
     if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; draw(); });
   }
 
-  // CONFIRM's levels and the migration's rows: the `terrain:desk` and `strikes:migration` panels
-  // (server.terrain, server.strikes) the program sends on the page's socket while Right Now is on,
-  // at once and each time the levels change; undefined: none sent yet for the ticker on screen
-  var _panels = { 'terrain:desk': undefined, 'strikes:migration': undefined }, _panelsTicker = null;
+  // FRAME's levels, CONFIRM's levels and the migration's rows: the `levels:desk`, `terrain:desk`
+  // and `strikes:migration` panels (server.levels, server.terrain, server.strikes) the program
+  // sends on the page's socket while Right Now is on, at once and each time the levels change;
+  // undefined: none sent yet for the ticker on screen
+  var _panels = { 'levels:desk': undefined, 'terrain:desk': undefined, 'strikes:migration': undefined }, _panelsTicker = null;
   var _rest = null;   // the reads' answers, for its ticker
   document.addEventListener('ed:panel', function (e) {
     if (!(e.detail.type in _panels)) return;
@@ -325,7 +328,6 @@
     if (!h || !stillRightNow(tk)) return;
     return window.EdL1SseGuards.show(Promise.all([
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue, signal),
-      fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
     ]), 'Right Now', function (results) {
       if (!stillRightNow(tk)) return;
@@ -338,17 +340,18 @@
   function draw() {
     var h = host();
     if (!h || !_rest) return;
-    var tk = _rest.tk, detect = _rest.results[0], levelsD = _rest.results[1], snap = _rest.results[2];
-    var strikesD = _panels['strikes:migration'], sent = _panels['terrain:desk'];
+    var tk = _rest.tk, detect = _rest.results[0], snap = _rest.results[1];
+    var strikesD = _panels['strikes:migration'], sent = _panels['terrain:desk'], levelsSent = _panels['levels:desk'];
     // the levels drawn only as sent; none yet, or not produced, is no levels
     var terrain = sent && sent.failed == null ? sent : null;
-    // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
+    var levelsD = levelsSent && levelsSent.failed == null ? levelsSent : null;
+    // the spot is the levels panel's alone; none yet, or a null/'' spot, is absent, never 0
     var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
     var when = (levelsD && levelsD.spot_time_ct) ? (' · last trade ' + esc(levelsD.spot_time_ct)) : '';
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
       '</span><span class="fl-meta">' + (isFinite(spot) ? ('spot ' + num(spot) + when) : '') + '</span></div></div>' +
-      '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD) + confirmStage(sent) + '</div>' +
+      '<div class="td-grid">' + detectStage(detect) + frameStage(levelsSent) + confirmStage(sent) + '</div>' +
       contextSummary(terrain, snap, levelsD) +
       migrationSection(strikesD, terrain) +
       '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
@@ -361,6 +364,7 @@
   // the panels Right Now shows, the migration's in its window (the Gamma scope and the pan)
   function askPanels() {
     var on = isRightNow();
+    window.EdShell.showPanel('levels:desk', on ? { tf: '1' } : null);
     window.EdShell.showPanel('terrain:desk', on ? {} : null);
     window.EdShell.showPanel('strikes:migration', on ? window.EdShell.windowParams(migPan(ticker())) : null);
   }
@@ -368,7 +372,8 @@
   // queueing behind it: the ticker and the venue
   function load() {
     if (isRightNow() && _panelsTicker !== ticker()) {   // a new ticker: nothing of the last one's
-      _panelsTicker = ticker(); _panels['terrain:desk'] = _panels['strikes:migration'] = undefined;
+      _panelsTicker = ticker();
+      _panels['levels:desk'] = _panels['terrain:desk'] = _panels['strikes:migration'] = undefined;
     }
     askPanels();
     if (isRightNow()) _loader.trigger(ticker() + '|venue=' + window.EdShell.getState().bookVenue);

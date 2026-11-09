@@ -72,7 +72,6 @@ async function intercept(page) {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/desk/events')) body = Object.assign({}, EVENTS, { tf: new URL(url).searchParams.get('tf') });
-    else if (url.includes('/api/levels')) body = LEVELS;
     else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
     else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
     else if (url.includes('/api/bars1m')) body = BARS;
@@ -80,8 +79,13 @@ async function intercept(page) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  panels = { terrain: TERRAIN, strikes: STRIKES };
+  panels = { terrain: TERRAIN, strikes: STRIKES, levels: levelsAt(LEVELS) };
   return deskSocket(page);
+}
+// The levels panel's stand-in for `body`: the program answers each reader's timeframe with the
+// levels in it (server.levels), a function of (key, params) or the same body for every one
+function levelsAt(body) {
+  return (key, params) => Object.assign({}, typeof body === 'function' ? body(key, params) : body, { tf: params.tf });
 }
 
 function watchErrors(page) {
@@ -93,5 +97,5 @@ function watchErrors(page) {
 
 module.exports = {
   CROSSES, EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP,
-  MICRO, LIQ, STRIKES, BARS, HEAT, intercept, watchErrors, deskPanels, deskSocket,
+  MICRO, LIQ, STRIKES, BARS, HEAT, intercept, watchErrors, deskPanels, deskSocket, levelsAt,
 };

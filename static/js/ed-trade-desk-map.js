@@ -2,7 +2,7 @@
 
    One page for the SELECTED ticker, one global timeframe:
      MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
-                     /api/levels (value area, VWAP + bands, prior day, opening range, overnight),
+                     the socket's levels panel (value area, VWAP + bands, prior day, opening range, overnight),
                      the socket's terrain panel (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- /api/desk/events (served, numbered; each marker is its queue entry, linked
                      both ways): level crosses judged by their minute's bar, wall breaches,
@@ -156,7 +156,7 @@
     S.tf = tf; sset('ed.desk.tf', tf); paintTfButtons();
     S.bars = []; S.levels = S.events = undefined;   // answers for another timeframe are dropped (tf check)
     clearChart(); paintQueue(); paintCards();
-    loadBars(true); loadPerTf();
+    askPanels(); loadBars(true); loadPerTf();
   }
   function clearChart() {
     if (!S.chart) return;
@@ -187,21 +187,17 @@
     });
   }
   function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
-  // the timeframe's levels (VWAP per chart bar) and event window, each drawn as it arrives
+  // the timeframe's levels (VWAP per chart bar; the `levels:map` panel) or event window, drawn as
+  // it arrives
+  function takePerTf(key, d) {
+    S[key] = d;
+    paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+    openView();
+  }
   function loadPerTf() {
     var gen = S.gen, tf = S.tf, q = encodeURIComponent(S.ticker);
-    function take(key) {
-      return function (d) {
-        if (gen !== S.gen || tf !== S.tf) return;
-        S[key] = d;
-        paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-        openView();
-      };
-    }
-    return Promise.all([
-      fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(tf)).then(take('levels')),
-      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + window.EdShell.getState().bookVenue + '&tf=' + encodeURIComponent(tf)).then(take('events'))
-    ]);
+    return fetchJson('/api/desk/events?ticker=' + q + '&venue=' + window.EdShell.getState().bookVenue + '&tf=' + encodeURIComponent(tf))
+      .then(function (d) { if (gen === S.gen && tf === S.tf) takePerTf('events', d); });
   }
   // the symbol's zones, forces and the Order Flow card's hour of bars
   function loadPerTicker() {
@@ -219,10 +215,12 @@
   }
   function paintAll() { paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter(); }
   // the symbol's option terrain and its per-strike rows: the `terrain:map` and `strikes:desk`
-  // panels (server.terrain, server.strikes in the Gamma scope's window) the program sends on the
-  // page's socket while the desk is on, at once and each time the levels change
+  // panels (server.terrain, server.strikes in the Gamma scope's window), and the chart's
+  // timeframe's levels, the `levels:map` panel (server.levels), the program sends on the page's
+  // socket while the desk is on, at once and each time the levels change
   var PANELS = { 'terrain:map': 'terrain', 'strikes:desk': 'strikes' };
   function askPanels() {
+    window.EdShell.showPanel('levels:map', onDesk() ? { tf: S.tf } : null);
     window.EdShell.showPanel('terrain:map', onDesk() ? {} : null);
     window.EdShell.showPanel('strikes:desk', onDesk() ? window.EdShell.windowParams(null) : null);
   }
@@ -688,9 +686,11 @@
     document.addEventListener('ed:book_venue', function () { if (onDesk() && S.ticker) { loadFast(); loadSlow(); } });
     document.addEventListener('ed:scope', askPanels);   // the strikes' window is the Gamma scope's
     document.addEventListener('ed:panel', function (e) {
-      var key = PANELS[e.detail.type];
-      if (!key || !onDesk()) return;
-      S[key] = e.detail; paintAll();
+      var d = e.detail, key = PANELS[d.type];
+      if (!onDesk()) return;
+      // levels of a timeframe no longer on the chart are not drawn; levels not produced are none
+      if (d.type === 'levels:map' && (d.failed != null || d.tf === S.tf)) takePerTf('levels', d.failed != null ? null : d);
+      if (key) { S[key] = d; paintAll(); }
     });
     document.addEventListener('ed:changed', function (e) {
       if (!onDesk() || !S.ticker) return;

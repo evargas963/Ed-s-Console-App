@@ -11,7 +11,7 @@
  * resolve one. Chart's click handler used to pass NO expiry at all, unconditionally clobbering
  * state.selExpiry to null (ed-core.js setStrike) even when the operator had a specific expiry
  * filter selected in the workspace -- silently discarding that context and sending Strike
- * Detail's /api/chain request to the server's own default-expiry resolution instead.
+ * Detail's chain panel to the server's own default-expiry resolution instead.
  *
  * Independent-review finding (2026-09-13), REPRODUCED. Fixed: the click now carries through
  * whatever workspace expiry filter (EdShell.getExpiry()) is currently set, matching the
@@ -27,7 +27,7 @@
  * usability fix, not a test-only shim -- a real pointer had the identical difficulty a
  * coordinate-based Playwright click did), so this file uses genuine `.click()` throughout; the
  * CHAIN fixture carries real native OSI-style symbols so the full path -- Chart click -> expiry
- * carried through -> Strike Detail's /api/chain fetch -> Strike Detail showing that strike's call
+ * carried through -> Strike Detail's chain panel -> Strike Detail showing that strike's call
  * and put -- is actually exercised end to end.
  */
 const { test, expect } = require('@playwright/test');
@@ -55,19 +55,19 @@ const CHAIN = { spot: 100, spot_strike: 102, expiry: '2026-09-18', status: 'ok',
 // the page's socket sends `terrain` (the flip and the walls) and `strikes` (the profile) as the
 // panels' bodies
 async function intercept(page, terrain = TERRAIN, strikes = STRIKES) {
-  const chainRequests = [];
+  const chainRequests = [];   // the expiry Strike Detail's chain panel asks, each time it is sent
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/chain')) {
-      const u = new URL(url); chainRequests.push(u.searchParams.get('expiry'));
-      body = CHAIN;
-    }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, { terrain: terrain, strikes: strikes });
+  await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, { terrain: terrain, strikes: strikes,
+    chain: (key, params, name) => {
+      if (name === 'chain:detail') chainRequests.push(params.expiry);
+      return Object.assign({}, CHAIN, params.expiry ? { expiry: params.expiry } : {});
+    } });
   return { chainRequests };
 }
 

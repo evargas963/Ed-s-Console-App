@@ -35,13 +35,13 @@ async function intercept(page, tapeBody) {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/options/tape')) body = tapeBody;
-    else if (url.includes('/api/options/gamma-surface')) body = SURFACE;
     else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/chain')) body = { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable', scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-18'], undefined, { terrain: TERRAIN,
+  await pushExpiries(page, ['2026-09-18'], undefined, { terrain: TERRAIN, surface: SURFACE,
+    chain: { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable',
+      scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } },
     strikes: { ticker: 'SPY', spot: 100, today: { all: [] }, views: { all: { centre: null, note: null, max_abs: null } } } });
 }
 

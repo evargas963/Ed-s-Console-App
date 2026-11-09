@@ -10,6 +10,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const { pushExpiries } = require('./fixtures/expiries');
+const { chainAt } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
 const SPOT = 5000;
@@ -60,13 +61,12 @@ async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
-    if (url.includes('/api/options/gamma-surface')) body = SURFACE;
-    else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/chain')) body = CHAIN;
+    if (url.includes('/api/bars1m')) body = BARS;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, EXPS.map((e) => e.expiry), Object.fromEntries(EXPS.map((e) => [e.expiry, e.dte])), { terrain: TERRAIN, strikes: STRIKES });
+  await pushExpiries(page, EXPS.map((e) => e.expiry), Object.fromEntries(EXPS.map((e) => [e.expiry, e.dte])), { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE,
+    chain: chainAt(CHAIN) });
 }
 
 const VIEWPORTS = [{ w: 1672, h: 941 }, { w: 1920, h: 1080 }, { w: 2560, h: 1440 }];

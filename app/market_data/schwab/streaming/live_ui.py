@@ -142,9 +142,11 @@ class LiveUiServer:
         clock=time_et.now,
         *,
         panels: dict,
+        priced: tuple = (),
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
         self.panels = panels  # each panel's producer, (ticker, now, parameters) -> its body
+        self.priced = priced  # the kinds whose body is computed from the ticker's live price
         self.clock = clock  # the time each row is finished at, and each beat
         self.record_heartbeat = (
             record_heartbeat  # where the daemon keeps its own record of each beat
@@ -162,11 +164,17 @@ class LiveUiServer:
     # -- plane side -------------------------------------------------------------------
 
     def on_row(self, ticker: str) -> None:
-        """Plane row listener: mark the symbol changed for every browser watching it."""
+        """Plane row listener: mark the symbol changed for every browser watching it.
+
+        A browser whose selected ticker it is gets its priced panels again too: they are computed
+        from that price.
+        """
         for c in self.clients:
             if ticker in c.symbols:
                 c.pending.add(ticker)
                 c.wake.set()
+        for kind in self.priced:
+            self.mark_changed(ticker, kind)
 
     def mark_changed(self, ticker: str, kind: str) -> None:
         """Mark each panel of `kind` changed for every browser showing it for its `ticker`."""
@@ -361,6 +369,7 @@ async def serve_live_ui(
     state,
     heartbeat_fn,
     panels: dict,
+    priced: tuple = (),
     stats: dict | None = None,
     record_heartbeat=lmp.record_feed_heartbeat,
     clock=time_et.now,
@@ -370,11 +379,12 @@ async def serve_live_ui(
     The price server is the web server's app `state.prices` while it serves, None before and
     after. Each beat is recorded with `record_heartbeat` (the daemon's own plane); `panels` are
     the selected ticker's panels (server.PAGE_PANELS), each kind's producer
-    (ticker, now, parameters) -> its body. The pages' connections end with the
+    (ticker, now, parameters) -> its body; `priced` the kinds computed from the ticker's live
+    price, sent again with each of its price rows. The pages' connections end with the
     program's web server (capture.serve_console).
     """
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock, panels=panels)
+    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock, panels=panels, priced=priced)
     lmp.add_row_listener(srv.on_row)
     beats = asyncio.create_task(srv.beat_loop())
     srv.loop = asyncio.get_running_loop()

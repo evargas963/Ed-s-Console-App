@@ -1215,3 +1215,260 @@ def test_a_strikes_producer_that_raises_fails_its_panel_alone_in_words():
             assert _terrain_of(seen["terrain:levels"]) == _published_terrain(A)
 
     asyncio.run(_serve_panels(body))
+
+
+# -- the heatmap: the surface panel, in the window the page asks (scope, pan, columns, expiry) ---
+
+HEATMAP = {**ALL, "cols": None, "expiry": None}
+
+
+def _surface_expiries(tk) -> list:
+    """The expiries of the surface the producer published for `tk`, in its column order."""
+    return [e["expiry"] for e in server.published_levels(tk).gamma_surface["expirations"]]
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_the_heatmap_gets_the_published_surface_in_its_window_at_once_with_no_get():
+    _publish(MRVL)
+    exps = _surface_expiries(B)
+    assert len(exps) > 3
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, B, {**LIST, "surface": HEATMAP})
+            frame = await _next(ws, "surface")
+            assert frame["available"] is True and frame["ticker"] == B
+            assert [e["expiry"] for e in frame["expirations"]] == exps
+            await _select(ws, B, {"surface": {**HEATMAP, "expiry": exps[1]}})
+            one = await _next(ws, "surface")
+            assert [e["expiry"] for e in one["expirations"]] == [exps[1]]
+            await _select(ws, B, {"surface": {**HEATMAP, "cols": 0}})  # one it cannot draw
+            assert await _next(ws, "surface") == {
+                "type": "surface",
+                "ticker": B,
+                "available": False,
+                "reason": "cols 0 is not a whole number of columns",
+            }
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/options/gamma-surface" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_chain_the_surface_is_unavailable_with_its_reason():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"surface": HEATMAP})
+            frame = await _next(ws, "surface")
+            assert frame["available"] is False and frame["reason"]  # why, never empty cells
+            assert "cells" not in frame
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_surface_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"surface": HEATMAP})
+            await _select(on_b, B, {"surface": HEATMAP})
+            await _select(list_only, A)
+            for ws in (on_a, on_b):
+                assert (await _next(ws, "surface"))["available"] is False
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)
+            frame = await _next(on_a, "surface")
+            assert frame["ticker"] == A and frame["available"] is True
+            assert [e["expiry"] for e in frame["expirations"]] == _surface_expiries(A)
+            assert _kind(await _select(on_b, B, {}), "surface") == []
+            assert _kind(await _select(list_only, A), "surface") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_switch_and_a_reconnect_send_the_surface_of_the_ticker_on_screen_only():
+    _publish(CRWD)
+    _publish(MRVL)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"surface": HEATMAP})
+            assert (await _next(ws, "surface"))["ticker"] == A
+            await _select(ws, B, {"surface": HEATMAP})
+            assert (await _next(ws, "surface"))["ticker"] == B
+            await asyncio.to_thread(_publish, CRWD)  # new levels on the ticker the page left
+            assert _kind(await _select(ws, B, {}), "surface") == []
+        async with connect(url) as ws:  # the page's reconnect and its subscribe
+            await _select(ws, B, {**LIST, "surface": HEATMAP})
+            assert (await _next(ws, "surface"))["ticker"] == B
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_surface_producer_that_raises_fails_its_panel_alone_in_words():
+    """Induced condition: CRWD's published surface holds no strikes (None), so the window raises."""
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        held = server._terrain_cache[A]
+        surface = {**held.gamma_surface, "strikes": None}
+        server._terrain_cache[A] = replace(held, gamma_surface=surface)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {**LIST, "surface": HEATMAP, "terrain:levels": {}})
+            seen = {}
+            while {"expiries", "surface", "terrain:levels"} - set(seen):
+                frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                seen[frame["type"]] = frame
+            assert set(seen["surface"]) == {"type", "ticker", "failed"}
+            assert seen["surface"]["failed"].startswith(
+                "the program could not produce this panel: TypeError: "
+            )
+            assert _terrain_of(seen["terrain:levels"]) == _published_terrain(A)
+
+    asyncio.run(_serve_panels(body))
+
+
+async def _frames_of(ws, kinds) -> dict:
+    """The next frame of each of `kinds`, by its type."""
+    seen = {}
+    while set(kinds) - set(seen):
+        frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+        seen[frame["type"]] = frame
+    return seen
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_chain_reader_gets_its_own_expiry_at_once_with_no_get():
+    _publish(MRVL)
+    exps = server.published_levels(B).snap.expiries
+    assert len(exps) > 1
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(
+                ws, B, {"chain:ladder": {"expiry": None}, "chain:detail": {"expiry": exps[1]}}
+            )
+            seen = await _frames_of(ws, ("chain:ladder", "chain:detail"))
+            front, second = seen["chain:ladder"], seen["chain:detail"]
+            assert front["ticker"] == B and front["status"] == "ok" and front["expiry"] == exps[0]
+            assert second["status"] == "ok" and second["expiry"] == exps[1]
+            assert front["contracts"] and second["contracts"]
+            assert {c["symbol"] for c in front["contracts"]}.isdisjoint(
+                c["symbol"] for c in second["contracts"]
+            )
+            await _select(ws, B, {"chain:ladder": {}})  # a reader that names no expiry
+            assert (await _next(ws, "chain:ladder"))["status"] == "unavailable"
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/chain" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_before_the_tickers_chain_the_chain_says_why_with_no_contract():
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"chain:ladder": {"expiry": None}})
+            frame = await _next(ws, "chain:ladder")
+            assert frame["status"] == "unavailable" and frame["contracts"] == []
+            assert frame["scope"]["reason"] == server.NO_CHAIN_YET
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_new_levels_reach_only_the_pages_showing_the_chain_on_that_ticker():
+    async def body(url):
+        async with connect(url) as on_a, connect(url) as on_b, connect(url) as list_only:
+            await _select(on_a, A, {"chain:ladder": {"expiry": None}})
+            await _select(on_b, B, {"chain:ladder": {"expiry": None}})
+            await _select(list_only, A)
+            for ws in (on_a, on_b):
+                assert (await _next(ws, "chain:ladder"))["status"] == "unavailable"
+            await _next(list_only, "expiries")
+            await asyncio.to_thread(_publish, CRWD)
+            frame = await _next(on_a, "chain:ladder")
+            assert frame["ticker"] == A and frame["status"] == "ok"
+            assert frame["expiry"] == server.published_levels(A).snap.expiries[0]
+            assert _kind(await _select(on_b, B, {}), "chain:ladder") == []
+            assert _kind(await _select(list_only, A), "chain:ladder") == []
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_a_chain_producer_that_raises_fails_its_panel_alone_in_words():
+    """Induced condition: CRWD's held chain holds a contract that is None, so the chain raises."""
+    _publish(CRWD)
+    with server._terrain_cache_lock:
+        held = server._terrain_cache[A]
+        server._terrain_cache[A] = replace(held, chain=[None, *held.chain])
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"chain:ladder": {"expiry": None}, "terrain:levels": {}})
+            seen = await _frames_of(ws, ("chain:ladder", "terrain:levels"))
+            assert set(seen["chain:ladder"]) == {"type", "ticker", "failed"}
+            assert seen["chain:ladder"]["failed"].startswith(
+                "the program could not produce this panel: AttributeError: "
+            )
+            assert _terrain_of(seen["terrain:levels"]) == _published_terrain(A)
+
+    asyncio.run(_serve_panels(body))
+
+
+def _levels_of(frame) -> dict:
+    """The gamma levels a levels panel carries, by id."""
+    return {r["id"]: r["price"] for r in frame["levels"] if r["family"] == "gamma"}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_levels_reader_gets_its_own_timeframe_at_once_with_no_get():
+    _publish(CRWD)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"levels:view": {"tf": "1"}, "levels:map": {"tf": "15"}})
+            seen = await _frames_of(ws, ("levels:view", "levels:map"))
+            assert seen["levels:view"]["tf"] == "1" and seen["levels:map"]["tf"] == "15"
+            for frame in seen.values():
+                assert frame["ticker"] == A
+                assert _levels_of(frame)["call_wall"] == _published_terrain(A)["call_wall"]
+            await _select(ws, A, {"levels:view": {"tf": "2"}})  # a timeframe the chart has not
+            frame = await _next(ws, "levels:view")
+            assert frame["failed"] == (
+                "the program could not produce this panel: ValueError: "
+                "tf '2' is not one of 1, 3, 5, 15, 30, 60, D"
+            )
+
+    asyncio.run(_serve_panels(body))
+    assert "/api/levels" not in {r.path for r in server.app.routes}
+
+
+@pytest.mark.usefixtures("no_levels")
+def test_each_price_row_of_the_ticker_sends_its_levels_again_from_that_price():
+    _publish(CRWD)
+    moved = CRWD.spot + 1.25
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(ws, A, {"levels:desk": {"tf": "1"}})
+            await _next(ws, "levels:desk")
+            at = time_et.now()
+            lmp.record_from_level_one_equity(
+                A,
+                {"LAST_PRICE": moved, "TRADE_TIME_MILLIS": int(at * 1000)},
+                received_ts=at,
+            )
+            frame = await _next(ws, "levels:desk")
+            assert frame["spot"] == moved
+            lmp.record_from_level_one_equity(  # another ticker's price is not this panel's
+                B,
+                {"LAST_PRICE": MRVL.spot, "TRADE_TIME_MILLIS": int(at * 1000)},
+                received_ts=at,
+            )
+            assert _kind(await _select(ws, A, {"levels:desk": {"tf": "1"}}), "levels:desk") == []
+
+    asyncio.run(_serve_panels(body))

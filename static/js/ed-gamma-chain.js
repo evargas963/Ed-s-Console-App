@@ -1,5 +1,5 @@
 /* Ed Console — Options/Gamma "Chain" subview (D). PRESENTATION ONLY.
-   Renders the full vendor chain ladder from /api/chain (strike_range=ALL, one expiry) — calls left,
+   Renders the full vendor chain ladder the socket's chain panel sends (strike_range=ALL, one expiry) — calls left,
    puts right, strike centre. Every field is served AS-IS from the vendor; this computes nothing and
    discloses the chain scope (complete / mismatch / fallback) honestly. The expiry is the workspace
    expiry dropdown (the socket's `expiries`); the ticker is the one selected-symbol state. */
@@ -21,30 +21,26 @@
   var _lastScrollContext = null;
 
   function curExpiry() { return window.EdShell.getExpiry(); }
-  function stillChain(tk, exp) { return isChain() && window.EdShell.getState().ticker === tk && curExpiry() === exp; }
-  // A -> B -> A could let the FIRST A request's response paint over the THIRD (fresh) A
-  // request's response. `stillChain` proves the identity (ticker, expiry) still matches NOW,
-  // but two requests issued at different times for the identical identity are
-  // indistinguishable to it -- whichever resolves LAST would win. The loader's own
-  // AbortController does not guarantee the stale first request never resolves (an abort
-  // raced against an already-buffered response can still resolve). An explicit monotonic
-  // request sequence, independent of AbortController: only the response whose sequence
-  // number is still the LATEST ISSUED one may
-  // paint, so an old, superseded request for the SAME identity can never win a race against a
-  // newer one for that identity, not merely against a DIFFERENT identity.
-  var _reqSeq = 0;
-  function loadImpl(tk, exp, signal) {
+  // The ladder is the `chain:ladder` panel (server.chain) the program sends on the page's socket
+  // while the Chain tab is on, at the selected expiry (null: the chain's front one), at once and
+  // each time a chain is priced. Nothing received yet for the ticker on screen is '-'; a frame
+  // of an expiry no longer selected (sent before the page asked another) is not drawn.
+  var _ladderTicker = null;
+  function load() {
     var host = document.getElementById('chainBody');
-    if (!host || !stillChain(tk, exp)) return;
-    var mySeq = ++_reqSeq;
-    function current() { return mySeq === _reqSeq && stillChain(tk, exp); }
-    var G = window.EdL1SseGuards;
-    return G.show(G.readJson('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), signal), '/api/chain',
-      function (d) { if (current()) render(host, d); },
-      function (words) { if (current()) { setSrc(null); window.EdShell.placeholder(host, words); } });
+    if (!isChain()) { window.EdShell.showPanel('chain:ladder', null); return; }
+    if (_ladderTicker !== window.EdShell.getState().ticker) {
+      _ladderTicker = window.EdShell.getState().ticker;
+      setSrc(null); if (host) window.EdShell.placeholder(host, '-');
+    }
+    window.EdShell.showPanel('chain:ladder', { expiry: curExpiry() || null });
   }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(window.EdShell.getState().ticker, curExpiry(), signal); });
-  function load() { _loader.trigger(window.EdShell.getState().ticker + '|' + curExpiry()); }
+  document.addEventListener('ed:panel', function (e) {
+    var d = e.detail, host = document.getElementById('chainBody');
+    if (d.type !== 'chain:ladder' || !host || !isChain() || (curExpiry() && d.failed == null && d.expiry !== curExpiry())) return;
+    if (d.failed != null) { setSrc(null); window.EdShell.placeholder(host, d.failed); return; }
+    render(host, d);
+  });
 
   function render(host, d) {
     setSrc(d);
@@ -54,7 +50,7 @@
     // null/'' spot is ABSENT: Number(null) is 0, which would draw 'spot 0.00'
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
     var desired = window.EdFlow.selected();
-    // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
+    // B: the chain panel is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
     var filterNull = !(window.EdShell.getExpiry());
     var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '-') +
@@ -140,6 +136,5 @@
     document.addEventListener('ed:view', load);       // fires on subview change too
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:expiry', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'chain' && isChain()) load(); });
   }
 })();

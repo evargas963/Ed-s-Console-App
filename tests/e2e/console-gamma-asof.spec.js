@@ -9,7 +9,7 @@
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
-const { mockPriceSocket } = require('./fixtures/price_socket');
+const { mockPriceSocket, chainAt } = require('./fixtures/price_socket');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
   levels_state: 'LIVE', levels_age_sec: 6, chain_basis: 'full', complete: false,
@@ -37,12 +37,12 @@ function routes(over = {}) {
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       let body = { available: false };
-      if (url.includes('/api/options/gamma-surface')) body = over.surface || SURFACE;
-      else if (url.includes('/api/bars1m')) body = BARS;
-      else if (url.includes('/api/chain')) body = over.chain || CHAIN;      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      if (url.includes('/api/bars1m')) body = BARS;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await routeWatchlist(page, ['SPY']);
-    await mockPriceSocket(page, [], [], undefined, { terrain: TERRAIN, strikes: over.strikes || STRIKES });
+    await mockPriceSocket(page, [], [], undefined, { terrain: TERRAIN, strikes: over.strikes || STRIKES,
+      surface: over.surface || SURFACE, chain: chainAt(over.chain || CHAIN) });
   };
 }
 

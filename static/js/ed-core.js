@@ -49,7 +49,7 @@
       })() },
     // Map and Levels are wired: Map is a visual liquidity map, not a table --
     // /api/liquidity-snapshot's own confluence-scored zones on a price axis; Levels reuses
-    // ed-gamma-levels.js's /api/levels renderer verbatim. The rest stay `na` until they have
+    // ed-gamma-levels.js's levels renderer verbatim. The rest stay `na` until they have
     // their own real wiring.
     'liquidity': { title: 'LIQUIDITY', subs: [
       { id: 'map', label: 'Map' }, { id: 'levels', label: 'Levels' },
@@ -374,13 +374,6 @@
     state.bookVenue = v; _lsSet('ed_book_venue', v); reflectBookVenue();
     emit('ed:book_venue', { venue: v });
   }
-  // The strikes a per-strike panel shows are the server's choice (terrain_engine.strike_window):
-  // every panel sends this with its read -- the scope, and while the operator has panned, the
-  // centre strike the drag began on and the rows it moved from there.
-  function windowQuery(pan) {
-    return '&scope=' + encodeURIComponent(state.scope) +
-      (pan && pan.centre != null ? '&centre=' + encodeURIComponent(pan.centre) + '&shift=' + (pan.shift | 0) : '');
-  }
   // A panel's pan state: {centre, shift, served}. `served` is the centre of the window on screen
   // (the view the server sent); `centre`/`shift` are what the next read asks for (none: follow
   // the price).
@@ -435,8 +428,8 @@
     host.innerHTML = '<div class="placeholder"><div class="sm"></div></div>';
     host.querySelector('.sm').textContent = words;
   }
-  // The one empty-chain message for every /api/chain panel (Chain, Strike Detail, contract
-  // specs). /api/chain answers the live chain or status 'unavailable' with a named reason --
+  // The one empty-chain message for every chain panel (Chain, Strike Detail, contract
+  // specs). The chain panel is the live chain or status 'unavailable' with a named reason --
   // no stored or captured substitute -- so the reason IS the message.
   function chainEmptyText(d) {
     var why = d && d.status === 'unavailable' && d.scope && d.scope.reason;
@@ -606,9 +599,9 @@
     _priceConnecting = true; clearTimeout(_priceConnectTimer);
     _priceConnectTimer = setTimeout(function () { _priceConnecting = false; }, PRICE_SILENCE_MS);
     _quoteShown = false;                 // the last ticker's price is not this one's
-    subscribePrices();                   // the daemon answers with this ticker's row at once
-    markHeaderPushDown();                // WAITING until that row lands (milliseconds)
-    emit('ed:ticker', { ticker: state.ticker });
+    markHeaderPushDown();                // WAITING until the row the subscribe below asks lands
+    emit('ed:ticker', { ticker: state.ticker });   // each view names its panels for this ticker ...
+    subscribePrices();                   // ... then one subscribe asks for them and this ticker's row
   }
 
   // ---- instrument control: a typed symbol IS the control (institutional selector: type -> Enter ->
@@ -668,7 +661,7 @@
     if (ctx) ctx.textContent = (sel && nv && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : 'All';
     emit('ed:expiry', { expiry: nv });
   }
-  // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
+  // B: the chain panel is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
   // "All Expirations" while Chain is active — the server returns ONE (default) expiry. In every
   // other subview null legitimately means all expirations. One expiry authority; label only.
   function relabelExpiryDefault() {
@@ -803,7 +796,9 @@
     _panelsAsked = true;   // the modules' asks of one event go in one subscribe
     Promise.resolve().then(function () { _panelsAsked = false; subscribePrices(); });
   }
-  // a panel's window parameters (windowQuery's, for a socket panel)
+  // The strikes a per-strike panel shows are the program's choice (terrain_engine.strike_window):
+  // every such panel asks with these -- the scope, and while the operator has panned, the centre
+  // strike the drag began on and the rows it moved from there (none: follow the price).
   function windowParams(pan) {
     return { scope: state.scope, centre: pan && pan.centre != null ? pan.centre : null, shift: pan ? (pan.shift | 0) : 0 };
   }
@@ -1093,7 +1088,7 @@
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     now: function () { return _serverNow; },   // the program's time (s), from its heartbeat; null before the first
     setScope: setScope, getScope: function () { return state.scope; },
-    windowQuery: windowQuery, windowParams: windowParams, showPanel: showPanel, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, chainEmptyText: chainEmptyText, placeholder: placeholder,
+    windowParams: windowParams, showPanel: showPanel, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, chainEmptyText: chainEmptyText, placeholder: placeholder,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview, strength: strength, heatColors: heatColors, heatFill: heatFill, heatInk: heatInk };

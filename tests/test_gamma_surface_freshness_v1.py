@@ -23,7 +23,7 @@ import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
-from server import get_options_gamma_surface, ticker_storage_key
+from server import ticker_storage_key
 from tests.feed_live_helper import daemon_status
 from time_et import ET
 
@@ -37,7 +37,9 @@ _ON, _OFF = "ZZFRESHON", "ZZFRESHOFF"  # on the watchlist, and not
 
 
 def _call(tk):
-    return json.loads(get_options_gamma_surface(tk).body)
+    """The heatmap's panel for `tk` now: Auto, following the price, every column."""
+    window = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
+    return server.gamma_surface(ticker_storage_key(tk), time_et.now(), window)
 
 
 def _daemon(price: float, at: float, *tickers) -> None:

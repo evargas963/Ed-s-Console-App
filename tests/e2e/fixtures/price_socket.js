@@ -31,8 +31,8 @@ function panelFrame(name, ticker, body) {
 // (ticker key, the panel's parameters, its name) => a body (undefined: none sent)}, read at each
 // send. Each panel a subscribe names ("<kind>" or "<kind>:<reader>") whose kind is here is sent
 // for the selected ticker on the subscribe, as live_ui does. Returns `changed(kind)`: the
-// program marking a kind changed, each page showing it sent its panels again; and `subscribes`,
-// every subscribe the page sent.
+// program marking a kind changed, each page showing it sent its panels again; `subscribes`,
+// every subscribe the page sent; and `frame(name, ticker, body)`, one frame sent as it is.
 async function mockPriceSocket(page, rows = [], later = [], expiries = undefined, panels = {}) {
   socketed.add(page);
   const open = new Set();   // [ws, its last subscribe]
@@ -63,6 +63,17 @@ async function mockPriceSocket(page, rows = [], later = [], expiries = undefined
       later.forEach((l) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [l.row] })), l.afterMs));
     });
   });
-  return { changed: (kind) => open.forEach((c) => { if (c[1]) sendPanels(c[0], c[1], kind); }), subscribes };
+  return {
+    changed: (kind) => open.forEach((c) => { if (c[1]) sendPanels(c[0], c[1], kind); }),
+    subscribes,
+    // one frame as the program sent it, whatever the page last asked (a frame already on its way)
+    frame: (name, ticker, body) => open.forEach((c) => c[0].send(panelFrame(name, ticker, body))),
+  };
 }
-module.exports = { mockPriceSocket, priceRow, served, expiriesFrame, panelFrame };
+// The chain panel's stand-in for `body`: the program answers each reader's expiry with that
+// expiry's chain (server.chain), and the front one's (the body's own) when it asks none
+function chainAt(body) {
+  return (key, params) => Object.assign({}, typeof body === 'function' ? body(key, params) : body,
+    params.expiry ? { expiry: params.expiry } : {});
+}
+module.exports = { mockPriceSocket, priceRow, served, expiriesFrame, panelFrame, chainAt };

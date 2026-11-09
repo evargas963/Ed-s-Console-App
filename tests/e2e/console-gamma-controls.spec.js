@@ -8,7 +8,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const { expiriesAnswer, pushExpiries } = require('./fixtures/expiries');
-const { expiriesFrame, served } = require('./fixtures/price_socket');
+const { expiriesFrame, served, chainAt } = require('./fixtures/price_socket');
 const { routeWatchlist, beat } = require('./fixtures/watchlist');
 const { watchRequests } = require('./fixtures/settled');
 
@@ -37,17 +37,16 @@ const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1000 }] 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    const dec = new URL(url).searchParams.get('ticker');   // null on a route that names none
-    const spot = dec === 'QQQ' ? 480 : 100;
     let body = { available: false };
-    if (url.includes('/api/options/gamma-surface')) body = surfaceFor(dec, spot, new URL(url).searchParams.get('expiry'));
-    else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/chain')) body = { ticker: dec, spot: spot, expiry: EXPS[0], status: 'ok',
-      scope: { kind: 'complete_single_expiry' }, contracts: [] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/api/bars1m')) body = BARS;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await pushExpiries(page, EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 },
     { terrain: (key) => Object.assign({}, TERRAIN, { spot: key === 'QQQ' ? 480 : 100 }),
-      strikes: (key) => Object.assign({}, STRIKES, { spot: key === 'QQQ' ? 480 : 100 }) });
+      strikes: (key) => Object.assign({}, STRIKES, { spot: key === 'QQQ' ? 480 : 100 }),
+      surface: (key, params) => surfaceFor(key, key === 'QQQ' ? 480 : 100, params.expiry),
+      chain: chainAt((key) => ({ ticker: key, spot: key === 'QQQ' ? 480 : 100, expiry: EXPS[0], status: 'ok',
+        scope: { kind: 'complete_single_expiry' }, contracts: [] })) });
 }
 
 test.describe('ticker / expiry / measure controls', () => {
@@ -192,7 +191,7 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#chTicker')).toHaveText('AAPL');
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     await expect(page.locator('#flTicker')).toHaveText('AAPL');
-    const tabReads = ['options/gamma-surface', 'options/tape'].map(
+    const tabReads = ['options/tape'].map(
       (path) => page.waitForRequest(new RegExp(`/api/${path}\\?ticker=AAPL`)));      // what opening the tab reads
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await expect(page.locator('#mvTicker')).toHaveText('AAPL');
@@ -236,6 +235,8 @@ test.describe('ticker / expiry / measure controls', () => {
       ws.onMessage(async (m) => {
         const req = JSON.parse(String(m));
         if (req.op !== 'subscribe') return;
+        // a panel asked at an expiry is a read that names both, as a route's was
+        Object.values(req.panels || {}).forEach((p) => { if (req.ticker && p.expiry) read.push([req.ticker, p.expiry]); });
         ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
         if (req.ticker === 'QQQ') await qqqHeld;   // QQQ's list is held until the test releases it
         ws.send(expiriesFrame(req.ticker, req.ticker === 'IWM' ? IWM_LIST : LIST));
