@@ -108,8 +108,10 @@ def _git(root: Path, *args: str, errors: str = "strict") -> str:
 
 
 def pr_files(root: Path, base: str, kinds: str) -> list[str]:
-    """The paths the PR changes in the ways `kinds` names (git's --diff-filter letters), each as
-    written (NUL-separated, never quoted), a rename read as its deletion and its addition.
+    """Return the paths the PR changes in the ways `kinds` names (git's --diff-filter letters).
+
+    Each path is as written (NUL-separated, never quoted), a rename read as its deletion and its
+    addition.
     """
     out = _git(
         root,
@@ -124,8 +126,10 @@ def pr_files(root: Path, base: str, kinds: str) -> list[str]:
 
 
 def _diff_path(header: str) -> str:
-    """The path of a diff's `+++ ` header: git C-quotes a name holding a quote, backslash or
-    non-ASCII character, and ends one holding a space with a tab.
+    """Return the path of a diff's `+++ ` header.
+
+    Git C-quotes a name holding a quote, backslash or non-ASCII character, and ends one holding a
+    space with a tab.
     """
     name = header.removesuffix("\t")
     if name.startswith('"'):
@@ -137,8 +141,9 @@ def _diff_path(header: str) -> str:
 
 
 def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
-    """{path: the line numbers, in the PR's version, of the lines the PR adds}, one diff; a moved
-    file adds every line it holds.
+    """Return {path: the line numbers, in the PR's version, of the lines the PR adds}.
+
+    It is read from one diff; a moved file adds every line it holds.
     """
     out: dict[str, set[int]] = {}
     path: str | None = None
@@ -177,7 +182,7 @@ def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
 
 
 def pr_source(root: Path, path: str) -> str:
-    """The PR's committed version of `path`, never the working tree."""
+    """Return the PR's committed version of `path`, never the working tree."""
     return _git(root, "show", f"HEAD:{path}")
 
 
@@ -193,9 +198,10 @@ CODE_TREE_SUFFIXES = (".py", ".js", ".mjs")
 
 
 def _python_code(source: str) -> str | None:
-    """The module's code with its comments and docstrings set aside (its syntax tree), or None when
-    it does not parse or declares an encoding other than UTF-8 (imported, its strings would read
-    otherwise than this tree).
+    """Return the module's code with its comments and docstrings set aside (its syntax tree).
+
+    None when it does not parse or declares an encoding other than UTF-8 (imported, its strings
+    would read otherwise than this tree).
     """
     try:
         encoding, _ = tokenize.detect_encoding(io.BytesIO(source.encode("utf-8")).readline)
@@ -217,8 +223,10 @@ def _python_code(source: str) -> str | None:
 
 
 def _js_code(text: str, module: bool = False) -> str | None:
-    """Page code's syntax tree, comments and positions set aside (Babel, through js_code_tree.js);
-    None when it does not parse or Node cannot run it, which counts as changed.
+    """Return page code's syntax tree, comments and positions set aside.
+
+    The tree is Babel's, through js_code_tree.js; None when it does not parse or Node cannot run
+    it, which counts as changed.
     """
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / ("code.mjs" if module else "code.js")
@@ -237,8 +245,10 @@ def _js_code(text: str, module: bool = False) -> str | None:
 
 
 def code_tree(path: str, text: str) -> str | None:
-    """`path`'s code, comments and docstrings set aside: Python's syntax tree, or page code's syntax
-    tree; None when it cannot be read or `path` is not one of CODE_TREE_SUFFIXES.
+    """Return `path`'s code, comments and docstrings set aside.
+
+    It is Python's syntax tree, or page code's syntax tree; None when it cannot be read or `path`
+    is not one of CODE_TREE_SUFFIXES.
     """
     if path.endswith(".py"):
         return _python_code(text)
@@ -299,9 +309,10 @@ RUFF_CONFIGS = ("pyproject.toml", "ruff.toml", ".ruff.toml")
 
 @functools.cache  # one answer per run: the PR's settings against the base's
 def tools_fix_is_safe(root: Path, base: str) -> bool:
-    """Whether ruff, run on the PR's committed pyproject.toml, takes only fixes that are safe for
-    the base's Python: unsafe fixes not on, none forced safe, no import required of every file, no
-    per-file target version, the same target versions.
+    """Return whether ruff, run on the PR's committed pyproject.toml, takes only safe fixes.
+
+    Safe means safe for the base's Python: unsafe fixes not on, none forced safe, no import
+    required of every file, no per-file target version, the same target versions.
     """
     try:
         _git(root, "diff", "--quiet", "HEAD", "--", "pyproject.toml")  # the tree is the commit's
@@ -323,9 +334,11 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
 
 
 def tool_fixed(root: Path, path: str, text: str) -> str | None:
-    """`text` as the repository's standard tools leave it: ruff's safe fixes with the repository's
-    pyproject.toml, then `ruff format`, as the commit hook runs them; None when either cannot run on
-    it (its callers first check that the configuration takes only safe fixes: tools_fix_is_safe).
+    """Return `text` as the repository's standard tools leave it.
+
+    The tools are ruff's safe fixes with the repository's pyproject.toml, then `ruff format`, as
+    the commit hook runs them; None when either cannot run on it (its callers first check that the
+    configuration takes only safe fixes: tools_fix_is_safe).
     """
     out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
     for args in (
@@ -350,10 +363,12 @@ def tool_fixed(root: Path, path: str, text: str) -> str | None:
 
 
 def code_identical(root: Path, base: str, path: str) -> bool:
-    """Whether the PR leaves `path`'s code as it is on `base` once comments and docstrings are set
-    aside, or changes it only as the repository's standard tools do (tool_fixed, with the PR's
-    committed pyproject.toml when tools_fix_is_safe, reproduces the PR's file from the base's): such
-    a change has nothing for a test to fail on, so it needs none. A file new to the PR, renamed,
+    """Return whether the PR leaves `path`'s code as it is on `base`, or as the tools change it.
+
+    The code is compared once comments and docstrings are set aside; a change only as the
+    repository's standard tools make it counts as the same (tool_fixed, with the PR's committed
+    pyproject.toml when tools_fix_is_safe, reproduces the PR's file from the base's): such a
+    change has nothing for a test to fail on, so it needs none. A file new to the PR, renamed,
     deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read is not
     that.
     """
@@ -375,13 +390,17 @@ def code_identical(root: Path, base: str, path: str) -> bool:
 
 
 def behavior_change(root: Path, base: str, path: str) -> bool:
-    """A product file whose code the PR changes (is_product, and not code_identical)."""
+    """Return whether `path` is a product file whose code the PR changes.
+
+    That is is_product, and not code_identical.
+    """
     return is_product(path) and not code_identical(root, base, path)
 
 
 def deleted_product(root: Path, base: str) -> list[str]:
-    """The product files the PR deletes, a file moved away included: removing code is a change of
-    it, whatever called it.
+    """Return the product files the PR deletes, a file moved away included.
+
+    Removing code is a change of it, whatever called it.
     """
     return [f for f in pr_files(root, base, "D") if is_product(f)]
 
@@ -396,7 +415,7 @@ def _is_none(node: ast.AST) -> bool:
 
 
 def _literal(node: ast.AST) -> bool:
-    """A non-None literal standing in for a missing value."""
+    """Return whether `node` is a non-None literal standing in for a missing value."""
     if isinstance(node, ast.Constant):
         return node.value is not None
     if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
@@ -444,9 +463,11 @@ def _none_check(test: ast.AST) -> bool:
 
 
 def _reports(handler: ast.ExceptHandler) -> bool:
-    """At any depth of its own body, the except has a log call as a statement of its own, or a
-    raise that is bare or carries a cause (`from e`, not `from None`): not a patch. A def or
-    class inside it does not run when the error does, so it is not read.
+    """Return whether the except reports its error, which makes it not a patch.
+
+    It reports when, at any depth of its own body, it has a log call as a statement of its own, or
+    a raise that is bare or carries a cause (`from e`, not `from None`). A def or class inside it
+    does not run when the error does, so it is not read.
     """
     stack: list[ast.AST] = list(handler.body)
     while stack:
@@ -469,7 +490,7 @@ def _reports(handler: ast.ExceptHandler) -> bool:
 
 
 def _swallows(stmt: ast.stmt) -> bool:
-    """The one statement of an except body turns the error into silence."""
+    """Return whether the one statement of an except body turns the error into silence."""
     value = getattr(stmt, "value", None)
     return (
         isinstance(stmt, (ast.Pass, ast.Continue, ast.Expr))
@@ -483,7 +504,7 @@ def _swallows(stmt: ast.stmt) -> bool:
 
 
 def _literal_fallback(stmt: ast.stmt) -> bool:
-    """The one statement of an `if x is None:` returns or assigns a literal."""
+    """Return whether the one statement of an `if x is None:` returns or assigns a literal."""
     value = getattr(stmt, "value", None)
     return (
         isinstance(stmt, (ast.Return, ast.Assign, ast.AnnAssign))
@@ -519,16 +540,21 @@ def _call_patch(node: ast.Call) -> str | None:
 
 
 def _zero_literal(node: ast.expr) -> bool:
-    """A literal zero or empty value, signed or not (`0`, `0.0`, `-0`, `''`, `None`)."""
+    """Return whether `node` is a literal zero or empty value, signed or not.
+
+    For example `0`, `0.0`, `-0`, `''` or `None`.
+    """
     while isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
         node = node.operand
     return isinstance(node, ast.Constant) and not node.value
 
 
 def _running_totals(tree: ast.AST) -> set[int]:
-    """The `.get` calls of running totals, `d[k] = d.get(k, 0) + x`: the same mapping and key on
-    both sides, the default the number 0 (an int or float, never a bool), and `x` not a literal
-    zero or empty value (`d.get(k, 0) + 0` writes a filled-in 0).
+    """Return the `.get` calls of running totals, `d[k] = d.get(k, 0) + x`.
+
+    A running total has the same mapping and key on both sides, the default the number 0 (an int
+    or float, never a bool), and `x` not a literal zero or empty value (`d.get(k, 0) + 0` writes a
+    filled-in 0).
     """
     out = set()
     for n in ast.walk(tree):
@@ -563,8 +589,10 @@ PORT_SETTINGS = frozenset({"ED_CONSOLE_PORT", "ED_LIVE_PUSH_PORT"})
 
 
 def _port_settings(tree: ast.AST) -> set[int]:
-    """The `.get` calls that read a port setting, exactly `os.environ.get("<name>", "<digits>")`
-    with the name one of PORT_SETTINGS.
+    """Return the `.get` calls that read a port setting.
+
+    A port setting is exactly `os.environ.get("<name>", "<digits>")` with the name one of
+    PORT_SETTINGS.
     """
     return {
         id(n)
@@ -587,7 +615,7 @@ def _port_settings(tree: ast.AST) -> set[int]:
 
 
 def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
-    """The patch shapes the PR adds to a Python file."""
+    """Return the patch shapes the PR adds to a Python file."""
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
@@ -649,7 +677,7 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
 
 
 def js_patches(path: str, source: str, added: set[int]) -> list[tuple[int, str]]:
-    """The patch shapes the PR adds to page code (an .html file: its scripts only)."""
+    """Return the patch shapes the PR adds to page code (an .html file: its scripts only)."""
     blocks = (
         [(m.start(1), m.group(1)) for m in SCRIPT_BLOCK.finditer(source)]
         if path.endswith(".html")

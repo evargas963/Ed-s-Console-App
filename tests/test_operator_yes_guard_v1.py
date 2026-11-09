@@ -46,13 +46,14 @@ def _chain(payload: dict) -> subprocess.CompletedProcess:
     )
 
 
-def _stand_in(
-    *marks: str, exe: str = sys.executable, cwd: Path = runtime_layout.RUNTIME_ROOT
-) -> subprocess.Popen:
+def _stand_in(*marks: str, exe: str = sys.executable, cwd: Path | None = None) -> subprocess.Popen:
     """A sleeping process whose command line carries `marks`, running in `cwd` (production's
     checkout by default, as the daemon and the console run).
     """
-    return subprocess.Popen([exe, "-c", "import time; time.sleep(600)", *marks], cwd=cwd)
+    return subprocess.Popen(
+        [exe, "-c", "import time; time.sleep(600)", *marks],
+        cwd=cwd or runtime_layout.runtime_root(),
+    )
 
 
 @pytest.fixture(scope="module")

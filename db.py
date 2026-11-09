@@ -81,9 +81,6 @@ def _resolve_console_db_path() -> Path:
     return default_console_db_path()
 
 
-DB_PATH = _resolve_console_db_path()
-
-
 @dataclass
 class LevelCrossEvent:
     """
@@ -166,8 +163,10 @@ class EdDB:
     ordinary connections + SQLite busy_timeout/WAL.
     """
 
-    def __init__(self, db_path: Path = DB_PATH, *, allow_noncanonical: bool | None = None):
-        self.db_path = Path(db_path).resolve()
+    def __init__(
+        self, db_path: Path | None = None, *, allow_noncanonical: bool | None = None
+    ) -> None:
+        self.db_path = Path(db_path or _resolve_console_db_path()).resolve()
         if not is_canonical_db_path(self.db_path) and not eddb_allow_noncanonical_path(
             allow_noncanonical
         ):
