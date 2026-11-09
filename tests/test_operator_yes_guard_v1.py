@@ -322,7 +322,7 @@ def test_the_machine_a_merge_and_a_push(cmd, answer):
 def test_every_merge_route_goes_ahead_without_a_question(cmd, tool):
     """A merge does not wait on the operator (AGENTS.md Authority).
 
-    Branch protection's green CI and the two reviewers decide.
+    Branch protection's green CI decides.
     """
     assert _decide(cmd, tool) == guard.PASS, cmd
 

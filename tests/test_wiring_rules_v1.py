@@ -1,4 +1,4 @@
-"""tools/wiring_rules.py: the operator's three rules reach the agent on every message he sends.
+"""tools/wiring_rules.py: the operator's five rules reach the agent on every message he sends.
 
 Run as `.claude/settings.json` wires it.
 """
