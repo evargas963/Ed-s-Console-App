@@ -23,16 +23,21 @@ has loaded `.env` (config.load_dotenv_file), whatever was imported first.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
 SOURCE_ROOT = Path(__file__).resolve().parent
 
 
-def _dir_from_env(name: str, default: Path) -> Path:
+def _dir_from_env(name: str, default: Callable[[], Path]) -> Path:
+    """Return the folder environment variable `name` names, else `default()`.
+
+    The default is worked out only when the variable names none.
+    """
     raw = os.environ.get(name, "").strip()
     if not raw:
-        return default
+        return default()
     resolved = Path(raw).expanduser().resolve()
     if name == "ED_RUNTIME_ROOT" and any(
         (candidate / ".git").is_file() for candidate in (resolved, *resolved.parents)
@@ -82,7 +87,7 @@ def runtime_root() -> Path:
     Linked worktrees share the primary root. Read on each call, so an entry point that loads
     `.env` and a test that sets ED_RUNTIME_ROOT need not do it before this module is imported.
     """
-    return _dir_from_env("ED_RUNTIME_ROOT", _default_runtime_root())
+    return _dir_from_env("ED_RUNTIME_ROOT", _default_runtime_root)
 
 
 def data_dir() -> Path:
