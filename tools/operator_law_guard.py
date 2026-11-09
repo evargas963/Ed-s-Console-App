@@ -1,7 +1,8 @@
-"""OPERATOR LAW GUARD — host-wide bans on what a shell command does (the action, never a word it
-mentions). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks. Each is
-judged on the statements the command runs, as tools/shell_parse.read reads them; text in quotes and
-a heredoc nothing runs are data.
+"""OPERATOR LAW GUARD — host-wide bans on the action a shell command does, never a word it mentions.
+
+PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks. Each is judged on
+the statements the command runs, as tools/shell_parse.read reads them; text in quotes and a heredoc
+nothing runs are data.
 
   * THE DATA TREE. `.gitignore` excludes data/, so the database there has no history and no undo.
     A command that deletes, moves, overwrites or unprotects a path under it is refused, judged on
@@ -104,8 +105,10 @@ def _protected(arg: str) -> bool:
 
 
 def _python_violation(code: str) -> bool:
-    """A call that deletes, moves or overwrites a path inside a protected tree. Code that does not
-    parse cannot run, so it removes nothing.
+    """Return whether the code holds a call that deletes, moves or overwrites a protected path.
+
+    The path is one inside a protected tree. Code that does not parse cannot run, so it removes
+    nothing.
     """
     tree = parse_python(code)
     if tree is None:
@@ -131,9 +134,10 @@ def _python_violation(code: str) -> bool:
 
 
 def _destroys_protected(st: Statement) -> bool:
-    """The statement deletes, moves, overwrites or unprotects a file under data/. A python's
-    `-c` code and the stdin text it reads are parsed as Python. A copy INTO a protected tree is a
-    restore and stays legal.
+    """Return whether the statement deletes, moves, overwrites or unprotects a file under data/.
+
+    A python's `-c` code and the stdin text it reads are parsed as Python. A copy INTO a protected
+    tree is a restore and stays legal.
     """
     name, args = st.program, list(st.words[1:])
     paths = [a for a in args if not a.startswith("-")]
@@ -172,8 +176,10 @@ def _blind_stage(st: Statement) -> bool:
 
 
 def _disables_a_lock(st: Statement) -> bool:
-    """Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
-    pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`).
+    """Return whether the statement takes a lock-disable route.
+
+    The routes are git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and pre-commit's
+    own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`).
     """
     git_globals, sub, args = git_parts(st.words)
     skip = next(
@@ -293,8 +299,9 @@ _FOLDER_CHANGERS = frozenset(
 
 
 def _sed_writes(st: Statement) -> list[str]:
-    """How a sed statement writes a file; empty for any other statement or a sed that only
-    prints.
+    """Return how a sed statement writes a file.
+
+    Empty for any other statement or a sed that only prints.
     """
     if st.program != "sed":
         return []
@@ -307,7 +314,8 @@ def _sed_writes(st: Statement) -> list[str]:
 
 
 def bash_violations(cmd: str | None, powershell: bool = False) -> list[str]:
-    """Every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
+    """Return every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
+
     Applicability is per rule, never an early return (a foreign-repository target
     exempts nothing host-wide); no rule reads a repository.
     """

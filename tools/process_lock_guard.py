@@ -50,8 +50,9 @@ _EDIT_TARGET_KEYS = ("file_path", "notebook_path", "path")
 
 
 def _primary_worktree_root(repo: Path) -> Path | None:
-    """The PRIMARY working tree root when `repo` is a LINKED worktree; None when `repo`
-    IS the primary (its .git is a directory) or the layout is unreadable.
+    """Return the PRIMARY working tree root when `repo` is a LINKED worktree.
+
+    None when `repo` IS the primary (its .git is a directory) or the layout is unreadable.
 
     Pure file logic, no subprocess: a linked worktree's `.git` is a FILE reading
     `gitdir: <primary>/.git/worktrees/<name>`; the primary root is the path above `.git`.
@@ -97,11 +98,13 @@ _BRANCH_LISTING = frozenset({"-l", "--list", "--contains"})
 
 
 def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
-    """For a git statement already known to TARGET the production primary, return WHY it is
-    forbidden there, or None if it is an allowed production operation (its subcommand and
-    arguments classified). ALLOWED on production: reads/fetch; `git merge|pull --ff-only
-    origin/main` (the merge-then-fast-forward update, invariant #5); `git checkout|switch main`
-    (return to main); `git checkout -- <path>` file-restore (left to the destructive-git rail).
+    """Return WHY a git statement is forbidden on the production primary, or None if allowed.
+
+    The statement is one already known to TARGET the production primary; None means it is an
+    allowed production operation (its subcommand and arguments classified). ALLOWED on
+    production: reads/fetch; `git merge|pull --ff-only origin/main` (the merge-then-fast-forward
+    update, invariant #5); `git checkout|switch main` (return to main); `git checkout -- <path>`
+    file-restore (left to the destructive-git rail).
     """
     sub, args = git_subcommand(words)
     if not sub:
@@ -152,9 +155,11 @@ def _prod_forbidden_git_reason(words: tuple[str, ...]) -> str | None:
 
 
 def prod_checkout_git_move_violations(statements: list[Statement]) -> list[str]:
-    """PREVENT (not merely detect) an assigned agent MOVING or committing to the PRODUCTION
-    checkout (live-checkout invariant #1/#4). The production checkout is the PRIMARY working
-    tree of this repo (its `.git` is a directory; linked dev worktrees have a `.git` FILE).
+    """PREVENT an assigned agent MOVING or committing to the PRODUCTION checkout.
+
+    It prevents, not merely detects (live-checkout invariant #1/#4). The production checkout is
+    the PRIMARY working tree of this repo (its `.git` is a directory; linked dev worktrees have a
+    `.git` FILE).
 
     EVERY git invocation in a chained command is judged independently against the production
     primary: a harmless leading `git status` (or a `git -C <dev-worktree>`) cannot launder a
@@ -204,8 +209,10 @@ def _writes_main(words: tuple[str, ...]) -> bool:
 
 
 def main_ref_write_violations(statements: list[Statement]) -> list[str]:
-    """A git command that writes refs/heads/main, from any checkout: every checkout shares the
-    branch the production checkout runs, so the checkout a command runs in cannot protect it.
+    """Return the refusal of a git command that writes refs/heads/main, from any checkout.
+
+    Every checkout shares the branch the production checkout runs, so the checkout a command runs
+    in cannot protect it.
     """
     return [
         f"MAIN_REF_LOCK: `{st.text}` writes refs/heads/main, the branch the production "
@@ -217,12 +224,13 @@ def main_ref_write_violations(statements: list[Statement]) -> list[str]:
 
 
 def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
-    """An Edit or Write whose target belongs to the production checkout, the live one. From a
-    linked worktree: any file inside the production checkout that is not under this worktree's
-    own root (a worktree nested at `<primary>/.claude/worktrees/<name>` owns its files). From the
-    production checkout itself: any of its files (`live_file`). The topology is file logic
-    only (`_primary_worktree_root`); a target that cannot be placed raises, and hook_chain refuses
-    the event.
+    """Return the refusal of an Edit or Write whose target belongs to the production checkout.
+
+    The production checkout is the live one. From a linked worktree: any file inside the
+    production checkout that is not under this worktree's own root (a worktree nested at
+    `<primary>/.claude/worktrees/<name>` owns its files). From the production checkout itself: any
+    of its files (`live_file`). The topology is file logic only (`_primary_worktree_root`); a
+    target that cannot be placed raises, and hook_chain refuses the event.
     """
     primary = _primary_worktree_root(repo) or repo
     out: list[str] = []
@@ -240,11 +248,13 @@ def production_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> 
 
 
 def _shell_write_dest_paths(st: Statement) -> list[str]:
-    """Destination file operand(s) a shell statement WRITES: a `>` / `>>` redirect on ANY command
-    (e.g. `printf x > static/index.html`, `echo x > static/app.js`), PLUS the material
-    file-mutating verbs cp/mv/install/rsync/ln/tee/sed -i/perl -i/truncate/dd of=. The caller
-    keeps those inside the production primary; an in-place edit there is refused whichever of its
-    operands (a sed script among them) names the file.
+    """Return the destination file operand(s) a shell statement WRITES.
+
+    They include a `>` / `>>` redirect on ANY command (e.g. `printf x > static/index.html`,
+    `echo x > static/app.js`), PLUS the material file-mutating verbs
+    cp/mv/install/rsync/ln/tee/sed -i/perl -i/truncate/dd of=. The caller keeps those inside the
+    production primary; an in-place edit there is refused whichever of its operands (a sed script
+    among them) names the file.
     """
     dests: list[str] = st.writes
     verb = st.program

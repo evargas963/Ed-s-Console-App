@@ -1,5 +1,6 @@
-"""The operator's five rules, put in front of the agent on every message he sends
-(UserPromptSubmit). Wired by `.claude/settings.json`.
+"""The operator's five rules, put in front of the agent on every message he sends.
+
+The hook is UserPromptSubmit. Wired by `.claude/settings.json`.
 
     python -m tools.wiring_rules < payload.json
 Prints Claude Code's hook JSON with the rules as `additionalContext`. It refuses nothing: that they

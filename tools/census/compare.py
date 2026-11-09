@@ -30,8 +30,10 @@ def rows(report: Path) -> dict[tuple[str, str], tuple[str, int, str]]:
 
 
 def count(report_rows, other_rows, key) -> int | str:
-    """The issue count of `key` in a report: its row's count; 0 when its checker (named by the
-    other report's row) ran in that section of this report; otherwise unknown.
+    """Return the issue count of `key` in a report.
+
+    It is its row's count; 0 when its checker (named by the other report's row) ran in that
+    section of this report; otherwise unknown.
     """
     if key in report_rows:
         return report_rows[key][1]
@@ -41,8 +43,9 @@ def count(report_rows, other_rows, key) -> int | str:
 
 
 def total(values) -> str:
-    """The sum of the known counts, marked incomplete when any is unknown; unknown when none is
-    known.
+    """Return the sum of the known counts.
+
+    It is marked incomplete when any is unknown, and is unknown when none is known.
     """
     known = [v for v in values if v != UNKNOWN]
     if not known:
