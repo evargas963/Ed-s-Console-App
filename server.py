@@ -1510,6 +1510,8 @@ def _publish_levels(
             projected, streamed, feed_live, held, now.timestamp()
         )
         surface["surface_seq"] = _next_gamma_surface_seq(tk, now.timestamp())
+        # a later beat that differs from this one restamps it (restamp_open_surfaces)
+        _last_feed_stamp[tk] = _feed_stamp_key(feed, _surface_symbols(surface), now.timestamp())
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
@@ -1534,10 +1536,6 @@ def _publish_levels(
     )
     with _terrain_cache_lock:
         _terrain_cache[tk] = levels
-    if surface is None:
-        _last_feed_stamp.pop(tk, None)
-    else:  # the beat its stamp took: a later beat that differs restamps it
-        _last_feed_stamp[tk] = _feed_stamp_key(feed, _surface_symbols(surface), now.timestamp())
     _levels_changed(tk)
     if new_chain:
         push_changes.changed(tk, push_changes.CHAIN)
