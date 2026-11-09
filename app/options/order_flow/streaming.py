@@ -256,45 +256,45 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     part.
     """
     if not isinstance(msg, dict):
-        return None
+        return
     if topic.startswith("chain."):
         for done in assemble_chain_part(msg):
             if _on_chain_callback is not None:
                 _on_chain_callback(*done)
-        return None
+        return
     if topic.startswith("markets."):
         if msg["status"] == 200:
             record_markets(msg["answer"])
-        return None
+        return
     if topic == "watchlist":  # the daemon's answer to a watchlist request
         if (
             msg["request_id"] in _watchlist_answers
             and not _watchlist_answers[msg["request_id"]].done()
         ):
             _watchlist_answers[msg["request_id"]].set_result(msg)
-        return None
+        return
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
     if not sym or not isinstance(ts, (int, float)):
-        return None
+        return
     ts = float(ts)
     kind = topic.split(".", 1)[0]
     if kind in ("bar1m", "pricehistory"):  # the bar writer's: a streamed bar, a price history
         streamed_bars.put(msg)
-        return None
+        return
     received = {f: stamp[1] for f, stamp in msg["field_ts"].items()} if "field_ts" in msg else None
     if kind == "quote":
         item = msg.get("native")
         if not isinstance(item, dict):
-            return None
+            return
         push_level_one(sym, item, ts_recv=ts, field_received=received)
         push_changes.changed(sym, push_changes.FLOW)
         _tick(sym, ts)
-        return None
+        return
     if kind == "book":
         content = msg.get("content")
         if not isinstance(content, dict):
-            return None
+            return
         book = push_book(sym, content, msg["service"])
         if msg.get("service") == "OPTIONS_BOOK":
             _option_contract_last_update_ts[sym] = ts
@@ -303,11 +303,11 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
                 recent.BOOKS.record(sym, msg["service"], book, ts)
             recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
             push_changes.changed(sym, push_changes.FLOW)
-        return None
+        return
     if kind == "optquote":
         content = msg.get("content")
         if not isinstance(content, dict):
-            return None
+            return
         push_level_one(sym, content, ts_recv=ts, field_received=received)
         push_option_top(sym, content)
         recent.TAPE.record(sym, content, ts, option_top(sym), get_stream_greeks(sym))
@@ -316,7 +316,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         # the last of each field; only one this message brought is new)
         if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
             _tick(sym, ts)
-    return None
+    return
 
 
 async def _bus_loop(bus) -> None:

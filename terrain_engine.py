@@ -397,18 +397,18 @@ def chain_ladder(
     rows = []
     for k in sorted(by_k, reverse=True):
         g = by_k[k]
-        for i in range(max(len(g["call"]), len(g["put"]))):
-            rows.append(
-                {
-                    "strike": k,
-                    "first": i == 0,
-                    "spot": i == 0 and k == spot_k,
-                    "call": g["call"][i] if i < len(g["call"]) else None,
-                    "put": g["put"][i] if i < len(g["put"]) else None,
-                    "call_itm": None if spot is None else k < spot,
-                    "put_itm": None if spot is None else k > spot,
-                }
-            )
+        rows.extend(
+            {
+                "strike": k,
+                "first": i == 0,
+                "spot": i == 0 and k == spot_k,
+                "call": g["call"][i] if i < len(g["call"]) else None,
+                "put": g["put"][i] if i < len(g["put"]) else None,
+                "call_itm": None if spot is None else k < spot,
+                "put_itm": None if spot is None else k > spot,
+            }
+            for i in range(max(len(g["call"]), len(g["put"])))
+        )
     return rows, unplaced
 
 

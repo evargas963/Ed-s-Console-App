@@ -35,7 +35,7 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_liv
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from option_contract import read_chain
-from schwab_client import flatten_chain_contracts
+from schwab_client import build_client_from_token, flatten_chain_contracts
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
@@ -513,3 +513,79 @@ def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
     unlisted = "ZZZZ  261120C00100000"
     refused = client.post("/api/flow-contract", json={"contract": unlisted})
     assert (refused.status_code, refused.json()["contract"]) == (409, unlisted)
+
+
+def test_a_repeated_add_an_unlisted_removal_and_an_add_with_no_sign_in_change_nothing(tmp_path):
+    """Each request the daemon cannot carry out is answered, once, and leaves the list as it was.
+
+    An add of a ticker already on the list (a request sent twice) is answered ON_LIST with no
+    check; a removal of one not on it, NOT_ON_LIST; an add when the daemon's one Schwab client
+    cannot be built (no usable sign-in: the real builder through capture.one_schwab_client), is
+    answered NOT_CHECKED with the reason, not added.
+    """
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+    missing = tmp_path / "schwab_token.json"
+    daemon.schwab_client = capture.one_schwab_client(
+        lambda: build_client_from_token(str(missing), "LiveLookingKey", "LiveLookingSecret")
+    )
+
+    async def go():
+        answers = bus.subscribe("watchlist", policy=LOG)
+        for rid, action, ticker in (
+            ("r1", "add", "spy"),
+            ("r2", "remove", "qqq"),
+            ("r3", "add", "qqq"),
+        ):
+            await daemon.watchlist_request(
+                {"op": "watchlist", "action": action, "ticker": ticker, "id": rid}
+            )
+        return [answers.queue.get_nowait()[1] for _ in range(answers.queue.qsize())]
+
+    got = asyncio.run(go())
+    assert [(m["request_id"], m["op"], m["ticker"], m["tickers"]) for m in got] == [
+        ("r1", capture.ON_LIST, "SPY", ["SPY"]),
+        ("r2", capture.NOT_ON_LIST, "QQQ", ["SPY"]),
+        ("r3", capture.NOT_CHECKED, "QQQ", ["SPY"]),
+    ]
+    assert got[2]["answer"].startswith("ConnectionError: no Schwab client ("), got[2]["answer"]
+    assert (got[0]["status"], got[0]["answer"], got[1]["status"], got[1]["answer"]) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert daemon.watchlist == ["SPY"]
+
+
+def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
+    """Two adds of TSLA in flight together (a request sent twice): each is checked with Schwab's
+    /quotes, the first answer adds it, and the other, finding it added during its check, is
+    answered ON_LIST; the list holds TSLA once.
+    """
+    schwab = LocalSchwab("ws://127.0.0.1:1")  # REST only: no stream connection is opened
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+    client = schwab.client(tmp_path)
+    daemon.schwab_client = lambda: client
+
+    async def go():
+        answers = bus.subscribe("watchlist", policy=LOG)
+        await asyncio.gather(
+            *(
+                daemon.watchlist_request(
+                    {"op": "watchlist", "action": "add", "ticker": "tsla", "id": rid}
+                )
+                for rid in ("r1", "r2")
+            )
+        )
+        return [answers.queue.get_nowait()[1] for _ in range(answers.queue.qsize())]
+
+    try:
+        got = asyncio.run(go())
+    finally:
+        schwab.close()
+    assert sorted(m["op"] for m in got) == sorted([capture.ADDED, capture.ON_LIST])
+    assert {m["request_id"] for m in got} == {"r1", "r2"}
+    assert daemon.watchlist == ["SPY", "TSLA"]
+    assert [q["symbols"] for q in schwab.asked(QUOTES)] == ["TSLA", "TSLA"], "each add checked"

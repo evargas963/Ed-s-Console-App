@@ -94,7 +94,8 @@ class LocalStreamer:
                 if (
                     req["command"] == "LOGOUT"
                 ):  # "Streamer will close the connection" (Streamer API §1)
-                    return await ws.close()
+                    await ws.close()
+                    return
                 if (
                     req["command"] == "SUBS"
                     and req["service"] in self.data

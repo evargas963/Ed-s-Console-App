@@ -522,7 +522,7 @@ def run_login_flow(
         return False, f"OAuth flow failed: {exc_holder[0]}"
 
     if not os.path.exists(token_path):
-        raise RuntimeError(
+        return False, (
             f"OAuth flow completed but token file was not written: {token_path}. "
             "The browser may have redirected before the callback was received, "
             "or there was a silent write failure. Try: python reauth_schwab.py --manual"
@@ -551,7 +551,7 @@ def run_manual_flow(
         log.warning("OAuth manual flow failed", exc_info=True)
         return False, f"OAuth flow failed: {e}"
     if not os.path.exists(token_path):
-        raise RuntimeError(f"Manual flow completed but token file was not written: {token_path}")
+        return False, f"Manual flow completed but token file was not written: {token_path}"
     return True, f"Token created: {token_path}"
 
 
@@ -666,7 +666,5 @@ def flatten_chain_contracts(c_json: dict) -> list[dict]:
             for strike_list in exp_map.values():
                 if not isinstance(strike_list, list):
                     continue
-                for ct in strike_list:
-                    if isinstance(ct, dict):
-                        out.append({**chain_fields, **ct})
+                out.extend({**chain_fields, **ct} for ct in strike_list if isinstance(ct, dict))
     return out
