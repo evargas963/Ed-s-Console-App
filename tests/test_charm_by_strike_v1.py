@@ -18,9 +18,9 @@ from datetime import datetime
 from pathlib import Path
 
 import time_et
-from math_exposure_core import bs_charm
 from math_levels import compute_charm_by_strike, pick_charm_wall_strikes
 from option_contract import read_chain
+from tests.one_contract_greeks import charm
 
 #: a REAL same-day-expiry SPY chain captured 2026-10-07 12:32 ET, valued at its own capture time
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_2026_10_07.json"
@@ -52,7 +52,7 @@ def test_bs_charm_matches_finite_difference_of_delta() -> None:
         (400.0, 420.0, 90 / 365, 0.22),
     ]
     for s, k, t, sig in cases:
-        analytic = bs_charm(s, k, t, sig)
+        analytic = charm(s, k, t, sig)
         assert analytic is not None
         h = t * 1e-5
         finite = (_bs_delta_call(s, k, t - h, sig) - _bs_delta_call(s, k, t + h, sig)) / (2 * h)
@@ -62,9 +62,9 @@ def test_bs_charm_matches_finite_difference_of_delta() -> None:
 
 
 def test_bs_charm_refuses_degenerate_inputs() -> None:
-    assert bs_charm(100.0, 100.0, 0.0, 0.20) is None  # expired
-    assert bs_charm(100.0, 100.0, 0.02, 0.0) is None  # no vol
-    assert bs_charm(0.0, 100.0, 0.02, 0.20) is None  # no spot
+    assert charm(100.0, 100.0, 0.0, 0.20) is None  # expired
+    assert charm(100.0, 100.0, 0.02, 0.0) is None  # no vol
+    assert charm(0.0, 100.0, 0.02, 0.20) is None  # no spot
 
 
 def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:

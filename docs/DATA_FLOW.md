@@ -299,8 +299,11 @@ the program.
   daemon does not hold takes every field from the chain, its Greeks from Schwab's quotes. A book message is the book Schwab sent, a
   side with no levels included (empty, never replaced by an older two-sided book); a side Schwab
   sent no level for at a price is absent in the book heatmap, never a 0 size. The book heatmap and
-  the options tape serve from the console's memory (§3.3), never the database. Mid and microprice
-  are computed from the quotes Schwab sent, a crossed book included (served with `crossed`).
+  the options tape serve from the console's memory (§3.3), never the database. The book's Mark is
+  Schwab's MARK as sent (Mark Price: LEVELONE_OPTIONS field 37 for a contract, LEVELONE_EQUITIES
+  field 33 for an equity, `docs/schwab/schwab_streamer_api.pdf` §3.2 and §3.1), never a midpoint
+  of ours; microprice is computed from the quotes Schwab sent, a crossed book included (served
+  with `crossed`).
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's).
 - **The option contracts streamed (the option rule).** What streams live is the most actionable
@@ -910,17 +913,27 @@ behavior (AGENTS.md).
 9. **No trade side** (operator 2026-09-28, ONE-12). Schwab supplies no aggressor side, so no
    inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
    Enforced by: no machine check — ENF-16.
-10. **Same-day levels, every ticker** (operator 2026-10-17). One producer
-    (`terrain_engine.same_day_levels`). The nearest listed expiry keeps its open interest and
-    implied volatility. Gamma and delta are rebuilt, Black-Scholes with no rate and no dividend,
-    at the time every other greek uses (`time_to_expiry_years`, including its 10-minute floor)
-    from the valuation instant to that day's option close. A contract with open interest whose
-    gamma cannot be rebuilt leaves its side and that strike's total unknown, as in the whole
-    book; the other side's known value still ranks (operator 2026-10-31: "you're guide is how
-    would a financial banking app work"). Charm follows the same rule, in both books. The close is
-    the regular window Schwab's /markets sent: the index window for an index it names with "$"
-    and for SPY, QQQ and IWM, the equity-option window for every other ticker. No window held,
-    or a close already passed, leaves the level absent.     The whole-book levels are unchanged.
+10. **Same-day levels, every ticker** (operator 2026-10-17; 2026-11-09: "schwab does not have a
+    0DTE field that is one we compute ... we must have one producer at the source to compute all
+    levels for all tickers on a 0dte basis"). One producer (`terrain_engine.same_day_levels`): the
+    whole book's own producers read on the nearest listed expiry alone. An expiry listed today is
+    read as the book holds it: Schwab's gamma and delta as sent, its flip, GSF and GRC from its
+    gamma profile, its charm walls from its charm map. With none listed today, the next listed
+    expiry keeps its open interest and implied volatility, and its gamma and delta are rebuilt as
+    if it expired at today's option close (`math_levels.repriced_to_close`): Black-Scholes-Merton
+    with Schwab's rate and dividend yield as sent, at the time every other greek uses
+    (`time_to_expiry_years`, including its 10-minute floor) from the valuation instant to that
+    close; its gamma profile and charm are priced at that same time. A contract with open
+    interest whose gamma is not known (not sent, or it cannot be rebuilt) leaves its side and that
+    strike's total unknown, as in the whole book; the other side's known value still ranks
+    (operator 2026-10-31: "you're guide is how would a financial banking app work"). Charm follows
+    the same rule, in both books. The close is the regular window Schwab's /markets sent: the
+    index window for an index it names with "$" and for SPY, QQQ and IWM, the equity-option window
+    for every other ticker. After that close the levels stand as priced at it, a later expiry's at
+    the 10-minute floor, until the next open (the close values, §3.4). A later expiry's levels are
+    absent where a chain is priced on a day with no option window held (a weekend or a holiday
+    with no close values held, or Schwab's /markets answer for today not held); every ticker's are
+    when the chain lists no expiry from today on. The whole-book levels are unchanged.
     The 0DTE pin is `same_day.absolute_gamma_strike` only. The listed-expiry pin
     (`zero_dte_abs_gamma_strike`) is not produced: it was a second pin.
     The key levels rail draws each strike once, the regular price beside the same-day

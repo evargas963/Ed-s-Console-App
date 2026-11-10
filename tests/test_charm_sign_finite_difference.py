@@ -8,8 +8,8 @@ GROUND TRUTH. A sign this consequential (it feeds a displayed note + a model fea
 locked against an empirical derivative, so no future revision can silently flip it again.
 
 VALIDATED: this finite-difference IS the ground truth — d(Delta)/dt as calendar time advances
-(T shrinks) — computed independently of both implementations. Both bs_charm and the scalar
-compute_net_charm must match its sign for every moneyness, or the build fails.
+(T shrinks) — computed independently of both implementations. The charm the terrain computes
+(math_exposure_core.bs_charm_array) must match its sign for every moneyness, or the build fails.
 """
 
 from __future__ import annotations
@@ -19,13 +19,9 @@ from datetime import datetime
 
 import pytest
 
-from math_exposure_core import (
-    bs_charm,
-    bs_vanna,
-    compute_exposures_by_strike,
-    schwab_iv_to_sigma,
-)
+from math_exposure_core import compute_exposures_by_strike, schwab_iv_to_sigma
 from option_contract import read_chain
+from tests.one_contract_greeks import charm, vanna
 from time_et import ET, time_to_expiry_years
 
 SIGMA = 0.20
@@ -60,7 +56,7 @@ def _fd_calendar_charm(S: float, dte: int) -> float:
 @pytest.mark.parametrize("label,S,dte", CASES)
 def test_bs_charm_sign_matches_finite_difference(label, S, dte):
     fd = _fd_calendar_charm(S, dte)
-    bs = bs_charm(S, K, dte / 365.0, SIGMA, rate=0.0)
+    bs = charm(S, K, dte / 365.0, SIGMA)
     assert bs is not None
     assert fd * bs > 0, (
         f"{label}: bs_charm sign {bs:+.4f} disagrees with FD calendar charm {fd:+.4f}"
@@ -77,7 +73,7 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
     dt = 1.0 / (60.0 * 24.0 * 365.0)  # one minute of calendar time
     S = 100.5  # slightly ITM — charm is finite and nonzero here
     fd = (_call_delta(S, T_1h - dt) - _call_delta(S, T_1h)) / dt
-    analytic = bs_charm(S, K, T_1h, SIGMA, rate=0.0)
+    analytic = charm(S, K, T_1h, SIGMA)
     assert analytic is not None
     assert analytic == pytest.approx(fd, rel=0.05), (
         f"one hour from the close, analytic charm {analytic:.2f} vs FD {fd:.2f} — a T floor "
@@ -158,7 +154,7 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     v_pct = per_pct[100.0]["call_vanna"]
     assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
     assert schwab_iv_to_sigma(20.0) == 0.20 and schwab_iv_to_sigma(0.20) == 0.002
-    v_dec = bs_vanna(98.0, 100.0, time_to_expiry_years("2027-07-16", now), 0.20) * 0.01 * 100 * 100
+    v_dec = vanna(98.0, 100.0, time_to_expiry_years("2027-07-16", now), 0.20) * 0.01 * 100 * 100
     # RELATIVE tolerance: these aggregates are ~1e3-1e4, where one float ULP is ~1e-12 relative but
     # ~1e-9 ABSOLUTE — an absolute 1e-9 bound is tighter than the arithmetic can hold and failed on
     # CI's platform while passing locally (got 4731.665262145597 vs 4731.665262144535). The claim

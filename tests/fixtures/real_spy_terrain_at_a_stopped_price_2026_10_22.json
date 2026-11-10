@@ -14,12 +14,6 @@
  "call_delta_wall": 763.0,
  "call_wall": 765.0,
  "call_wall_lean": "BREACHED \u2014 spot above",
- "call_wall_range": {
-  "coverage_pct": 71.18742631928629,
-  "hi": 765.0,
-  "lo": 763.0,
-  "method": "gamma value area: Market-Profile POC expansion on call-side GEX mass to 68.2pct (one sigma)"
- },
  "call_wall_state": "breached",
  "chain_basis": "every_expiry_strike_range_ALL",
  "computed_ts_utc": 1792700224.362402,
@@ -102,15 +96,8 @@
  "put_delta_wall": 772.0,
  "put_wall": 764.0,
  "put_wall_lean": "DEALERS BUY",
- "put_wall_range": {
-  "coverage_pct": 73.55663011567806,
-  "hi": 765.0,
-  "lo": 763.0,
-  "method": "gamma value area: Market-Profile POC expansion on put-side GEX mass to 68.2pct (one sigma)"
- },
  "put_wall_state": "contains",
  "regime": "SHORT_GAMMA_TREND",
- "rr_25d": null,
  "same_day": {
   "absolute_gamma_strike": 764.0,
   "call_charm_wall": 765.0,
@@ -125,7 +112,7 @@
   "put_charm_wall": 765.0,
   "put_wall": 764.0
  },
- "schema_version": 3,
+ "schema_version": 4,
  "spot": 773.1269,
  "spot_age_sec": 4859.43825507164,
  "spot_as_of_ts_utc": 1792701541.652,
@@ -136,10 +123,5 @@
  "spot_source": "streaming_plane",
  "spot_time_ct": "Thu 10/22 03:39 PM CT",
  "strikes_used": 146,
- "ticker": "SPY",
- "vanna_agg": {
-  "net_vanna_dollars_per_volpt": -371899.6428776203,
-  "net_vanna_shares_per_volpt": -486.7541527637562
- },
- "zero_dte_gamma_share_pct": 100.0
+ "ticker": "SPY"
 }

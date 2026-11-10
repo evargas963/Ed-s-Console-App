@@ -1,97 +1,38 @@
-"""Volatility-derived transforms: the 25-delta risk reversal and the average true range.
+"""Volatility-derived transforms: the average true range.
 
 math_volatility.py
 """
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 from micro_structure import Candle
-from option_contract import OptionContract
-
-# ── 25-delta risk reversal (skew steepness) ──────────────────────────────────
-
-#: A wing quote only counts as "the 25Δ option" if its delta is within this distance of
-#: the ±0.25 target; farther than this and the chain has no usable 25Δ wing — fail closed.
-RR25_DELTA_TOL = 0.10
-
-
-def compute_25d_risk_reversal(contracts: list[OptionContract]) -> dict | None:
-    """IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out, in vol points.
-
-    The expiry nearest 30 days out is the fixed ~30-day tenor the published risk reversal uses
-    -- SpotGamma; the front expiry is often a same-day one, whose skew is hours wide.
-
-    The skew-steepness read: SPX-typical is −2..−4 (puts richer); deterioration toward
-    −6 and beyond = the put bid building — the same-session confirm for a Gamma Support
-    Floor breach. Selection: the expiry nearest 30 days out (dte ≥ 1), then the call
-    whose delta is nearest +0.25 and the put nearest −0.25, each tolerance-gated
-    (|delta − target| ≤ RR25_DELTA_TOL, else the wing is unusable). Schwab `volatility`
-    is in PERCENT and stays in vol points here. FAIL-CLOSED: None when either wing is
-    missing/unusable — never a fabricated skew.
-    """
-    if not contracts:
-        return None
-    usable: list[tuple[int, str, float, float]] = []  # (dte, side, delta, iv)
-    for c in contracts:
-        dte, delta, iv = c.days_to_expiry, c.delta, c.volatility
-        if dte is None or delta is None or iv is None or c.side is None:
-            continue
-        usable.append((int(dte), c.side, delta, iv))
-    if not usable:
-        return None
-    front_dte = min(
-        {u[0] for u in usable if u[0] >= 1}, key=lambda d: (abs(d - 30), d), default=None
-    )
-    if front_dte is None:
-        return None
-    front = [u for u in usable if u[0] == front_dte]
-    calls = [u for u in front if u[1] == "CALL"]
-    puts = [u for u in front if u[1] == "PUT"]
-    if not calls or not puts:
-        return None
-    c = min(calls, key=lambda u: abs(u[2] - 0.25))
-    p = min(puts, key=lambda u: abs(u[2] - (-0.25)))
-    if abs(c[2] - 0.25) > RR25_DELTA_TOL or abs(p[2] - (-0.25)) > RR25_DELTA_TOL:
-        return None
-    return {
-        "rr_pts": c[3] - p[3],
-        "call_iv_25d": c[3],
-        "put_iv_25d": p[3],
-        "dte": front_dte,
-    }
-
 
 # ── ATR (Average True Range) ────────────────────────────────────────────────
 
 
 def compute_atr(candles: list[Candle], *, period: int = 14) -> float | None:
-    """
-    Average True Range from OHLC candles.
+    """Return Wilder's Average True Range of OHLC candles.
 
-    Formula:
-        TR = max(high - low, abs(high - prev_close), abs(low - prev_close))
-        ATR = SMA(TR, period)
+    Wilder (1978), New Concepts in Technical Trading Systems:
+    TR = max(high - low, abs(high - prev_close), abs(low - prev_close)). The first ATR is the
+    simple mean of the first `period` TRs; each later one is
+    ATR_t = (ATR_(t-1) * (period - 1) + TR_t) / period.
 
     Args:
         candles:  Schwab's candles, oldest first
         period:   ATR lookback period (default 14)
 
-    Returns ATR in price points, or None if insufficient data.
+    Returns ATR in price points, or None with fewer than `period` TRs.
     """
-    if not candles or len(candles) < period + 1:
-        return None
-
-    trs = []
-    prev_close = None
-    for candle in candles:
-        h, lo = candle.high, candle.low
-        if prev_close is not None:
-            tr = max(h - lo, abs(h - prev_close), abs(lo - prev_close))
-            trs.append(tr)
-
-        prev_close = candle.close
-
+    trs = [
+        max(c.high - c.low, abs(c.high - p.close), abs(c.low - p.close))
+        for p, c in pairwise(candles)
+    ]
     if len(trs) < period:
         return None
-
-    return sum(trs[-period:]) / period
+    atr = sum(trs[:period]) / period
+    for tr in trs[period:]:
+        atr = (atr * (period - 1) + tr) / period
+    return atr

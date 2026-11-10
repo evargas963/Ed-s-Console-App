@@ -67,6 +67,10 @@ class OptionContract:
     rho: float | None
     #: Schwab's nonStandard flag (an adjusted deliverable); None when not sent as true or false
     non_standard: bool | None
+    #: the chain's interestRate and dividendYield as sent, percents (schwab_client.
+    #: flatten_chain_contracts puts the chain's own on each contract)
+    interest_rate: float | None
+    dividend_yield: float | None
     #: the LISTED terms Schwab sent, as sent, for the screen only
     listing: Mapping[str, Any] = field(repr=False)
     #: the fields Schwab sent: the screen shows a field Schwab did not send only with a value
@@ -178,6 +182,8 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
             **{k: v for k, v in quoted.items() if k in GREEK_FIELDS},
         },
         non_standard=flag if isinstance(flag := raw.get("nonStandard"), bool) else None,
+        interest_rate=schwab_number(raw.get("interestRate")),
+        dividend_yield=schwab_number(raw.get("dividendYield")),
         listing={k: _shown(raw[k]) for k in LISTED if k in raw},
         sent=frozenset(raw),
     )

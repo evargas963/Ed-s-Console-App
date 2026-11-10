@@ -11,6 +11,7 @@ MRVL:     MRVL's full chain, all 20 expiries, every strike, at 10:31:20 ET (spot
           expiry's answer).
 NFLX:     NFLX's 2026-10-16, 2027-12-17 and 2028-01-21 expiries at 10:32:20 ET; 8 contracts with
           open interest carry Greeks Schwab sent as -999.
+SPY_FULL: SPY's whole chain, every expiry, production's complete capture of 2026-11-09 11:06 ET.
 SPY_CLOSE: SPY's 2026-10-22 expiry from the close capture begun 2026-10-22 16:17:04 ET, with SPY's
           LEVELONE_EQUITIES prints after it as the daemon received them.
 """
@@ -42,6 +43,15 @@ def _load(name: str) -> RealChain:
     )
 
 
+_SPY_FULL = json.loads((_FX / "real_spy_full_chain_2026_11_09.json").read_text(encoding="utf-8"))
+#: SPY's whole chain (35 expiries, 12,904 contracts), production's complete capture of 2026-11-09
+#: 11:06 ET, at its capture
+SPY_FULL = RealChain(
+    "SPY",
+    _SPY_FULL["chain"],
+    float(_SPY_FULL["spot"]),
+    datetime.fromtimestamp(_SPY_FULL["capture_ts_utc"], ET),
+)
 SPY_0DTE = _load("real_spy_0dte_chain_2026_10_07.json")
 CRWD = _load("real_crwd_complete_chain_2026_10_07.json")
 TSLA = _load("real_tsla_complete_chain_2026_10_07.json")

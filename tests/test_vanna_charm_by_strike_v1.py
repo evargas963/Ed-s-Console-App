@@ -6,7 +6,7 @@ BS-vanna faucet) and math_levels.compute_charm_by_strike (the same function /api
 charm_below/charm_above already sum) -- read off the snapshot _publish_levels last
 published (the vanna_rows/charm_rows of the PublishedLevels record it holds),
 zero extra vendor calls or pricing. These tests
-prove the wiring, not the math (bs_vanna/bs_charm/compute_charm_by_strike are proven
+prove the wiring, not the math (bs_vanna_array/bs_charm_array/compute_charm_by_strike are proven
 elsewhere: test_charm_by_strike_v1.py, test_charm_sign_finite_difference.py).
 
 Real data: CRWD's 2026-10-16 chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py), priced

@@ -14,7 +14,6 @@ from datetime import datetime
 from pathlib import Path
 
 import time_et
-from math_exposure_core import compute_zero_dte_gamma_share
 from math_levels import (
     GAMMA_FLIP_UNAVAILABLE,
     GSF_STATE_BELOW_SUPPORT,
@@ -28,12 +27,11 @@ from math_levels import (
     gamma_at_price,
     gamma_flip_from_profile,
 )
-from math_volatility import compute_25d_risk_reversal
 from option_contract import OptionContract, read_chain, read_contract
 from terrain_engine import compute_terrain
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
-#: own capture time (a live 0DTE, ~3.5 h to Schwab's 16:00 EQO close)
+#: own capture time (a live 0DTE, ~3.7 h to SPY's 16:15 option close)
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_2026_10_07.json"
 _DATA = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
 NOW = datetime.fromtimestamp(_DATA["ts_utc"], time_et.ET)
@@ -43,9 +41,16 @@ def _load_real_chain() -> tuple[list[OptionContract], float]:
     return read_chain(_DATA["chain"]), float(_DATA["spot"])
 
 
+def _profile(contracts: list[OptionContract], spot: float) -> list[tuple[float, float]]:
+    """The gamma profile as compute_terrain builds it for SPY: rows priced to its option close."""
+    product = time_et.option_close_product("SPY")
+    priced, _unpriced = contract_inputs(contracts, NOW, product=product)
+    return compute_gamma_profile(priced, spot)
+
+
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot, now=NOW)
+    prof = _profile(chain, spot)
     assert len(prof) == 241
     assert all(math.isfinite(v) for _, v in prof)
     prices = [p for p, _ in prof]
@@ -58,7 +63,7 @@ def test_profile_uses_dealer_sign_convention() -> None:
     chain, spot = _load_real_chain()
     calls = [c for c in chain if c.side == "CALL"]
     assert calls, "fixture must contain calls"
-    prof = compute_gamma_profile(calls, spot, now=NOW)
+    prof = _profile(calls, spot)
     assert prof and all(v >= 0 for _, v in prof)
 
 
@@ -67,15 +72,15 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
 
     The old `if flip is not None` guard let a flip-always-None regression pass silently while
     asserting nothing. MEASURED on this
-    fixture at its capture time: 241 profile points, 1 sign crossing, flip = 779.03, inside
+    fixture at its capture time: 241 profile points, 1 sign crossing, flip = 779.02, inside
     the span. Existence is pinned; the exact value is not (it moves with vol/time inputs) -
     span containment is the invariant.
     """
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot, now=NOW)
+    prof = _profile(chain, spot)
     flip = gamma_flip_from_profile(prof, spot)
     assert flip is not None, (
-        "the real fixture chain has a zero crossing (measured flip 779.03); a None flip "
+        "the real fixture chain has a zero crossing (measured flip 779.02); a None flip "
         "here means the profile or crossing detection regressed"
     )
     assert prof[0][0] <= flip <= prof[-1][0]
@@ -99,7 +104,7 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     of 51 live tickers reported UNAVAILABLE while their gamma was uniformly signed.
     """
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot, now=NOW)
+    prof = _profile(chain, spot)
     assert prof, "real chain must produce a profile"
 
     at_spot = gamma_at_price(prof, spot)
@@ -244,65 +249,6 @@ def test_unavailable_on_empty_or_bad_inputs():
     )
 
 
-def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
-    """RC-357: share = sum|0DTE net_gex_1pct| / sum|all net_gex_1pct|.
-
-    None when the full book is empty or has no measurable gamma — never a fabricated 0%.
-    """
-    all_book = {
-        700.0: {"net_gex_1pct": 6e9},
-        705.0: {"net_gex_1pct": -2e9},
-        710.0: {"net_gex_1pct": 2e9},
-    }
-    zero_book = {700.0: {"net_gex_1pct": 4e9}, 705.0: {"net_gex_1pct": -1e9}}
-    assert compute_zero_dte_gamma_share(all_book, zero_book) == 50.0  # 5e9/10e9
-    assert compute_zero_dte_gamma_share(all_book, {}) == 0.0  # genuine zero 0DTE
-    assert compute_zero_dte_gamma_share({}, zero_book) is None  # empty full book
-    assert compute_zero_dte_gamma_share({700.0: {"net_gex_1pct": 0.0}}, {}) is None
-
-
-def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
-    """RC-358: RR = IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out.
-
-    That is the published fixed tenor (2026-09-27), tolerance-gated; an unusable wing yields
-    None.
-    """
-
-    def ct(side, delta, iv, dte):
-        return read_contract(
-            {"putCall": side, "delta": delta, "volatility": iv, "daysToExpiration": dte}
-        )
-
-    chain = [
-        # the ~30-day expiry (28d): usable 25Δ wings — RR = 17.0 − 21.5 = −4.5
-        ct("CALL", 0.27, 17.0, 28),
-        ct("PUT", -0.24, 21.5, 28),
-        # noise wings far from 25Δ on the same expiry
-        ct("CALL", 0.55, 15.0, 28),
-        ct("PUT", -0.60, 25.0, 28),
-        # the front (1d) and a far (60d) expiry are IGNORED even with perfect deltas
-        ct("CALL", 0.25, 30.0, 1),
-        ct("PUT", -0.25, 10.0, 1),
-        ct("CALL", 0.25, 40.0, 60),
-        ct("PUT", -0.25, 12.0, 60),
-    ]
-    out = compute_25d_risk_reversal(chain)
-    assert out is not None and out["dte"] == 28
-    assert out["rr_pts"] == -4.5
-    assert out["call_iv_25d"] == 17.0 and out["put_iv_25d"] == 21.5
-
-    # tolerance gate: nearest call delta 0.45 is > 0.10 from target -> fail closed
-    bad = [ct("CALL", 0.45, 17.0, 28), ct("PUT", -0.25, 21.5, 28)]
-    assert compute_25d_risk_reversal(bad) is None
-    # one-sided chain, empty chain, missing greeks -> fail closed
-    assert compute_25d_risk_reversal([ct("CALL", 0.25, 17.0, 28)]) is None
-    assert compute_25d_risk_reversal([]) is None
-    assert (
-        compute_25d_risk_reversal([read_contract({"putCall": "CALL", "daysToExpiration": 1})])
-        is None
-    )
-
-
 def test_the_flip_counts_the_contracts_it_could_not_price():
     """M-10: the served flip counts the contracts it could not price, and says why.
 
@@ -320,7 +266,8 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     spx = json.loads((fx / "real_spx_chain_2026_10_07_2027_12_17.json").read_text(encoding="utf-8"))
     now = datetime.fromtimestamp(nflx["ts_utc"], time_et.ET)
     nflx_chain = read_chain(nflx["chain"])
-    priced, unpriced = contract_inputs(nflx_chain, now)
+    nflx_close = time_et.option_close_product("NFLX")
+    priced, unpriced = contract_inputs(nflx_chain, now, product=nflx_close)
     assert (len(priced), unpriced) == (685, {"no_volatility": 8})
     far = next(ct for ct in nflx["chain"] if ct["expirationDate"].startswith("2028-01-21"))
     assert (
@@ -333,4 +280,5 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     snap = compute_terrain("NFLX", nflx_chain, nflx["spot"], now=now)
     assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8}
     at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)
-    assert contract_inputs(read_chain(spx["chain"]), at)[1] == {}
+    spx_close = time_et.option_close_product("$SPX")
+    assert contract_inputs(read_chain(spx["chain"]), at, product=spx_close)[1] == {}

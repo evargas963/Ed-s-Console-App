@@ -2564,8 +2564,8 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
     expiries = sorted(per_expiry)
     strikes = sorted(strike_set)
     expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
-    # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna
-    # (call - put, the dealer convention of compute_net_vanna), OI and volume -- so one grid
+    # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna (call - put,
+    # the dealer convention of math_exposure_core._finish_bucket), OI and volume -- so one grid
     # serves every heatmap measure; a measure with no value is None (_gamma_surface_cell_fields).
     cells = []
     for k in strikes:
@@ -4117,7 +4117,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
-        # nearest expiry repriced to today's option close, beside the level it reprices.
+        # the nearest listed expiry's own levels, beside the whole book's level of the same name.
         # The time is the terrain's own compute time, the same instant the gamma rows carry.
         "zero_dte": [
             {

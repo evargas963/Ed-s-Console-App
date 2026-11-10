@@ -222,7 +222,7 @@ def _resolve_bid_ask_prices(data: dict) -> tuple[float | None, float | None]:
 
 
 def _resolve_quote_mark(data: dict) -> float | None:
-    """LEVELONE_OPTIONS MARK as Schwab sent it; a reported 0 is 0 (AGENTS.md rule 2)."""
+    """Level-one MARK as Schwab sent it, a ticker's or a contract's; a reported 0 is 0."""
     return _top(data).get("mark")
 
 

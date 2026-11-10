@@ -24,21 +24,28 @@ def _real_chain():
     return chain, expiry, strikes[len(strikes) // 2]
 
 
+def _vanna(chain, spot, now) -> float | None:
+    """The terrain's vanna book at `now`: every strike's net vanna, per vol point, summed."""
+    books = compute_terrain("TSLA", chain, spot, now=now).books
+    nets = [b["net_vanna"] for book, _diag in books.values() for b in book.values()]
+    return None if None in nets else sum(nets)
+
+
 def test_the_same_chain_at_the_same_instant_gives_the_same_vanna():
     chain, expiry, spot = _real_chain()
     now = expiry - timedelta(days=1)
-    a = compute_terrain("TSLA", chain, spot, now=now).vanna_agg
-    b = compute_terrain("TSLA", chain, spot, now=now).vanna_agg
+    a = _vanna(chain, spot, now)
+    b = _vanna(chain, spot, now)
     assert a is not None and a == b, (a, b)
     # a replayed chain is priced at ITS instant: before the fix, a stored chain whose expiry had
     # passed by the wall clock got T <= 0 for every contract and read as zero vanna. The chain's
     # expiry is past by the wall clock, so any read of the clock in place of `now` shows here.
-    assert a["net_vanna_shares_per_volpt"] != 0, a
+    assert a != 0, a
 
 
 def test_the_valuation_instant_reaches_the_vanna_book():
     chain, expiry, spot = _real_chain()
-    early = compute_terrain("TSLA", chain, spot, now=expiry - timedelta(days=2)).vanna_agg
-    late = compute_terrain("TSLA", chain, spot, now=expiry - timedelta(hours=8)).vanna_agg
+    early = _vanna(chain, spot, expiry - timedelta(days=2))
+    late = _vanna(chain, spot, expiry - timedelta(hours=8))
     assert early is not None and late is not None
     assert early != late, "vanna must be priced at the given instant, not the wall clock"
