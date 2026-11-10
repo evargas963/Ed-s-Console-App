@@ -657,7 +657,6 @@ class PublishedLevels:
         return self.snap.to_dict() | {
             "computed_ts_utc": self.computed_ts_utc,
             "levels_ts_utc": self.levels_ts_utc,
-            "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
             "chain_basis": self.chain_basis,
             "spot_source": self.spot_source,
             "spot_as_of_ts_utc": self.spot_as_of_ts_utc,
@@ -2009,10 +2008,6 @@ def _atr_fields(tk: str, now: datetime) -> dict:
     return {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly}
 
 
-#: which producer computed a set of levels, served with them (levels_source)
-LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"  # _publish_levels, the single producer
-
-
 # ── Per-strike gamma and volume bars for the histogram panel ─────────────────
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
@@ -2114,19 +2109,14 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     today = {k: rows[k] for k in ("all", "near", "far")}
     measures = {m: rows[m] for m in ("dex", "oi")}
 
-    # the per-side GEX and volume sums, against the spot this payload serves (the one aggregator)
+    # the per-side GEX sums, against the spot this payload serves (the one aggregator)
     def _side_sums(rows, s):
         if not rows or s is None:
             return None
-        cells = [[float_finite_or_none(x) for x in r[:3]] for r in rows]
-        below = [c for c in cells if c[0] is not None and c[0] < s]
-        above = [c for c in cells if c[0] is not None and c[0] > s]
+        cells = [[float_finite_or_none(x) for x in r[:2]] for r in rows]
         return {
-            "gex_below": side_total([c[1] for c in below]),
-            "gex_above": side_total([c[1] for c in above]),
-            "vol_below": side_total([c[2] for c in below]),
-            "vol_above": side_total([c[2] for c in above]),
-            "spot_basis": float(s),
+            "gex_below": side_total([c[1] for c in cells if c[0] is not None and c[0] < s]),
+            "gex_above": side_total([c[1] for c in cells if c[0] is not None and c[0] > s]),
         }
 
     live_spot, live_src, _live_ts = resolve_spot(tk, now=now)  # the one spot on every screen
@@ -2700,13 +2690,6 @@ def gamma_surface_payload(
             "priced_at_spot": surf["spot"],
             "spot_strike": spot_strike,
             "priced_at_spot_as_of_ts_utc": surf["spot_as_of_ts_utc"],
-            "provenance": {
-                "producer": "math_exposure_core.compute_exposures_by_strike",
-                "source": "the ticker's published levels (_publish_levels, the full chain)",
-                "classification": "DERIVED",
-                "cell_metric": "net_gex_1pct",
-                "spot_basis": "live_resolve_spot",
-            },
         }
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
@@ -3951,7 +3934,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
             **price_mark(tk, live_ts, now.timestamp()),
             "priced_at_spot": float(live.spot),
             "chain_as_of_ts_utc": fetched,
-            "chain_as_of_time_ct": ct_label(fetched),
             "status_text": "Chain as of " + ct_label(fetched),
             "levels": levels,
             "regime": live.regime,

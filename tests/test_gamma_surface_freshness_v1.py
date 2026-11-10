@@ -98,7 +98,7 @@ def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named(
     assert [c["strike"] for c in d["cells"] if c["spot"]] == [
         min(surface["strikes"], key=lambda k: abs(k - 206.0))
     ]
-    assert d["provenance"]["spot_basis"] == "live_resolve_spot"
+    assert d["priced_at_spot_as_of_ts_utc"] == surface["spot_as_of_ts_utc"]
 
 
 @pytest.mark.usefixtures("published")

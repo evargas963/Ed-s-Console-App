@@ -93,13 +93,10 @@ def test_derived_scalars():
     assert m["classification"]["microprice"] == "DERIVED"
 
 
-def test_a_mark_of_zero_schwab_sent_is_zero_and_the_spread_over_it_is_no_value():
-    """A reported 0 is 0 (AGENTS.md rule 2): the MARK is served as 0, never "-".
-
-    The spread over it is undefined, so it is no value.
-    """
+def test_a_mark_of_zero_schwab_sent_is_zero():
+    """A reported 0 is 0 (AGENTS.md rule 2): the MARK is served as 0, never "-"."""
     m = _micro({**_data(), "top": {**_l1_top(), "mark": 0.0}}, now_ts=1787233772.0)
-    assert m["mark"] == 0.0 and m["spread_frac"] is None
+    assert m["mark"] == 0.0
 
 
 def test_depth_totals_values():

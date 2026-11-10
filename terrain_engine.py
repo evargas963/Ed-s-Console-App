@@ -313,8 +313,6 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
         "rows": rows,
         "compared": bool(changes),
         "drift": drift,
-        "weighted_strike_today": wm_t,
-        "weighted_strike_prior": wm_p,
         "grew": grew,
         "shrank": shrank,
         "busiest": busiest,

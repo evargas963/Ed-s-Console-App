@@ -1482,7 +1482,6 @@
    "spot_not_live_text": "not live",
    "priced_at_spot": 283.73,
    "chain_as_of_ts_utc": 1791383480.265546,
-   "chain_as_of_time_ct": "Wed 10/07 09:31 AM CT",
    "status_text": "Chain as of Wed 10/07 09:31 AM CT",
    "levels": [
     {
@@ -3133,7 +3132,6 @@
    "spot_not_live_text": "not live",
    "priced_at_spot": 283.73,
    "chain_as_of_ts_utc": 1791383480.265546,
-   "chain_as_of_time_ct": "Wed 10/07 09:31 AM CT",
    "status_text": "Chain as of Wed 10/07 09:31 AM CT",
    "levels": [
     {
@@ -4780,7 +4778,6 @@
   "spot_not_live_text": "not live",
   "priced_at_spot": 283.73,
   "chain_as_of_ts_utc": 1791383480.265546,
-  "chain_as_of_time_ct": "Wed 10/07 09:31 AM CT",
   "status_text": "Chain as of Wed 10/07 09:31 AM CT",
   "levels": [
    {
