@@ -173,6 +173,7 @@ def test_every_beat_to_the_page_carries_the_session_at_that_beat():
         daemon.status,
         {},
         panels=server.PAGE_PANELS,
+        on_select=server.ticker_selected,
         record_heartbeat=recorded.append,
         clock=lambda: next(clock),
     )

@@ -159,10 +159,12 @@ class LiveUiServer:
         *,
         panels: dict,
         priced: tuple = (),
+        on_select,
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
         self.panels = panels  # each panel's producer, what the page asked (Asked) -> its body
         self.priced = priced  # the kinds whose body is computed from the ticker's live price
+        self.on_select = on_select  # told each ticker a page newly selects (its key)
         self.clock = clock  # the time each row is finished at, and each beat
         self.record_heartbeat = (
             record_heartbeat  # where the daemon keeps its own record of each beat
@@ -288,6 +290,8 @@ class LiveUiServer:
                 c.shown = self._shown(shown)
             if c.ticker != ticker_was:
                 shown_was = {}
+                if c.ticker is not None:
+                    self.on_select(c.ticker)
             # snapshot: the current body of each panel newly shown or asked with other parameters
             c.panels |= {n for n, p in c.shown.items() if n not in shown_was or shown_was[n] != p}
             c.wake.set()
@@ -397,6 +401,7 @@ async def serve_live_ui(
     heartbeat_fn,
     panels: dict,
     priced: tuple = (),
+    on_select,
     stats: dict | None = None,
     record_heartbeat=lmp.record_feed_heartbeat,
     clock=time_et.now,
@@ -407,11 +412,20 @@ async def serve_live_ui(
     after. Each beat is recorded with `record_heartbeat` (the daemon's own plane); `panels` are
     the selected ticker's panels (server.PAGE_PANELS), each kind's producer
     (ticker, now, parameters) -> its body; `priced` the kinds computed from the ticker's live
-    price, sent again with each of its price rows. The pages' connections end with the
+    price, sent again with each of its price rows; `on_select` is told each ticker a page newly
+    selects (server.ticker_selected). The pages' connections end with the
     program's web server (capture.serve_console).
     """
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(heartbeat_fn, stats, record_heartbeat, clock, panels=panels, priced=priced)
+    srv = LiveUiServer(
+        heartbeat_fn,
+        stats,
+        record_heartbeat,
+        clock,
+        panels=panels,
+        priced=priced,
+        on_select=on_select,
+    )
     lmp.add_row_listener(srv.on_row)
     beats = asyncio.create_task(srv.beat_loop())
     srv.loop = asyncio.get_running_loop()

@@ -83,7 +83,9 @@ def _beat(daemon: capture.Daemon) -> dict:
     The socket sends live_ui's feed beat; the console records it in
     live_market_plane.daemon_status; the console's record is cleared after.
     """
-    beat = LiveUiServer(daemon.status, {}, panels=server.PAGE_PANELS).beat()
+    beat = LiveUiServer(
+        daemon.status, {}, panels=server.PAGE_PANELS, on_select=server.ticker_selected
+    ).beat()
     try:
         assert lmp.daemon_status(time_et.now())["writer"] == beat["writer"]
     finally:

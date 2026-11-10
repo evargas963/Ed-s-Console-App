@@ -113,6 +113,7 @@ async def serve_page_socket(
             state=server.app.state,
             panels=server.PAGE_PANELS,
             priced=server.PRICED_PANELS,
+            on_select=server.ticker_selected,
             **prices,
         )
     finally:

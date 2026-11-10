@@ -19,7 +19,11 @@ class Pages:
     def __init__(self) -> None:
         self.loop = asyncio.new_event_loop()
         self.server = LiveUiServer(
-            lambda _now: {}, {}, panels=server.PAGE_PANELS, priced=server.PRICED_PANELS
+            lambda _now: {},
+            {},
+            panels=server.PAGE_PANELS,
+            priced=server.PRICED_PANELS,
+            on_select=server.ticker_selected,
         )
         self.server.loop = self.loop
         self.before = server.app.state.prices

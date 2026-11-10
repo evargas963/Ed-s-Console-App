@@ -570,10 +570,19 @@ def _forget_levels() -> None:
 def no_levels():
     """Each test starts with neither ticker's levels published, and leaves none.
 
-    Nor the daemon's heartbeat its beats recorded.
+    Nor the daemon's heartbeat its beats recorded. The pricing thread is held meanwhile, as
+    behind another ticker's chain: the reprice a page's selection queues (server.ticker_selected)
+    would price the captured chain at today's clock, so it waits and is dropped with the test.
     """
     _forget_levels()
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 60)
     yield
+    with server._chains_waiting_lock:
+        for tk in (A, B):
+            server._chains_waiting.pop(tk, None)
+    gate.set()
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
     _forget_levels()
 
 

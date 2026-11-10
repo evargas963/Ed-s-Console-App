@@ -830,8 +830,8 @@ def _gamma_surface_wanted(tk: str) -> bool:
     """Tell whether the ticker is viewed: the heatmap's REQUESTED state.
 
     Viewed: a page has the ticker selected on its socket (live_ui.selected), on any workspace,
-    for as long as it stays open. Every watchlist ticker's chain is fetched and priced alike, and
-    every one is repriced on its streamed ticks.
+    for as long as it stays open. Every watchlist ticker's chain is fetched and priced alike; a
+    viewed one is repriced on its streamed ticks as well (_on_stream_tick).
     """
     return tk in live_ui.selected(app.state)
 
@@ -1622,9 +1622,11 @@ def _on_stream_tick(sym: str) -> None:
 
     Called by the live feed, on the event loop, for every streamed equity quote, every option
     quote carrying Greeks or volume, and every contract of a /quotes answer. An equity quote
-    checks the ticker's levels for a cross at the live price (stored off the event loop); the
-    ticker, whichever it is, is queued for a reprice with every value Schwab has sent (one waits
-    per ticker, so the reprice that runs takes the newest). Returns at once.
+    checks the ticker's levels for a cross at the live price (stored off the event loop); a
+    ticker a page shows (_gamma_surface_wanted) is queued for a reprice with every value Schwab
+    has sent (one waits per ticker, so the reprice that runs takes the newest). A ticker no page
+    shows is priced by each chain the daemon delivers, and repriced when a page selects it
+    (ticker_selected). Returns at once.
     """
     tk = _tick_ticker(sym)
     if tk and not vendor_option_root(sym):
@@ -1642,15 +1644,21 @@ def _on_stream_tick(sym: str) -> None:
                 now,
                 datetime.fromtimestamp(now, ET).strftime("%Y-%m-%d %H:%M:%S ET"),
             )
-    if tk:
+    if tk and _gamma_surface_wanted(tk):
         _wait_to_price(tk, REPRICE)
+
+
+def ticker_selected(tk: str) -> None:
+    """Queue a reprice of `tk` (its key), which a page has just selected (live_ui)."""
+    _wait_to_price(tk, REPRICE)
 
 
 #: prices every ticker's levels, off the event loop, one at a time
 _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
 #: what waits to be priced for a ticker: a chain the daemon DELIVERED, the ticker's STORED
 #: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its held
-#: chain (a streamed tick of the ticker or of one of its contracts)
+#: chain (a page selecting the ticker, or a streamed tick of it or of one of its contracts while
+#: a page shows it)
 DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
 #: ticker -> (what, contracts, a chain's fetched time, the chain's spot): at most
 #: one per ticker however far
