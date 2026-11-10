@@ -5,20 +5,13 @@
 // console's watchlist routes (fixtures/watchlist.js).
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
-const { watchRequests } = require('./fixtures/settled');
+const { watchRequests, holdClock } = require('./fixtures/settled');
 
 // one beat as the program sends it, the daemon's status reduced to its time, its watchlist and
 // the session (Unknown: Schwab's /markets answer not held) (null: no status); `ts` on the
 // program's clock, now unless given
 function feed(list, ts = Date.now() / 1000, session = 'Unknown') {
   return JSON.stringify({ type: 'feed', feed: list === null ? null : { ts: ts, watchlist: list, session: session } });
-}
-
-// The page's clock held from before the page loads: its timers run only when the test moves its
-// time (`install` alone leaves the clock running).
-async function holdClock(page) {
-  await page.clock.install();
-  await page.clock.pauseAt(Date.now());
 }
 
 // Every frame sent on `socket` before this one has been taken by the page: a beat with no status,

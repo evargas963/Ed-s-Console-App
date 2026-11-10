@@ -36,4 +36,11 @@ function watchRequests(page) {
   };
 }
 
-module.exports = { watchRequests };
+// The page's clock held from before the page loads: its timers run only when the test moves its
+// time (`install` alone leaves the clock running).
+async function holdClock(page) {
+  await page.clock.install();
+  await page.clock.pauseAt(Date.now());
+}
+
+module.exports = { watchRequests, holdClock };

@@ -1,7 +1,7 @@
 // Universality (operator 2026-09-23): no built-in ticker or watchlist. A first run with
 // nothing chosen asks for a symbol and asks the server for nothing about any ticker.
 const { test, expect } = require('@playwright/test');
-const { watchRequests } = require('./fixtures/settled');
+const { watchRequests, holdClock } = require('./fixtures/settled');
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -12,7 +12,7 @@ test('first run: no ticker is assumed, no ticker data is requested', async ({ pa
     if (/[?&]ticker=/.test(u)) tickerCalls.push(u);
   });
   const requests = watchRequests(page);
-  await page.clock.install();                          // the page's timers run when the test moves its time
+  await holdClock(page);                               // the page's timers run when the test moves its time
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#hPx')).toHaveText('CHOOSE A SYMBOL');
   await expect(page.locator('#hFeed')).toHaveText('NO SYMBOL');

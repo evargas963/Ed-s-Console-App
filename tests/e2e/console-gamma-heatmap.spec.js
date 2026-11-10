@@ -151,7 +151,7 @@ const { served: servedChain } = require('./fixtures/served_chain');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 // The page's requests, watched until its work runs out (tests/e2e/fixtures/settled.js).
-const { watchRequests } = require('./fixtures/settled');
+const { watchRequests, holdClock } = require('./fixtures/settled');
 
 // The panels the page's socket sends this test (a test sets its own before the page opens), and
 // the program's side of that socket: `sock.changed(kind)` sends the kind's panels again, as the
@@ -832,7 +832,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('header never paints a quote from a poll: no push -> -, not a fallback', async ({ page }) => {
     // the price and the session label come only from the program's push
     await page.routeWebSocket(/\/ws$/, (ws) => ws.close());          // the daemon is down
-    await page.clock.install();   // the page's timers run when the test moves its time
+    await holdClock(page);   // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('-');
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
@@ -1337,7 +1337,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('no page timer reads /api: a minute with no push makes no request', async ({ page }) => {
     const requests = watchRequests(page);
-    await page.clock.install();
+    await holdClock(page);
     const reads = [];
     page.on('request', (r) => {
       const u = new URL(r.url());
