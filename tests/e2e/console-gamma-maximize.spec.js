@@ -25,14 +25,9 @@ const CHAIN = { spot: 100, expiry: '2026-09-11', status: 'ok', scope: { kind: 'c
     { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12, expirationDate: '2026-09-11' }] };
 
 async function intercept(page) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/bars1m')) body = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18'], { '2026-09-11': 2, '2026-09-18': 9 }, { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE,
+  await pushExpiries(page, ['2026-09-11', '2026-09-18'], { '2026-09-11': 2, '2026-09-18': 9 }, {
+    bars: { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] }, terrain: TERRAIN, strikes: STRIKES, surface: SURFACE,
     chain: chainAt(CHAIN) });
 }
 

@@ -407,6 +407,8 @@
       "pct_text": "+60%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.00",
+      "span_bid_text": "0.00",
       "total_depth": 400.0,
       "total_text": "400",
       "zone": "BID_HEAVY"
@@ -628,6 +630,8 @@
       "pct_text": "+33%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.04",
+      "span_bid_text": "0.03",
       "total_depth": 1320.0,
       "total_text": "1,320",
       "zone": "BID_HEAVY"
@@ -849,6 +853,8 @@
       "pct_text": "+36%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.08",
+      "span_bid_text": "0.05",
       "total_depth": 2120.0,
       "total_text": "2,120",
       "zone": "BID_HEAVY"
@@ -1070,6 +1076,8 @@
       "pct_text": "+42%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.08",
+      "span_bid_text": "0.05",
       "total_depth": 2120.0,
       "total_text": "2,120",
       "zone": "BID_HEAVY"
@@ -1313,6 +1321,8 @@
       "pct_text": "-29%",
       "sentence": "To balance, market makers buy 40 shares.",
       "side_word": "OFFER HEAVY",
+      "span_ask_text": "0.00",
+      "span_bid_text": "0.00",
       "total_depth": 140.0,
       "total_text": "140",
       "zone": "OFFER_HEAVY"
@@ -1534,6 +1544,8 @@
       "pct_text": "-13%",
       "sentence": "To balance, market makers buy 40 shares.",
       "side_word": "OFFER HEAVY",
+      "span_ask_text": "6.66",
+      "span_bid_text": "6.93",
       "total_depth": 300.0,
       "total_text": "300",
       "zone": "OFFER_HEAVY"
@@ -1755,6 +1767,8 @@
       "pct_text": "-19%",
       "sentence": "To balance, market makers buy 100 shares.",
       "side_word": "OFFER HEAVY",
+      "span_ask_text": "15.10",
+      "span_bid_text": "13.14",
       "total_depth": 520.0,
       "total_text": "520",
       "zone": "OFFER_HEAVY"
@@ -1976,6 +1990,8 @@
       "pct_text": "-21%",
       "sentence": "To balance, market makers buy 100 shares.",
       "side_word": "OFFER HEAVY",
+      "span_ask_text": "15.10",
+      "span_bid_text": "13.14",
       "total_depth": 520.0,
       "total_text": "520",
       "zone": "OFFER_HEAVY"
@@ -2219,6 +2235,8 @@
       "pct_text": "+60%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.00",
+      "span_bid_text": "0.00",
       "total_depth": 400.0,
       "total_text": "400",
       "zone": "BID_HEAVY"
@@ -2440,6 +2458,8 @@
       "pct_text": "+33%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.04",
+      "span_bid_text": "0.03",
       "total_depth": 1320.0,
       "total_text": "1,320",
       "zone": "BID_HEAVY"
@@ -2661,6 +2681,8 @@
       "pct_text": "+36%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.08",
+      "span_bid_text": "0.05",
       "total_depth": 2120.0,
       "total_text": "2,120",
       "zone": "BID_HEAVY"
@@ -2882,6 +2904,8 @@
       "pct_text": "+42%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.08",
+      "span_bid_text": "0.05",
       "total_depth": 2120.0,
       "total_text": "2,120",
       "zone": "BID_HEAVY"

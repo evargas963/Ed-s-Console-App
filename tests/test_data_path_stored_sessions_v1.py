@@ -84,7 +84,7 @@ with TestClient(server.app):
             if not server._chains_waiting:
                 break
     tk = server.ticker_storage_key(chain["ticker"])
-    served = server.terrain(tk, time_et.now(), {})
+    served = server.terrain(tk, time_et.now())
 print(json.dumps([served["call_charm_wall"], served["put_charm_wall"]]))
 """
 

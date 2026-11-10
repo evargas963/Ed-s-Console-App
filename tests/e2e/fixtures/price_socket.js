@@ -36,10 +36,14 @@ async function mockPriceSocket(page, rows = [], later = [], expiries = undefined
   socketed.add(page);
   const open = new Set();   // [ws, its last subscribe]
   const subscribes = [];
-  function sendPanels(ws, req, kind) {
+  // `was`: the connection's subscribe before this one; a panel it asked the same way for the
+  // same ticker is not sent again (live_ui._read)
+  function sendPanels(ws, req, kind, was) {
     Object.keys(req.ticker && req.panels ? req.panels : {}).forEach((name) => {
       const k = name.split(':')[0];
       if (!(k in panels) || (kind && k !== kind)) return;
+      if (was && was.ticker === req.ticker && was.panels
+        && JSON.stringify(was.panels[name]) === JSON.stringify(req.panels[name])) return;
       const p = panels[k];
       const body = typeof p === 'function' ? p(served(req.ticker).key, req.panels[name], name) : p;
       if (body !== undefined) ws.send(panelFrame(name, req.ticker, body));
@@ -53,11 +57,12 @@ async function mockPriceSocket(page, rows = [], later = [], expiries = undefined
     ws.onMessage((m) => {
       const req = JSON.parse(String(m));
       if (req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;
+      const was = conn[1];
       conn[1] = req;
       subscribes.push(req);
       ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
       if (expiries && req.ticker) ws.send(expiriesFrame(req.ticker, expiries));
-      sendPanels(ws, req);
+      sendPanels(ws, req, undefined, was);
       rows.forEach((r, i) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [r] })), 300 * i));
       later.forEach((l) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [l.row] })), l.afterMs));
     });

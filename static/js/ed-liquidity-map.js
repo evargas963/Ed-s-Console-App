@@ -1,7 +1,7 @@
 /* Ed Console — Liquidity / "Map" subview. PRESENTATION ONLY, computes nothing.
-   The zones /api/liquidity-snapshot computes (support / resistance / value bands, each with its
+   The zones the `liquidity` panel carries (support / resistance / value bands, each with its
    served label, side and confluence score) on the one TradingView-style chart every chart in the
-   console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, the toolbar's timeframe),
+   console uses (ed-tv-chart.js), over the price (the `bars` panel, completed Schwab bars, the toolbar's timeframe),
    with the prior-day and overnight levels and the live price from the levels panel on the page's
    socket -- the one level producer. The zone list below the chart names each zone's source levels. */
 (function () {
@@ -13,10 +13,6 @@
   function isMap() { var s = window.EdShell.getState(); return s.workspace === 'liquidity' && s.subview === 'map'; }
   function ticker() { return window.EdShell.getState().ticker; }
   function host() { return document.getElementById('liqmBody'); }
-  function stillMap(tk) { return isMap() && ticker() === tk; }
-  function fetchJson(url, signal) {
-    return fetch(url, { cache: 'no-store', signal: signal }).then(function (r) { return r.ok ? r.json() : null; });
-  }
   // the reference levels this map draws, by their served family
   var REF_FAMILIES = { prior_day: 1, overnight: 1 };
 
@@ -27,7 +23,7 @@
     if (_chart && h.querySelector('.liqm-plot')) return _chart;
     if (!window.EdTvChart || !window.LightweightCharts) return null;
     h.innerHTML = '<div class="liqm-tb"></div><div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
-      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels and the price from the levels panel and /api/bars1m. The map arranges them; it computes nothing.</div>';
+      '<div class="fl-foot">Zones from the liquidity panel; prior-day and overnight levels and the price from the levels and bars panels. The map arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector('.liqm-plot'), { nearestN: 99 });
     window.EdTvChart.toolbar(h.querySelector('.liqm-tb'), _chart, { tf: _tf, styleKey: 'ed.liqm.style',
       onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.liqm.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
@@ -41,18 +37,16 @@
       '<div class="sm liqm-tags">' + (tags || '-') + (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
   }
 
-  function render(h, tk, snap, levelsD, barsD) {
+  // a panel as served: one not received yet, or one the program could not produce, draws nothing
+  function served(p) { return p && p.failed == null ? p : null; }
+  function render(h, tk) {
     var c = ensureChart(h); if (!c) return;
     var P = c.palette();
     var side = { support: P.up, resistance: P.down, value: P.ink3 };
-    // each answer as served; a request that failed (null) draws nothing and is named, never drawn
-    // as empty; the levels panel not received yet draws nothing, and one the program could not
-    // produce says its words
-    var levels = levelsD && levelsD.failed == null ? levelsD : null;
-    var failed = [[snap, 'liquidity snapshot'], [barsD, 'bars']]
-      .filter(function (a) { return !a[0]; }).map(function (a) { return a[1]; });
-    var words = failed.length ? ['the ' + failed.join(', ') + ' request failed for ' + tk] : [];
-    if (levelsD && levelsD.failed != null) words.push(levelsD.failed);
+    var snap = served(_panels.liquidity), levels = served(_panels.levels), barsD = served(_panels.bars);
+    // the program's words for each panel it could not produce, never drawn as empty
+    var words = [_panels.liquidity, _panels.bars, _panels.levels]
+      .filter(function (p) { return p && p.failed != null; }).map(function (p) { return p.failed; });
     var zones = snap ? snap.zones : [];
     c.setBars(barsD ? barsD.bars : [], barsD ? barsD.tf : _tf, window.EdShell.getState().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
     c.setZones(zones.map(function (z) {
@@ -65,48 +59,33 @@
     var empty = h.querySelector('.liqm-empty');
     empty.hidden = !words.length;
     empty.textContent = words.join(' · ');
-    var none = !snap ? 'the liquidity snapshot request failed' : snap.reason ? esc(snap.reason) : 'no zones for this session yet';
-    h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot)</div>' +
+    var none = !snap ? '-' : snap.reason ? esc(snap.reason) : 'no zones for this session yet';
+    h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored)</div>' +
       (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">' + none + '</div>') + '</div>';
   }
 
-  // the `levels:liquidity` panel (server.levels) the program sends on the page's socket while the map is
-  // on, at once and each time the levels change; the snapshot and the bars, as last read; each
-  // for the ticker on screen
-  var _levels = null, _read = null;
-  function draw() {
-    var h = host();
-    if (h && isMap() && _read && _read.tk === ticker()) render(h, _read.tk, _read.snap, _levels, _read.bars);
-  }
-  function loadImpl(tk, signal) {
-    var h = host();
-    if (!h || !stillMap(tk)) return;
-    return Promise.all([
-      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf], signal)
-    ]).then(function (r) {
-      if (stillMap(tk)) { _read = { tk: tk, snap: r[0], bars: r[1] }; draw(); }
-    }).catch(function (e) {
-      if (e && e.name === 'AbortError') return;
-      if (stillMap(tk)) { _read = { tk: tk, snap: null, bars: null }; draw(); }
-    });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  var _levelsTicker = null;
+  // The zones, the levels and the bars at the toolbar's timeframe: the `liquidity:map`,
+  // `levels:liquidity` and `bars:liq` panels (server.liquidity, server.levels, server.bars) the
+  // program sends on the page's socket while the map is on, at once and each time one changes;
+  // each for the ticker on screen.
+  var PANELS = { 'liquidity:map': 'liquidity', 'levels:liquidity': 'levels', 'bars:liq': 'bars' };
+  var _panels = {}, _panelsTicker = null;
   function load() {
-    if (!isMap()) { window.EdShell.showPanel('levels:liquidity', null); return; }
-    if (_levelsTicker !== ticker()) { _levelsTicker = ticker(); _levels = null; }
-    window.EdShell.showPanel('levels:liquidity', { tf: '1' });
-    _loader.trigger(ticker());
+    var on = isMap();
+    if (_panelsTicker !== ticker()) { _panelsTicker = ticker(); _panels = {}; }
+    window.EdShell.showPanel('liquidity:map', on ? {} : null);
+    window.EdShell.showPanel('levels:liquidity', on ? { tf: '1' } : null);
+    window.EdShell.showPanel('bars:liq', on ? { tf: _tf, limit: window.EdTvChart.BARS_LIMIT[_tf] } : null);
   }
 
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'liquidity') load(); });
     document.addEventListener('ed:panel', function (e) {
-      if (e.detail.type !== 'levels:liquidity') return;
-      _levels = e.detail; draw();
+      var key = PANELS[e.detail.type], h = host();
+      if (!key) return;
+      _panels[key] = e.detail;
+      if (h && isMap()) render(h, ticker());
     });
   }
   // read-only view for tests (e2e) -- never a control surface

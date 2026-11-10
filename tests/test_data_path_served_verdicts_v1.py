@@ -12,7 +12,6 @@ the daemon's status typed in its shape (none is captured).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import sqlite3
 from datetime import datetime
@@ -22,12 +21,12 @@ import pytest
 
 import live_market_plane as lmp
 import live_price_rows
-import push_changes
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
+from tests.page_on_socket import pages
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET
 
@@ -129,7 +128,7 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
     closed and a chain fetched after that close stands.
     """
     published(tk, chain, delivered)
-    body = server.terrain(tk, at.timestamp(), {})
+    body = server.terrain(tk, at.timestamp())
     assert body["levels_state"] == state
     assert body["levels_age_sec"] == pytest.approx(at.timestamp() - delivered.timestamp())
     assert body["levels_time_ct"] is not None
@@ -138,7 +137,7 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
 def test_levels_with_no_markets_answer_held_are_not_live(published):
     """2026-09-20: no /markets answer held for that date, so the levels are not live."""
     published("TSLA", TSLA, _et(11, 0, "2026-09-20"))
-    body = server.terrain("TSLA", _et(11, 1, "2026-09-20").timestamp(), {})
+    body = server.terrain("TSLA", _et(11, 1, "2026-09-20").timestamp())
     assert (body["levels_state"], body["levels_stale_reason"]) == (
         "NOT LIVE",
         "the market session is unknown",
@@ -172,7 +171,7 @@ def test_a_late_heartbeat_does_not_shorten_the_round_a_chain_is_judged_by(
     lmp.record_feed_heartbeat(
         daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=245.0)
     )
-    body = server.terrain("TSLA", delivered.timestamp() + after, {})
+    body = server.terrain("TSLA", delivered.timestamp() + after)
     assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)
 
 
@@ -269,7 +268,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
             )
     try:
         sent = {c.symbol: c for c in publish_sunday().priced_chain}
-        same_day = server.terrain("SPY", at.timestamp(), {})["same_day"]
+        same_day = server.terrain("SPY", at.timestamp())["same_day"]
     finally:
         _forget()
     priced = {c.symbol: c for c in balance.priced_chain}
@@ -292,17 +291,10 @@ def _told(tk: str, at: datetime) -> set:
     The minute is server.refresh_not_live_pages.
     """
 
-    async def run():
-        push_changes.bind(asyncio.get_running_loop())
-        page = push_changes.subscribe(tk)
-        try:
-            server.refresh_not_live_pages(at.timestamp())
-            return await push_changes.next_changes(page, 0.3)
-        finally:
-            push_changes.unsubscribe(page)
-            push_changes.bind(None)
-
-    return asyncio.run(run())
+    with pages() as served:
+        page = served.open(tk, *server.PAGE_PANELS)
+        server.refresh_not_live_pages(at.timestamp())
+        return served.told(page, 0.3)
 
 
 def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not_live(published):
@@ -316,7 +308,7 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
     quote = _QUOTES["TSLA"]
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     published("TSLA", TSLA, at)
-    assert server.terrain("TSLA", at.timestamp(), {})["levels_state"] == "LIVE"
+    assert server.terrain("TSLA", at.timestamp())["levels_state"] == "LIVE"
     assert _told("TSLA", at) == set()
     published("TSLA", TSLA, _et(16, 1))
     later = _et(16, 5)
@@ -327,5 +319,5 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
             held={"LEVELONE_EQUITIES": ["TSLA"]},
         )
     )
-    assert server.terrain("TSLA", later.timestamp(), {})["levels_state"] == "CLOSE"
-    assert _told("TSLA", later) == {push_changes.LEVELS}
+    assert server.terrain("TSLA", later.timestamp())["levels_state"] == "CLOSE"
+    assert _told("TSLA", later) == set(server.LEVELS_PANELS)

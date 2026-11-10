@@ -1,24 +1,27 @@
 /*
- * The Trade Desk's Liquidity card draws the route's served readout (/api/order-flow/microstructure
- * `readout`) for SPY's real 2026-11-02 books; it computes nothing. Any page error fails the test.
+ * The Trade Desk's Liquidity card draws the served readout (the `book` panel's `readout`, sent on
+ * the page's socket) for SPY's real 2026-11-02 books; it computes nothing. Any page error fails the test.
  * Its own spec file: Playwright runs spec files side by side and a file's tests in order.
  */
 const { test, expect } = require('@playwright/test');
 const {
-  READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP, intercept, watchErrors,
+  READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP, intercept, watchErrors, deskPanels,
 } = require('./fixtures/trade_desk');
-const { watchRequests } = require('./fixtures/settled');
 
 test.describe('Desk: the Liquidity card draws the served order-imbalance readout', () => {
+  // the desk opened with `body` as the book panel; returns the page's socket
   async function openDesk(page, body, keep) {
-    await intercept(page);
-    await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(body) }));
+    const sock = await intercept(page);
+    deskPanels().book = body;
     await page.addInitScript((k) => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK');
       if (!k) { localStorage.removeItem('ed.desk.liqvenue'); localStorage.removeItem('ed.desk.liqview'); } }, keep);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    return sock;
   }
+  // every venue the page asked a book of, on any of its subscribes
+  const bookVenues = (sock) => sock.subscribes.flatMap((s) => Object.keys(s.panels || {})
+    .filter((n) => n.split(':')[0] === 'book').map((n) => s.panels[n].venue));
   const card = (page) => page.locator('#tdmCardLiq');
   const left = (pct) => (50 + pct * 0.45) + '%';
 
@@ -153,15 +156,13 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     expect(errs).toEqual([]);
   });
 
-  test('the composite is one read of one venue: no second book request', async ({ page }) => {
-    const reads = [];
-    page.on('request', (r) => { if (r.url().includes('/api/order-flow/microstructure')) reads.push(r.url()); });
-    const requests = watchRequests(page);
-    await openDesk(page, READOUT_LIVE);
+  test('the composite is one book panel of one venue: no second venue is asked', async ({ page }) => {
+    const sock = await openDesk(page, READOUT_LIVE);
     await expect(card(page).locator('.liq-pct')).toHaveText(LIVE_COMP.views.weighted.pct_text);
-    await requests.settled();   // every read the load made has gone out and landed
-    expect(reads.length).toBe(1);
-    expect(reads[0]).toContain('venue=NYSE_BOOK');
+    // the composite is drawn; the desk's one book panel is asked once, of the one venue
+    const last = sock.subscribes[sock.subscribes.length - 1];
+    expect(Object.keys(last.panels).filter((n) => n === 'book:deskmap').length).toBe(1);
+    expect([...new Set(bookVenues(sock))]).toEqual(['NYSE_BOOK']);
   });
 
   test('a book that stopped keeps its last numbers greyed, with its time, its age and not live on the source line', async ({ page }) => {
@@ -188,12 +189,12 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
 
   test('a failed read says so on the source line, naming no book the server did not name', async ({ page }) => {
     await intercept(page);
-    await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({ status: 500, body: '' }));
+    deskPanels().book = { failed: 'the program could not produce this panel: OSError: book read failed' };
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(card(page).locator('.liq-body')).toContainText('UNAVAILABLE');
-    await expect(card(page).locator('.tdm-src')).toHaveText('microstructure request failed');
+    await expect(card(page).locator('.tdm-src')).toHaveText('the program could not produce the book');
   });
 
   test('inside the closing auction the number stands and the auction line is added', async ({ page }) => {
@@ -237,30 +238,28 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     expect(errs).toEqual([]);
   });
 
-  test('the card paints at most once a second, reads on each push, and never polls', async ({ page }) => {
+  test('the card paints at most once a second, takes the book each time it is sent, and asks for it once', async ({ page }) => {
     const errs = watchErrors(page);
-    const reads = [];
-    page.on('request', (r) => { if (r.url().includes('/api/order-flow/microstructure')) reads.push(r.url()); });
-    const requests = watchRequests(page);
+    await page.addInitScript(() => { window.__books = 0;
+      document.addEventListener('ed:panel', (e) => { if (e.detail.type === 'book:deskmap') window.__books++; }); });
     await page.clock.install();   // the page's held second runs on the test's time
-    await openDesk(page, READOUT_LIVE);
+    const sock = await openDesk(page, READOUT_LIVE);
     await expect(card(page).locator('.liq-pct')).toHaveText(LIVE_COMP.views.weighted.pct_text);
-    await requests.settled();
     // the page's time stops here; the load's held second ends, and nothing runs until it moves
     await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1200);
     const before = await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints);
-    const n0 = reads.length;
-    await page.evaluate(() => { for (let i = 0; i < 5; i++) document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })); });
-    await expect.poll(() => reads.length).toBe(n0 + 5);
-    await requests.settled();   // the five answers have landed, all inside one second of page time
-    // five answers inside a second: one paint now, at most one more when the second is up
+    const n0 = await page.evaluate(() => window.__books);
+    for (let i = 0; i < 5; i++) sock.changed('book');
+    // the five books have landed, all inside one second of page time
+    await expect.poll(() => page.evaluate(() => window.__books)).toBe(n0 + 5);
+    // five books inside a second: one paint now, at most one more when the second is up
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints)).toBeLessThanOrEqual(before + 1);
     await page.clock.runFor(1000);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints)).toBeLessThanOrEqual(before + 2);
-    const n1 = reads.length;
+    const n1 = sock.subscribes.length;
     await page.clock.runFor(2500);
-    await requests.settled();
-    expect(reads.length).toBe(n1);   // no push, no read
+    expect(sock.subscribes.length).toBe(n1);   // nothing sent, nothing asked again
+    expect(await page.evaluate(() => window.__books)).toBe(n0 + 5);
     expect(errs).toEqual([]);
   });
 });

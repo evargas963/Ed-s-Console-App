@@ -3,7 +3,7 @@
  * Options Flow tape (operator field-inventory audit, 2026-09-13) — the embedded #ofBody
  * widget on the Gamma pane, rebuilt to the operator's own required schema: Time | Symbol |
  * Expiry | Type | Strike | Bid x Size | Ask x Size | Trade | Size | Premium | Volume | OI |
- * IV | Delta | provenance. Sourced from /api/options/tape (native LEVELONE_OPTIONS trade
+ * IV | Delta | provenance. Sourced from the `tape` panel on the page's socket (native LEVELONE_OPTIONS trade
  * prints, already retained — see app.options.order_flow.history.tape_rows_for_symbol). No
  * buy/sell aggressor side is ever fabricated; `classification` states only the mechanical
  * fact of where a print landed relative to that same tick's own bid/ask.
@@ -31,15 +31,8 @@ const TAPE_ROW = {
 };
 
 async function intercept(page, tapeBody) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/options/tape')) body = tapeBody;
-    else if (url.includes('/api/bars1m')) body = BARS;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-18'], undefined, { terrain: TERRAIN, surface: SURFACE,
+  await pushExpiries(page, ['2026-09-18'], undefined, { tape: tapeBody, bars: BARS, terrain: TERRAIN, surface: SURFACE,
     chain: { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable',
       scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } },
     strikes: { ticker: 'SPY', spot: 100, today: { all: [] }, views: { all: { centre: null, note: null, max_abs: null } } } });

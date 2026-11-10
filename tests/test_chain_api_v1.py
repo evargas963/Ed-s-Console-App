@@ -24,6 +24,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server as srv
 import time_et
+from app.market_data.schwab.streaming.live_ui import Asked
 from option_contract import GREEKS, LISTED, read_chain
 from schwab_client import flatten_chain_contracts
 from stream_spine import verbatim_msg
@@ -220,4 +221,5 @@ def test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it()
     body = _get(ticker="TSLA")
     assert json.loads(json.dumps(body)) == body and body["expiry"] == _TSLA_EXPIRY
     assert "/api/chain" not in {r.path for r in srv.app.routes}
-    assert srv.PAGE_PANELS["chain"] is srv.chain
+    asked = Asked("TSLA", _AT.timestamp(), {"expiry": None})
+    assert srv.PAGE_PANELS["chain"](asked) == srv.chain("TSLA", asked.now, asked.params)

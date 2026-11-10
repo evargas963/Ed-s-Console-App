@@ -27,7 +27,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import live_market_plane as lmp
-import push_changes
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
@@ -38,6 +37,7 @@ from option_contract import read_chain
 from schwab_client import build_client_from_token, flatten_chain_contracts
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import daemon_status
+from tests.page_on_socket import pages
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
@@ -555,7 +555,6 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
     answer.
     """
     on, off = "ZZWLON", "ZZWLOFF"
-    pages = [push_changes.subscribe(tk) for tk in (on, off)]
     # levels, no surface: CRWD's real chain delivered now with no price held
     delivered = time_et.now()
     server._publish_levels(
@@ -566,37 +565,38 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         now=datetime.fromtimestamp(delivered, ET),
     )
     try:
-        lmp.record_feed_heartbeat(
-            daemon_status(time_et.now(), schwab_socket_open=True, watchlist=[on])
-        )
-        d_on, d_off = (_surface(tk) for tk in (on, off))
-        assert (d_on["warming"], d_on["reason"]) == (
-            True,
-            "no terrain snapshot has been computed yet",
-        )
-        assert (d_off["warming"], d_off["reason"]) == (
-            False,
-            "no chain is fetched for this ticker: it is not on the watchlist",
-        )
-        server._on_chain(on, None, time_et.now(), "full chain returned HTTP 400", None)
-        assert _surface(on)["reason"] == (
-            "no terrain snapshot has been computed yet — "
-            "chain fetch failed (full chain returned HTTP 400)"
-        )
-        lmp.record_feed_heartbeat(
-            daemon_status(time_et.now() - 100, schwab_socket_open=True, watchlist=[on])
-        )
-        silent = _surface(off)
-        assert silent["warming"] is False
-        assert silent["reason"].startswith(
-            "the capture daemon is not reporting (no current heartbeat)"
-        )
-        assert "it is not on the watchlist" in silent["reason"]
-        assert "WATCHLIST UNKNOWN" not in server._status_line(time_et.now())
-        assert "daemon not reporting" in server._status_line(time_et.now())
+        with pages() as served:
+            for tk in (on, off):
+                served.open(tk)
+            lmp.record_feed_heartbeat(
+                daemon_status(time_et.now(), schwab_socket_open=True, watchlist=[on])
+            )
+            d_on, d_off = (_surface(tk) for tk in (on, off))
+            assert (d_on["warming"], d_on["reason"]) == (
+                True,
+                "no terrain snapshot has been computed yet",
+            )
+            assert (d_off["warming"], d_off["reason"]) == (
+                False,
+                "no chain is fetched for this ticker: it is not on the watchlist",
+            )
+            server._on_chain(on, None, time_et.now(), "full chain returned HTTP 400", None)
+            assert _surface(on)["reason"] == (
+                "no terrain snapshot has been computed yet — "
+                "chain fetch failed (full chain returned HTTP 400)"
+            )
+            lmp.record_feed_heartbeat(
+                daemon_status(time_et.now() - 100, schwab_socket_open=True, watchlist=[on])
+            )
+            silent = _surface(off)
+            assert silent["warming"] is False
+            assert silent["reason"].startswith(
+                "the capture daemon is not reporting (no current heartbeat)"
+            )
+            assert "it is not on the watchlist" in silent["reason"]
+            assert "WATCHLIST UNKNOWN" not in server._status_line(time_et.now())
+            assert "daemon not reporting" in server._status_line(time_et.now())
     finally:
-        for page in pages:
-            push_changes.unsubscribe(page)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(off, None)
             server._terrain_cache.pop(on, None)

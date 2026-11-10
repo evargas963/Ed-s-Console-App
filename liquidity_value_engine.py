@@ -622,7 +622,7 @@ PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
 _PRODUCER_NS: str = __name__
 
 
-#: semantic_scope -> the trading-session character the /api/levels contract
+#: semantic_scope -> the trading-session character the levels panel
 #: publishes as provenance.session_scope (RTH vs full/extended session). The two are
 #: different questions: `semantic_scope` identifies WHICH measurement this is,
 #: `session_scope` says which hours it was measured over.

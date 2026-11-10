@@ -14,7 +14,7 @@
        axis resets it, Alt+R resets everything, the wheel over the plot zooms time.
      - the crosshair follows the mouse; the readout BOX appears only on click (pinned, with a
        close control) -- never a hover tooltip.
-   Every number drawn here is the server's (bars from /api/bars1m, levels from the levels panel +
+   Every number drawn here is the server's (bars from the bars panel, levels from the levels panel +
    the terrain panel). Choosing WHICH levels to draw (the nearest few inside the visible range) and
    placing a 1m series point on the bar that contains it are presentation, not computation. */
 (function () {
@@ -719,25 +719,6 @@
         }
         paintLegend(); paintPin(); draw.redraw(); syncButtons(); paintLevels(true);
       },
-      // The newest bars only -- series.update keeps the operator's zoom/scroll exactly where it is.
-      updateTail: function (tail, lastBarLabel) {
-        if (!S.bars.length || !tail || !tail.length) return;
-        if (lastBarLabel) S.lastBarLabel = lastBarLabel;
-        var lastT = S.bars[S.bars.length - 1].t;
-        tail.forEach(function (b0) {
-          var b = { t: Number(b0.t), o: b0.o, h: b0.h, l: b0.l, c: b0.c, v: b0.v, chg: b0.chg, chg_pct: b0.chg_pct };
-          if (b.t < lastT) {
-            var i = barIndexAt(b.t); if (i < 0 || S.bars[i].t !== b.t) return;
-            if (i < S.bars.length - 2) return;
-            S.bars[i] = b;
-          } else if (b.t === lastT) S.bars[S.bars.length - 1] = b;
-          else { S.bars.push(b); lastT = b.t; }
-          candles.update({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }, b.t < S.bars[S.bars.length - 1].t);
-          closeLine.update({ time: b.t, value: b.c }, b.t < S.bars[S.bars.length - 1].t);
-          volume.update(api._volPoint(b), b.t < S.bars[S.bars.length - 1].t);
-        });
-        paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
-      },
       _volPoint: function (b) {
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },
@@ -854,8 +835,7 @@
     return api;
   }
 
-  // The timeframes every chart offers, and the 1-minute bars each asks /api/bars1m for (the server
-  // rolls them up to the timeframe).
+  // The timeframes every chart offers, and the bars each asks the bars panel for.
   var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
   var BARS_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };

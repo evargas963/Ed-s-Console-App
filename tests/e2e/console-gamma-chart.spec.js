@@ -52,23 +52,18 @@ const CHAIN = { spot: 100, spot_strike: 102, expiry: '2026-09-18', status: 'ok',
     { symbol: PUT_SYM, putCall: 'PUT', strikePrice: 102, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12 },
   ] };
 
-// the page's socket sends `terrain` (the flip and the walls) and `strikes` (the profile) as the
-// panels' bodies
+// the page's socket sends `terrain` (the flip and the walls), `strikes` (the profile) and `bars`
+// as the panels' bodies; returns those `panels`, read at each send
 async function intercept(page, terrain = TERRAIN, strikes = STRIKES) {
   const chainRequests = [];   // the expiry Strike Detail's chain panel asks, each time it is sent
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/bars1m')) body = BARS;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
-  await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, { terrain: terrain, strikes: strikes,
+  const panels = { terrain: terrain, strikes: strikes, bars: BARS,
     chain: (key, params, name) => {
       if (name === 'chain:detail') chainRequests.push(params.expiry);
       return Object.assign({}, CHAIN, params.expiry ? { expiry: params.expiry } : {});
-    } });
-  return { chainRequests };
+    } };
+  await routeWatchlist(page, ['SPY']);
+  await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, panels);
+  return { chainRequests, panels };
 }
 
 // a real mouse click where the chart draws the strike's profile row, once the row has stopped
@@ -139,19 +134,20 @@ test.describe('Options/Gamma Chart subview', () => {
   test('a failed request is named on the chart, never drawn as an empty answer', async ({ page }) => {
     // the program unable to produce the terrain panel while the bars and the profile arrive: the
     // flip and the walls are not drawn and the chart says the program's words; then the bars
-    // request failing too
+    // panel not produced either
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
-    await intercept(page, { failed: words });
+    const barsWords = 'the program could not produce this panel: OSError: bars read failed';
+    const { panels } = await intercept(page, { failed: words });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#chartBody .gchart-empty')).toHaveText(words);
     await expect.poll(() => page.evaluate(() => window.EdGammaChart.state().levels.length)).toBe(0);
-    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 500, body: 'x' }));
+    panels.bars = { failed: barsWords };
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
-    await expect(page.locator('#chartBody .gchart-empty')).toHaveText('the bars request failed for SPY · ' + words);
+    await expect(page.locator('#chartBody .gchart-empty')).toHaveText(barsWords + ' · ' + words);
     expect(errors).toEqual([]);
   });
 

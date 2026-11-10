@@ -39,7 +39,6 @@ ctx.EdShell = {
   wireStrikeAxis: () => {},
 };
 vm.createContext(ctx);
-vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });
 vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'), ctx, { filename: 'ed-gamma.js' });
 
 const G = ctx.EdGamma;

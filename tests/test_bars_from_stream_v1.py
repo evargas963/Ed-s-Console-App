@@ -12,7 +12,6 @@ import threading
 from datetime import datetime
 
 import pytest
-from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import server
@@ -168,7 +167,7 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
 def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute():
     for m in (0, 1):
         server._write_streamed_bar(_bar(T0 + 60 * m))
-    body = TestClient(server.app).get(f"/api/bars1m?ticker={TK}").json()
+    body = server.bars(TK, T0 + 120.0, {"tf": "1", "limit": 1500})
     assert [b["t"] for b in body["bars"]] == [T0, T0 + 60]
     assert not any("forming" in b for b in body["bars"])
     assert body["last_bar"] == {"t": T0 + 60, "label": ct_label(T0 + 60)}

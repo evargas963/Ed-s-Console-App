@@ -23,12 +23,12 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 
-import push_changes
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import PRICE_HISTORY, ChainSweep, price_history_message
 from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus
+from tests.page_on_socket import pages
 from tests.schwab_rest_standin import HISTORY, PRICEHISTORY, LocalSchwab
 from time_et import ET
 
@@ -178,22 +178,17 @@ def _held(tk: str, series: str, now: datetime, candles: list | None = None) -> N
 
 
 def _told(tk: str, takes) -> list:
-    """Return what the page open on `tk` is told after each of `takes` (callables run in turn)."""
+    """Return the panels the page showing every panel of `tk` is told changed after each take.
 
-    async def main():
-        push_changes.bind(asyncio.get_running_loop())
-        page = push_changes.subscribe(tk)
-        try:
-            told = []
-            for take in takes:
-                take()
-                told.append(await push_changes.next_changes(page, 0.5))
-            return told
-        finally:
-            push_changes.unsubscribe(page)
-            push_changes.bind(None)
-
-    return asyncio.run(main())
+    `takes` are callables run in turn.
+    """
+    with pages() as served:
+        page = served.open(tk, *server.PAGE_PANELS)
+        told = []
+        for take in takes:
+            take()
+            told.append(served.told(page, 0.5))
+        return told
 
 
 def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():

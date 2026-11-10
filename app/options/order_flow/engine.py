@@ -28,6 +28,7 @@ from l1_trade_observation import (
 from numeric_contract import (
     float_finite_or_none,
     percent_text,
+    price_text,
     schwab_count,
     schwab_number,
     shares_text,
@@ -231,7 +232,7 @@ def _resolve_quote_mark(data: dict) -> float | None:
 # ONE canonical book path. `_extract_canonical_book` walks + validates + SORTS the live
 # book EXACTLY ONCE into a normalized state; every metric is derived from that single
 # result. Nothing re-walks or re-sums the raw book. `compute_book_microstructure` memoizes the
-# structural state per (ticker, BOOK_TIME), so `/api/order-flow/microstructure` and the engine
+# structural state per (ticker, BOOK_TIME), so the book panel (`server.book`) and the engine
 # SERIALIZE the same computed state rather than recomputing it independently.
 # Every field is classified NATIVE (a Schwab wire field), DERIVED (a deterministic function of
 # NATIVE fields), or PROXY (temporal inference). STATIC book state only — no aggressor/CVD/
@@ -520,7 +521,7 @@ def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
 def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None = None) -> dict:
     """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
 
-    The ONE producer the engine and the `/api/order-flow/microstructure` route both read.
+    The ONE producer the engine and the book panel (`server.book`) both read.
     `data.content`
     carries the live streaming book + top-of-book
     (app.options.order_flow.state.get_content_for_symbol); `data.exchange_quote_ts` (optional) is
@@ -689,6 +690,16 @@ def _weighted_total(levels: Levels) -> float | None:
     return sum(w * v for w, (_p, v) in zip(weights, levels, strict=False)) / sum(weights)
 
 
+def _span(levels: Levels, depth: int) -> float | None:
+    """Return the span from the touch price to the `depth`-th level's.
+
+    The last level's when the side has fewer; None for an empty side.
+    """
+    if not levels:
+        return None
+    return abs(levels[min(depth, len(levels)) - 1][0] - levels[0][0])
+
+
 def _pct(imbalance: float | None) -> float | None:
     return None if imbalance is None else imbalance * 100.0
 
@@ -723,6 +734,8 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
             "ask_total": at,
             "difference": abs(bt - at) if both else None,
             "total_depth": bt + at if both else None,
+            "span_bid": _span(bids, depth),
+            "span_ask": _span(asks, depth),
         }
     touch = None
     if bids and asks:
@@ -903,7 +916,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
     the venue's end second: now while its book is live, else its last value's), its live value,
     zone and side word held OF_ZONE_DWELL_SEC, the seconds the zone has held (held_open: at
     least that long, the zone standing since the first value known), the flat totals, the
-    sentence (withheld while the book is crossed), the touch and its flag, the flips
+    sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
     in two minutes, and the 2m and 5m lean series. `readout`: the newest; `points`: the readouts
     kept, (receive time,
     readout) oldest first; `ends`: venue -> its end time, None with no value.
@@ -952,6 +965,8 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                 "ask_text": shares_text(ask),
                 "difference_text": shares_text(snap.get("difference")),
                 "total_text": shares_text(snap.get("total_depth")),
+                "span_bid_text": price_text(snap.get("span_bid")),
+                "span_ask_text": price_text(snap.get("span_ask")),
                 "lean": {
                     name: {
                         "seconds": window,

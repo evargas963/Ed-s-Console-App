@@ -16,7 +16,6 @@ built here in its shape (no status is captured).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import threading
 from datetime import datetime
@@ -28,11 +27,11 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import live_price_rows
-import push_changes
 import server
 from option_contract import read_chain
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
+from tests.page_on_socket import pages
 from tests.real_chains import CRWD, TSLA
 from time_et import ET
 
@@ -411,17 +410,10 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
         )
         assert book["book_feed_label"] == "NOT LIVE"
 
-        async def told():
-            push_changes.bind(asyncio.get_running_loop())
-            page = push_changes.subscribe("$SPX")
-            try:
-                server.refresh_not_live_pages(at)
-                return await push_changes.next_changes(page, 0.3)
-            finally:
-                push_changes.unsubscribe(page)
-                push_changes.bind(None)
-
-        assert asyncio.run(told()) == {push_changes.LEVELS}
+        with pages() as served:
+            page = served.open("$SPX", "levels")
+            server.refresh_not_live_pages(at)
+            assert served.told(page, 0.3) == {"levels"}
         lmp.record_from_level_one_equity(
             "$SPX", {"key": "$SPX", "LAST_PRICE": -999.0}, received_ts=spx_close["ts_recv"]
         )

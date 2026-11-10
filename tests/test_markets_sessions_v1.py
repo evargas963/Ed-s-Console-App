@@ -25,6 +25,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
+from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import markets_message
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
@@ -158,6 +159,25 @@ def test_the_label_follows_schwabs_windows():
     assert label(_et("2026-11-26 12:00")) == time_et.CLOSED  # Thanksgiving
     assert label(_et("2027-10-09 12:00")) == time_et.UNKNOWN  # beyond what Schwab answers
     assert time_et.closed_since(_et("2026-10-10 12:00")) == _et("2026-10-09 20:00")
+
+
+def test_every_beat_to_the_page_carries_the_session_at_that_beat():
+    """The header's session is the daemon's status on each beat of the page's socket.
+
+    A page open across 07:00 ET is sent Closed, then Pre-Market on the next beat.
+    """
+    clock = iter(_et(t).timestamp() for t in ("2026-10-07 06:59", "2026-10-07 07:00"))
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
+    recorded: list[dict] = []
+    ui = LiveUiServer(
+        daemon.status,
+        {},
+        panels=server.PAGE_PANELS,
+        record_heartbeat=recorded.append,
+        clock=lambda: next(clock),
+    )
+    assert [ui.beat()["session"], ui.beat()["session"]] == [time_et.CLOSED, time_et.PRE_MARKET]
+    assert [hb["session"] for hb in recorded] == [time_et.CLOSED, time_et.PRE_MARKET]
 
 
 def test_the_option_sessions_are_the_windows_schwab_sent():

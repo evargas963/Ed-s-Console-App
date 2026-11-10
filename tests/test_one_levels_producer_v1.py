@@ -7,7 +7,7 @@ computation's).
 
 Through the real code: the daemon's status (live_market_plane.record_feed_heartbeat), its pushed
 option messages applied by the console (streaming._ingest_pushed), its price row built from the
-quote in its plane (live_market_plane), the console's pages (push_changes), the pricing thread, the
+quote in its plane (live_market_plane), the console's pages (live_ui), the pricing thread, the
 chain captures in the console's database. Real data: CRWD's 2026-10-16 chain captured 2026-10-07
 10:38:40 ET (tests/real_chains.py), valued at its capture.
 STAND-INS (named): each streamed value of a CRWD contract (no CRWD contract was streamed in a
@@ -27,7 +27,6 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-import push_changes
 import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
@@ -38,6 +37,7 @@ from terrain_engine import compute_terrain
 from terrain_read import GAMMA_FLIP_TRUSTED, build_terrain_read
 from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
+from tests.page_on_socket import Pages
 from tests.real_chains import CRWD
 from time_et import ET
 
@@ -62,30 +62,23 @@ def _clean():
     """Reset to this test's state only.
 
     No page of its own open, no daemon status, no streamed value, no price row, no levels of TK;
-    the console's push delivers to no event loop.
+    the test's own socket server, which it opens its pages on.
     """
-    pages: list = []
-    push_changes.bind(None)
+    served = Pages()
     ofls.clear_all_live_state()
     lmp.record_feed_down()
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
     with server._chains_waiting_lock:
         server._chains_delivered.discard(TK)
-    yield pages
-    for _tk, page in pages:
-        push_changes.unsubscribe(page)
+    yield served
+    served.stop()
     ofls.clear_all_live_state()
     lmp.record_feed_down()
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-
-
-def _view(pages: list, tk: str = TK) -> None:
-    """Open a page on `tk` (its /api/changes connection)."""
-    pages.append((tk, push_changes.subscribe(tk)))
 
 
 def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float = _T) -> None:
@@ -196,7 +189,7 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     """
     _daemon()
     snap = _put_chain()
-    body = server.terrain(TK, time_et.now(), {})
+    body = server.terrain(TK, time_et.now())
     assert json.loads(json.dumps(body)) == body
     assert snap.gamma_flip is not None
     assert body["call_wall"] == snap.call_wall and body["gamma_flip"] == snap.gamma_flip
@@ -465,12 +458,12 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     snap = server._publish_levels(TK, _RECORDS, _T, chain_spot=(_SPOT, _T), now=valued)
     _daemon(at=time_et.now())  # live now, as the routes read it
     every = {"scope": "all", "centre": None, "shift": 0}
-    charm = server.charm_by_strike(TK, time_et.now(), every)
+    charm = server.strike_bars("charm_rows", TK, time_et.now(), every)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(
         1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None
     )
-    vanna = server.vanna_by_strike(TK, time_et.now(), every)
+    vanna = server.strike_bars("vanna_rows", TK, time_et.now(), every)
     assert vanna["available"] and vanna["rows"]
 
 
@@ -498,7 +491,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     _put_chain()
     published = _cached().served()
     _daemon(price=None)  # the price is no longer live
-    out = server.terrain(TK, time_et.now(), {})
+    out = server.terrain(TK, time_et.now())
     for k in ("regime", "net_gex_at_spot", "call_wall", "headline"):
         assert out[k] == published[k], k
     for k in ("call_wall_state", "call_wall_lean", "flip_relation", "pin_candidate"):
@@ -507,7 +500,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     assert out["priced_at_spot_source"] == server.SPOT_SOURCE_PLANE
     assert out["spot"] is None and "spot_state" not in out
     _publish(_RECORDS, _T, chain_spot=(None, None))  # the next chain: no spot
-    out = server.terrain(TK, time_et.now(), {})
+    out = server.terrain(TK, time_et.now())
     assert (
         out["regime"] == "UNAVAILABLE"
         and out["call_wall"] is None
@@ -545,7 +538,7 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
     """
     _daemon()
     _put_chain()
-    _view(_clean)
+    _clean.open(TK)
     gate = _busy()
     try:
         server._on_stream_tick(_A)  # an option of TK

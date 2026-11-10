@@ -8,8 +8,6 @@ BID_PRICE/ASK_PRICE/TOTAL_VOLUME.
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
 import server
 from app.options.order_flow import streaming as S
 from app.options.order_flow.engine import read_book
@@ -198,16 +196,18 @@ def test_an_options_book_never_leaks_into_the_underlyings_heatmap():
 
 
 def test_a_window_outside_the_books_kept_is_refused_never_replaced():
-    """The route answers any window above 0 up to the books the console keeps (240 minutes).
+    """The panel answers any window above 0 up to the books the console keeps (240 minutes).
 
-    A longer one, 0 or less, or one that is not a number, is refused (422), never answered for a
+    A longer one, 0 or less, or one that is not a number, is refused, never answered for a
     window the page did not ask.
     """
-    client = TestClient(server.app)
 
-    def status(minutes) -> int:
-        url = f"/api/order-flow/book-heatmap?ticker={SYM}&venue=NASDAQ_BOOK&minutes={minutes}"
-        return client.get(url).status_code
+    def answered(minutes) -> bool:
+        try:
+            server.bookmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
+        except ValueError:
+            return False
+        return True
 
-    assert [status(m) for m in (0.5, 15, 60, 120, 240)] == [200, 200, 200, 200, 200]
-    assert [status(m) for m in (241, 0, -60, "abc")] == [422, 422, 422, 422]
+    assert [answered(m) for m in (0.5, 15, 60, 120, 240)] == [True, True, True, True, True]
+    assert [answered(m) for m in (241, 0, -60, "abc")] == [False, False, False, False]

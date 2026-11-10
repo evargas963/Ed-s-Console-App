@@ -1,7 +1,7 @@
 'use strict';
 /**
  * The Vanna and Charm tabs draw the panels the program sends on the page's socket (/ws:
- * server.vanna_by_strike, server.charm_by_strike): while a tab is on, the subscribe names its
+ * server.strike_bars): while a tab is on, the subscribe names its
  * panel and the window it asks (the scope and the operator's pan), and the page asks no route
  * for it. The bars are the producer's own answer for CRWD's real 2026-10-07 chain at Schwab's
  * CRWD price (fixtures/vanna_charm_panels_crwd.json, held to the producer by
@@ -13,7 +13,7 @@ const { served, priceRow } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 const PANELS = require('./fixtures/vanna_charm_panels_crwd.json');
 
-// server.vanna_by_strike's answer for a ticker with no levels published yet
+// server.strike_bars' answer for a ticker with no levels published yet
 const NO_LEVELS = { available: false, reason: 'no levels published for this ticker yet' };
 const AUTO = { scope: 'auto', centre: null, shift: 0 };
 
@@ -141,8 +141,8 @@ test.describe('Vanna and Charm by strike: the panels on the page\'s socket', () 
     const s = await open(page, 'vanna', answerCrwd);
     await expect.poll(() => strikes(page, '#vnBody')).toEqual(sentStrikes('vanna'));
     await page.evaluate(() => window.EdShell.setSubview('gamma'));
-    // the Gamma tab's own panels (Key Levels, GEX by Strike, the heatmap) in its place
-    await expect.poll(() => s.last().panels).toEqual({ expiries: {}, 'terrain:levels': {}, 'strikes:gbs': AUTO,
+    // the Gamma tab's own panels (Key Levels, GEX by Strike, the heatmap, the Options Flow tape) in its place
+    await expect.poll(() => s.last().panels).toEqual({ expiries: {}, 'terrain:levels': {}, 'strikes:gbs': AUTO, tape: {},
       surface: Object.assign({}, AUTO, { cols: expect.any(Number), expiry: null }) });
   });
 });

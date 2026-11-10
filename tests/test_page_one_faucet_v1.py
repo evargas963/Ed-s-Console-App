@@ -22,12 +22,12 @@ from pathlib import Path
 
 import pytest
 from fastapi.routing import APIRoute
-from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 import time_et
+from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from option_contract import read_chain
@@ -107,45 +107,27 @@ def held():
     _forget()
 
 
-#: each page panel that serves a price (server.PAGE_PANELS), with a reader's parameters
-PRICED_PANEL_PARAMS = {
-    "terrain": {},
-    "strikes": AUTO,
-    "surface": {**AUTO, "cols": None, "expiry": None},
-    "chain": {"expiry": EXPIRY},
-    "levels": {"tf": "1"},
-}
+#: a reader's parameters for every page panel (server.PAGE_PANELS)
+ASKED = {**AUTO, "cols": None, "expiry": EXPIRY, "tf": "1", "limit": 1500, "minutes": 60}
+ASKED["venue"] = "NYSE_BOOK"
 
 
-@pytest.mark.usefixtures("held")
-def test_every_route_and_panel_serves_the_live_spot_and_names_the_computed_one():
-    """Every GET route that answers a ticker, found from the app, and every page panel.
+def test_every_route_and_panel_serves_the_live_spot_and_names_the_computed_one(held):
+    """Every page panel, found from the app (no GET route answers a ticker).
 
-    A route or panel that serves a price serves `spot`, the live price, and `priced_at_spot`, the
-    price the payload was computed at.
+    A panel that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
+    payload was computed at.
     """
     now = time_et.now()
-    for kind, params in PRICED_PANEL_PARAMS.items():
-        body = json.loads(json.dumps(server.PAGE_PANELS[kind](TK, now, params), default=str))
-        assert (body["spot"], body["priced_at_spot"]) == (LIVE, PUBLISHED), kind
-    client = TestClient(server.app)
-    paths = [
-        r.path
-        for r in server.app.routes
-        if isinstance(r, APIRoute)
-        and "GET" in r.methods
-        and "ticker" in inspect.signature(r.endpoint).parameters
-        and not inspect.iscoroutinefunction(r.endpoint)
-    ]  # /api/changes is a stream
-    served, refused = {}, {}
-    for path in paths:
-        answer = client.get(path, params={"ticker": TK, "expiry": EXPIRY, "venue": "NYSE_BOOK"})
-        body = answer.json()
-        if answer.status_code != 200:
-            refused[path] = answer.status_code
-        elif {"spot", "priced_at_spot"} & set(body):
-            served[path] = (body.get("spot"), body.get("priced_at_spot"))
-    assert refused == {}
+    served = {}
+    for kind, panel in server.PAGE_PANELS.items():
+        contract = next(iter(held.contract_symbols))
+        body = panel(Asked(TK, now, {**ASKED, "contract": contract}))
+        if {"spot", "priced_at_spot"} & set(body):
+            served[kind] = (body.get("spot"), body.get("priced_at_spot"))
+    assert {"terrain", "strikes", "surface", "chain", "levels"} <= set(served)
+    routes = [r for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods]
+    assert [r.path for r in routes if "ticker" in inspect.signature(r.endpoint).parameters] == []
     assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
 
 
@@ -203,7 +185,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
     Not the browser's clock (it counted days in UTC, a day off after 7 PM Central).
     """
-    body = server.expiries(TK, time_et.now(), {})
+    body = server.expiries(TK, time_et.now())
     assert body["expiries"] == [EXPIRY]
     assert body["dte"] == {EXPIRY: _CONTRACTS[0]["daysToExpiration"]}
     # the dropdown's texts are served (the page reformatted the date itself)
@@ -213,7 +195,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
-    body = server.expiries("ZZNOLEVELS", time_et.now(), {})
+    body = server.expiries("ZZNOLEVELS", time_et.now())
     assert (
         body["expiries"] is None  # unknown, never an empty list standing for it
         and body["reason"]

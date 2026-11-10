@@ -1,13 +1,10 @@
-"""/api/levels and the strikes panel: what the level routes and panels serve."""
+"""The levels and strikes panels: what they serve."""
 
 from __future__ import annotations
 
-import asyncio
-import threading
 from datetime import datetime as _dt
 
 import live_market_plane as lmp
-import push_changes
 import server as srv
 import time_et
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, DAILY_CANDLE_BASIS
@@ -25,6 +22,7 @@ from tests.feed_live_helper import (
     price_history,
     stream_daemon_bars,
 )
+from tests.page_on_socket import pages
 from tests.real_chains import SPY_0DTE as C
 from time_et import ET
 
@@ -78,7 +76,7 @@ def _rth(rows: list[dict], tk: str, day: str) -> list[dict]:
     return [r for d, r in at if d.date().isoformat() == day and 570 <= d.hour * 60 + d.minute < 960]
 
 
-# ── RC-213 B1: /api/levels read-adapter contract (mission levels-faucet-v1) ──────────
+# ── the levels panel's contract ──────────────────────────────────────────────────────
 
 
 def test_api_levels_b1_contract_single_session_prior_day():
@@ -278,25 +276,11 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
 
         # a minute's bars arrive together (SPY and TSLA): each write is pushed as `liquidity` and
         # each ticker's levels published from its bars as `levels`, to the page open on it (the
-        # push itself, on a running event loop)
-        loop = asyncio.new_event_loop()
-        runner = threading.Thread(target=loop.run_forever, daemon=True)
-        runner.start()
-        push_changes.bind(loop)
-        pages = [(t, push_changes.subscribe(t)) for t in (tk, other)]
-        try:
+        # push itself, on the socket server's loop)
+        with pages() as served:
+            shown = {t: served.open(t, "liquidity", "levels") for t in (tk, other)}
             srv._write_streamed_bars([pushed[t] for t in (tk, other)], now)
-            drained = threading.Event()
-            loop.call_soon_threadsafe(drained.set)
-            assert drained.wait(5)
-            told = {t: set(page.kinds) for t, page in pages}
-        finally:
-            for _t, page in pages:
-                push_changes.unsubscribe(page)
-            push_changes.bind(None)
-            loop.call_soon_threadsafe(loop.stop)
-            runner.join(5)
-            loop.close()
+            told = {t: served.told(page, 5) for t, page in shown.items()}
         assert told == {tk: {"liquidity", "levels"}, other: {"liquidity", "levels"}}
         served = srv.levels_payload(tk, "1", now)
         assert served["generation"] is not None

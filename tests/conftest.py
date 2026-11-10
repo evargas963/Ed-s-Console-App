@@ -24,7 +24,6 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane
-import push_changes
 from db_authority import canonical_console_db_path, canonical_stream_db_path
 from time_et import ET, now, record_markets, session
 
@@ -157,20 +156,3 @@ def tracked_files() -> list[str]:
         check=True,
     ).stdout
     return sorted(p for p in out.split("\0") if p)
-
-
-@pytest.fixture
-def view(monkeypatch):
-    """Open the page on tickers.
-
-    `view("SPY")` opens its /api/changes connection (the one viewing signal) as the page does; the
-    test starts with no page open and ends with them closed. No event loop is bound, so a change
-    is recorded for the page but not delivered (another test's loop may be closed).
-    """
-    monkeypatch.setattr(push_changes, "_open", [])
-    monkeypatch.setattr(push_changes, "_loop", None)
-
-    def open_(*tickers):
-        return [push_changes.subscribe(tk) for tk in tickers]
-
-    return open_

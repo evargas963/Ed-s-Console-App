@@ -76,7 +76,6 @@ from websockets.exceptions import ConnectionClosed
 
 import live_market_plane as lmp
 import live_price_rows
-import push_changes
 import runtime_layout
 import server
 import time_et
@@ -119,6 +118,7 @@ from time_et import (
     ct_label,
     option_market_open,
     options_closed_at,
+    session_label,
     sessions_since,
 )
 
@@ -890,6 +890,7 @@ class Daemon:
         """
         return {
             "ts": now,
+            "session": session_label(datetime.fromtimestamp(now, ET)),
             # open while a stream exists and Schwab sent a frame within DEAD_SEC
             "schwab_socket_open": self.stream is not None
             and now - self.stream.last_frame_ts < DEAD_SEC,
@@ -1329,7 +1330,6 @@ async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket
     log.info("console: serving the pages on http://%s:%s", host, port)
     serving = asyncio.create_task(web.serve(sockets=[sock]), name="console web server")
     await asyncio.wait({serving, asyncio.ensure_future(stop.wait())}, return_when="FIRST_COMPLETED")
-    push_changes.close_all()  # each open page's stream ends, so the server need not wait on it
     web.should_exit = True
     await serving
 

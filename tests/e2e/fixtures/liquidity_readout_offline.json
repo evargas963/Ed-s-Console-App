@@ -407,6 +407,8 @@
       "pct_text": "-14%",
       "sentence": "To balance, market makers buy 440 shares.",
       "side_word": "OFFER HEAVY",
+      "span_ask_text": "0.00",
+      "span_bid_text": "0.00",
       "total_depth": 1160.0,
       "total_text": "1,160",
       "zone": "OFFER_HEAVY"
@@ -628,6 +630,8 @@
       "pct_text": "-12%",
       "sentence": "To balance, market makers buy 560 shares.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.03",
+      "span_bid_text": "0.03",
       "total_depth": 4000.0,
       "total_text": "4,000",
       "zone": "BID_HEAVY"
@@ -849,6 +853,8 @@
       "pct_text": "-7%",
       "sentence": "Nearly balanced \u2014 320 shares would even the book.",
       "side_word": "BALANCED",
+      "span_ask_text": "0.30",
+      "span_bid_text": "0.42",
       "total_depth": 4400.0,
       "total_text": "4,400",
       "zone": "BALANCED"
@@ -1070,6 +1076,8 @@
       "pct_text": "-15%",
       "sentence": "Nearly balanced \u2014 320 shares would even the book.",
       "side_word": "BALANCED",
+      "span_ask_text": "0.30",
+      "span_bid_text": "0.42",
       "total_depth": 4400.0,
       "total_text": "4,400",
       "zone": "BALANCED"
@@ -1313,6 +1321,8 @@
       "pct_text": "+41%",
       "sentence": "To balance, market makers sell 70 shares.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "0.00",
+      "span_bid_text": "0.00",
       "total_depth": 150.0,
       "total_text": "150",
       "zone": "BID_HEAVY"
@@ -1534,6 +1544,8 @@
       "pct_text": "+23%",
       "sentence": "To balance, market makers sell 70 shares.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "6.86",
+      "span_bid_text": "6.81",
       "total_depth": 310.0,
       "total_text": "310",
       "zone": "BID_HEAVY"
@@ -1755,6 +1767,8 @@
       "pct_text": "+25%",
       "sentence": "To balance, market makers sell 130 shares.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "14.87",
+      "span_bid_text": "15.05",
       "total_depth": 530.0,
       "total_text": "530",
       "zone": "BID_HEAVY"
@@ -1976,6 +1990,8 @@
       "pct_text": "+30%",
       "sentence": "To balance, market makers sell 130 shares.",
       "side_word": "BID HEAVY",
+      "span_ask_text": "14.87",
+      "span_bid_text": "15.05",
       "total_depth": 530.0,
       "total_text": "530",
       "zone": "BID_HEAVY"
@@ -2219,6 +2235,8 @@
       "pct_text": "-14%",
       "sentence": "Nearly balanced \u2014 440 shares would even the book.",
       "side_word": "BALANCED",
+      "span_ask_text": "0.00",
+      "span_bid_text": "0.00",
       "total_depth": 1160.0,
       "total_text": "1,160",
       "zone": "BALANCED"
@@ -2440,6 +2458,8 @@
       "pct_text": "-12%",
       "sentence": "Nearly balanced \u2014 560 shares would even the book.",
       "side_word": "BALANCED",
+      "span_ask_text": "0.03",
+      "span_bid_text": "0.03",
       "total_depth": 4000.0,
       "total_text": "4,000",
       "zone": "BALANCED"
@@ -2661,6 +2681,8 @@
       "pct_text": "-7%",
       "sentence": "Nearly balanced \u2014 320 shares would even the book.",
       "side_word": "BALANCED",
+      "span_ask_text": "0.30",
+      "span_bid_text": "0.42",
       "total_depth": 4400.0,
       "total_text": "4,400",
       "zone": "BALANCED"
@@ -2882,6 +2904,8 @@
       "pct_text": "-15%",
       "sentence": "Nearly balanced \u2014 320 shares would even the book.",
       "side_word": "BALANCED",
+      "span_ask_text": "0.30",
+      "span_bid_text": "0.42",
       "total_depth": 4400.0,
       "total_text": "4,400",
       "zone": "BALANCED"

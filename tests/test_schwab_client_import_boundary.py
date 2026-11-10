@@ -82,6 +82,8 @@ _CONSOLE_WALK = (
 import json, sys
 from pathlib import Path
 import server
+import time_et
+from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import chain_messages
 from fastapi.testclient import TestClient
@@ -93,10 +95,13 @@ with TestClient(server.app) as client:
         ofs._ingest_pushed(topic, msg)
     server._chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
     for route in server.app.routes:
-        # /api/changes is an open-ended event stream (it reads only the push's own state)
-        if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path """
-    """and route.path != "/api/changes":
-            client.get(route.path, params={"ticker": "SPY", "contract": "SPY   261120C00875000"})
+        if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path:
+            client.get(route.path)
+    asked = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
+    asked.update(tf="1", limit=1500, minutes=60, venue="NYSE_BOOK")
+    asked["contract"] = "SPY   261120C00875000"
+    for panel in server.PAGE_PANELS.values():
+        panel(Asked("SPY", time_et.now(), asked))
 assert server.published_levels("SPY") is not None, """
     """"the daemon's chain was priced"
 """
@@ -107,7 +112,7 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
     """The capture daemon is the only Schwab client (DATA_FLOW decision 1).
 
     The console started in a fresh interpreter with what a live client would use (a token file and
-    credentials that are not placeholders), every one of its GET routes asked for a ticker, and a
+    credentials that are not placeholders), every one of its GET routes and page panels asked, and a
     chain the daemon fetched priced through it: nothing leaves for Schwab. Its only way out is
     HTTPS_PROXY, a local socket that records every connection. Before 2026-10-01 the console
     fetched every board ticker's chain itself (the 429s of that day came from it and the daemon

@@ -1,6 +1,6 @@
 """The price levels: one snapshot per bar generation.
 
-/api/levels and /api/liquidity-snapshot serve its values under the same ids.
+The levels and liquidity panels serve its values under the same ids.
 """
 
 from __future__ import annotations
@@ -249,13 +249,10 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute():
 
 
 def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_ids():
-    """ONE-09 (2026-09-28 audit): /api/liquidity-snapshot kept its own path.
+    """The liquidity panel serves the one snapshot.
 
-    That path was checkpoint snapshots (premarket, opening, midday, afternoon) and a past-date
-    replay that recomputed the prior day, overnight, VWAP and value area from bars, and a
-    default ("premarket") that served those under "@checkpoint" ids. It serves the one snapshot
-    now: every level it shows is the /api/levels value under the same id. Stand-in: ticker
-    ZZP2B carries the tape.
+    Every level it shows is the levels panel's value under the same id. Stand-in: ticker ZZP2B
+    carries the tape.
     """
     noon = datetime(2026, 10, 5, 12, 0, tzinfo=ET)
     try:
@@ -266,7 +263,7 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
         srv._bars.pop("ZZP2B", None)
         srv._series.pop(("ZZP2B", "1d"), None)
     copies = {"raw_levels", "raw_levels_used", "as_of_cutoff_et", "level_semantic_scope"}
-    assert not copies & set(liq), "the snapshot's values are served once, by /api/levels"
+    assert not copies & set(liq), "the snapshot's values are served once, by the levels panel"
     used = {s["label"]: s["value"] for z in liq["zones"] for s in z["source_levels"]}
     assert used and set(used) <= set(PHASE2A_LEVEL_IDS), used
     for tag, value in used.items():

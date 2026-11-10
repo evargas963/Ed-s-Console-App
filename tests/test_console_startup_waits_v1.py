@@ -121,10 +121,10 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
 
 
 def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_path):
-    """A page open on the console when the program stops: the stop ends its stream itself.
+    """A page open on the console when the program stops: the stop ends its socket itself.
 
-    The page's /api/changes stream, as the browser holds it: the stop ends that stream itself,
-    so the web server closes at once, not after its 10 s graceful timeout, and no stream is
+    The page's one socket (/ws), as the browser holds it: the stop ends that connection itself,
+    so the web server closes at once, not after its 10 s graceful timeout, and no connection is
     cancelled (each was logged as a traceback).
     """
     windows = sys.platform == "win32"
@@ -151,9 +151,13 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
         assert answer == ports, (answer, "".join(lines))
         page.settimeout(30)
         page.connect(("127.0.0.1", pages))
-        page.sendall(b"GET /api/changes?ticker=SPY HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        page.sendall(
+            b"GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+            b"Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+            b"Sec-WebSocket-Version: 13\r\n\r\n"
+        )
         got = b""
-        while b"event: session" not in got:  # the page's stream is open: its first event
+        while b" 101 " not in got:  # the page's socket is open: the server switched protocols
             chunk = page.recv(4096)
             assert chunk, got
             got += chunk

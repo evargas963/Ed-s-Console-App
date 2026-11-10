@@ -17,11 +17,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import live_market_plane as lmp
 import live_price_rows
-import push_changes
 import schwab_client as sc
 import server as srv
 import time_et
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
+from tests.page_on_socket import Pages
 
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
@@ -169,9 +169,8 @@ def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
     (a page open on one, the pricing thread held while the ticks arrive, the queue read as it
     stands).
     """
-    loop = push_changes._loop
-    push_changes.bind(None)
-    page = push_changes.subscribe("ZZVIEW")
+    served = Pages()
+    served.open("ZZVIEW")
     gate = threading.Event()
     srv._chain_pricing.submit(gate.wait, 10)
     try:
@@ -182,8 +181,7 @@ def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
     finally:
         gate.set()
         srv._chain_pricing.submit(lambda: None).result(timeout=10)
-        push_changes.unsubscribe(page)
-        push_changes.bind(loop)
+        served.stop()
     assert waiting == {
         "ZZNOTVIEWED": (srv.REPRICE, None, None, None),
         "ZZVIEW": (srv.REPRICE, None, None, None),

@@ -50,6 +50,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
+from datetime import datetime
 from typing import override
 
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -116,6 +118,20 @@ def kind_of(name: str) -> str:
     return name.partition(":")[0]
 
 
+@dataclass(frozen=True)
+class Asked:
+    """What a page asks one panel for: its selected ticker's key, the time, its parameters."""
+
+    ticker: str
+    now: float
+    params: dict
+
+    @property
+    def at(self) -> datetime:
+        """Return `now` as the Eastern time the levels' producers take."""
+        return datetime.fromtimestamp(self.now, time_et.ET)
+
+
 class _Client:
     __slots__ = ("ws", "symbols", "pending", "identity", "ticker", "shown", "panels", "wake")
 
@@ -145,7 +161,7 @@ class LiveUiServer:
         priced: tuple = (),
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
-        self.panels = panels  # each panel's producer, (ticker, now, parameters) -> its body
+        self.panels = panels  # each panel's producer, what the page asked (Asked) -> its body
         self.priced = priced  # the kinds whose body is computed from the ticker's live price
         self.clock = clock  # the time each row is finished at, and each beat
         self.record_heartbeat = (
@@ -212,19 +228,18 @@ class LiveUiServer:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
             now = self.clock()
-            kinds, c.panels = c.panels, set()
-            for name in sorted(kinds & c.shown.keys()):
-                ticker = c.ticker
-                body = await self._produce(name, ticker, now, c.shown[name])
-                await self._send(c, {"type": name, "ticker": ticker, **body})
-            now = self.clock()
             syms, c.pending = c.pending, set()
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
-            if rows:
+            if rows:  # the prices first: no panel's work holds a price
                 await self._send(c, {"type": "quotes", "rows": rows})
+            kinds, c.panels = c.panels, set()
+            for name in sorted(kinds & c.shown.keys()):
+                asked = Asked(c.ticker, self.clock(), c.shown[name])
+                body = await self._produce(name, asked)
+                await self._send(c, {"type": name, "ticker": asked.ticker, **body})
 
-    async def _produce(self, name: str, ticker: str, now: float, params: dict) -> dict:
-        """Return panel `name`'s body: its kind's producer for `ticker` at `now` with `params`.
+    async def _produce(self, name: str, asked: Asked) -> dict:
+        """Return panel `name`'s body: its kind's producer, given what the page asked.
 
         On a worker thread, as a route's read ran: a producer that waits on a lock the pricing
         thread holds, or works a while, never holds the beat or another page. A producer that
@@ -232,9 +247,9 @@ class LiveUiServer:
         a route's 500 was; the page's other panels and its prices keep coming.
         """
         try:
-            return await asyncio.to_thread(self.panels[kind_of(name)], ticker, now, params)
+            return await asyncio.to_thread(self.panels[kind_of(name)], asked)
         except Exception as e:
-            log.exception("live ui: panel %s of %s not produced", name, ticker)
+            log.exception("live ui: panel %s of %s not produced", name, asked.ticker)
             return {"failed": f"the program could not produce this panel: {type(e).__name__}: {e}"}
 
     async def _read(self, c: _Client) -> None:
@@ -265,12 +280,16 @@ class LiveUiServer:
             c.identity = identity  # what each asked-for symbol is, before its rows
             c.pending = set(keys)  # snapshot: the current row for each, now
             selected, shown = req.get("ticker"), req.get("panels")
+            ticker_was, shown_was = c.ticker, c.shown
             c.ticker = None
             c.shown = {}
             if isinstance(selected, str) and selected.strip():
                 c.ticker = ticker_storage_key(selected)
                 c.shown = self._shown(shown)
-            c.panels = set(c.shown)  # snapshot: each shown panel's current body, now
+            if c.ticker != ticker_was:
+                shown_was = {}
+            # snapshot: the current body of each panel newly shown or asked with other parameters
+            c.panels |= {n for n, p in c.shown.items() if n not in shown_was or shown_was[n] != p}
             c.wake.set()
 
     def _shown(self, shown) -> dict[str, dict]:
@@ -347,6 +366,14 @@ def changed(state, ticker: str, *kinds: str) -> None:
     if prices is not None:
         for kind in kinds:
             prices.loop.call_soon_threadsafe(prices.mark_changed, ticker, kind)
+
+
+def selected(state) -> set[str]:
+    """Return the tickers (keys) the open pages have selected; callable from any thread."""
+    prices = state.prices
+    if prices is None:
+        return set()
+    return {c.ticker for c in list(prices.clients) if c.ticker is not None}
 
 
 async def page_socket(ws: WebSocket) -> None:

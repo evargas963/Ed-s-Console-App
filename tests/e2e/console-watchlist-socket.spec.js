@@ -7,10 +7,11 @@ const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
 const { watchRequests } = require('./fixtures/settled');
 
-// one beat as the program sends it, the daemon's status reduced to its time and its watchlist
-// (null: none); `ts` on the program's clock, now unless given
-function feed(list, ts = Date.now() / 1000) {
-  return JSON.stringify({ type: 'feed', feed: list === null ? null : { ts: ts, watchlist: list } });
+// one beat as the program sends it, the daemon's status reduced to its time, its watchlist and
+// the session (Unknown: Schwab's /markets answer not held) (null: no status); `ts` on the
+// program's clock, now unless given
+function feed(list, ts = Date.now() / 1000, session = 'Unknown') {
+  return JSON.stringify({ type: 'feed', feed: list === null ? null : { ts: ts, watchlist: list, session: session } });
 }
 
 // Every frame sent on `socket` before this one has been taken by the page: a beat with no status,
@@ -30,6 +31,19 @@ test('the rail fills from the first beat on the socket, and nothing asks for the
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'QQQ']);
   await requests.settled();
   expect(gets).toEqual([]);
+});
+
+test('the header session follows each beat, while quotes keep arriving between them', async ({ page }) => {
+  let socket;
+  await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(feed(['SPY'], 1000, 'Closed')); });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#hSession')).toHaveText('CLOSED');
+  for (let i = 0; i < 5; i++) socket.send(JSON.stringify({ type: 'quotes', rows: [] }));
+  socket.send(feed(['SPY'], 1001, 'Pre-Market'));         // Schwab's pre-market window opened
+  await expect(page.locator('#hSession')).toHaveText('PRE');
+  await expect(page.locator('#hSession')).toHaveClass(/pre/);
+  socket.send(feed(['SPY'], 1002, 'RTH'));
+  await expect(page.locator('#hSession')).toHaveText('RTH');
 });
 
 test('before a beat has carried a list, the rail reads "-", never an empty list', async ({ page }) => {

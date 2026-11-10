@@ -29,6 +29,7 @@ import schwab_client as sc
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_push
+from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow import live_payload
 from app.options.order_flow.state import push_option_top
 from calibration.complete_chain_capture import ChainSweep, chain_messages, price_history_message
@@ -839,7 +840,7 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
 
 
 def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
-    """/api/levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the price row.
+    """The levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the price row.
 
     The daemon's price row: that trade is the spot with its trade time, the heartbeat live or
     not.
@@ -1090,8 +1091,8 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
 
 
 def _chart_bars(tk: str) -> list[dict]:
-    """Return the bars the chart reads: /api/bars1m through the app."""
-    return TestClient(server.app).get(f"/api/bars1m?ticker={tk}&limit=12000&tf=1").json()["bars"]
+    """Return the bars the chart reads: the `bars` panel's 1-minute bars."""
+    return server.bars(tk, time_et.now(), {"tf": "1", "limit": 12000})["bars"]
 
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────
@@ -1111,12 +1112,12 @@ sys.addaudithook(_record_connect)
 
 
 def test_d6_no_live_route_opens_a_database():
-    """No live GET route of the console opens a database.
+    """No live GET route and no panel of the console opens a database.
 
-    Every live GET route of the console, with both databases present and holding SPY's data
-    (the stream database written by the real writer: a captured SPY book and the captured option
-    quote; the console database), each database SQLite opens recorded: none opens one. The routes
-    are read from the app itself; /api/changes is the push stream (it never ends).
+    Every live GET route and every panel the page's socket sends (server.PAGE_PANELS), with both
+    databases present and holding SPY's data (the stream database written by the real writer: a
+    captured SPY book and the captured option quote; the console database), each database SQLite
+    opens recorded: none opens one. The routes are read from the app itself.
     """
     books = json.loads((FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
@@ -1151,7 +1152,6 @@ def test_d6_no_live_route_opens_a_database():
         and "GET" in r.methods
         and r.path.startswith("/api/")
         and "{" not in r.path
-        and r.path != "/api/changes"
     ]
     assert routes
     # what the page sends: every route must run, not answer "invalid request"
@@ -1181,8 +1181,19 @@ def test_d6_no_live_route_opens_a_database():
             refused.append(path)
         if opened:
             readers.append(path)
+    asked = {**params, "minutes": 60, "limit": 1500, "scope": "auto", "shift": 0}
+    asked.update(centre=None, cols=None, expiry=None)
+    for kind, panel in server.PAGE_PANELS.items():
+        opened = []
+        _watching.append(opened)
+        try:
+            panel(Asked("SPY", time_et.now(), asked))
+        finally:
+            _watching.remove(opened)
+        if opened:
+            readers.append(kind)
     assert not refused, f"routes the test did not run (invalid request): {refused}"
-    assert not readers, f"live routes that read the database: {readers}"
+    assert not readers, f"live routes and panels that read the database: {readers}"
 
 
 def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):

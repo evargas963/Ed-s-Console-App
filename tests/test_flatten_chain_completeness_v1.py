@@ -1,6 +1,6 @@
 """OPTIONS_CHAIN_COMPLETENESS_FIX_V1 — real vendor fractional books survive flatten/persist.
 
-Uses banked complete captures (strike_range=ALL) that match live /api/chain this session:
+Uses banked complete captures (strike_range=ALL) that match the live chain panel this session:
   CDE 2026-09-04  — $0.50 strikes (10.5 … 26.5)
   CRWD 2026-09-18 — $0.25/$0.75 plus $0.50 (38.75, 41.25, …)
 No ticker-specific product branch. Rebuilds the Schwab nested map from the flat capture, then runs

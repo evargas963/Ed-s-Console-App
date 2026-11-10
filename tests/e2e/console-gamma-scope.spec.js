@@ -34,14 +34,9 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, fron
 // the page's socket sends `panels` (a test may change one before the page opens); the strikes
 // panel is the window per scope each reader asks, its scope noted in `asked`
 async function intercept(page, asked, panels) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/bars1m')) body = BARS;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
   await routeWatchlist(page, ['SPY']);
   panels.terrain = TERRAIN;
+  panels.bars = BARS;
   panels.surface = SURFACE;
   panels.strikes = (key, params) => { asked.push(params.scope); return strikesFor(params.scope); };
   return mockPriceSocket(page, [], [], undefined, panels);

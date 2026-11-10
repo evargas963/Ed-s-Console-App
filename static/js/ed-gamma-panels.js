@@ -320,7 +320,7 @@
   }
 
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
-  // The program sends the panel on the page's socket (server.vanna_by_strike, charm_by_strike)
+  // The program sends the panel on the page's socket (server.strike_bars)
   // while its tab is on, for the window it asks (the scope and its pan), at once and on each
   // change of the levels; nothing received yet for the ticker on screen is '-'.
   function _mkStrikeBar(kind, hostId, srcId) {
@@ -435,7 +435,6 @@
     var d = new Date(tsRecv * 1000);
     return d.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
   }
-  function stillOfCtx(tk) { var host = document.getElementById('ofBody'); return isGamma() && !!host && ticker() === tk; }
   function renderOf(host, d) {
     var src = document.getElementById('ofSrc'); if (src) src.textContent = '';
     if (!d.available) {   // served: available exactly when rows were found
@@ -469,16 +468,13 @@
       '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
       '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead><tbody>' + body + '</tbody></table>';
   }
-  function loadOfImpl(tk, signal) {
-    var host = document.getElementById('ofBody');
-    if (!stillOfCtx(tk)) return;
-    var G = window.EdL1SseGuards;
-    return G.show(G.readJson('/api/options/tape?ticker=' + encodeURIComponent(tk), signal), '/api/options/tape',
-      function (d) { if (stillOfCtx(tk)) renderOf(host, d); },
-      function (words) { if (stillOfCtx(tk)) renderOf(host, { available: false, reason: words }); });
-  }
-  var _ofLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadOfImpl(ticker(), signal); });
-  function loadOf() { if (isGamma()) _ofLoader.trigger(ticker()); }
+  // the `tape` panel (server.tape) on the page's socket, at once and with each streamed quote
+  function loadOf() { window.EdShell.showPanel('tape', isGamma() ? {} : null); }
+  document.addEventListener('ed:panel', function (e) {
+    var d = e.detail, host = document.getElementById('ofBody');
+    if (d.type !== 'tape' || !host || !isGamma()) return;
+    renderOf(host, d.failed != null ? { available: false, reason: d.failed } : d);
+  });
 
   // ---------- events ----------
   function loadAll() { loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures(); loadOf(); }
@@ -487,7 +483,6 @@
   document.addEventListener('ed:view', loadAll);
   // a new scope is a new window: every per-strike panel re-reads it from the server
   document.addEventListener('ed:scope', function () { loadGbs(); loadVanna(); loadCharm(); });
-  document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') loadOf(); });
   document.addEventListener('ed:strike', function (e) {
     var det = e.detail || {};
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight

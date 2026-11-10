@@ -5,7 +5,7 @@ page is repriced for as long as the page has it (question 2: the screen shows it
 promptly).
 
 Through the real code: the daemon's status and price row as the console holds them, the console's
-pages (push_changes), the levels producer, the routes. Real data: CRWD's captured chain
+pages (live_ui), the levels producer, the routes. Real data: CRWD's captured chain
 (tests/fixtures/real_crwd_complete_chain_quarter.json, 2026-09-02, spot 205.4), valued at its
 capture. STAND-INS (named): the live price after the capture (206.0), and the CRWD chain published
 under tickers that are and are not on the watchlist.
@@ -18,13 +18,13 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
-import push_changes
 import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from server import ticker_storage_key
 from tests.feed_live_helper import daemon_status
+from tests.page_on_socket import pages
 from time_et import ET
 
 _CRWD = json.loads(
@@ -123,12 +123,11 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(tk):
     """
     _call(tk)  # a route read alone: not viewed
     assert not server._gamma_surface_wanted(tk)
-    client = push_changes.subscribe(tk)  # /api/changes open on this ticker
-    try:
+    with pages() as served:
+        page = served.open(tk)  # the page's socket has this ticker selected
         assert server._gamma_surface_wanted(tk)
-    finally:
-        push_changes.unsubscribe(client)  # the page closed or changed ticker
-    assert not server._gamma_surface_wanted(tk)
+        served.close(page)  # the page closed or changed ticker
+        assert not server._gamma_surface_wanted(tk)
 
 
 @pytest.mark.usefixtures("published")
@@ -138,7 +137,7 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
 
     The chain basis, and ATR (from the bars, none here) absent, with no sentence in its place.
     """
-    t = server.terrain(ticker_storage_key(tk), time_et.now(), {})
+    t = server.terrain(ticker_storage_key(tk), time_et.now())
     assert t["chain_basis"] == CAPTURE_BASIS
     for horizon in ("daily", "weekly", "monthly"):
         assert t[f"atr_{horizon}"] is None and f"atr_{horizon}_reason" not in t, horizon
@@ -150,7 +149,7 @@ def test_with_no_levels_the_atr_is_absent():
 
     A ticker with no levels published still serves it (here absent, and no sentence in its place).
     """
-    t = server.terrain("ZZNOLEVELSATR", time_et.now(), {})
+    t = server.terrain("ZZNOLEVELSATR", time_et.now())
     assert t["atr_daily"] is None and "atr_daily_reason" not in t
 
 

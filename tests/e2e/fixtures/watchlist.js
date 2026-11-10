@@ -17,7 +17,8 @@ const socketed = new WeakSet();   // the pages whose socket a stand-in already a
 function beat(page, ws) {
   const send = () => {
     const list = lists.get(page);
-    if (list) ws.send(JSON.stringify({ type: 'feed', feed: { ts: Date.now() / 1000, watchlist: list.slice() } }));
+    // (`session`: the daemon's word while Schwab's /markets answer for today is not held)
+    if (list) ws.send(JSON.stringify({ type: 'feed', feed: { ts: Date.now() / 1000, watchlist: list.slice(), session: 'Unknown' } }));
   };
   send();
   const timer = setInterval(send, 1000);

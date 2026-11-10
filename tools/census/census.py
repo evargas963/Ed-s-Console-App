@@ -853,7 +853,6 @@ for f in [f for f in PAGE_ALL if f != "static/index.html"]:
 
 SERVING = (
     "server.py",
-    "push_changes.py",
     "live_market_plane.py",
     "liquidity_value_engine.py",
     "terrain_engine.py",

@@ -1,6 +1,6 @@
 /* Ed Console — Options/Gamma Chart view. PRESENTATION ONLY.
    On the one TradingView-style chart every chart in the console uses (ed-tv-chart.js): the price
-   (/api/bars1m, completed Schwab bars at the toolbar's timeframe), the flip and the walls (the `terrain:chart` panel on the page's socket) as level
+   (the `bars:chart` panel, completed Schwab bars at the toolbar's timeframe), the flip and the walls (the `terrain:chart` panel on the page's socket) as level
    lines, the live price (the header's price row), and the selected measure's per-strike rows
    (the socket's `strikes:chart` panel: GEX `today.all`, DEX and OI `measures`) as a profile on the price axis --
    bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
@@ -53,27 +53,20 @@
     return _chart;
   }
 
-  function okJson(r) { if (!r.ok) throw new Error(r.status); return r.json(); }
-  function nullp() { return null; }
-  function loadImpl(tk, signal) {
-    if (!isChart() || ticker() !== tk || !ensureChart()) return;
-    return fetch('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf],
-      { cache: 'no-store', signal: signal }).then(okJson).catch(nullp).then(function (bars) {
-      if (!isChart() || ticker() !== tk) return;
-      _last.bars = bars;
-      render();
-    });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  // the profile and the flip and walls: the `strikes:chart` (the Gamma scope's window, unpanned)
-  // and `terrain:chart` panels (server.strikes, server.terrain) the program sends on the page's
-  // socket while the chart is on, at once and each time the levels change
-  var PANELS = { 'strikes:chart': 'strikes', 'terrain:chart': 'terrain' };
+  // The bars at the toolbar's timeframe, the profile (the Gamma scope's window, unpanned) and the
+  // flip and walls: the `bars:chart`, `strikes:chart` and `terrain:chart` panels (server.bars,
+  // server.strikes, server.terrain) the program sends on the page's socket while the chart is on,
+  // at once and each time the bars or the levels change.
+  var PANELS = { 'bars:chart': 'bars', 'strikes:chart': 'strikes', 'terrain:chart': 'terrain' };
   function askPanels() {
     window.EdShell.showPanel('strikes:chart', isChart() ? window.EdShell.windowParams(null) : null);
     window.EdShell.showPanel('terrain:chart', isChart() ? {} : null);
   }
-  function load() { askPanels(); _loader.trigger(ticker()); }
+  function load() {
+    askPanels();
+    window.EdShell.showPanel('bars:chart',
+      isChart() && ensureChart() ? { tf: _tf, limit: window.EdTvChart.BARS_LIMIT[_tf] } : null);
+  }
   document.addEventListener('ed:panel', function (e) {
     var key = PANELS[e.detail.type];
     if (!key) return;
@@ -86,14 +79,14 @@
     var host = document.getElementById('chartBody');
     var P = c.palette(), barsD = _last.bars, sd = _last.strikes, t = _last.terrain;
     var prof = served(sd);
-    // each answer as served; the bars request that failed (null) draws nothing and is named,
-    // never drawn as empty; a panel not sent yet (undefined) draws nothing, and the program's
-    // words when it could not produce one (`failed`) are said
-    var words = barsD ? '' : 'the bars request failed for ' + ticker();
-    [sd, t].forEach(function (p) { if (p && p.failed != null) words = (words ? words + ' · ' : '') + p.failed; });
-    var bars = barsD ? barsD.bars : [];
+    // each panel as served; one not sent yet (undefined) draws nothing, and the program's words
+    // when it could not produce one (`failed`) are said, never drawn as empty
+    var words = '';
+    [barsD, sd, t].forEach(function (p) { if (p && p.failed != null) words = (words ? words + ' · ' : '') + p.failed; });
+    var okBars = barsD && barsD.failed == null;
+    var bars = okBars ? barsD.bars : [];
     var win = prof.rows.filter(function (r) { return r[1] != null; });   // the served window; unknown: nothing drawn
-    c.setBars(bars, barsD ? barsD.tf : _tf, window.EdShell.getState().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(bars, okBars ? barsD.tf : _tf, window.EdShell.getState().display || ticker(), okBars && barsD.last_bar && barsD.last_bar.label);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       prof.scale, _mode === 'dotmap' ? 'dots' : 'bars');
@@ -155,9 +148,6 @@
   document.addEventListener('ed:ticker', function () { _last = { bars: undefined, strikes: undefined, terrain: undefined }; load(); });
   document.addEventListener('ed:scope', askPanels);   // a new window: the profile's panel asks it
   document.addEventListener('ed:measure', function () { if (_chart && isChart() && _last.bars !== undefined) render(); });
-  document.addEventListener('ed:changed', function (e) {   // a new bar reloads the bars
-    if (e.detail.kind === 'liquidity') load();
-  });
   document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(window.EdShell.getState().selStrike == null ? null : Number(window.EdShell.getState().selStrike)); });
   bindModes();
   // read-only view for tests (e2e) -- never a control surface

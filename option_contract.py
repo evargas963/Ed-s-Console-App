@@ -3,7 +3,7 @@
 `read_contract` is the one reader of a chain contract's fields (Schwab's /chains contract, with
 the sweep's Greeks: the stream's or the quote's, schwab_client.flatten_chain_contracts and
 calibration.complete_chain_capture.ChainSweep). Every calculator, the console's carry rules, the
-gamma surface and /api/chain take the record; none reads the contract's fields again.
+gamma surface and the chain panel take the record; none reads the contract's fields again.
 `chain_row` is the record as the chain screens show it, under Schwab's own field names.
 """
 

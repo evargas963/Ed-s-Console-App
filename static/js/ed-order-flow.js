@@ -1,13 +1,11 @@
 /* Ed Console — Order Flow / "Book · DOM" subview. PRESENTATION ONLY.
-   Real L2 book microstructure for the UNDERLYING ticker itself (NASDAQ_BOOK/NYSE_BOOK), via
-   /api/order-flow/microstructure -- the SAME canonical app.options.order_flow.engine.
-   compute_book_microstructure the options Flow tab already reads (the route and the engine's
-   option-contract book call the one function). Reuses that
-   view's exact .fl-* CSS grammar so a book reads the same whether it's an option contract's
-   or the ticker's own -- one visual language, not a second one invented here.
+   Real L2 book microstructure for the UNDERLYING ticker itself (NASDAQ_BOOK/NYSE_BOOK): the
+   `book` panel on the page's socket, from the SAME app.options.order_flow.engine.
+   compute_book_microstructure the options Flow tab reads. Reuses that view's .fl-* CSS grammar
+   so a book reads the same whether it's an option contract's or the ticker's own.
 
-   The console streams the books of the ticker whose /api/changes connection is open (the page
-   opens it for its ticker); a book not yet arrived reads "No <venue> for <ticker>". */
+   The console streams the books of the ticker a page has selected; a book not yet arrived reads
+   "No <venue> for <ticker>". */
 (function () {
   'use strict';
 
@@ -18,23 +16,22 @@
   function isBook() { var s = window.EdShell.getState(); return s.workspace === 'order-flow' && s.subview === 'book'; }
   function ticker() { return window.EdShell.getState().ticker; }
   function host() { return document.getElementById('obBody'); }
-  function stillBook(tk) { return isBook() && ticker() === tk; }
 
-  function loadImpl(tk, signal) {
-    var h = host();
-    if (!h || !stillBook(tk)) return;
-    var G = window.EdL1SseGuards;
-    return G.show(G.readJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue, signal),
-      '/api/order-flow/microstructure',
-      function (d) { if (stillBook(tk)) render(h, tk, d); },
-      function (words) { if (stillBook(tk)) window.EdShell.placeholder(h, words); });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
+  // The book is the `book:dom` panel (server.book) the program sends on the page's socket while
+  // this view is on, for the selected venue, at once and with each streamed quote or book.
+  // Nothing received yet for the ticker on screen is '-'.
+  var _bookTicker = null;
   function load() {
-    if (!isBook()) return;
-    var tk = ticker();
-    _loader.trigger(tk);
+    var h = host();
+    if (!isBook()) { window.EdShell.showPanel('book:dom', null); return; }
+    if (_bookTicker !== ticker()) { _bookTicker = ticker(); if (h) window.EdShell.placeholder(h, '-'); }
+    window.EdShell.showPanel('book:dom', { venue: window.EdShell.getState().bookVenue });
   }
+  document.addEventListener('ed:panel', function (e) {
+    var d = e.detail, h = host();
+    if (d.type !== 'book:dom' || !h || !isBook()) return;
+    if (d.failed != null) window.EdShell.placeholder(h, d.failed); else render(h, ticker(), d);
+  });
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
   function tag(c) {
@@ -69,7 +66,7 @@
   }
 
   function render(h, tk, d) {
-    if (d.status === 'no_book') {   // a failed read never reaches here: G.show says its words
+    if (d.status === 'no_book') {
       h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
         '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
         '<div class="placeholder"><div class="sm">No ' + esc(window.EdShell.getState().bookVenue) + ' for ' + esc(tk) +
@@ -130,7 +127,6 @@
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:book_venue', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
     // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
     // (that file's init() comment)
   }

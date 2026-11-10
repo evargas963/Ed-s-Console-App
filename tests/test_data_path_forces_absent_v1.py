@@ -9,8 +9,6 @@ underlying price (tests/real_chains.py): one capture day.
 
 from __future__ import annotations
 
-import json
-
 import server
 from option_contract import read_chain
 from tests.real_chains import CRWD
@@ -39,6 +37,6 @@ def test_forces_before_two_capture_days_are_absent():
 
 
 def test_forces_before_levels_are_published_are_absent():
-    body = json.loads(server.get_forces(ticker="ZZNOFORCES").body)
+    body = server.forces("ZZNOFORCES")
     assert body["doi_below"] is None and body["charm_above"] is None
     assert "reason" not in body
