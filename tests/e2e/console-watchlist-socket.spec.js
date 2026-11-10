@@ -14,6 +14,13 @@ function feed(list, ts = Date.now() / 1000, session = 'Unknown') {
   return JSON.stringify({ type: 'feed', feed: list === null ? null : { ts: ts, watchlist: list, session: session } });
 }
 
+// The page's clock held from before the page loads: its timers run only when the test moves its
+// time (`install` alone leaves the clock running).
+async function holdClock(page) {
+  await page.clock.install();
+  await page.clock.pauseAt(Date.now());
+}
+
 // Every frame sent on `socket` before this one has been taken by the page: a beat with no status,
 // sent last, is answered on the page by its notice (the page's clock held, so no timer of the
 // page replaces or clears it).
@@ -47,7 +54,7 @@ test('the header session follows each beat, while quotes keep arriving between t
 });
 
 test('before a beat has carried a list, the rail reads "-", never an empty list', async ({ page }) => {
-  await page.clock.install();   // the page's timers run when the test moves its time
+  await holdClock(page);
   await page.routeWebSocket(/\/ws$/, () => {});          // open, no beat yet
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.wl-empty')).toHaveText('-');
@@ -71,7 +78,7 @@ test('a change the daemon makes reaches the rail with the next beat; an add here
 test('a beat built before an add, arriving after its answer, does not take the added ticker away', async ({ page }) => {
   // the program's clock: the add's record at 1002; a beat built at 1001 still carries the old list
   let socket;
-  await page.clock.install();
+  await holdClock(page);
   await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(feed(['SPY'], 1000)); });
   await page.route('**/api/watchlist', (route) => route.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify({ ok: true, op: 'added', ticker: 'AMD', tickers: ['SPY', 'AMD'], ts: 1002, status: 200, answer: {} }) }));
@@ -120,7 +127,7 @@ test('the socket drops: the rail stands marked; it returns: the new connection\'
 
 test('the same list on every beat leaves the rail as drawn (no redraw, no flicker)', async ({ page }) => {
   let socket;
-  await page.clock.install();
+  await holdClock(page);
   await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(feed(['SPY', 'QQQ'])); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'QQQ']);
