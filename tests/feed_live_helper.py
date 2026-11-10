@@ -38,6 +38,28 @@ def daemon_bars(name: str, *symbols: str) -> list[dict]:
     return [r for r in rows if not symbols or r["symbol"] in symbols]
 
 
+def spy_minutes() -> list[dict]:
+    """Return Schwab's SPY 1-minute bars of 2026-09-24 and 09-25, regular hours, oldest first.
+
+    They are in the shape the console's roll-up takes. Schwab sent no volume for the last minute
+    (09-25 15:59 ET).
+    """
+    bars = json.loads(
+        (_FIXTURES / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8")
+    )["bars"]
+    return [
+        {
+            "t": b["timestamp"] / 1000,
+            "o": b["open"],
+            "h": b["high"],
+            "l": b["low"],
+            "c": b["close"],
+            "v": b["volume"],
+        }
+        for b in bars
+    ]
+
+
 def stream_daemon_bars(rows: list[dict]) -> None:
     """Push Schwab's bars as the capture daemon does.
 

@@ -19,7 +19,6 @@ from math_levels import (
     GSF_STATE_BELOW_SUPPORT,
     GSF_STATE_OK,
     GSF_STATE_UNAVAILABLE,
-    _interp_profile_at,
     compute_gamma_flip_v2,
     compute_gamma_profile,
     compute_gamma_support_levels,
@@ -46,6 +45,27 @@ def _profile(contracts: list[OptionContract], spot: float) -> list[tuple[float, 
     product = time_et.option_close_product("SPY")
     priced, _unpriced = contract_inputs(contracts, NOW, product=product)
     return compute_gamma_profile(priced, spot)
+
+
+def _one(symbol: str) -> list[tuple[float, float]]:
+    """The profile of one contract of the real chain alone, on the chain's own grid."""
+    chain, spot = _load_real_chain()
+    return _profile([c for c in chain if c.symbol == symbol], spot)
+
+
+def _crossings(prof: list[tuple[float, float]], sign: int) -> list[tuple[float, float]]:
+    """The neighbouring prices between which the profile goes from `sign` to its opposite."""
+    return [(p0, p1) for (p0, v0), (p1, v1) in zip(prof, prof[1:]) if v0 * sign > 0 > v1 * sign]
+
+
+def _tsla() -> tuple[list[tuple[float, float]], float]:
+    """Schwab's whole TSLA chain of 2026-10-07 as its profile, with the spot it came with."""
+    name = "real_tsla_complete_chain_2026_10_07.json"
+    data = json.loads((_REAL_CHAIN.parent / name).read_text(encoding="utf-8"))
+    at = datetime.fromtimestamp(data["ts_utc"], time_et.ET)
+    product = time_et.option_close_product("TSLA")
+    priced, _unpriced = contract_inputs(read_chain(data["chain"]), at, product=product)
+    return compute_gamma_profile(priced, float(data["spot"])), float(data["spot"])
 
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
@@ -118,135 +138,147 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
         lo, hi = min(below[-1], above[0]), max(below[-1], above[0])
         assert lo - 1e-6 <= at_spot <= hi + 1e-6
 
-    # a strictly one-signed profile yields no flip but still reports a usable verdict
-    assert gamma_flip_from_profile([(100.0, 5.0), (101.0, 7.0)], 100.5) is None
-    assert gamma_at_price([(100.0, 5.0), (101.0, 7.0)], 100.5) == 6.0
+    # a strictly one-signed profile (the chain's calls alone) yields no flip but still reports a
+    # usable value, halfway between two of its points their mean
+    calls = _profile([c for c in chain if c.side == "CALL"], spot)
+    (p0, v0), (p1, v1) = calls[150], calls[151]
+    assert gamma_flip_from_profile(calls, spot) is None
+    assert math.isclose(gamma_at_price(calls, (p0 + p1) / 2), (v0 + v1) / 2, rel_tol=1e-9)
 
 
 def test_gamma_at_price_clamps_outside_the_profile() -> None:
-    prof = [(100.0, -2.0), (110.0, 4.0)]
-    assert gamma_at_price(prof, 50.0) == -2.0  # below the profile -> first value
-    assert gamma_at_price(prof, 500.0) == 4.0  # above -> last value
-    assert gamma_at_price([], 100.0) is None
+    chain, spot = _load_real_chain()
+    prof = _profile(chain, spot)
+    assert gamma_at_price(prof, prof[0][0] - 50.0) == prof[0][1]  # below -> first value
+    assert gamma_at_price(prof, prof[-1][0] + 50.0) == prof[-1][1]  # above -> last value
+    assert gamma_at_price([], spot) is None
     assert gamma_at_price(prof, None) is None
 
 
-# ── STRIKE WIDTH IS DERIVED, NOT TABULATED (root fix for RC-12) ─────────────
-# RC-12 found the cause -- "a fixed strike count cannot satisfy a percentage-based span
-# requirement across instruments with different strike spacing" -- then answered it with a
-# hardcoded table for three tickers, leaving every other ticker on a fixed 40. MEASURED
-# across 52 stored chains 2026-07-20: that table was wrong in BOTH directions. $SPX needed
-# 150 and got 40; IWM needed 30 and got 80; ~48 equities needed under 20 and got 40.
-
-
-# ── FLIP DETECTION IS DIRECTION-BLIND (Bugbot 2026-07-20, HIGH — confirmed) ──
-# `v0 < 0 <= v1` found only rising neg->pos crossings. A profile that is long-gamma below
-# and short-gamma above (pos->neg) has a real regime boundary that returned None — the
-# flip vanished and the verdict claimed "no crossing" on a chain that crosses.
-# (gamma_flip_from_profile is imported at the top of this file.)
-
-
 def test_flip_detects_positive_to_negative_crossing():
-    prof = [(90.0, 5.0), (95.0, 2.0), (100.0, -1.0), (105.0, -4.0)]
-    flip = gamma_flip_from_profile(prof, 97.0)
-    assert flip is not None, "pos->neg crossing missed — the direction-blind defect"
-    assert 95.0 < flip < 100.0, flip
+    """Induced: the real chain's calls below 777 and puts above it, its in-the-money half.
+
+    Every captured whole book crosses from negative to positive. This selection is long gamma
+    below and short gamma above, a boundary the other way.
+    """
+    chain, spot = _load_real_chain()
+    half = [c for c in chain if (c.strike < 777) == (c.side == "CALL") and c.strike != 777]
+    prof = _profile(half, spot)
+    ((below, above),) = _crossings(prof, 1)
+    flip = gamma_flip_from_profile(prof, spot)
+    assert flip is not None, "the positive-to-negative crossing was missed"
+    assert below < flip < above and not _crossings(prof, -1), flip
 
 
 def test_flip_still_detects_negative_to_positive():
-    prof = [(90.0, -4.0), (95.0, -1.0), (100.0, 2.0), (105.0, 5.0)]
-    flip = gamma_flip_from_profile(prof, 97.0)
-    assert flip is not None and 95.0 < flip < 100.0, flip
+    """The whole real chain crosses once, upward, between 778.55 and 779.52."""
+    chain, spot = _load_real_chain()
+    prof = _profile(chain, spot)
+    ((below, above),) = _crossings(prof, -1)
+    flip = gamma_flip_from_profile(prof, spot)
+    assert flip is not None and 778.55 < below < flip < above < 779.53, flip
 
 
 def test_flip_picks_the_crossing_nearest_spot():
-    """Multi-cross profile: the boundary that governs the trade is the one beside spot."""
-    prof = [(80.0, -2.0), (90.0, 3.0), (100.0, 1.0), (110.0, -2.0), (120.0, -5.0)]
-    near_low = gamma_flip_from_profile(prof, spot=85.0)
-    near_high = gamma_flip_from_profile(prof, spot=108.0)
-    assert near_low is not None and 80.0 < near_low < 90.0, near_low
-    assert near_high is not None and 100.0 < near_high < 110.0, near_high
+    """Multi-cross profile: the boundary that governs the trade is the one beside spot.
+
+    Induced: the real chain's puts from 774 to 779 with its calls outside them, which crosses
+    down below 774 and up again below 779.
+    """
+    chain, spot = _load_real_chain()
+    band = [c for c in chain if (774 <= c.strike <= 779) == (c.side == "PUT")]
+    prof = _profile(band, spot)
+    ((down_lo, down_hi),) = _crossings(prof, 1)
+    ((up_lo, up_hi),) = _crossings(prof, -1)
+    near_low = gamma_flip_from_profile(prof, spot=770.0)
+    near_high = gamma_flip_from_profile(prof, spot=780.0)
+    assert near_low is not None and down_lo < near_low < down_hi < 774, near_low
+    assert near_high is not None and 774 < up_lo < near_high < up_hi, near_high
     assert near_low != near_high
 
 
 def test_flip_none_when_one_signed():
-    assert gamma_flip_from_profile([(90.0, -1.0), (100.0, -2.0)], 95.0) is None
-    assert gamma_flip_from_profile([(90.0, 1.0), (100.0, 2.0)], 95.0) is None
-    assert gamma_flip_from_profile([], 95.0) is None
+    chain, spot = _load_real_chain()
+    puts = _profile([c for c in chain if c.side == "PUT"], spot)
+    calls = _profile([c for c in chain if c.side == "CALL"], spot)
+    assert all(v < 0 for _, v in puts) and gamma_flip_from_profile(puts, spot) is None
+    assert all(v > 0 for _, v in calls) and gamma_flip_from_profile(calls, spot) is None
+    assert gamma_flip_from_profile([], spot) is None
 
 
 def test_flip_zero_touching_profile_start_is_the_boundary():
-    """Cursor audit 2026-07-20: a profile STARTING at exactly zero returned None.
+    """A profile that starts at exactly zero has its boundary at the last zero price.
 
-    Both strict-sign conditions are false at v0==0, so the boundary vanished.
+    One same-day contract alone: its gamma is exactly 0.0 far from its strike, so the profile of
+    the real 777 call starts and ends with a run of zeros, and the 777 put's the same, negative.
     """
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 1.0), (120.0, 2.0)], 105.0) == 100.0
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, -1.0)], 105.0) == 100.0
+    call, put = _one("SPY   261007C00777000"), _one("SPY   261007P00777000")
+    live = [p for p, v in call if v != 0.0]
+    last_zero_before = max(p for p, v in call if v == 0.0 and p < live[0])
+    first_zero_after = min(p for p, v in call if v == 0.0 and p > live[-1])
+    assert gamma_flip_from_profile(call, call[0][0]) == last_zero_before
+    assert all(v <= 0 for _, v in put) and gamma_flip_from_profile(put, put[0][0]) == (
+        last_zero_before
+    )
     # flat zero segments are not crossings
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 0.0)], 105.0) is None
+    zeros = [(p, v) for p, v in call if p <= last_zero_before]
+    assert len(zeros) > 1 and gamma_flip_from_profile(zeros, call[0][0]) is None
     # segment ENDING at zero still interpolates to the zero point
-    assert gamma_flip_from_profile([(100.0, -1.0), (110.0, 0.0), (120.0, 1.0)], 110.0) == 110.0
-
-
-# ── RC-354: Gamma Support Floor / Gamma Resistance Ceiling ──────────────────────
-
-
-def _linear_profile(lo_px, hi_px, lo_v, hi_v, steps=100):
-    """Synthetic ascending profile with net GEX linear from lo_v to hi_v."""
-    return [
-        (round(lo_px + (hi_px - lo_px) * i / steps, 4), lo_v + (hi_v - lo_v) * i / steps)
-        for i in range(steps + 1)
-    ]
+    assert math.isclose(gamma_flip_from_profile(call, call[-1][0]), first_zero_after, rel_tol=1e-12)
 
 
 def test_gsf_sits_between_flip_and_spot_and_grc_mirrors_above():
-    # N(s) rises linearly from -2e9 at 90 to +6e9 at 110; spot 105 -> N(spot)=+4e9.
-    # target = 0.5*N(spot) = 2e9. Crossing below spot at s where N=2e9 -> s=100.
-    # Flip (N=0) at 95: GSF must sit ABOVE the flip (support ends before the zero).
-    prof = _linear_profile(90.0, 110.0, -2e9, 6e9)
-    out = compute_gamma_support_levels(prof, 105.0)
+    """Schwab's whole TSLA book of 2026-10-07: positive at spot, its flip below.
+
+    The floor is where the profile has fallen to half its value at spot, so the two profile
+    points around it hold that half between them. Above spot the same holds for the ceiling.
+    """
+    prof, spot = _tsla()
+    out = compute_gamma_support_levels(prof, spot)
     assert out["state"] == GSF_STATE_OK
     assert out["gsf"] is not None
-    flip = gamma_flip_from_profile(prof, 105.0)
+    flip = gamma_flip_from_profile(prof, spot)
     assert flip is not None and out["gsf"] > flip  # above the flip
-    assert flip < out["gsf"] < 105.0  # between flip and spot
-    assert abs(out["gsf"] - 100.0) < 0.5  # analytic crossing
-    # monotone-rising profile above spot never decays below target -> no ceiling
-    assert out["grc"] is None
+    assert flip < out["gsf"] < spot  # between flip and spot
+    half = 0.5 * gamma_at_price(prof, spot)
+    under = max((p, v) for p, v in prof if p < out["gsf"])
+    over = min((p, v) for p, v in prof if p > out["gsf"])
+    assert under[1] <= half < over[1]
+    assert out["grc"] is not None and out["grc"] > spot
 
 
 def test_grc_found_when_cushion_decays_above_spot():
-    # Tent profile: rises to a peak above spot then decays — the ceiling lands on the
-    # DECAYING shoulder past the peak (resistance strengthens before it exhausts).
-    up = _linear_profile(100.0, 106.0, 4e9, 8e9, steps=60)
-    down = _linear_profile(106.1, 112.0, 7.9e9, 0.0, steps=59)
-    prof = up + down
-    out = compute_gamma_support_levels(prof, 102.0)
+    """The real TSLA profile rises to a peak above spot, then decays.
+
+    The ceiling lands on the decaying shoulder past the peak (resistance strengthens before it
+    exhausts), where the profile has fallen to half its value at spot.
+    """
+    prof, spot = _tsla()
+    out = compute_gamma_support_levels(prof, spot)
+    peak = max(prof, key=lambda point: point[1])[0]
     assert out["state"] == GSF_STATE_OK
-    assert out["grc"] is not None and out["grc"] > 106.0  # beyond the peak/wall
-    n_spot = 4e9 + (102.0 - 100.0) / (106.0 - 100.0) * (8e9 - 4e9)
-    # value at the ceiling is ~phi * N(spot)
-    assert abs(_interp_profile_at(prof, out["grc"]) - 0.5 * n_spot) / n_spot < 0.05
+    assert out["grc"] is not None and out["grc"] > peak > spot  # beyond the peak/wall
+    half = 0.5 * gamma_at_price(prof, spot)
+    under = max((p, v) for p, v in prof if p < out["grc"])
+    over = min((p, v) for p, v in prof if p > out["grc"])
+    assert over[1] <= half < under[1]
 
 
 def test_below_support_state_never_fabricates_a_price():
-    # Negative-gamma regime at spot: honest STATE, both levels None.
-    prof = _linear_profile(90.0, 110.0, -6e9, -1e9)
-    out = compute_gamma_support_levels(prof, 100.0)
+    """The whole real SPY chain is negative at spot: a state, both levels None."""
+    chain, spot = _load_real_chain()
+    prof = _profile(chain, spot)
+    assert gamma_at_price(prof, spot) < 0
+    out = compute_gamma_support_levels(prof, spot)
     assert out["state"] == GSF_STATE_BELOW_SUPPORT
     assert out["gsf"] is None and out["grc"] is None
 
 
 def test_unavailable_on_empty_or_bad_inputs():
-    assert compute_gamma_support_levels([], 100.0)["state"] == GSF_STATE_UNAVAILABLE
-    assert (
-        compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), None)["state"]
-        == GSF_STATE_UNAVAILABLE
-    )
-    assert (
-        compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), -5)["state"]
-        == GSF_STATE_UNAVAILABLE
-    )
+    prof, spot = _tsla()
+    assert compute_gamma_support_levels([], spot)["state"] == GSF_STATE_UNAVAILABLE
+    assert compute_gamma_support_levels(prof, None)["state"] == GSF_STATE_UNAVAILABLE
+    assert compute_gamma_support_levels(prof, -5)["state"] == GSF_STATE_UNAVAILABLE
 
 
 def test_the_flip_counts_the_contracts_it_could_not_price():
