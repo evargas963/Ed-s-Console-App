@@ -468,8 +468,7 @@ def overlay_streamed_contract_fields(
     """Give each contract its newest values: the stream's when it is held, else /quotes'.
 
     A contract Schwab does not stream takes the values of its newest /quotes answer (`quoted`,
-    app.options.order_flow.state.rest_quotes) when Schwab quoted them no earlier than those the
-    chain carries, the moment that answer arrives, never at the chain's next delivery.
+    app.options.order_flow.state.rest_quotes), the moment that answer arrives.
 
     `streamed_by_symbol` holds its newest streamed record; the pushed field is its one producer
     (AGENTS.md rule 3). Its volume, bid and ask are the stream's (`total_volume`, `bid`, `ask`),
@@ -486,12 +485,7 @@ def overlay_streamed_contract_fields(
     out: list[OptionContract] = []
     for c in contracts:
         if c.symbol not in held:
-            newer = c.symbol in quoted and not (
-                c.quote_time is not None
-                and quoted[c.symbol]["quote_time"] is not None
-                and quoted[c.symbol]["quote_time"] < c.quote_time
-            )
-            out.append(replace(c, **quoted[c.symbol]) if newer else c)
+            out.append(replace(c, **quoted[c.symbol]) if c.symbol in quoted else c)
         elif c.symbol in streamed_by_symbol:
             sent = streamed_by_symbol[c.symbol]
             pushed = {

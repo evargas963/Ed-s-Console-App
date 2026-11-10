@@ -247,31 +247,17 @@ class OrderFlowState:
 _LIVE_STATE = OrderFlowState()
 
 
-#: each option contract's values from its newest /quotes answer (option_contract.quote_values),
-#: newest by Schwab's quoteTime: symbol -> values
+#: each option contract's values from its newest /quotes answer (option_contract.quote_values):
+#: symbol -> values. The sweep asks one request at a time, so each answer is the newest.
 _REST_QUOTES: dict[str, dict] = {}
 _rest_lock = threading.Lock()
 
 
-def _older(new: dict, held: dict) -> bool:
-    """Whether `new` values were quoted by Schwab before `held` ones."""
-    return (
-        new["quote_time"] is not None
-        and held["quote_time"] is not None
-        and new["quote_time"] < held["quote_time"]
-    )
-
-
 def push_rest_quotes(answer: dict) -> None:
-    """Keep each contract's values from one /quotes answer (symbol -> Schwab's `quote`).
-
-    A contract's values replace those held unless Schwab quoted them earlier.
-    """
+    """Keep each contract's values from one /quotes answer (symbol -> Schwab's `quote`)."""
     read = {sym: quote_values(quote) for sym, quote in answer.items()}
     with _rest_lock:
-        for sym, values in read.items():
-            if sym not in _REST_QUOTES or not _older(values, _REST_QUOTES[sym]):
-                _REST_QUOTES[sym] = values
+        _REST_QUOTES.update(read)
 
 
 def rest_quotes() -> dict[str, dict]:

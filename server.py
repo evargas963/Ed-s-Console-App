@@ -3352,23 +3352,11 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         return _unavailable(held.snap.error or _terrain_refresh_last_error.get(t) or NO_CHAIN_YET)
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")
-    contracts = [c for c in chain if c.expiry == resolved_expiry]
-    if not contracts:
+    # the contracts as the levels priced them (_publish_levels, each with its newest values):
+    # one computation, the screen's
+    response_contracts = [c for c in held.priced_chain if c.expiry == resolved_expiry]
+    if not response_contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
-    # the levels' own rule (_publish_levels): inside the window each contract's newest values;
-    # outside it the contracts as the levels priced them
-    if _closed_since(datetime.fromtimestamp(now, ET), option_close_product(t)) is None:
-        feed = lmp.feed_now(now)
-        listed = held.contract_symbols
-        response_contracts, overlay_n = overlay_streamed_contract_fields(
-            contracts,
-            _streamed_greeks_for_ticker(listed, now, feed),
-            set(_held_option_symbols_for_ticker(listed, now, feed)),
-            rest_quotes(),
-        )
-    else:
-        response_contracts = [c for c in held.priced_chain if c.expiry == resolved_expiry]
-        overlay_n = 0
     shown = [chain_row(c) for c in response_contracts]
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)
@@ -3411,7 +3399,6 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         "ladder": ladder,
         "n_strikes": len({r["strike"] for r in ladder}),
         "contracts_not_on_ladder": not_on_ladder,  # no strike, or a putCall other than CALL/PUT
-        "stream_overlay_contracts": overlay_n,
         "scope": {
             "kind": "complete_single_expiry",
             "requested_expiry": resolved_expiry,

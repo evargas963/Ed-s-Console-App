@@ -239,15 +239,6 @@ def chain_messages(
 PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "1d": ("year", 2, "daily", 1)}
 
 
-def quotes_message(answer: dict, fetched_ts: float) -> tuple[str, dict]:
-    """One /quotes answer for option contracts as its bus message, the moment it arrives.
-
-    Schwab's quote per symbol as sent (`answer`: symbol -> its `quote`), for the console to take
-    each contract's newest values from (app.options.order_flow.state.push_rest_quotes).
-    """
-    return "optquotes", {"src": "schwab_quotes", "ts_recv": fetched_ts, "answer": answer}
-
-
 def price_history_message(
     ticker: str, series: str, answer: dict, fetched_ts: float
 ) -> tuple[str, dict]:
@@ -682,7 +673,10 @@ class ChainSweep:
             errors = answer.pop("errors") if "errors" in answer else {}
             named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
             quoted = {s: e["quote"] for s, e in answer.items()}
-            self.publish(*quotes_message(quoted, self.clock()))  # to the screen at once
+            # Schwab's quote per symbol as sent, to the console at once (state.push_rest_quotes)
+            self.publish(
+                "optquotes", {"src": "schwab_quotes", "ts_recv": self.clock(), "answer": quoted}
+            )
         except Exception as e:  # those tickers' answer is the failure; the rotation goes on
             log.warning(
                 "quotes for %d contracts failed: %s: %s",

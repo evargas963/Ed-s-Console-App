@@ -157,7 +157,8 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
     )
     body = _get(ticker="TSLA")
     overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["totalVolume"] == streamed and body["stream_overlay_contracts"] == 1
+    assert overlaid["totalVolume"] == streamed
+    assert srv.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
     assert all(overlaid[k] == v for k, v in _as_shown([target])[0].items() if k != "totalVolume")
     assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _as_shown(
         _TSLA_CONTRACTS[1:]
@@ -211,7 +212,7 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
     assert overlaid["totalVolume"] == volume and overlaid["gamma"] == target["gamma"]
     assert overlaid["gamma"] != gamma
     assert overlaid["openInterest"] == target["openInterest"]  # the chain's
-    assert body["stream_overlay_contracts"] == 1
+    assert srv.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
 
 
 def test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it():
