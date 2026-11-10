@@ -56,6 +56,7 @@ import logging
 import logging.handlers
 import os
 import queue
+import re
 import signal
 import socket
 import sqlite3
@@ -145,6 +146,9 @@ SERVICES = (
     "OPTIONS_BOOK",
     "NEWS_HEADLINE",
 )
+#: Schwab's answer code for a request past its symbol limit (Schwab Streamer API, response
+#: codes: 19 REACHED_SYMBOL_LIMIT)
+SYMBOL_LIMIT = 19
 #: every watchlist ticker is streamed on each of these
 EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
 #: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
@@ -964,10 +968,18 @@ class Daemon:
                 reason=msg,
             ),
         )
-        if code != 0 or sent.answers > 1:
+        if sent.answers > 1:
+            return
+        symbols = sent.symbols
+        if code == SYMBOL_LIMIT and sent.command != "UNSUBS":
+            # Schwab held the request's symbols up to its limit and names how many it discarded:
+            # the request's last ones
+            discarded = int(re.search(r"DISCARDED=(\d+)", msg).group(1))
+            symbols = symbols[: len(symbols) - discarded]
+        elif code != 0:
             return
         held = set(self.held[sent.service])
-        held = held - set(sent.symbols) if sent.command == "UNSUBS" else held | set(sent.symbols)
+        held = held - set(symbols) if sent.command == "UNSUBS" else held | set(symbols)
         self.held[sent.service] = frozenset(held)
         if sent.command == "UNSUBS":  # no longer held: no longer current
             for sym in sent.symbols:

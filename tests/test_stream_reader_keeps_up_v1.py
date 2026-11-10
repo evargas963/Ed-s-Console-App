@@ -339,7 +339,9 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
         with server._terrain_cache_lock:
             server._terrain_cache.pop("SPY", None)
         server._last_feed_stamp.clear()
-    assert len(daemon.options["LEVELONE_OPTIONS"]) == capture.OPTION_LIMITS["LEVELONE_OPTIONS"]
+    # no cap of ours: every SPY contract the rule ranks is asked, Schwab's answer decides
+    picked = daemon.options["LEVELONE_OPTIONS"]
+    assert picked == frozenset(daemon.option_order) and len(picked) > 3000, len(picked)
     assert len(behind) > 100, "the reader was sampled throughout"
     assert set(work) == {name for name, _thread in calls}, "every piece of the work ran"
     assert not sorted({name for name, thread in calls if thread == loop_thread[0]}), (

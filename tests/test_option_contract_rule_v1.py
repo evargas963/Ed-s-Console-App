@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
+from itertools import zip_longest
 from pathlib import Path
 
 import live_market_plane as lmp
@@ -75,29 +76,32 @@ def _order(ct: dict, price: float) -> tuple:
     return (0, -gamma, *rest) if known else (1, *rest)
 
 
-def by_definition(contracts: list[dict], price: float, n: int, now: float) -> set[str]:
-    """Return the rule's set, from its definition.
+#: Schwab's limit on each option service, as its own code-19 answers on the daemon's connection
+#: stated it (2026-10-07: "(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, ...)"):
+#: the stand-in streamer's, never the daemon's
+SCHWAB_LIMITS = {L1: 3000, BOOK: 100}
 
-    Of the contracts not expired at `now` (Schwab's expirationDate), the first `n` in Ed's order.
+
+def by_definition(contracts: list[dict], price: float, now: float) -> list[str]:
+    """Return the rule's order of a chain, from its definition.
+
+    Its contracts not expired at `now` (Schwab's expirationDate), in Ed's order.
     """
     live = sorted((c for c in contracts if _expires(c) > now), key=lambda c: _order(c, price))
-    return {c["symbol"] for c in live[:n]}
+    return [c["symbol"] for c in live]
 
 
 def _rule(
     chains: dict, prices: dict, now: float, watchlist: list[str], flow: str | None = None
 ) -> dict[str, set[str]]:
-    taken = 1 if flow else 0
-    out = {L1: set(), BOOK: set()}
-    for tk in watchlist:
-        for svc in (L1, BOOK):
-            out[svc] |= by_definition(
-                chains[tk], prices[tk], (capture.OPTION_LIMITS[svc] - taken) // len(watchlist), now
-            )
-    if flow:
-        out[L1].add(flow)
-        out[BOOK].add(flow)
-    return out
+    """What Schwab holds: the Flow contract, then each ticker's first, each one's second, ...
+
+    Up to Schwab's limit on each service; it discards the rest of what is asked.
+    """
+    ranked = [by_definition(chains[tk], prices[tk], now) for tk in watchlist]
+    dealt = [s for row in zip_longest(*ranked) for s in row if s is not None]
+    order = list(dict.fromkeys([*([flow] if flow else []), *dealt]))
+    return {svc: set(order[: SCHWAB_LIMITS[svc]]) for svc in (L1, BOOK)}
 
 
 async def _until(cond, seconds: float = 20.0) -> None:
@@ -114,7 +118,7 @@ class _Market:
     """
 
     def __init__(self, tmp_path, watchlist: list[str], clock):
-        self.streamer = LocalStreamer(capture.OPTION_LIMITS, data={})
+        self.streamer = LocalStreamer(SCHWAB_LIMITS, data={})
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
         self.bus = MessageBus()
@@ -436,7 +440,7 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
         with server._terrain_cache_lock:
             server._terrain_cache.pop("MRVL", None)
     assert far in held[L1] and far in held[BOOK]
-    assert far not in by_definition(CHAINS["MRVL"], PRICES["MRVL"], 1500, CAPTURED)
+    assert far not in by_definition(CHAINS["MRVL"], PRICES["MRVL"], CAPTURED)[:1500]
 
 
 def test_a_contract_no_chain_the_console_holds_lists_is_not_taken():
