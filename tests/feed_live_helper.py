@@ -68,7 +68,7 @@ def hold_schwab_daily(symbol: str, under: str | None = None) -> None:
     `under` (default `symbol`): Schwab's recorded /pricehistory daily answer, SPY's and TSLA's of
     2026-10-07 (real_pricehistory_spy_tsla_2026_10_07.json), $SPX's of 2026-11-03
     (real_schwab_daily_spx_2026_10.json, 2024-11-04 through 2026-11-02). The caller pops
-    server._daily when done, as it pops server._bars.
+    server._series when done, as it pops server._bars.
     """
     if symbol == "$SPX":
         sent = json.loads(
@@ -83,9 +83,9 @@ def schwab_daily(symbol: str) -> list:
     """`symbol`'s daily candles as the bar writer holds them (hold_schwab_daily), taken out."""
     hold_schwab_daily(symbol)
     try:
-        return list(server._daily[symbol])
+        return list(server._series[(symbol, "1d")])
     finally:
-        server._daily.pop(symbol, None)
+        server._series.pop((symbol, "1d"), None)
 
 
 #: Wednesday 2026-09-30, 11:00 ET: regular hours in Schwab's /markets answer held for that date
