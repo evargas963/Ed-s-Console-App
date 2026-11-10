@@ -1,7 +1,8 @@
 name: Pytest Full Suite
 
-# Playwright E2E then the full Python suite, on Linux and on Windows: the two required
-# runtime-correctness jobs, beside hardening.
+# Playwright E2E and the full Python suite, on Linux and on Windows. Each suite runs on a runner
+# of its own, side by side; the two required jobs, pytest-full and pytest-windows, pass only when
+# both suites of their system passed.
 
 on:
   pull_request:
@@ -15,7 +16,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  pytest-full:
+  linux-browser:
     # ubuntu-latest is 26.04. Playwright 1.59.1 refuses that image
     # ("Cannot install dependencies for ubuntu26.04-x64") and the browser
     # install exits before any test. 24.04 is the image this job was measured on.
@@ -103,8 +104,7 @@ jobs:
             npx playwright install chromium
           fi
 
-      - name: Run Playwright E2E then full pytest
-        id: run
+      - name: Run the browser tests
         env:
           CI: "true"
           ED_CI_OFFLINE: "1"
@@ -113,33 +113,10 @@ jobs:
           # ED_CI_OFFLINE + config.is_schwab_ci_offline_mode() block live API calls.
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
-        run: |
-          # xdist's `-n auto` reads os.process_cpu_count(), which reports fewer cores than the
-          # runner has; the worker count is pinned to nproc.
-          echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
-          # The two suites run one after the other: pytest on every core beside Playwright starves
-          # Playwright's real-time timeouts past this job's 45-minute limit. A test marked `alone`
-          # holds a wall-clock limit, so it runs after the workers, with none beside it.
-          set +e
-          npm run test:e2e
-          e2e_rc=$?
-          echo "e2e_rc=$e2e_rc" >> "$GITHUB_OUTPUT"
-          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
-          pytest_rc=$?
-          python -m pytest --durations=1 -rs -m alone
-          alone_rc=$?
-          set -e
-          if [ "$e2e_rc" -ne 0 ]; then
-            echo "Playwright E2E failed with ${e2e_rc}"
-            exit "$e2e_rc"
-          fi
-          if [ "$pytest_rc" -ne 0 ]; then
-            exit "$pytest_rc"
-          fi
-          exit "$alone_rc"
+        run: npm run test:e2e
 
       - name: Upload Playwright failure traces and the E2E log
-        if: failure() && steps.run.outputs.e2e_rc != '0'
+        if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: playwright-failures
@@ -151,12 +128,87 @@ jobs:
           compression-level: 0
           retention-days: 14
 
-  pytest-windows:
-    # Production runs on Windows; pytest-full runs on Linux, where the launcher's console windows,
-    # the daemon's start in its window, the guards' Windows path handling and the guard against killing
-    # it are skipped or take another path. The browser tests and the whole pytest suite run here,
-    # one after the other as in pytest-full, so no Windows path is left to a guess of which tests
-    # reach it.
+  linux-pytest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          # tests diff against the base branch, which needs full history
+          fetch-depth: 0
+          filter: blob:none         # every commit; a file's old versions only when one is read
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+        with:
+          enable-cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          uv pip install --system -r requirements-dev.txt -r requirements.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run the full pytest suite
+        env:
+          CI: "true"
+          ED_CI_OFFLINE: "1"
+          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+          SCHWAB_API_KEY: "ci-not-live-placeholder"
+          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+        run: |
+          # xdist's `-n auto` reads os.process_cpu_count(), which reports fewer cores than the
+          # runner has; the worker count is pinned to nproc.
+          echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
+          # The browser tests run on a runner of their own (linux-browser): pytest on every core
+          # beside Playwright starves Playwright's real-time timeouts. A test marked `alone` holds
+          # a wall-clock limit, so it runs after the workers, with none beside it.
+          set +e
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
+          pytest_rc=$?
+          python -m pytest --durations=1 -rs -m alone
+          alone_rc=$?
+          set -e
+          if [ "$pytest_rc" -ne 0 ]; then
+            exit "$pytest_rc"
+          fi
+          exit "$alone_rc"
+
+  pytest-full:
+    # The required check on Linux. A job a failed job is needed by is skipped, and GitHub reads a
+    # skipped required check as passed, so this one always runs and reads both results itself.
+    needs: [linux-browser, linux-pytest]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both suites passed on Linux
+        env:
+          BROWSER: ${{ needs.linux-browser.result }}
+          PYTEST: ${{ needs.linux-pytest.result }}
+        run: |
+          echo "browser tests: $BROWSER; pytest: $PYTEST"
+          [ "$BROWSER" = "success" ] && [ "$PYTEST" = "success" ]
+
+  windows-browser:
+    # Production runs on Windows; the Linux jobs skip or take another path through the launcher's
+    # console windows, the daemon's start in its window, the guards' Windows path handling and the
+    # guard against killing it. The browser tests and the whole pytest suite run on Windows too,
+    # each on a runner of its own, so no Windows path is left to a guess of which tests reach it.
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -193,7 +245,6 @@ jobs:
           npx playwright install chromium
 
       - name: Run the browser tests on Windows
-        id: e2e
         shell: bash
         env:
           CI: "true"
@@ -203,8 +254,54 @@ jobs:
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: npm run test:e2e
 
+      - name: Upload Playwright failure traces and the E2E log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: playwright-failures-windows
+          path: |
+            test-results/**/trace.zip
+            test-results/**/error-context.md
+            logs/test_e2e_last.log
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+
+  windows-pytest:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          # tests read origin/main and diff against it, which needs full history
+          fetch-depth: 0
+          filter: blob:none         # every commit; a file's old versions only when one is read
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        shell: bash
+        run: uv pip install --system -r requirements-dev.txt -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
       - name: Run the full pytest suite on Windows
-        if: success() || failure()
         shell: bash
         env:
           CI: "true"
@@ -216,7 +313,7 @@ jobs:
           # its machine's own disk; the default temp is on C:, the runner's network disk
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-        # pinned to nproc as in pytest-full: `-n auto` started 2 workers on this 4-core runner
+        # pinned to nproc as in linux-pytest: `-n auto` started 2 workers on this 4-core runner
         run: python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
 
       - name: Run the tests that hold a wall-clock limit, with no workers beside them
@@ -232,15 +329,17 @@ jobs:
           TMP: ${{ runner.temp }}
         run: python -m pytest --durations=1 -rs -m alone
 
-      - name: Upload Playwright failure traces and the E2E log
-        if: failure() && steps.e2e.outcome == 'failure'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
-        with:
-          name: playwright-failures-windows
-          path: |
-            test-results/**/trace.zip
-            test-results/**/error-context.md
-            logs/test_e2e_last.log
-          if-no-files-found: ignore
-          compression-level: 0
-          retention-days: 14
+  pytest-windows:
+    # The required check on Windows; it reads both results itself, as pytest-full does.
+    needs: [windows-browser, windows-pytest]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both suites passed on Windows
+        env:
+          BROWSER: ${{ needs.windows-browser.result }}
+          PYTEST: ${{ needs.windows-pytest.result }}
+        run: |
+          echo "browser tests: $BROWSER; pytest: $PYTEST"
+          [ "$BROWSER" = "success" ] && [ "$PYTEST" = "success" ]
