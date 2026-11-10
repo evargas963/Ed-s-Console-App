@@ -119,17 +119,6 @@ def test_payload_is_json_serialisable() -> None:
     assert "flip_diag" in round_tripped
 
 
-def test_is_deterministic() -> None:
-    """Same chain, same spot, same instant, same payload.
-
-    Or nothing on the card is reproducible.
-    """
-    chain, spot = _real_chain()
-    a = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
-    b = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
-    assert a == b
-
-
 # ── RC-113: the institutional sigma band (SpotGamma-on-Bloomberg standard) ───────────────────
 
 

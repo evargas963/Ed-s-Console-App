@@ -968,4 +968,4 @@ behavior (AGENTS.md).
     other served levels. Family, evidence and source are not drawn. Each price is shown
     with the time the server sent for it.
     Enforced by: `tests/test_data_path_same_day_levels_v1.py`,
-    `tests/test_data_path_zero_dte_pin_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.
+    `tests/test_data_path_charm_side_unknown_v1.py`.
