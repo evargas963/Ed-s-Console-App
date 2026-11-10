@@ -130,7 +130,7 @@ _feed_running = False
 #: reprices its ticker).
 #: Runs on the event loop, so it must return at once.
 _on_tick_callback: Callable[[str], None] | None = None
-_on_feed_callback: Callable[[float], None] | None = None
+_on_feed_callback: Callable[[], None] | None = None
 #: Called with the symbol of every streamed equity quote and equity book (server.flow_changed:
 #: the pages showing its order flow get it again). Runs on the event loop, so it returns at once.
 _on_flow_callback: Callable[[str], None] | None = None
@@ -399,7 +399,8 @@ async def _beat_loop() -> None:
     """
     while _feed_running:
         await asyncio.sleep(HEARTBEAT_SEC)
-        _feed_changed(time_et.now())
+        if _on_feed_callback is not None:
+            _on_feed_callback()
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
@@ -433,12 +434,6 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     }
 
 
-def _feed_changed(now: float) -> None:
-    """Restamp what is live in the console: the daemon's heartbeat changed."""
-    if _on_feed_callback is not None:
-        _on_feed_callback(now)
-
-
 def bind_daemon(daemon) -> None:
     """Bind the capture daemon this console runs in (capture.run, before the web server starts).
 
@@ -451,7 +446,7 @@ def bind_daemon(daemon) -> None:
 def start_order_flow_stream(
     on_tick_callback: Callable[[str], None] | None = None,
     on_chain_callback: Callable[..., None] | None = None,
-    on_feed_callback: Callable[[float], None] | None = None,
+    on_feed_callback: Callable[[], None] | None = None,
     on_flow_callback: Callable[[str], None] | None = None,
 ) -> bool:
     """Start reading the daemon's bus (bind_daemon) on the event loop.
