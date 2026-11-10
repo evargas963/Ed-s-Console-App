@@ -3340,6 +3340,13 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         ),
         # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
         "adjusted_deliverable_symbols": [c.symbol for c in response_contracts if c.non_standard],
+        # Schwab's lastTradingDay, an instant in epoch milliseconds, as its date on the market's
+        # clock (ET); a contract Schwab sent none for has no entry
+        "last_trading_day_et": {
+            c.symbol: et_date_str_from_ts_utc(ms / 1000.0)
+            for c in response_contracts
+            if isinstance(ms := c.listing.get("lastTradingDay"), float)
+        },
         # two contracts listed at one (strike, side): the chain is not strike-unique
         "has_duplicate_contracts": len({(c.strike, c.side) for c in response_contracts})
         < len(response_contracts),

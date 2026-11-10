@@ -364,15 +364,6 @@
     return s.workspace === 'options' && s.subview === 'structures';
   }
   function _flag(label, on) { return '<span class="st-flag' + (on ? ' on' : '') + '">' + esc(label) + '</span>'; }
-  // lastTradingDay is native epoch MILLISECONDS (the same convention as quoteTimeInLong/
-  // tradeTimeInLong), not an ISO date string -- String(...).slice(0,10) on 1789430400000
-  // would print the meaningless digit-string "1789430400", not a date.
-  function fmtEpochMs(ms) {
-    if (ms == null || isNaN(ms)) return '-';
-    var d = new Date(Number(ms));
-    if (isNaN(d.getTime())) return '-';
-    return d.toISOString().slice(0, 10);
-  }
   // ADJUSTED DELIVERABLE: served per contract (Schwab's nonStandard flag, as sent)
   function renderStructures(host, d) {
     var src = document.getElementById('stSrc'); if (src) src.textContent = '';
@@ -385,6 +376,7 @@
     var ladder = d.ladder.filter(function (r) { return r.first; });
     var rows = ladder.map(function (r) {
       var k = r.strike, rep = r.call || r.put;   // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
+      var lastDay = d.last_trading_day_et[rep.symbol];   // served: its date in ET
       var flags = [
         _flag('NON-STD', rep.nonStandard === true),
         _flag('PENNY', rep.pennyPilot === true),
@@ -395,7 +387,7 @@
         '<td>' + esc(rep.settlementType || '-') + '</td>' +
         '<td>' + esc(rep.exerciseType || '-') + '</td>' +
         '<td>' + esc(rep.expirationType || '-') + '</td>' +
-        '<td>' + fmtEpochMs(rep.lastTradingDay) + '</td>' +
+        '<td>' + (lastDay == null ? '-' : esc(lastDay)) + '</td>' +
         '<td>' + flags + '</td></tr>';
     }).join('');
     host.innerHTML = '<div class="gbs-scroll"><table class="sd st-tbl">' +
