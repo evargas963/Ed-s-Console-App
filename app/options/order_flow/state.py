@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict, deque
+from collections.abc import Iterable
 
 from app.options.order_flow import history
 from app.options.order_flow.engine import Book, read_book
@@ -22,7 +23,7 @@ from l1_trade_observation import (
     vendor_triple,
 )
 from numeric_contract import schwab_count, schwab_number
-from option_contract import streamed_greeks
+from option_contract import quote_values, streamed_greeks
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -245,6 +246,31 @@ class OrderFlowState:
 
 
 _LIVE_STATE = OrderFlowState()
+
+
+#: each option contract's newest /quotes answer: symbol -> (the time it was received, its values
+#: as option_contract.quote_values reads them). The sweep asks one request at a time, so each
+#: answer is the newest.
+_REST_QUOTES: dict[str, tuple[float, dict]] = {}
+_rest_lock = threading.Lock()
+
+
+def push_rest_quotes(answer: dict, received: float) -> None:
+    """Keep one /quotes answer (symbol -> Schwab's `quote`), received at `received`."""
+    read = {sym: (received, quote_values(quote)) for sym, quote in answer.items()}
+    with _rest_lock:
+        _REST_QUOTES.update(read)
+
+
+def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, dict]]:
+    """Return each of `symbols`' newest /quotes answer received at or after `since`.
+
+    Each as (its receive time, its values). An answer received before `since` is left out: the
+    chain that began at `since` carries newer values of that contract.
+    """
+    with _rest_lock:
+        kept = {s: _REST_QUOTES[s] for s in symbols if s in _REST_QUOTES}
+    return {s: answer for s, answer in kept.items() if answer[0] >= since}
 
 
 def push_option_top(symbol: str, content_item: dict) -> None:

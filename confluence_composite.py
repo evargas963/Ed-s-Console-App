@@ -442,7 +442,7 @@ def build_matrix(
         if not isinstance(bucket, dict):
             continue
         mags[strike] = magnitudes(bucket, charm_by_strike.get(strike), ivs.get(strike), spot)
-    scored, flat, spans = score_magnitudes(
+    scored, flat, _spans = score_magnitudes(
         {s: {k: v for k, v in f.items() if not str(k).startswith("_")} for s, f in mags.items()},
         weights,
     )
@@ -460,16 +460,10 @@ def build_matrix(
         notes.append(", ".join(flat_labels) + " does not vary, so it adds nothing.")
     return {
         "preset": name,
-        "preset_text": name + " · ceiling " + f"{cap:g}",
         "scale_text": "0–" + f"{cap:g}",
         "weights_in_score": weights,
         "ceiling": cap,
         "notes": notes,
-        "slopes": [
-            {"label": _LABEL[k], "text": f"{100.0 * weights[k] / span:.2f}"}
-            for k, span in spans.items()
-            if span is not None and span != 0
-        ],
         "ranked": {strike: RankedStrike(mags[strike], scored[strike]) for strike in mags},
         "peaks": peaks,
         "strikes": strikes,

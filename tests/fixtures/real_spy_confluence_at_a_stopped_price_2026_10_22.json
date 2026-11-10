@@ -30,7 +30,7 @@
   {
    "abbrev": "Flip",
    "lane": "options",
-   "price": 770.7692205288405,
+   "price": 770.7687850382462,
    "price_text": "770.77",
    "title": "Gamma flip"
   },
@@ -107,15 +107,15 @@
   {
    "abbrev": "0D Flip",
    "lane": "options",
-   "price": 770.7692205288405,
+   "price": 770.7687850382462,
    "price_text": "770.77",
    "title": "0DTE Gamma flip"
   },
   {
    "abbrev": "0D Pin",
    "lane": "options",
-   "price": 764.0,
-   "price_text": "764.00",
+   "price": 765.0,
+   "price_text": "765.00",
    "title": "0DTE Abs \u0393"
   },
   {
@@ -176,9 +176,8 @@
   "vol_oi": 258.3359489946052,
   "volume": 1053494.0
  },
- "pin_text": "764.00",
+ "pin_text": "765.00",
  "preset": "0DTE",
- "preset_text": "0DTE \u00b7 ceiling 72",
  "priced_at_spot": 764.04,
  "reason": null,
  "regime": "SHORT_GAMMA_TREND",
@@ -1516,36 +1515,6 @@
   }
  ],
  "scale_text": "0\u201372",
- "slopes": [
-  {
-   "label": "charm",
-   "text": "0.00"
-  },
-  {
-   "label": "net gamma",
-   "text": "0.00"
-  },
-  {
-   "label": "volume",
-   "text": "0.00"
-  },
-  {
-   "label": "open interest",
-   "text": "0.00"
-  },
-  {
-   "label": "vanna",
-   "text": "0.00"
-  },
-  {
-   "label": "delta",
-   "text": "0.00"
-  },
-  {
-   "label": "volatility",
-   "text": "0.00"
-  }
- ],
  "spot": 773.1269,
  "spot_age_sec": 4859.43825507164,
  "spot_as_of_ts_utc": 1792701541.652,

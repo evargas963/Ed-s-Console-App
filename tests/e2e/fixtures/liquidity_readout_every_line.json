@@ -23,8 +23,8 @@
   "depth.*.imbalance": "DERIVED",
   "depth_pressure": "DERIVED",
   "liquidity_concentration": "DERIVED",
+  "mark": "NATIVE",
   "microprice": "DERIVED",
-  "mid": "DERIVED",
   "provenance.book_time_ms": "NATIVE",
   "provenance.exchange_quote_ts": "NATIVE",
   "provenance.server_received_ts": "DERIVED",
@@ -139,8 +139,8 @@
   "ask": 0.11764705882352941,
   "bid": 0.2222222222222222
  },
+ "mark": 760.18,
  "microprice": 760.1822222222222,
- "mid": 760.185,
  "provenance": {
   "book_source": "NYSE_BOOK",
   "book_time_ms": 1793641747560.0,

@@ -47,7 +47,12 @@ from app.options.order_flow.history import (
     book_heatmap_for_ticker,
 )
 from app.options.order_flow.live_payload import flow_block, options_live_payload
-from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks
+from app.options.order_flow.state import (
+    get_content_for_symbol,
+    get_stream_greeks,
+    option_top,
+    rest_quotes,
+)
 from app.options.order_flow.streaming import (
     get_option_contract_streaming_diagnostics,
     price_row,
@@ -86,7 +91,7 @@ from math_exposure_core import (
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
-from option_contract import GREEK_FIELDS, OptionContract, chain_row
+from option_contract import OptionContract, chain_row
 from terrain_atr import Atr, compute_atrs, roll_up
 from terrain_engine import (
     PRICE_RELATIONS,
@@ -648,10 +653,6 @@ class PublishedLevels:
     forces: dict
     prior_strikes: tuple[dict, str | None]
     captures_key: tuple
-    #: outside the option window, the newest stored capture before the chain, and its time;
-    #: None until one is read
-    count_capture: list | tuple | None
-    count_capture_ts: float | None
 
     def served(self) -> dict:
         """Return the levels as the terrain panel sends them, before the live price's relations."""
@@ -867,7 +868,7 @@ def _next_gamma_surface_seq(tk: str, now: float) -> int:
 def _streamed_greeks_for_ticker(
     listed: frozenset, now: float, feed: lmp.FeedNow | None = None
 ) -> dict:
-    """Return the newest streamed Greeks, OPEN_INTEREST and VOLUME of the ticker's held contracts.
+    """Return the newest streamed Greeks, volume, bid and ask of the ticker's held contracts.
 
     The contracts are every one the daemon's latest beat holds of the ticker's chain (`listed`,
     the symbols Schwab listed in it). A missing beat keeps that set. `feed` is one read of that
@@ -875,9 +876,9 @@ def _streamed_greeks_for_ticker(
     """
     out: dict = {}
     for sym in _held_option_symbols_for_ticker(listed, now, feed):
-        greeks = get_stream_greeks(sym)
-        if greeks:
-            out[sym] = greeks
+        held = [r for r in (get_stream_greeks(sym), option_top(sym)) if r is not None]
+        if held:
+            out[sym] = {k: v for r in held for k, v in r.items()}
     return out
 
 
@@ -900,8 +901,7 @@ def _held_option_symbols_for_ticker(
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
     """Return the contracts `post` holds as new records of `pre`'s.
 
-    overlay_streamed_contract_fields and _keep_last_reported pass an unchanged contract through as
-    the same record.
+    overlay_streamed_contract_fields passes an unchanged contract through as the same record.
     """
     return [new.symbol for orig, new in zip(pre, post) if new is not orig and new.symbol]
 
@@ -1304,56 +1304,21 @@ def _contract_ticker(sym: str) -> str | None:
         )
 
 
-_QUOTE_COUNTS = ("open_interest", "volume")
+def _closed_since(now: datetime, product: str) -> datetime | None:
+    """Return the ticker's last option close while its option market is closed at `now`.
 
-
-def _positive(count: float | None) -> bool:
-    """Tell whether a count is one Schwab reported above zero. Zero and no value are not one."""
-    return count is not None and count > 0
-
-
-def _carried(newer: OptionContract, older: OptionContract | None, replaced) -> OptionContract:
-    """`newer`, with `older`'s greeks where Schwab sent `newer` no gamma and `older` one.
-
-    And each count of `older` above zero where `replaced` says `newer`'s is to be replaced.
-    `newer` itself when nothing is carried.
+    None while it is open, or while Schwab's /markets answer for today is not held.
     """
-    if older is None:
-        return newer
-    taken = {}
-    if newer.gamma is None and older.gamma is not None:
-        taken.update({f: getattr(older, f) for f in GREEK_FIELDS})
-    for f in _QUOTE_COUNTS:
-        if _positive(getattr(older, f)) and replaced(getattr(newer, f)):
-            taken[f] = getattr(older, f)
-    return replace(newer, **taken) if taken else newer
+    return options_closed_at(now, product) if option_market_open(now, product) is False else None
 
 
-def _keep_last_reported(chain, previous, at, product):
-    """Keep the last reported greeks and counts outside that ticker's option window.
+def _close_capture(tk: str, closed: datetime) -> list | None:
+    """Return the ticker's stored close values, or None when none is stored.
 
-    Outside the window, a quote that does not report a greek leaves the greek the last quote
-    reported, and a count of zero leaves the last count above zero. During the window the quote
-    stands, and Schwab's no-value code does not keep an older greek.
+    Its two newest market days' captures, when the newest was taken at or after `closed`.
     """
-    if option_market_open(at, product) is not False or not previous:
-        return chain
-    prior = {c.symbol: c for c in previous if c.symbol}
-    return [_carried(c, prior.get(c.symbol), lambda count: count == 0) for c in chain]
-
-
-def _previous_counts(memory, stored):
-    """Return the last reported contract per symbol.
-
-    Each count above zero and the greeks of its newest quote that reported them (_carried), over
-    the stored capture and the last published chain, whichever exist. `memory` is newer than
-    `stored`.
-    """
-    by_sym: dict[str, OptionContract] = {}
-    for c in [c for chain in (stored, memory) if chain is not None for c in chain]:
-        if c.symbol:
-            by_sym[c.symbol] = _carried(c, by_sym.get(c.symbol), lambda count: not _positive(count))
-    return list(by_sym.values())
+    stored = last_capture_per_day(get_db().db_path, tk, 2)
+    return stored if stored and stored[0]["ts_utc"] >= closed.timestamp() else None
 
 
 def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
@@ -1376,18 +1341,6 @@ def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
     return previous.priced_at if live[0] is None else live
 
 
-def _capture_before(tk, fetched_ts, held, held_ts):
-    """Return the newest capture of `tk` stored before `fetched_ts`, its contracts and its time.
-
-    `held` (at `held_ts`) when that is it already; read once otherwise (() when none is stored).
-    """
-    newest = newest_capture_ts(get_db().db_path, tk, before_ts=fetched_ts)
-    if held_ts == newest:
-        return held, held_ts
-    rows = last_capture_per_day(get_db().db_path, tk, 1, before_ts=fetched_ts)
-    return (rows[0]["contracts"] if rows else ()), newest
-
-
 def _publish_levels(
     tk: str,
     chain: list | None = None,
@@ -1399,12 +1352,13 @@ def _publish_levels(
 ) -> TerrainSnapshot | None:
     """Produce a ticker's levels, per-strike rows and gamma-surface grid: THE producer of them.
 
-    Prices the ticker's chain once -- each streamed contract with the values Schwab pushed it
-    (overlay_streamed_contract_fields) -- and publishes all three together, so the heatmap, Strike
-    Detail and Key Levels always show one computation. A delivered chain is passed in with its spot
-    (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade time; (None, None)
-    when the daemon held none); a streamed tick passes none and the kept chain is repriced at the
-    live price (resolve_spot) with every value pushed since. Once that ticker's option window has
+    Prices the ticker's chain once -- each contract with its newest values, the stream's or its
+    /quotes answer's (overlay_streamed_contract_fields) -- and publishes all three together, so the
+    heatmap, Strike Detail and Key Levels always show one computation. A delivered chain is passed
+    in with its spot (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade
+    time; (None, None) when the daemon held none); a tick (a streamed value, or a /quotes answer)
+    passes none and the kept chain is repriced at the live price (resolve_spot) with every value
+    received since. Once that ticker's option window has
     ended, a
     later publication keeps the spot already published, so a later equity print does not move
     the close book. Called only on the one pricing thread
@@ -1414,16 +1368,26 @@ def _publish_levels(
     read once: the newest is priced at that capture's chain spot (one written before the chain
     carried one: its nearest expiry's underlyingPrice, labelled chain_capture), valued at
     its own time, or at that ticker's option close when the capture is past it, and both feed
-    the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
+    the forces and prior-day rows. `now`: the instant of this publication.
     A chain that is not a capture is valued then, or at that ticker's option close once it has
-    passed. Outside that window, a quote that does not report a greek leaves the greek the
-    last quote reported, and a count of zero leaves the last count above zero. That last
-    count is the one already published, or the newest capture stored before this chain when this
-    process has not published one. The last streamed values price over the chain when they are
-    newer, and each leg's age is taken.
+    passed. Inside that window each contract's newest values price over the chain (the stream's,
+    or its /quotes answer's when that was received since the chain began), and each leg's age
+    is taken. Outside it the close values are the balance until the next open: the first chain
+    begun at or after the close, the one published or the ticker's stored capture taken then,
+    priced as Schwab sent it, a reported 0 included; nothing Schwab sends later (a chain, a
+    pushed value) replaces it. Until the close values are held, a chain is priced as sent.
     Returns the snapshot, or None when there is no chain to price.
     """
     previous = published_levels(tk)
+    product = option_close_product(tk)
+    closed = _closed_since(now, product)
+    if closed is not None:
+        # the close values stand, and a value pushed after the close (no chain) changes nothing
+        if previous is not None and (
+            previous.computed_ts_utc >= closed.timestamp() or (chain is None and not captures)
+        ):
+            return previous.snap
+        captures = captures or _close_capture(tk, closed)
     capture = captures[0] if captures else None
     if capture is not None:
         chain, fetched_ts = capture["contracts"], capture["ts_utc"]
@@ -1433,18 +1397,7 @@ def _publish_levels(
             return None
         chain, fetched_ts = previous.chain, previous.computed_ts_utc
     begun = datetime.fromtimestamp(fetched_ts, ET)
-    product = option_close_product(tk)
     valued_at = valuation_instant(begun if capture is not None else now, product)
-    count_capture, count_capture_ts = (
-        (None, None) if previous is None else (previous.count_capture, previous.count_capture_ts)
-    )
-    if new_chain and capture is None and option_market_open(begun, product) is False:
-        # the capture before this chain: its own may be stored already
-        count_capture, count_capture_ts = _capture_before(
-            tk, fetched_ts, count_capture, count_capture_ts
-        )
-        memory = None if previous is None else previous.priced_chain
-        chain = _keep_last_reported(chain, _previous_counts(memory, count_capture), begun, product)
     priced_at = _priced_at(tk, capture, new_chain, chain_spot, previous, now)
     if (
         capture is None
@@ -1469,17 +1422,23 @@ def _publish_levels(
     streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
     held = set(_held_option_symbols_for_ticker(listed, now.timestamp(), feed))
-    # a streamed contract's open interest and volume are the stream's, every other the chain's.
+    # inside the window each contract's newest values (the stream's, or its /quotes answer's
+    # when that was received since this chain began); the close values are the chain as sent.
     # The cell stamp says whether that stream is live.
-    priced, n_live = overlay_streamed_contract_fields(chain, streamed, held)
-    if option_market_open(now, product) is False:
-        priced = _keep_last_reported(priced, chain, now, product)
+    quoted = rest_quotes(listed, fetched_ts)
+    priced, n_live = (
+        overlay_streamed_contract_fields(chain, streamed, held, quoted)
+        if closed is None
+        else (chain, 0)
+    )
     live_syms = _overlaid_symbols(chain, priced)
     pushed_ts = [
         ts
         for s in live_syms
         if s in streamed and (ts := _leg_stream_ts_recv(streamed[s])) is not None
     ]
+    # a contract the stream does not hold was given its /quotes answer: that answer's receive time
+    quoted_ts = [quoted[s][0] for s in live_syms if s not in held]
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
@@ -1517,7 +1476,7 @@ def _publish_levels(
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
-        levels_ts_utc=max([fetched_ts, *pushed_ts]),
+        levels_ts_utc=max([fetched_ts, *pushed_ts, *quoted_ts]),
         chain_basis=capture["basis"] if capture is not None else CAPTURE_BASIS,
         spot_source=spot_source,
         spot_as_of_ts_utc=spot_ts,
@@ -1533,8 +1492,6 @@ def _publish_levels(
         forces=forces,
         prior_strikes=prior,
         captures_key=captures_key,
-        count_capture=count_capture,
-        count_capture_ts=count_capture_ts,
     )
     with _terrain_cache_lock:
         _terrain_cache[tk] = levels
@@ -1662,13 +1619,13 @@ def _tick_ticker(sym: str) -> str | None:
 
 
 def _on_stream_tick(sym: str) -> None:
-    """Take one streamed tick of `sym`.
+    """Take one tick of `sym`.
 
-    Called by the live feed, on the event loop, for every streamed equity quote and every option
-    quote carrying Greeks or volume. An equity quote checks the ticker's levels for a cross at the
-    live price (stored off the event loop); the ticker, whichever it is, is queued for a reprice
-    with every value Schwab has pushed (one waits per ticker, so the reprice that runs takes the
-    newest). Returns at once.
+    Called by the live feed, on the event loop, for every streamed equity quote, every option
+    quote carrying Greeks or volume, and every contract of a /quotes answer. An equity quote
+    checks the ticker's levels for a cross at the live price (stored off the event loop); the
+    ticker, whichever it is, is queued for a reprice with every value Schwab has sent (one waits
+    per ticker, so the reprice that runs takes the newest). Returns at once.
     """
     tk = _tick_ticker(sym)
     if tk and not vendor_option_root(sym):
@@ -1704,8 +1661,8 @@ DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
 _chains_waiting: dict[str, tuple[str, list | None, float | None, tuple | None]] = {}
 _chains_waiting_lock = threading.Lock()
 #: the tickers the daemon has delivered a chain for since the console started: their stored
-#: capture is older and is not priced as the book. Outside the option window that capture's
-#: counts are the last counts when this process has not published one.
+#: capture is older and is not priced as the book, unless it holds the close values
+#: (_publish_levels)
 _chains_delivered: set[str] = set()
 
 
@@ -1778,10 +1735,11 @@ def _price_chain(
     """Price a ticker's levels through THE producer of them (_publish_levels), at `now`.
 
     From a newly fetched chain, with the chain's own fetch time as its as-of (an older streamed
-    value never overrides it); from the held chain with the newest streamed values (REPRICE; the
-    levels' time is the newest of them, levels_ts_utc); or from the ticker's newest stored
-    captures (STORED, DATA_FLOW decision 7). Every pricing is at the job's own instant, so the
-    daemon's newest beat is a beat of that instant and its contracts are judged by it.
+    value never overrides it); from the held chain with the newest values Schwab sent, the
+    stream's and a /quotes answer's (REPRICE; the levels' time is the newest of them,
+    levels_ts_utc); or from the ticker's newest stored captures (STORED, DATA_FLOW decision 7).
+    Every pricing is at the job's own instant, so the daemon's newest beat is a beat of that
+    instant and its contracts are judged by it.
     """
     if what == REPRICE:  # the held chain: the ticker's reason stays the chain's own
         try:
@@ -3459,26 +3417,15 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         return _unavailable(f"expiry {expiry!r} is not an expiry date or null")
     if held is None:
         return _unavailable(_terrain_refresh_last_error.get(t) or NO_CHAIN_YET)
-    chain = held.chain
-    if not chain:
+    if not held.priced_chain:
         return _unavailable(held.snap.error or _terrain_refresh_last_error.get(t) or NO_CHAIN_YET)
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")
-    contracts = [c for c in chain if c.expiry == resolved_expiry]
-    if not contracts:
+    # the contracts as the levels priced them (_publish_levels, each with its newest values):
+    # one computation, the screen's
+    response_contracts = [c for c in held.priced_chain if c.expiry == resolved_expiry]
+    if not response_contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
-    # the levels' own rule (_publish_levels): a streamed contract's counts are the stream's
-    feed = lmp.feed_now(now)
-    listed = held.contract_symbols
-    response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts,
-        _streamed_greeks_for_ticker(listed, now, feed),
-        set(_held_option_symbols_for_ticker(listed, now, feed)),
-    )
-    product = option_close_product(t)
-    response_contracts = _keep_last_reported(
-        response_contracts, contracts, datetime.fromtimestamp(now, ET), product
-    )
     shown = [chain_row(c) for c in response_contracts]
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)
@@ -3521,7 +3468,6 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         "ladder": ladder,
         "n_strikes": len({r["strike"] for r in ladder}),
         "contracts_not_on_ladder": not_on_ladder,  # no strike, or a putCall other than CALL/PUT
-        "stream_overlay_contracts": overlay_n,
         "scope": {
             "kind": "complete_single_expiry",
             "requested_expiry": resolved_expiry,
@@ -4240,7 +4186,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
-        # nearest expiry repriced to today's option close, beside the level it reprices.
+        # the nearest listed expiry's own levels, beside the whole book's level of the same name.
         # The time is the terrain's own compute time, the same instant the gamma rows carry.
         "zero_dte": [
             {
@@ -4302,36 +4248,22 @@ TERRAIN_FUSION_LEVELS = (
 )
 
 
-def _liquidity_option_levels(tk: str) -> tuple[list[tuple[float, str]], str]:
+def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
     """Return the ticker's option levels from its published terrain, tagged for liquidity zones."""
     published = published_levels(tk)
-    if published is None:
-        return [], "levels_not_ready"
-    snap = published.snap
-    levels = [
-        (float(getattr(snap, k)), tag)
+    return [
+        (float(getattr(published.snap, k)), tag)
         for k, tag in TERRAIN_FUSION_LEVELS
-        if getattr(snap, k) is not None
+        if published is not None and getattr(published.snap, k) is not None
     ]
-    return levels, "fused" if levels else "fused_empty"
 
 
-def _liquidity_zone_tradeable_fields(zp: dict, spot: float | None) -> None:
-    """Add anchor, distance_to_spot, spot_inside_zone, options_level_count (mutates zp)."""
-    lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
-    zp["anchor"] = float(zp["zone_mid"])  # the zone's own mid, built with it
-    n_opt = sum(
-        1 for t in zp["source_tags"] if t.startswith(("GAMMA_", "DELTA_", "OI_", "EM_", "SYNTH_"))
-    )
-    zp["options_level_count"] = n_opt
-    if spot is None:
-        zp["distance_to_spot"] = None
-        zp["spot_inside_zone"] = None
-        return
-    sf = float(spot)
-    inside = within(lo, hi, sf)
-    zp["distance_to_spot"] = 0.0 if inside else min(abs(sf - lo), abs(sf - hi))
-    zp["spot_inside_zone"] = inside
+def _zone_against_spot(lo: float, hi: float, spot: float | None) -> dict:
+    """Return the zone's distance_to_spot and spot_inside_zone, each None without a spot."""
+    known = spot is not None
+    inside = within(lo, hi, spot) if known else None
+    outside_by = min(abs(spot - lo), abs(spot - hi)) if known else None
+    return {"distance_to_spot": 0.0 if inside else outside_by, "spot_inside_zone": inside}
 
 
 def _spot_location(zones: list, spot) -> dict | None:
@@ -4369,7 +4301,7 @@ def liquidity_snapshot(ticker: str, now: datetime):
     try:
         ticker_upper = ticker_storage_key(ticker)
         config = PlaybookConfig(max_zone_width=2.0)
-        extra, fusion_status = _liquidity_option_levels(ticker_upper)
+        extra = _liquidity_option_levels(ticker_upper)
         # the one spot (resolve_spot), the header's own
         spot_for_zones, _, _ = resolve_spot(ticker_upper, now=now.timestamp())
         if spot_for_zones is not None:
@@ -4385,54 +4317,34 @@ def liquidity_snapshot(ticker: str, now: datetime):
     except HTTPException as e:
         # its own status code (a missing ticker is 400), never re-issued as a bare 500
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
-    snapshot_val = out.snapshot_type.value
-    zones_payload = []
-    for z in out.zones:
-        w = z.zone_high - z.zone_low
-        merged = len(z.source_tags)
-        zp = {
+    zones_payload = [
+        {
             "zone_type": z.zone_type.value,
             "zone_label": ZONE_DISPLAY[z.zone_type][0],
             "zone_side": ZONE_DISPLAY[z.zone_type][1],
-            "zone_class": z.zone_class,
             "zone_low": z.zone_low,
             "zone_high": z.zone_high,
-            "zone_mid": z.zone_mid,
-            "zone_width": w,
+            "anchor": z.zone_mid,
             "source_levels": z.source_levels,
             "source_tags": z.source_tags,
             "confluence_score": z.confluence_score,
-            "merged_levels_count": merged,
             "interpretation_notes": z.interpretation_notes,
-            "first_snapshot": snapshot_val,
-            "last_snapshot": snapshot_val,
-            "persistence": 1,
+            **_zone_against_spot(z.zone_low, z.zone_high, spot_for_zones),
         }
-        _liquidity_zone_tradeable_fields(zp, spot_for_zones)
-        zones_payload.append(zp)
+        for z in out.zones
+    ]
     zones_payload.sort(key=lambda x: x["zone_low"])
     if spot_for_zones is not None:
         zones_payload.sort(key=lambda x: x["distance_to_spot"])
-    result = {
+    return {
         "ticker": out.ticker,
-        "symbol": ticker_upper,
-        "session_date": out.session_date,
-        "snapshot_type": snapshot_val,
+        "snapshot_type": out.snapshot_type.value,
         "zones": zones_payload,
-        "summary": None,
-        "fusion": fusion_status,
-        "spot_used_for_scoring": spot_for_zones,
-        "spot_location": _spot_location(zones_payload, spot_for_zones),
-        # which snapshot generation these level values ARE
-        "level_generation": _canon.generation,
-        "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
-        "level_bar_source": _canon.bar_source,
-    }
-    if out.summary:
-        result["summary"] = {
+        "summary": out.summary
+        and {
             "value_state": out.summary.value_state,
             "vwap_relation": out.summary.vwap_relation,
-            "auction_interpretation": out.summary.auction_interpretation,
-            "notes": out.summary.notes,
-        }
-    return result
+        },
+        "spot_used_for_scoring": spot_for_zones,
+        "spot_location": _spot_location(zones_payload, spot_for_zones),
+    }

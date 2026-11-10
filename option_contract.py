@@ -25,23 +25,10 @@ GREEKS = ("gamma", "delta", "theta", "vega", "rho")
 #: docs/schwab/schwab_support_emails_2026_10_06.txt item 6), and its quotes and its
 #: LEVELONE_OPTIONS stream send as computed
 GREEK_FIELDS = (*GREEKS, "volatility")
-#: the fields read into the record; every other field is the listing, shown as sent
-READ = frozenset(
-    {
-        "symbol",
-        "putCall",
-        "strikePrice",
-        "expirationDate",
-        "daysToExpiration",
-        "settlementType",
-        "openInterest",
-        "totalVolume",
-        "multiplier",
-        "volatility",
-        "nonStandard",
-        *GREEKS,
-    }
-)
+#: the contract's terms from /chains the Structures tab shows as sent, beside those read into
+#: the record, and the time of its Greeks (the chain sweep's `greeksTime`, AGENTS.md rule 5);
+#: no other /chains field reaches the screen
+LISTED = ("pennyPilot", "exerciseType", "expirationType", "lastTradingDay", "greeksTime")
 
 
 @dataclass(frozen=True)
@@ -62,6 +49,10 @@ class OptionContract:
     settlement: Any
     open_interest: float | None
     volume: float | None
+    #: its quote's bidPrice and askPrice (Schwab's /quotes answer the chain sweep asked for, or
+    #: the stream's BID_PRICE and ASK_PRICE for a contract it streams); never the chain's
+    bid: float | None
+    ask: float | None
     #: a contract size: None when not a number or negative
     multiplier: float | None
     #: Schwab's volatility, a percent
@@ -74,7 +65,11 @@ class OptionContract:
     rho: float | None
     #: Schwab's nonStandard flag (an adjusted deliverable); None when not sent as true or false
     non_standard: bool | None
-    #: every other field, each number by rule 2, for the screen only
+    #: the chain's interestRate and dividendYield as sent, percents (schwab_client.
+    #: flatten_chain_contracts puts the chain's own on each contract)
+    interest_rate: float | None
+    dividend_yield: float | None
+    #: the LISTED terms Schwab sent, as sent, for the screen only
     listing: Mapping[str, Any] = field(repr=False)
     #: the fields Schwab sent: the screen shows a field Schwab did not send only with a value
     sent: frozenset[str] = field(repr=False, default=frozenset())
@@ -134,6 +129,23 @@ def _shown(value: Any) -> Any:
     return value
 
 
+def quote_values(quote: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a contract record's values from Schwab's /quotes answer for it (its `quote`).
+
+    Its bid and ask, volume, Greeks and volatility, each as sent (rule 2; a -999 volatility voids
+    the Greeks).
+    """
+    vol = quote.get("volatility")
+    void = vol is not None and vol == SCHWAB_NO_VALUE
+    return {
+        "bid": schwab_number(quote.get("bidPrice")),
+        "ask": schwab_number(quote.get("askPrice")),
+        "volume": schwab_count(quote.get("totalVolume")),
+        "volatility": schwab_number(vol),
+        **{g: _greek(quote, g, void) for g in GREEKS},
+    }
+
+
 def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     """Return the record of one contract as the chain sweep delivers it."""
     put_call = raw.get("putCall")
@@ -142,6 +154,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     vol_sent = raw.get("volatility")
     void = vol_sent is not None and vol_sent == SCHWAB_NO_VALUE
     multiplier = schwab_number(raw.get("multiplier"))
+    quoted = quote_values(raw["quote"]) if isinstance(raw.get("quote"), Mapping) else {}
     return OptionContract(
         symbol=raw.get("symbol"),
         side=side if side in ("CALL", "PUT") else None,
@@ -152,12 +165,22 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         days_to_expiry=schwab_number(raw.get("daysToExpiration")),
         settlement=raw.get("settlementType"),
         open_interest=schwab_count(raw.get("openInterest")),
-        volume=schwab_count(raw.get("totalVolume")),
+        # the quote's (the sweep's /quotes answer); a chain stored before quotes were kept with
+        # it carries only the volume /chains sent, as recorded
+        volume=quoted["volume"] if quoted else schwab_count(raw.get("totalVolume")),
+        bid=quoted.get("bid"),
+        ask=quoted.get("ask"),
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
-        volatility=schwab_number(vol_sent),
-        **{g: _greek(raw, g, void) for g in GREEKS},
+        # the stream's, as the sweep wrote them, or the quote's
+        **{
+            "volatility": schwab_number(vol_sent),
+            **{g: _greek(raw, g, void) for g in GREEKS},
+            **{k: v for k, v in quoted.items() if k in GREEK_FIELDS},
+        },
         non_standard=flag if isinstance(flag := raw.get("nonStandard"), bool) else None,
-        listing={k: _shown(v) for k, v in raw.items() if k not in READ},
+        interest_rate=schwab_number(raw.get("interestRate")),
+        dividend_yield=schwab_number(raw.get("dividendYield")),
+        listing={k: _shown(raw[k]) for k in LISTED if k in raw},
         sent=frozenset(raw),
     )
 
@@ -187,7 +210,7 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
     """Return the contract as the chain screens show it, under Schwab's field names.
 
     Each field Schwab
-    sent, and each value the record holds (a streamed count or a carried Greek), and no other.
+    sent, and each value the record holds (a streamed count or Greek), and no other.
     """
     read = {
         "symbol": c.symbol,
@@ -198,6 +221,8 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
         "settlementType": c.settlement,
         "openInterest": c.open_interest,
         "totalVolume": c.volume,
+        "bid": c.bid,
+        "ask": c.ask,
         "multiplier": c.multiplier,
         "volatility": c.volatility,
         "nonStandard": c.non_standard,

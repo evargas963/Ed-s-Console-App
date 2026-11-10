@@ -39,53 +39,34 @@ def d1_vt[Num: (float, NDArray[np.float64])](
     strike: Num,
     t_years: Num,
     sigma: Num,
-    carry: float = 0.0,
+    carry: Num | float = 0.0,
     *,
     log: Callable[[Num], Num] = math.log,
     sqrt: Callable[[Num], Num] = math.sqrt,
 ) -> tuple[Num, Num]:
     """Return THE Black-Scholes d1 and sigma*sqrt(T), with `carry` = r - q (0 unless given).
 
-    Numbers, or numpy arrays with log=np.log and sqrt=np.sqrt.
+    Numbers, or numpy arrays with log=np.log and sqrt=np.sqrt (`carry` then a number or an
+    array).
     """
     vt = sigma * sqrt(t_years)
     return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
 
 
-def _priced_d1(
-    spot: float, strike: float, t_years: float, sigma: float, carry: float = 0.0
-) -> tuple[float, float] | None:
-    """Return d1 and sigma*sqrt(T) for one contract, or None when it cannot be priced.
+def bsm_gamma_delta(
+    spot: float, strike: float, t_years: float, sigma: float, sign: int, r: float, q: float
+) -> tuple[float, float]:
+    """Return the Black-Scholes-Merton gamma and delta per share of a call (`sign` 1) or a put.
 
-    It cannot be priced with a value that is not positive, or a d1 that is not finite.
+    Hull, Options, Futures and Other Derivatives, ch. 19, the rate r and dividend yield q as
+    decimals: gamma = e^(-qT) * phi(d1) / (S * sigma * sqrt(T)), the gamma the profile sums
+    (math_levels._gamma_profile_totals); delta = e^(-qT) * N(d1) for a call and
+    e^(-qT) * (N(d1) - 1) for a put, negative as Schwab's is.
     """
-    if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
-        return None
-    d1, vt = d1_vt(spot, strike, t_years, sigma, carry)
-    return (d1, vt) if math.isfinite(d1) else None
-
-
-def bs_gamma(spot: float, strike: float, t_years: float, sigma: float) -> float | None:
-    """Black-Scholes gamma per share, r = q = 0. The same gamma the profile sums."""
-    priced = _priced_d1(spot, strike, t_years, sigma)
-    if priced is None:
-        return None
-    d1, vt = priced
-    g = norm_pdf(d1) / (spot * vt)
-    return g if math.isfinite(g) else None
-
-
-def bs_delta(
-    spot: float, strike: float, t_years: float, sigma: float, *, call: bool
-) -> float | None:
-    """Black-Scholes delta per share, r = q = 0. A put is the call delta minus one."""
-    priced = _priced_d1(spot, strike, t_years, sigma)
-    if priced is None:
-        return None
-    d1, _vt = priced
-    call_delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
-    d = call_delta if call else call_delta - 1.0
-    return d if math.isfinite(d) else None
+    d1, vt = d1_vt(spot, strike, t_years, sigma, r - q)
+    discount = math.exp(-q * t_years)
+    cdf = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    return discount * norm_pdf(d1) / (spot * vt), discount * (cdf if sign > 0 else cdf - 1.0)
 
 
 def _each(
@@ -499,35 +480,47 @@ _BUCKET_SUMS = tuple(
 
 
 def overlay_streamed_contract_fields(
-    contracts: list[OptionContract], streamed_by_symbol: dict[str, dict], held: set[str]
+    contracts: list[OptionContract],
+    streamed_by_symbol: dict[str, dict],
+    held: set[str],
+    quoted: dict[str, tuple[float, dict]],
 ) -> tuple[list[OptionContract], int]:
-    """Give each contract Schwab streams (`held`) the values the stream pushed it.
+    """Give each contract its newest values: the stream's when it is held, else /quotes'.
 
-    `streamed_by_symbol` holds its newest streamed record; the pushed field is its one producer
-    (AGENTS.md rule 3). Its volume is the stream's `total_volume`, None until the stream sends one.
-    Its Greeks and volatility are the stream's newest once the stream holds all six (the set the
-    chain sweep takes, option_contract.streamed_greek_set); until then they are the chain's, which
-    the sweep asked /quotes for because the stream had not sent them. Every other contract keeps
-    the chain's. Open interest is the chain's for every contract (the stream does not send it for
-    every contract it streams).
+    A contract Schwab does not stream (not in `held`) takes the values of its newest /quotes
+    answer received since its chain began (`quoted`: symbol -> (receive time, values),
+    app.options.order_flow.state.rest_quotes), the moment that answer arrives; with no such
+    answer it keeps the chain's.
 
-    Pure: a streamed contract is a new record, every other the same one. Returns
+    A contract Schwab streams takes its newest streamed record (`streamed_by_symbol`); the pushed
+    field is its one producer (AGENTS.md rule 3). Its volume, bid and ask are the stream's
+    (`total_volume`, `bid`, `ask`), each None until the stream sends it. Its Greeks and
+    volatility are the stream's newest once the stream holds all six (the set the chain sweep
+    takes, option_contract.streamed_greek_set); until then they are the chain's, which the sweep
+    asked /quotes for because the stream had not sent them. Open interest is the chain's for
+    every contract (the stream does not send it for every contract it streams).
+
+    Pure: a contract given values is a new record, every other the same one. Returns
     (new_contracts, streamed_count).
     """
     out: list[OptionContract] = []
     for c in contracts:
         if c.symbol not in held:
-            out.append(c)
+            out.append(replace(c, **quoted[c.symbol][1]) if c.symbol in quoted else c)
         elif c.symbol in streamed_by_symbol:
             sent = streamed_by_symbol[c.symbol]
-            pushed = {"volume": sent.get("total_volume")}
+            pushed = {
+                "volume": sent.get("total_volume"),
+                "bid": sent.get("bid"),
+                "ask": sent.get("ask"),
+            }
             greeks = streamed_greek_set(sent)
             if greeks is not None:
                 pushed.update(greeks)
             out.append(replace(c, **pushed))
         else:
-            out.append(replace(c, volume=None))
-    return out, len(out) - sum(new is old for new, old in zip(out, contracts))
+            out.append(replace(c, volume=None, bid=None, ask=None))
+    return out, sum(1 for c in contracts if c.symbol in held)
 
 
 def strike_total_oi(bucket: dict) -> float | None:

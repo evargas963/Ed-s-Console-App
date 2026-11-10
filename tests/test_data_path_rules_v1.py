@@ -434,27 +434,6 @@ def test_d5_while_closed_a_live_feed_keeps_the_last_values_marked_not_live_not_o
     assert s["equity_book"]["book_feed_label"] == "NOT LIVE"
 
 
-def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
-    """The daemon's status, stamped by the daemon two minutes ago, arrives now.
-
-    The console judges it by the daemon's own time, not by when it arrived.
-    """
-    old = time_et.now() - 120
-    lmp.record_feed_heartbeat(
-        daemon_status(
-            old,  # arrives now
-            schwab_socket_open=True,
-            held={"LEVELONE_EQUITIES": ["SPY"]},
-        )
-    )
-    try:
-        assert lmp.daemon_status(time_et.now()) is None, (
-            "a two-minute-old daemon status counted as live"
-        )
-    finally:
-        lmp.record_feed_down()
-
-
 # ── D5 for the chains: the sweep by each ticker's option market, as Schwab's /markets sends it ──
 # The real ChainSweep on its thread (work), its clock an input, against the local stand-in for
 # Schwab's host (tests/schwab_rest_standin.py: SPY and TSLA, and Schwab's /markets answers

@@ -299,8 +299,11 @@ the program.
   daemon does not hold takes every field from the chain, its Greeks from Schwab's quotes. A book message is the book Schwab sent, a
   side with no levels included (empty, never replaced by an older two-sided book); a side Schwab
   sent no level for at a price is absent in the book heatmap, never a 0 size. The book heatmap and
-  the options tape serve from the console's memory (§3.3), never the database. Mid and microprice
-  are computed from the quotes Schwab sent, a crossed book included (served with `crossed`).
+  the options tape serve from the console's memory (§3.3), never the database. The book's Mark is
+  Schwab's MARK as sent (Mark Price: LEVELONE_OPTIONS field 37 for a contract, LEVELONE_EQUITIES
+  field 33 for an equity, `docs/schwab/schwab_streamer_api.pdf` §3.2 and §3.1), never a midpoint
+  of ours; microprice is computed from the quotes Schwab sent, a crossed book included (served
+  with `crossed`).
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's).
 - **The option contracts streamed (the option rule).** What streams live is the most actionable
@@ -321,12 +324,25 @@ the program.
   (`tests/test_option_contract_rule_v1.py`). The contract
   selected on the Flow panel (`POST /api/flow-contract`, only one Schwab listed in a chain the
   console holds; the console names it to the daemon on every connection, `{"op":
-  "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK. What is left of
-  Schwab's limits (LEVELONE_OPTIONS 3,000, OPTIONS_BOOK 100, measured on the daemon's own
-  connection 2026-10-07) is split evenly across the watchlist tickers, and each ticker's share
-  on each service is its contracts with the highest gamma, Schwab's as sent, the gamma the levels
-  take (none sent, -999, or a -999 volatility is no gamma, ranked last); of equal gammas the nearest expiration, then the strike nearest the price, calls before
-  puts. A contract has expired once now passes Schwab's expirationDate: it stays in the records
+  "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK, first in the order
+  Schwab is asked in. After it come every ticker's contracts, dealt across the watchlist (each
+  ticker's first, then each one's second, `Daemon.pick_options`); a ticker's own order is its
+  contracts with the highest gamma first, Schwab's as sent, the gamma the levels
+  take (none sent, -999, or a -999 volatility is no gamma, ranked last); of equal gammas the
+  nearest expiration, then the strike nearest the price, calls before puts. No number of ours
+  caps what is asked: on each connection every contract of the order is asked on both services,
+  and a service that takes fewer says so itself, code 19 (REACHED_SYMBOL_LIMIT,
+  `docs/schwab/schwab_streamer_api.pdf`, response codes) with its limit in the message, as on
+  2026-10-07: "(LEVELONE_OPTIONS=3000, DISCARDED=2181)", "(OPTIONS_BOOK=100, DISCARDED=1)". The
+  daemon takes the limit Schwab stated (`Daemon.limit`, for that connection only) and asks the
+  service once more from nothing: one SUBS of the first that many of the order, which overwrites
+  whatever Schwab kept of the refused request (its document does not say which symbols those
+  are). From then the order is cut at that limit (`Daemon.wanted`). A refusal that states no
+  limit, or the one already known, is published as sent (`sub.<service>`) and not asked again on
+  that connection. What the daemon counts as held (`Daemon.held`) follows Schwab's commands on
+  each request's first answer (`Daemon.answered`): an accepted SUBS replaces what the service
+  held, an accepted ADD adds to it, an accepted UNSUBS removes from it, and a refused SUBS holds
+  nothing. A contract has expired once now passes Schwab's expirationDate: it stays in the records
   and is never streamed (Schwab still lists an expired Friday on a weekend); one that expires
   between chains streams until the ticker's next chain (one is asked after each option close). Each
   change is one UNSUBS and one ADD of only the difference (`Daemon.ask`). The levels use every
@@ -334,7 +350,9 @@ the program.
   streams: every cell keeps its value and the header says OFFLINE. A contract the daemon stops
   holding keeps its last quote; the Flow panel marks it NOT STREAMED
   (`get_option_contract_streaming_diagnostics`). Tests:
-  `tests/test_option_contract_rule_v1.py`, `tests/test_data_path_released_contract_v1.py`.
+  `tests/test_option_contract_rule_v1.py` (the order, the limit Schwab states, a chain that
+  arrives later, a new connection), `tests/test_data_path_one_watchlist_v1.py` (a refusal that
+  states no limit), `tests/test_data_path_released_contract_v1.py`.
 - **1-minute bar and daily candles.** Schwab's price history: the daemon's chain sweep
   asks `/pricehistory` for each ticker (`complete_chain_capture.PRICE_HISTORY`,
   per `docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`, each request ending
@@ -500,32 +518,39 @@ the program.
   (operator 2026-11-05; Schwab Streamer API §1.1 and §1.5: LEVELONE_OPTIONS is delivered on
   Change). A contract whose LEVELONE_OPTIONS record on the daemon's bus
   (`Daemon.option_record`) carries all six as values (`option_contract.streamed_greeks`, the one
-  reader of those stream fields) takes the stream's, each with its field's Schwab time, and is
-  not asked for on `/quotes`. A contract's Greeks are one set, never some from the stream and
-  some from `/quotes` (`option_contract.streamed_greek_set`), and they are the chain's: the
-  console's levels take them as the sweep set them, and no streamed tick replaces them between
-  chains (a live update without a second copy waits for SHAPE's one store). An option record
+  reader of those stream fields) takes the stream's, each with its field's Schwab time
+  (`greeksTime`, {field: ms}), and is not asked for on `/quotes`. A contract's Greeks are one
+  set, never some from the stream and some from `/quotes`
+  (`option_contract.streamed_greek_set`). An option record
   ends with its hold: the daemon forgets it when Schwab drops the contract or the connection
   ends (`Daemon.disconnect`), so the next hold starts from what Schwab sends then. Every other
-  contract (the stream holds at most 3,000, Schwab Trader API Support 2026-10-12) is asked for
+  contract (one the stream does not hold: past the limit Schwab stated, or not yet answered) is
+  asked for
   on `/quotes`, comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab
-  Trader API Support 2026-10-06: not more than 300), and takes its quote's, as sent. Each
-  contract carries the time of its Greeks as Schwab sent it, `greeksTime` ({field: ms}: the
-  stream field's time, or the quote's `quoteTime`). Enforced by:
+  Trader API Support 2026-10-06: not more than 300), and takes its quote's, as sent (its
+  `greeksTime` is None). Each `/quotes` answer goes to the console at once, as Schwab sent it,
+  with the time the daemon received it (topic `optquotes`, `state.push_rest_quotes`).
+  Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (a contract the stream holds is not asked
-  for on `/quotes`).
-  Outside that ticker's option window — after it has ended, and before the next one opens —
-  a quote that does not report a greek leaves the greek the last quote reported, and an open
-  interest or volume of zero leaves the last count above zero. A missing count and Schwab's
-  no-value code are not that zero. That last count is the one this process already published,
-  or, when it has not, the newest capture stored before this chain. A day Schwab says is closed is outside every
-  window (`time_et.option_market_open`), so its zeros keep the last count too (operator 2026-10-25:
-  the last valid number stands, as a bank's last balance does while it is closed). A chain is judged by when it was fetched: one begun inside the window keeps a reported
-  zero even when it is priced after the close. A streamed zero after the close does not replace
-  the count already on that chain. A zero book from a closed day does not replace the last count,
-  through the next open. During the window,
-  Schwab's no-value code is not a greek and does not keep an older one, and a count of zero
-  replaces the last count. A chain is published once all its quotes are in. A quotes request Schwab refuses
+  for on `/quotes`; each answer reaches the bus as sent with its receive time).
+  Outside that ticker's option window — after it has ended, and before the next one opens; a
+  day Schwab says is closed is outside every window (`time_et.option_market_open`) — the close
+  values are the balance until the next open (operator 2026-11-09: "upon market close (when the
+  bank closes) that is the balance until the bank opens again, post market, pre market, etc."):
+  the first chain begun at or after that ticker's close, the one this process published or the
+  ticker's newest capture stored after the close (`server._publish_levels`), priced as Schwab
+  sent it. A reported 0 is 0 in them, Schwab's no-value code and a missing count are no value,
+  and no earlier count or greek is carried in. Nothing Schwab sends after them replaces them: no
+  later chain, and no pushed value (no reprice, no streamed value over the chain; the chain panel
+  shows the contracts as the levels priced them). Until the close values are held, a chain is
+  priced as sent; one begun inside the window keeps its reported zero even when it is priced
+  after the close. During the window, Schwab's no-value code is not a greek and a count of zero
+  is the count. Enforced by: `tests/test_data_path_confluence_v1.py`
+  (`test_the_close_values_stand_until_the_next_open`,
+  `test_a_close_capture_of_zeros_is_the_balance_not_the_capture_before_it`,
+  `test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture`) and
+  `tests/test_data_path_served_verdicts_v1.py` (Sunday's chain on Schwab's captured answer). A
+  chain is published once all its quotes are in. A quotes request Schwab refuses
   fails every chain in it with its status and reason, so the levels keep their last good
   publication, stale with that reason. A contract missing from an answered request has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when
@@ -569,9 +594,10 @@ the program.
   absent (`server._forces_from_captures`), and a charm, DEX, ΔOI, GEX or volume side with a strike not known, or no strike at all, leaves that side
   absent (enforced by `tests/test_data_path_charm_side_unknown_v1.py` and `tests/test_data_path_side_volume_v1.py`); the screen draws "-". ΔOI is a side's total on the newer day less its total on the older day, both cut at the newer price: a strike a whole chain does not list holds no contracts that day, and the card names the older day. An ATR that cannot be computed is absent (`server._atr_fields`); the
   screen draws "-". None of these rules names a ticker; the
-  watchlist decides which tickers are fetched and priced. Every streamed tick of a ticker (an
-  equity quote, or a LEVELONE_OPTIONS message of one of its contracts carrying a Greek or its
-  volume, `streaming._REPRICE_FIELDS`) queues a reprice of that ticker on the pricing thread,
+  watchlist decides which tickers are fetched and priced. Every tick of a ticker (an
+  equity quote, a LEVELONE_OPTIONS message of one of its contracts carrying a Greek or its
+  volume, `streaming._REPRICE_FIELDS`, or a `/quotes` answer for one of its contracts) queues a
+  reprice of that ticker on the pricing thread,
   whether a page shows it or not (operator 2026-11-06: "the live price is the key"; the levels
   follow what Schwab pushes). The ticks that arrive while one waits or runs are all in the next.
   Every pricing runs at the job's own instant (`server._price_waiting_chain`), so the daemon's
@@ -580,10 +606,14 @@ the program.
   `tests/test_data_path_live_status_v1.py` (a push's reprice keeps a held contract live; the beat
   after a new surface stamps it). A streamed contract's Greeks and volatility are the stream's newest once the stream
   holds all six, else the chain's (`math_exposure_core.overlay_streamed_contract_fields`); its
-  volume is the stream's. The levels' time (`levels_ts_utc`, served as `levels_time_ct` and the
-  age) is the newest Schwab option value in them: the chain, or a value pushed since; their
+  volume, bid and ask are the stream's. A contract the stream does not hold takes its newest
+  `/quotes` answer received since its chain began, the moment it arrives; an answer received
+  before the chain began is older than the chain's own values and is not laid over it
+  (`state.rest_quotes`). The levels' time (`levels_ts_utc`, served as `levels_time_ct` and the
+  age) is the newest Schwab option value in them: the chain, a value pushed since, or a
+  `/quotes` answer received since (its receive time); their
   verdict is judged on the chain's own time (`computed_ts_utc`), so a chain that stops arriving
-  still turns them stale. A viewed
+  still turns them stale (enforced by `tests/test_rest_quotes_reach_the_levels_v1.py`). A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
   stream runs). Which page opened last decides nothing. With the daemon not reporting (no
   current heartbeat), no ticker reads "warming": its reason says first that the daemon is not
@@ -907,17 +937,27 @@ behavior (AGENTS.md).
 9. **No trade side** (operator 2026-09-28, ONE-12). Schwab supplies no aggressor side, so no
    inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
    Enforced by: no machine check — ENF-16.
-10. **Same-day levels, every ticker** (operator 2026-10-17). One producer
-    (`terrain_engine.same_day_levels`). The nearest listed expiry keeps its open interest and
-    implied volatility. Gamma and delta are rebuilt, Black-Scholes with no rate and no dividend,
-    at the time every other greek uses (`time_to_expiry_years`, including its 10-minute floor)
-    from the valuation instant to that day's option close. A contract with open interest whose
-    gamma cannot be rebuilt leaves its side and that strike's total unknown, as in the whole
-    book; the other side's known value still ranks (operator 2026-10-31: "you're guide is how
-    would a financial banking app work"). Charm follows the same rule, in both books. The close is
-    the regular window Schwab's /markets sent: the index window for an index it names with "$"
-    and for SPY, QQQ and IWM, the equity-option window for every other ticker. No window held,
-    or a close already passed, leaves the level absent.     The whole-book levels are unchanged.
+10. **Same-day levels, every ticker** (operator 2026-10-17; 2026-11-09: "schwab does not have a
+    0DTE field that is one we compute ... we must have one producer at the source to compute all
+    levels for all tickers on a 0dte basis"). One producer (`terrain_engine.same_day_levels`): the
+    whole book's own producers read on the nearest listed expiry alone. An expiry listed today is
+    read as the book holds it: Schwab's gamma and delta as sent, its flip, GSF and GRC from its
+    gamma profile, its charm walls from its charm map. With none listed today, the next listed
+    expiry keeps its open interest and implied volatility, and its gamma and delta are rebuilt as
+    if it expired at today's option close (`math_levels.repriced_to_close`): Black-Scholes-Merton
+    with Schwab's rate and dividend yield as sent, at the time every other greek uses
+    (`time_to_expiry_years`, including its 10-minute floor) from the valuation instant to that
+    close; its gamma profile and charm are priced at that same time. A contract with open
+    interest whose gamma is not known (not sent, or it cannot be rebuilt) leaves its side and that
+    strike's total unknown, as in the whole book; the other side's known value still ranks
+    (operator 2026-10-31: "you're guide is how would a financial banking app work"). Charm follows
+    the same rule, in both books. The close is the regular window Schwab's /markets sent: the
+    index window for an index it names with "$" and for SPY, QQQ and IWM, the equity-option window
+    for every other ticker. After that close the levels stand as priced at it, a later expiry's at
+    the 10-minute floor, until the next open (the close values, §3.4). A later expiry's levels are
+    absent where a chain is priced on a day with no option window held (a weekend or a holiday
+    with no close values held, or Schwab's /markets answer for today not held); every ticker's are
+    when the chain lists no expiry from today on. The whole-book levels are unchanged.
     The 0DTE pin is `same_day.absolute_gamma_strike` only. The listed-expiry pin
     (`zero_dte_abs_gamma_strike`) is not produced: it was a second pin.
     The key levels rail draws each strike once, the regular price beside the same-day
@@ -928,4 +968,4 @@ behavior (AGENTS.md).
     other served levels. Family, evidence and source are not drawn. Each price is shown
     with the time the server sent for it.
     Enforced by: `tests/test_data_path_same_day_levels_v1.py`,
-    `tests/test_data_path_zero_dte_pin_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.
+    `tests/test_data_path_charm_side_unknown_v1.py`.

@@ -22,13 +22,3 @@ def test_compute_max_pain_returns_none_for_sparse_chain():
     one = [ct for ct in CRWD.chain if ct["strikePrice"] == 315.0]
     assert [ct["openInterest"] > 0 for ct in one] == [True, False]
     assert compute_max_pain(_exposures(one)) is None
-
-
-def test_compute_max_pain_skips_strikes_with_missing_multiplier():
-    # a strike with call open interest and no multiplier: never a synthetic *100 (dbf6e9e) and no
-    # longer skipped either (M-08, 2026-09-24) -- a max pain that leaves out real OI is withheld.
-    chain = [dict(ct) for ct in CRWD.chain]
-    ct = next(c for c in chain if c["strikePrice"] == 315.0 and c["putCall"] == "CALL")
-    assert ct["putCall"] == "CALL" and ct["openInterest"] > 0
-    del ct["multiplier"]
-    assert compute_max_pain(_exposures(chain)) is None

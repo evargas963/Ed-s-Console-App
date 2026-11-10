@@ -3,8 +3,9 @@
 MEASURED 2026-09-25 live across the 42 board tickers: levels computed from the strike window the
 console fetched (strike_count sized to +/-5% around spot -- 20 strikes for most names) disagreed
 with the same code run on the full chain for about a third of the board. MRVL was one. In
-this fixture (captured the same afternoon) the window loses the gamma flip entirely (full chain:
-230.53) and moves max pain from 242.5 to 247.5, at spot 263.51.
+this fixture (captured the same afternoon) the window moves max pain from 242.5 to 247.5, at
+spot 263.51. The fixture holds the contract fields the levels read then and not the chain's
+interest rate and dividend yield, so no gamma flip is priced from it.
 
 The fixture holds MRVL's full chain (strike_range=ALL) and its 20-strike window, captured from
 Schwab at the same moment (tests/fixtures/real_mrvl_full_chain_vs_strike_window.json). These
@@ -74,7 +75,7 @@ def test_the_window_gives_different_levels_than_the_full_chain():
     window = _levels(compute_terrain("MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED))
     differing = {k for k in full if full[k] != window[k]}
     assert differing, (full, window)
-    assert full["gamma_flip"] is not None, "the full chain has a flip for MRVL"
+    assert (full["max_pain"], window["max_pain"]) == (242.5, 247.5), "as measured 2026-09-25"
 
 
 def test_the_level_producer_computes_from_the_full_chain(tmp_path):

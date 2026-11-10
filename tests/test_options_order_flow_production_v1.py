@@ -142,7 +142,6 @@ def build_side_e2e_fixture_response() -> dict:
     finally:
         for sym in contracts:
             TAPE.forget(sym)
-            ofs._option_contract_last_update_ts.pop(sym, None)
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop("SPY", None)
         lmp.record_feed_down()

@@ -222,9 +222,8 @@ def _resolve_bid_ask_prices(data: dict) -> tuple[float | None, float | None]:
 
 
 def _resolve_quote_mark(data: dict) -> float | None:
-    """Streamed MARK, the spread-fraction denominator (a MARK of 0 divides nothing)."""
-    mark_p = _top(data).get("mark")
-    return mark_p if mark_p is not None and mark_p > 0 else None
+    """Level-one MARK as Schwab sent it, a ticker's or a contract's; a reported 0 is 0."""
+    return _top(data).get("mark")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -424,12 +423,11 @@ def _microstructure_structural(cb: dict) -> dict:
     have_quotes = bid is not None and ask is not None
     crossed = have_quotes and bid > ask
 
-    # computed from Schwab's quotes as sent, a crossed book included (served with `crossed`)
-    mid = (bid + ask) / 2.0 if have_quotes else None
     microprice = _microprice(bid, ask, bid_size, ask_size)
     spread_pts = ask - bid if have_quotes else None
     mark = cb["mark"]
-    spread_frac = spread_pts / mark if (spread_pts is not None and mark is not None) else None
+    # the spread over a MARK of 0 is undefined: no value
+    spread_frac = spread_pts / mark if spread_pts is not None and mark else None
 
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
     # totals and imbalance), carried; slope and concentration reuse its top-5 totals.
@@ -451,7 +449,7 @@ def _microstructure_structural(cb: dict) -> dict:
         "status": "ok" if cb["has_book"] else "no_book",
         "top_of_book": {"bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size},
         "crossed": crossed,
-        "mid": mid,
+        "mark": mark,
         "microprice": microprice,
         "spread_pts": spread_pts,
         "spread_frac": spread_frac,
@@ -491,7 +489,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "top_of_book.ask": "NATIVE",
             "top_of_book.bid_size": "NATIVE",
             "top_of_book.ask_size": "NATIVE",
-            "mid": "DERIVED",
+            "mark": "NATIVE",
             "microprice": "DERIVED",
             "crossed": "DERIVED",
             "spread_pts": "DERIVED",

@@ -5,39 +5,34 @@ math_volatility.py
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 from micro_structure import Candle
 
 # ── ATR (Average True Range) ────────────────────────────────────────────────
 
 
 def compute_atr(candles: list[Candle], *, period: int = 14) -> float | None:
-    """
-    Average True Range from OHLC candles.
+    """Return Wilder's Average True Range of OHLC candles.
 
-    Formula:
-        TR = max(high - low, abs(high - prev_close), abs(low - prev_close))
-        ATR = SMA(TR, period)
+    Wilder (1978), New Concepts in Technical Trading Systems:
+    TR = max(high - low, abs(high - prev_close), abs(low - prev_close)). The first ATR is the
+    simple mean of the first `period` TRs; each later one is
+    ATR_t = (ATR_(t-1) * (period - 1) + TR_t) / period.
 
     Args:
         candles:  Schwab's candles, oldest first
         period:   ATR lookback period (default 14)
 
-    Returns ATR in price points, or None if insufficient data.
+    Returns ATR in price points, or None with fewer than `period` TRs.
     """
-    if not candles or len(candles) < period + 1:
-        return None
-
-    trs = []
-    prev_close = None
-    for candle in candles:
-        h, lo = candle.high, candle.low
-        if prev_close is not None:
-            tr = max(h - lo, abs(h - prev_close), abs(lo - prev_close))
-            trs.append(tr)
-
-        prev_close = candle.close
-
+    trs = [
+        max(c.high - c.low, abs(c.high - p.close), abs(c.low - p.close))
+        for p, c in pairwise(candles)
+    ]
     if len(trs) < period:
         return None
-
-    return sum(trs[-period:]) / period
+    atr = sum(trs[:period]) / period
+    for tr in trs[period:]:
+        atr = (atr * (period - 1) + tr) / period
+    return atr

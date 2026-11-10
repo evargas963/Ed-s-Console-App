@@ -25,7 +25,9 @@ so a wrong number that looks right is worse than a '-'.
 6. After two failed attempts at the same thing, go to bedrock: find the cause down to the
    line, with evidence, report what you tried, and take a different approach. Stop only for
    a stop the rules require.
-7. If rules conflict: correctness of what I see > my explicit yes > speed.
+7. My order comes first (2026-11-09: "just code and do as i ask that's it"). If an order would
+   put a wrong number on my screen, say so once, in one line, then do it. No rule, deadline or
+   market hour is a reason to hold, reorder or replace what I ordered.
 
 Every report ends like this example:
   CONFIRMED: pytest tests/test_x.py -> 12 passed; every watchlist ticker's levels match the chain.

@@ -1400,11 +1400,11 @@ def test_new_levels_reach_only_the_pages_showing_the_chain_on_that_ticker():
 
 @pytest.mark.usefixtures("no_levels")
 def test_a_chain_producer_that_raises_fails_its_panel_alone_in_words():
-    """Induced condition: CRWD's held chain holds a contract that is None, so the chain raises."""
+    """Induced condition: CRWD's priced chain holds a contract that is None, so the chain raises."""
     _publish(CRWD)
     with server._terrain_cache_lock:
         held = server._terrain_cache[A]
-        server._terrain_cache[A] = replace(held, chain=[None, *held.chain])
+        server._terrain_cache[A] = replace(held, priced_chain=[None, *held.priced_chain])
 
     async def body(url):
         async with connect(url) as ws:

@@ -22,8 +22,8 @@
     "depth.*.imbalance": "DERIVED",
     "depth_pressure": "DERIVED",
     "liquidity_concentration": "DERIVED",
+    "mark": "NATIVE",
     "microprice": "DERIVED",
-    "mid": "DERIVED",
     "provenance.book_time_ms": "NATIVE",
     "provenance.exchange_quote_ts": "NATIVE",
     "provenance.server_received_ts": "DERIVED",
@@ -114,8 +114,8 @@
     "ask": 0.2913907284768212,
     "bid": 0.9601328903654485
   },
+  "mark": 0.595,
   "microprice": 0.6039130434782608,
-  "mid": 0.595,
   "provenance": {
     "book_source": "OPTIONS_BOOK",
     "book_time_ms": 1788202221430.0,
@@ -142,8 +142,6 @@
       },
       "replay": "not connected"
     },
-    "queried_contract": "TSLA  260831C00367500",
-    "streaming_last_update_ts": 1788202221.7171052,
     "subscription_state": "SUBSCRIBED"
   },
   "top_feed_label": "NOT LIVE",

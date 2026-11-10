@@ -223,10 +223,11 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
 
     The daemon, restarted, fetches SPY's chain again (09:37 ET) and Schwab sends open interest
     0 for contracts Friday's 16:16 close had above 0. A closed day is outside every option
-    market's window (time_et.option_market_open), so the close counts stand
-    (server._keep_last_reported, the stored close capture), as after any close. STAND-IN
-    (named): the chain's price is Friday's close capture's underlying price, not Schwab's
-    LAST_PRICE with its trade time.
+    market's window (time_et.option_market_open): Friday's close capture, taken after that
+    close, is the balance until the next open, and Sunday's chain does not replace it. With no
+    close values stored, Sunday's chain is the first after the close and is priced as Schwab sent
+    it. STAND-IN (named): the chain's price is Friday's close capture's underlying price, not
+    Schwab's LAST_PRICE with its trade time.
     """
     friday, sunday = _SUNDAY["friday_close"], _SUNDAY["sunday"]
     close_oi = {c["symbol"]: c["openInterest"] for c in friday["chain"]}
@@ -234,6 +235,17 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
         c["symbol"] for c in sunday["chain"] if c["openInterest"] == 0 and close_oi[c["symbol"]] > 0
     ]
     at = datetime.fromtimestamp(sunday["ts_utc"], ET)
+
+    def publish_sunday():
+        server._publish_levels(
+            "SPY",
+            read_chain(sunday["chain"]),
+            sunday["ts_utc"],
+            chain_spot=(friday["spot"], friday["ts_utc"]),
+            now=at,
+        )
+        return server.published_levels("SPY")
+
     _forget()
     try:
         store_capture(
@@ -245,15 +257,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
             completeness_basis=CAPTURE_BASIS,
             ts_utc=friday["ts_utc"],
         )
-        server._publish_levels(
-            "SPY",
-            read_chain(sunday["chain"]),
-            sunday["ts_utc"],
-            chain_spot=(friday["spot"], friday["ts_utc"]),
-            now=at,
-        )
-        priced = {c.symbol: c for c in server.published_levels("SPY").priced_chain}
-        same_day = server.terrain("SPY", at.timestamp(), {})["same_day"]
+        balance = publish_sunday()
     finally:
         _forget()
         with sqlite3.connect(
@@ -263,8 +267,16 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
                 "DELETE FROM complete_chain_captures WHERE ticker = 'SPY' AND ts_utc = ?",
                 (friday["ts_utc"],),
             )
+    try:
+        sent = {c.symbol: c for c in publish_sunday().priced_chain}
+        same_day = server.terrain("SPY", at.timestamp(), {})["same_day"]
+    finally:
+        _forget()
+    priced = {c.symbol: c for c in balance.priced_chain}
     assert len(blanked) == 46
+    assert balance.computed_ts_utc == friday["ts_utc"]
     assert {s: priced[s].open_interest for s in blanked} == {s: close_oi[s] for s in blanked}
+    assert {s: sent[s].open_interest for s in blanked} == dict.fromkeys(blanked, 0)
     # no option market trades on Sunday, so there is no same-day close to reprice to: no 0DTE level
     # is made from the next expiry
     assert same_day and all(v is None for v in same_day.values()), same_day
