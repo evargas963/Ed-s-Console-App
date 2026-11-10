@@ -328,10 +328,11 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
             bisect.bisect_left(expirations, c.expires_at),
             2 * abs(bisect.bisect_left(strikes, c.strike) - centre),
         )
-        gamma = (1, 0.0) if c.gamma is None else (0, -c.gamma)
-        rows.append(
-            (distance, *gamma, c.expires_at, abs(c.strike - price), c.strike, c.side, c.symbol)
-        )
+        row = (c.expires_at, abs(c.strike - price), c.strike, c.side, c.symbol)
+        if c.gamma is not None:
+            rows.append((distance, 0, -c.gamma, *row))
+        else:  # no gamma: after every contract as near that has one
+            rows.append((distance, 1, *row))
     return tuple(r[-1] for r in sorted(rows))
 
 
