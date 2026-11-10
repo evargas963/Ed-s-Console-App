@@ -32,12 +32,10 @@ _FX = json.loads(
 def _held(symbol: str) -> tuple[list, list]:
     """(daily candles, 1-minute candles) of `symbol` as the bar writer holds them."""
     for a in _FX["answers"]:
-        if a["symbol"] == symbol:
-            series = "1m" if a["params"]["frequencyType"] == "minute" else "daily"
-            if a["params"]["frequency"] == "1" or series == "daily":
-                server._write_price_history(
-                    {"symbol": symbol, "series": series, "answer": a["body"]}
-                )
+        if a["symbol"] == symbol and a["series"] in ("1m", "1d"):
+            server._write_price_history(
+                {"symbol": symbol, "series": a["series"], "answer": a["body"]}
+            )
     try:
         return list(server._series[(symbol, "1d")]), list(server._bars[symbol])
     finally:

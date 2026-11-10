@@ -633,13 +633,14 @@ def _asked_since(swept: _Swept, path: str, mark: float) -> list[dict]:
 
 
 def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_path):
-    """The price history is asked once per ET date; option chains follow the options session.
+    """Each price-history series is asked as its bars complete; chains follow the options session.
 
-    Today's candle is rolled up live from the streamed bars; option chains follow each ticker's
-    options session. Thursday 2026-10-01 at
-    17:00 ET (Schwab's /markets: stock options closed at 16:00): SPY's chain is asked once (its
-    close values) and its price history once; nothing more that day; on Friday's date, at 03:30,
-    the price history once again, and the chain waits for the first option window Schwab sent.
+    Thursday 2026-10-01 at 17:00 ET (Schwab's /markets: stock options closed at 16:00, the
+    post-market session open to 20:00): SPY's chain is asked once (its close values) and every
+    price-history series once. At 20:00:30 the session has ended: the 5-, 15- and 30-minute
+    series are asked once more, for the bars that ended it. On Friday's date, at 03:30, before
+    any session, the 1-minute and daily series are asked once, and the chain waits for the first
+    option window Schwab sent.
     """
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-01 17:00", ["SPY"])
@@ -668,10 +669,16 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     assert (
         len([q for p, q, s, *_ in swept.schwab.requests if p == chains and s <= after_hours]) == 1
     ), "the chain once after the option close"
-    assert history_at("2026-10-01 17:00") == ["minute1", "daily1"], (
-        "the price history once that day"
+    assert history_at("2026-10-01 17:00") == [
+        "minute1",
+        "minute5",
+        "minute15",
+        "minute30",
+        "daily1",
+    ], "every series at the start"
+    assert history_at("2026-10-01 20:00:30") == ["minute5", "minute15", "minute30"], (
+        "the bars that ended the session"
     )
-    assert history_at("2026-10-01 20:00:30") == [], "not again the same day"
     assert history_at("2026-10-02 03:30") == ["minute1", "daily1"], "once on the next ET date"
     assert history_at("2026-10-02 03:45") == [], "not again that day"
     assert _asked_since(swept, chains, after_hours) == [], "the chain waits for its window"
@@ -681,7 +688,7 @@ def test_d5_a_start_asks_every_tickers_price_history_before_any_chain(tmp_path):
     """The price-built levels need the price history; a rotation of the chains takes minutes.
 
     Thursday 2026-10-01 10:00 ET (RTH, both tickers' options open): the daemon's first pass asks
-    SPY's and TSLA's price history (two series each) before its first chain request.
+    SPY's and TSLA's price history (five series each) before its first chain request.
     """
     history = "/marketdata/v1/pricehistory"
     swept = _Swept(tmp_path, "2026-10-01 10:00", ["SPY", "TSLA"])
@@ -693,7 +700,7 @@ def test_d5_a_start_asks_every_tickers_price_history_before_any_chain(tmp_path):
         (p, q.get("symbol")) for p, q, *_ in swept.schwab.requests if p != "/marketdata/v1/markets"
     ]
     first_chain = next(i for i, (p, _) in enumerate(asked) if p != history)
-    assert asked[:first_chain] == [(history, "SPY")] * 2 + [(history, "TSLA")] * 2, asked[:6]
+    assert asked[:first_chain] == [(history, "SPY")] * 5 + [(history, "TSLA")] * 5, asked[:12]
 
 
 def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_then_stand(
@@ -801,10 +808,10 @@ def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_on
     """Operator 2026-10-08: a ticker with no listed option has its chain asked once per ET date.
 
     A watchlist ticker with no listed option has its chain asked once per ET date, only to
-    learn whether options are listed; its price history once per ET date. Monday 2026-10-12
+    learn whether options are listed; its price history as every ticker's. Monday 2026-10-12
     10:00 ET: the stand-in's TSLA expiries (2026-08-27, 2026-10-09) have both passed, so Schwab
     lists none: one expiration-chain request that day and no chain request, its price history
-    once (two series); the next day, one more expiration-chain request.
+    once at that clock (five series); the next day, one more expiration-chain request.
     """
     exps, chains, history = (
         "/marketdata/v1/expirationchain",
@@ -823,7 +830,7 @@ def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_on
     ]
     assert [(p, sym) for p, sym, s in asked if s <= monday] == [(exps, "TSLA")]
     assert [(p, sym) for p, sym, s in asked if s > monday] == [(exps, "TSLA")]
-    assert len([q for p, q, s, *_ in swept.schwab.requests if p == history and s <= monday]) == 2
+    assert len([q for p, q, s, *_ in swept.schwab.requests if p == history and s <= monday]) == 5
 
 
 def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_with_the_reason():
@@ -1365,7 +1372,8 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
     )
     client = schwab.client(tmp_path)
     try:
-        sweep.candles(lambda: client, ["AAA", "BBB"], threading.Event())
+        due = {tk: sweep.candles_due(tk, now) for tk in ("AAA", "BBB")}
+        sweep.candles(lambda: client, due, threading.Event())
         assert sweep.rotation(lambda: client, ["AAA", "BBB"], threading.Event()) == set()
     finally:
         schwab.close()
@@ -1374,7 +1382,7 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
         ("BBB", "expiration chain returned HTTP 403"),
     ]
     gets = _gets(schwab)
-    assert [r[0] for r in gets] == ["/marketdata/v1/pricehistory"] * 4 + [
+    assert [r[0] for r in gets] == ["/marketdata/v1/pricehistory"] * 10 + [
         "/marketdata/v1/expirationchain"
     ] * 2
     assert all(b[2] - a[2] < 1.0 for a, b in zip(gets, gets[1:])), "no pause after a 403"

@@ -32,7 +32,7 @@ from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.schwab_rest_standin import HISTORY, PRICEHISTORY, LocalSchwab
 from time_et import ET
 
-_SERIES = {"1m": ("minute", "1"), "1d": ("daily", "1")}
+_SERIES = {s: (kind, str(n)) for s, (_, _, kind, n) in PRICE_HISTORY.items()}
 
 
 def _et(s: str) -> float:
@@ -54,26 +54,45 @@ def _sweep(tmp_path, clock, publish):
 def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_sent(tmp_path):
     schwab = LocalSchwab()
     published: list = []
-    clock = {"now": _et("2026-08-28 09:05")}
+    clock = {"now": _et("2026-10-01 09:05")}  # Thursday, in the pre-market Schwab sent
     sweep = _sweep(tmp_path, clock, lambda topic, msg: published.append((topic, msg)))
     client = schwab.client(tmp_path)
+
+    def due(at: str) -> list[str]:
+        return sweep.candles_due("SPY", datetime.fromtimestamp(_et(at), ET))
+
+    def ask(at: str) -> list[str]:
+        before = len(schwab.asked(PRICEHISTORY))
+        clock["now"] = _et(at)
+        sweep.candles(lambda: client, {"SPY": due(at)}, threading.Event())
+        return [q["frequencyType"] + q["frequency"] for q in schwab.asked(PRICEHISTORY)[before:]]
+
     try:
-        assert sweep.candles_due("SPY", datetime.fromtimestamp(clock["now"], ET)), "never asked"
-        sweep.candles(lambda: client, ["SPY"], threading.Event())
+        assert due("2026-10-01 09:05") == list(PRICE_HISTORY), "never asked: every series"
+        ask("2026-10-01 09:05")
         first = schwab.asked(PRICEHISTORY)
         later_today = [
-            sweep.candles_due("SPY", datetime.fromtimestamp(clock["now"] + s, ET))
-            for s in (2, 600, 8 * 3600)
+            due(at)
+            for at in (
+                "2026-10-01 09:05:02",
+                "2026-10-01 09:10",
+                "2026-10-01 09:16",
+                "2026-10-01 09:31",
+                "2026-10-01 16:05",
+            )
         ]
-        clock["now"] = _et("2026-08-31 09:05")  # the next market day
-        assert sweep.candles_due("SPY", datetime.fromtimestamp(clock["now"], ET))
-        sweep.candles(lambda: client, ["SPY"], threading.Event())
-        next_day = schwab.asked(PRICEHISTORY)[len(first) :]
+        after_close = ask("2026-10-01 16:05")
+        session_end = ask("2026-10-01 20:01")
+        closed = due("2026-10-01 20:31")
+        next_day = ask("2026-10-02 06:00")  # before the pre-market: the minute series wait
     finally:
         schwab.close()
 
     assert [(q["periodType"], q["period"], q["frequencyType"], q["frequency"]) for q in first] == [
         ("day", "10", "minute", "1"),
+        ("day", "10", "minute", "5"),
+        ("day", "10", "minute", "15"),
+        ("day", "10", "minute", "30"),
         ("year", "2", "daily", "1"),
     ]
     for q, (series, (period_type, period, frequency_type, frequency)) in zip(
@@ -86,15 +105,24 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
             frequency_type,
             str(frequency),
         ), series
-        assert q["endDate"] == str(int(_et("2026-08-28 09:05") * 1000)), (
+        assert q["endDate"] == str(int(_et("2026-10-01 09:05") * 1000)), (
             "each request ends at the clock"
         )
         assert q["needExtendedHoursData"] == "true"
-    assert later_today == [False, False, False], "the price history is asked again the same ET date"
-    assert [q["frequencyType"] + q["frequency"] for q in next_day] == ["minute1", "daily1"]
+    assert later_today == [
+        [],
+        ["5m"],
+        ["5m", "15m"],
+        ["5m", "15m", "30m"],
+        ["5m", "15m", "30m", "1d"],
+    ], "a minute series once a bar of its own completed; the daily again after the regular close"
+    assert after_close == ["minute5", "minute15", "minute30", "daily1"], "only the due series"
+    assert session_end == ["minute5", "minute15", "minute30"], "the bars that end the session"
+    assert closed == [], "closed then and now: nothing is asked"
+    assert next_day == ["minute1", "daily1"], "the next ET date, before any session opens"
 
     history = [(topic, msg) for topic, msg in published if topic.startswith("pricehistory.")]
-    for series in ("1m", "1d"):
+    for series in PRICE_HISTORY:
         topic, msg = next((t, m) for t, m in history if t == f"pricehistory.SPY.{series}")
         sent = HISTORY[("SPY", *_SERIES[series])]["body"]
         assert msg["answer"] == sent and msg["src"] == "schwab_pricehistory", series
@@ -102,7 +130,7 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
             "src": "schwab_pricehistory",
             "symbol": "SPY",
             "series": series,
-            "ts_recv": _et("2026-08-28 09:05"),
+            "ts_recv": _et("2026-10-01 09:05"),
             "answer": sent,
         }, (topic, series)
 
@@ -212,8 +240,8 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
     bus = MessageBus()
     sub = bus.subscribe("pricehistory.", policy=LATEST)
     for tk in ("SPY", "TSLA"):
-        for series, key in _SERIES.items():
-            a = HISTORY[(tk, *key)]
+        for series in ("1m", "1d"):
+            a = HISTORY[(tk, *_SERIES[series])]
             bus.publish(*price_history_message(tk, series, a["body"], a["answered_utc"]))
     while not ofs.streamed_bars.empty():
         ofs.streamed_bars.get_nowait()
@@ -397,8 +425,8 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
 
     docs/DATA_FLOW.md §2 D4: the daemon's chain sweep (capture.run_chains, on its thread)
     publishes each series on the daemon's bus, and the one writer (CaptureWriter, the bus's LOG
-    reader) writes each answer whole, as sent, into stream_pricehistory_raw: SPY's 1-minute,
-    15-minute and daily answers.
+    reader) writes each answer whole, as sent, into stream_pricehistory_raw: SPY's 1-, 5-, 15-
+    and 30-minute and daily answers.
     """
     db = tmp_path / "stream_capture.db"
     schwab = LocalSchwab()
@@ -431,7 +459,7 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
             )
         )
         deadline = asyncio.get_running_loop().time() + 30
-        while len(rows()) < 2 and asyncio.get_running_loop().time() < deadline:
+        while len(rows()) < 5 and asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.1)
         stop.set()
         await asyncio.gather(written, sweep)
@@ -440,9 +468,12 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
         asyncio.run(go())
     finally:
         schwab.close()
-    recorded = rows()[:2]
+    recorded = rows()[:5]
     assert [(symbol, series, src) for symbol, series, _n, src in recorded] == [
         ("SPY", "1m", "schwab_pricehistory"),
+        ("SPY", "5m", "schwab_pricehistory"),
+        ("SPY", "15m", "schwab_pricehistory"),
+        ("SPY", "30m", "schwab_pricehistory"),
         ("SPY", "1d", "schwab_pricehistory"),
     ]
     for _s, series, native, _src in recorded:

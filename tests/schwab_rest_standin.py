@@ -12,7 +12,8 @@ Real data: SPY's 2026-11-20 chain and its quotes
 (fixtures/real_spy_2026_11_20_chain_and_quotes.json), Schwab's /chains answer for TSLA's 2026-10-09
 expiry as sent (fixtures/real_schwab_chain_tsla_2026_10_09.json, captured 2026-10-08; its quotes
 were not captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
-(fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles), and
+(fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles;
+fixtures/real_pricehistory_5m_30m_spy_tsla_2026_10_07.json: 5- and 30-minute candles), and
 Schwab's /quotes answer for each of SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as the
 daemon's watchlist check asks (fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json; ZQZQZ is
 named in errors.invalidSymbols), Schwab's /markets answer for every date it answered on
@@ -80,9 +81,11 @@ CHECKS = {
 #: (symbol, frequencyType, frequency) -> Schwab's captured /pricehistory answer
 HISTORY = {
     (a["symbol"], a["params"]["frequencyType"], a["params"]["frequency"]): a
-    for a in json.loads(
-        (FX / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(encoding="utf-8")
-    )["answers"]
+    for name in (
+        "real_pricehistory_spy_tsla_2026_10_07.json",
+        "real_pricehistory_5m_30m_spy_tsla_2026_10_07.json",
+    )
+    for a in json.loads((FX / name).read_text(encoding="utf-8"))["answers"]
 }
 TOKEN = "/v1/oauth/token"
 #: Schwab's edge 403 page, as captured

@@ -466,8 +466,10 @@ class ChainSweep:
         """Whether one series of `ticker`'s price history is asked for at `now`.
 
         Never answered yet: due. A minute series of BAR_MINUTES: once one of its bars has
-        completed since it was asked, while a session Schwab sent (time_et.session_label) was
-        open then or now, so the bar that ends a session is asked once after it. The daily
+        completed since it was asked, unless Schwab's sessions (time_et.session_label) were
+        closed both then and now: the bar that ends a session is asked once after it, and a
+        session not known (Schwab's /markets answer not held) is asked as an open one, as the
+        chain is (chain_due). The daily
         candles: once per ET date, and once after today's regular window Schwab sent has ended.
         The 1-minute bars: once per ET date.
         """
