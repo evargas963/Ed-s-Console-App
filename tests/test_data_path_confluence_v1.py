@@ -119,15 +119,12 @@ def _published_0dte() -> server.PublishedLevels:
 
 
 def _hold_with(levels: server.PublishedLevels, **snap_fields) -> None:
-    """`levels` held with its snapshot's `snap_fields` in their place, ranked once on them.
+    """`levels` held with its snapshot's `snap_fields` in their place.
 
-    Ranked as the publication ranks (_ranked_matrices). The request then reads that ranking.
+    The request ranks the expiry it shows on them (_ranked_matrix).
     """
-    snap = replace(levels.snap, **snap_fields)
     with server._terrain_cache_lock:
-        server._terrain_cache["SPY"] = replace(
-            levels, snap=snap, matrix_by_expiry=server._ranked_matrices(snap)
-        )
+        server._terrain_cache["SPY"] = replace(levels, snap=replace(levels.snap, **snap_fields))
 
 
 def _book_magnitudes(live: TerrainSnapshot, expiry: str, spot: float) -> dict:
@@ -701,44 +698,6 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
         and f"{puts[r['strike']]:.1f}" != f"{whole[r['strike']]:.1f}"
     ]
     assert differ and all(r["iv_text"] == f"{puts[r['strike']]:.1f}" for r in differ)
-
-
-def test_the_matrix_request_returns_the_ranking_stored_with_the_book():
-    """The request does not rank again.
-
-    The ranking of SPY's 2026-10-22 close book, stored with
-    SPY's 2026-10-07 chain, is not a ranking that chain could produce; the request returns it.
-    """
-    held = SPY_0DTE
-    chain = read_chain(held.chain)
-    expiry = str(held.chain[0]["expirationDate"])[:10]
-    book, _diag = compute_exposures_by_strike(
-        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
-    )
-    try:
-        other = _publish_close().matrix_by_expiry["2026-10-22"]
-        levels = _published_0dte()
-        with server._terrain_cache_lock:
-            server._terrain_cache["SPY"] = replace(
-                levels, matrix_by_expiry=levels.matrix_by_expiry | {expiry: other}
-            )
-        body = server.confluence_payload("SPY", expiry, held.now)
-    finally:
-        server._terrain_cache.pop("SPY", None)
-    ranked = other["ranked"]
-    listed = sorted(ranked)
-    middle = len(listed) // 2  # no live price is held: the chain's middle strikes
-    shown = listed[middle - 5 : middle + 6]
-    assert body["spot"] is None and body["notes"][-1] == server.WINDOW_NO_PRICE
-    assert not set(ranked) <= set(book)
-    assert [r["strike"] for r in body["rows"]] == shown[::-1]
-    assert [(r["score"], r["iv_text"]) for r in body["rows"]] == [
-        (
-            ranked[s].result["score"],
-            None if ranked[s].factors["IV"] is None else f"{ranked[s].factors['IV']:.1f}",
-        )
-        for s in shown[::-1]
-    ]
 
 
 def _window_has(rows: list, key: str) -> bool:
