@@ -138,6 +138,7 @@ const BARS = {
 const CHAIN = {
   ticker: '$SPX', spot: 583.41, spot_strike: 583, expiry: '2026-09-11', status: 'ok',
   scope: { kind: 'complete_single_expiry' }, net_gex_by_strike: [], adjusted_deliverable_symbols: [],
+  last_trading_day_et: {},
   contracts: [
     { putCall: 'CALL', strikePrice: 583, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 583, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' },

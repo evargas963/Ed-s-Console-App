@@ -13,7 +13,7 @@ chain of 2026-10-07 (tests/real_chains.py) carries Greeks on a volatility Schwab
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -72,6 +72,22 @@ def test_the_chain_serves_every_gamma_as_schwab_sent_it():
     sent = {k["symbol"]: k["gamma"] for k in NVDA["contracts"]}
     assert served[LARGE] == sent[LARGE] > 16
     assert served == sent
+
+
+@pytest.mark.usefixtures("published")
+def test_the_chain_serves_each_last_trading_day_as_its_date_in_et():
+    body = server.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
+    sent = {
+        k["symbol"]: k["lastTradingDay"]
+        for k in NVDA["contracts"]
+        if k["expirationDate"].startswith(NVDA["expiry"])
+    }
+    # Schwab's instant is 20:00 ET of the last trading day: the next day already in UTC
+    assert {
+        datetime.fromtimestamp(ms / 1000, tz=UTC).date().isoformat() for ms in sent.values()
+    } == {"2026-12-19"}
+    assert NVDA["expiry"] == "2026-12-18"
+    assert body["last_trading_day_et"] == dict.fromkeys(sent, "2026-12-18")
 
 
 @pytest.mark.usefixtures("published")
