@@ -64,6 +64,7 @@ import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
+from itertools import zip_longest
 from pathlib import Path
 from typing import override
 
@@ -146,9 +147,6 @@ SERVICES = (
 )
 #: every watchlist ticker is streamed on each of these
 EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
-#: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
-#: ("(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
-OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}
 #: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
 #: whatever the watchlist holds
 MARKET_CONTEXT_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
@@ -563,6 +561,7 @@ class Daemon:
         self.watchlist: list[str] = list(watchlist)
         #: the option contracts the option rule picked, per option service (pick_options)
         self.options: dict[str, frozenset[str]] = {s: frozenset() for s in lmp.OPTION_SERVICES}
+        self.option_order: tuple[str, ...] = ()  # the picked contracts, in the rule's order
         #: the contract Ed selected on the Flow panel (the console's {"op": "flow_contract"}),
         #: streamed on both option services on top of the rule
         self.flow_contract: str | None = None
@@ -617,6 +616,8 @@ class Daemon:
         for svc, want in self.wanted().items():
             have = self.asked[svc]
             drop, add = sorted(have - want), sorted(want - have)
+            if svc in lmp.OPTION_SERVICES:  # the option rule's order: its best asked first
+                add = [s for s in self.option_order if s in want - have]
             if drop:
                 self._requests.append((svc, "UNSUBS", drop))
             if add:
@@ -629,24 +630,21 @@ class Daemon:
 
         It runs when a ticker's chain is put in the rule's order (_rank), on a watchlist change
         and on the Flow panel's selection. The contract selected on the Flow panel streams on
-        both option services when a watchlist ticker's chain lists it, not expired; what is
-        left of Schwab's limit on each option service (OPTION_LIMITS) is split evenly across the
-        watchlist, and a ticker's share on each is the first of its contracts in the rule's
-        order (by_gamma). A ticker without a chain and a price yet has none. When the picked
+        both option services when a watchlist ticker's chain lists it, not expired; then every
+        ticker's contracts in the rule's order (by_gamma), dealt across the watchlist, each
+        ticker's first, then each one's second. No number of ours caps them: Schwab holds what
+        it accepts, asked in that order, and its refusal of the rest is its answer (code 19).
+        A ticker without a chain and a price yet has none. When the picked
         contracts change, the difference is asked once (ask: one UNSUBS and one ADD per
         service).
         """
         ranked = [self._ranked[tk] for tk in self.watchlist if tk in self._ranked]
-        flow = frozenset(c for c in [self.flow_contract] if any(c in r for r in ranked))
-        new = {
-            svc: flow
-            | frozenset(
-                s
-                for r in ranked
-                for s in r[: (OPTION_LIMITS[svc] - len(flow)) // len(self.watchlist)]
-            )
-            for svc in lmp.OPTION_SERVICES
-        }
+        flow = [c for c in [self.flow_contract] if any(c in r for r in ranked)]
+        # every ticker's first, then every ticker's second, ...: Schwab holds what it accepts
+        # in this order, and refuses the rest
+        dealt = [s for row in zip_longest(*ranked) for s in row if s is not None]
+        self.option_order = tuple(dict.fromkeys([*flow, *dealt]))
+        new = {svc: frozenset(self.option_order) for svc in lmp.OPTION_SERVICES}
         if new == self.options:
             return
         log.info(
@@ -990,7 +988,7 @@ class Daemon:
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
-        for svc in OPTION_LIMITS:  # an option contract's hold ends with its connection
+        for svc in lmp.OPTION_SERVICES:  # an option contract's hold ends with its connection
             for sym in self.held[svc]:
                 self.bus.forget(_current_key(svc, sym))
         self.asked = {k: frozenset() for k in SERVICES}
