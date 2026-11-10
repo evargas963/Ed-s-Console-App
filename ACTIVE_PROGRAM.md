@@ -163,7 +163,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-22 `book_net_gex` sums only strikes with valid gamma, without saying how many it left out.
 - M-24 `compute_charm_by_strike` returns {} with no reason (no spot).
 - M-25 the flip profile turns a non-finite gamma into 0.
-- M-27 two interpolators for gamma at a price (`_interp_profile_at`, `gamma_at_price`), both returning the end value off the profile.
+- M-27 `gamma_at_price`, the one interpolator for gamma at a price, returns the end value off the profile.
 
 **terrain_engine.py, terrain_atr.py, math_volatility.py, math_probabilities.py, time_et.py**
 - M-32 per-expiry PCR/IV maps key by date alone while books key by (date, dte): same-date books overwrite.
