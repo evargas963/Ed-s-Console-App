@@ -269,6 +269,48 @@ def test_today_s_candle_is_the_one_schwab_pushes():
         lmp._fields_by_ticker.pop(tk, None)
 
 
+def test_the_atr_and_the_daily_chart_read_one_candle_for_today():
+    """AMD on 2026-11-10: Schwab's two feeds differ on the day's low (495 pushed, 500.25 sent).
+
+    Each is taken as sent, never altered. Until Schwab's series holds the day, the ATR and the
+    daily chart both read the pushed candle; once it does, after the close, both read the
+    series' candle.
+    """
+    tk = "AMD"
+    day = json.loads(
+        (
+            Path(__file__).parent
+            / "fixtures"
+            / "real_amd_day_fields_and_daily_candles_2026_11_10.json"
+        ).read_text(encoding="utf-8")
+    )
+    sent = day["daily"]["candles"]
+    after = datetime(2026, 11, 10, 16, 30, tzinfo=ET)
+
+    def series(candles: list) -> None:
+        topic, msg = price_history_message(
+            tk, "1d", dict(day["daily"], candles=candles), day["daily_ts_recv"]
+        )
+        ofs._ingest_pushed(topic, msg)
+        server._write_streamed_bars([ofs.streamed_bars.get_nowait()], after)
+
+    server._series.pop((tk, "1d"), None)
+    try:
+        for q in day["quotes"]:
+            lmp.record_from_level_one_equity(tk, q["native"], received_ts=q["ts_recv"])
+        series(sent[:-1])
+        pushed = dict(sent[-1], low=495)
+        assert server.chart_bars(tk, "D", [], after)[-1]["l"] == 495 != sent[-1]["low"]
+        assert server._atr(tk, after).daily == _wilder_atr([*sent[:-1], pushed])
+        series(sent)
+        assert server.chart_bars(tk, "D", [], after)[-1]["l"] == sent[-1]["low"] == 500.25
+        assert server._atr(tk, after).daily == _wilder_atr(sent)
+    finally:
+        server._series.pop((tk, "1d"), None)
+        lmp._by_ticker.pop(tk, None)
+        lmp._fields_by_ticker.pop(tk, None)
+
+
 def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_the_atr_from_them():
     """Each series published on the daemon's bus, read by the console as Schwab's, taken by it.
 
