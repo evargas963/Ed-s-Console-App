@@ -703,9 +703,9 @@ class ChainSweep:
         for chain, ct in batch:
             quote = quoted.get(ct["symbol"])
             if quote is not None:
-                ct["quote"] = quote  # Schwab's /quotes answer for the contract, as sent
-                ct.update({f: quote.get(f) for f in GREEK_FIELDS})
-                ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
+                # Schwab's /quotes answer for the contract, as sent: its values are read from it
+                # (option_contract.quote_values)
+                ct["quote"] = quote
             elif ct["symbol"] in named:
                 chain.named_invalid.add(ct["symbol"])
             chain.unquoted.discard(ct["symbol"])
@@ -779,7 +779,9 @@ class ChainSweep:
         missing = sum(
             1
             for ct in contracts
-            if ct["greeksTime"] is None and ct["symbol"] not in chain.named_invalid
+            if "quote" not in ct
+            and ct["greeksTime"] is None
+            and ct["symbol"] not in chain.named_invalid
         )
         if missing:
             log.warning(

@@ -171,8 +171,12 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         ask=quoted.get("ask"),
         quote_time=quoted.get("quote_time"),
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
-        volatility=schwab_number(vol_sent),
-        **{g: _greek(raw, g, void) for g in GREEKS},
+        # the stream's, as the sweep wrote them, or the quote's
+        **{
+            "volatility": schwab_number(vol_sent),
+            **{g: _greek(raw, g, void) for g in GREEKS},
+            **{k: v for k, v in quoted.items() if k in GREEK_FIELDS},
+        },
         non_standard=flag if isinstance(flag := raw.get("nonStandard"), bool) else None,
         listing={k: _shown(raw[k]) for k in LISTED if k in raw},
         sent=frozenset(raw),

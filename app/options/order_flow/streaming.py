@@ -276,13 +276,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if msg["status"] == 200:
             record_markets(msg["answer"])
         return
-    if topic == "watchlist":
-        _answer_watchlist_request(msg)
-        return
-    if topic == "optquotes":  # a /quotes answer: each contract's newest values, repriced now
-        push_rest_quotes(msg["answer"])
-        for sym in msg["answer"]:
-            _tick(sym, float(msg["ts_recv"]))
+    if topic in _APPLY_BY_TOPIC:
+        _APPLY_BY_TOPIC[topic](msg)
         return
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
@@ -304,6 +299,13 @@ def _apply_chain_part(msg: dict) -> None:
     for done in assemble_chain_part(msg):
         if _on_chain_callback is not None:
             _on_chain_callback(*done)
+
+
+def _apply_rest_quotes(msg: dict) -> None:
+    """Take a /quotes answer: each contract's newest values, its ticker repriced now."""
+    push_rest_quotes(msg["answer"])
+    for sym in msg["answer"]:
+        _tick(sym, float(msg["ts_recv"]))
 
 
 def _answer_watchlist_request(msg: dict) -> None:
@@ -357,6 +359,8 @@ def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -
 
 #: each symbol's message, by its topic's kind, and what applies it (_ingest_pushed)
 _APPLY_BY_KIND = {"quote": _apply_quote, "book": _apply_book, "optquote": _apply_option_quote}
+#: a whole-topic message (no one symbol), and what applies it (_ingest_pushed)
+_APPLY_BY_TOPIC = {"watchlist": _answer_watchlist_request, "optquotes": _apply_rest_quotes}
 
 
 async def _bus_loop(bus) -> None:
