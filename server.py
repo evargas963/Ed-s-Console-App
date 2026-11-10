@@ -632,8 +632,6 @@ class PublishedLevels:
     priced_chain: list[OptionContract]
     #: the contracts Schwab listed in the newest chain
     contract_symbols: frozenset[str]
-    #: each expiry's confluence ranking (_ranked_matrices)
-    matrix_by_expiry: dict
     #: read from the stored captures, recomputed only when `captures_key` changes
     forces: dict
     prior_strikes: tuple[dict, str | None]
@@ -1488,7 +1486,6 @@ def _publish_levels(
         chain=chain,
         priced_chain=priced,
         contract_symbols=listed,
-        matrix_by_expiry=_ranked_matrices(snap),
         forces=forces,
         prior_strikes=prior,
         captures_key=captures_key,
@@ -3808,36 +3805,25 @@ def _inside_move(strike, low, high) -> bool:
     return float(low) <= float(strike) <= float(high)
 
 
-def _ranked_matrices(snap: TerrainSnapshot) -> dict:
-    """One ranking of each expiry on this publication.
+def _ranked_matrix(snap: TerrainSnapshot, chosen: str, dte: float) -> dict:
+    """The ranking of one expiry of a priced chain: the one the matrix request shows.
 
-    The matrix request reads the expiry it shows.
+    `chosen` is an expiry of `snap`'s books with its days to expiration, `dte`
+    (_confluence_expiries).
     """
-    # a snapshot priced without a price holds no book, so it ranks nothing
-    books, spot = snap.books, snap.spot
-    ranked = {}
-    for item in _confluence_expiries(books, snap.expiry_dte):
-        chosen = item["expiry"]
-        dte = item["dte"]
-        if not isinstance(dte, (int, float)):
-            continue
-        selected = [book for key, book in books.items() if str(key[0])[:10] == chosen]
-        if len(selected) == 0:
-            continue
-        exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
-        body = build_matrix(
-            exposures,
-            snap.charm_by_expiry[chosen],
-            snap.iv_by_expiry[chosen],
-            float(spot),
-            float(dte),
-        )
-        ranked[chosen] = body
-    return ranked
+    selected = [book for key, book in snap.books.items() if str(key[0])[:10] == chosen]
+    exposures = selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
+    return build_matrix(
+        exposures,
+        snap.charm_by_expiry[chosen],
+        snap.iv_by_expiry[chosen],
+        float(snap.spot),
+        float(dte),
+    )
 
 
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
-    """Return the ranking stored with the priced chain, for the expiry the operator picks."""
+    """Return the ranking of the priced chain, for the expiry the operator picks."""
     published = published_levels(tk)
     if published is None or not published.snap.books:  # a snapshot with a book has its price
         return unavailable(tk, "no priced chain is held for this ticker")
@@ -3859,8 +3845,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
             else "that expiry did not carry days to expiration"
         )
         return unavailable(tk, reason, expiries=listed)
-    # the publication ranked every listed expiry with its days to expiration (_ranked_matrices)
-    stored = published.matrix_by_expiry[chosen]
+    stored = _ranked_matrix(live, chosen, match["dte"])
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
     markers = _confluence_markers(live, tk, now, live_spot)
