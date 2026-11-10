@@ -131,7 +131,7 @@
       '; no signed buys/sells, CVD, or bull/bear verdict is canonical.</div>';
   }
 
-  function header(desired, ss, putCall) {   // putCall: Schwab's CONTRACT_TYPE, served
+  function header(desired, ss, putCall) {   // putCall: the chain record's side, served
     var strike = window.EdShell.getState().selStrike, expiry = window.EdShell.getState().selExpiry;
     return '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
       '<span class="fl-sym">' + esc(desired || '-') + '</span>' +

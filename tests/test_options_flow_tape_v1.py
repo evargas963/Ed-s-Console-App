@@ -3,26 +3,36 @@
 Discrete TRADE prints built from the LEVELONE_OPTIONS records the console's intake hands it.
 Locked to the operator's own required schema: Time/Symbol/Expiry/Type/Strike/Bid x Size/Ask x
 Size/Trade/Size/Premium/Volume/OI/IV/Delta, with Trade/Size/Time/Bid/Ask/BidSize/AskSize/Volume/
-OI/IV/Delta read verbatim (never derived) and Premium = Trade x Size x native Multiplier. No
-aggressor-side (buy/sell) classification is ever produced -- `classification` states only where
-a print landed relative to that SAME tick's own bid/ask.
+IV/Delta the stream's as sent, Expiry/Type/Strike/OI the contract's chain record's (the one
+reader of them, option_contract.read_contract) and Premium = Trade x Size x that record's
+multiplier. No aggressor-side (buy/sell) classification is ever produced -- `classification`
+states only where a print landed relative to that SAME tick's own bid/ask.
 
 Every record is Schwab's own, as the capture daemon stored it (tests/fixtures):
 real_spy_option_contract_type_2026_10_23.json (a call's and a put's first four records, the first
-one whole), real_options_stream_history_samples.json (twelve records in a row of one contract)
-and real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json (whole first records).
+one whole, and the two contracts' /chains rows of the stored capture before them),
+real_options_stream_history_samples.json (twelve records in a row of one contract),
+real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json (whole first records) and
+real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json (SPY's 2026-10-22 close capture, the
+chain that lists the call and the put).
 """
 
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
+import live_market_plane as lmp
+import server
 from app.options.order_flow import history, state
 from app.options.order_flow.engine import read_book
-from app.options.order_flow.history import RecentTape
+from app.options.order_flow.history import RecentTape, tape_row
 from app.options.order_flow.state import OrderFlowState
 from app.options.order_flow.streaming import _ingest_pushed
+from option_contract import read_chain, read_contract
+from stream_spine import verbatim_msg
+from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 CALL = "SPY   261023C00761000"
@@ -33,6 +43,13 @@ INSIDE = "SPY   261019C00764000"
 
 def _load(name: str) -> dict:
     return json.loads((_FX / name).read_text(encoding="utf-8"))
+
+
+#: the call's and the put's /chains rows, as Schwab sent them in the capture before their messages
+LISTED = {
+    c["symbol"]: read_contract(c)
+    for c in _load("real_spy_option_contract_type_2026_10_23.json")["chain"]["contracts"]
+}
 
 
 def _sent(contract: str) -> list[tuple[float, dict]]:
@@ -58,18 +75,37 @@ def _tape(contract: str, rows: list[tuple[float, dict]]) -> RecentTape:
 
 
 def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
-    rows = _tape(CALL, _sent(CALL)[:1]).rows(CALL, 50)
+    """The print is the stream's; the contract's terms and open interest are its chain record's.
+
+    The stream's own message carries OPEN_INTEREST 1888 where the chain record holds 843: the
+    tape shows the chain's, as every other screen does.
+    """
+    sent = _sent(CALL)[:1]
+    rows = _tape(CALL, sent).rows(CALL, 50)
     assert len(rows) == 1
-    r = rows[0]
-    assert r["symbol"] == CALL and r["underlying"] == "SPY"
+    assert sent[0][1]["OPEN_INTEREST"] == 1888
+    r = tape_row(rows[0], LISTED[CALL])
+    assert r["symbol"] == CALL
     assert r["expiry"] == "2026-10-23" and r["type"] == "CALL" and r["strike"] == 761
     assert r["bid"] == 2.03 and r["bid_size"] == 65
     assert r["ask"] == 2.04 and r["ask_size"] == 74
     assert r["trade"] == 2.04 and r["size"] == 1
     assert r["premium"] == 2.04 * 1 * 100
-    assert r["volume"] == 4391 and r["oi"] == 1888
+    assert r["volume"] == 4391 and r["oi"] == 843
     assert r["iv"] == 27.10704925 and r["delta"] == 0.45935825
     assert r["classification"] == "at_ask"
+    assert set(r) == {"ts_recv", "symbol", "expiry", "type", "strike", "bid", "bid_size"} | {
+        "ask",
+        "ask_size",
+        "trade",
+        "size",
+        "premium",
+        "volume",
+        "oi",
+        "iv",
+        "delta",
+        "classification",
+    }
 
 
 def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice():
@@ -116,18 +152,100 @@ def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row
 def test_context_is_carried_forward_from_the_most_recent_full_tick():
     """The vendor does not repeat expiry/strike/type/multiplier on every partial update.
 
-    A LATER genuine trade print that arrives on a tick carrying ONLY price/size/bid/ask must still
-    resolve its own contract identity from the most recent tick that reported it, not read as if
-    that identity were unknown.
+    A LATER genuine trade print that arrives on a tick carrying ONLY price/size/bid/ask still
+    shows its contract's terms: they are the chain record's, whatever the message carried.
     """
     sent = _sent(CALL)[:3]
     assert "STRIKE_TYPE" in sent[0][1] and "STRIKE_TYPE" not in sent[2][1]
     rows = _tape(CALL, sent).rows(CALL, 50)
     assert len(rows) == 3
-    newest = rows[0]  # newest-first
+    newest = tape_row(rows[0], LISTED[CALL])  # newest-first
     assert newest["trade"] == 2.02 and newest["size"] == 10
     assert newest["expiry"] == "2026-10-23" and newest["type"] == "CALL"
     assert newest["strike"] == 761 and newest["premium"] == 2.02 * 10 * 100
+
+
+def test_a_print_without_a_size_or_a_multiplier_has_no_premium():
+    """Schwab's second record of the call carries LAST_PRICE 2.07 and no LAST_SIZE.
+
+    Its premium is unknown, never 0; so is a print's of a contract whose chain record carries no
+    multiplier (induced: the call's /chains row without its `multiplier`).
+    """
+    sent = _sent(CALL)[:2]
+    assert sent[1][1]["LAST_PRICE"] == 2.07 and "LAST_SIZE" not in sent[1][1]
+    sizeless, sized = _tape(CALL, sent).rows(CALL, 50)
+    assert tape_row(sizeless, LISTED[CALL])["premium"] is None
+    chain = _load("real_spy_option_contract_type_2026_10_23.json")["chain"]["contracts"]
+    bare = read_contract({k: v for k, v in chain[0].items() if k != "multiplier"})
+    assert bare.symbol == CALL and tape_row(sized, bare)["premium"] is None
+    assert tape_row(sized, LISTED[CALL])["premium"] == 2.04 * 1 * 100
+
+
+def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
+    """Schwab -> the console's intake -> the `tape` panel and the Flow panel's side.
+
+    SPY's 2026-10-22 close capture is published as the chain that lists the call and the put,
+    the daemon holds both on LEVELONE_OPTIONS, and their stored messages are applied. Each tape
+    row's expiry, side, strike and open interest are that chain's record's, and the Flow panel's
+    side is the same record's. Before a chain lists them: no tape, and the side is unknown.
+    """
+    sent = {sym: _sent(sym) for sym in (CALL, PUT)}
+    at = max(ts for rows in sent.values() for ts, _ in rows)
+    close = _load("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json")["newer"]
+    at_close = datetime.fromtimestamp(close["ts_utc"], ET)
+    state.clear_all_live_state()
+    try:
+        lmp.record_feed_heartbeat(
+            {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [CALL, PUT]}}
+        )
+        for sym, rows in sent.items():
+            for ts, item in rows:
+                _ingest_pushed(
+                    f"optquote.{sym}",
+                    verbatim_msg(symbol=sym, content=item, src="schwab", ts_recv=ts),
+                )
+        unlisted = (
+            server.tape("SPY", at),
+            [server.options_microstructure(sym, at)["put_call"] for sym in (CALL, PUT)],
+        )
+        server._publish_levels(
+            "SPY",
+            captures=[
+                {
+                    "contracts": read_chain(close["chain"]),
+                    "ts_utc": close["ts_utc"],
+                    "spot": close["spot"],
+                    "spot_ts": None,
+                    "spot_from_chain": False,
+                    "et_date": at_close.date().isoformat(),
+                    "basis": server.CAPTURE_BASIS,
+                }
+            ],
+            now=at_close,
+        )
+        body = server.tape("SPY", at)
+        sides = [server.options_microstructure(sym, at)["put_call"] for sym in (CALL, PUT)]
+    finally:
+        for sym in sent:
+            history.TAPE.forget(sym)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("SPY", None)
+        lmp.record_feed_down()
+        state.clear_all_live_state()
+    assert unlisted[0]["available"] is False and unlisted[0]["rows"] == []
+    assert unlisted[1] == [None, None]
+    assert sides == ["CALL", "PUT"]
+    assert body["available"] is True
+    received = [r["ts_recv"] for r in body["rows"]]
+    assert len(received) == 6 and received == sorted(received, reverse=True)
+    terms = {(r["symbol"], r["expiry"], r["type"], r["strike"], r["oi"]) for r in body["rows"]}
+    assert terms == {
+        (CALL, "2026-10-23", "CALL", 761.0, 843),
+        (PUT, "2026-10-23", "PUT", 762.0, 8898),
+    }
+    by_trade = {(r["symbol"], r["trade"]): r["premium"] for r in body["rows"]}
+    assert by_trade[(CALL, 2.02)] == 2.02 * 10 * 100 and by_trade[(CALL, 2.07)] is None
+    assert by_trade[(PUT, 3.04)] == 3.04 * 1 * 100
 
 
 def test_classification_at_bid_at_ask_and_outside_spread_are_mechanical_not_aggressor():

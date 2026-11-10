@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+from collections.abc import Collection, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
@@ -42,6 +43,7 @@ from app.options.order_flow.history import (
     LEAN,
     TAPE,
     book_heatmap_for_ticker,
+    tape_row,
 )
 from app.options.order_flow.live_payload import flow_block, options_live_payload
 from app.options.order_flow.state import (
@@ -630,8 +632,8 @@ class PublishedLevels:
     #: the chain as Schwab sent it, and as priced with the values pushed since
     chain: list[OptionContract]
     priced_chain: list[OptionContract]
-    #: the contracts Schwab listed in the newest chain
-    contract_symbols: frozenset[str]
+    #: the contracts Schwab listed in the newest chain, each record by its symbol
+    contracts: Mapping[str, OptionContract]
     #: read from the stored captures, recomputed only when `captures_key` changes
     forces: dict
     prior_strikes: tuple[dict, str | None]
@@ -848,7 +850,7 @@ def _next_gamma_surface_seq(tk: str, now: float) -> int:
 
 
 def _streamed_greeks_for_ticker(
-    listed: frozenset, now: float, feed: lmp.FeedNow | None = None
+    listed: Collection[str], now: float, feed: lmp.FeedNow | None = None
 ) -> dict:
     """Return the newest streamed Greeks, volume, bid and ask of the ticker's held contracts.
 
@@ -865,7 +867,7 @@ def _streamed_greeks_for_ticker(
 
 
 def _held_option_symbols_for_ticker(
-    listed: frozenset, now: float, feed: lmp.FeedNow | None = None
+    listed: Collection[str], now: float, feed: lmp.FeedNow | None = None
 ) -> list[str]:
     """Every contract of the ticker's chain (`listed`) on the daemon's latest LEVELONE_OPTIONS beat.
 
@@ -1303,7 +1305,7 @@ def _contract_ticker(sym: str) -> str | None:
     """
     with _terrain_cache_lock:
         return next(
-            (tk for tk, levels in _terrain_cache.items() if sym in levels.contract_symbols),
+            (tk for tk, levels in _terrain_cache.items() if sym in levels.contracts),
             None,
         )
 
@@ -1418,9 +1420,7 @@ def _publish_levels(
     else:
         spot, spot_source, spot_ts = priced_at
     # the ticker's contracts are the ones Schwab listed in its newest chain
-    listed = (
-        frozenset(c.symbol for c in chain if c.symbol) if new_chain else previous.contract_symbols
-    )
+    listed = {c.symbol: c for c in chain if c.symbol} if new_chain else previous.contracts
     # one read of the heartbeat: pricing and the cell stamp share it
     feed = lmp.feed_now(now.timestamp())
     streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
@@ -1491,7 +1491,7 @@ def _publish_levels(
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         chain=chain,
         priced_chain=priced,
-        contract_symbols=listed,
+        contracts=listed,
         forces=forces,
         prior_strikes=prior,
         captures_key=captures_key,
@@ -2399,19 +2399,18 @@ def tape(ticker: str, now: float) -> dict:
     The prints the console builds from Schwab's LEVELONE_OPTIONS as the daemon pushes them
     (history.TAPE), of every contract of `ticker` the daemon streams
     (_held_option_symbols_for_ticker), merged newest first and capped at TAPE_ROWS across the
-    merge. No derived field and no aggressor side. `ticker` is the levels' own key.
+    merge, each with its contract's terms and open interest from the chain record and its
+    premium (history.tape_row). No aggressor side. `ticker` is the levels' own key.
     """
     held = published_levels(ticker)
     if held is None:
         return unavailable(ticker, "the console holds no chain of this ticker yet", rows=[])
-    symbols = _held_option_symbols_for_ticker(held.contract_symbols, now)
+    symbols = _held_option_symbols_for_ticker(held.contracts, now)
     if not symbols:
         return unavailable(ticker, "the daemon streams no option contract of this ticker", rows=[])
-    rows: list[dict] = []
-    for sym in symbols:
-        rows.extend(TAPE.rows(sym, TAPE_ROWS))
-    rows.sort(key=lambda r: r["ts_recv"], reverse=True)
-    rows = rows[:TAPE_ROWS]
+    prints = [(p, held.contracts[sym]) for sym in symbols for p in TAPE.rows(sym, TAPE_ROWS)]
+    prints.sort(key=lambda kept: kept[0]["ts_recv"], reverse=True)
+    rows = [tape_row(p, contract) for p, contract in prints[:TAPE_ROWS]]
     return {
         "available": bool(rows),
         "rows": rows,
@@ -3170,7 +3169,11 @@ def options_microstructure(c: str, now: float) -> dict:
     """Return the Flow panel's payload for contract `c` at `now`, judged by the one live rule."""
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
-    payload["put_call"] = TAPE.put_call(c)
+    # the side of the contract's chain record; None while no chain the console holds lists it
+    with _terrain_cache_lock:
+        payload["put_call"] = next(
+            (lv.contracts[c].side for lv in _terrain_cache.values() if c in lv.contracts), None
+        )
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     _stamp_book_times(payload)

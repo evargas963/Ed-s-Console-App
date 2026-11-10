@@ -9,12 +9,12 @@ observed 2026-08-31), applied by the console's own intake (streaming._ingest_pus
 newest message's time. STAND-IN (named): the daemon's status, holding the contract on both
 services. No /markets answer is held for 2026-08-31, so the route serves that contract NOT LIVE,
 "the market session is unknown"; the spec states the feed it draws in each test (its `plane`).
-Those messages carry no CONTRACT_TYPE, so the side the header shows is proven by
+No chain that lists that contract is held, so the side the header shows is proven by
 tests/e2e/fixtures/options_microstructure_side_payloads.json: the route's payloads for SPY
-2026-10-23 761 call and 762 put after their stored messages, the first carrying CONTRACT_TYPE
+2026-10-23 761 call and 762 put after their stored messages
 (tests/fixtures/real_spy_option_contract_type_2026_10_23.json), with SPY's 2026-10-22 close
-capture published as the chain that lists them. STAND-IN (named): the daemon's status, holding
-each contract on LEVELONE_OPTIONS.
+capture published as the chain that lists them: the side is that chain record's putCall.
+STAND-IN (named): the daemon's status, holding each contract on LEVELONE_OPTIONS.
 
 Regenerate (from the repo root, project .venv):
   python -c "import tests.conftest, tests.test_options_order_flow_production_v1 as t

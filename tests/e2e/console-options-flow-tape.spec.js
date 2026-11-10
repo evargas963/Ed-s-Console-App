@@ -4,7 +4,8 @@
  * widget on the Gamma pane, rebuilt to the operator's own required schema: Time | Symbol |
  * Expiry | Type | Strike | Bid x Size | Ask x Size | Trade | Size | Premium | Volume | OI |
  * IV | Delta | provenance. Sourced from the `tape` panel on the page's socket (native LEVELONE_OPTIONS trade
- * prints, already retained — see app.options.order_flow.history.tape_rows_for_symbol). No
+ * prints, each with its contract's terms and open interest from the chain record — see
+ * server.tape and app.options.order_flow.history.tape_row). No
  * buy/sell aggressor side is ever fabricated; `classification` states only the mechanical
  * fact of where a print landed relative to that same tick's own bid/ask.
  */
@@ -22,12 +23,12 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, sour
   view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 
 const TAPE_ROW = {
-  ts_recv: 1789166557.5, symbol: 'SPY   260918C00600000', underlying: 'SPY',
+  ts_recv: 1789166557.5, symbol: 'SPY   260918C00600000',
   expiry: '2026-09-18', type: 'CALL', strike: 600,
   bid: 1.17, bid_size: 187, ask: 1.19, ask_size: 180,
   trade: 1.18, size: 1, premium: 118.0,
   volume: 70984, oi: 901, iv: 7.16, delta: 0.357,
-  multiplier: 100, classification: 'inside_spread',
+  classification: 'inside_spread',
 };
 
 async function intercept(page, tapeBody) {

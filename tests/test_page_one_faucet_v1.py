@@ -121,7 +121,7 @@ def test_every_route_and_panel_serves_the_live_spot_and_names_the_computed_one(h
     now = time_et.now()
     served = {}
     for kind, panel in server.PAGE_PANELS.items():
-        contract = next(iter(held.contract_symbols))
+        contract = next(iter(held.contracts))
         body = panel(Asked(TK, now, {**ASKED, "contract": contract}))
         if {"spot", "priced_at_spot"} & set(body):
             served[kind] = (body.get("spot"), body.get("priced_at_spot"))

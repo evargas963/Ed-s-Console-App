@@ -1,9 +1,8 @@
 """Order flow computes nothing in the page (P1-3, PR C).
 
 The book heatmap's default window, each
-cell's dominant side and the colour scale's top are served; so is an option contract's put/call
-(Schwab's CONTRACT_TYPE). Book rows are real TSLA NASDAQ_BOOK messages
-(tests/fixtures/real_tsla_book_rows.json).
+cell's dominant side and the colour scale's top are served. Book rows are real TSLA NASDAQ_BOOK
+messages (tests/fixtures/real_tsla_book_rows.json).
 """
 
 import json
@@ -16,7 +15,6 @@ from app.options.order_flow.history import (
     DISPLAY_TAIL_SHARE,
     RecentBooks,
     book_heatmap_for_ticker,
-    put_call_side,
 )
 
 _FX = json.loads(
@@ -88,10 +86,6 @@ def test_the_default_window_drops_the_thin_tails(heat):
             inside.append(px)
     assert heat["display_lo"] == inside[0] and heat["display_hi"] == inside[-1]
     assert min(totals) <= heat["display_lo"] < heat["display_hi"] <= max(totals)
-
-
-def test_put_call_is_schwabs_contract_type():
-    assert [put_call_side(v) for v in ("C", "P", None, "X")] == ["CALL", "PUT", None, None]
 
 
 def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_close_snapshots():
