@@ -120,5 +120,5 @@ def test_a_contract_schwab_sent_without_its_rate_is_not_priced():
     snap = compute_terrain(
         "SPY", chain, float(held["spot"]), now=datetime.fromtimestamp(held["ts_utc"], ET)
     )
-    assert snap.flip_diag["unpriced"].get("no_rate", 0) > 0
+    assert snap.flip_diag["unpriced"]["no_rate"] > 0
     assert snap.gamma_flip is None and snap.profile == []

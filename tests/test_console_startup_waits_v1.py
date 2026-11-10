@@ -172,6 +172,55 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
     assert took < 8.0, f"the stop took {took:.1f} s with a page open"
 
 
+def test_the_waits_own_requests_leave_the_stop_nothing_to_wait_on(tmp_path):
+    """launch.py's wait for the pages takes each answer whole, so none of its connections is reset.
+
+    A connection closed on an unread answer is reset. A reset that lands as the program closes
+    its own end is refused there (WinError 10054 in asyncio's connection_lost), so the connection
+    counts as open until Python's collector frees it, and a stop before then waits the web
+    server's 10 s graceful timeout for it.
+    INDUCED: the wait asked up to 1,000 times of one program, where a start asks until one answer
+    (about 1 unread answer in 150 was reset at that moment), and the stop sent as soon as the
+    window shows a reset.
+    """
+    windows = sys.platform == "win32"
+    program = subprocess.Popen(
+        [sys.executable, *launch.DAEMON_START],
+        cwd=REPO,
+        env=program_env(tmp_path),
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
+    )
+    lines: list = []
+    threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
+    try:
+        end = time_et.elapsed() + 120
+        while (ports := held_ports(tmp_path)) is None:
+            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
+            time.sleep(0.25)
+        for _ in range(1000):
+            answer = answered(tmp_path)
+            assert answer == ports, (answer, "".join(lines))
+            if "ConnectionResetError" in "".join(lines):
+                break
+        asked = time_et.elapsed()
+        os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
+        code = program.wait(90)
+        took = time_et.elapsed() - asked
+    finally:
+        if program.poll() is None:
+            program.kill()
+            program.wait(30)
+    text = "".join(lines)
+    assert code == capture.EXIT_STOPPED, (code, text)
+    assert "timeout graceful shutdown exceeded" not in text, text
+    assert took < 8.0, f"the stop took {took:.1f} s after the wait's requests"
+    assert "ConnectionResetError" not in text, text
+
+
 def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
     """In one program the daemon's heartbeat, with the watchlist, is there before the loop starts.
 

@@ -1533,8 +1533,8 @@
     {
      "lane": "options",
      "abbrev": "Flip",
-     "price": 250.7213166575583,
-     "price_text": "250.72",
+     "price": 249.97114358731145,
+     "price_text": "249.97",
      "title": "Gamma flip"
     },
     {
@@ -1561,8 +1561,8 @@
     {
      "lane": "options",
      "abbrev": "GSF",
-     "price": 268.11826169281255,
-     "price_text": "268.12",
+     "price": 267.8428157204602,
+     "price_text": "267.84",
      "title": "GSF"
     },
     {
@@ -1617,7 +1617,7 @@
     {
      "lane": "options",
      "abbrev": "0D Flip",
-     "price": 267.45313954078324,
+     "price": 267.44658781862216,
      "price_text": "267.45",
      "title": "0DTE Gamma flip"
     },
@@ -1638,7 +1638,7 @@
     {
      "lane": "options",
      "abbrev": "0D GSF",
-     "price": 274.3815082242009,
+     "price": 274.3755396453466,
      "price_text": "274.38",
      "title": "0DTE GSF"
     },
@@ -1679,7 +1679,7 @@
     }
    ],
    "regime": "LONG_GAMMA_CHOP",
-   "flip_text": "250.72",
+   "flip_text": "249.97",
    "pin_text": "285.00",
    "move_text": null
   },
@@ -3215,8 +3215,8 @@
     {
      "lane": "options",
      "abbrev": "Flip",
-     "price": 250.7213166575583,
-     "price_text": "250.72",
+     "price": 249.97114358731145,
+     "price_text": "249.97",
      "title": "Gamma flip"
     },
     {
@@ -3243,8 +3243,8 @@
     {
      "lane": "options",
      "abbrev": "GSF",
-     "price": 268.11826169281255,
-     "price_text": "268.12",
+     "price": 267.8428157204602,
+     "price_text": "267.84",
      "title": "GSF"
     },
     {
@@ -3299,7 +3299,7 @@
     {
      "lane": "options",
      "abbrev": "0D Flip",
-     "price": 267.45313954078324,
+     "price": 267.44658781862216,
      "price_text": "267.45",
      "title": "0DTE Gamma flip"
     },
@@ -3320,7 +3320,7 @@
     {
      "lane": "options",
      "abbrev": "0D GSF",
-     "price": 274.3815082242009,
+     "price": 274.3755396453466,
      "price_text": "274.38",
      "title": "0DTE GSF"
     },
@@ -3361,7 +3361,7 @@
     }
    ],
    "regime": "LONG_GAMMA_CHOP",
-   "flip_text": "250.72",
+   "flip_text": "249.97",
    "pin_text": "285.00",
    "move_text": null
   }
@@ -4893,8 +4893,8 @@
    {
     "lane": "options",
     "abbrev": "Flip",
-    "price": 250.7213166575583,
-    "price_text": "250.72",
+    "price": 249.97114358731145,
+    "price_text": "249.97",
     "title": "Gamma flip"
    },
    {
@@ -4921,8 +4921,8 @@
    {
     "lane": "options",
     "abbrev": "GSF",
-    "price": 268.11826169281255,
-    "price_text": "268.12",
+    "price": 267.8428157204602,
+    "price_text": "267.84",
     "title": "GSF"
    },
    {
@@ -4977,7 +4977,7 @@
    {
     "lane": "options",
     "abbrev": "0D Flip",
-    "price": 267.45313954078324,
+    "price": 267.44658781862216,
     "price_text": "267.45",
     "title": "0DTE Gamma flip"
    },
@@ -4998,7 +4998,7 @@
    {
     "lane": "options",
     "abbrev": "0D GSF",
-    "price": 274.3815082242009,
+    "price": 274.3755396453466,
     "price_text": "274.38",
     "title": "0DTE GSF"
    },
@@ -5039,7 +5039,7 @@
    }
   ],
   "regime": "LONG_GAMMA_CHOP",
-  "flip_text": "250.72",
+  "flip_text": "249.97",
   "pin_text": "285.00",
   "move_text": null
  }

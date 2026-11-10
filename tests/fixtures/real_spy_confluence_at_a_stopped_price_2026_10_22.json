@@ -30,7 +30,7 @@
   {
    "abbrev": "Flip",
    "lane": "options",
-   "price": 770.7692205288405,
+   "price": 770.7687850382462,
    "price_text": "770.77",
    "title": "Gamma flip"
   },
@@ -107,15 +107,15 @@
   {
    "abbrev": "0D Flip",
    "lane": "options",
-   "price": 770.7692205288405,
+   "price": 770.7687850382462,
    "price_text": "770.77",
    "title": "0DTE Gamma flip"
   },
   {
    "abbrev": "0D Pin",
    "lane": "options",
-   "price": 764.0,
-   "price_text": "764.00",
+   "price": 765.0,
+   "price_text": "765.00",
    "title": "0DTE Abs \u0393"
   },
   {
@@ -176,7 +176,7 @@
   "vol_oi": 258.3359489946052,
   "volume": 1053494.0
  },
- "pin_text": "764.00",
+ "pin_text": "765.00",
  "preset": "0DTE",
  "preset_text": "0DTE \u00b7 ceiling 72",
  "priced_at_spot": 764.04,
