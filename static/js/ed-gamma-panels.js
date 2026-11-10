@@ -376,6 +376,7 @@
     var ladder = d.ladder.filter(function (r) { return r.first; });
     var rows = ladder.map(function (r) {
       var k = r.strike, rep = r.call || r.put;   // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
+      var lastDay = d.last_trading_day_et[rep.symbol];   // served: its date in ET
       var flags = [
         _flag('NON-STD', rep.nonStandard === true),
         _flag('PENNY', rep.pennyPilot === true),
@@ -386,7 +387,7 @@
         '<td>' + esc(rep.settlementType || '-') + '</td>' +
         '<td>' + esc(rep.exerciseType || '-') + '</td>' +
         '<td>' + esc(rep.expirationType || '-') + '</td>' +
-        '<td>' + esc(d.last_trading_day_et[rep.symbol] || '-') + '</td>' +   // served: its date in ET
+        '<td>' + (lastDay == null ? '-' : esc(lastDay)) + '</td>' +
         '<td>' + flags + '</td></tr>';
     }).join('');
     host.innerHTML = '<div class="gbs-scroll"><table class="sd st-tbl">' +
