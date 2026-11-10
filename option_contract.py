@@ -53,6 +53,8 @@ class OptionContract:
     #: the stream's BID_PRICE and ASK_PRICE for a contract it streams); never the chain's
     bid: float | None
     ask: float | None
+    #: Schwab's quoteTime (ms) of the /quotes answer its values are from; None: none taken
+    quote_time: float | None
     #: a contract size: None when not a number or negative
     multiplier: float | None
     #: Schwab's volatility, a percent
@@ -125,6 +127,24 @@ def _shown(value: Any) -> Any:
     return value
 
 
+def quote_values(quote: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a contract record's values from Schwab's /quotes answer for it (its `quote`).
+
+    Its bid and ask, volume, Greeks and volatility, each as sent (rule 2; a -999 volatility voids
+    the Greeks), and `quote_time`, Schwab's quoteTime (ms) of them.
+    """
+    vol = quote.get("volatility")
+    void = vol is not None and vol == SCHWAB_NO_VALUE
+    return {
+        "bid": schwab_number(quote.get("bidPrice")),
+        "ask": schwab_number(quote.get("askPrice")),
+        "volume": schwab_count(quote.get("totalVolume")),
+        "quote_time": schwab_number(quote.get("quoteTime")),
+        "volatility": schwab_number(vol),
+        **{g: _greek(quote, g, void) for g in GREEKS},
+    }
+
+
 def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     """Return the record of one contract as the chain sweep delivers it."""
     put_call = raw.get("putCall")
@@ -133,7 +153,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     vol_sent = raw.get("volatility")
     void = vol_sent is not None and vol_sent == SCHWAB_NO_VALUE
     multiplier = schwab_number(raw.get("multiplier"))
-    quote = raw["quote"] if isinstance(raw.get("quote"), Mapping) else {}
+    quoted = quote_values(raw["quote"]) if isinstance(raw.get("quote"), Mapping) else {}
     return OptionContract(
         symbol=raw.get("symbol"),
         side=side if side in ("CALL", "PUT") else None,
@@ -146,9 +166,10 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         open_interest=schwab_count(raw.get("openInterest")),
         # the quote's (the sweep's /quotes answer); a chain stored before quotes were kept with
         # it carries only the volume /chains sent, as recorded
-        volume=schwab_count((quote if "quote" in raw else raw).get("totalVolume")),
-        bid=schwab_number(quote.get("bidPrice")),
-        ask=schwab_number(quote.get("askPrice")),
+        volume=quoted["volume"] if quoted else schwab_count(raw.get("totalVolume")),
+        bid=quoted.get("bid"),
+        ask=quoted.get("ask"),
+        quote_time=quoted.get("quote_time"),
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
         volatility=schwab_number(vol_sent),
         **{g: _greek(raw, g, void) for g in GREEKS},

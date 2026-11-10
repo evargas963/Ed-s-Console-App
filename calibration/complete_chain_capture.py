@@ -239,6 +239,15 @@ def chain_messages(
 PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "1d": ("year", 2, "daily", 1)}
 
 
+def quotes_message(answer: dict, fetched_ts: float) -> tuple[str, dict]:
+    """One /quotes answer for option contracts as its bus message, the moment it arrives.
+
+    Schwab's quote per symbol as sent (`answer`: symbol -> its `quote`), for the console to take
+    each contract's newest values from (app.options.order_flow.state.push_rest_quotes).
+    """
+    return "optquotes", {"src": "schwab_quotes", "ts_recv": fetched_ts, "answer": answer}
+
+
 def price_history_message(
     ticker: str, series: str, answer: dict, fetched_ts: float
 ) -> tuple[str, dict]:
@@ -381,11 +390,6 @@ class ChainSweep:
         self._optioned: set[str] = set()  # tickers Schwab has answered a chain for
         self._fetched: dict[str, float] = {}  # ticker -> when its newest delivered chain began
         self._candled: dict[str, float] = {}  # ticker -> when its newest whole price history began
-        # (ticker, expiry) -> (ET date, underlyingPrice, contracts): Schwab's /chains answer for
-        # it that date. Asked once per ET date: its contracts and their open interest are the
-        # prior session's (Schwab support, 2026-10-12, item 5); every live value is the stream's
-        # or /quotes', asked each rotation.
-        self._listing: dict[tuple[str, str], tuple[date, float | None, list[dict]]] = {}
         self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
@@ -608,29 +612,21 @@ class ChainSweep:
             for expiry in listed[1]:
                 if stop.is_set():
                     return None
-                key = (ticker, expiry.isoformat())
-                if key not in self._listing or self._listing[key][0] != today:
+                resp = safe_get_chain(
+                    client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
+                )
+                if resp.status_code == 429:  # one refused expiry does not cost the ticker a round
                     resp = safe_get_chain(
                         client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
                     )
-                    if resp.status_code == 429:  # one refused expiry does not cost a round
-                        resp = safe_get_chain(
-                            client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
-                        )
-                    if resp.status_code != 200:
-                        return self.fail(
-                            [chain], f"chain for {expiry} returned HTTP {resp.status_code}"
-                        )
-                    payload = resp.json()
-                    self._listing[key] = (
-                        today,
-                        schwab_number(payload.get("underlyingPrice")),
-                        flatten_chain_contracts(payload),
+                if resp.status_code != 200:
+                    return self.fail(
+                        [chain], f"chain for {expiry} returned HTTP {resp.status_code}"
                     )
+                payload = resp.json()
                 self._optioned.add(ticker)
-                _day, chain.spots[key[1]], listed_contracts = self._listing[key]
-                # a copy: the sweep writes each contract's live values into it
-                chain.by_expiry[key[1]] = [dict(ct) for ct in listed_contracts]
+                chain.spots[expiry.isoformat()] = schwab_number(payload.get("underlyingPrice"))
+                chain.by_expiry[expiry.isoformat()] = flatten_chain_contracts(payload)
         except Exception as e:  # that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
@@ -686,6 +682,7 @@ class ChainSweep:
             errors = answer.pop("errors") if "errors" in answer else {}
             named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
             quoted = {s: e["quote"] for s, e in answer.items()}
+            self.publish(*quotes_message(quoted, self.clock()))  # to the screen at once
         except Exception as e:  # those tickers' answer is the failure; the rotation goes on
             log.warning(
                 "quotes for %d contracts failed: %s: %s",

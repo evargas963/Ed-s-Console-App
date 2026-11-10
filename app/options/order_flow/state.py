@@ -22,7 +22,7 @@ from l1_trade_observation import (
     vendor_triple,
 )
 from numeric_contract import schwab_count, schwab_number
-from option_contract import streamed_greeks
+from option_contract import quote_values, streamed_greeks
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -245,6 +245,39 @@ class OrderFlowState:
 
 
 _LIVE_STATE = OrderFlowState()
+
+
+#: each option contract's values from its newest /quotes answer (option_contract.quote_values),
+#: newest by Schwab's quoteTime: symbol -> values
+_REST_QUOTES: dict[str, dict] = {}
+_rest_lock = threading.Lock()
+
+
+def _older(new: dict, held: dict) -> bool:
+    """Whether `new` values were quoted by Schwab before `held` ones."""
+    return (
+        new["quote_time"] is not None
+        and held["quote_time"] is not None
+        and new["quote_time"] < held["quote_time"]
+    )
+
+
+def push_rest_quotes(answer: dict) -> None:
+    """Keep each contract's values from one /quotes answer (symbol -> Schwab's `quote`).
+
+    A contract's values replace those held unless Schwab quoted them earlier.
+    """
+    read = {sym: quote_values(quote) for sym, quote in answer.items()}
+    with _rest_lock:
+        for sym, values in read.items():
+            if sym not in _REST_QUOTES or not _older(values, _REST_QUOTES[sym]):
+                _REST_QUOTES[sym] = values
+
+
+def rest_quotes() -> dict[str, dict]:
+    """Every contract's values from its newest /quotes answer (push_rest_quotes), a copy."""
+    with _rest_lock:
+        return dict(_REST_QUOTES)
 
 
 def push_option_top(symbol: str, content_item: dict) -> None:

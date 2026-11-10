@@ -460,9 +460,16 @@ _BUCKET_FLAGS = frozenset({"dollarized"})
 
 
 def overlay_streamed_contract_fields(
-    contracts: list[OptionContract], streamed_by_symbol: dict[str, dict], held: set[str]
+    contracts: list[OptionContract],
+    streamed_by_symbol: dict[str, dict],
+    held: set[str],
+    quoted: dict[str, dict],
 ) -> tuple[list[OptionContract], int]:
-    """Give each contract Schwab streams (`held`) the values the stream pushed it.
+    """Give each contract its newest values: the stream's when it is held, else /quotes'.
+
+    A contract Schwab does not stream takes the values of its newest /quotes answer (`quoted`,
+    app.options.order_flow.state.rest_quotes) when Schwab quoted them no earlier than those the
+    chain carries, the moment that answer arrives, never at the chain's next delivery.
 
     `streamed_by_symbol` holds its newest streamed record; the pushed field is its one producer
     (AGENTS.md rule 3). Its volume, bid and ask are the stream's (`total_volume`, `bid`, `ask`),
@@ -473,13 +480,18 @@ def overlay_streamed_contract_fields(
     the chain's. Open interest is the chain's for every contract (the stream does not send it for
     every contract it streams).
 
-    Pure: a streamed contract is a new record, every other the same one. Returns
+    Pure: a contract given values is a new record, every other the same one. Returns
     (new_contracts, streamed_count).
     """
     out: list[OptionContract] = []
     for c in contracts:
         if c.symbol not in held:
-            out.append(c)
+            newer = c.symbol in quoted and not (
+                c.quote_time is not None
+                and quoted[c.symbol]["quote_time"] is not None
+                and quoted[c.symbol]["quote_time"] < c.quote_time
+            )
+            out.append(replace(c, **quoted[c.symbol]) if newer else c)
         elif c.symbol in streamed_by_symbol:
             sent = streamed_by_symbol[c.symbol]
             pushed = {
@@ -493,7 +505,7 @@ def overlay_streamed_contract_fields(
             out.append(replace(c, **pushed))
         else:
             out.append(replace(c, volume=None, bid=None, ask=None))
-    return out, len(out) - sum(new is old for new, old in zip(out, contracts))
+    return out, sum(1 for c in contracts if c.symbol in held)
 
 
 def strike_total_oi(bucket: dict) -> float | None:

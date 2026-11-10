@@ -47,7 +47,12 @@ from app.options.order_flow.history import (
     book_heatmap_for_ticker,
 )
 from app.options.order_flow.live_payload import flow_block, options_live_payload
-from app.options.order_flow.state import get_content_for_symbol, get_stream_greeks, option_top
+from app.options.order_flow.state import (
+    get_content_for_symbol,
+    get_stream_greeks,
+    option_top,
+    rest_quotes,
+)
 from app.options.order_flow.streaming import (
     get_option_contract_streaming_diagnostics,
     price_row,
@@ -1451,7 +1456,7 @@ def _publish_levels(
     held = set(_held_option_symbols_for_ticker(listed, now.timestamp(), feed))
     # a streamed contract's open interest and volume are the stream's, every other the chain's.
     # The cell stamp says whether that stream is live.
-    priced, n_live = overlay_streamed_contract_fields(chain, streamed, held)
+    priced, n_live = overlay_streamed_contract_fields(chain, streamed, held, rest_quotes())
     if option_market_open(now, product) is False:
         priced = _keep_last_reported(priced, chain, now, product)
     live_syms = _overlaid_symbols(chain, priced)
@@ -3410,6 +3415,7 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         contracts,
         _streamed_greeks_for_ticker(listed, now, feed),
         set(_held_option_symbols_for_ticker(listed, now, feed)),
+        rest_quotes(),
     )
     product = option_close_product(t)
     response_contracts = _keep_last_reported(

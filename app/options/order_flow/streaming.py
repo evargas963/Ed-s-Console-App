@@ -45,6 +45,7 @@ from app.options.order_flow.state import (
     push_book,
     push_level_one,
     push_option_top,
+    push_rest_quotes,
 )
 from instrument_identity import ticker_storage_key
 from stream_spine import LATEST
@@ -277,6 +278,11 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         return
     if topic == "watchlist":
         _answer_watchlist_request(msg)
+        return
+    if topic == "optquotes":  # a /quotes answer: each contract's newest values, repriced now
+        push_rest_quotes(msg["answer"])
+        for sym in msg["answer"]:
+            _tick(sym, float(msg["ts_recv"]))
         return
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
