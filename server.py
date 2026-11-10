@@ -89,7 +89,7 @@ from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
 from option_contract import OptionContract, chain_row
-from terrain_atr import Atr, compute_atrs, roll_up
+from terrain_atr import Atr, compute_atrs
 from terrain_engine import (
     PRICE_RELATIONS,
     SAME_DAY_LEVELS,
@@ -1991,29 +1991,39 @@ def stop_terrain_loop() -> None:
         _chains_waiting.clear()
 
 
+def _todays_candles(tk: str, now: datetime) -> list[Candle]:
+    """Today's daily candle as Schwab pushes it: one candle, or none yet.
+
+    LEVELONE_EQUITIES OPEN_PRICE, HIGH_PRICE, LOW_PRICE, REGULAR_MARKET_LAST_PRICE and
+    TOTAL_VOLUME, as the price row holds them (live_market_plane.get_quote). Only regular session
+    trades set the first three, and each is 0 until one does (Schwab Streamer API §3.1, fields
+    17, 10 and 11); the last stands from the session's close while the extended hours trade on.
+    None before today's regular session Schwab sent (/markets) opens, on a day without one, and
+    until the ticker's first regular trade. Its time is the session's open.
+    """
+    s = session(now.astimezone(ET).date().isoformat())
+    row = lmp.get_quote(tk)
+    if s is None or not s.regular or now < s.regular[0][0] or row is None:
+        return []
+    day = [row["open_price"], row["high_price"], row["low_price"], row["regular_last"]]
+    if None in day or row["open_price"] == 0:
+        return []
+    return [Candle(s.regular[0][0].timestamp(), *day, row["total_volume"])]
+
+
 def _atr(ticker: str, now: datetime) -> Atr:
     """Return the ticker's daily, weekly and monthly ATR at `now`.
 
     From Schwab's daily candles as the bar writer holds them (_series; none from Schwab yet: none
-    held) up to yesterday, and today's candle rolled up live from today's 1-minute bars inside
-    Schwab's regular session for today (none before it opens). Too few reads as None.
+    held) up to yesterday, and today's candle as Schwab pushes it (_todays_candles). Too few
+    reads as None.
     """
     tk = ticker_storage_key(ticker)
     today = now.astimezone(ET).date()
-    s = session(today.isoformat())
     with _bars_lock:
-        held_daily, held_bars = (
-            (_series[(tk, "1d")] if (tk, "1d") in _series else []),
-            (_bars[tk] if tk in _bars else []),
-        )
+        held_daily = _series[(tk, "1d")] if (tk, "1d") in _series else []
         daily = [c for c in held_daily if datetime.fromtimestamp(c.ts, ET).date() < today]
-        bars = [
-            b
-            for b in held_bars
-            if s is not None
-            and any(start.timestamp() <= b.ts < end.timestamp() for start, end in s.regular)
-        ]
-    return compute_atrs(daily + roll_up(bars, lambda day: day))
+    return compute_atrs(daily + _todays_candles(tk, now))
 
 
 def _atr_fields(tk: str, now: datetime) -> dict:
@@ -2243,11 +2253,11 @@ def chart_bars(tk: str, tf: str, minutes: list[dict], now: datetime) -> list[dic
 
     A timeframe Schwab sends (SCHWAB_SERIES) is Schwab's series as the bar writer holds it, but
     for the bar Schwab has not sent whole yet: a minute series' newest bar (forming, or not asked
-    again yet; the daemon asks as each completes), and today's daily candle until Schwab's
-    regular window for today has ended and Schwab has sent it. That bar is rolled up
-    (aggregate_bars) from Schwab's 1-minute bars, today's inside its regular window for the daily.
-    Every other timeframe (3 and 60 minutes, which Schwab does not send), or one whose series is
-    not held yet, is rolled up from the 1-minute bars.
+    again yet; the daemon asks as each completes), which is rolled up (aggregate_bars) from
+    Schwab's 1-minute bars; and today's daily candle, which is the one Schwab pushes
+    (_todays_candles) until Schwab's regular window for today has ended and Schwab has sent it
+    in the series. Every other timeframe (3 and 60 minutes, which Schwab does not send), or one
+    whose series is not held yet, is rolled up from the 1-minute bars.
     """
     key = (tk, SCHWAB_SERIES[tf]) if tf in SCHWAB_SERIES else None
     with _bars_lock:
@@ -2265,18 +2275,12 @@ def chart_bars(tk: str, tf: str, minutes: list[dict], now: datetime) -> list[dic
     first_day = datetime.fromtimestamp(minutes[0]["t"], ET).date() if minutes else None
     schwab = [
         _bar_dict(c)
-        for c in sent
-        if (first_day is None or first_day <= (day := datetime.fromtimestamp(c.ts, ET).date()))
-        and (day < today or (ended and day == today))
+        for day, c in ((datetime.fromtimestamp(c.ts, ET).date(), c) for c in sent)
+        if (first_day is None or first_day <= day) and (day < today or (ended and day == today))
     ]
     if schwab and datetime.fromtimestamp(schwab[-1]["t"], ET).date() == today:
         return schwab
-    todays = [
-        m
-        for m in minutes
-        if s is not None and any(a.timestamp() <= m["t"] < b.timestamp() for a, b in s.regular)
-    ]
-    return schwab + aggregate_bars(todays, "D")
+    return schwab + [_bar_dict(c) for c in _todays_candles(tk, now)]
 
 
 def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:

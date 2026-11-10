@@ -5,10 +5,12 @@ real schwab-py client as the daemon builds it) as docs/schwab lists it -- 1-minu
 years of daily candles, once per ET date, each request ending at the sweep's clock -- and
 publishes each series as Schwab sent it on the daemon's bus; the console reads it there and its
 bar writer takes it: the 1-minute bars every reader reads, and the daily candles the daily,
-weekly and monthly ATR are computed from, today's candle rolled up live from the 1-minute bars.
+weekly and monthly ATR are computed from, today's candle the one Schwab pushes on the stream.
 
 Real data: SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
-(tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json). Inputs, named: the clock.
+(tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json), and SPY's pushed day fields and
+daily candles of 2026-11-10 (tests/fixtures/real_spy_day_fields_and_daily_candles_2026_11_10.json).
+Inputs, named: the clock.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 
+import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
@@ -191,44 +194,79 @@ def _told(tk: str, takes) -> list:
         return told
 
 
-def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
-    """At 2026-10-06 16:30 ET, after Schwab's regular window for that day (09:30-16:00 ET).
+#: SPY on 2026-11-10 as production recorded it: each LEVELONE_EQUITIES message that moved the
+#: day's open, high or low (the overnight reset to 0 first), the first and the newest that moved
+#: only the regular session's last, and Schwab's /pricehistory daily answer after that close
+_DAY = json.loads(
+    (
+        Path(__file__).parent / "fixtures" / "real_spy_day_fields_and_daily_candles_2026_11_10.json"
+    ).read_text(encoding="utf-8")
+)
 
-    The daily ATR is Schwab's daily candles before that day plus the day's candle rolled up from its
-    1-minute bars inside the window. Its high and low are Schwab's own daily candle's for the
-    day.
+
+def test_today_s_candle_is_the_one_schwab_pushes():
+    """Today's daily candle is Schwab's pushed open, high, low and regular session's last.
+
+    Before the regular session opens (Schwab holds 0 for the first three) and until its first
+    trade there is none, and the ATR is Schwab's earlier candles'. After the close the pushed
+    candle is the daily candle Schwab itself then sent for the day, so the ATR is that of
+    Schwab's own series; the daily chart draws it until the series holds the day.
     """
-    now = datetime(2026, 10, 6, 16, 30, tzinfo=ET)
-    for tk in ("SPY", "TSLA"):
-        server._bars.pop(tk, None)
+    tk = "SPY"
+    sent = _DAY["daily"]["candles"]
+    before, schwabs = sent[:-1], sent[-1]
+    opened = datetime(2026, 11, 10, 9, 30, tzinfo=ET)
+    after = datetime(2026, 11, 10, 16, 30, tzinfo=ET)
+
+    def pushed(until: datetime) -> None:
+        for q in _DAY["quotes"]:
+            if q["ts_recv"] <= until.timestamp():
+                lmp.record_from_level_one_equity(tk, q["native"], received_ts=q["ts_recv"])
+
+    def series(candles: list) -> None:
+        topic, msg = price_history_message(
+            tk, "1d", dict(_DAY["daily"], candles=candles), _DAY["daily_ts_recv"]
+        )
+        ofs._ingest_pushed(topic, msg)
+        server._write_streamed_bars([ofs.streamed_bars.get_nowait()], after)
+
+    server._series.pop((tk, "1d"), None)
+    try:
+        series(before)
+        pushed(opened)  # the reset to 0 and the prior session's last: no regular trade yet
+        early = datetime(2026, 11, 10, 8, 0, tzinfo=ET)
+        assert server._todays_candles(tk, early) == [] == server._todays_candles(tk, opened)
+        assert server._atr(tk, opened).daily == _wilder_atr(before)
+        pushed(after)
+        (today,) = server._todays_candles(tk, after)
+        assert (today.open, today.high, today.low, today.close) == (
+            schwabs["open"],
+            schwabs["high"],
+            schwabs["low"],
+            schwabs["close"],
+        )
+        assert today.ts == opened.timestamp()
+        assert server._atr(tk, after).daily == _wilder_atr(sent)
+        drawn = server.chart_bars(tk, "D", [], after)[-1]
+        assert (drawn["o"], drawn["h"], drawn["l"], drawn["c"]) == (
+            today.open,
+            today.high,
+            today.low,
+            today.close,
+        )
+        series(sent)
+        assert server.chart_bars(tk, "D", [], after)[-1] == {
+            "t": schwabs["datetime"] / 1000,
+            "o": schwabs["open"],
+            "h": schwabs["high"],
+            "l": schwabs["low"],
+            "c": schwabs["close"],
+            "v": schwabs["volume"],
+        }
+    finally:
         server._series.pop((tk, "1d"), None)
-        try:
-            _held(tk, "1d", now)
-            _held(tk, "1m", now)
-            daily = HISTORY[(tk, "daily", "1")]["body"]["candles"]
-            before = [
-                c
-                for c in daily
-                if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() < now.date()
-            ]
-            schwabs = next(
-                c
-                for c in daily
-                if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() == now.date()
-            )
-            window = [
-                m
-                for m in HISTORY[(tk, "minute", "1")]["body"]["candles"]
-                if datetime(2026, 10, 6, 9, 30, tzinfo=ET).timestamp()
-                <= m["datetime"] / 1000
-                < datetime(2026, 10, 6, 16, 0, tzinfo=ET).timestamp()
-            ]
-            (rolled,) = _grouped(window, lambda day: day)
-            assert (rolled["high"], rolled["low"]) == (schwabs["high"], schwabs["low"]), tk
-            assert server._atr(tk, now).daily == _wilder_atr(before + [rolled]), tk
-        finally:
-            server._bars.pop(tk, None)
-            server._series.pop((tk, "1d"), None)
+        lmp._by_ticker.pop(tk, None)
+        lmp._fields_by_ticker.pop(tk, None)
 
 
 def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_the_atr_from_them():

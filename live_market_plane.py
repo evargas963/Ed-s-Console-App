@@ -44,6 +44,7 @@ _PRICE_FIELDS = (
     "OPEN_PRICE",
     "HIGH_PRICE",
     "LOW_PRICE",
+    "REGULAR_MARKET_LAST_PRICE",
 )
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
 _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
@@ -133,6 +134,9 @@ def record_from_level_one_equity(
         "open_price": val("OPEN_PRICE"),
         "high_price": val("HIGH_PRICE"),
         "low_price": val("LOW_PRICE"),
+        # the regular session's last trade: it stands from that session's close, while LAST_PRICE
+        # goes on with the extended hours' trades (today's daily candle closes on it)
+        "regular_last": val("REGULAR_MARKET_LAST_PRICE"),
         "prior_close": val("CLOSE_PRICE"),
         # Schwab's own change vs the prior close (0 hops): NET_CHANGE_PERCENT is the last price's,
         # extended hours included; REGULAR_MARKET_CHANGE_PERCENT is the regular session's
