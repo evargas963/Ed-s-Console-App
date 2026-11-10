@@ -28,7 +28,6 @@ from l1_trade_observation import (
 from numeric_contract import (
     float_finite_or_none,
     percent_text,
-    price_text,
     schwab_count,
     schwab_number,
     shares_text,
@@ -690,16 +689,6 @@ def _weighted_total(levels: Levels) -> float | None:
     return sum(w * v for w, (_p, v) in zip(weights, levels, strict=False)) / sum(weights)
 
 
-def _span(levels: Levels, depth: int) -> float | None:
-    """Return the span from the touch price to the `depth`-th level's.
-
-    The last level's when the side has fewer; None for an empty side.
-    """
-    if not levels:
-        return None
-    return abs(levels[min(depth, len(levels)) - 1][0] - levels[0][0])
-
-
 def _pct(imbalance: float | None) -> float | None:
     return None if imbalance is None else imbalance * 100.0
 
@@ -734,8 +723,6 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
             "ask_total": at,
             "difference": abs(bt - at) if both else None,
             "total_depth": bt + at if both else None,
-            "span_bid": _span(bids, depth),
-            "span_ask": _span(asks, depth),
         }
     touch = None
     if bids and asks:
@@ -916,7 +903,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
     the venue's end second: now while its book is live, else its last value's), its live value,
     zone and side word held OF_ZONE_DWELL_SEC, the seconds the zone has held (held_open: at
     least that long, the zone standing since the first value known), the flat totals, the
-    sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
+    sentence (withheld while the book is crossed), the touch and its flag, the flips
     in two minutes, and the 2m and 5m lean series. `readout`: the newest; `points`: the readouts
     kept, (receive time,
     readout) oldest first; `ends`: venue -> its end time, None with no value.
@@ -965,8 +952,6 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                 "ask_text": shares_text(ask),
                 "difference_text": shares_text(snap.get("difference")),
                 "total_text": shares_text(snap.get("total_depth")),
-                "span_bid_text": price_text(snap.get("span_bid")),
-                "span_ask_text": price_text(snap.get("span_ask")),
                 "lean": {
                     name: {
                         "seconds": window,

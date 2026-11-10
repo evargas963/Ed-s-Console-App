@@ -521,22 +521,7 @@ def test_crossed_withholds_the_sentence_and_locked_keeps_it():
         assert card["venues"]["NASDAQ_BOOK"]["touch_flag"] is None
 
 
-# ── spans and thin ladders ───────────────────────────────────────────────────────────────────
-
-
-def test_the_spans_run_from_the_touch_to_the_depths_last_level():
-    """Schwab's pair: NYSE_BOOK bids 767.39 to 767.35 and asks 767.41 to 767.60 over five levels.
-
-    NASDAQ_BOOK bids 767.41 to 753.40; a one-level span is 0.
-    """
-    card = e.readout_card(
-        _pair_readout(), [(1.0, _pair_readout())], dict.fromkeys(_pair_readout(), 1.0)
-    )
-    nyse, nq = card["venues"]["NYSE_BOOK"]["views"], card["venues"]["NASDAQ_BOOK"]["views"]
-    assert (nyse["5"]["span_bid_text"], nyse["5"]["span_ask_text"]) == ("0.04", "0.19")
-    assert nyse["weighted"]["span_bid_text"] == nyse["5"]["span_bid_text"]
-    assert (nyse["3"]["span_bid_text"], nyse["1"]["span_bid_text"]) == ("0.02", "0.00")
-    assert nq["5"]["span_bid_text"] == f"{767.41 - 753.40:.2f}"
+# ── thin ladders ─────────────────────────────────────────────────────────────────────────────
 
 
 def test_a_thin_side_is_read_over_the_levels_it_has_with_the_weights_renormalized():
@@ -555,10 +540,7 @@ def test_a_thin_side_is_read_over_the_levels_it_has_with_the_weights_renormalize
     wa = sum(x * a for x, a in zip(w[:4], asks, strict=True)) / sum(w[:4])
     assert r["views"]["weighted"]["pct"] == pytest.approx((wb - wa) / (wb + wa) * 100)
     assert r["views"]["5"]["ask_total"] == sum(asks)
-    span = max(lv["ASK_PRICE"] for lv in content["ASKS"]) - min(
-        lv["ASK_PRICE"] for lv in content["ASKS"]
-    )
-    assert r["views"]["5"]["span_ask"] == pytest.approx(span)
+    assert r["views"]["5"]["bid_total"] == sum(bids)
     card = e.readout_card({**_NO_BOOK, svc: r}, [(1.0, {**_NO_BOOK, svc: r})], {svc: 1.0})
     assert card["venues"][svc]["levels_text"] == "Levels available: bids 7 · asks 4"
     full = e.readout_card(

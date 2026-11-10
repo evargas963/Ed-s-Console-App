@@ -144,7 +144,6 @@ class OrderFlowState:
                     "server_received_ts": float(received("LAST_PRICE")),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
-                    "native_event_id": False,
                 }
             )
 
