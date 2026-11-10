@@ -345,7 +345,6 @@ def cluster_price_levels_into_zones(
 
 def build_premarket_snapshot(
     ticker: str,
-    session_date: date,
     config: PlaybookConfig,
     *,
     canonical: PriceLevelSnapshot,
@@ -559,10 +558,9 @@ def build_live_snapshot(
     here. Before the session's regular open it is the premarket shape, as it is while the session's
     hours are not held: the regular session Schwab's /markets sent.
     """
-    session_date = canonical.session_date
-    regular = _regular(session_date)
+    regular = _regular(canonical.session_date)
     if regular is None or now < regular[0]:
-        return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
+        return build_premarket_snapshot(ticker, config, canonical=canonical)
     levels = _held_levels(canonical, LIVE_LEVELS) + [
         (float(pair[0]), str(pair[1])) for pair in extra_levels
     ]

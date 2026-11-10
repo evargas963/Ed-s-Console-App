@@ -97,7 +97,7 @@ def test_premarket_carries_every_phase2a_level_unchanged():
     bars = _bars(session)
     canon = _canonical(session, bars)
 
-    carried = build_premarket_snapshot("SPY", session, PlaybookConfig(), canonical=canon)
+    carried = build_premarket_snapshot("SPY", PlaybookConfig(), canonical=canon)
     got = _published(carried)
     for level_id in _PHASE2A_IDS:
         want = canon.price(level_id)

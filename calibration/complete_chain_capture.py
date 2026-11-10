@@ -674,8 +674,7 @@ class ChainSweep:
             errors = answer.pop("errors") if "errors" in answer else {}
             named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
             quoted = {s: e["quote"] for s, e in answer.items()}
-            # Schwab's quote per symbol as sent, to the console at once with the time it was
-            # received (state.push_rest_quotes)
+            # Schwab's quote per symbol as sent, to the console at once with its receive time
             self.publish(
                 "optquotes", {"src": "schwab_quotes", "ts_recv": self.clock(), "answer": quoted}
             )
@@ -700,7 +699,6 @@ class ChainSweep:
             quote = quoted.get(ct["symbol"])
             if quote is not None:
                 # Schwab's /quotes answer for the contract, as sent: its values are read from it
-                # (option_contract.quote_values)
                 ct["quote"] = quote
             elif ct["symbol"] in named:
                 chain.named_invalid.add(ct["symbol"])

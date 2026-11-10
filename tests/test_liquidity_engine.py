@@ -310,7 +310,7 @@ def _overnight_under_prior_low_zones(session_date: date):
         prior=_daily_candle(prev, 106.0, 100.0, 102.0),  # the prior session's two regular bars
         bar_source="test",
     )
-    return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
+    return build_premarket_snapshot("SPY", PlaybookConfig(), canonical=snap).zones
 
 
 def test_no_pool_language_in_rendered_zone_payload():
@@ -360,7 +360,7 @@ def test_no_lookahead_premarket():
         bar_source="test",
         config=cfg,
     )
-    out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
+    out = build_premarket_snapshot("SPY", cfg, canonical=snap)
     labels = {s["label"] for z in out.zones for s in z.source_levels}
     assert labels & {"PDH", "PDL", "PDC"}
     # No today POC/VAH/VAL in the premarket zones: every poc-shaped level is the
