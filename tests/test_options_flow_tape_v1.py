@@ -6,9 +6,17 @@ Size/Trade/Size/Premium/Volume/OI/IV/Delta, with Trade/Size/Time/Bid/Ask/BidSize
 OI/IV/Delta read verbatim (never derived) and Premium = Trade x Size x native Multiplier. No
 aggressor-side (buy/sell) classification is ever produced -- `classification` states only where
 a print landed relative to that SAME tick's own bid/ask.
+
+Every record is Schwab's own, as the capture daemon stored it (tests/fixtures):
+real_spy_option_contract_type_2026_10_23.json (a call's and a put's first four records, the first
+one whole), real_options_stream_history_samples.json (twelve records in a row of one contract)
+and real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json (whole first records).
 """
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 from app.options.order_flow import history, state
 from app.options.order_flow.engine import read_book
@@ -16,10 +24,24 @@ from app.options.order_flow.history import RecentTape
 from app.options.order_flow.state import OrderFlowState
 from app.options.order_flow.streaming import _ingest_pushed
 
-SYM = "SPY   260918C00600000"
+_FX = Path(__file__).resolve().parent / "fixtures"
+CALL = "SPY   261023C00761000"
+PUT = "SPY   261023P00762000"
+SIZE_ONLY = "SPY   260904C00772000"
+INSIDE = "SPY   261019C00764000"
 
 
-def _tape(rows: list[tuple[float, dict]]) -> RecentTape:
+def _load(name: str) -> dict:
+    return json.loads((_FX / name).read_text(encoding="utf-8"))
+
+
+def _sent(contract: str) -> list[tuple[float, dict]]:
+    """Return Schwab's first four records of `contract`, each with the time it was received."""
+    rows = _load("real_spy_option_contract_type_2026_10_23.json")["contracts"][contract]
+    return [(r["ts_recv"], r["item"]) for r in rows]
+
+
+def _tape(contract: str, rows: list[tuple[float, dict]]) -> RecentTape:
     """Return a fresh tape fed each (ts_recv, LEVELONE_OPTIONS item) as the console's intake does.
 
     The intake is streaming._ingest_pushed: the live state reads the record first, and the tape
@@ -27,112 +49,68 @@ def _tape(rows: list[tuple[float, dict]]) -> RecentTape:
     """
     tape, live = RecentTape(), OrderFlowState()
     for ts_recv, content in rows:
-        live.push_level_one(SYM, content, ts_recv=ts_recv)
-        live.push_option_top(SYM, content)
-        tape.record(SYM, content, ts_recv, live.option_top(SYM), live.get_stream_greeks(SYM))
+        live.push_level_one(contract, content, ts_recv=ts_recv)
+        live.push_option_top(contract, content)
+        tape.record(
+            contract, content, ts_recv, live.option_top(contract), live.get_stream_greeks(contract)
+        )
     return tape
 
 
-def _full_context(**overrides) -> dict:
-    base = {
-        "key": SYM,
-        "STRIKE_TYPE": 600,
-        "CONTRACT_TYPE": "C",
-        "EXPIRATION_YEAR": 2026,
-        "EXPIRATION_MONTH": 9,
-        "EXPIRATION_DAY": 18,
-        "MULTIPLIER": 100,
-        "UNDERLYING": "SPY",
-    }
-    base.update(overrides)
-    return base
-
-
 def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
-    tape = _tape(
-        [
-            (
-                1000.0,
-                _full_context(
-                    TRADE_TIME_MILLIS=999000,
-                    LAST_PRICE=1.18,
-                    LAST_SIZE=1,
-                    BID_PRICE=1.17,
-                    BID_SIZE=187,
-                    ASK_PRICE=1.19,
-                    ASK_SIZE=180,
-                    TOTAL_VOLUME=70984,
-                    OPEN_INTEREST=901,
-                    VOLATILITY=7.16,
-                    DELTA=0.357,
-                ),
-            ),
-        ]
-    )
-    rows = tape.rows(SYM, 50)
+    rows = _tape(CALL, _sent(CALL)[:1]).rows(CALL, 50)
     assert len(rows) == 1
     r = rows[0]
-    assert r["symbol"] == SYM and r["underlying"] == "SPY"
-    assert r["expiry"] == "2026-09-18" and r["type"] == "CALL" and r["strike"] == 600
-    assert r["bid"] == 1.17 and r["bid_size"] == 187
-    assert r["ask"] == 1.19 and r["ask_size"] == 180
-    assert r["trade"] == 1.18 and r["size"] == 1
-    assert r["premium"] == 1.18 * 1 * 100
-    assert r["volume"] == 70984 and r["oi"] == 901 and r["iv"] == 7.16 and r["delta"] == 0.357
-    assert r["classification"] == "inside_spread"
+    assert r["symbol"] == CALL and r["underlying"] == "SPY"
+    assert r["expiry"] == "2026-10-23" and r["type"] == "CALL" and r["strike"] == 761
+    assert r["bid"] == 2.03 and r["bid_size"] == 65
+    assert r["ask"] == 2.04 and r["ask_size"] == 74
+    assert r["trade"] == 2.04 and r["size"] == 1
+    assert r["premium"] == 2.04 * 1 * 100
+    assert r["volume"] == 4391 and r["oi"] == 1888
+    assert r["iv"] == 27.10704925 and r["delta"] == 0.45935825
+    assert r["classification"] == "at_ask"
 
 
 def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice():
     """The vendor re-sends the SAME (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) trade.
 
     It comes alongside an unrelated field update (e.g. a fresh Greek recompute) -- this must
-    collapse to ONE tape row, not one per re-emission.
+    collapse to ONE tape row, not one per re-emission. Induced: Schwab's first record is received
+    again, carrying the delta and then the volatility Schwab sent two records later.
     """
-    tick = _full_context(
-        TRADE_TIME_MILLIS=999000,
-        LAST_PRICE=1.18,
-        LAST_SIZE=1,
-        BID_PRICE=1.17,
-        ASK_PRICE=1.19,
-        TOTAL_VOLUME=70984,
-    )
+    (at, first), _, (_, third), _ = _sent(CALL)
+    assert first["DELTA"] != third["DELTA"] and first["VOLATILITY"] != third["VOLATILITY"]
     tape = _tape(
+        CALL,
         [
-            (1000.0, tick),
-            (1005.0, dict(tick, DELTA=0.360)),  # same trade, only a Greek changed
-            (1010.0, dict(tick, VOLATILITY=7.2)),
-        ]
+            (at, first),
+            (at + 5, dict(first, DELTA=third["DELTA"])),
+            (at + 10, dict(first, VOLATILITY=third["VOLATILITY"])),
+        ],
     )
-    assert len(tape.rows(SYM, 50)) == 1
+    assert len(tape.rows(CALL, 50)) == 1
 
 
 def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row():
-    """Reproduced against real captured data (SPY 260909C00767000).
+    """Twelve records in a row of SPY 260904C00772000, as Schwab sent them.
 
     A partial LEVELONE_OPTIONS tick can carry a fresh LAST_SIZE with NO LAST_PRICE on the same
-    packet (a size-only field bumping TOTAL_VOLUME on its own). A trade print requires its OWN
-    price AND its OWN trade timestamp on the SAME tick; this shape is excluded.
+    packet (a size-only field bumping TOTAL_VOLUME on its own); two of the twelve do. A trade
+    print requires its OWN price on the SAME tick; this shape is excluded.
     """
-    tape = _tape(
-        [
-            (
-                1000.0,
-                _full_context(
-                    TRADE_TIME_MILLIS=999000,
-                    LAST_PRICE=0.01,
-                    LAST_SIZE=1,
-                    BID_PRICE=0.0,
-                    ASK_PRICE=0.01,
-                    TOTAL_VOLUME=108925,
-                ),
-            ),
-            # partial: LAST_SIZE bumped, no LAST_PRICE, no TRADE_TIME_MILLIS at all
-            (1002.0, {"key": SYM, "LAST_SIZE": 2, "TOTAL_VOLUME": 108926}),
-        ]
+    contract = next(
+        c
+        for c in _load("real_options_stream_history_samples.json")["contracts"]
+        if c["symbol"] == SIZE_ONLY
     )
-    rows = tape.rows(SYM, 50)
-    assert len(rows) == 1, "the size-only partial must not be counted as a second trade print"
+    sent = [(e["ts_recv"], e["content"]) for e in contract["events"] if e["kind"] == "l1"]
+    size_only = [c for _, c in sent if "LAST_SIZE" in c and "LAST_PRICE" not in c]
+    assert [(c["LAST_SIZE"], c["TOTAL_VOLUME"]) for c in size_only] == [(4, 486829), (1, 486836)]
+    rows = _tape(SIZE_ONLY, sent).rows(SIZE_ONLY, 50)
+    assert len(rows) == 2, "the size-only partials must not be counted as trade prints"
     assert all(r["trade"] is not None for r in rows), "no row may ever report trade=None"
+    assert [(r["trade"], r["size"]) for r in rows] == [(0.02, 1), (0.03, 5)]
 
 
 def test_context_is_carried_forward_from_the_most_recent_full_tick():
@@ -142,143 +120,69 @@ def test_context_is_carried_forward_from_the_most_recent_full_tick():
     resolve its own contract identity from the most recent tick that reported it, not read as if
     that identity were unknown.
     """
-    tape = _tape(
-        [
-            (
-                1000.0,
-                _full_context(
-                    TRADE_TIME_MILLIS=999000,
-                    LAST_PRICE=1.18,
-                    LAST_SIZE=1,
-                    BID_PRICE=1.17,
-                    ASK_PRICE=1.19,
-                ),
-            ),
-            # a later genuine trade with NO strike/type/expiry/multiplier fields on this tick
-            (
-                2000.0,
-                {
-                    "key": SYM,
-                    "TRADE_TIME_MILLIS": 1999000,
-                    "LAST_PRICE": 1.25,
-                    "LAST_SIZE": 3,
-                    "BID_PRICE": 1.24,
-                    "ASK_PRICE": 1.26,
-                },
-            ),
-        ]
-    )
-    rows = tape.rows(SYM, 50)
-    assert len(rows) == 2
+    sent = _sent(CALL)[:3]
+    assert "STRIKE_TYPE" in sent[0][1] and "STRIKE_TYPE" not in sent[2][1]
+    rows = _tape(CALL, sent).rows(CALL, 50)
+    assert len(rows) == 3
     newest = rows[0]  # newest-first
-    assert newest["trade"] == 1.25 and newest["size"] == 3
-    assert newest["expiry"] == "2026-09-18" and newest["type"] == "CALL" and newest["strike"] == 600
+    assert newest["trade"] == 2.02 and newest["size"] == 10
+    assert newest["expiry"] == "2026-10-23" and newest["type"] == "CALL"
+    assert newest["strike"] == 761 and newest["premium"] == 2.02 * 10 * 100
 
 
 def test_classification_at_bid_at_ask_and_outside_spread_are_mechanical_not_aggressor():
-    tape = _tape(
-        [
-            (
-                1000.0,
-                _full_context(
-                    TRADE_TIME_MILLIS=1000,
-                    LAST_PRICE=1.17,
-                    LAST_SIZE=1,
-                    BID_PRICE=1.17,
-                    ASK_PRICE=1.19,
-                ),
-            ),
-            (
-                1001.0,
-                _full_context(
-                    TRADE_TIME_MILLIS=1001,
-                    LAST_PRICE=1.19,
-                    LAST_SIZE=1,
-                    BID_PRICE=1.17,
-                    ASK_PRICE=1.19,
-                ),
-            ),
-            (
-                1002.0,
-                _full_context(
-                    TRADE_TIME_MILLIS=1002,
-                    LAST_PRICE=1.20,
-                    LAST_SIZE=1,
-                    BID_PRICE=1.17,
-                    ASK_PRICE=1.19,
-                ),
-            ),
-            (
-                1003.0,
-                _full_context(
-                    TRADE_TIME_MILLIS=1003,
-                    LAST_PRICE=1.10,
-                    LAST_SIZE=1,
-                    BID_PRICE=1.17,
-                    ASK_PRICE=1.19,
-                ),
-            ),
+    whole = next(
+        m
+        for m in _load("real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json")[
+            "zero_volume_messages"
         ]
+        if m["symbol"] == INSIDE
     )
-    by_trade = {r["trade"]: r["classification"] for r in tape.rows(SYM, 50)}
-    assert by_trade[1.17] == "at_bid"
-    assert by_trade[1.19] == "at_ask"
-    assert by_trade[1.20] == "outside_spread_high"
-    assert by_trade[1.10] == "outside_spread_low"
+    prints = (
+        _tape(CALL, _sent(CALL)).rows(CALL, 50)
+        + _tape(PUT, _sent(PUT)).rows(PUT, 50)
+        + _tape(INSIDE, [(whole["ts_recv"], whole["native"])]).rows(INSIDE, 50)
+    )
+    landed = {(r["bid"], r["trade"], r["ask"]): r["classification"] for r in prints}
+    assert landed[(3.04, 3.04, 3.05)] == "at_bid"
+    assert landed[(2.03, 2.04, 2.04)] == landed[(2.02, 2.03, 2.03)] == "at_ask"
+    assert landed[(2.97, 3, 2.99)] == "outside_spread_high"
+    assert landed[(2.03, 2.02, 2.04)] == landed[(2.08, 2.07, 2.09)] == "outside_spread_low"
+    assert landed[(2.5, 2.51, 2.52)] == "inside_spread"
+    assert len(landed) == 7
 
 
 def test_newest_first_ordering_and_limit_bound():
-    tape = _tape(
-        [
-            (
-                float(1000 + i),
-                _full_context(
-                    TRADE_TIME_MILLIS=1000 + i,
-                    LAST_PRICE=1.0 + i * 0.01,
-                    LAST_SIZE=1,
-                    BID_PRICE=1.0,
-                    ASK_PRICE=2.0,
-                ),
-            )
-            for i in range(5)
-        ]
-    )
-    rows = tape.rows(SYM, 3)
+    sent = _sent(CALL)
+    received = [at for at, _ in sent]
+    rows = _tape(CALL, sent).rows(CALL, 3)
     assert len(rows) == 3
-    assert [r["ts_recv"] for r in rows] == [1004.0, 1003.0, 1002.0]
-    assert rows[0]["trade"] == 1.04  # the LAST (newest) genuine trade recorded
+    assert [r["ts_recv"] for r in rows] == [received[3], received[2], received[1]]
+    assert rows[0]["trade"] == 2.03  # the LAST (newest) genuine trade recorded
 
 
 def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
-    tape = _tape([(1000.0, _full_context(TRADE_TIME_MILLIS=1000, LAST_PRICE=1.17, LAST_SIZE=1))])
-    tape.record(
-        "", _full_context(TRADE_TIME_MILLIS=2000, LAST_PRICE=1.5, LAST_SIZE=1), 2000.0, None, None
-    )
-    assert tape.rows("SPY   260918P00600000", 50) == []
+    (at, first), (later, second) = _sent(CALL)[:2]
+    tape = _tape(CALL, [(at, first)])
+    tape.record("", second, later, None, None)
+    assert tape.rows(PUT, 50) == []
     assert tape.rows("", 50) == []
-    assert len(tape.rows(SYM, 50)) == 1
+    assert len(tape.rows(CALL, 50)) == 1
 
 
 def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     """The console's intake records a print, then clear_symbol is called for that contract.
 
-    Its prints and its books are gone from memory. The release path does not call it.
+    Its prints and its books are gone from memory. The release path does not call it. The book is
+    Schwab's SPY NYSE_BOOK message of real_spy_nyse_nasdaq_books.json.
     """
-    _ingest_pushed(
-        f"optquote.{SYM}",
-        {
-            "symbol": SYM,
-            "ts_recv": 1000.0,
-            "content": _full_context(TRADE_TIME_MILLIS=1000, LAST_PRICE=1.17, LAST_SIZE=1),
-        },
-    )
+    at, first = _sent(CALL)[0]
+    _ingest_pushed(f"optquote.{CALL}", {"symbol": CALL, "ts_recv": at, "content": first})
+    book = _load("real_spy_nyse_nasdaq_books.json")["books"]["NYSE_BOOK"]
     history.BOOKS.record(
-        "SPY",
-        "NYSE_BOOK",
-        read_book({"BIDS": [{"BID_PRICE": 600.0, "TOTAL_VOLUME": 5}]}, "NYSE_BOOK"),
-        1000.0,
+        "SPY", "NYSE_BOOK", read_book(book["content"], "NYSE_BOOK"), book["ts_recv"]
     )
-    assert len(history.TAPE.rows(SYM, 50)) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)
-    state.clear_symbol(SYM)
+    assert len(history.TAPE.rows(CALL, 50)) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)
+    state.clear_symbol(CALL)
     state.clear_symbol("SPY")
-    assert history.TAPE.rows(SYM, 50) == [] and history.BOOKS.window("SPY", "NYSE_BOOK", 5) == []
+    assert history.TAPE.rows(CALL, 50) == [] and history.BOOKS.window("SPY", "NYSE_BOOK", 5) == []

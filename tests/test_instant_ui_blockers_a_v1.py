@@ -20,7 +20,7 @@ import live_price_rows
 import schwab_client as sc
 import server as srv
 import time_et
-from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
+from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, spy_minutes
 from tests.page_on_socket import Pages
 
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
@@ -112,18 +112,25 @@ def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
 
 
 def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
-    t0 = 1_700_000_100.0  # a 5-minute boundary: 1_700_000_100 % 300 == 100? use floor
-    base = t0 - (t0 % 300)
-    m = [
-        {"t": base + 60 * i, "o": 10 + i, "h": 11 + i, "l": 9 + i, "c": 10.5 + i, "v": 100}
-        for i in range(7)
-    ]
-    m[6]["v"] = None  # one minute with no reported volume
+    m = spy_minutes()[-10:]
+    assert m[-1]["v"] is None and all(b["v"] is not None for b in m[:-1])
     out = srv.aggregate_bars(m, "5")
-    assert [b["t"] for b in out] == [base, base + 300]
+    assert [b["t"] for b in out] == [m[0]["t"], m[5]["t"]]
     first, second = out
-    assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (10, 15, 9, 14.5, 500)
-    assert (second["o"], second["h"], second["l"], second["c"]) == (15, 17, 14, 16.5)
+    head, tail = m[:5], m[5:]
+    assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (
+        head[0]["o"],
+        max(b["h"] for b in head),
+        min(b["l"] for b in head),
+        head[-1]["c"],
+        sum(b["v"] for b in head),
+    )
+    assert (second["o"], second["h"], second["l"], second["c"]) == (
+        tail[0]["o"],
+        max(b["h"] for b in tail),
+        min(b["l"] for b in tail),
+        tail[-1]["c"],
+    )
     assert second["v"] is None, (
         "a bucket with an unreported minute has unknown volume, not a partial sum"
     )
@@ -131,17 +138,13 @@ def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
 
 
 def test_daily_roll_up_is_keyed_on_the_et_trading_date():
-    # 2026-09-24 19:59 ET and 20:01 ET are the same ET date; 00:01 ET next day is not
-    d1a, d1b, d2 = 1_790_294_340.0, 1_790_294_460.0, 1_790_308_860.0
-    out = srv.aggregate_bars(
-        [
-            {"t": d1a, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 1},
-            {"t": d1b, "o": 1.5, "h": 3, "l": 1, "c": 2, "v": 1},
-            {"t": d2, "o": 2, "h": 2, "l": 2, "c": 2, "v": 1},
-        ],
-        "D",
-    )
-    assert len(out) == 2 and out[0]["h"] == 3 and out[0]["v"] == 2
+    m = spy_minutes()
+    thursday, friday = m[:390], m[390:]
+    out = srv.aggregate_bars(m, "D")
+    assert len(out) == 2 and out[0]["h"] == max(b["h"] for b in thursday)
+    assert out[0]["v"] == sum(b["v"] for b in thursday)
+    assert [b["t"] for b in out] == [thursday[0]["t"], friday[0]["t"]]
+    assert (out[1]["o"], out[1]["c"], out[1]["v"]) == (friday[0]["o"], friday[-1]["c"], None)
 
 
 def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():

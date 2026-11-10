@@ -8,40 +8,35 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import pytest
 
 import server as srv
 import time_et
+from tests.feed_live_helper import spy_minutes
+from time_et import ET
 
 ROOT = Path(__file__).resolve().parents[1]
-ET = ZoneInfo("America/New_York")
-
-
-def _bars(start: datetime, minutes: int) -> list[dict]:
-    t0 = start.astimezone(UTC).timestamp()
-    return [
-        {"t": t0 + 60 * i, "o": 100 + i, "h": 100.5 + i, "l": 99.5 + i, "c": 100.25 + i, "v": 10}
-        for i in range(minutes)
-    ]
 
 
 def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
-    out = srv.aggregate_bars(_bars(datetime(2026, 9, 25, 9, 30, tzinfo=ET), 60), "30")
+    hour = spy_minutes()[:60]
+    out = srv.aggregate_bars(hour, "30")
     assert len(out) == 2
     first, second = out
+    opening, next_half = hour[:30], hour[30:]
     assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (
-        100,
-        129.5,
-        99.5,
-        129.25,
-        300,
+        opening[0]["o"],
+        max(m["h"] for m in opening),
+        min(m["l"] for m in opening),
+        opening[-1]["c"],
+        sum(m["v"] for m in opening),
     )
-    assert (second["o"], second["c"]) == (130, 159.25)
+    assert (second["o"], second["c"]) == (next_half[0]["o"], next_half[-1]["c"])
     assert second["t"] - first["t"] == 1800
+    assert datetime.fromtimestamp(first["t"], ET).isoformat() == "2026-09-24T09:30:00-04:00"
 
 
 def test_the_bars_panel_accepts_30m_and_twelve_thousand_rows_and_nothing_beyond():

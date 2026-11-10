@@ -344,21 +344,6 @@ def _lerp(x: float, x0: float, x1: float, y0: float, y1: float) -> float:
     return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 
 
-def _interp_profile_at(profile: list[tuple[float, float]], s: float) -> float | None:
-    """Linear interpolation of net GEX$ at price s on an ascending profile."""
-    if not profile:
-        return None
-    if s <= profile[0][0]:
-        return profile[0][1]
-    if s >= profile[-1][0]:
-        return profile[-1][1]
-    for i in range(1, len(profile)):
-        (p0, v0), (p1, v1) = profile[i - 1], profile[i]
-        if p0 <= s <= p1:
-            return _lerp(s, p0, p1, v0, v1)
-    return None
-
-
 def compute_gamma_support_levels(
     profile: list[tuple[float, float]],
     spot: float | None,
@@ -380,7 +365,7 @@ def compute_gamma_support_levels(
     """
     if not profile or spot is None or spot <= 0:
         return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE}
-    n_spot = _interp_profile_at(profile, float(spot))
+    n_spot = gamma_at_price(profile, float(spot))
     if n_spot is None:
         return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE}
     max_abs = max(abs(v) for _, v in profile)
@@ -449,10 +434,7 @@ def gamma_at_price(profile: list[tuple[float, float]], price: float) -> float | 
         return pts[-1][1]
     for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
         if x0 <= price <= x1:
-            if x1 == x0:
-                return y0
-            t = (price - x0) / (x1 - x0)
-            return y0 + t * (y1 - y0)
+            return _lerp(price, x0, x1, y0, y1)
     return None
 
 
