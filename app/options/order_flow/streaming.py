@@ -31,7 +31,6 @@ from typing import Any
 
 import live_market_plane as _lmp
 import live_price_rows
-import push_changes
 import time_et
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from app.market_data.schwab.streaming.live_ui import HEARTBEAT_SEC
@@ -132,6 +131,9 @@ _feed_running = False
 #: Runs on the event loop, so it must return at once.
 _on_tick_callback: Callable[[str], None] | None = None
 _on_feed_callback: Callable[[float], None] | None = None
+#: Called with the symbol of every streamed equity quote and equity book (server.flow_changed:
+#: the pages showing its order flow get it again). Runs on the event loop, so it returns at once.
+_on_flow_callback: Callable[[str], None] | None = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write;
 #: None is server.stop_bar_writer's stop.
@@ -210,6 +212,11 @@ def _tick(sym: str) -> None:
                 e,
                 exc_info=True,
             )
+
+
+def _flow(sym: str) -> None:
+    if _on_flow_callback is not None:
+        _on_flow_callback(sym)
 
 
 def _service_feed(symbol: str, service: str, now: float) -> dict:
@@ -324,7 +331,7 @@ def _apply_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
     if not isinstance(item, dict):
         return
     push_level_one(sym, item, ts_recv=ts, field_received=received)
-    push_changes.changed(sym, push_changes.FLOW)
+    _flow(sym)
     _tick(sym)
 
 
@@ -339,7 +346,7 @@ def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
     if book is not None:
         recent.BOOKS.record(sym, msg["service"], book, ts)
     recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
-    push_changes.changed(sym, push_changes.FLOW)
+    _flow(sym)
 
 
 def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
@@ -445,12 +452,14 @@ def start_order_flow_stream(
     on_tick_callback: Callable[[str], None] | None = None,
     on_chain_callback: Callable[..., None] | None = None,
     on_feed_callback: Callable[[float], None] | None = None,
+    on_flow_callback: Callable[[str], None] | None = None,
 ) -> bool:
     """Start reading the daemon's bus (bind_daemon) on the event loop.
 
     False when no daemon runs in this program.
     """
     global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback
+    global _on_flow_callback
     if _daemon is None:
         log.error("no capture daemon runs in this program: the console has no data")
         return False
@@ -460,6 +469,7 @@ def start_order_flow_stream(
     _on_tick_callback = on_tick_callback
     _on_chain_callback = on_chain_callback
     _on_feed_callback = on_feed_callback
+    _on_flow_callback = on_flow_callback
     _feed_running = True
     _feed_task = asyncio.get_event_loop().create_task(
         _run_feed(_daemon.bus), name="daemon-bus-feed"

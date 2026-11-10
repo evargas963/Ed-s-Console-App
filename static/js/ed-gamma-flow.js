@@ -1,6 +1,6 @@
 /* Ed Console — Options/Gamma "Flow" subview (D). PRESENTATION ONLY.
-   Observes ONE explicitly-selected option contract's live microstructure via /api/order-flow/
-   options-microstructure. The selection is this tab's own (window.EdFlow, set by a Chain click);
+   Observes ONE explicitly-selected option contract's live microstructure: the `contract` panel
+   on the page's socket. The selection is this tab's own (window.EdFlow, set by a Chain click);
    which contracts stream is the daemon's option rule, never the page's — this view never POSTs,
    never constructs a symbol, never recomputes book/flow semantics.
    ONE canonical payload contract (app/options/order_flow/live_payload.py over engine.py):
@@ -37,27 +37,20 @@
     select: setSelected,
   };
 
-  // a response is current only while Flow is on screen and its contract is still the selected one
-  function stillFlow(desired) { return isFlow() && _selected === desired; }
-  // Only the microstructure fetch is coalesced, keyed on the contract: the NONE render runs at
-  // once, and a held fetch for a contract no longer selected is aborted.
-  function loadImpl(desired, signal) {
-    var h = host();
-    if (!h || !stillFlow(desired)) return;
-    var G = window.EdL1SseGuards;
-    return G.show(G.readJson('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), signal),
-      '/api/order-flow/options-microstructure',
-      function (d) { if (stillFlow(desired)) render(h, desired, d); },
-      function (words) { if (stillFlow(desired)) shell(h, desired, 'DEGRADED', words, null); });
-  }
-  var _pendingDesired = null;
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingDesired, signal); });
+  // The selected contract's `contract` panel (server.contract) on the page's socket while Flow is
+  // on screen, at once and with each streamed quote and each new levels. A frame of a contract
+  // no longer selected (sent before the page asked another) is not drawn.
   function load() {
-    var h = host(); if (!h || !isFlow()) return;
-    if (!_selected) { return shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null); }
-    _pendingDesired = _selected;
-    _loader.trigger(_selected);
+    var h = host();
+    window.EdShell.showPanel('contract', isFlow() && _selected ? { contract: _selected } : null);
+    if (h && isFlow() && !_selected) shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null);
   }
+  document.addEventListener('ed:panel', function (e) {
+    var d = e.detail, h = host();
+    if (d.type !== 'contract' || !h || !isFlow() || !_selected) return;
+    if (d.failed != null) shell(h, _selected, 'DEGRADED', d.failed, null);
+    else if (d.contract === _selected) render(h, _selected, d);
+  });
 
   // the queried contract's subscription, served (streaming_plane.subscription_state): ACTIVE
   // only while the daemon holds it and that feed is live. A held contract that is not live reads
@@ -173,7 +166,6 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);           // fires on subview change too
     document.addEventListener('ed:contract', load);       // an explicit Chain selection
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'flow') load(); });
     // a ticker or expiry change clears the selection; a fresh Chain click observes again
     // a page that selected nothing releases nothing (another tab's selection stands)
     function clearSelected() { if (_selected) setSelected(null); else load(); }

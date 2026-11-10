@@ -10,9 +10,6 @@ a print landed relative to that SAME tick's own bid/ask.
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
-import server
 from app.options.order_flow import history, state
 from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import RecentTape
@@ -285,18 +282,3 @@ def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     state.clear_symbol(SYM)
     state.clear_symbol("SPY")
     assert history.TAPE.rows(SYM, 50) == [] and history.BOOKS.window("SPY", "NYSE_BOOK", 5) == []
-
-
-def test_a_row_count_outside_1_to_500_is_refused_never_replaced():
-    """/api/options/tape answers 1 to 500 prints.
-
-    Any other count, or one that is not a whole number, is refused (422), never answered with a
-    count the page did not ask.
-    """
-    client = TestClient(server.app)
-
-    def status(limit) -> int:
-        return client.get(f"/api/options/tape?ticker=SPY&contract={SYM}&limit={limit}").status_code
-
-    assert [status(n) for n in (1, 100, 500)] == [200, 200, 200]
-    assert [status(n) for n in (0, 501, -1, 2.5, "abc")] == [422, 422, 422, 422, 422]

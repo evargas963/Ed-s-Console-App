@@ -19,17 +19,11 @@ import server as srv
 import time_et
 
 
-def test_bars1m_endpoint_serves_canonical_bars_shape():
-    """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows.
+def test_the_bars_panel_serves_canonical_bars_shape():
+    """The `bars` panel is newest-last {t,o,h,l,c,v} rows.
 
     The rows come from the console's 1-minute bars in memory (server._bars: price_bars_1m loaded
     at startup, then each streamed bar).
-
-    TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
-    get_bars1m is a plain sync handler taking only Query params and returning a
-    JSONResponse it builds itself -- no auth, middleware, Request, or response_model
-    reshaping. This file's own test_spot_endpoint_caches_upstream_within_ttl already
-    calls its handler directly, so this is the established pattern here.
     """
     # Real SPY 1-minute bars (tests/fixtures), each kept by the console's own bar writer.
     fx = json.loads(
@@ -45,8 +39,9 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
     try:
         for b in fx:
             srv._write_streamed_bar({"symbol": "SPY", "bar_start_ms": b["timestamp"], **b})
-        body = json.loads(srv.get_bars1m(ticker="SPY", limit=5, tf="1").body)
-        assert body["ticker"] == "SPY" and len(body["bars"]) == 5
+        at = rows[-1][0] + 60.0
+        body = srv.bars("SPY", at, {"tf": "1", "limit": 5})
+        assert body["tf"] == "1" and len(body["bars"]) == 5
         row = body["bars"][-1]
         # each bar carries its served change (live_price_rows.with_change: the bar change is
         # served, the page computes nothing)
@@ -55,7 +50,7 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
         ts = [b["t"] for b in body["bars"]]
         assert ts == sorted(ts), "bars must be newest-last (ascending time)"
         # the chart's candles are Schwab's completed bars exactly as stored, never altered
-        full = json.loads(srv.get_bars1m(ticker="SPY", limit=len(rows), tf="1").body)["bars"]
+        full = srv.bars("SPY", at, {"tf": "1", "limit": len(rows)})["bars"]
         assert [(b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]) for b in full] == rows
     finally:
         srv._bars.pop("SPY", None)

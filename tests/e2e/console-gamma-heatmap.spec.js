@@ -153,25 +153,6 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 // The page's requests, watched until its work runs out (tests/e2e/fixtures/settled.js).
 const { watchRequests } = require('./fixtures/settled');
 
-// One levels push on `ticker`'s change stream, held until the test calls the returned release():
-// the push lands where the test says, however long the page took to get there. release() returns
-// a promise settled once the push has been handed to the browser (or its stream was gone). Each
-// reconnect after it gets the session, its stream held open a second as the console holds one.
-async function routeOneLevelsPush(page, ticker = 'SPY') {
-  let pushes = 0, release, handed;
-  const held = new Promise((r) => { release = r; });
-  const sent = new Promise((r) => { handed = r; });
-  await page.route(`**/api/changes?ticker=${ticker}**`, async (route) => {
-    pushes += 1;
-    const first = pushes === 1;
-    await (first ? held : new Promise((r) => setTimeout(r, 1000)));
-    const answered = route.fulfill({ status: 200, contentType: 'text/event-stream',
-      body: first ? `event: levels\ndata: ${ticker}\n\n` : 'event: session\ndata: RTH\n\n' });
-    if (first) answered.then(handed, handed);   // the stream gone: its refusal is the answer
-  });
-  return () => { release(); return sent; };
-}
-
 // The panels the page's socket sends this test (a test sets its own before the page opens), and
 // the program's side of that socket: `sock.changed(kind)` sends the kind's panels again, as the
 // program does when they change; `sock.subscribes` is every subscribe the page sent.
@@ -181,15 +162,12 @@ async function socketWith(page, rows) {
   sock = await mockPriceSocket(page, rows, [], undefined, panels);
 }
 async function intercept(page) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    if (url.includes('/api/changes')) return route.fallback();   // the test server's own push
-    let body = { available: false };
-    if (url.includes('/api/bars1m')) body = BARS;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
+  // the console's answer to the contract the page names for the Flow panel
+  await page.route('**/api/flow-contract', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, contract: route.request().postDataJSON().contract }) }));
   await routeWatchlist(page, ['SPY']);
-  panels = { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE, chain: chainAt(servedChain(CHAIN)) };
+  panels = { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE, chain: chainAt(servedChain(CHAIN)),
+    bars: BARS, tape: { available: false } };
   sock = await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, panels);
 }
 
@@ -327,31 +305,22 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(html).toContain('Gamma surface unavailable');
   });
 
-  // Every panel that reads the console names where a read failed, the same words for each
-  // (EdL1SseGuards.readJson). Induced conditions: the panel's route answers 500, or refuses.
+  // A panel the program could not produce says the program's words (live_ui `failed`). Induced
+  // condition: the panel's producer raises. (The order-flow book's is in
+  // console-order-flow-heatmap.spec.js.)
   const PANELS = [
-    { name: 'the tape', host: '#ofBody', route: '/api/options/tape' },
-    { name: 'the flow panel', host: '#flowBody', route: '/api/order-flow/options-microstructure', sub: 'flow',
-      contract: 'SPY   260911C00583000' },
-    { name: 'the order-flow book', host: '#obBody', route: '/api/order-flow/microstructure', ws: 'order-flow', sub: 'book' },
+    { name: 'the tape', host: '#ofBody', kind: 'tape' },
+    { name: 'the flow panel', host: '#flowBody', kind: 'contract', sub: 'flow', contract: 'SPY   260911C00583000' },
   ];
   for (const p of PANELS) {
-    test(`${p.name}: a read answered 500 names the status; only a refused one reads "no console serving"`, async ({ page }) => {
-      for (const [failure, words] of [['500', 'the console answered ' + p.route + ' with 500'],
-                                      ['refused', 'no console serving ' + p.route]]) {
-        await page.unrouteAll();
-        await intercept(page);
-        await page.route('**' + p.route + '?**', (route) => failure === '500'
-          ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal Server Error"}' })
-          : route.abort('connectionrefused'));
-        await page.goto('/', { waitUntil: 'domcontentloaded' });
-        await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
-        if (p.ws) await page.evaluate((ws) => window.EdShell.setWorkspace(ws), p.ws);
-        if (p.sub) await page.evaluate((sub) => window.EdShell.setSubview(sub), p.sub);
-        if (p.view) await page.locator(`#viewbar .vtab[data-view="${p.view}"]`).click();
-        if (p.contract) await page.evaluate((c) => window.EdFlow.select(c), p.contract);
-        await expect(page.locator(p.host)).toContainText(words);
-      }
+    test(`${p.name}: a panel the program could not produce says the program's words`, async ({ page }) => {
+      const words = 'the program could not produce this panel: OSError: ' + p.kind + ' read failed';
+      panels[p.kind] = { failed: words };
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
+      if (p.sub) await page.evaluate((sub) => window.EdShell.setSubview(sub), p.sub);
+      if (p.contract) await page.evaluate((c) => window.EdFlow.select(c), p.contract);
+      await expect(page.locator(p.host)).toContainText(words);
     });
   }
 
@@ -428,7 +397,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     panels.strikes = Object.assign({}, STRIKES, { views: undefined });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).not.toHaveText('CHOOSE A SYMBOL');
-    const reported = page.waitForEvent('console', (m) => m.type() === 'error' && /TypeError/.test(m.text()));
+    const reported = page.waitForEvent('pageerror', (e) => /TypeError/.test(String(e)));
     await page.evaluate(() => { window.EdShell.setWorkspace('trade-desk'); window.EdShell.setSubview('right-now'); });
     await expect(page.locator('#tdBody')).toContainText('the page could not draw the answer of Right Now');
     await reported;
@@ -861,7 +830,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('header never paints a quote from a poll: no push -> -, not a fallback', async ({ page }) => {
-    // the price comes only from the daemon's push; the session label from the console's
+    // the price and the session label come only from the program's push
     await page.routeWebSocket(/\/ws$/, (ws) => ws.close());          // the daemon is down
     await page.clock.install();   // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -869,8 +838,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
     await page.clock.runFor(3500);   // past the 3 s silence limit and every reconnect due in it
     await expect(page.locator('#hPx')).toHaveText('-');
-    // the daemon is down, so Schwab's /markets answer is not held: the session says UNKNOWN
-    await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
+    // the push is down, so no session was received: "-", and why
+    await expect(page.locator('#hSession')).toHaveText('-');
+    await expect(page.locator('#hSession')).toHaveAttribute('title', 'session unknown: the console push is down');
   });
 
   test('header paints the daemon price row the moment it arrives', async ({ page }) => {
@@ -1198,52 +1168,43 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // The former design had TWO independent initial-hydration mechanisms (ed-core.js's own
     // ed:ticker/ed:view dispatch, and each view module's own bottom-of-file self-call) that
     // only avoided colliding because of a script-load-order coincidence. Now there is exactly
-    // one (ed-core.js's dispatch, deferred to DOMContentLoaded) -- proven here by counting
-    // calls to endpoints owned by DIFFERENT modules across the initial render.
+    // one (ed-core.js's dispatch, deferred to DOMContentLoaded) -- proven here by the asks for
+    // panels owned by DIFFERENT modules across the initial render.
     const requests = watchRequests(page);
-    const counts = {};
-    // fallback() (not continue()) chains to the next-registered handler -- here, intercept()'s
-    // own catch-all from beforeEach, which actually fulfills with mock data. continue() would
-    // instead send the request over the real network, bypassing every mock entirely.
-    const track = (path) => (route) => {
-      counts[path] = (counts[path] || 0) + 1;
-      return route.fallback();
-    };
-    await page.route('**/api/options/tape**', track('tape'));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await expect(page.locator('#sdCtx')).toContainText('583');
     // Any accidental second trigger (a stray immediate self-call racing the deferred
-    // dispatch) has made its read by the time the page's reads have all landed.
+    // dispatch) has made its ask by the time the page's work has all landed.
     await requests.settled();
-    expect(counts.tape, 'tape must hydrate exactly once on cold start').toBe(1);
-    // the chain panel is asked for once: each subscribe after the first that names it, names it alike
-    const asks = sock.subscribes.map((s) => JSON.stringify(s.panels['chain:detail'])).filter((a) => a !== undefined);
-    expect(new Set(asks).size, 'chain must be asked for exactly once on cold start').toBe(1);
+    // each panel is asked for once: each subscribe that names it, names it alike
+    const asksFor = (name) => sock.subscribes.map((s) => JSON.stringify(s.panels[name])).filter((a) => a !== undefined);
+    expect(new Set(asksFor('tape')).size, 'tape must be asked for exactly once on cold start').toBe(1);
+    expect(new Set(asksFor('chain:detail')).size, 'chain must be asked for exactly once on cold start').toBe(1);
   });
 
-  test('one levels push refetches only levels-derived endpoints, not unrelated ones', async ({ page }) => {
+  // the program's levels sent again (server._levels_changed): the terrain, strikes and surface panels
+  const levelsPush = () => { for (const kind of ['terrain', 'strikes', 'surface']) sock.changed(kind); };
+  // the panels the page receives from here on, by name
+  const watchPanels = (page) => page.evaluate(() => {
+    window.__panels = [];
+    document.addEventListener('ed:panel', (e) => window.__panels.push(e.detail.type));
+  });
+  const levelsLanded = (page) => page.evaluate(() => window.__panels.filter((t) => /^(terrain|strikes|surface)/.test(t)).length);
+
+  test('one levels push sends only the levels\' panels again, not unrelated ones, and asks for nothing', async ({ page }) => {
     const requests = watchRequests(page);
-    const unrelated = { tape: 0 };
-    // fallback() (not continue()) -- see the identical note in the cold-start test above.
-    await page.route('**/api/options/tape**', (route) => { unrelated.tape += 1; return route.fallback(); });
-    const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
-    // clear the auto-selected strike and let the selection's own tape load (after its demand is
-    // accepted) finish
+    // clear the auto-selected strike and let the selection's own work finish
     await page.evaluate(() => window.EdShell.setStrike(null));
     await requests.settled();
-    await page.evaluate(() => {   // the levels pushes the page receives from here on
-      window.__levelsPushes = 0;
-      document.addEventListener('ed:changed', (e) => { if (e.detail.kind === 'levels') window.__levelsPushes += 1; });
-    });
-    const beforeUnrelated = Object.assign({}, unrelated);
+    await watchPanels(page);
     const subscribesBefore = sock.subscribes.length;
-    push();                           // lands after the baseline
-    await expect.poll(() => page.evaluate(() => window.__levelsPushes)).toBeGreaterThan(0);
-    await requests.settled();   // every read the push made has gone out
-    expect(unrelated).toEqual(beforeUnrelated);
+    levelsPush();                     // lands after the baseline
+    await expect.poll(() => levelsLanded(page)).toBeGreaterThan(0);
+    await requests.settled();   // every request the push made has gone out
+    expect(await page.evaluate(() => window.__panels.filter((t) => t === 'tape'))).toEqual([]);
     // the levels (Key Levels), the strikes (GEX by strike) and the surface (the heatmap) are the
     // program's to send on the socket: the push asks for nothing
     expect(sock.subscribes.length).toBe(subscribesBefore);
@@ -1252,19 +1213,15 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('one levels push with a strike selected asks for nothing', async ({ page }) => {
     const requests = watchRequests(page);
-    const push = await routeOneLevelsPush(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await expect(page.locator('#sdCtx')).toContainText('583');   // the auto-selected strike
     await requests.settled();   // cold-start hydration (including auto-select) has landed
-    await page.evaluate(() => {   // the levels pushes the page receives from here on
-      window.__levelsPushes = 0;
-      document.addEventListener('ed:changed', (e) => { if (e.detail.kind === 'levels') window.__levelsPushes += 1; });
-    });
+    await watchPanels(page);
     const before = { subscribes: sock.subscribes.length };
-    push();
-    await expect.poll(() => page.evaluate(() => window.__levelsPushes)).toBeGreaterThan(0);
-    await requests.settled();   // every read the push made has gone out and landed
+    levelsPush();
+    await expect.poll(() => levelsLanded(page)).toBeGreaterThan(0);
+    await requests.settled();   // every request the push made has gone out and landed
     // the levels, the strikes, the surface and the chain are the program's to send on the
     // socket: the push asks for nothing there
     expect(sock.subscribes.length - before.subscribes).toBe(0);
@@ -1384,7 +1341,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const reads = [];
     page.on('request', (r) => {
       const u = new URL(r.url());
-      if (r.method() === 'GET' && u.pathname.startsWith('/api/') && u.pathname !== '/api/changes') reads.push(u.pathname);
+      if (r.method() === 'GET' && u.pathname.startsWith('/api/')) reads.push(u.pathname);
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
@@ -1393,24 +1350,5 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.clock.fastForward(60000);
     await requests.settled();   // and every read a timer would have made
     expect(reads.slice(settled)).toEqual([]);
-  });
-
-  test('a late push on the PREVIOUS ticker\'s connection never paints the new ticker\'s cells', async ({ page }) => {
-    const requests = watchRequests(page);
-    let seq = 0;
-    panels.surface = (key) => {   // every surface frame names its ticker
-      seq += 1;
-      return Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-        cells: [{ strike: 583, gex: [key === 'SPY' ? 1000 : 9000] }], surface_seq: seq });
-    };
-    const push = await routeOneLevelsPush(page);   // SPY's connection, which the test is about to leave
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    await expect(cell).toHaveText('$1.0K');   // SPY's own value
-    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
-    await expect(cell).toHaveText('$9.0K');   // QQQ's own value, before SPY's push lands
-    await push();
-    await requests.settled();   // any read the push made has landed
-    await expect(cell).toHaveText('$9.0K');   // SPY's push on its closed connection changed nothing
   });
 });

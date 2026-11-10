@@ -1,28 +1,27 @@
 /* Ed Console — Trade Desk / "Desk" subview. PRESENTATION ONLY.
 
    One page for the SELECTED ticker, one global timeframe:
-     MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
-                     the socket's levels panel (value area, VWAP + bands, prior day, opening range, overnight),
-                     the socket's terrain panel (call/put wall, gamma flip, max pain -- full chain)
-     ATTENTION    <- /api/desk/events (served, numbered; each marker is its queue entry, linked
+     MARKET MAP   <- the bars panel (completed Schwab bars at the timeframe),
+                     the levels panel (value area, VWAP + bands, prior day, opening range, overnight),
+                     the terrain panel (call/put wall, gamma flip, max pain -- full chain)
+     ATTENTION    <- the desk panel (served, numbered; each marker is its queue entry, linked
                      both ways): level crosses judged by their minute's bar, wall breaches,
                      the book's size walls at the book's own time
-     CARDS        <- /api/order-flow/microstructure, the terrain panel, the price row (Schwab
-                     LEVELONE), /api/bars1m, /api/liquidity-snapshot (value/VWAP relation)
-     HEADER TRUST <- the same responses' own state/age fields
-   The browser computes nothing: it picks which served values to show, formats them, and
-   places a served event on the bar that contains it. A value with no producer yet says so. */
+     CARDS        <- the book, terrain, bars and liquidity panels (value/VWAP relation) and the
+                     price row (Schwab LEVELONE)
+     HEADER TRUST <- the same panels' own state/age fields
+   Every panel arrives on the page's one socket. The browser computes nothing: it picks which
+   served values to show, formats them, and places a served event on the bar that contains it.
+   A value with no producer yet says so. */
 (function () {
   'use strict';
 
-  // the chart's timeframes and 1m rows per timeframe (ed-tv-chart, every chart's), and the tail
-  // re-read on each new completed bar: two whole buckets.
+  // the chart's timeframes and bars per timeframe (ed-tv-chart, every chart's)
   var TFS = window.EdTvChart.TFS, FULL_LIMIT = window.EdTvChart.BARS_LIMIT;
   // the Order Flow card's bars: the newest hour of 1-minute bars
   var FLOW_BARS = 60;
-  var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
-  // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
+  // the event window and its words are the server's (the desk panel's window_label), for this timeframe
   function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '-'; }
   var FAMILIES = [
     { id: 'volume_profile', lbl: 'Volume profile (RTH)' },
@@ -78,9 +77,6 @@
   // until it arrives
   function shown() { return window.EdShell.getState().display || S.ticker; }
   function $(id) { return document.getElementById(id); }
-  function fetchJson(url) {
-    return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
-  }
   function sget(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function sset(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
 
@@ -88,7 +84,7 @@
     tf: sget('ed.desk.tf', '5'), nearest: Number(sget('ed.desk.nearest', '6')) || 6,
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
-    ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
+    ticker: null, tb: null, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
     analytics: null, liq: null, quotes: {}, queue: [], sel: null,
     // the Liquidity card's venue (COMPOSITE, or BOOK: the shell's book switch) and depth view
     liqVenue: sget('ed.desk.liqvenue', 'COMPOSITE'), liqView: ['weighted', '1', '3', '5'].indexOf(sget('ed.desk.liqview', '')) >= 0 ? sget('ed.desk.liqview', '') : 'weighted', liqPaints: 0, liqHold: null, liqPending: false, liqDetail: false,
@@ -156,7 +152,7 @@
     S.tf = tf; sset('ed.desk.tf', tf); paintTfButtons();
     S.bars = []; S.levels = S.events = undefined;   // answers for another timeframe are dropped (tf check)
     clearChart(); paintQueue(); paintCards();
-    askPanels(); loadBars(true); loadPerTf();
+    askPanels();
   }
   function clearChart() {
     if (!S.chart) return;
@@ -168,61 +164,58 @@
   }
 
   // ------------------------------------------------------------------ data
-  function loadBars(full) {
-    var tk = S.ticker, tf = S.tf, gen = S.gen;
-    var lim = full ? FULL_LIMIT[tf] : TAIL_LIMIT[tf];
-    return fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + tf + '&limit=' + lim).then(function (d) {
-      if (gen !== S.gen || tf !== S.tf || !S.chart) return;
-      var bars = (d && d.bars) || [];
-      if (full) {
-        S.bars = bars; S.barsAnswered = gen;
-        S.chart.setBars(bars, tf, shown(), d.last_bar && d.last_bar.label);
-        $('tdmChartEmpty').hidden = bars.length > 0;
-        $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
-          : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
-        paintChartOverlays(); paintQueue(); openView(); paintFooter();
-      } else if (bars.length) {
-        S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
-      }
-    });
+  // the chart's bars at its timeframe (the `bars:deskmap` panel), whole each time a bar completes;
+  // the chart keeps the operator's zoom while the symbol and timeframe stand
+  function takeBars(d) {
+    var bars = d.failed == null ? d.bars : [];
+    S.bars = bars;
+    S.chart.setBars(bars, S.tf, shown(), d.last_bar && d.last_bar.label);
+    $('tdmChartEmpty').hidden = bars.length > 0;
+    $('tdmChartEmpty').textContent = bars.length ? '' : d.failed != null ? d.failed
+      : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.');
+    paintChartOverlays(); paintQueue(); openView(); paintFooter();
   }
-  function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
-  // the timeframe's levels (VWAP per chart bar; the `levels:map` panel) or event window, drawn as
-  // it arrives
+  // the timeframe's levels (VWAP per chart bar; the `levels:map` panel) or event window (the
+  // `desk` panel), drawn as it arrives
   function takePerTf(key, d) {
     S[key] = d;
     paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     openView();
   }
-  function loadPerTf() {
-    var gen = S.gen, tf = S.tf, q = encodeURIComponent(S.ticker);
-    return fetchJson('/api/desk/events?ticker=' + q + '&venue=' + window.EdShell.getState().bookVenue + '&tf=' + encodeURIComponent(tf))
-      .then(function (d) { if (gen === S.gen && tf === S.tf) takePerTf('events', d); });
-  }
-  // the symbol's zones, forces and the Order Flow card's hour of bars
-  function loadPerTicker() {
-    var gen = S.gen, q = encodeURIComponent(S.ticker);
-    return Promise.all([
-      fetchJson('/api/liquidity-snapshot?ticker=' + q),
-      fetchJson('/api/forces?ticker=' + q),
-      fetchJson('/api/bars1m?ticker=' + q + '&tf=1&limit=' + FLOW_BARS)
-    ]).then(function (r) {
-      if (gen !== S.gen) return;
-      S.liq = r[0]; S.forces = r[1];
-      S.flowBars = r[2] ? r[2].bars : null;
-      paintAll();
-    });
-  }
   function paintAll() { paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter(); }
-  // the symbol's option terrain and its per-strike rows: the `terrain:map` and `strikes:desk`
-  // panels (server.terrain, server.strikes in the Gamma scope's window), and the chart's
-  // timeframe's levels, the `levels:map` panel (server.levels), the program sends on the page's
-  // socket while the desk is on, at once and each time the levels change
+  // Everything the desk draws, the program sends on the page's socket while the desk is on, at
+  // once and each time it changes. Per symbol: the option terrain and its per-strike rows
+  // (`terrain:map`, `strikes:desk` in the Gamma scope's window), the zones (`liquidity:deskmap`),
+  // the forces, the book (`book:deskmap`) and the Order Flow card's hour of bars (`bars:flow`).
+  // Per timeframe: the chart's bars (`bars:deskmap`), levels (`levels:map`) and event window (`desk`).
   var PANELS = { 'terrain:map': 'terrain', 'strikes:desk': 'strikes' };
+  // these are kept as null when the program could not produce them
+  var OR_NULL = { 'liquidity:deskmap': 'liq', forces: 'forces', 'bars:flow': 'flowBars' };
+  var PER_TF = { 'levels:map': 'levels', desk: 'events' };
   function askPanels() {
-    window.EdShell.showPanel('levels:map', onDesk() ? { tf: S.tf } : null);
-    window.EdShell.showPanel('terrain:map', onDesk() ? {} : null);
-    window.EdShell.showPanel('strikes:desk', onDesk() ? window.EdShell.windowParams(null) : null);
+    var on = onDesk(), venue = window.EdShell.getState().bookVenue;
+    window.EdShell.showPanel('levels:map', on ? { tf: S.tf } : null);
+    window.EdShell.showPanel('terrain:map', on ? {} : null);
+    window.EdShell.showPanel('strikes:desk', on ? window.EdShell.windowParams(null) : null);
+    window.EdShell.showPanel('bars:deskmap', on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
+    window.EdShell.showPanel('bars:flow', on ? { tf: '1', limit: FLOW_BARS } : null);
+    window.EdShell.showPanel('desk', on ? { venue: venue, tf: S.tf } : null);
+    window.EdShell.showPanel('liquidity:deskmap', on ? {} : null);
+    window.EdShell.showPanel('forces', on ? {} : null);
+    window.EdShell.showPanel('book:deskmap', on ? { venue: venue } : null);
+  }
+  function takePanel(d) {
+    var ok = d.failed == null;
+    // an answer for a timeframe no longer on the chart is not drawn; one not produced is none
+    if (PER_TF[d.type] && (!ok || d.tf === S.tf)) takePerTf(PER_TF[d.type], ok ? d : null);
+    if (d.type === 'bars:deskmap' && S.chart && (!ok || d.tf === S.tf)) takeBars(d);
+    if (d.type === 'book:deskmap') {
+      S.micro = ok ? d : null; paintCards(); paintTrust(); paintQueue(); paintAgreement(); paintFooter();
+    }
+    if (PANELS[d.type]) S[PANELS[d.type]] = d;
+    if (d.type === 'bars:flow') S.flowBars = ok ? d.bars : null;
+    else if (OR_NULL[d.type]) S[OR_NULL[d.type]] = ok ? d : null;
+    if (PANELS[d.type] || OR_NULL[d.type]) paintAll();
   }
   // what an answer says with nothing to draw: the program could not produce the panel (`failed`),
   // or the answer's own error
@@ -233,13 +226,6 @@
     if (S.chart && S.bars.length && S.events && S.events.tf === S.tf && S.viewKey !== vk) {
       S.viewKey = vk; S.chart.setViewFrom(S.events.window_start_ts_utc);
     }
-  }
-  function loadFast() {
-    var tk = S.ticker, gen = S.gen;
-    return fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue).then(function (d) {
-      if (gen !== S.gen) return;
-      S.micro = d; paintCards(); paintTrust(); paintQueue(); paintAgreement(); paintFooter();
-    });
   }
 
   // ------------------------------------------------------------------ chart overlays
@@ -328,7 +314,7 @@
 
   // ------------------------------------------------------------------ cards
   // the FORCES split, served: GEX below/above spot (the strikes panel's today_side_sums), and
-  // OI change, DEX and charm below/above from the last two market days' captures (/api/forces)
+  // OI change, DEX and charm below/above from the last two market days' captures (the forces panel)
   function forcesRows() {
     var ss = S.strikes && S.strikes.today_side_sums, f = S.forces || {};
     return row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '-') +
@@ -449,7 +435,7 @@
     paintCardCharts();
   }
   // ------------------------------------------------------------------ liquidity card
-  // The served order-imbalance readout (/api/order-flow/microstructure `readout`): every number,
+  // The served order-imbalance readout (the book panel's `readout`): every number,
   // word, sentence and flag is the server's; the card picks the venue and depth to show and places
   // the dots, bars and lines on its boxes.
   var LIQ_NAME = { NYSE_BOOK: 'NYSE', NASDAQ_BOOK: 'Nasdaq', COMPOSITE: 'Composite' };
@@ -506,8 +492,8 @@
     var body = c.querySelector('.liq-body'), r = rd && rd.venues[key];
     body.classList.toggle('stale', !!(r && !r.live && r.status !== 'no_book'));
     if (!r) {
-      src(c, m === undefined ? 'loading…' : 'microstructure request failed');
-      body.innerHTML = depth + '<div class="liq-none">' + (m === undefined ? 'Loading…' : 'UNAVAILABLE<p>The book request failed</p>') + '</div>';
+      src(c, m === undefined ? 'loading…' : 'the program could not produce the book');
+      body.innerHTML = depth + '<div class="liq-none">' + (m === undefined ? 'Loading…' : 'UNAVAILABLE<p>The program could not produce the book</p>') + '</div>';
       return;
     }
     src(c, esc(r.source_text));
@@ -557,11 +543,11 @@
     paintLiq();
   }
 
-  // what a card says with nothing to draw: not answered yet (undefined), our request failed (null),
-  // the served error, or the served answer holding nothing
+  // what a card says with nothing to draw: not sent yet (undefined), not produced by the program
+  // (null), the served error, or the served answer holding nothing
   function noneText(x, what, none) {
     if (x === undefined) return 'loading…';
-    if (x === null) return 'the ' + what + ' request failed';
+    if (x === null) return 'the program could not produce the ' + what;
     return why(x) || none;
   }
   function paintCardCharts() {
@@ -633,7 +619,7 @@
     var host = $('tdmFoot'); if (!host) return;
     var t = S.terrain, m = S.micro, L = S.levels;
     host.innerHTML = [
-      'Bars: <b>' + (S.barsAnswered === S.gen && S.bars.length ? 'streamed 1m bars' : '-') + '</b>',
+      'Bars: <b>' + (S.bars.length ? 'streamed 1m bars' : '-') + '</b>',
       'Book: <b>' + esc((m && m.provenance && m.provenance.book_source) || '-') + '</b>',
       'Levels: <b>' + esc((L && L.bar_source) || '-') + '</b>',
       'Options: <b>' + esc(t && !why(t) ? (t.chain_basis == null ? '-' : t.chain_basis) + ' chain · ' + (t.strikes_used == null ? '-' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + ' contracts' : '-') + '</b>',
@@ -670,35 +656,18 @@
     var tk = window.EdShell.getState().ticker;
     if (!tk) return;
     if (tk !== S.ticker) {
-      S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
+      S.ticker = tk; S.bars = []; // undefined = not sent YET (loading); null = not produced
       S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
       clearChart(); paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-      loadBars(true); loadSlow(); loadFast();
-    } else if (!S.bars.length && S.barsAnswered === S.gen) {
-      // back on the desk after an answer with no bars: ask again (never while the first ask is in flight)
-      loadBars(true); loadSlow(); loadFast();
     }
   }
   function init() {
     if (!$('tdmMap')) return;
     document.addEventListener('ed:view', start);
     document.addEventListener('ed:ticker', start);
-    document.addEventListener('ed:book_venue', function () { if (onDesk() && S.ticker) { loadFast(); loadSlow(); } });
+    document.addEventListener('ed:book_venue', askPanels);   // the book and its events are the venue's
     document.addEventListener('ed:scope', askPanels);   // the strikes' window is the Gamma scope's
-    document.addEventListener('ed:panel', function (e) {
-      var d = e.detail, key = PANELS[d.type];
-      if (!onDesk()) return;
-      // levels of a timeframe no longer on the chart are not drawn; levels not produced are none
-      if (d.type === 'levels:map' && (d.failed != null || d.tf === S.tf)) takePerTf('levels', d.failed != null ? null : d);
-      if (key) { S[key] = d; paintAll(); }
-    });
-    document.addEventListener('ed:changed', function (e) {
-      if (!onDesk() || !S.ticker) return;
-      var k = e.detail.kind;
-      if (k === 'flow') loadFast();
-      if (k === 'levels' || k === 'liquidity') loadSlow();
-      if (k === 'liquidity') loadBars(false);   // a completed Schwab bar was written
-    });
+    document.addEventListener('ed:panel', function (e) { if (onDesk()) takePanel(e.detail); });
     // Every streamed price row: header + indices. The chart moves only on a completed bar.
     // the header's word while the daemon's push is down (WAITING, OFFLINE): the last row's
     // verdict is not the state now; the next row ends it
@@ -727,10 +696,7 @@
       var b = e.target.closest('[data-liqvenue], .bookvenue [data-venue], [data-liqview], [data-liqdetail], [data-liqclose]'); if (!b) return;
       if (b.hasAttribute('data-liqdetail') || b.hasAttribute('data-liqclose')) S.liqDetail = b.hasAttribute('data-liqdetail');
       else if (b.hasAttribute('data-liqview')) { S.liqView = b.getAttribute('data-liqview'); sset('ed.desk.liqview', S.liqView); }
-      else {
-        S.liqVenue = b.hasAttribute('data-liqvenue') ? 'COMPOSITE' : 'BOOK'; sset('ed.desk.liqvenue', S.liqVenue);
-        if (S.liqVenue === 'COMPOSITE' && S.ticker) loadFast();
-      }
+      else { S.liqVenue = b.hasAttribute('data-liqvenue') ? 'COMPOSITE' : 'BOOK'; sset('ed.desk.liqvenue', S.liqVenue); }
       paintLiq(); paintAgreement();
     });
     start();

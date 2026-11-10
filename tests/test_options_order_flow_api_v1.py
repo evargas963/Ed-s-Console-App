@@ -1,4 +1,4 @@
-"""The Flow panel's contract (/api/order-flow/options-microstructure), Schwab to the screen.
+"""The Flow panel's contract (the `contract` panel), Schwab to the screen.
 
 Through the real code: the daemon's pushed messages applied by the console
 (streaming._ingest_pushed), the daemon's status (live_market_plane.record_feed_heartbeat), the
@@ -50,7 +50,7 @@ def _daemon_holds(*services: str, now: float | None = None) -> None:
 
 
 def _route() -> dict:
-    return json.loads(server.api_order_flow_options_microstructure(contract=CONTRACT).body)
+    return json.loads(json.dumps(server.options_microstructure(CONTRACT, time_et.now())))
 
 
 def test_the_flow_panel_shows_schwabs_newest_option_book_as_sent():

@@ -33,7 +33,7 @@ chains here (each expirationDate's day, Schwab's daysToExpiration as sent). Prov
     gets none.
 
 Then the levels' panels a page shows, each with the parameters its subscribe names (the Vanna and
-Charm tabs, server.vanna_by_strike and charm_by_strike, with their window), the expected rows
+Charm tabs, server.strike_bars, with their window), the expected rows
 the ones the levels producer published, worked into the window here:
 
   * a page on the tab gets the panel at once, in the window it asks (a window it cannot draw is
@@ -680,10 +680,12 @@ def test_a_new_chain_reaches_only_the_pages_on_its_ticker():
             _assert_list(await _next_list(on_a), A, CRWD)
             # nothing for B: a frame owed before B's next subscribe arrives ahead of its answer
             assert _lists(await _select(on_b, B)) == []
-            assert (await _next_list(on_b))["expiries"] is None  # the subscribe's own list
             await asyncio.to_thread(_publish, MRVL)
-            _assert_list(await _next_list(on_b), B, MRVL)
+            _assert_list(await _next_list(on_b), B, MRVL)  # B's next list is its own chain's
             assert _lists(await _select(on_a, A)) == []
+            # a subscribe that changes nothing is owed nothing: the list drawn stands
+            assert _lists(await _select(on_a, A)) == []
+            await asyncio.to_thread(_publish, CRWD)
             _assert_list(await _next_list(on_a), A, CRWD)
 
     asyncio.run(_serve_panels(body))
@@ -702,6 +704,7 @@ def test_switching_ticker_sends_the_new_list_at_once_and_stops_the_old():
             _assert_list(await _next_list(ws), B, MRVL)
             await asyncio.to_thread(_publish, CRWD)  # the ticker the page left
             assert _lists(await _select(ws, B)) == []
+            await asyncio.to_thread(_publish, MRVL)  # the ticker it is on
             _assert_list(await _next_list(ws), B, MRVL)
 
     asyncio.run(_serve_panels(body))
@@ -945,8 +948,8 @@ def test_a_producer_that_raises_fails_its_panel_alone_in_words():
             assert seen["charm"]["rows"] == _published_rows(A, "charm_rows")
             assert seen["expiries"]["expiries"] == _expected(CRWD.chain)[0]
             assert [r["ticker"] for r in seen["feed"]["rows"]] == [A]  # the beat's price rows
-            # the socket is open: the next subscribe is answered, and the failure said again
-            assert _kind(await _select(ws, A, {"vanna": ALL}), "symbols")
+            # the socket is open: a subscribe asking another window is answered, the failure too
+            assert _kind(await _select(ws, A, {"vanna": {**ALL, "scope": "auto"}}), "symbols")
             assert "failed" in await _next(ws, "vanna")
 
     asyncio.run(_serve_panels(body))
@@ -1083,9 +1086,9 @@ def test_a_terrain_producer_that_raises_fails_its_panel_alone_in_words():
             }
             assert seen["charm"]["rows"] == _published_rows(A, "charm_rows")
             assert seen["expiries"]["expiries"] == _expected(CRWD.chain)[0]
-            # the socket is open: the next subscribe is answered, and the failure said again
-            assert _kind(await _select(ws, A, {"terrain:levels": {}}), "symbols")
-            assert "failed" in await _next(ws, "terrain:levels")
+            # the socket is open: a subscribe for another reader is answered, the failure too
+            assert _kind(await _select(ws, A, {"terrain:chart": {}}), "symbols")
+            assert "failed" in await _next(ws, "terrain:chart")
 
     asyncio.run(_serve_panels(body))
 

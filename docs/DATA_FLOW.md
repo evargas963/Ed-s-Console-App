@@ -213,8 +213,8 @@ Today's code, accurate as of the last PR that touched each part. Ed Console is o
 step 3): the capture daemon runs the console's pages and routes (`server.app`, port 8000) in its own
 event loop (`capture.serve_console`), and the console reads the daemon's one bus in memory
 (`app.options.order_flow.streaming._bus_loop`), never a copy over a socket. Still to come from §1:
-the page's `/api` reads and `/api/changes` give way to the one push (step 4), and the console's own
-stores built from the bus (§3.3) are deleted into the one State.
+the console's own stores built from the bus (§3.3) are deleted into the one State. The page has one
+connection, its socket (`/ws`): every panel it draws is sent on it (`server.PAGE_PANELS`).
 
 ### 3.1 The program
 
@@ -248,9 +248,8 @@ the program.
 | daemon part → console part | the daemon's bus, in memory (`streaming._bus_loop`: a LATEST subscription) | each topic's current record the moment it changes (a quote merged field by field with each field's times in `field_ts`; a book, bar or news item whole), at the start every current record; never an older value behind a newer one (§2 D1, D3); each ticker's newest whole chain, in parts of 500 contracts (`chain.TK`: part i of n, with the time the chain began, which the chain history stores too, so a chain begun before the close is never the close values however late it is delivered; a failed fetch with Schwab's answer); only Schwab's records (`live_push.is_forwarded`) |
 | console part → daemon part | a call, in memory (`capture.Daemon.console_frame`) | the contract selected on the Flow panel (`{"op": "flow_contract", "contract": symbol or null}`: only one Schwab listed in a chain the console holds, refused otherwise (409)); the daemon holds it in memory only. And each add or removal of a watchlist ticker the operator makes (`{"op": "watchlist", "action", "ticker", "id"}`), answered by the daemon's `watchlist` record on the bus, carrying the same id |
 | `launch.py stop` → the program | its stop request, by name (`program_lock.StopRequest`, made before the program takes its lock; set by `program_lock.ask_to_stop`): on Windows a named manual-reset event, `Local\EdConsoleStop-<hash of the lock's path>` (`stop_event_name`), in the operator's session namespace with default security, so only his session's processes can open it, and each runtime (production's, a test's) has its own; elsewhere (Linux CI) SIGTERM to the process the lock names | the clean stop, nothing back: set twice it stays set; a runtime with no program's request (none runs, or it has not made it yet) is an `OSError` that `launch.py stop` reports, "not asked to stop", exit 1. The program's one waiter (`capture.stop_on_request`, on its own thread, `STOP_WAIT_SEC` at a time, so any other stop ends it) sets the program's stop (`tests/test_program_stop_v1.py`, `tests/test_data_path_startup_v1.py`) |
-| daemon → browser | the page's WebSocket, `/ws` on the program's own port (8000; `live_ui.page_socket`, routed by `server.app`; refused, 403, while the program serves no prices, `server.app.state.prices` None) | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then each panel the page shows of its selected ticker (the subscribe's `ticker`, and its `panels`: each panel the page shows with its own parameters; `server.PAGE_PANELS`, each kind's producer `(ticker, now, parameters) -> body`, run on a worker thread as a route's read ran, so a producer waiting on the levels' lock never holds the beat; a producer that raises fails its panel alone, `{"failed": words}` drawn as the panel's words, its traceback logged (`live_ui.LiveUiServer._produce`); a kind read with different parameters names each reader's panel `<kind>:<reader>`; the Vanna and Charm tabs, `server.vanna_by_strike` and `charm_by_strike`, the published levels' per-strike rows in the window the page asks (scope, the operator's panned centre and shift; a window it cannot draw is unavailable with its words), marked changed with the levels (`server._levels_changed`, beside the `levels` push on `/api/changes`); the expiry list, `server.expiries`, Schwab's listed expiries and daysToExpiration from the published levels, or, while none are published, unknown (`expiries` null) with the levels' own reason; a page switching ticker puts no expiry in force until that ticker's list arrives; the gamma group, each marked changed with the levels: the terrain, `server.terrain` (`terrain:levels`, `terrain:chart`, `terrain:desk`, `terrain:map`), the per-strike rows, `server.strikes` (`strikes:gbs`, `strikes:chart`, `strikes:migration`, `strikes:desk`, each in its window), the heatmap, `server.gamma_surface` (`surface`, its window), one expiry of the chain, `server.chain` (`chain:ladder`, `chain:detail`, `chain:structures`, each at its `expiry`, null the chain's front one), and the price levels, `server.levels` (`levels:view`, `levels:liquidity`, `levels:desk`, `levels:map`, each in its timeframe `tf`; a `tf` not served fails that panel in words), which carry each level's distance from the live price and so are sent again with each price row of the ticker (`server.PRICED_PANELS`, `live_ui.LiveUiServer.on_row`); a frame of an expiry or timeframe the page no longer shows is not drawn), at once and again each time its producer marks it changed (`live_ui.changed`: `_publish_levels` on each new chain), only to the pages on that ticker showing that panel; the page draws a panel only for the ticker it shows, and '-' for one not yet received since a switch (`tests/test_live_ui_daemon_to_browser_v1.py`, `tests/e2e/console-gamma-chain.spec.js`, `tests/e2e/console-options-vanna-charm.spec.js`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, why it is not connected, symbols held per service, the watchlist, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `live_push.MARKET_CONTEXT`). A client (a browser) has stopped reading when asyncio's flow control keeps writing to it paused (its buffers full) for `live_ui.HEARTBEAT_SEC`, so its beat is not taken, or when it does not answer uvicorn's keepalive ping (every 20 s, within 20 s): the web server's protocol for the socket (`live_ui.PageSocket`, `capture.PAGES`, the one place a client that stopped reading is dropped; each connection's handler, `serve_client`, owns its lifetime) drops it by aborting its connection, since no close frame can be written to a client that does not read and uvicorn's own close waits for the bytes it never takes, so its handler ends, the beat it held ends within a beat, and the program's stop is not held; the page reconnects (`tests/test_data_path_startup_v1.py`, `tests/test_live_ui_daemon_to_browser_v1.py`) |
-| console → browser | HTTP `/api/*` | everything else, on request |
-| console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
+| daemon → browser | the page's WebSocket, `/ws` on the program's own port (8000; `live_ui.page_socket`, routed by `server.app`; refused, 403, while the program serves no prices, `server.app.state.prices` None) | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then each panel the page shows of its selected ticker (the subscribe's `ticker`, and its `panels`: each panel the page shows with its own parameters; `server.PAGE_PANELS`, each kind's producer, given what the page asked (`live_ui.Asked`: ticker, now, parameters), run on a worker thread as a route's read ran, so a producer waiting on the levels' lock never holds the beat; a producer that raises fails its panel alone, `{"failed": words}` drawn as the panel's words, its traceback logged (`live_ui.LiveUiServer._produce`); a kind read with different parameters names each reader's panel `<kind>:<reader>`; the Vanna and Charm tabs, `server.strike_bars`, the published levels' per-strike rows in the window the page asks (scope, the operator's panned centre and shift; a window it cannot draw is unavailable with its words), marked changed with the levels (`server._levels_changed`, `server.LEVELS_PANELS`); the expiry list, `server.expiries`, Schwab's listed expiries and daysToExpiration from the published levels, or, while none are published, unknown (`expiries` null) with the levels' own reason; a page switching ticker puts no expiry in force until that ticker's list arrives; the gamma group, each marked changed with the levels: the terrain, `server.terrain` (`terrain:levels`, `terrain:chart`, `terrain:desk`, `terrain:map`), the per-strike rows, `server.strikes` (`strikes:gbs`, `strikes:chart`, `strikes:migration`, `strikes:desk`, each in its window), the heatmap, `server.gamma_surface` (`surface`, its window), one expiry of the chain, `server.chain` (`chain:ladder`, `chain:detail`, `chain:structures`, each at its `expiry`, null the chain's front one), and the price levels, `server.levels` (`levels:view`, `levels:liquidity`, `levels:desk`, `levels:map`, each in its timeframe `tf`; a `tf` not served fails that panel in words), which carry each level's distance from the live price and so are sent again with each price row of the ticker (`server.PRICED_PANELS`, `live_ui.LiveUiServer.on_row`); a frame of an expiry or timeframe the page no longer shows is not drawn), at once and again each time its producer marks it changed (`live_ui.changed`: `_publish_levels` on each new chain), only to the pages on that ticker showing that panel; the page draws a panel only for the ticker it shows, and '-' for one not yet received since a switch (`tests/test_live_ui_daemon_to_browser_v1.py`, `tests/e2e/console-gamma-chain.spec.js`, `tests/e2e/console-options-vanna-charm.spec.js`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, why it is not connected, symbols held per service, the watchlist, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `live_push.MARKET_CONTEXT`). A client (a browser) has stopped reading when asyncio's flow control keeps writing to it paused (its buffers full) for `live_ui.HEARTBEAT_SEC`, so its beat is not taken, or when it does not answer uvicorn's keepalive ping (every 20 s, within 20 s): the web server's protocol for the socket (`live_ui.PageSocket`, `capture.PAGES`, the one place a client that stopped reading is dropped; each connection's handler, `serve_client`, owns its lifetime) drops it by aborting its connection, since no close frame can be written to a client that does not read and uvicorn's own close waits for the bytes it never takes, so its handler ends, the beat it held ends within a beat, and the program's stop is not held; the page reconnects (`tests/test_data_path_startup_v1.py`, `tests/test_live_ui_daemon_to_browser_v1.py`) |
+| console → browser | HTTP | the page itself (`/`, `/static`), the program's health and build (`/api/health`, `/api/build`), and what the operator sends: a watchlist add or removal (`/api/watchlist`) and the Flow panel's contract (`/api/flow-contract`). No panel's data: every panel is sent on the socket, each group again when its input changes (`server.CHAIN_PANELS` on a new chain, `LEVELS_PANELS` on each publication of the levels, `BARS_PANELS` on a new bar, `FLOW_PANELS` on a streamed equity quote or book), and the session label with each beat (`feed.session`) |
 
 ### 3.3 Where data lives
 
@@ -268,12 +267,12 @@ the program.
   price row → browser socket → header and watchlist, and the same row → the console → the spot the
   levels and top of book use; (c) the raw message → the console's order-flow tape. Pushed
   end to end; one price row everywhere.
-- **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → a
-  `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
+- **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → the
+  book, book map, tape and contract panels on `/ws` (`server.FLOW_PANELS`). An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
   under its service and served for the `venue` the screen's venue switch names, never combined,
   but in the Desk Liquidity card's order-imbalance readout (operator 2026-11-03, step 1 of 3):
-  `/api/order-flow/microstructure` serves `readout` whatever the venue, both books and their
+  the book panel (`server.book`) serves `readout` whatever the venue, both books and their
   composite (`engine.book_readout`, the operator's decision of 2026-11-04, "the most recent
   balance is the most accurate balance": every quote of the books Schwab sends for the ticker,
   one per contributor, codes matched without regard to case; a contributor in both books (NSDQ,
@@ -368,15 +367,15 @@ the program.
   over its minute (a history sent again is taken only for the minutes not held: one that adds
   none changes nothing, pushes nothing and rebuilds no level; daily candles the same as those
   held push nothing, new ones push like a new bar); `_daily`, the daily candles (the console reads no database
-  for them, and writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
-  `/api/bars1m`. Enforced by: `tests/test_data_path_pricehistory_v1.py`; the order,
+  for them, and writes no bar) → the bars, liquidity and desk panels on `/ws`
+  (`server.BARS_PANELS`). Enforced by: `tests/test_data_path_pricehistory_v1.py`; the order,
   `tests/test_data_path_rules_v1.py::test_d5_a_start_asks_every_tickers_price_history_before_any_chain`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
   its age since the trade) is drawn on the chart as its own line and moves with every update; no
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
-  → the levels panel on `/ws` (`server.levels`), and the liquidity zones of `/api/liquidity-snapshot` are built from that same
+  → the levels panel on `/ws` (`server.levels`), and the liquidity zones of the liquidity panel (`server.liquidity`) are built from that same
   snapshot (the market's session, `time_et.market_session_date`: today's while a session is
   open, the newest session's while Closed, whose levels stand until the next session opens; no
   checkpoint or past-date path). Producer `_publish_price_levels`: the bar writer
@@ -394,7 +393,7 @@ the program.
   done. If the load fails, no level is built and the console window shows the error. Each bar
   is checked once, where it comes in (`server._schwab_bar`); the levels take the bar writer's
   bars as kept (`liquidity_value_engine.bars_from_candles`), every level function the same.
-  The routes serve what it published and build nothing. `/api/confluence` reads the ranking
+  The panels serve what it published and build nothing. The confluence panel reads the ranking
   `_publish_levels` stored for the expiry the operator picks. It does not rank again. It does not read a
   chain, the database, or Schwab. It has no loop of its own. The page asks again when the
   console pushes `levels` or `chain` for that ticker, the same re-read ENF-15 still owes for
@@ -564,8 +563,7 @@ the program.
   300 — about 1,546 requests a rotation. The request rate and rotation time on the live watchlist
   are unmeasured (`ACTIVE_PROGRAM.md` SPEED).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
-  chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
-  a new chain arrived, with the ticker's expiry list sent on `/ws`) → the browser reads no
+  chain in memory + spot → console memory → the browser reads no
   route for them: the program sends the levels themselves on `/ws` (`server.terrain`, the
   `terrain` panel, one per reader: `terrain:levels` Key Levels, `terrain:chart` the Gamma chart,
   `terrain:desk` Right Now, `terrain:map` the Desk map; marked changed by `server._levels_changed`
@@ -575,7 +573,7 @@ the program.
   chains while the console
   already serves the page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer, each capture at its own time or at that ticker's option
-  close once the capture is past it, only when the ticker's newest capture or its chain's day changes; `/api/forces` and the strikes panel
+  close once the capture is past it, only when the ticker's newest capture or its chain's day changes; the forces panel (`server.forces`) and the strikes panel
   (`server.strikes`, on `/ws`, one per reader in its own window: `strikes:gbs` GEX by Strike,
   `strikes:chart` the Gamma chart's profile, `strikes:migration` Right Now, `strikes:desk` the
   Desk map) serve that result and read no stored chain. The same publication carries each
@@ -589,7 +587,7 @@ the program.
   capture). The terrain panel adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
   Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
   inside Schwab's regular window, and the weeks and months those make. The day-over-day
-  open-interest change has one producer: the forces, from the stored captures (`/api/forces`,
+  open-interest change has one producer: the forces, from the stored captures (the forces panel,
   shown on the Trade Desk). Fewer than two market days of captures leaves each forces number
   absent (`server._forces_from_captures`), and a charm, DEX, ΔOI, GEX or volume side with a strike not known, or no strike at all, leaves that side
   absent (enforced by `tests/test_data_path_charm_side_unknown_v1.py` and `tests/test_data_path_side_volume_v1.py`); the screen draws "-". ΔOI is a side's total on the newer day less its total on the older day, both cut at the newer price: a strike a whole chain does not list holds no contracts that day, and the card names the older day. An ATR that cannot be computed is absent (`server._atr_fields`); the
@@ -614,8 +612,8 @@ the program.
   `/quotes` answer received since (its receive time); their
   verdict is judged on the chain's own time (`computed_ts_utc`), so a chain that stops arriving
   still turns them stale (enforced by `tests/test_rest_quotes_reach_the_levels_v1.py`). A viewed
-  ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
-  stream runs). Which page opened last decides nothing. With the daemon not reporting (no
+  ticker is one an open page shows (the ticker its socket subscribes, `live_ui.selected`, on any
+  workspace). Which page opened last decides nothing. With the daemon not reporting (no
   current heartbeat), no ticker reads "warming": its reason says first that the daemon is not
   reporting, then any other reason (no levels yet, stale levels). A viewed ticker on the
   watchlist reads "warming" until its first chain is priced; any other reads that it is not on
@@ -646,7 +644,7 @@ the program.
   `terrain_read.level_side` (ABOVE, AT, BELOW), with `price_side` (the price's side of a level),
   `within` and `crossed` built on it (`tests/test_level_crosses_wire.py`,
   `tests/test_trade_desk_served_v1.py`). Each answer serving them (the terrain panel, the levels panel,
-  `/api/confluence`) serves the price's mark beside them (`server.price_mark`: whether Schwab's
+  the confluence panel) serves the price's mark beside them (`server.price_mark`: whether Schwab's
   feed delivers the price, why not, its trade time and age, and the words the page prints,
   `spot_not_live_text`, "not live · last trade Thu 10/22 03:39 PM CT, 81m old", from the one age
   formatter `time_et.age_text`); the levels panel puts it on the pin candidate's row too
@@ -663,7 +661,7 @@ the program.
   `tests/fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json`, kept equal to them by
   `test_the_stopped_price_answers_the_browser_renders_are_the_routes_own`). The one-day move's two prices are the live price
   plus and minus the publication's implied move (`server.expected_move`, the one producer;
-  the levels panel and `/api/confluence` carry it). A chain delivered with no spot (the daemon held no
+  the levels panel and the confluence panel carry it). A chain delivered with no spot (the daemon held no
   price) has no levels, with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
   value for its strike and expiry, exact. A cell with no value (no contract listed at that strike
@@ -734,8 +732,8 @@ the program.
   (`server.LEVEL_CROSS_HOLD_S`); a ticker's held crosses are read from `ed_console.db` once, the
   first time they are needed, so a restart holds back what the last minute stored. A failed store
   is logged, and that cross is not held or stored. Written to `ed_console.db`
-  and kept in the console's memory (§3.3) → the `levels` push, sent after the cross is held →
-  `/api/desk/events`, which serves
+  and kept in the console's memory (§3.3) → the desk panel (`server.desk`), sent after the cross is
+  held, which serves
   each cross as recorded, from memory, and flags the
   newest cross at each level, for the newest six levels, as the chart's numbered callouts (one
   served item is both a callout and its queue entry). The window is the timeframe's
@@ -753,8 +751,7 @@ the program.
   answers (`server._load_stored_sessions`, `tests/test_data_path_stored_sessions_v1.py`), as a
   stored chain's expiries reach it before the daemon's answers do. A stream database that cannot
   be read stops the console's start with its error. The label (`time_et.session_label`: Pre-Market, RTH, After-Hours,
-  Closed, Unknown) is pushed on `/api/changes` when the page connects and every 5 s with no other
-  change. The same answers decide every session window: the prior-day, overnight, VWAP and
+  Closed, Unknown) is sent on `/ws` with the daemon's status, every beat (`feed.session`). The same answers decide every session window: the prior-day, overnight, VWAP and
   value-area windows (the regular session), the Trade Desk's "this session" window
   (`time_et.last_open`), the chain history's capture windows (the option markets, to the last close), and
   each contract's time to expiry (the EQO regular close of its expiry date, or its open for
@@ -770,15 +767,12 @@ the program.
   quotes from 04:00 ET are shown and recorded), and the order-flow state keeps every book,
   top-of-book field, print and streamed Greek through the open. Enforced by:
   `tests/test_markets_sessions_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.
-- **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
-  handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
-  connection gets each change the moment it is marked (changes marked while one is sent go in
-  the next). The console down: the page's session label reads
-  `—` and no panel reloads until the browser's EventSource reconnects. A Trade Desk timeframe
-  switch asks only for that timeframe's bars, levels and event window. Each panel re-reads only
-  for the kinds it shows; Right Now re-reads all five of its reads on every push, because each
-  serves values derived at read time (the live price, each level's distance, the chain's
-  staleness), and a pan or scope change in its migration panel is a new read of the same five.
+- **Lifecycle.** The page's socket (`/ws`, `live_ui.LiveUiServer`): the levels producer, the
+  stream handler (equity quote and book) and the bar writer mark a ticker's panels changed
+  (`live_ui.changed`); each page showing one is sent it again at once. The socket down:
+  the page's session label reads `—` with its reason and no panel changes until the page
+  reconnects and subscribes again, when every panel it shows is sent at once. A Trade Desk
+  timeframe switch subscribes that timeframe's bars, levels and desk panels.
 
 ### 3.5 Where today breaks the design
 

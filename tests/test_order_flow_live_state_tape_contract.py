@@ -47,7 +47,7 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     assert tape[0]["price"] == first["item"]["LAST_PRICE"]
     assert tape[0]["size"] is None
     assert tape[0]["time_millis"] == first["item"]["TRADE_TIME_MILLIS"]
-    assert tape[0]["native_event_id"] is False
+    assert tape[0]["completeness"] == live_state.TAPE_COMPLETENESS
     assert tape[0]["receive_seq"] == 1
     assert ofe._compute_cum_delta_proxy({"content": content}) is None
 

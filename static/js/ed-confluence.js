@@ -1,4 +1,4 @@
-/* Trade Desk / Confluence Matrix. Draws /api/confluence. Computes nothing financial.
+/* Trade Desk / Confluence Matrix. Draws the `confluence` panel. Computes nothing financial.
    Pill positions are display geometry between the served strikes. */
 (function () {
   'use strict';
@@ -56,35 +56,27 @@
     return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   }
 
-  function loadImpl(signal) {
+  function isMatrix() {
     var st = state();
-    if (st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
-    var tk = st.key || st.ticker;
-    var box = document.getElementById('cmBody');
-    if (!box) return;
-    if (!tk) {
-      box.innerHTML = '<div class="placeholder"><div class="sm">Pick a ticker.</div></div>';
-      return;
-    }
-    var url = '/api/confluence?ticker=' + encodeURIComponent(tk);
-    if (expiry) url += '&expiry=' + encodeURIComponent(expiry);
-    return fetch(url, { cache: 'no-store', signal: signal }).then(function (r) {
-      if (!r.ok) throw new Error(String(r.status));
-      return r.json();
-    }).then(draw).catch(function (e) {
-      if (e && e.name === 'AbortError') return;
-      box.innerHTML = '<div class="placeholder"><div class="sm">The matrix request failed.</div></div>';
-    });
+    return st.workspace === 'trade-desk' && st.subview === 'confluence';
   }
 
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(signal); });
-
+  // The matrix is the `confluence` panel (server.confluence) on the page's socket while this view
+  // is on, for the picked expiry, at once and each time the chain or the levels change.
   function load() {
-    var st = state();
-    if (st.workspace !== 'trade-desk' || st.subview !== 'confluence') return;
-    var tk = st.key || st.ticker;
-    _loader.trigger((tk == null ? '' : tk) + '|' + (expiry == null ? '' : expiry));
+    window.EdShell.showPanel('confluence', isMatrix() ? (expiry ? { expiry: expiry } : {}) : null);
   }
+
+  document.addEventListener('ed:panel', function (e) {
+    var d = e.detail;
+    var box = document.getElementById('cmBody');
+    if (d.type !== 'confluence' || !box || !isMatrix()) return;
+    if (d.failed != null) {
+      box.innerHTML = '<div class="placeholder"><div class="sm">' + esc(d.failed) + '</div></div>';
+    } else {
+      draw(d);
+    }
+  });
 
   function anchorY(price, rows) {
     var n = rows.length;
@@ -452,8 +444,4 @@
 
   document.addEventListener('ed:view', function () { selectedStrike = null; load(); });
   document.addEventListener('ed:ticker', function () { expiry = null; selectedStrike = null; pinned = null; load(); });
-  document.addEventListener('ed:changed', function (e) {
-    var kind = e.detail && e.detail.kind;
-    if (kind === 'levels' || kind === 'chain') load();
-  });
 })();

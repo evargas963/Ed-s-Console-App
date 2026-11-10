@@ -23,9 +23,9 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
     published = compute_terrain(tk, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now).to_dict()
     srv._publish_levels(tk, read_chain(CRWD.chain), now, chain_spot=(CRWD.spot, now), now=CRWD.now)
     try:
-        down = srv.terrain(tk, now, {})
+        down = srv.terrain(tk, now)
         mark_feed_live(tk, now=now)  # the daemon's price row, read at `now`: its verdict LIVE
-        live = srv.terrain(tk, now, {})
+        live = srv.terrain(tk, now)
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)

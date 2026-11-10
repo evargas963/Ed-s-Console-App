@@ -1,5 +1,5 @@
 /* Ed Console — Order Flow / "Heatmap" subview. PRESENTATION ONLY.
-   The book with a time dimension: /api/order-flow/book-heatmap serves the time x price grid of
+   The book with a time dimension: the `bookmap` panel carries the time x price grid of
    the selected Schwab book's displayed size (NYSE_BOOK or NASDAQ_BOOK, never combined), and this
    view draws it on the one TradingView-style chart every chart in the console uses
    (ed-tv-chart.js): the served buckets are the time axis, each served cell is drawn at its own
@@ -9,8 +9,6 @@
   'use strict';
 
   function isHeatmap() { var s = window.EdShell.getState(); return s.workspace === 'order-flow' && s.subview === 'heatmap'; }
-  function ticker() { return window.EdShell.getState().ticker; }
-  function stillHeatmap(tk) { return isHeatmap() && ticker() === tk; }
   function fmtCT(ts) {
     try { return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' }); } catch (e) { return '-'; }
   }
@@ -25,42 +23,35 @@
     return _chart;
   }
 
-  function render(h, tk, d) {
+  function render(h, d) {
     var c = ensureChart(h); if (!c) return;
-    var ok = !!(d && d.available && d.display_lo != null);
+    var ok = !!(d.available && d.display_lo != null);
     c.setHeatmap(ok ? d : null);
     var empty = h.querySelector('.ofh-empty');
     empty.hidden = ok;
-    empty.textContent = ok ? '' : !d ? 'the book heatmap request failed' : !d.available ? ((d.reason) || 'no book history for ' + tk)
+    empty.textContent = ok ? '' : !d.available ? d.reason
       : 'rows were captured but carried no populated price levels';
     h.querySelector('.ofh-foot').textContent = !ok ? '' : d.rows_scanned + ' books · ' +
       fmtCT(d.since_ts) + '–' + fmtCT(d.until_ts) + ' CT · latest capture ' + fmtCT(d.latest_captured_ts) + ' CT — every cell is a captured book tick; nothing is interpolated between ticks.';
   }
 
-  function loadImpl(tk, signal) {
-    var h = host();
-    if (!h || !stillHeatmap(tk)) return;
-    return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&venue=' + window.EdShell.getState().bookVenue + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillHeatmap(tk)) render(h, tk, d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (stillHeatmap(tk)) render(h, tk, null);
-      });
-  }
-  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
+  // The grid is the `bookmap` panel (server.bookmap) on the page's socket while this view is on,
+  // for the selected venue and window, at once and with each streamed quote or book.
   function load() {
-    if (!isHeatmap()) return;
-    // keyed on ticker + venue + minutes: a different window while a fetch is in flight aborts it
-    _loader.trigger(ticker() + '|' + window.EdShell.getState().bookVenue + '|' + _minutes);
+    if (!isHeatmap()) { window.EdShell.showPanel('bookmap', null); return; }
+    window.EdShell.showPanel('bookmap', { venue: window.EdShell.getState().bookVenue, minutes: _minutes });
   }
+  document.addEventListener('ed:panel', function (e) {
+    var d = e.detail, h = host();
+    if (d.type !== 'bookmap' || !h || !isHeatmap()) return;
+    render(h, d.failed != null ? { available: false, reason: d.failed } : d);
+  });
 
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:book_window', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
     document.addEventListener('click', function (e) {
       var btn = e.target.closest && e.target.closest('[data-ofh-minutes]');
       if (!btn) return;

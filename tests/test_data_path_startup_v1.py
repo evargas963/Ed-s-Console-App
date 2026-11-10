@@ -34,7 +34,6 @@ from websockets.exceptions import InvalidStatus
 import db
 import launch
 import live_market_plane as lmp
-import push_changes
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
@@ -48,6 +47,7 @@ from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.call_count import calls
 from tests.capture_store import store_capture
+from tests.page_on_socket import Pages
 from tests.real_chains import CRWD, MRVL, NFLX
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
 from tests.test_one_levels_producer_v1 import _drain
@@ -874,7 +874,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
     The stored captures of the tickers the daemon has not delivered yet are priced while a page
     views a ticker whose options stream. Through the real code, on Schwab's
     captures (tests/real_chains.py): CRWD's chain delivered and priced, a page open on it
-    (push_changes); MRVL's and NFLX's captures stored as the daemon writes them (one row per
+    (its socket); MRVL's and NFLX's captures stored as the daemon writes them (one row per
     expiry, at each capture's time) and queued by the startup load. Induced test condition: one
     of CRWD's contracts ticks back to back (_on_stream_tick, a reprice on each), so a tick lands
     during every pricing. Both stored captures are priced within 10 s, and CRWD is repriced
@@ -890,8 +890,8 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             server._terrain_cache.pop(name, None)
     with server._chains_waiting_lock:
         server._chains_delivered.difference_update(names)
-    push_changes.bind(None)  # no event loop: another test's may be closed
-    page = push_changes.subscribe(tk)
+    served = Pages()
+    served.open(tk)
     ticking = threading.Event()
 
     def ticks():
@@ -928,8 +928,8 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
         jobs = calls({"_price_chain": server._price_chain.__code__}, load_while_ticking)
         repriced = jobs["_price_chain"] - len(names)
     finally:
-        push_changes.unsubscribe(page)
         _drain()  # what still waits is priced
+        served.stop()
         with server._terrain_cache_lock:
             for name in (tk, *names):
                 server._terrain_cache.pop(name, None)

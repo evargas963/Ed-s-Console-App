@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -19,13 +18,12 @@ from pathlib import Path
 from typing import Annotated
 
 import psutil
-from fastapi import Body, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi import Body, FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 import live_market_plane as lmp
 import live_price_rows as _lpr  # with_change: the bar-change computation
-import push_changes
 import runtime_layout
 import time_et
 from app.market_data.schwab.streaming import live_ui
@@ -43,7 +41,6 @@ from app.options.order_flow.history import (
     BOOKS_KEPT_SEC,
     LEAN,
     TAPE,
-    TAPE_KEPT,
     book_heatmap_for_ticker,
 )
 from app.options.order_flow.live_payload import flow_block, options_live_payload
@@ -199,7 +196,7 @@ BARS_KEPT = 24_000
 _bars: dict[str, list[Candle]] = {}
 #: every ticker's other series of Schwab's /pricehistory, each its newest answer as sent
 #: ((ticker, series) -> candles, oldest first; series "5m", "15m", "30m", "1d": the daemon's
-#: PRICE_HISTORY). Owned by the bar writer; the charts (/api/bars1m) and the ATR (_atr) read them.
+#: PRICE_HISTORY). Owned by the bar writer; the bars panel and the ATR (_atr) read them.
 _series: dict[tuple[str, str], list[Candle]] = {}
 _bars_lock = threading.Lock()
 #: where the bars come from, named in every level's provenance
@@ -327,8 +324,9 @@ def _write_streamed_bar(msg: dict) -> bool:
     if bar is None:
         log.warning("streamed bar for %s lacks a valid field, not kept: %s", msg.get("symbol"), msg)
         return False
-    _keep_bar(ticker_storage_key(msg["symbol"]), bar)  # what every live reader reads
-    push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
+    tk = ticker_storage_key(msg["symbol"])
+    _keep_bar(tk, bar)  # what every live reader reads
+    live_ui.changed(app.state, tk, *BARS_PANELS)
     return True
 
 
@@ -346,7 +344,7 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
             if "series" in msg:
                 tk = _write_price_history(msg)
                 if tk is not None:  # 1-minute bars or daily candles: both are the levels' inputs
-                    push_changes.changed(tk, push_changes.LIQUIDITY)
+                    live_ui.changed(app.state, ticker_storage_key(tk), *BARS_PANELS)
                     written.append(tk)
             elif _write_streamed_bar(msg):
                 written.append(msg["symbol"])
@@ -441,8 +439,6 @@ async def _app_lifespan(_app):
     # quote and option greeks/OI/volume quote -> _on_stream_tick, which reprices a viewed
     # ticker; every chain the daemon fetched -> _on_chain, which prices it.
     start_order_flow_stream(**FEED_CALLBACKS)
-
-    push_changes.bind(asyncio.get_running_loop())
 
     yield
 
@@ -600,17 +596,6 @@ def _merged_recent_crosses(ticker: str, n: int) -> list[dict]:
         if nm and nm not in hit["level_names"]:
             hit["level_names"].append(nm)
     return merged[:n]
-
-
-def _required_ticker(ticker: str) -> str:
-    """Return the ticker the caller asked for -- never a default one.
-
-    Every ticker is treated the same. Blank -> HTTP 400.
-    """
-    t = ticker.strip()
-    if not t:
-        raise HTTPException(status_code=400, detail="ticker is required")
-    return t
 
 
 def unavailable(ticker: str, reason: str, **fields) -> dict:
@@ -844,11 +829,11 @@ def levels_verdict(staleness: dict) -> dict:
 def _gamma_surface_wanted(tk: str) -> bool:
     """Tell whether the ticker is viewed: the heatmap's REQUESTED state.
 
-    Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for as
-    long as it stays open. Every watchlist ticker's chain is
-    fetched and priced alike, and every one is repriced on its streamed ticks.
+    Viewed: a page has the ticker selected on its socket (live_ui.selected), on any workspace,
+    for as long as it stays open. Every watchlist ticker's chain is fetched and priced alike, and
+    every one is repriced on its streamed ticks.
     """
-    return tk in push_changes.watched()
+    return tk in live_ui.selected(app.state)
 
 
 #: Per-ticker revision of PublishedLevels.gamma_surface, bumped on every publication and restamp
@@ -1070,13 +1055,30 @@ def _restamp_ended(done: Future) -> None:
 
 
 #: the page's socket panels (PAGE_PANELS) read from the published levels and the live price
-LEVELS_PANELS = ("vanna", "charm", "terrain", "strikes", "surface", "chain", "levels")
+LEVELS_PANELS = (
+    "vanna",
+    "charm",
+    "terrain",
+    "strikes",
+    "surface",
+    "chain",
+    "levels",
+    "confluence",
+    "contract",
+    "forces",
+    "desk",
+    "liquidity",
+)
 
 
 def _levels_changed(tk: str) -> None:
-    """Tell the pages on `tk` (its key) that its levels changed: the change push and the socket."""
-    push_changes.changed(tk, push_changes.LEVELS)
+    """Tell the pages on `tk` (its key) that its levels changed: the socket sends them again."""
     live_ui.changed(app.state, tk, *LEVELS_PANELS)
+
+
+def flow_changed(sym: str) -> None:
+    """Tell the pages on Schwab's symbol `sym` that its quote or book changed (FLOW_PANELS)."""
+    live_ui.changed(app.state, ticker_storage_key(sym), *FLOW_PANELS)
 
 
 def _surface_symbols(surface: dict) -> list[str]:
@@ -1117,7 +1119,6 @@ def restamp_open_surfaces(now: float) -> None:
     feed = lmp.feed_now(now)
     with _terrain_cache_lock:
         cached = list(_terrain_cache.items())
-    bumped: list[str] = []
     for tk, levels in cached:
         surface = levels.gamma_surface
         if surface is None:  # this ticker's levels hold no surface (no price or no book)
@@ -1138,11 +1139,7 @@ def restamp_open_surfaces(now: float) -> None:
         stamped["surface_seq"] = _next_gamma_surface_seq(tk, now)
         with _terrain_cache_lock:
             _terrain_cache[tk] = replace(levels, gamma_surface=stamped)
-        bumped.append(tk)
-    watching = set(push_changes.watched())
-    for tk in bumped:
-        if tk in watching:
-            _levels_changed(tk)
+        _levels_changed(tk)
 
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
@@ -1496,8 +1493,7 @@ def _publish_levels(
         _terrain_cache[tk] = levels
     _levels_changed(tk)
     if new_chain:
-        push_changes.changed(tk, push_changes.CHAIN)
-        live_ui.changed(app.state, tk, "expiries")
+        live_ui.changed(app.state, tk, *CHAIN_PANELS)
     return snap
 
 
@@ -1767,6 +1763,7 @@ FEED_CALLBACKS = {
     "on_tick_callback": _on_stream_tick,
     "on_chain_callback": _on_chain,
     "on_feed_callback": restamp_off_the_loop,
+    "on_flow_callback": flow_changed,
 }
 
 
@@ -1865,7 +1862,7 @@ def refresh_not_live_pages(now: float) -> None:
     loop calls it every STATUS_EVERY_SEC; a page whose price and levels are both live is told by
     each new price and chain instead.
     """
-    for tk in push_changes.watched():
+    for tk in live_ui.selected(app.state):
         levels, verdict = terrain_cache_get(tk, now)
         if price_state(tk, now)[0] != lmp.LIVE or (
             levels is not None and verdict["levels_state"] != lmp.LIVE
@@ -2168,32 +2165,30 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     }
 
 
-# The console's charts read the 1-minute bars the console holds (_bars_1m) here; no database, no
-# Schwab call.
-@app.get("/api/bars1m")
-def get_bars1m(
-    ticker: str = Query(...),
-    limit: int = Query(default=780, ge=1, le=12000),
-    tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$"),
-):
-    """The ticker's bars at chart timeframe `tf` (chart_bars), newest-last.
+#: the most 1-minute bars one `bars` panel spans
+BARS_LIMIT_MAX = 12000
 
-    [{t,o,h,l,c,v}] epoch-seconds bar starts, over the span of its newest `limit` 1-minute bars.
-    `last_bar`: the newest completed minute and its label.
+
+def bars(ticker: str, now: float, params: dict) -> dict:
+    """Return the `bars` panel at `now`: the ticker's bars at chart timeframe `tf`, newest-last.
+
+    The page's socket sends it (live_ui, PAGE_PANELS) to every chart, at once and with each new
+    bar (BARS_PANELS). [{t,o,h,l,c,v}] epoch-seconds bar starts (chart_bars), over the span of its
+    newest `limit` 1-minute bars, from the bars the console holds (_bars_1m): no database, no
+    Schwab call. `last_bar`: the newest completed minute and its label. A `tf` not in
+    LEVEL_TIMEFRAMES or a `limit` not a count up to BARS_LIMIT_MAX raises: the socket sends that
+    panel's words. `ticker` is the levels' own key.
     """
-    tk = ticker_storage_key(_required_ticker(ticker))  # SPX -> $SPX
-    bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
-    out = [_lpr.with_change(b) for b in chart_bars(tk, tf, bars, now_et())]
-    last = bars[-1]["t"] if bars else None
-    return JSONResponse(
-        {
-            "ticker": tk,
-            "bars": out,
-            "tf": tf,
-            "n": len(out),
-            "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None,
-        }
-    )
+    tf, limit = _tf_asked(params), params.get("limit")
+    if type(limit) is not int or not 1 <= limit <= BARS_LIMIT_MAX:
+        raise ValueError(f"limit {limit!r} is not a count from 1 to {BARS_LIMIT_MAX}")
+    held = [_bar_dict(c) for c in _bars_1m(ticker, limit)]
+    shown = chart_bars(ticker, tf, held, datetime.fromtimestamp(now, ET))
+    return {
+        "bars": [_lpr.with_change(b) for b in shown],
+        "tf": tf,
+        "last_bar": {"t": held[-1]["t"], "label": ct_label(held[-1]["t"])} if held else None,
+    }
 
 
 def _tf_bucket_key(t: float, tf: str):
@@ -2354,116 +2349,83 @@ def _window_asked(params: dict) -> tuple[str, float | None, int] | str:
     return scope, centre, shift
 
 
-def _strike_bars(key: str, tk: str, now: float, params: dict) -> dict:
-    """Return the per-strike bar panel `key` of `tk` at `now` in the window `params` ask for."""
+def strike_bars(key: str, tk: str, now: float, params: dict) -> dict:
+    """Return the per-strike bar panel `key` of `tk` at `now` in the window `params` ask for.
+
+    "vanna_rows": net_vanna = call_vanna - put_vanna per strike, across every expiry (the Vanna
+    panel). "charm_rows": the charm walls' own map, net_charm = call_charm - put_charm per strike,
+    delta-shares/day (the Charm panel).
+    """
     window = _window_asked(params)
     if isinstance(window, str):
         return unavailable(tk, window)
     return strike_bar_payload(tk, key, *window, now)
 
 
-def vanna_by_strike(ticker: str, now: float, params: dict) -> dict:
-    """Return the per-strike dealer VANNA exposure of the published levels (the Vanna panel).
+#: the most prints the `tape` panel shows
+TAPE_ROWS = 100
 
-    net_vanna = call_vanna - put_vanna, aggregated across every expiry; no per-expiry surface yet.
-    `ticker` is the levels' own key; `params` the panel's window (_window_asked).
+
+def tape(ticker: str, now: float) -> dict:
+    """Return the `tape` panel at `now`: the newest option trade prints of the ticker.
+
+    The prints the console builds from Schwab's LEVELONE_OPTIONS as the daemon pushes them
+    (history.TAPE), of every contract of `ticker` the daemon streams
+    (_held_option_symbols_for_ticker), merged newest first and capped at TAPE_ROWS across the
+    merge. No derived field and no aggressor side. `ticker` is the levels' own key.
     """
-    return _strike_bars("vanna_rows", ticker, now, params)
-
-
-def charm_by_strike(ticker: str, now: float, params: dict) -> dict:
-    """Return the per-strike dealer CHARM exposure of the published levels' charm map.
-
-    The map is the charm walls' own: net_charm = call_charm - put_charm per strike,
-    delta-shares/day (the Charm panel). `ticker` is the levels' own key; `params` the panel's
-    window (_window_asked).
-    """
-    return _strike_bars("charm_rows", ticker, now, params)
-
-
-@app.get("/api/options/tape")
-def get_options_tape(
-    ticker: str = Query(...),
-    contract: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=TAPE_KEPT),
-):
-    """Discrete option TRADE prints — the Options Flow tape, in the operator's required columns.
-
-    The columns: Time/Symbol/Expiry/
-    Type/Strike/Bid x Size/Ask x Size/Trade/Size/Premium/Volume/OI/IV/Delta/provenance.
-    Sourced from app.options.order_flow.history.TAPE, the prints the console builds from
-    Schwab's LEVELONE_OPTIONS as the daemon pushes them — no derived/estimated field, no
-    fabricated buy/sell aggressor side.
-
-    `contract`, when given, scopes to exactly that vendor symbol. Otherwise scopes to every
-    contract of `ticker` the daemon streams (its option rule's pick, the same identity
-    `_held_option_symbols_for_ticker` resolves for the gamma-surface overlay), merged
-    newest-first and capped at `limit` across the whole merge, not per-contract.
-    """
-    tk = ticker_storage_key(_required_ticker(ticker))
-
-    if contract:
-        symbols = [contract]
-    else:
-        held = published_levels(tk)
-        if held is None:
-            return JSONResponse(
-                unavailable(tk, "the console holds no chain of this ticker yet", rows=[])
-            )
-        symbols = _held_option_symbols_for_ticker(held.contract_symbols, time_et.now())
-
+    held = published_levels(ticker)
+    if held is None:
+        return unavailable(ticker, "the console holds no chain of this ticker yet", rows=[])
+    symbols = _held_option_symbols_for_ticker(held.contract_symbols, now)
     if not symbols:
-        return JSONResponse(
-            unavailable(tk, "the daemon streams no option contract of this ticker", rows=[])
-        )
-
+        return unavailable(ticker, "the daemon streams no option contract of this ticker", rows=[])
     rows: list[dict] = []
     for sym in symbols:
-        rows.extend(TAPE.rows(sym, limit))
+        rows.extend(TAPE.rows(sym, TAPE_ROWS))
     rows.sort(key=lambda r: r["ts_recv"], reverse=True)
-    rows = rows[:limit]
-    return JSONResponse(
-        {
-            "ticker": tk,
-            "available": bool(rows),
-            "symbols": symbols,
-            "rows": rows,
-            "reason": None
-            if rows
-            else "no trade prints for these contracts since the console started",
-            "method": (
-                "the contracts' trade prints in the console's memory (history.TAPE: Schwab's "
-                "LEVELONE_OPTIONS as pushed, genuine new prints, contract details carried "
-                "forward) -> merged newest-first across every contract the daemon streams"
-            ),
-        }
-    )
+    rows = rows[:TAPE_ROWS]
+    return {
+        "available": bool(rows),
+        "rows": rows,
+        "reason": None if rows else "no trade prints for these contracts since the console started",
+    }
 
 
-@app.get("/api/order-flow/book-heatmap")
-def get_order_flow_book_heatmap(
-    ticker: str = Query(...),
-    venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
-    minutes: float = Query(default=60.0, gt=0, le=BOOKS_KEPT_SEC / 60),
-):
-    """Book-depth heatmap for one of the ticker's Schwab books, `venue`.
+def _venue_asked(params: dict) -> str:
+    """Return the Schwab book a panel's `params` name; another raises (the socket sends why)."""
+    venue = params.get("venue")
+    if venue not in BOOK_VENUES:
+        raise ValueError(f"venue {venue!r} is not one of {', '.join(BOOK_VENUES)}")
+    return venue
 
-    Delegates to app.options.order_flow.history.book_heatmap_for_ticker, which bins the venue's
-    recent books in the console's memory into a time x price grid. The window ends at the newest
-    book, never wall-clock now. A window longer than the books the console keeps
-    (history.BOOKS_KEPT_SEC), or not above 0, is refused.
+
+def _tf_asked(params: dict) -> str:
+    """Return the chart timeframe a panel's `params` name; another raises."""
+    tf = params.get("tf")
+    if tf not in LEVEL_TIMEFRAMES:
+        raise ValueError(f"tf {tf!r} is not one of {', '.join(LEVEL_TIMEFRAMES)}")
+    return tf
+
+
+def bookmap(ticker: str, params: dict) -> dict:
+    """Return the `bookmap` panel: the depth heatmap of the ticker's Schwab book `venue`.
+
+    history.book_heatmap_for_ticker bins the venue's recent books in the console's memory into a
+    time x price grid over the newest `minutes`. The window ends at the newest book, never at
+    the time of asking. A window not above 0, or longer than the books the console keeps
+    (history.BOOKS_KEPT_SEC), raises.
     """
-    tk = ticker_storage_key(_required_ticker(ticker))
-    payload = book_heatmap_for_ticker(tk, venue, minutes=minutes)
-    return JSONResponse(payload)
+    minutes = params.get("minutes")
+    if type(minutes) not in (int, float) or not 0 < minutes <= BOOKS_KEPT_SEC / 60:
+        raise ValueError(f"minutes {minutes!r} is not above 0 and at most {BOOKS_KEPT_SEC / 60:g}")
+    return book_heatmap_for_ticker(ticker, _venue_asked(params), minutes=minutes)
 
 
-@app.get("/api/forces")
-def get_forces(ticker: str = Query(...)):
-    """Serve the ticker's forces, as the levels producer computed them from its chain captures."""
-    tk = ticker_storage_key(_required_ticker(ticker))
-    levels = published_levels(tk)
-    return JSONResponse(_forces_absent(tk) if levels is None else levels.forces)
+def forces(ticker: str) -> dict:
+    """Return the `forces` panel: the ticker's forces, as the levels producer computed them."""
+    held = published_levels(ticker)
+    return _forces_absent(ticker) if held is None else held.forces
 
 
 def _forces_absent(tk: str) -> dict:
@@ -2772,10 +2734,10 @@ def gamma_surface_payload(
     )
 
 
-def terrain(tk: str, now: float, _params: dict) -> dict:
+def terrain(tk: str, now: float) -> dict:
     """Return `tk`'s published levels at `now`, at the live price (the `terrain` panel).
 
-    `tk` is the levels' own key ($SPX); the levels take no parameters. The page's socket sends
+    `tk` is the levels' own key ($SPX). The page's socket sends
     them to Key Levels, the Gamma chart, the Trade Desk's Right Now and its map (live_ui,
     PAGE_PANELS), at once and each time the levels change (_levels_changed).
     """
@@ -2852,18 +2814,6 @@ def _desk_window_start(tf: str, now: datetime) -> float:
     return start.timestamp()
 
 
-@app.get("/api/desk/events")
-def get_desk_events(
-    ticker: str = Query(...),
-    venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
-    tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "30",
-):
-    """Serve the Trade Desk's attention queue at this moment (desk_events_payload)."""
-    return JSONResponse(
-        desk_events_payload(ticker_storage_key(_required_ticker(ticker)), venue, tf, now_et())
-    )
-
-
 def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     """Return the Trade Desk's attention queue at `now`.
 
@@ -2903,7 +2853,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
     newest_at = {it["price"]: it for it in items}
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
-    t = terrain(tk, now.timestamp(), {})  # the levels the page's terrain panel is sent
+    t = terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
     tts = t.get("levels_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
         if t.get(f"{side}_wall_state") == "breached":  # at the live price (price_relations)
@@ -2949,7 +2899,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
                 + ("" if live_book else " (not live)"),
                 "detail": f"{w['volume']} shown · {w['median_mult']:.1f}× the median level"
                 + ("" if live_book else " · a past book, not the current one"),
-                "src": "/api/order-flow/microstructure",
+                "src": "equity book",
             }
         )
     # newest first; an event with no time of its own after every timed one
@@ -2973,54 +2923,9 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
 DESK_MARKERS = 6
 
 
-#: With no change, the session label is pushed this often (it doubles as the heartbeat).
-CHANGES_SESSION_SEC = 5.0
-
-
-@app.get("/api/changes")
-async def get_changes(ticker: str = Query(...)):
-    """Push the console's changes to the page.
-
-    `levels`, `flow` or `liquidity` when that value of the ticker changed (the page reloads it),
-    and `session` with the market session label. Prices and bars come from the daemon's own push.
-    The open connection is the page: a ticker an open page shows is repriced on its ticks
-    (push_changes.watched). Every page reconnects after a console restart.
-    """
-    t = ticker_storage_key(_required_ticker(ticker))
-
-    async def event_generator():
-        # the page is open while this stream runs: it opens here and closes in `finally`, so a
-        # connection that never starts streaming opens none
-        client = push_changes.Client()
-        try:
-            push_changes.subscribe(t, client)
-            yield f"event: session\ndata: {session_label(now_et())}\n\n"
-            while True:
-                kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
-                if client.closed:  # the program is stopping (push_changes.close_all)
-                    return
-                for k in sorted(kinds):
-                    yield f"event: {k}\ndata: {t}\n\n"
-                if not kinds:
-                    yield f"event: session\ndata: {session_label(now_et())}\n\n"
-        finally:
-            push_changes.unsubscribe(client)
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@app.get("/api/order-flow/microstructure")
-def api_order_flow_microstructure(
-    ticker: str = Query(...), venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$")
-):
-    return JSONResponse(order_flow_microstructure(ticker, venue, time_et.now()))
+def book(ticker: str, now: float, params: dict) -> dict:
+    """Return the `book` panel at `now`: the ticker's quote and Schwab book `venue`."""
+    return order_flow_microstructure(ticker, _venue_asked(params), now)
 
 
 def _when_age(when: str | None, sec: float | None) -> str | None:
@@ -3064,7 +2969,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     `readout` is the Desk Liquidity card's, whatever the venue: both books and their deduped
     composite (liquidity_readout).
     """
-    t = ticker_storage_key(_required_ticker(ticker))
+    t = ticker_storage_key(ticker)
     data: dict = {}
     try:
         _content = get_content_for_symbol(t, venue)
@@ -3222,29 +3127,20 @@ def liquidity_readout(t: str, now: float) -> dict:
     return card
 
 
-@app.get("/api/order-flow/options-microstructure")
-def api_order_flow_options_microstructure(contract: str = Query(...)):
-    """Serve /api/order-flow/microstructure's canonical L2 book for one OPTION CONTRACT.
+def _contract_asked(params: dict) -> str:
+    """Return the option contract a panel's `params` name; none named raises.
 
-    The same canonical L2 book microstructure, for the contract's live book. SERIALIZER, not a
-    second producer: delegates to app.options.order_flow.live_payload.options_live_payload, which
-    reads the SAME app.options.order_flow.engine.compute_book_microstructure the equity route
-    reads — no parallel book-imbalance computation for options. `contract` MUST be a chain
-    response's own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route neither
-    builds nor checks that format, it serializes what the console holds for the literal string
-    given. A contract symbol is not a ticker.
+    `contract` is a chain answer's own "symbol" (OSI, e.g. "SPY   260820C00767000"), served as the
+    console holds it for that literal string (options_microstructure).
     """
-    c = contract.strip()
-    if not c:
-        return JSONResponse({"error": "contract is required"}, status_code=400)
-    return JSONResponse(options_microstructure(c, time_et.now()))
+    symbol = params.get("contract")
+    if type(symbol) is not str or not symbol.strip():
+        raise ValueError("contract is required")
+    return symbol.strip()
 
 
 def options_microstructure(c: str, now: float) -> dict:
-    """Return the Flow panel's payload for contract `c` at `now`, judged live by the one live rule.
-
-    It is /api/order-flow/options-microstructure's answer.
-    """
+    """Return the Flow panel's payload for contract `c` at `now`, judged by the one live rule."""
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
     payload["put_call"] = TAPE.put_call(c)
@@ -3329,11 +3225,10 @@ async def post_flow_contract(selected: FlowContract):
     return {"ok": True, "contract": contract}
 
 
-def expiries(ticker: str, now: float, _params: dict) -> dict:
+def expiries(ticker: str, now: float) -> dict:
     """Return the ticker's listed expiries at `now`, each with its dropdown texts.
 
-    `ticker` is the levels' own key ($SPX); the list takes no parameters. Each expiry's label is
-    its date, MM/DD/YYYY, and its
+    `ticker` is the levels' own key ($SPX). Each expiry's label is its date, MM/DD/YYYY, and its
     `dte_text` Schwab's daysToExpiration as sent (18DTE), None when Schwab sent none. Before the
     ticker's first chain is priced the list is unknown (None), with the levels' own reason; a
     chain listing none is an empty list with its reason. The page's socket sends it (live_ui,
@@ -3643,7 +3538,7 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
     (canonical_price_level_snapshot). A failed build is logged; the routes serve the last
     published snapshot with its as-of time, or say the levels are absent.
     """
-    tk = ticker_storage_key(_required_ticker(ticker))
+    tk = ticker_storage_key(ticker)
     before = canonical_price_level_snapshot(tk, now)
     try:
         with _bars_lock:
@@ -3681,7 +3576,7 @@ def canonical_price_level_snapshot(ticker: str, now: datetime):
     none computes a level.
     """
     return _MATERIALIZED_SNAPSHOTS.get(
-        (ticker_storage_key(_required_ticker(ticker)), market_session_date(now).isoformat())
+        (ticker_storage_key(ticker), market_session_date(now).isoformat())
     )
 
 
@@ -3993,49 +3888,38 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
     return body
 
 
-@app.get("/api/confluence")
-def get_confluence(ticker: str = Query(...), expiry: Annotated[str | None, Query()] = None):
-    """Serve the confluence matrix. The chain already priced for this ticker; no database read."""
-    return JSONResponse(
-        confluence_payload(ticker_storage_key(_required_ticker(ticker)), expiry, now_et())
-    )
-
-
 #: the chart timeframes the levels' VWAP curve is served in (aggregate_vwap)
 LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")
 
-
-def levels(ticker: str, now: float, params: dict) -> dict:
-    """Return the `levels` panel at `now`: levels_payload in the reader's timeframe `tf`.
-
-    The page's socket sends it (live_ui, PAGE_PANELS) to Key Levels' Levels views, the Liquidity
-    map, Right Now and the Desk map, at once and each time the levels change. It serializes the
-    one published PriceLevelSnapshot; /api/liquidity-snapshot and /api/confluence's session
-    levels carry their values from the same snapshot (canonical_price_level_snapshot). A `tf`
-    not in LEVEL_TIMEFRAMES raises: the socket sends that panel's words. `ticker` is the levels'
-    own key.
-    """
-    tf = params.get("tf")
-    if tf not in LEVEL_TIMEFRAMES:
-        raise ValueError(f"tf {tf!r} is not one of {', '.join(LEVEL_TIMEFRAMES)}")
-    return levels_payload(ticker, tf, datetime.fromtimestamp(now, ET))
-
-
-#: the panels the page's socket sends for the page's selected ticker (live_ui.LiveUiServer):
-#: each kind's producer, (ticker, now, the page's parameters) -> its body; _publish_levels marks
-#: the expiry list changed on each new chain, and _levels_changed the levels' panels
-#: (LEVELS_PANELS, the chain's and the price levels' among them) on each publication, a new
-#: chain's and a new bar's included
+#: every panel the page shows, sent by its socket for the page's selected ticker
+#: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
+#: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
+#: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
+#: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
 PAGE_PANELS = {
-    "expiries": expiries,
-    "vanna": vanna_by_strike,
-    "charm": charm_by_strike,
-    "terrain": terrain,
-    "strikes": strikes,
-    "surface": gamma_surface,
-    "chain": chain,
-    "levels": levels,
+    "expiries": lambda a: expiries(a.ticker, a.now),
+    "vanna": lambda a: strike_bars("vanna_rows", a.ticker, a.now, a.params),
+    "charm": lambda a: strike_bars("charm_rows", a.ticker, a.now, a.params),
+    "terrain": lambda a: terrain(a.ticker, a.now),
+    "strikes": lambda a: strikes(a.ticker, a.now, a.params),
+    "surface": lambda a: gamma_surface(a.ticker, a.now, a.params),
+    "chain": lambda a: chain(a.ticker, a.now, a.params),
+    "levels": lambda a: levels_payload(a.ticker, _tf_asked(a.params), a.at),
+    "bars": lambda a: bars(a.ticker, a.now, a.params),
+    "tape": lambda a: tape(a.ticker, a.now),
+    "book": lambda a: book(a.ticker, a.now, a.params),
+    "bookmap": lambda a: bookmap(a.ticker, a.params),
+    "contract": lambda a: options_microstructure(_contract_asked(a.params), a.now),
+    "forces": lambda a: forces(a.ticker),
+    "desk": lambda a: desk_events_payload(
+        a.ticker, _venue_asked(a.params), _tf_asked(a.params), a.at
+    ),
+    "confluence": lambda a: confluence_payload(a.ticker, a.params.get("expiry"), a.at),
+    "liquidity": lambda a: liquidity_snapshot(a.ticker, a.at),
 }
+CHAIN_PANELS = ("expiries",)
+BARS_PANELS = ("bars", "liquidity", "desk")
+FLOW_PANELS = ("book", "bookmap", "tape", "contract")
 #: the panels computed from the ticker's live price (each level's distance and side, the spot
 #: they are measured from): the socket sends them again with each of its price rows
 PRICED_PANELS = ("levels",)
@@ -4267,38 +4151,24 @@ def _spot_location(zones: list, spot) -> dict | None:
     }
 
 
-@app.get("/api/liquidity-snapshot")
-# a plain def: FastAPI runs it on its threadpool, so building the zones never holds the event loop
-def get_liquidity_snapshot(ticker: str = Query(...)):
-    return liquidity_snapshot(ticker, now_et())
-
-
-def liquidity_snapshot(ticker: str, now: datetime):
+def liquidity_snapshot(ticker: str, now: datetime) -> dict:
     """Return the market session's liquidity & value zones for the ticker at `now`.
 
-    Built from the one price-level snapshot (canonical_price_level_snapshot, the same values
-    /api/levels serves) with the terrain's option levels and the live price fused in. It computes
-    no level of its own.
+    Built from the one price-level snapshot (canonical_price_level_snapshot, the same values the
+    `levels` panel sends) with the terrain's option levels and the live price fused in. It
+    computes no level of its own.
     """
-    try:
-        ticker_upper = ticker_storage_key(ticker)
-        config = PlaybookConfig(max_zone_width=2.0)
-        extra = _liquidity_option_levels(ticker_upper)
-        # the one spot (resolve_spot), the header's own
-        spot_for_zones, _, _ = resolve_spot(ticker_upper, now=now.timestamp())
-        if spot_for_zones is not None:
-            extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
-        _canon = canonical_price_level_snapshot(ticker_upper, now)
-        if _canon is None:
-            return {"ticker": ticker_upper, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
-        out = build_live_snapshot(
-            ticker_upper, config, canonical=_canon, now=now, extra_levels=extra
-        )
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    except HTTPException as e:
-        # its own status code (a missing ticker is 400), never re-issued as a bare 500
-        return JSONResponse({"error": e.detail}, status_code=e.status_code)
+    ticker_upper = ticker_storage_key(ticker)
+    config = PlaybookConfig(max_zone_width=2.0)
+    extra = _liquidity_option_levels(ticker_upper)
+    # the one spot (resolve_spot), the header's own
+    spot_for_zones, _, _ = resolve_spot(ticker_upper, now=now.timestamp())
+    if spot_for_zones is not None:
+        extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
+    _canon = canonical_price_level_snapshot(ticker_upper, now)
+    if _canon is None:
+        return unavailable(ticker_upper, NO_PRICE_LEVELS_REASON, zones=[])
+    out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now, extra_levels=extra)
     zones_payload = [
         {
             "zone_type": z.zone_type.value,

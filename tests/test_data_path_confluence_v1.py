@@ -571,7 +571,7 @@ def _publish_mrvl() -> None:
 
 
 def mrvl_answers() -> dict:
-    """/api/confluence on MRVL's published chain, no live price row.
+    """The confluence panel on MRVL's published chain, no live price row.
 
     Its first two expiries asked
     at the capture instant, and the front one asked on Sunday, after it passed.
@@ -1557,7 +1557,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     (LAST_PRICE 269.395), taken in by the plane and made the price row by the daemon's own
     function. The matrix stays ranked at the chain's price (priced_at_spot); its window, its
     spot, its one-day move and each row's distance are the live price's, the move the same two
-    prices /api/levels serves (server.expected_move).
+    prices the levels panel serves (server.expected_move).
     """
     tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
     live = _QUOTE["native"]["LAST_PRICE"]

@@ -4,7 +4,7 @@
     {
       "verdict": "ok",
       "category": "a product function more than one route calls",
-      "pattern": "^(_required_ticker|ticker_storage_key):",
+      "pattern": "^ticker_storage_key:",
       "reason": "reads the route's own input, the ticker asked for; produces no served value"
     },
     {

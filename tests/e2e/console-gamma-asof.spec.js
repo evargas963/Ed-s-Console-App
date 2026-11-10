@@ -34,14 +34,8 @@ const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11'
     { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' } ] };
 function routes(over = {}) {
   return async (page) => {
-    await page.route('**/api/**', (route) => {
-      const url = route.request().url();
-      let body = { available: false };
-      if (url.includes('/api/bars1m')) body = BARS;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    });
     await routeWatchlist(page, ['SPY']);
-    await mockPriceSocket(page, [], [], undefined, { terrain: TERRAIN, strikes: over.strikes || STRIKES,
+    await mockPriceSocket(page, [], [], undefined, { bars: BARS, terrain: TERRAIN, strikes: over.strikes || STRIKES,
       surface: over.surface || SURFACE, chain: chainAt(over.chain || CHAIN) });
   };
 }

@@ -117,7 +117,7 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
             ),
         )
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
-        body = json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)
+        body = server.order_flow_microstructure("SPY", svc, time_et.now())
         prov = body["provenance"]
         assert (body["venue"], prov["book_source"]) == (svc, svc)
         assert prov["n_bid_levels"] == len(fx[svc]["content"]["BIDS"])

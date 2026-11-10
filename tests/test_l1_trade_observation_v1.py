@@ -101,7 +101,7 @@ def test_reconnect_clear_resets_restatement_identity():
     tape = l1.canonical_tape_prints(live_state.get_content_for_symbol(sym))
     assert len(tape) == 1
     assert tape[0]["receive_seq"] == 1
-    assert tape[0]["native_event_id"] is False
+    assert tape[0]["classification"] == l1.TAPE_CLASSIFICATION
 
 
 def test_live_state_equals_replay_of_same_receive_order_observations():

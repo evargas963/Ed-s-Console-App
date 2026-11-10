@@ -1,4 +1,4 @@
-// The Trade Desk's served answers the desk specs route (console-trade-desk.spec.js,
+// The Trade Desk's served answers the desk specs send on the socket (console-trade-desk.spec.js,
 // console-liquidity-card.spec.js): the attention queue, terrain, levels, the book and its
 // readout, the liquidity zones, strikes, bars and the book heatmap, and the page-error watch.
 // Level crosses are real SPY rows (tests/fixtures/real_spy_level_crosses.json); the readouts are
@@ -10,7 +10,7 @@ const { mockPriceSocket } = require('./price_socket');
 const CROSSES = require(path.join(__dirname, '..', '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
   ticker: 'SPY', tf: '30', window_start_ts_utc: CROSSES[2].ts_utc - 60, window_label: 'this session (served)',
-  // the served shape (server.get_desk_events): each cross as recorded, at its level's price
+  // the served shape (server.desk_events_payload): each cross as recorded, at its level's price
   items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
     price: c.level_value, title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name,
     detail: c.level_value.toFixed(2), src: 'level_crosses' })),
@@ -68,19 +68,17 @@ function deskPanels() { return panels; }
 function deskSocket(page, rows = [], later = []) { return mockPriceSocket(page, rows, later, undefined, panels); }
 
 async function intercept(page) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/desk/events')) body = Object.assign({}, EVENTS, { tf: new URL(url).searchParams.get('tf') });
-    else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
-    else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
-    else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/order-flow/book-heatmap')) body = HEAT;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
   await routeWatchlist(page, ['SPY']);
-  panels = { terrain: TERRAIN, strikes: STRIKES, levels: levelsAt(LEVELS) };
+  // the page asks the venue MICRO is the book of, unless the test names another after this
+  await page.addInitScript((venue) => localStorage.setItem('ed_book_venue', venue), MICRO.venue);
+  panels = { terrain: TERRAIN, strikes: STRIKES, levels: levelsAt(LEVELS), desk: tfAt(EVENTS), book: MICRO, liquidity: LIQ,
+    bars: tfAt(BARS), bookmap: HEAT, forces: { available: false }, tape: { available: false } };
   return deskSocket(page);
+}
+// A per-timeframe panel's stand-in for `body` (the event window, the bars): the program answers
+// each reader's timeframe in it (server.PAGE_PANELS)
+function tfAt(body) {
+  return (key, params) => Object.assign({}, body, { tf: params.tf });
 }
 // The levels panel's stand-in for `body`: the program answers each reader's timeframe with the
 // levels in it (server.levels), a function of (key, params) or the same body for every one
@@ -97,5 +95,5 @@ function watchErrors(page) {
 
 module.exports = {
   CROSSES, EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP,
-  MICRO, LIQ, STRIKES, BARS, HEAT, intercept, watchErrors, deskPanels, deskSocket, levelsAt,
+  MICRO, LIQ, STRIKES, BARS, HEAT, intercept, watchErrors, deskPanels, deskSocket, levelsAt, tfAt,
 };

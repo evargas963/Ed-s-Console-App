@@ -565,7 +565,7 @@ def price_relations(terrain: dict, price: float | None) -> PriceRelations:
 
     Each wall's state and lean, the price's side of the flip, the pin candidate and the read's
     lines. The levels are the publication's; the price is the one given, the live price on
-    every route. A level's distance from the price is served with the level (/api/levels).
+    every panel. A level's distance from the price is served with the level (the levels panel).
     """
     call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
     call_lean, put_lean = wall_lean(call, put, price, terrain["regime"], terrain["confidence"])

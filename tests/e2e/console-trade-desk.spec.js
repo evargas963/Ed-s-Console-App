@@ -1,6 +1,6 @@
 /*
  * Trade Desk (Desk + Right Now) renders what the server serves and computes nothing (P1-3, PR B,
- * 2026-09-27): the attention queue is /api/desk/events (numbered, ordered, window-counted on the
+ * 2026-09-27): the attention queue is the desk panel (numbered, ordered, window-counted on the
  * server); book side, tape side, flip relation, wall distances, spot-vs-zones, levels by distance
  * and the positioning migration are served fields. Level crosses are real SPY rows
  * (tests/fixtures/real_spy_level_crosses.json). Any page error fails the test.
@@ -13,7 +13,7 @@ const { watchRequests } = require('./fixtures/settled');
 
 const {
   EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, LIVE_COMP, MICRO, LIQ, STRIKES, BARS, intercept, watchErrors,
-  deskPanels, deskSocket, levelsAt,
+  deskPanels, deskSocket, levelsAt, tfAt,
 } = require('./fixtures/trade_desk');
 
 test('every chart is the one TradingView-style chart, with its controls', async ({ page }) => {
@@ -48,37 +48,34 @@ test('every chart is the one TradingView-style chart, with its controls', async 
 test('a desk load asks for each value once; a timeframe switch asks only for that timeframe and says it is loading', async ({ page }) => {
   const errs = watchErrors(page);
   const sock = await intercept(page);
-  const asked = [];
-  page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) asked.push(u.split('/api/')[1]); });
-  // each timeframe the desk asked the levels panel for, in order (one per change of its ask)
-  const levelsAsks = () => sock.subscribes.map((s) => s.panels['levels:map']).filter((p) => p !== undefined)
-    .map((p) => p.tf).filter((tf, i, a) => i === 0 || tf !== a[i - 1]);
-  const requests = watchRequests(page);
-  let releaseBars;
-  const barsHeld = new Promise((r) => { releaseBars = r; });
-  await page.route(/\/api\/bars1m\?.*tf=15/, async (route) => { await barsHeld;
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, BARS, { tf: '15' })) }); });
+  // each ask the desk made of a panel, in order (one per change of its parameters)
+  const asks = (name) => sock.subscribes.map((s) => s.panels[name]).filter((p) => p !== undefined)
+    .filter((p, i, a) => i === 0 || JSON.stringify(p) !== JSON.stringify(a[i - 1]));
+  const levelsAsks = () => asks('levels:map').map((p) => p.tf);
+  let barsHeld = true;   // the 15m bars are not sent until the test says
+  deskPanels().bars = (key, params) => (barsHeld && params.tf === '15' ? undefined : Object.assign({}, BARS, { tf: params.tf }));
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '5'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
-  await requests.settled();   // every read the load made has gone out and landed
-  const count = (re) => asked.filter((u) => re.test(u)).length;
-  for (const re of [/^desk\/events\?/, /^liquidity-snapshot\?/, /^forces\?/,
-    /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/, /^bars1m\?.*tf=1&/]) expect(count(re), String(re)).toBe(1);
+  const DESK = ['desk', 'liquidity:deskmap', 'forces', 'book:deskmap', 'bars:deskmap', 'bars:flow'];
+  for (const name of DESK) expect(asks(name).length, name).toBe(1);
+  expect(asks('bars:deskmap')[0].tf).toBe('5');
+  expect(asks('bars:flow')[0].tf).toBe('1');
   expect(levelsAsks()).toEqual(['5']);
 
-  asked.length = 0;
   await page.locator('#tdmToolbar [data-tf="15"]').click();
   // while the 15m bars are on their way the 5m view is gone and the chart says what is loading
   await expect(page.locator('#tdmChartEmpty')).toHaveText(/Loading SPY · 15m/);
   expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(0);
   expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers.length)).toBe(0);
-  releaseBars();
+  barsHeld = false;
+  sock.changed('bars');
   await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe('15');
-  await requests.settled();   // every read the switch made has gone out and landed
-  expect(asked.filter((u) => !/^(changes|streaming\/)/.test(u)).map((u) => u.split('?')[0]).sort())
-    .toEqual(['bars1m', 'desk/events']);
+  // the switch changed the ask of the timeframe's panels alone
+  expect(DESK.filter((name) => asks(name).length !== 1)).toEqual(['desk', 'bars:deskmap']);
+  expect(asks('desk').map((p) => p.tf)).toEqual(['5', '15']);
+  expect(asks('bars:deskmap').map((p) => p.tf)).toEqual(['5', '15']);
   expect(levelsAsks()).toEqual(['5', '15']);
   expect(errs).toEqual([]);
 });
@@ -99,8 +96,7 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
   const AT_ZERO = require(path.join(__dirname, 'fixtures', 'standin_liquidity_with_a_session_at_zero.json'));
   const errs = watchErrors(page);
   await intercept(page);
-  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-    body: JSON.stringify(AT_ZERO) }));
+  deskPanels().liquidity = AT_ZERO;
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.liqm-zones')).toContainText('Resistance 0.00');
@@ -114,23 +110,24 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
 
 test('Liquidity map: a failed request is named, and an empty snapshot shows the served reason', async ({ page }) => {
   // server.liquidity_snapshot's answer with no price levels published (NO_PRICE_LEVELS_REASON), and
-  // /api/bars1m failing: the map says so for each, never draws a failure as an empty answer
+  // the bars panel not produced (the program's words on the socket): the map says so for each,
+  // never draws a failure as an empty answer
   const REASON = 'no price levels published for this ticker for the market\'s session yet (they are ' +
     'built from its 1-minute bars on each new bar and at the console\'s start)';
+  const barsWords = 'the program could not produce this panel: RuntimeError: bars lock timed out';
+  const liqWords = 'the program could not produce this panel: KeyError: \'SPY\'';
   const errs = watchErrors(page);
   await intercept(page);
-  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-    body: JSON.stringify({ ticker: 'SPY', zones: [], reason: REASON }) }));
-  await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 500, body: 'x' }));
+  deskPanels().liquidity = { ticker: 'SPY', zones: [], reason: REASON };
+  deskPanels().bars = { failed: barsWords };
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.liqm-zones')).toContainText(REASON);
-  await expect(page.locator('.liqm-empty')).toHaveText('the bars request failed for SPY');
-  await page.unroute('**/api/liquidity-snapshot**');
-  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 500, body: 'x' }));
+  await expect(page.locator('.liqm-empty')).toHaveText(barsWords);
+  deskPanels().liquidity = { failed: liqWords };
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.liqm-zones')).toContainText('the liquidity snapshot request failed');
-  await expect(page.locator('.liqm-empty')).toHaveText('the liquidity snapshot, bars request failed for SPY');
+  await expect(page.locator('.liqm-zones .sm')).toHaveText('-');   // no zones known: never "no zones for this session yet"
+  await expect(page.locator('.liqm-empty')).toHaveText(liqWords + ' · ' + barsWords);
   expect(errs).toEqual([]);
 });
 
@@ -140,8 +137,7 @@ test('the liquidity map fits its price scale to the candles; a far zone does not
   const errs = watchErrors(page);
   await intercept(page);
   const far = { zone_low: 800, zone_high: 801, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 1 };
-  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-    body: JSON.stringify(Object.assign({}, LIQ, { zones: LIQ.zones.concat([far]) })) }));
+  deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.concat([far]) });
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(LIQ.zones.length + 1);
@@ -154,21 +150,19 @@ test('the Gamma chart and the liquidity map carry the Trade Desk toolbar; a time
   // operator 2026-09-29: "for all other charts you were supposed to apply the tv characteristics" --
   // only the Trade Desk had the timeframes, candles/line, drawing tools, reset, screenshot and full screen
   const errs = watchErrors(page);
-  await intercept(page);
-  const asked = [];
-  await page.route('**/api/bars1m**', (route) => { const tf = new URL(route.request().url()).searchParams.get('tf'); asked.push(tf);
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, BARS, { tf })) }); });
-  for (const [ws, sub, view, host, api] of [['options', 'gamma', 'chart', '#chartBody', 'EdGammaChart'], ['liquidity', 'map', '', '#liqmBody', 'EdLiquidityMap']]) {
+  const sock = await intercept(page);
+  for (const [ws, sub, view, host, api, bars] of [['options', 'gamma', 'chart', '#chartBody', 'EdGammaChart', 'bars:chart'],
+    ['liquidity', 'map', '', '#liqmBody', 'EdLiquidityMap', 'bars:liq']]) {
     await page.addInitScript(([w, s, v]) => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w);
       localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); }, [ws, sub, view]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     for (const sel of ['[data-act="style"]', '[data-tool="hline"]', '[data-act="reset"]', '[data-act="shot"]', '[data-act="full"]'])
       await expect(page.locator(host + ' .tvc-toolbar ' + sel), ws + ' ' + sel).toBeVisible();
-    asked.length = 0;
+    const before = sock.subscribes.length;
     await page.locator(host + ' .tvc-toolbar [data-tf="15"]').click();
     await expect(page.locator(host + ' .tvc-toolbar [data-tf="15"]')).toHaveClass(/on/);
     await expect.poll(() => page.evaluate((a) => window[a].state() && window[a].state().tf, api), ws).toBe('15');
-    expect(asked, ws).toContain('15');
+    expect(sock.subscribes.slice(before).map((s) => s.panels[bars] && s.panels[bars].tf), ws).toContain('15');
   }
   expect(errs).toEqual([]);
 });
@@ -194,10 +188,10 @@ test('Desk: an offline price keeps its last trade time on the map', async ({ pag
 test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'s LIVE', async ({ page }) => {
   // the daemon's own rows for SPY's and $SPX's real messages in regular hours (tests/test_order_flow_book_payload_v1.py)
   const ROWS = require(path.join(__dirname, 'fixtures', 'price_rows_live.json'));
-  const requests = watchRequests(page);
+  const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
   await intercept(page);
   // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row, and SPY's at 12 s
-  await deskSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 12000, row: ROWS.SPY }]);
+  const sock = await deskSocket(page, [ROWS.SPY], [{ afterMs: 8000, row: ROWS['$SPX'] }, { afterMs: 12000, row: ROWS.SPY }]);
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -207,10 +201,11 @@ test('Desk: a price push that stops reads OFFLINE on the map, not its last row\'
   await expect(page.locator('#tdmTrust')).not.toContainText('PRICE LIVE');
   await expect(page.locator('#tdmCardFlow')).toContainText('OFFLINE');
   // the push resumes with another symbol's row: SPY's last row is not SPY's state now, here or in
-  // the header, even after the map repaints (the console's flow change re-reads and redraws it)
+  // the header, even after the map repaints (a new book, sent on the socket, redraws it)
   await expect(page.locator('#tdmIdxSPX')).toContainText('last trade ' + ROWS['$SPX'].trade_time_ct, { timeout: 10000 });
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
-  await requests.settled();   // the flow change's reads have landed and the map has repainted
+  deskPanels().book = Object.assign({}, MICRO, { book_time_ct: BOOK_TIME });
+  sock.changed('book');
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME);   // the new book has landed and the map has repainted
   // read once, before SPY's row at 12 s ends the outage (no retrying: a retry would wait for it)
   expect(await page.locator('#hFeed').textContent()).toBe('OFFLINE');
   const trust = await page.locator('#tdmTrust').textContent();
@@ -227,8 +222,7 @@ test('Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab\'
   const CLOSED_BOOK = require(path.join(__dirname, 'fixtures', 'order_flow_book_closed_payload.json'));
   const errs = watchErrors(page);
   await intercept(page);
-  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify(CLOSED_BOOK) }));
+  deskPanels().book = CLOSED_BOOK;
   // the fixture holds NYSE_BOOK only: the card shows that book
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK'); localStorage.setItem('ed.desk.liqvenue', 'BOOK'); });
@@ -254,10 +248,7 @@ test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
   const errs = watchErrors(page);
   const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
   await intercept(page);
-  await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify(Object.assign({}, MICRO, { book_time_ct: BOOK_TIME })),
-  }));
+  deskPanels().book = Object.assign({}, MICRO, { book_time_ct: BOOK_TIME });
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -318,9 +309,8 @@ test.describe('Trade Desk renders served values', () => {
     // 2026-09-28 21:40 ET: after the close the levels served an empty by_distance and the chart drew
     // no key level; the spot is now Schwab's last trade at any hour and orders them (by_distance)
     const errs = watchErrors(page);
-    await intercept(page);   // every route answered in its real shape; after the close, nothing crossed
-    await page.route('**/api/desk/events**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, EVENTS, { items: [], cross_counts: { up: 0, down: 0 } })) }));
+    await intercept(page);   // every panel sent in its real shape; after the close, nothing crossed
+    deskPanels().desk = tfAt(Object.assign({}, EVENTS, { items: [], cross_counts: { up: 0, down: 0 } }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
@@ -338,24 +328,24 @@ test.describe('Trade Desk renders served values', () => {
     // carries open interest and no bars for the symbol
     const errs = watchErrors(page);
     const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
-    await intercept(page);   // every route answered in its real shape, then the two that fail
+    await intercept(page);   // every panel sent in its real shape, then the two that fail
     deskPanels().terrain = { failed: words };
-    await page.route(/\/api\/bars1m\?.*tf=1&/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    deskPanels().bars = (key, params, name) => (name === 'bars:flow' ? { failed: words } : tfAt(BARS)(key, params));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmCardOpt .tdm-plot-none')).toHaveText(words);
     await expect(page.locator('#tdmCardVol .tdm-plot-none')).toHaveText(words);
     await expect(page.locator('#tdmTrust')).toContainText('GAMMA DOWN');
-    await expect(page.locator('#tdmCardFlow .tdm-plot-none')).toHaveText('the bars request failed');
+    await expect(page.locator('#tdmCardFlow .tdm-plot-none')).toHaveText('the program could not produce the bars');
     expect(errs).toEqual([]);
   });
 
   test('Desk: the levels are drawn when they arrive, not held for the event queue', async ({ page }) => {
     // 2026-09-29 14:52 CT, deployed: QQQ's levels answered in 28 ms and were drawn after 1.34 s,
-    // when /api/desk/events answered
+    // when the event queue answered
     const errs = watchErrors(page);
-    await intercept(page);   // every route answered in its real shape, but the event queue
-    await page.route('**/api/desk/events**', () => {});   // the event queue has not answered
+    await intercept(page);   // every panel sent in its real shape, but the event queue
+    deskPanels().desk = () => undefined;   // the event queue has not been sent
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
@@ -441,13 +431,9 @@ test.describe('Trade Desk renders served values', () => {
   });
 
   test('Desk: the footer names the bars source only while this ticker has bars', async ({ page }) => {
-    await page.route('**/api/**', (route) => {
-      const url = route.request().url();
-      let body = { available: false };
-      if (url.includes('/api/bars1m')) body = url.includes('ticker=SPY') ? BARS : { bars: [] };
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    });
     await routeWatchlist(page, ['SPY', 'MU']);
+    await mockPriceSocket(page, [], [], undefined,
+      { bars: (key, params) => Object.assign({}, key === 'SPY' ? BARS : { bars: [] }, { tf: params.tf }) });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const bars = page.locator('#tdmFoot span', { hasText: 'Bars:' }).locator('b');
@@ -457,15 +443,15 @@ test.describe('Trade Desk renders served values', () => {
     await expect(bars).toHaveText('-');
   });
 
-  test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
-    await intercept(page);
-    const opened = [];
-    page.on('request', (r) => { if (r.url().includes('/api/changes')) opened.push(new URL(r.url()).searchParams.get('ticker')); });
+  test('Desk: selecting a ticker asks for its book on the socket', async ({ page }) => {
+    const sock = await intercept(page);
+    // the ticker of each subscribe that asks for the desk's book
+    const opened = () => sock.subscribes.filter((s) => s.panels['book:deskmap']).map((s) => s.ticker);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect.poll(() => opened).toContain('SPY');
+    await expect.poll(opened).toContain('SPY');
     await page.evaluate(() => window.EdShell.setTicker('MU'));
-    await expect.poll(() => opened).toContain('MU');
+    await expect.poll(opened).toContain('MU');
   });
 
   test('Market Map: the wheel over the price axis rescales price (as TradingView); over the plot it does not', async ({ page }) => {
@@ -504,13 +490,12 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart && window.EdTradeDeskMap.state().chart.livePrice)).toBe(SPOT);
   });
 
-  test('Market Map: the served last completed bar; a price tick moves the live LAST line and reads no bars', async ({ page }) => {
+  test('Market Map: the served last completed bar; a price tick moves the live LAST line and asks for no bars', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
-    const barReads = [];
-    page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
     const requests = watchRequests(page);
-    await deskSocket(page, []);            // the daemon answers what SPY is (its served key)
+    const sock = await deskSocket(page, []);            // the daemon answers what SPY is (its served key)
+    const barReads = sock.subscribes;           // each ask the page makes of the program, the bars among them
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.clock.install();                 // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -533,8 +518,12 @@ test.describe('Trade Desk renders served values', () => {
     await page.clock.runFor(1500);              // every page timer due in 1.5 s has run
     await requests.settled();                   // and every read those made
     expect(barReads.length).toBe(before);
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'liquidity' } })));
-    await expect.poll(() => barReads.length).toBeGreaterThan(before);
+    // a bar completes: the program sends the bars again, whole, and the chart shows the new bar
+    const last = BARS.bars[BARS.bars.length - 1];
+    deskPanels().bars = tfAt(Object.assign({}, BARS, { bars: BARS.bars.concat([Object.assign({}, last, { t: last.t + 1800 })]) }));
+    sock.changed('bars');
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length + 1);
+    expect(barReads.length).toBe(before);
     expect(errs).toEqual([]);
   });
 
@@ -546,8 +535,7 @@ test.describe('Trade Desk renders served values', () => {
     // 60 served 30-minute bars, each with its served change (0.25 each), so a click lands on one
     const bars = Array.from({ length: 60 }, (_v, i) => ({ t: 1790343000 - (59 - i) * 1800, o: 770 + i * 0.1,
       h: 771 + i * 0.1, l: 769 + i * 0.1, c: 770.25 + i * 0.1, v: 1000, chg: 0.25, chg_pct: 0.0325 }));
-    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, BARS, { bars: bars })) }));
+    deskPanels().bars = tfAt(Object.assign({}, BARS, { bars: bars }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Last completed bar');
@@ -561,19 +549,20 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Desk: the venue switch asks for one Schwab book at a time', async ({ page }) => {
     const errs = watchErrors(page);
-    await intercept(page);
-    const reads = [];
-    page.on('request', (r) => { if (/\/api\/(order-flow\/microstructure|desk\/events)/.test(r.url())) reads.push(r.url()); });
+    const sock = await intercept(page);
+    // the venue of each ask the desk made of the book and of the event queue, in order
+    const venues = (name) => sock.subscribes.map((s) => s.panels[name]).filter((p) => p !== undefined).map((p) => p.venue);
+    const asked = () => [venues('book:deskmap'), venues('desk')].map((v) => v[v.length - 1]);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); localStorage.removeItem('ed_book_venue'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const nyse = page.locator('#tdmCardLiq .bookvenue [data-venue="NYSE_BOOK"]');
     const nasdaq = page.locator('#tdmCardLiq .bookvenue [data-venue="NASDAQ_BOOK"]');
     await expect(nyse).toHaveClass(/on/);
-    await expect.poll(() => reads.filter((u) => u.includes('venue=NYSE_BOOK')).length).toBeGreaterThan(1);
+    await expect.poll(asked).toEqual(['NYSE_BOOK', 'NYSE_BOOK']);
     await nasdaq.click();
     await expect(nasdaq).toHaveClass(/on/);
-    await expect.poll(() => reads.filter((u) => u.includes('venue=NASDAQ_BOOK')).length).toBeGreaterThan(1);
-    expect(reads.every((u) => /venue=(NYSE|NASDAQ)_BOOK/.test(u))).toBe(true);
+    await expect.poll(asked).toEqual(['NASDAQ_BOOK', 'NASDAQ_BOOK']);
+    expect(venues('book:deskmap').concat(venues('desk')).every((v) => /^(NYSE|NASDAQ)_BOOK$/.test(v))).toBe(true);
     expect(errs).toEqual([]);
   });
 
@@ -613,19 +602,20 @@ test.describe('Trade Desk renders served values', () => {
   });
 
   test('Right Now: a failed read is named, never told as no book, no levels or no gamma', async ({ page }) => {
-    // the book read failing, and the levels and the per-strike panels not produced (the
-    // program's words on the socket): before, they read "No book yet", "No levels" and "no
-    // per-strike gamma for this symbol yet"
+    // the book, the levels and the per-strike panels not produced (the program's words on the
+    // socket): before, they read "No book yet", "No levels" and "no per-strike gamma for this
+    // symbol yet"
     const errs = watchErrors(page);
     const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
     const levelsWords = 'the program could not produce this panel: KeyError: \'SPY\'';
-    await intercept(page);   // every route answered in its real shape, then the three that fail
+    const bookWords = 'the program could not produce this panel: OSError: book read failed';
+    await intercept(page);   // every panel sent in its real shape, then the three that fail
     deskPanels().strikes = { failed: words };
     deskPanels().levels = { failed: levelsWords };
-    await page.route(/\/api\/order-flow\/microstructure\?/, (route) => route.fulfill({ status: 500, body: 'x' }));
+    deskPanels().book = { failed: bookWords };
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#tdBody')).toContainText('The book request failed');
+    await expect(page.locator('#tdBody')).toContainText(bookWords);
     await expect(page.locator('#tdBody')).toContainText(levelsWords);
     await expect(page.locator('#tdMigration')).toContainText(words);
     expect(errs).toEqual([]);
@@ -655,13 +645,10 @@ test.describe('Trade Desk renders served values', () => {
     const errs = watchErrors(page);
     const BOOK_TIME = 'Fri 09/25 06:59 PM CT';
     await intercept(page);
-    await page.route('**/api/order-flow/microstructure**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, MICRO, {
-        book_time_ct: BOOK_TIME, book_when_age_text: BOOK_TIME + ' · 1s',
-        top_outage: 'Schwab NASDAQ_BOOK feed down during RTH', top_feed_label: 'OFFLINE',
-      })),
-    }));
+    deskPanels().book = Object.assign({}, MICRO, {
+      book_time_ct: BOOK_TIME, book_when_age_text: BOOK_TIME + ' · 1s',
+      top_outage: 'Schwab NASDAQ_BOOK feed down during RTH', top_feed_label: 'OFFLINE',
+    });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -673,33 +660,24 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Right Now re-reads all five reads on every push', async ({ page }) => {
+  test('Right Now draws each of its panels again when the program sends it, and asks for each once', async ({ page }) => {
     const sock = await intercept(page);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); });
-    const reads = [];
-    page.on('request', (r) => {
-      const p = new URL(r.url()).pathname;
-      if (['/api/order-flow/microstructure', '/api/liquidity-snapshot'].includes(p)) reads.push(p);
-    });
-    const requests = watchRequests(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
     await expect(body).toContainText('Max pain 770.00');
-    const push = async (kind) => {
-      await requests.settled();                          // the reads before have landed
-      reads.length = 0;
-      await page.evaluate((k) => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: k } })), kind);
-      await expect.poll(() => reads.length).toBeGreaterThan(0);
-      await requests.settled();                          // every read that push makes has gone out
-      return [...new Set(reads)].sort();
-    };
-    // each read serves values the server derives at read time (the staleness of the book, the
-    // zones), so a push of any kind re-reads every one; FRAME's levels (each with its distance
-    // from the live price), CONFIRM's levels and the migration's rows are the levels, terrain
-    // and strikes panels the program sends on the socket when they change, the levels with
-    // each price row too
-    const all = ['/api/liquidity-snapshot', '/api/order-flow/microstructure'];
-    for (const kind of ['flow', 'liquidity', 'levels', 'chain']) expect(await push(kind)).toEqual(all);
+    const asked = sock.subscribes.length;
+    // DETECT's book and FRAME's zones, FRAME's levels (each with its distance from the live
+    // price), CONFIRM's levels and the migration's rows are the book, liquidity, levels, terrain
+    // and strikes panels the program sends on the socket when they change, the levels with each
+    // price row too
+    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book, { bid: 771.2 }) });
+    sock.changed('book');
+    await expect(body).toContainText('771.20 × 771.31');                  // DETECT's book
+    deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.map((z) =>
+      (z.zone_side === 'resistance' ? Object.assign({}, z, { zone_low: 772.5 }) : z)) });
+    sock.changed('liquidity');
+    await expect(body).toContainText('Resistance zone above at 772.50');  // FRAME's zones
     await expect(body).toContainText('Max pain 770.00');
     deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771 });
     sock.changed('terrain');
@@ -708,11 +686,11 @@ test.describe('Trade Desk renders served values', () => {
       (r.id === 'max_pain' ? Object.assign({}, r, { from_spot_text: '0.30 below spot' }) : r)) }));
     sock.changed('levels');
     await expect(body).toContainText('0.30 below spot');                  // FRAME's nearest level
+    expect(sock.subscribes.length).toBe(asked);                           // a panel sent is drawn, never asked for again
   });
 
   test('Right Now: a new scope\'s strike window stays drawn through the next push', async ({ page }) => {
-    const requests = watchRequests(page);
-    await intercept(page);
+    const sock = await intercept(page);
     const wider = Object.assign({}, STRIKES, { spot_strike: 791,
       today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
       views: { all: { centre: 791, max_abs: 900000, max_abs_with_prior: 900000 } } });
@@ -724,42 +702,41 @@ test.describe('Trade Desk renders served values', () => {
     await expect(strikes).toHaveText(['772', '771', '770']);
     await page.evaluate(() => window.EdShell.setScope('wider'));
     await expect(strikes).toHaveText(['792', '791', '790']);
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
-    await requests.settled();                                         // the push's reads have landed
+    for (const kind of ['strikes', 'liquidity']) sock.changed(kind);  // the program sends the panels again
+    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book, { bid: 771.2 }) });
+    sock.changed('book');
+    await expect(page.locator('#tdBody')).toContainText('771.20 × 771.31');   // the push has been drawn
     await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
   });
 
-  test('no panel stays marked busy once its read has landed', async ({ page }) => {
+  test('no panel stays marked busy once its panel has landed', async ({ page }) => {
     await intercept(page);
     const CONTRACT = 'SPY   261002C00768000';
+    deskPanels().contract = (key, params) => ({ available: false, contract: params.contract });
     await page.route('**/api/flow-contract', (route) => route.fulfill({ status: 200,
       contentType: 'application/json', body: JSON.stringify({ ok: true, contract: CONTRACT }) }));
-    // each panel and the read it makes; Flow reads only once a contract is chosen
-    const panels = [['trade-desk', 'right-now', '', '/api/order-flow/microstructure'],
-      ['options', 'gamma', 'heatmap', '/api/options/tape'],
-      ['options', 'flow', '', '/api/order-flow/options-microstructure'],
-      ['order-flow', 'book', '', '/api/order-flow/microstructure']];
-    for (const [ws, sub, view, read] of panels) {
+    // every panel the page takes, by its name, in the order it arrives
+    await page.addInitScript(() => { window.__landed = [];
+      document.addEventListener('ed:panel', (e) => window.__landed.push(e.detail.type)); });
+    // each view and the panel it shows; Flow asks only once a contract is chosen
+    const panels = [['trade-desk', 'right-now', '', 'book:desk'],
+      ['options', 'gamma', 'heatmap', 'tape'],
+      ['options', 'flow', '', 'contract'],
+      ['order-flow', 'book', '', 'book:dom']];
+    for (const [ws, sub, view, name] of panels) {
       await page.addInitScript(([w, s, v]) => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w);
         localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); }, [ws, sub, view]);
-      const landed = page.waitForResponse((r) => new URL(r.url()).pathname === read);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       if (sub === 'flow') await page.evaluate((c) => window.EdFlow.select(c), CONTRACT);
-      await landed;                                                  // the read began, and so set its flag, before this
+      await expect.poll(() => page.evaluate(() => window.__landed), sub + ' ' + view).toContain(name);   // the panel has landed
       expect(await page.locator('[aria-busy="true"]').count(), sub + ' ' + view).toBe(0);
     }
   });
 
-  test('Right Now: a read cut short by a venue switch never draws the old venue', async ({ page }) => {
-    const requests = watchRequests(page);
-    await intercept(page);
-    let slow = false, inFlight = 0, release;
-    const held = new Promise((r) => { release = r; });
-    await page.route('**/api/order-flow/microstructure?**', async (route) => {
-      const venue = new URL(route.request().url()).searchParams.get('venue');
-      if (slow && venue === 'NYSE_BOOK') { inFlight += 1; await held; }   // answered when the test says
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, MICRO, { venue: venue })) });
-    });
+  test('Right Now: the old venue\'s book arriving after a venue switch is never drawn',async ({ page }) => {
+    const sock = await intercept(page);
+    let held = false;   // NASDAQ's book is sent when the test says
+    deskPanels().book = (key, params) => (held && params.venue === 'NASDAQ_BOOK' ? undefined : Object.assign({}, MICRO, { venue: params.venue }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -770,13 +747,13 @@ test.describe('Trade Desk renders served values', () => {
       new MutationObserver(() => window.__draws.push((document.getElementById('tdBody').textContent.match(/\((NYSE|NASDAQ)_BOOK/) || [''])[0]))
         .observe(document.getElementById('tdBody'), { childList: true });
     });
-    slow = true;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
-    await expect.poll(() => inFlight).toBe(1);
-    await page.evaluate(() => document.querySelector('.bookvenue [data-venue="NASDAQ_BOOK"]').click());   // ... cut short
+    held = true;
+    await page.evaluate(() => document.querySelector('.bookvenue [data-venue="NASDAQ_BOOK"]').click());
+    await expect.poll(() => sock.subscribes.some((s) => s.panels && s.panels['book:desk'] && s.panels['book:desk'].venue === 'NASDAQ_BOOK')).toBe(true);
+    sock.frame('book:desk', 'SPY', Object.assign({}, MICRO, { venue: 'NYSE_BOOK' }));   // NYSE's, already on its way ...
+    held = false;
+    sock.changed('book');                                            // ... and NASDAQ's behind it
     await expect(body).toContainText('(NASDAQ_BOOK, depth 5)');
-    release();                                                       // the cut-short read's answer goes now
-    await requests.settled();                                        // and the page is done with it
     expect(await page.evaluate(() => window.__draws)).toEqual(['(NASDAQ_BOOK']);
   });
 
@@ -800,19 +777,12 @@ test.describe('Trade Desk renders served values', () => {
     expect(errors).toEqual([]);
   });
 
-  test('Right Now: a read in flight across a scope change draws only the new window', async ({ page }) => {
-    const requests = watchRequests(page);
-    await intercept(page);
+  test('Right Now: a panel landing after a scope change draws only the new window',async ({ page }) => {
+    const sock = await intercept(page);
     const wider = Object.assign({}, STRIKES, { spot_strike: 791,
       today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
       views: { all: { centre: 791, max_abs: 900000, max_abs_with_prior: 900000 } } });
     deskPanels().strikes = (key, params) => (params.scope === 'wider' ? wider : STRIKES);
-    let slow = false, inFlight = 0, release;
-    const held = new Promise((r) => { release = r; });
-    await page.route('**/api/liquidity-snapshot?**', async (route) => {
-      if (slow) { inFlight += 1; await held; }   // the push's read is in flight, answered when the test says ...
-      route.fallback();
-    });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_scope', 'auto'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -825,16 +795,14 @@ test.describe('Trade Desk renders served values', () => {
         window.__draws.push(ks + ' | ' + (meta ? meta.textContent : ''));
       }).observe(document.getElementById('tdBody'), { childList: true });
     });
-    slow = true;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
-    await expect.poll(() => inFlight).toBe(1);
-    slow = false;
-    await page.evaluate(() => window.EdShell.setScope('wider'));     // ... and the scope changes meanwhile
+    await page.evaluate(() => window.EdShell.setScope('wider'));     // the scope changes ...
     await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['792', '791', '790']);
-    release();                                                       // the held read's answer goes now
-    await requests.settled();                                        // and the page is done with it
+    deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.map((z) =>
+      (z.zone_side === 'resistance' ? Object.assign({}, z, { zone_low: 772.5 }) : z)) });
+    sock.changed('liquidity');                                       // ... and a panel of another kind lands after it
+    await expect(page.locator('#tdBody')).toContainText('Resistance zone above at 772.50');
     // once the new window is drawn, every later draw is the new window: none goes back to the
-    // old one, the held read's included
+    // old one, the later panel's included
     const draws = await page.evaluate(() => window.__draws);
     const first = draws.indexOf('792,791,790 | spot 771.30');
     expect(first).toBeGreaterThan(-1);
@@ -845,20 +813,12 @@ test.describe('Trade Desk renders served values', () => {
     const errs = watchErrors(page);
     const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };
     const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', };
-    await page.route('**/api/**', (route) => {
-      const url = route.request().url();
-      let body = { available: false };
-      if (url.includes('/api/desk/events')) body = EVENTS;
-      else if (url.includes('/api/forces')) body = { ticker: 'SPY', available: true, doi_below: 1200, doi_above: null,
-        dex_below_dollars: 5e8, dex_above_dollars: null, charm_below: 0.0123, charm_above: null, older_et_date: '2026-10-07' };
-      else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
-      else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
-      else if (url.includes('/api/bars1m')) body = BARS;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    });
     await routeWatchlist(page, ['SPY']);
     await mockPriceSocket(page, [], [], undefined,
-      { terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' }),
+      { desk: tfAt(EVENTS), book: MICRO, liquidity: LIQ, bars: tfAt(BARS),
+        forces: { ticker: 'SPY', available: true, doi_below: 1200, doi_above: null,
+          dex_below_dollars: 5e8, dex_above_dollars: null, charm_below: 0.0123, charm_above: null, older_et_date: '2026-10-07' },
+        terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' }),
         strikes: Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: null } }),
         levels: levelsAt(Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),
           by_distance: ['call_wall', 'max_pain', 'PDH', 'grc'] })) });
@@ -882,17 +842,9 @@ test.describe('Trade Desk renders served values', () => {
     // server sent them before) draws exactly the same chart as one without them.
     async function chartImage(terrain) {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
-      await page.route('**/api/**', (route) => {
-        const url = route.request().url();
-        let body = { available: false };
-        if (url.includes('/api/desk/events')) body = EVENTS;
-        else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
-        else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
-        else if (url.includes('/api/bars1m')) body = BARS;
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-      });
       await routeWatchlist(page, ['SPY']);
-      await mockPriceSocket(page, [], [], undefined, { terrain: terrain, strikes: STRIKES, levels: levelsAt(LEVELS) });
+      await mockPriceSocket(page, [], [], undefined, { terrain: terrain, strikes: STRIKES, levels: levelsAt(LEVELS),
+        desk: tfAt(EVENTS), book: MICRO, liquidity: LIQ, bars: tfAt(BARS), forces: { available: false } });
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('#tdmCardOpt')).toContainText('775.00');   // the terrain panel has landed
       await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart && window.EdTradeDeskMap.state().chart.bars)).toBeGreaterThan(0);

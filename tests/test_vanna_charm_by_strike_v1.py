@@ -1,8 +1,8 @@
-"""The Vanna and Charm panels the page's socket sends (server.vanna_by_strike, charm_by_strike).
+"""The Vanna and Charm panels the page's socket sends (server.strike_bars).
 
 Operator field-inventory audit, 2026-09-13: both wrap ALREADY-canonical, already-tested faucets --
 math_exposure_core.compute_exposures_by_strike's own call_vanna/put_vanna (RC-211's exact
-BS-vanna faucet) and math_levels.compute_charm_by_strike (the same function /api/forces's
+BS-vanna faucet) and math_levels.compute_charm_by_strike (the same function the forces panel's
 charm_below/charm_above already sum) -- read off the snapshot _publish_levels last
 published (the vanna_rows/charm_rows of the PublishedLevels record it holds),
 zero extra vendor calls or pricing. These tests
@@ -65,13 +65,13 @@ def teardown_function(_fn):
 
 
 def test_vanna_by_strike_unavailable_with_no_cached_chain():
-    body = server.vanna_by_strike(TK, time_et.now(), AUTO)
+    body = server.strike_bars("vanna_rows", TK, time_et.now(), AUTO)
     assert body["available"] is False
     assert body["reason"] == "no levels published for this ticker yet"
 
 
 def test_charm_by_strike_unavailable_with_no_cached_chain():
-    body = server.charm_by_strike(TK, time_et.now(), AUTO)
+    body = server.strike_bars("charm_rows", TK, time_et.now(), AUTO)
     assert body["available"] is False
     assert body["reason"] == "no levels published for this ticker yet"
 
@@ -90,8 +90,8 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
 def test_a_window_the_panel_cannot_draw_is_unavailable_with_its_words(params, words):
     """A page's parameters the route refused (422) are the panel's reason, never a default."""
     _put_live_chain()
-    for producer in (server.vanna_by_strike, server.charm_by_strike):
-        body = producer(TK, time_et.now(), params)
+    for rows in ("vanna_rows", "charm_rows"):
+        body = server.strike_bars(rows, TK, time_et.now(), params)
         assert body == {"ticker": TK, "available": False, "reason": words}
 
 
@@ -101,7 +101,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time_et.now())
     mark_feed_live(TK)
 
-    body = server.vanna_by_strike(TK, time_et.now(), ALL)
+    body = server.strike_bars("vanna_rows", TK, time_et.now(), ALL)
     assert body["available"] is True
     # spot is the live price (the header's own); the rows were computed at priced_at_spot
     assert body["spot"] == _QUOTE["native"]["LAST_PRICE"] and body["priced_at_spot"] == _SPOT
@@ -123,7 +123,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
 
 def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_strike():
     _put_live_chain()
-    body = server.charm_by_strike(TK, time_et.now(), ALL)
+    body = server.strike_bars("charm_rows", TK, time_et.now(), ALL)
     assert body["available"] is True
     rows = {r[0]: r[1] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"
@@ -160,8 +160,8 @@ def build_e2e_panels() -> dict:
         return json.loads(
             json.dumps(
                 {
-                    "vanna": server.vanna_by_strike(TK, at, AUTO),
-                    "charm": server.charm_by_strike(TK, at, AUTO),
+                    "vanna": server.strike_bars("vanna_rows", TK, at, AUTO),
+                    "charm": server.strike_bars("charm_rows", TK, at, AUTO),
                 }
             )
         )
@@ -175,7 +175,7 @@ def test_the_browser_tests_panels_are_the_producers_own():
 
 def test_vanna_and_charm_rows_are_sorted_by_strike_ascending():
     _put_live_chain()
-    v_rows = server.vanna_by_strike(TK, time_et.now(), AUTO)["rows"]
-    c_rows = server.charm_by_strike(TK, time_et.now(), AUTO)["rows"]
+    v_rows = server.strike_bars("vanna_rows", TK, time_et.now(), AUTO)["rows"]
+    c_rows = server.strike_bars("charm_rows", TK, time_et.now(), AUTO)["rows"]
     assert [r[0] for r in v_rows] == sorted(r[0] for r in v_rows)
     assert [r[0] for r in c_rows] == sorted(r[0] for r in c_rows)

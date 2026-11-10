@@ -24,7 +24,7 @@
       { id: 'desk', label: 'Desk' }, { id: 'confluence', label: 'Confluence Matrix' },
       { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
       { id: 'expression', label: 'Expression', state: 'na' } ], views: Object.create(null) },
-    // Book/DOM (/api/order-flow/microstructure) and Heatmap are wired; the rest stay `na`
+    // Book/DOM (the book panel) and Heatmap are wired; the rest stay `na`
     // (a labelled placeholder) until they have their own real wiring.
     'order-flow': { title: 'ORDER FLOW', subs: [
       { id: 'book', label: 'Book / DOM' }, { id: 'heatmap', label: 'Heatmap' },
@@ -48,7 +48,7 @@
         return { gamma: gammaViews, dex: gammaViews, oi: gammaViews };
       })() },
     // Map and Levels are wired: Map is a visual liquidity map, not a table --
-    // /api/liquidity-snapshot's own confluence-scored zones on a price axis; Levels reuses
+    // the liquidity panel's own confluence-scored zones on a price axis; Levels reuses
     // ed-gamma-levels.js's levels renderer verbatim. The rest stay `na` until they have
     // their own real wiring.
     'liquidity': { title: 'LIQUIDITY', subs: [
@@ -594,7 +594,6 @@
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     // this ticker's list is not received yet (the socket sends it on the subscribe below): '-'
     paintExpiries({ expiries: null, labels: null, dte_text: null, reason: '-' });
-    openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     // just asked for this ticker: WAITING (not OFFLINE) until PRICE_SILENCE_MS passes with no row
     _priceConnecting = true; clearTimeout(_priceConnectTimer);
     _priceConnectTimer = setTimeout(function () { _priceConnecting = false; }, PRICE_SILENCE_MS);
@@ -821,13 +820,16 @@
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
       if (msg && msg.type === 'feed') {
         paintRecord(msg.feed && msg.feed.writer);
+        if (msg.feed) paintSession(msg.feed.session, '');
+        else paintSession(null, 'session unknown: the daemon sent no status');
         ingestWatchlist(msg.feed);
         if (msg.feed && typeof msg.feed.ts === 'number') { _serverNow = msg.feed.ts; tickClock(); }
       }
       if (msg && msg.type !== 'feed' && msg.type !== 'quotes') {
-        // a panel: one for a ticker the page has left, or of a panel it no longer shows, is not
-        // drawn
+        // a panel: one for a ticker the page has left, of a panel it no longer shows, or of a
+        // venue it no longer asks, is not drawn
         if (msg.ticker !== state.key || !Object.prototype.hasOwnProperty.call(_panels, msg.type)) return;
+        if (msg.venue != null && msg.venue !== _panels[msg.type].venue) return;
         // a panel the program could not produce carries why (`failed`): its module draws the words
         if (msg.type !== 'expiries') emit('ed:panel', msg);
         else if (msg.failed != null) paintExpiries({ expiries: null, labels: null, dte_text: null, reason: msg.failed });
@@ -840,7 +842,10 @@
       msg.rows.forEach(ingestPriceRow);
     };
     ws.onclose = function () {
-      if (_priceWs === ws) { _priceWs = null; _priceUp = false; schedulePriceReconnect(); }
+      if (_priceWs !== ws) return;
+      _priceWs = null; _priceUp = false;
+      paintSession(null, 'session unknown: the console push is down');
+      schedulePriceReconnect();
     };
     ws.onerror = function () { ws.close(); };
   }
@@ -900,24 +905,8 @@
     if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
   }
 
-  // ---- the console's push: which of this ticker's values changed, and the session label.
-  // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
-  var _changes = null;
-  function openChangeStream(tk) {
-    if (_changes) _changes.close();
-    _changes = null;
-    if (typeof EventSource === 'undefined') return;
-    try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
-    catch (e) { return; }
-    _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
-    _changes.addEventListener('session', function (ev) { paintSession(ev.data, ''); });
-    ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
-      _changes.addEventListener(kind, function () { emit('ed:changed', { kind: kind }); });
-    });
-  }
-
   // market session (RTH / Pre-Market / After-Hours / Closed, or Unknown while Schwab's /markets
-  // answer for today is not held), pushed with the changes
+  // answer for today is not held), sent with each beat of the socket
   // label: one of time_et's five session words, or null while the console's push is down
   function paintSession(label, why) {
     var el = document.getElementById('hSession'); if (!el) return;

@@ -1,12 +1,13 @@
 /*
- * Confluence Matrix. The page draws /api/confluence and computes nothing. A priced-book
- * update (the `levels` notice, and a new `chain`) redraws the table and keeps the expiry
- * the operator picked. A flow notice does not.
+ * Confluence Matrix. The page draws the `confluence` panel on its socket and computes nothing.
+ * The panel sent again (the chain or the levels changed) redraws the table and keeps the expiry
+ * the operator picked.
  *
- * Real data: /api/confluence as the real code served it on MRVL's full chain captured
+ * Real data: the confluence body as the real code served it on MRVL's full chain captured
  * 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_confluence_payloads_2026_10_07.json).
  */
 const { test, expect } = require('@playwright/test');
+const { mockPriceSocket } = require('./fixtures/price_socket');
 const FX = require('../fixtures/real_mrvl_confluence_payloads_2026_10_07.json');
 
 const FRONT = '2026-10-09';
@@ -29,10 +30,9 @@ test('a cell shades by its value against its column peak, in the theme heat colo
   // the straight proportion: the theme's zero toward its negative colour by |value| / peak,
   // worked out here from the served numbers and the page's own colour tokens
   const body = served(FRONT);
-  await page.route('**/api/confluence**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) }));
+  await mockPriceSocket(page, [], [], undefined, { confluence: body });
   await openMatrix(page);
-  const i = body.rows.findIndex((r, n) => n > 0 && r.net_gex != null && r.net_gex < 0);
+  const i =body.rows.findIndex((r, n) => n > 0 && r.net_gex != null && r.net_gex < 0);
   expect(i).toBeGreaterThan(0);
   const v = body.rows[i].net_gex, peak = body.peaks.net_gex;
   const cell = page.locator('#cmRows tr[data-i="' + i + '"] td').nth(3);   // strike, distance, score, net
@@ -49,14 +49,13 @@ test('a cell shades by its value against its column peak, in the theme heat colo
 });
 
 test('a price that has stopped marks the spot not live with its time and age', async ({ page }) => {
-  // AGENTS rule 5: /api/confluence as the real code serves it on SPY's 2026-10-22 close
+  // AGENTS rule 5: the confluence panel as the real code serves it on SPY's 2026-10-22 close
   // publication, its 16:39 print the last price and the daemon's connection ended, read at 18:00
-  // (tests/test_level_crosses_wire.py keeps this file equal to the route's answer)
+  // (tests/test_level_crosses_wire.py keeps this file equal to the program's answer)
   const STOPPED = require('../fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json');
   const errs = [];
   page.on('pageerror', (e) => errs.push(e.message));
-  await page.route('**/api/confluence**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STOPPED) }));
+  await mockPriceSocket(page, [], [], undefined, { confluence: STOPPED });
   await page.addInitScript(() => {
     localStorage.setItem('ed_ticker', 'SPY');
     localStorage.setItem('ed_ws', 'trade-desk');
@@ -76,11 +75,12 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   page.on('console', (m) => {
     if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text());
   });
-  await page.route('**/api/confluence**', (route) => {
-    const asked = new URL(route.request().url()).searchParams.get('expiry');
-    expiries.push(asked);
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(asked)) });
-  });
+  // the expiry each confluence panel sent was asked with (none: the program's front one)
+  const sock = await mockPriceSocket(page, [], [], undefined, { confluence: (key, params) => {
+    expiries.push(params.expiry);
+    return served(params.expiry);
+  } });
+  const confluenceAsks = () => sock.subscribes.map((s) => JSON.stringify(s.panels.confluence));
   await openMatrix(page);
   const body = served(FRONT);
   const rows = body.rows;
@@ -116,54 +116,53 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   await expect(page.locator('#cmDetail')).toContainText('$ per 1% move');
   await expect(page.locator('#cmDetail')).toContainText('delta-shares / day');
 
-  await page.evaluate(() => {
-    document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
-  });
+  // the panel sent again: the front expiry stays (the page asked none, the program's front one)
+  sock.changed('confluence');
   await expect.poll(() => expiries.length).toBe(opened + 1);
-  expect(expiries[expiries.length - 1]).toBe(FRONT);
+  expect(expiries[expiries.length - 1]).toBeUndefined();
+  await expect(page.locator('#cmExp')).toHaveValue(FRONT);
   await expect(page.locator('#cmDetail')).toContainText(first.label + ' ' + first.text);
 
   await page.locator('#cmExp').selectOption(NEXT);
   await expect.poll(() => expiries[expiries.length - 1]).toBe(NEXT);
   const picked = expiries.length;
 
-  await page.evaluate(() => {
-    document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } }));
-  });
+  sock.changed('confluence');
   await expect.poll(() => expiries.length).toBe(picked + 1);
   expect(expiries[expiries.length - 1]).toBe(NEXT);
+  await expect(page.locator('#cmExp')).toHaveValue(NEXT);
 
+  // the view opened again asks for the same panel of the same expiry: nothing new is asked or sent
+  const asks = confluenceAsks();
+  expect(asks[asks.length - 1]).toBe(JSON.stringify({ expiry: NEXT }));
   await page.getByRole('button', { name: 'Confluence Matrix' }).click();
-  await expect.poll(() => expiries.length).toBe(picked + 2);
-  expect(expiries[expiries.length - 1]).toBe(NEXT);
-
-  await page.evaluate(() => {
-    document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } }));
-  });
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
-  expect(expiries.length).toBe(picked + 2);
+  expect(confluenceAsks()).toEqual(asks);
+  expect(expiries.length).toBe(picked + 1);
+  await expect(page.locator('#cmExp')).toHaveValue(NEXT);
   expect(errs).toEqual([]);
 });
 
 test('a passed expiry is replaced by the one the server returns', async ({ page }) => {
   const asked = [];
   let afterItPassed = false;
-  await page.route('**/api/confluence**', (route) => {
-    asked.push(new URL(route.request().url()).searchParams.get('expiry'));
-    const body = afterItPassed ? FX.front_passed : served(FRONT);
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
+  const sock = await mockPriceSocket(page, [], [], undefined, { confluence: (key, params) => {
+    asked.push(params.expiry);
+    return afterItPassed ? FX.front_passed : served(params.expiry);
+  } });
   await openMatrix(page);
   await expect(page.locator('#cmBody')).toContainText(served(FRONT).rows[0].score_text);
+  // the operator's own pick of the front expiry, so the page asks for it by name
+  await page.locator('#cmExp').selectOption(NEXT);
+  await expect.poll(() => asked[asked.length - 1]).toBe(NEXT);
+  await page.locator('#cmExp').selectOption(FRONT);
+  await expect.poll(() => asked[asked.length - 1]).toBe(FRONT);
+  await expect(page.locator('#cmExp')).toHaveValue(FRONT);
   afterItPassed = true;
   const before = asked.length;
-  await page.evaluate(() => {
-    document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
-  });
+  sock.changed('confluence');
   await expect.poll(() => asked.length).toBe(before + 1);
   expect(asked[asked.length - 1]).toBe(FRONT);
-  await page.evaluate(() => {
-    document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } }));
-  });
-  await expect.poll(() => asked[asked.length - 1]).toBe(FX.front_passed.expiry);
+  await expect(page.locator('#cmExp')).toHaveValue(FX.front_passed.expiry);
+  await expect(page.locator('#cmExp option[value="' + FRONT + '"]')).toHaveCount(0);
 });

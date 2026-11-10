@@ -38,14 +38,10 @@ const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11'
 const flowPosts = [];
 
 async function intercept(page) {
-  await page.route('**/api/**', (route, request) => {
-    const url = request.url();
-    if (url.includes('/api/flow-contract') && request.method() === 'POST') {
-      const contract = JSON.parse(request.postData()).contract;
-      flowPosts.push(contract);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: contract }) });
-    }
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ available: false }) });
+  await page.route('**/api/flow-contract', (route, request) => {
+    const contract = JSON.parse(request.postData()).contract;
+    flowPosts.push(contract);
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: contract }) });
   });
   await routeWatchlist(page, ['SPY']);
   panels = chainPanels(() => CHAIN);
@@ -58,6 +54,7 @@ let panels, sock;
 function chainPanels(chainOf) {
   return {
     chain: (key, params) => served(chainOf(params.expiry)),
+    bars: { available: false }, tape: { available: false },
     terrain: { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' },
     strikes: { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] }, views: { all: { centre: 100, note: null, max_abs: 1 } } },
     surface: { ticker: 'SPY', available: true, spot: 100,

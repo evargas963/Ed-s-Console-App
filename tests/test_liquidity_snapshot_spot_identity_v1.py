@@ -1,15 +1,12 @@
-"""/api/liquidity-snapshot: spot_used_for_scoring never carries a VWAP value.
+"""The liquidity panel: spot_used_for_scoring never carries a VWAP value.
 
-And an HTTPException raised on the route's path keeps its own status code. Real data through the
-real route: Schwab's SPY 1-minute bars of Thursday 2026-10-01 and Friday 10-02 as the capture
-daemon recorded them (each minute's newest receipt), the levels published as the bar writer
-publishes them, valued on Friday 2026-10-02 at 15:00 ET. Stand-in: ticker ZZLIQ carries the SPY
-bars.
+Real data through the real producer: Schwab's SPY 1-minute bars of Thursday 2026-10-01 and
+Friday 10-02 as the capture daemon recorded them (each minute's newest receipt), the levels
+published as the bar writer publishes them, valued on Friday 2026-10-02 at 15:00 ET. Stand-in:
+ticker ZZLIQ carries the SPY bars.
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 
@@ -20,8 +17,11 @@ from tests.feed_live_helper import daemon_status
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
 
 
-def _body(resp):
-    return json.loads(resp.body) if hasattr(resp, "body") else resp
+def test_a_ticker_with_no_levels_published_gets_no_zones_and_the_reason():
+    """Before the bar writer publishes a ticker's levels, the panel says so and draws no zone."""
+    body = srv.liquidity_snapshot("ZZNOLV", FRIDAY)
+    assert (body["available"], body["zones"]) == (False, [])
+    assert body["reason"] == srv.NO_PRICE_LEVELS_REASON
 
 
 @pytest.mark.usefixtures("published")
@@ -30,7 +30,7 @@ def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached():
 
     Absence stays absence. Schwab has sent no price for the ticker here.
     """
-    body = _body(srv.liquidity_snapshot(TK, FRIDAY))
+    body = srv.liquidity_snapshot(TK, FRIDAY)
     vwap = srv.canonical_price_level_snapshot(TK, FRIDAY).price("VWAP")
     assert vwap is not None, "the session's VWAP exists to be misused"
     assert body["spot_used_for_scoring"] is None
@@ -43,7 +43,7 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path()
 
     Not a crash, not a fabricated distance, never VWAP standing in for the spot.
     """
-    body = _body(srv.liquidity_snapshot(TK, FRIDAY))
+    body = srv.liquidity_snapshot(TK, FRIDAY)
     assert body["zones"]
     lows = [z["zone_low"] for z in body["zones"]]
     assert lows == sorted(lows), "with no spot the zones are listed by price, lowest first"
@@ -68,17 +68,7 @@ def test_spot_used_for_scoring_reports_the_real_live_spot_when_available():
         daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=at)
-    body = _body(srv.liquidity_snapshot(TK, FRIDAY))
+    body = srv.liquidity_snapshot(TK, FRIDAY)
     assert body["spot_used_for_scoring"] == last
     assert "spot_estimate_vwap_fallback" not in body
     assert body["snapshot_type"] == SnapshotType.LIVE.value
-
-
-def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500():
-    """An HTTPException on this route's path keeps its own status, not a bare 500.
-
-    A blank ticker is refused by the snapshot read with 400.
-    """
-    resp = srv.liquidity_snapshot("", FRIDAY)
-    assert resp.status_code == 400
-    assert json.loads(resp.body)["error"] == "ticker is required"

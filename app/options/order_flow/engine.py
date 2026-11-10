@@ -232,7 +232,7 @@ def _resolve_quote_mark(data: dict) -> float | None:
 # ONE canonical book path. `_extract_canonical_book` walks + validates + SORTS the live
 # book EXACTLY ONCE into a normalized state; every metric is derived from that single
 # result. Nothing re-walks or re-sums the raw book. `compute_book_microstructure` memoizes the
-# structural state per (ticker, BOOK_TIME), so `/api/order-flow/microstructure` and the engine
+# structural state per (ticker, BOOK_TIME), so the book panel (`server.book`) and the engine
 # SERIALIZE the same computed state rather than recomputing it independently.
 # Every field is classified NATIVE (a Schwab wire field), DERIVED (a deterministic function of
 # NATIVE fields), or PROXY (temporal inference). STATIC book state only — no aggressor/CVD/
@@ -521,7 +521,7 @@ def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
 def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None = None) -> dict:
     """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
 
-    The ONE producer the engine and the `/api/order-flow/microstructure` route both read.
+    The ONE producer the engine and the book panel (`server.book`) both read.
     `data.content`
     carries the live streaming book + top-of-book
     (app.options.order_flow.state.get_content_for_symbol); `data.exchange_quote_ts` (optional) is

@@ -869,7 +869,7 @@
         <div class="sub-pane" data-sub-pane="flow">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="flTicker">-</span><span class="t">Options Flow</span></div>
-            <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from /api/order-flow/options-microstructure (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
+            <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from the contract panel (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
           </div>
         </div>
 
@@ -887,7 +887,7 @@
         </div>
 
         <!-- OPTIONS / CHARM subview — dealer charm exposure by strike, the SAME faucet
-             /api/forces's charm_below/charm_above already sum (math_levels.compute_charm_by_strike). -->
+             the forces panel's charm_below/charm_above already sum (math_levels.compute_charm_by_strike). -->
         <div class="sub-pane" data-sub-pane="charm">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="chmTicker">-</span><span class="t">Charm by Strike</span><span class="sub">dealer net charm · Δ-shares/day · agg all expiries</span>
@@ -948,7 +948,7 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="tdTicker">-</span><span class="t">Right Now</span><span class="sub">detect · frame · confirm — one page, zero new math</span>
               <div class="r"><span class="prov derived">SYNTHESIS</span></div></div>
-            <div class="panel-b" id="tdBody"><div class="placeholder"><div class="sm">Assembles /api/order-flow/microstructure, /api/liquidity-snapshot and the levels pushed on the page's socket — the same canonical answers Order Flow, Liquidity and Options already read. Computes nothing new.</div></div></div>
+            <div class="panel-b" id="tdBody"><div class="placeholder"><div class="sm">Assembles the book, liquidity and levels panels pushed on the page's socket — the same canonical answers Order Flow, Liquidity and Options already read. Computes nothing new.</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="plan">
@@ -967,7 +967,7 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="obTicker">-</span><span class="t">Book / DOM</span><span class="sub">top-of-book · depth · imbalance</span>
               <div class="r"><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></span></div></div>
-            <div class="panel-b" id="obBody"><div class="placeholder"><div class="sm">Real L2 book microstructure from /api/order-flow/microstructure — top-of-book/spread/depth/imbalance NATIVE/DERIVED; aggressor side deferred (Schwab exposes no native field).</div></div></div>
+            <div class="panel-b" id="obBody"><div class="placeholder"><div class="sm">Real L2 book microstructure from the book panel — top-of-book/spread/depth/imbalance NATIVE/DERIVED; aggressor side deferred (Schwab exposes no native field).</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="heatmap">
@@ -982,7 +982,7 @@
                 </div>
                 <span class="prov native">STREAM_BOOK_RAW</span>
               </div></div>
-            <div class="panel-b" id="ofhBody"><div class="placeholder"><div class="sm">Historical book depth from /api/order-flow/book-heatmap — real captured NASDAQ/NYSE book ticks binned by time x price, green=bid-dominant/red=ask-dominant, brightness=size. Never interpolated.</div></div></div>
+            <div class="panel-b" id="ofhBody"><div class="placeholder"><div class="sm">Historical book depth from the bookmap panel — real captured NASDAQ/NYSE book ticks binned by time x price, green=bid-dominant/red=ask-dominant, brightness=size. Never interpolated.</div></div></div>
           </div>
         </div>
       </section>
@@ -995,7 +995,7 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="liqmTicker">-</span><span class="t">Liquidity Map</span><span class="sub">confluence-scored zones · reference levels · spot</span>
               <div class="r"><span class="prov derived">LIQUIDITY SNAPSHOT</span></div></div>
-            <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from /api/liquidity-snapshot's own confluence-scored support/resistance zones, plus prior-day/overnight reference levels and spot — never a fabricated line.</div></div></div>
+            <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from the liquidity panel's own confluence-scored support/resistance zones, plus prior-day/overnight reference levels and spot — never a fabricated line.</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="levels">
@@ -1034,7 +1034,6 @@
   </div>
 </aside>
 
-<script src="/static/js/l1_sse_guards.js" defer></script>
 <script src="/static/js/ed-core.js" defer></script>
 <script src="/static/js/ed-gamma.js" defer></script>
 <script src="/static/js/ed-gamma-panels.js" defer></script>

@@ -10,7 +10,6 @@ SPY's LEVELONE_EQUITIES prints after it, in the order the daemon received them: 
 
 from __future__ import annotations
 
-import asyncio
 import json
 import sqlite3
 import threading
@@ -20,7 +19,6 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
-import push_changes
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
@@ -29,6 +27,7 @@ from option_contract import read_chain
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import clock_from, daemon_status
+from tests.page_on_socket import pages
 from tests.real_chains import (
     SPY_AFTER_HOURS_PRINT,
     SPY_CLOSE,
@@ -188,7 +187,7 @@ def test_a_price_that_reaches_a_level_crosses_it_and_one_that_leaves_it_does_not
 
 
 def test_the_levels_side_of_a_print_on_a_level_is_at():
-    """/api/levels at the 16:33 print (764.00): the put wall 764 is AT the price, exactly."""
+    """The levels at the 16:33 print (764.00): the put wall 764 is AT the price, exactly."""
     _forget()
     _publish_close()
     lmp.record_from_level_one_equity(
@@ -216,10 +215,10 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
     trade_ts = ofs.price_row("SPY", clock())["trade_ts"]
     try:
-        live = server.terrain("SPY", clock(), {})
+        live = server.terrain("SPY", clock())
         lmp.record_feed_down()
         at = clock()
-        down = server.terrain("SPY", at, {})
+        down = server.terrain("SPY", at)
         levels = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
         matrix = server.confluence_payload(
@@ -261,26 +260,18 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
     _publish_close(now=clock())
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
 
-    async def told():
-        push_changes.bind(asyncio.get_running_loop())
-        page = push_changes.subscribe("SPY")
-        try:
-            seen = []
+    seen = []
+    try:
+        with pages() as served:
+            page = served.open("SPY", "levels")
             for down in (False, True, True):
                 if down:
                     lmp.record_feed_down()
                 server.refresh_not_live_pages(clock())
-                seen.append(await push_changes.next_changes(page, 0.3))
-            return seen
-        finally:
-            push_changes.unsubscribe(page)
-            push_changes.bind(None)
-
-    try:
-        seen = asyncio.run(told())
+                seen.append(served.told(page, 0.3))
     finally:
         _forget()
-    assert seen == [{push_changes.LEVELS}, {push_changes.LEVELS}, {push_changes.LEVELS}]
+    assert seen == [{"levels"}, {"levels"}, {"levels"}]
 
 
 #: the answers the browser tests render, each kept equal to the route's own (stopped_price_answers)
@@ -300,7 +291,7 @@ PRICE_MARKED = ("levels", "confluence", "terrain")
 def stopped_price_answers() -> dict:
     """Return the answers the browser tests render (STOPPED_FIXTURES), as the real code serves them.
 
-    /api/levels, /api/confluence (the 2026-10-22 expiry), the terrain and strikes panels
+    The levels, confluence (the 2026-10-22 expiry), terrain and strikes panels
     and the heatmap's surface as the real code serves them on SPY's 2026-10-22 close
     publication with SPY's 16:39 print (773.1269) as the last price and the daemon's connection
     ended, read at the 18:00 print's instant; and the strikes panel and the
@@ -327,7 +318,7 @@ def stopped_price_answers() -> dict:
         bodies = {
             "levels": server.levels_payload("SPY", "1", at),
             "confluence": server.confluence_payload("SPY", "2026-10-22", at),
-            "terrain": server.terrain("SPY", at.timestamp(), {}),
+            "terrain": server.terrain("SPY", at.timestamp()),
             "strikes": server.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
             "surface": surface,
             "strikes_next_close": server.terrain_strikes_payload(

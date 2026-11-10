@@ -1,4 +1,4 @@
-"""/api/chain serves the ladder the Chain view draws (terrain_engine.chain_ladder).
+"""The chain panel serves the ladder the Chain view draws (terrain_engine.chain_ladder).
 
 Strikes high to low, one row per listed contract, in-the-money flags against the live spot. Real
 CRWD chain.
@@ -18,7 +18,7 @@ FX = json.loads(
 
 
 def chain_ladder(raw, spot):
-    """Return the ladder /api/chain serves for the raw contracts.
+    """Return the ladder the chain panel serves for the raw contracts.
 
     Each read once, shown by chain_row.
     """

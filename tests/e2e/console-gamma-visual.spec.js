@@ -58,14 +58,8 @@ const CHAIN = { ticker: '$SPX', spot: SPOT, expiry: '2026-09-11', status: 'ok',
     { putCall: 'PUT', strikePrice: 5000, openInterest: 9800, totalVolume: 4100, gamma: 0.0019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' } ] };
 
 async function intercept(page) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/bars1m')) body = BARS;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
   await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, EXPS.map((e) => e.expiry), Object.fromEntries(EXPS.map((e) => [e.expiry, e.dte])), { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE,
+  await pushExpiries(page, EXPS.map((e) => e.expiry), Object.fromEntries(EXPS.map((e) => [e.expiry, e.dte])), { bars: BARS, terrain: TERRAIN, strikes: STRIKES, surface: SURFACE,
     chain: chainAt(CHAIN) });
 }
 

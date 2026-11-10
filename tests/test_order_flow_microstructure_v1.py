@@ -347,7 +347,7 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
 
 
 def test_route_serializes_carried_state_without_recomputing():
-    """The /api/order-flow/microstructure route and the engine call the SAME producer.
+    """The book panel and the engine call the SAME producer.
 
     Once the
     structural state is computed for (ticker, BOOK_TIME) it is memoized; a second serialization of
@@ -632,7 +632,7 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
 
 
 def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
-    """/api/order-flow/microstructure takes the equity top of book from the daemon's price row.
+    """The book panel takes the equity top of book from the daemon's price row.
 
     The price row is the header's: the newest quote Schwab sent, its feed live (a feed down:
     docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py). Stand-in quote (named): bid

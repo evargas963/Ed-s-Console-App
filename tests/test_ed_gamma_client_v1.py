@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 import server as srv
+from app.market_data.schwab.streaming.live_ui import Asked
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -37,7 +38,10 @@ def test_ed_gamma_node_script():
 def test_gamma_surface_is_the_sockets_panel_and_no_route():
     paths = [getattr(route, "path", "") for route in srv.app.routes if hasattr(route, "path")]
     assert "/api/options/gamma-surface" not in paths
-    assert srv.PAGE_PANELS["surface"] is srv.gamma_surface
+    asked = Asked("ZZNOSURFACE", 0.0, {"scope": "auto", "centre": None, "shift": 0})
+    assert srv.PAGE_PANELS["surface"](asked) == srv.gamma_surface(
+        asked.ticker, asked.now, asked.params
+    )
     # /console converged into `/` here (/console cutover, operator directive 2026-09-14) --
     # the dev route is gone, not aliased; the new console is served at `/` (see root()).
     assert "/" in paths

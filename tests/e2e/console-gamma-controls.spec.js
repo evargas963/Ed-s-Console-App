@@ -35,14 +35,8 @@ const STRIKES = { spot: 100, levels_state: 'LIVE',
 const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1000 }] };
 
 async function intercept(page) {
-  await page.route('**/api/**', (route) => {
-    const url = route.request().url();
-    let body = { available: false };
-    if (url.includes('/api/bars1m')) body = BARS;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  });
-  await pushExpiries(page, EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 },
-    { terrain: (key) => Object.assign({}, TERRAIN, { spot: key === 'QQQ' ? 480 : 100 }),
+  return pushExpiries(page, EXPS, { [EXPS[0]]: 2, [EXPS[1]]: 3, [EXPS[2]]: 9 },
+    { bars: BARS, tape: { available: false }, terrain: (key) => Object.assign({}, TERRAIN, { spot: key === 'QQQ' ? 480 : 100 }),
       strikes: (key) => Object.assign({}, STRIKES, { spot: key === 'QQQ' ? 480 : 100 }),
       surface: (key, params) => surfaceFor(key, key === 'QQQ' ? 480 : 100, params.expiry),
       chain: chainAt((key) => ({ ticker: key, spot: key === 'QQQ' ? 480 : 100, expiry: EXPS[0], status: 'ok',
@@ -51,8 +45,9 @@ async function intercept(page) {
 
 test.describe('ticker / expiry / measure controls', () => {
   let watchlist;                  // the list the daemon keeps, as its stand-in holds it
+  let sock;                       // the page's socket, stood in for
   test.beforeEach(async ({ page }) => {
-    await intercept(page);
+    sock = await intercept(page);
     watchlist = await routeWatchlist(page, ['SPY', 'QQQ', 'IWM']);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
@@ -178,9 +173,7 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'IWM']);
   });
 
-  test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol request afterwards', async ({ page }) => {
-    const reqs = [];
-    page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) reqs.push(u); });
+  test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol subscribe afterwards', async ({ page }) => {
     const requests = watchRequests(page);
     await page.clock.install();   // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -191,13 +184,13 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#chTicker')).toHaveText('AAPL');
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     await expect(page.locator('#flTicker')).toHaveText('AAPL');
-    const tabReads = ['options/tape'].map(
-      (path) => page.waitForRequest(new RegExp(`/api/${path}\\?ticker=AAPL`)));      // what opening the tab reads
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await expect(page.locator('#mvTicker')).toHaveText('AAPL');
-    await Promise.all(tabReads);
+    // what opening the tab asks: the tape panel, for AAPL
+    await expect.poll(() => { const s = sock.subscribes[sock.subscribes.length - 1]; return s.ticker + ' ' + ('tape' in s.panels); })
+      .toBe('AAPL true');
     // switch by WATCHLIST CLICK -> the same single state everywhere; nothing keeps asking for AAPL
-    reqs.length = 0;
+    const before = sock.subscribes.length;
     await page.locator('.wl-row .wl-sym', { hasText: 'QQQ' }).click();
     await expect(page.locator('#hSym')).toHaveText('QQQ');
     await expect(page.locator('#symInput')).toHaveValue('QQQ');
@@ -210,9 +203,9 @@ test.describe('ticker / expiry / measure controls', () => {
     await requests.settled();                                                        // the switch's own reads are done
     await page.clock.runFor(4000);                                                   // every page timer due in 4 s has run
     await requests.settled();                                                        // and every read those made
-    const tickered = reqs.filter((u) => /[?&]ticker=/.test(u));
+    const tickered = sock.subscribes.slice(before).map((s) => s.ticker);
     expect(tickered.length).toBeGreaterThan(0);
-    expect(tickered.filter((u) => !/[?&]ticker=QQQ(&|$)/.test(u))).toEqual([]);      // no AAPL (or SPY) request survives the switch
+    expect(tickered.filter((t) => t !== 'QQQ')).toEqual([]);                         // no AAPL (or SPY) subscribe survives the switch
     expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('QQQ');
   });
 
