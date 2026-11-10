@@ -109,5 +109,4 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
         "trade_age_text": _trade_age_text(trade_ts, now),
         "ts_recv": field("server_received_ts"),
-        "server_ts": now,
     }

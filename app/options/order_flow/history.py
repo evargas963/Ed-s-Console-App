@@ -329,14 +329,12 @@ def book_heatmap_for_ticker(
     bucket_sec = max(1.0, span / n_buckets)
 
     cells: dict[tuple[int, float], dict[str, float | None]] = {}
-    prices_seen: set[float] = set()
     for ts_recv, bids, asks in rows:
         bucket = min(n_buckets - 1, int((ts_recv - t0) / bucket_sec))
         for levels, side in ((bids, "bid"), (asks, "ask")):
             for px, vol in levels:
                 # a side Schwab sent no level for at this price stays absent, never 0
                 cells.setdefault((bucket, px), {"bid": None, "ask": None})[side] = vol
-                prices_seen.add(px)
 
     def _dominant(bid, ask) -> str:
         """Return the displayed side at this price and bucket (the cell's colour).
@@ -372,8 +370,6 @@ def book_heatmap_for_ticker(
         "latest_captured_ts": rows[-1][0],
         "n_buckets": n_buckets,
         "bucket_sec": bucket_sec,
-        "price_min": min(prices_seen),
-        "price_max": max(prices_seen),
         # the default price window, and the largest displayed size (the colour scale's top)
         "display_lo": display_lo,
         "display_hi": display_hi,

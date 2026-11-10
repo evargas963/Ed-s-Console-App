@@ -13,8 +13,7 @@ function served(s) {
 }
 function priceRow(ticker, spot, extra = {}) {
   return Object.assign({ ticker: ticker, spot: spot, spot_disp: spot.toFixed(2), spot_state: 'live',
-    feed_live: true, feed_label: 'LIVE', spot_source: 'streaming_plane', server_ts: Date.now() / 1000,
-    trade_age_text: '1s' }, extra);
+    feed_live: true, feed_label: 'LIVE', spot_source: 'streaming_plane', trade_age_text: '1s' }, extra);
 }
 // The selected ticker's expiry list as the program sends it after the subscribe's `symbols` frame
 // ({type:'expiries', ticker: key, ...server.expiries' body}).

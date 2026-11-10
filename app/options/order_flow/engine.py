@@ -426,8 +426,6 @@ def _microstructure_structural(cb: dict) -> dict:
     microprice = _microprice(bid, ask, bid_size, ask_size)
     spread_pts = ask - bid if have_quotes else None
     mark = cb["mark"]
-    # the spread over a MARK of 0 is undefined: no value
-    spread_frac = spread_pts / mark if spread_pts is not None and mark else None
 
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
     # totals and imbalance), carried; slope and concentration reuse its top-5 totals.
@@ -452,7 +450,6 @@ def _microstructure_structural(cb: dict) -> dict:
         "mark": mark,
         "microprice": microprice,
         "spread_pts": spread_pts,
-        "spread_frac": spread_frac,
         "depth": depth,
         "depth_pressure": {
             "bid": _book_pressure_curve(bid_levels, OF_BOOK_DEPTH_DEEP),
@@ -493,7 +490,6 @@ def _microstructure_structural(cb: dict) -> dict:
             "microprice": "DERIVED",
             "crossed": "DERIVED",
             "spread_pts": "DERIVED",
-            "spread_frac": "DERIVED",
             "depth.*.bid_total": "DERIVED",
             "depth.*.ask_total": "DERIVED",
             "depth.*.imbalance": "DERIVED",

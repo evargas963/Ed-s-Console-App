@@ -28,15 +28,9 @@
   "2026-10-22": 0.0
  },
  "flip_diag": {
-  "covers_level_span": true,
-  "covers_regime_span": true,
   "curve_agrees_with_schwab_at_spot": true,
   "curve_gamma_at_spot": -2861517682.8475194,
   "gamma_at_spot": -2718991225.452607,
-  "span_above_pct": 0.24339039840846036,
-  "span_below_pct": 0.2801424009214177,
-  "strike_hi": 950.0,
-  "strike_lo": 550.0,
   "unpriced": {}
  },
  "flip_relation": "ABOVE",
@@ -53,7 +47,6 @@
  "levels_failing": false,
  "levels_mark": "CLOSE",
  "levels_mark_reason": "",
- "levels_source": "wide_chain_loop",
  "levels_stale_reason": "",
  "levels_state": "CLOSE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",

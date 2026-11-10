@@ -206,9 +206,10 @@ def test_strikes_payload_carries_server_side_sums():
     ss = body["today_side_sums"]
     assert ss["gex_below"] == sum(net_gex_dollars_at_strike(b) for b in below)
     assert ss["gex_above"] == sum(net_gex_dollars_at_strike(b) for b in above)
-    assert ss["vol_below"] == sum(strike_total_volume(b) for b in below)
-    assert ss["vol_above"] == sum(strike_total_volume(b) for b in above)
-    assert ss["spot_basis"] == C.spot, "sums must be computed against the payload's own spot"
+    drawn = body["today"]["all"]
+    assert drawn, "the panel draws strikes of the real chain"
+    assert all(r[2] == strike_total_volume(book[r[0]]) for r in drawn)
+    assert body["spot"] == C.spot, "sums must be computed against the payload's own spot"
 
 
 def test_api_levels_prior_day_is_the_whole_recorded_prior_session():

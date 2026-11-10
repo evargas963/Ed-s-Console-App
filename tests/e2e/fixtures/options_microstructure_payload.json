@@ -27,7 +27,6 @@
     "provenance.book_time_ms": "NATIVE",
     "provenance.exchange_quote_ts": "NATIVE",
     "provenance.server_received_ts": "DERIVED",
-    "spread_frac": "DERIVED",
     "spread_pts": "DERIVED",
     "top_of_book.ask": "NATIVE",
     "top_of_book.ask_size": "NATIVE",
@@ -127,7 +126,6 @@
   "put_call": null,
   "quote_time_ct": "Mon 08/31 01:50 PM CT",
   "quote_when_age_text": "Mon 08/31 01:50 PM CT \u00b7 0s",
-  "spread_frac": 0.05042016806722694,
   "spread_pts": 0.030000000000000027,
   "status": "ok",
   "streaming_plane": {

@@ -1015,9 +1015,7 @@
     ]
    ],
    "shrank": [],
-   "volume_total": 9570957.0,
-   "weighted_strike_prior": null,
-   "weighted_strike_today": null
+   "volume_total": 9570957.0
   },
   "far": {
    "busiest": [],
@@ -1027,9 +1025,7 @@
    "grew": [],
    "rows": [],
    "shrank": [],
-   "volume_total": null,
-   "weighted_strike_prior": null,
-   "weighted_strike_today": null
+   "volume_total": null
   },
   "near": {
    "busiest": [
@@ -1919,9 +1915,7 @@
     ]
    ],
    "shrank": [],
-   "volume_total": 9570957.0,
-   "weighted_strike_prior": null,
-   "weighted_strike_today": null
+   "volume_total": 9570957.0
   }
  },
  "priced_at_spot": 764.04,
@@ -2055,10 +2049,7 @@
  },
  "today_side_sums": {
   "gex_above": 108386881.90773931,
-  "gex_below": -2827378107.3603463,
-  "spot_basis": 773.1269,
-  "vol_above": 279072.0,
-  "vol_below": 9291885.0
+  "gex_below": -2827378107.3603463
  },
  "views": {
   "all": {

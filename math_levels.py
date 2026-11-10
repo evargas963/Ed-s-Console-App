@@ -372,59 +372,21 @@ def compute_gamma_support_levels(
     profile the flip/regime use):
 
       GSF = the HIGHEST s < spot where N(s) <= phi * N(spot)
-            — where the dealers' positive-gamma stabilization cushion is substantially
-            exhausted BELOW spot. Sits at/above the Gamma Flip by construction (N(flip)=0):
-            support effectively ends here BEFORE net gamma mathematically crosses zero.
       GRC = the LOWEST s > spot where N(s) <= phi * N(spot)
-            — where vol-SUPPRESSION is exhausted ABOVE spot; beyond it dealer selling no
-            longer dampens rallies. ASYMMETRIES:
-            (1) N(s) often RISES into the call wall before decaying, so the GRC frequently
-            sits AT/BEYOND the wall — resistance strengthens before it exhausts; (2) an
-            upside breach is typically a vanna-supported grind/extension, not a mirror-image
-            crash-up — the two levels are NOT symmetric in breach violence.
 
-    MECHANISM, AND WHAT BACKS IT (a causal claim about price must be checkable, or a
-    reader cannot refute it). Three separate standards apply here, and
-    they are NOT equally settled:
-      * That a positive net dealer gamma book DAMPENS moves is a first principles
-        derivation from the hedge rule, not an observation: a dealer long gamma gains
-        delta as spot rises and must SELL to return to flat, and must BUY as spot falls,
-        so the re-hedge always opposes the move. The word "stabilises" above means only
-        this mechanical opposition.
-      * That this hedging is large enough to MOVE the underlying is empirical, and the
-        evidence is expiration-date price clustering in Ni, Pearson and Poteshman,
-        Journal of Financial Economics, doi:10.1016/j.jfineco.2004.08.005.
-      * The dealer SIGN is MODELLED, never observed — public open interest does not say
-        who owns the contracts (https://spotgamma.com/what-is-gex-gamma-exposure/) — so
-        both levels are conditional on the naive +calls/−puts convention being right for
-        the session. When it is wrong, GSF and GRC are wrong with it.
-    The two ASYMMETRIES above are desk OBSERVATIONS, not derivations
-    and not citations; they are stated as what was seen, and nothing here should be read
-    as claiming they were established the way the two points above were.
-
-    WHAT IS STILL UNPROVEN, AND IT IS THE PART A TRADER CARES ABOUT. Everything
-    above concerns the damping MECHANISM. It does NOT establish that GSF and GRC act as
-    support and resistance — that price arriving at these prices tends to hold. That is a
-    separate empirical claim, this repository has not tested it, and nothing here should be
-    read as asserting it. The two levels are MEASURED GEOMETRY: the prices at which the
-    net-gamma profile has decayed to `phi` of its at-spot value on each side. The console
-    tooltips say exactly this and mark the holding behaviour UNPROVEN; if that wording and
-    this docstring ever disagree, this one is the paraphrase and the honest reading is the
-    weaker of the two.
-
-    FAIL-CLOSED: when N(spot) <= eps (already negative/negligible-gamma regime) the honest
-    output is state=BELOW_SUPPORT with BOTH levels None — never a fabricated price. An empty
-    or unusable profile returns state=UNAVAILABLE.
+    Both are measured geometry of the modelled profile (dealers taken as long calls, short
+    puts); that price holds at them is not tested. When N(spot) <= eps the state is
+    BELOW_SUPPORT with both levels None; an empty or unusable profile is UNAVAILABLE.
     """
     if not profile or spot is None or spot <= 0:
-        return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE, "n_at_spot": None}
+        return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE}
     n_spot = _interp_profile_at(profile, float(spot))
     if n_spot is None:
-        return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE, "n_at_spot": None}
+        return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE}
     max_abs = max(abs(v) for _, v in profile)
     eps = eps_frac * max_abs if max_abs > 0 else 0.0
     if n_spot <= eps:
-        return {"gsf": None, "grc": None, "state": GSF_STATE_BELOW_SUPPORT, "n_at_spot": n_spot}
+        return {"gsf": None, "grc": None, "state": GSF_STATE_BELOW_SUPPORT}
     target = phi * n_spot
 
     gsf: float | None = None
@@ -445,128 +407,22 @@ def compute_gamma_support_levels(
             grc = _lerp(target, prev_v, v, prev_p, p)
             break
         prev_p, prev_v = p, v
-    return {"gsf": gsf, "grc": grc, "state": GSF_STATE_OK, "n_at_spot": n_spot}
+    return {"gsf": gsf, "grc": grc, "state": GSF_STATE_OK}
 
 
-#: WHAT THIS VERDICT ACTUALLY ASSERTS:
-#: it is a CHAIN-COVERAGE verdict, not a certification that the flip level is correct. It says one
-#: measurable thing: the delivered strikes reach GAMMA_FLIP_TRUSTED_SPAN_PCT around spot, the span
-#: at which the convergence study's error stopped improving (~0.117% of spot residual vs its own
-#: reference). It does NOT assert the level is right in absolute terms — the study's justified_span
-#: is None, and for SPY/QQQ its reference chain is narrower than production (see the block below).
-#: A SECOND, SEPARATE LIMIT — and it is NOT part of the same error budget. The two
-#: numbers answer different questions and are not commensurable, not summable, and not rankable:
-#:   * ~0.117% of spot — CONVERGENCE RESIDUAL: an ACCURACY error at ONE instant, the gap between
-#:     the flip computed on a truncated strike window and the flip on the full window. It is a
-#:     defect of our estimate; with every strike present it would go to zero.
-#:   * ~4.176% of spot median, p90 ~11.991% (23,718 rows / 99 RTH
-#:     ticker-sessions; SPY 0.221%, QQQ 6.139%, IWM 8.663%) — INTRADAY DRIFT: the range of the flip
-#:     ACROSS a session. This is NOT an error at all. The level genuinely MOVES, because gamma
-#:     depends on spot, IV and time; a correctly computed flip still moves this much. It would NOT
-#:     go to zero with perfect data.
-#: So drift neither inflates nor excuses the residual. What each one licenses:
-#:   coverage/residual -> "is the number we are showing RIGHT, given the strikes we fetched?"
-#:   drift             -> "will this level still be where it is later?" (a STALENESS question)
-#: This verdict speaks ONLY to the first. It is silent on the second, which is why proximity logic
-#: must read the LIVE recomputed flip rather than a session-open snapshot.
-#: Consumers may gate on it; no surface may render it as proof. The operator-facing strings
-#: deliberately say "chain coverage" and carry the residual, never a bare "trusted".
+#: The flip's verdict is chain coverage: how far the delivered strikes reach around spot. It does
+#: not say the level is right, and it is silent on how far the level moves within a session.
 GAMMA_FLIP_TRUSTED = "TRUSTED"
 GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
 GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
-#: Middle tier: the chain reaches GAMMA_FLIP_MIN_SPAN_PCT but not the
-#: measured flip-LEVEL convergence span, so the LEVEL carries the ~1.4%-of-spot placement error the
-#: convergence study measured. Named so no surface can print this as TRUSTED.
-#: The regime (sign of gamma AT SPOT) is not implied by the convergence study, which measures a
-#: LEVEL distance, not a sign. See GAMMA_FLIP_MIN_SPAN_PCT — reaching this tier does
-#: NOT certify the sign: agreement between the truncated and full-chain MODELLED sign improves with
-#: width, but gradually and with no threshold effect at the floor (a SUPPORTED trend, not a proven
-#: one), so clearing this tier buys no guarantee. The tier means "level not placed", nothing more.
+#: Middle tier: the chain reaches GAMMA_FLIP_MIN_SPAN_PCT but not GAMMA_FLIP_TRUSTED_SPAN_PCT, so
+#: the level is approximate. It certifies neither the level nor the sign of gamma at spot.
 GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
-#: The live chain-FETCH width, and the FLOOR below which nothing is claimed at all (the verdict is
-#: LOW_CONFIDENCE_NARROW_CHAIN and terrain stands everything aside).
-#: The floor makes no claim about the at-spot SIGN: the flip-LEVEL convergence study measures
-#: |windowed flip - full-chain flip|, a LEVEL distance, and is silent about the SIGN of gamma at
-#: spot. MEASURED (260 seed-fixed chains from the study's reference cohort, at-spot gamma
-#: recomputed on truncated windows by Black-Scholes gamma at r = q = 0, counting ONLY genuinely
-#: truncated chains):
-#:   sign agreement with the full delivered chain — +/-1% 79.8% (n=233), +/-5% 86.2% (n=253,
-#:   95% CI [0.814, 0.899]), +/-10% 90.2% (n=254), +/-15% 92.7% (n=248).
-#: WHAT IS BEING COMPARED — read this before quoting any number above. Both sides of the comparison
-#: are MODELLED. It measures whether the +call/-put dealer sign computed on a TRUNCATED window
-#: matches the +call/-put dealer sign computed on the FULL DELIVERED chain. The full-chain value is
-#: a reference, NOT ground truth: public OI cannot establish who actually owns the contracts, so
-#: this says nothing about whether either sign matches real dealer positioning. It bounds how much
-#: TRUNCATION perturbs our own modelled sign, and nothing more.
-#: WHAT THIS SUPPORTS, stated no wider than the data:
-#:  (a) The monotonic span relationship is SUPPORTED, NOT PROVEN. Agreement rises across the ladder
-#:      and the extreme ends do not overlap (79.8% [0.742,0.845] at +/-1% vs 92.7% [0.888,0.954] at
-#:      +/-15%), which is real evidence of a trend. It falls short of proof because ADJACENT rungs
-#:      overlap heavily, the rungs are NOT independent samples (largely the same chains re-windowed,
-#:      so the observations are paired/reused), NO PAIRED TEST was run, and NO POWER ANALYSIS was
-#:      done. What would settle it: a paired per-chain test across rungs (e.g. McNemar on +/-1% vs
-#:      +/-15% over the same chains) with a pre-registered effect size.
-#:      Neither "barely matters" nor "genuinely reads it better" is established.
-#:  (b) The data are EVIDENCE AGAINST a special threshold at 0.05 — not proof of its absence. The
-#:      curve is smooth through 0.05 with no visible cliff or knee, and at exactly the floor the
-#:      modelled sign still disagrees with the full-chain modelled sign about ONE TIME IN SEVEN. So
-#:      the floor is not shown to mark where the sign becomes knowable; absence of a threshold is
-#:      not demonstrated to the standard a positive claim would need.
-#: SEPARATELY, and measured ONLY AT THE +/-5% FLOOR: how decisively signed the book is separates the
-#: outcome far more sharply than any two adjacent rungs do. Conditioning those rows on
-#: net/gross = |net gamma at spot| / sum|per-contract contributions|:
-#:   net/gross >= 10% -> 95.5% agreement (n=199, CI [0.916, 0.976])
-#:   net/gross <  10% -> ~50% agreement (n=54) — indistinguishable from chance AT THIS WIDTH.
-#: NOT MEASURED: whether a nearly-balanced book stays near chance at OTHER widths. The concentration
-#: cut was run at the floor only; there is no concentration-x-span cross-tab, so no claim is made
-#: here that width cannot help such a book. That cross-tab is the next measurement.
-#: The floor is therefore retained as a conservative fetch / declare-nothing bound, NOT as evidence
-#: about the sign. Acting on the concentration finding (gating or disclosing a weakly-signed regime)
-#: is an OPERATOR decision — it changes when advice is withheld, and
-#: rests on one sample against a reference that is itself narrow for SPY/QQQ.
-#: THIS CONSTANT DOES NOT AWARD "TRUSTED"; that is
-#: GAMMA_FLIP_TRUSTED_SPAN_PCT below. Reaching this floor earns at most GAMMA_FLIP_LEVEL_APPROX
-#: (regime stands on the at-spot sign, flip LEVEL disclosed as approximate).
-#: PROVENANCE: the 0.05 is ASSERTED, never derived.
-#: MEASURED by the flip-span convergence study (convergence against the
-#: flip on each stored wide chain's FULL delivered strike set, trading days only, fixed cohort of
-#: 15 chains that yield a flip at every ladder point): the flip has NOT converged at this value —
-#: median error vs the full-chain flip is 1.38% of spot at +/-5%, falling ~10x to 0.117% at +/-10%
-#: and 0.257% at +/-15%; no ladder point reaches 95% of chains inside a 0.05%-of-spot tolerance.
-#: So 0.05 is measurably INSUFFICIENT, not merely unjustified.
-#: HELD AT 0.05 PENDING, deliberately not silently re-tuned: the cohort is only n=15 and the
-#: reference is the widest chain we captured (Schwab's documentation states no strikeCount cap),
-#: so the study bounds the requirement from below rather than pinning it. Raising it also widens
-#: every fetch, which is a cost/latency decision. Re-set it once a chain-depth probe measures how
-#: many strikes Schwab delivers and the cohort is large enough to pin a value.
+#: The floor, as a share of spot each side: a chain that does not reach it earns GAMMA_FLIP_NARROW
+#: and nothing is claimed. Reaching it earns at most GAMMA_FLIP_LEVEL_APPROX. Asserted, not derived.
 GAMMA_FLIP_MIN_SPAN_PCT = 0.05
-#: The 0.05 above is the live chain-fetch width, a real cost/latency decision; the study refutes it
-#: as the TRUSTED-vs-NARROW verdict on the flip LEVEL, so a fetch-width compromise does not set the
-#: trust bar. This constant governs the flip-LEVEL trust ONLY, and is set at the measured
-#: convergence knee: median error vs the full-chain flip falls from 1.38% of spot at ±5% to
-#: 0.117% at ±10% (~10x) and does not improve at ±15% (0.257%, reference noise).
-#: Read this before quoting any span number: the study's reference chains are NOT the production
-#: terrain chain.
-#: MEASURED against the LIVE fetch (the terrain panel's flip_diag span_below/above_pct):
-#:   SPY 29.4% (216 strikes), QQQ 29.5% (216), IWM 29.8% (87), NVDA 21.7% (44), AAPL 29.4%,
-#:   TSLA 25.9%
-#: — every sampled production chain clears this bar with ~3x headroom and reads TRUSTED.
-#: The middle tier is the honest verdict for a chain that
-#: genuinely lands between GAMMA_FLIP_MIN_SPAN_PCT and this bar (the regime is the SIGN OF GAMMA AT
-#: SPOT, which needs strikes NEAR spot; only the flip LEVEL needs the wide wing) — it simply is not
-#: SPY/QQQ's situation. WHEN MEASURING DELIVERED SPAN, READ THE LIVE TERRAIN FETCH, NOT THE STUDY'S
-#: REFERENCE CHAINS.
-#: NOT_PROVEN, on TWO counts — see GAMMA_FLIP_TRUSTED semantics above:
-#:  (1) the study's justified_span is None (no ladder point reaches 95% of chains inside the
-#:      0.05%-of-spot tolerance) on an n=15 fixed cohort; and
-#:  (2) for SPY/QQQ the study's own REFERENCE chain (SPY 8.9%/110
-#:      strikes, QQQ 9.6%/123) is ~3x NARROWER than the production chain it is used to certify, so
-#:      the ±10% and ±15% ladder points cannot even truncate those rows (they pass through at
-#:      zero error by construction — 5.1% of the study's 992 usable chains at ±10%). The knee is
-#:      therefore measured predominantly on non-SPY/QQQ chains, and the 9%->30% region is
-#:      UNMEASURED for exactly the two tickers that matter most.
-#: So 0.10 is an evidence-backed FLOOR, never a certified sufficiency. Settle it by re-running the
-#: ladder against reference chains at least as wide as production for the dense-strike ETFs.
+#: The span, as a share of spot each side, at which the flip level earns GAMMA_FLIP_TRUSTED: where
+#: the measured error against the full-chain flip stopped falling. A floor, not proof of the level.
 GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
 
 
@@ -606,21 +462,8 @@ def compute_gamma_flip_v2(
     """Canonical gamma flip (profile zero-crossing) plus a CHAIN-COVERAGE verdict.
 
     `profile` is compute_gamma_profile's curve for the same contracts and spot.
-    Returns (flip | None, confidence, diagnostics). The verdict reports how much of the chain
-    around spot was actually delivered — it does NOT certify that the flip level is correct
-    (see the GAMMA_FLIP_TRUSTED block for exactly what it does and does not assert).
-
-    THREE tiers, by delivered span:
-      * >= GAMMA_FLIP_TRUSTED_SPAN_PCT   -> GAMMA_FLIP_TRUSTED (coverage reaches the measured
-                                            convergence span; still not proof of the level)
-      * >= GAMMA_FLIP_MIN_SPAN_PCT, below
-        the trusted span                 -> GAMMA_FLIP_LEVEL_APPROX (the regime stands on the
-                                            at-spot sign, which this span does not verify; too
-                                            narrow to place the LEVEL — consumers must disclose
-                                            that)
-      * < GAMMA_FLIP_MIN_SPAN_PCT        -> GAMMA_FLIP_NARROW (nothing is claimed)
-    Why the floor exists at all: a narrow chain misplaces the flip (a 40-contract chain placed it
-    at 770.35 against a full-chain reference of 745.61).
+    Returns (flip | None, verdict, diagnostics). The verdict is the tier the delivered strikes'
+    span around spot earns: GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX or GAMMA_FLIP_NARROW.
     """
     if not contracts or not spot or spot <= 0:
         return None, GAMMA_FLIP_UNAVAILABLE, {}
@@ -628,14 +471,6 @@ def compute_gamma_flip_v2(
     if not strikes:
         return None, GAMMA_FLIP_UNAVAILABLE, {}
     lo, hi = min(strikes), max(strikes)
-    # TWO span tests, because they answer two different questions.
-    #  covers_regime — reaches the conservative floor below which we decline to claim anything.
-    #                  Span does not establish the sign (see GAMMA_FLIP_MIN_SPAN_PCT for the
-    #                  measurement). Clearing it means we are willing to speak, not that the sign
-    #                  is verified.
-    #  covers_level  — the measured convergence span for the flip LEVEL itself
-    #                  (GAMMA_FLIP_TRUSTED_SPAN_PCT; see its provenance block). Only this earns
-    #                  TRUSTED.
     covers_regime = lo <= spot * (1.0 - GAMMA_FLIP_MIN_SPAN_PCT) and hi >= spot * (
         1.0 + GAMMA_FLIP_MIN_SPAN_PCT
     )
@@ -654,15 +489,7 @@ def compute_gamma_flip_v2(
     # that sign changes -- it is a landmark, not a prerequisite: with no crossing inside the
     # window the regime is still known, only the flip level is not.
     at_spot = gamma_at_price(profile, spot)
-    diag = {
-        "strike_lo": lo,
-        "strike_hi": hi,
-        "span_below_pct": (spot - lo) / spot,
-        "span_above_pct": (hi - spot) / spot,
-        "covers_regime_span": covers_regime,
-        "covers_level_span": covers_level,
-        "curve_gamma_at_spot": at_spot,
-    }
+    diag = {"curve_gamma_at_spot": at_spot}
     if at_spot is None:
         return None, GAMMA_FLIP_UNAVAILABLE, diag
     # nearest crossing, EITHER direction; None when the curve does not cross in the window

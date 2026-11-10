@@ -28,7 +28,6 @@
       "provenance.book_time_ms": "NATIVE",
       "provenance.exchange_quote_ts": "NATIVE",
       "provenance.server_received_ts": "DERIVED",
-      "spread_frac": "DERIVED",
       "spread_pts": "DERIVED",
       "top_of_book.ask": "NATIVE",
       "top_of_book.ask_size": "NATIVE",
@@ -101,7 +100,6 @@
     "put_call": "CALL",
     "quote_time_ct": "Fri 10/23 08:32 AM CT",
     "quote_when_age_text": "Fri 10/23 08:32 AM CT \u00b7 1s",
-    "spread_frac": 0.0049382716049381666,
     "spread_pts": 0.009999999999999787,
     "status": "no_book",
     "streaming_plane": {
@@ -164,7 +162,6 @@
       "provenance.book_time_ms": "NATIVE",
       "provenance.exchange_quote_ts": "NATIVE",
       "provenance.server_received_ts": "DERIVED",
-      "spread_frac": "DERIVED",
       "spread_pts": "DERIVED",
       "top_of_book.ask": "NATIVE",
       "top_of_book.ask_size": "NATIVE",
@@ -237,7 +234,6 @@
     "put_call": "PUT",
     "quote_time_ct": "Fri 10/23 08:32 AM CT",
     "quote_when_age_text": "Fri 10/23 08:32 AM CT \u00b7 1s",
-    "spread_frac": 0.006557377049180334,
     "spread_pts": 0.020000000000000018,
     "status": "no_book",
     "streaming_plane": {

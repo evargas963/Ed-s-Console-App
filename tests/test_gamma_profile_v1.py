@@ -224,7 +224,7 @@ def test_grc_found_when_cushion_decays_above_spot():
     out = compute_gamma_support_levels(prof, 102.0)
     assert out["state"] == GSF_STATE_OK
     assert out["grc"] is not None and out["grc"] > 106.0  # beyond the peak/wall
-    n_spot = out["n_at_spot"]
+    n_spot = 4e9 + (102.0 - 100.0) / (106.0 - 100.0) * (8e9 - 4e9)
     # value at the ceiling is ~phi * N(spot)
     assert abs(_interp_profile_at(prof, out["grc"]) - 0.5 * n_spot) / n_spot < 0.05
 

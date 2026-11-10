@@ -87,7 +87,7 @@ def test_the_default_window_drops_the_thin_tails(heat):
         if DISPLAY_TAIL_SHARE <= cum / whole <= 1 - DISPLAY_TAIL_SHARE:
             inside.append(px)
     assert heat["display_lo"] == inside[0] and heat["display_hi"] == inside[-1]
-    assert heat["price_min"] <= heat["display_lo"] < heat["display_hi"] <= heat["price_max"]
+    assert min(totals) <= heat["display_lo"] < heat["display_hi"] <= max(totals)
 
 
 def test_put_call_is_schwabs_contract_type():

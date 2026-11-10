@@ -156,22 +156,14 @@ class ZoneType(str, Enum):
     """
     Canonical zone types for structure/value mapping.
 
-    The extremes are named for what they are, geometrically: the LOW extreme of the prior
-    session / overnight window, or the HIGH one. No name claims a mechanism (resting stop
-    orders pooling beyond an extreme): no stop-cluster detector, touch study or forward test
-    has measured one. If stop-cluster levels are ever built and proven, they earn their own type.
-
-    Taxonomy: low_extreme | support_liquidity | pivot_value | breakdown_trigger |
-    breakout_trigger | resistance_liquidity | high_extreme
+    The extreme is named for what it is, geometrically: the LOW extreme of the prior session /
+    overnight window. No name claims a mechanism (resting stop orders pooling beyond it).
     """
 
     LOW_EXTREME = "low_extreme"
     SUPPORT_LIQUIDITY = "support_liquidity"
     PIVOT_VALUE = "pivot_value"
-    BREAKDOWN_TRIGGER = "breakdown_trigger"
-    BREAKOUT_TRIGGER = "breakout_trigger"
     RESISTANCE_LIQUIDITY = "resistance_liquidity"
-    HIGH_EXTREME = "high_extreme"
 
 
 #: each zone type's name on screen and the side of price it is drawn as: support, resistance or
@@ -179,11 +171,8 @@ class ZoneType(str, Enum):
 ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
     ZoneType.LOW_EXTREME: ("Low extreme", "support"),
     ZoneType.SUPPORT_LIQUIDITY: ("Support", "support"),
-    ZoneType.BREAKDOWN_TRIGGER: ("Breakdown trigger", "support"),
     ZoneType.PIVOT_VALUE: ("Pivot / value", "value"),
-    ZoneType.BREAKOUT_TRIGGER: ("Breakout trigger", "resistance"),
     ZoneType.RESISTANCE_LIQUIDITY: ("Resistance", "resistance"),
-    ZoneType.HIGH_EXTREME: ("High extreme", "resistance"),
 }
 
 

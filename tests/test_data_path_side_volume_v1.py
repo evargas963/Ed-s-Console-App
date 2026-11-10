@@ -1,15 +1,11 @@
-"""Schwab -> the strikes payload. Volume below and above spot keeps every digit."""
+"""Schwab -> the strikes payload. A side's GEX total, and a volume Schwab did not send."""
 
 from __future__ import annotations
 
 import live_market_plane as lmp
 import server as srv
 import time_et
-from math_exposure_core import (
-    compute_exposures_by_strike,
-    net_gex_dollars_at_strike,
-    strike_total_volume,
-)
+from math_exposure_core import compute_exposures_by_strike, net_gex_dollars_at_strike
 from option_contract import read_chain
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import NFLX, SPY_0DTE
@@ -39,24 +35,10 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
     return body
 
 
-def test_volume_below_and_above_spot_keeps_every_digit():
-    """NFLX's whole book: the strikes below and above spot are summed as Schwab sent them.
-
-    Every contract's volume, against the payload's own spot; cutting the total to a whole
-    number happens on the screen, not in the sum.
-    """
-    book = compute_exposures_by_strike(read_chain(NFLX.chain), spot=NFLX.spot, now=NFLX.now)[0]
-    sums = _published(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now)["today_side_sums"]
-    volume = {k: strike_total_volume(b) for k, b in book.items()}
-    assert sums["vol_below"] == sum(v for k, v in volume.items() if k < NFLX.spot)
-    assert sums["vol_above"] == sum(v for k, v in volume.items() if k > NFLX.spot)
-    assert sums["spot_basis"] == NFLX.spot
-
-
-def test_a_strike_of_gex_not_known_leaves_its_side_gex_unknown_and_its_volume_in():
+def test_a_strike_of_gex_not_known_leaves_its_side_gex_unknown():
     """NFLX's whole book: Schwab's -999 on strikes below the price leaves their GEX not known.
 
-    So GEX below has no total, and their volume, which Schwab sent, stays in the volume below.
+    So GEX below has no total, and GEX above is the sum of its strikes.
     """
     book = compute_exposures_by_strike(read_chain(NFLX.chain), spot=NFLX.spot, now=NFLX.now)[0]
     below = {k: b for k, b in book.items() if k < NFLX.spot}
@@ -64,13 +46,15 @@ def test_a_strike_of_gex_not_known_leaves_its_side_gex_unknown_and_its_volume_in
     sums = _published(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now)["today_side_sums"]
     assert sums["gex_below"] is None
     assert sums["gex_above"] is not None
-    assert sums["vol_below"] == sum(strike_total_volume(b) for b in below.values())
+    assert sums["gex_above"] == sum(
+        net_gex_dollars_at_strike(b) for k, b in book.items() if k > NFLX.spot
+    )
 
 
-def test_a_volume_not_known_leaves_its_side_with_no_total():
+def test_a_volume_not_known_leaves_the_volume_total_unknown():
     """Induced test condition: NFLX's strike above the price with totalVolume removed.
 
-    None is captured unreported.
+    None is captured unreported. The strike's GEX, which Schwab sent, stays in its side.
     """
     above = min(c["strikePrice"] for c in NFLX.chain if c["strikePrice"] > NFLX.spot)
     chain = [
@@ -78,7 +62,7 @@ def test_a_volume_not_known_leaves_its_side_with_no_total():
         for c in NFLX.chain
     ]
     body = _published(NFLX.ticker, chain, NFLX.spot, NFLX.now)
-    assert body["today_side_sums"]["vol_above"] is None
+    assert body["today_side_sums"]["gex_above"] is not None
     assert body["migration"]["all"]["volume_total"] is None
 
 
@@ -89,5 +73,5 @@ def test_a_side_with_no_strike_has_no_total():
     chain are of other days.
     """
     sums = _published("SPY", SPY_0DTE.chain, 787.5169, SPY_0DTE.now)["today_side_sums"]
-    assert sums["gex_above"] is None and sums["vol_above"] is None
-    assert sums["gex_below"] is not None and sums["vol_below"] is not None
+    assert sums["gex_above"] is None
+    assert sums["gex_below"] is not None

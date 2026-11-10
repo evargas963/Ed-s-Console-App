@@ -154,8 +154,9 @@ def test_strike_side_sums_split_at_the_live_spot(held):
     below = [r for r in rows if r[0] < LIVE]
     above = [r for r in rows if r[0] > LIVE]
     assert below and above, "the real chain has strikes on both sides of the live price"
-    sums = server.strikes(TK, time_et.now(), AUTO)["today_side_sums"]
-    assert sums["spot_basis"] == LIVE
+    body = server.strikes(TK, time_et.now(), AUTO)
+    sums = body["today_side_sums"]
+    assert body["spot"] == LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
     assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
 

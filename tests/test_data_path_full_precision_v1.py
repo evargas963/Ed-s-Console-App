@@ -20,17 +20,15 @@ def test_the_flip_is_the_profiles_full_zero_crossing():
     """SPY's 20-strike 0DTE chain: the flip is the gamma profile's full zero crossing.
 
     The flip is the interpolated zero crossing of the gamma profile in full, inside the
-    delivered strikes; the verdict is NARROW because 20 strikes span
-    only ~+/-1.3% of spot, with both span flags False.
+    delivered strikes (767 to 786); the verdict is NARROW because 20 strikes span only
+    ~+/-1.3% of spot. Every contract is priced, and the curve's gamma at spot has the sign of
+    Schwab's own gamma summed over the book: both negative.
     """
     chain, spot = read_chain(SPY_0DTE.chain), SPY_0DTE.spot
     snap = compute_terrain(SPY_0DTE.ticker, chain, spot, now=SPY_0DTE.now)
     flip, confidence, diag = snap.gamma_flip, snap.confidence, snap.flip_diag
     assert confidence == GAMMA_FLIP_NARROW
     assert flip == 779.018978504471
-    assert (diag["strike_lo"], diag["strike_hi"]) == (767.0, 786.0)
-    assert (
-        diag["span_below_pct"] == (spot - 767.0) / spot
-        and diag["span_above_pct"] == (786.0 - spot) / spot
-    )
-    assert diag["covers_regime_span"] is False and diag["covers_level_span"] is False
+    assert 767.0 < flip < 786.0
+    assert diag["unpriced"] == {}
+    assert diag["curve_gamma_at_spot"] < 0 and diag["gamma_at_spot"] < 0
