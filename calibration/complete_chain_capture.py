@@ -29,6 +29,7 @@ from typing import Any
 from schwab.client import Client
 
 import time_et
+from app.options.order_flow.state import streamed_volume
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from live_price_rows import price_row
@@ -39,7 +40,6 @@ from option_contract import (
     streamed_greek_set,
     streamed_greeks,
     streamed_top,
-    streamed_volume,
 )
 from schwab_client import (
     QUOTES_BATCH_MAX,

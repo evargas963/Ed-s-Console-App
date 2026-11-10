@@ -22,12 +22,21 @@ from l1_trade_observation import (
     is_adjacent_restatement,
     vendor_triple,
 )
-from option_contract import quote_values, streamed_greeks, streamed_top, streamed_volume
+from numeric_contract import schwab_count
+from option_contract import quote_values, streamed_greeks, streamed_top
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
 
 log = logging.getLogger(__name__)
+
+
+def streamed_volume(content: dict) -> float | None:
+    """Return a LEVELONE record's TOTAL_VOLUME as sent; None when not sent or not a count.
+
+    The one reader of it (this state and the chain sweep); a reported 0 is 0 (AGENTS.md rule 2).
+    """
+    return schwab_count(content.get("TOTAL_VOLUME"))
 
 
 class OrderFlowState:
@@ -91,7 +100,6 @@ class OrderFlowState:
             # delayed message read as live
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
 
-        # TOTAL_VOLUME as sent; a reported 0 is 0 (AGENTS.md rule 2).
         vf = streamed_volume(content_item)
 
         # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store.)

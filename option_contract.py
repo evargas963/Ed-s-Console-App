@@ -132,14 +132,6 @@ def streamed_top(content: Mapping[str, Any]) -> dict[str, float | None]:
     return {name: read(content[field]) for field, name, read in STREAMED_TOP if field in content}
 
 
-def streamed_volume(content: Mapping[str, Any]) -> float | None:
-    """Return a LEVELONE record's TOTAL_VOLUME as sent; None when not sent or not a count.
-
-    The one reader of it (the console's order-flow state and the chain sweep); a reported 0 is 0.
-    """
-    return schwab_count(content.get("TOTAL_VOLUME"))
-
-
 def _expires_at(raw: Any, symbol: Any) -> float | None:
     """Schwab's expirationDate ("2026-09-18T20:00:00.000+00:00") as a time.
 
