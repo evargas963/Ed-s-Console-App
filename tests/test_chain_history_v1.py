@@ -406,6 +406,7 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
                 expiry=e,
                 contracts=[ct(e)],
                 spot=spot,
+                chain_spot=spot,
                 completeness_basis=basis,
                 ts_utc=_ts(when),
             )

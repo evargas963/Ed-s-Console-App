@@ -552,7 +552,6 @@ def _publish(real) -> None:
                 "et_date": real.now.date().isoformat(),
                 "basis": server.CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=real.now,

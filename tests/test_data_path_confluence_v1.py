@@ -110,7 +110,6 @@ def _published_0dte() -> server.PublishedLevels:
                 "et_date": held.now.date().isoformat(),
                 "basis": CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=held.now,
@@ -153,7 +152,6 @@ def _nflx_far_book() -> tuple[dict, dict]:
                     "et_date": NFLX.now.date().isoformat(),
                     "basis": CAPTURE_BASIS,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                 }
             ],
             now=NFLX.now,
@@ -236,7 +234,6 @@ def test_an_am_settled_expiry_past_the_year_is_scored():
                     "et_date": at.date().isoformat(),
                     "basis": CAPTURE_BASIS,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                 }
             ],
             now=at,
@@ -289,7 +286,6 @@ def _publish_close(tk: str = "SPY") -> server.PublishedLevels:
                 "et_date": SPY_CLOSE.now.date().isoformat(),
                 "basis": CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=SPY_CLOSE.now,
@@ -390,7 +386,6 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
                     "et_date": at.date().isoformat(),
                     "basis": CAPTURE_BASIS,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                 }
             ],
             now=at,
@@ -438,7 +433,6 @@ def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
                     "et_date": at.date().isoformat(),
                     "basis": CAPTURE_BASIS,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                 }
             ],
             now=at,
@@ -560,7 +554,6 @@ def _publish_mrvl() -> None:
                 "et_date": MRVL.now.date().isoformat(),
                 "basis": CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=MRVL.now,
@@ -958,6 +951,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
                 expiry=exp,
                 contracts=[dict(c) for c in cts],
                 spot=held.spot,
+                chain_spot=held.spot,
                 completeness_basis=CAPTURE_BASIS,
                 ts_utc=capture_at.timestamp(),
             )
@@ -1077,6 +1071,7 @@ def test_a_close_capture_of_zeros_is_the_balance_not_the_capture_before_it():
                 expiry=expiry,
                 contracts=contracts,
                 spot=held.spot,
+                chain_spot=held.spot,
                 completeness_basis=CAPTURE_BASIS,
                 ts_utc=when.timestamp(),
             )
@@ -1120,6 +1115,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
                 expiry=exp,
                 contracts=[dict(c) for c in cts],
                 spot=held.spot,
+                chain_spot=held.spot,
                 completeness_basis=CAPTURE_BASIS,
                 ts_utc=datetime(2026, 10, 2, 16, 0, tzinfo=ET).timestamp(),
             )
@@ -1181,7 +1177,6 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
                     "spot": held["spot"],
                     "basis": CAPTURE_BASIS,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                     "et_date": "2026-10-16",
                 }
             ],
@@ -1257,6 +1252,7 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
                 expiry=exp,
                 contracts=[dict(c) for c in cts],
                 spot=held.spot,
+                chain_spot=held.spot,
                 completeness_basis=CAPTURE_BASIS,
                 ts_utc=datetime(2026, 10, 7, 16, 15, tzinfo=ET).timestamp(),
             )
@@ -1297,6 +1293,7 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
             expiry=_SPY_TWO_CLOSES["expiry"],
             contracts=[dict(c) for c in capture["chain"]],
             spot=capture["spot"],
+            chain_spot=capture["spot"],
             completeness_basis=CAPTURE_BASIS,
             ts_utc=capture["ts_utc"],
         )
@@ -1401,7 +1398,6 @@ def test_an_after_hours_print_keeps_the_close_book():
                     "et_date": held.now.date().isoformat(),
                     "basis": CAPTURE_BASIS,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                 }
             ],
             now=held.now,
@@ -1535,7 +1531,6 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
                     "et_date": at.date().isoformat(),
                     "basis": server.CAPTURE_BASIS,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                 }
             ],
             now=at,

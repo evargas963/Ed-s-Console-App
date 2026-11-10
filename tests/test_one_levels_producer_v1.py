@@ -436,7 +436,6 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
                 "ts_utc": _T,
                 "spot": _SPOT,
                 "spot_ts": None,
-                "spot_from_chain": False,
                 "et_date": "2026-10-07",
                 "basis": server.CAPTURE_BASIS,
             }
@@ -616,6 +615,7 @@ def _store(tk: str, ts: float, spot: float = _SPOT) -> None:
             expiry=expiry,
             contracts=cts,
             spot=spot,
+            chain_spot=spot,
             completeness_basis=CAPTURE_BASIS,
             ts_utc=ts,
         )
@@ -630,9 +630,9 @@ def _forget(*tickers):
 def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
     """DATA_FLOW decision 7: after a restart, a weekend or the close, stored captures are priced.
 
-    Each watchlist ticker's newest full chain capture is priced once with Schwab's underlying
-    price from that capture, valued and dated at the capture's time. A row that is not a full
-    chain is never loaded.
+    Each watchlist ticker's newest full chain capture is priced once at that capture's chain
+    spot (Schwab's LAST_PRICE stored with it), valued and dated at the capture's time. A row
+    that is not a full chain is never loaded.
     """
     tk = "ZZCAPSTART"
     _store(tk, _T)
@@ -652,7 +652,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
     finally:
         _forget(tk)
     assert loaded["computed_ts_utc"] == _T
-    assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
+    assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_PLANE
     expected = compute_terrain(tk, _RECORDS, _SPOT, now=_AT)
     assert expected.gamma_flip is not None, "the capture must price (valued at its own time)"
     for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):

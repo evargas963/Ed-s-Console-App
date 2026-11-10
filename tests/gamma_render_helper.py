@@ -38,7 +38,6 @@ def drawn(
                     "ts_utc": now.timestamp(),
                     "spot": spot,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                     "et_date": now.date().isoformat(),
                     "basis": server.CAPTURE_BASIS,
                 }

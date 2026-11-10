@@ -216,7 +216,6 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
                     "ts_utc": close["ts_utc"],
                     "spot": close["spot"],
                     "spot_ts": None,
-                    "spot_from_chain": False,
                     "et_date": at_close.date().isoformat(),
                     "basis": server.CAPTURE_BASIS,
                 }

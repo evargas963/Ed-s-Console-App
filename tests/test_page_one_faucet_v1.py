@@ -79,7 +79,6 @@ def _publish(fetched_ts: float):
                 "et_date": _AT.date().isoformat(),
                 "basis": server.CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=_AT,
@@ -233,7 +232,6 @@ def test_the_spot_row_is_served(route):
                 "et_date": SPY_CLOSE.now.date().isoformat(),
                 "basis": server.CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=SPY_CLOSE.now,

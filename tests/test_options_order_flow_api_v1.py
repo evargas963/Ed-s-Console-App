@@ -118,7 +118,6 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
                     "ts_utc": at,
                     "spot": SPY_0DTE.spot,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                     "et_date": SPY_0DTE.now.date().isoformat(),
                     "basis": server.CAPTURE_BASIS,
                 }

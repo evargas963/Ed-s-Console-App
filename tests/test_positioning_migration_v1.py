@@ -104,6 +104,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
                 expiry=exp,
                 contracts=cs,
                 spot=day["spot"],
+                chain_spot=day["spot"],
                 completeness_basis=CAPTURE_BASIS,
                 ts_utc=day["ts_utc"],
             )

@@ -55,7 +55,6 @@ def published():
                 "et_date": at.date().isoformat(),
                 "basis": server.CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=at,
@@ -131,7 +130,6 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
                 "et_date": NFLX.now.date().isoformat(),
                 "basis": server.CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=NFLX.now,

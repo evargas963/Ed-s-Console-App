@@ -73,6 +73,7 @@ store_capture(
     expiry=sys.argv[2],
     contracts=chain["contracts"],
     spot=chain["spot"],
+    chain_spot=chain["spot"],
     completeness_basis=CAPTURE_BASIS,
     ts_utc=chain["ts_utc"],
 )

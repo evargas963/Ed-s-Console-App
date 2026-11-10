@@ -97,6 +97,7 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
             expiry=expiry,
             contracts=cts,
             spot=_SPOT,
+            chain_spot=_SPOT,
             completeness_basis=cch.CAPTURE_BASIS,
             ts_utc=_FX["captured_utc"],
         )

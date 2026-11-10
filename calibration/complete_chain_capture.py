@@ -82,7 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
 
 
 #: the chain's one spot (Schwab's LAST_PRICE when the chain was complete) and its trade time; a
-#: capture written before them has neither, and `spot` is each expiry's own underlyingPrice
+#: capture written before them has neither. `spot` is each expiry's own underlyingPrice, recorded
 CHAIN_SPOT_COLUMNS = (("chain_spot", "REAL"), ("chain_spot_ts", "REAL"))
 
 
@@ -894,11 +894,11 @@ def last_capture_per_day(
 ) -> list[dict[str, Any]]:
     """Return the last capture of each of the newest `days` market days (newest first).
 
-    That is the close, each as {et_date, ts_utc, spot, spot_ts, spot_from_chain, basis,
-    contracts} with every expiry of that capture, its contracts read once
-    (option_contract.read_chain). `spot` is the chain's one spot with its trade time `spot_ts`
-    (`spot_from_chain` true); a capture written without one
-    gives its nearest expiry's underlyingPrice, `spot_ts` None and `spot_from_chain` false.
+    That is the close, each as {et_date, ts_utc, spot, spot_ts, basis, contracts} with every
+    expiry of that capture, its contracts read once (option_contract.read_chain). `spot` is the
+    chain's one spot with its trade time `spot_ts`: Schwab's LAST_PRICE when the chain was
+    complete. A capture stored without one has no spot (None, None): the underlyingPrice of its
+    /chains answers is recorded beside it and read by nothing.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
     view).
     """
@@ -932,24 +932,21 @@ def last_capture_per_day(
         out = []
         for day, ts in picked:
             rows = conn.execute(
-                f"SELECT expiry, spot, {chain_spot}, completeness_basis, chain_json "
+                f"SELECT {chain_spot}, completeness_basis, chain_json "
                 "FROM complete_chain_captures "
                 "WHERE ticker=? AND completeness_basis=? AND ts_utc=? ORDER BY expiry",
                 (tk, CAPTURE_BASIS, ts),
             ).fetchall()
-            spot, spot_ts = rows[0][2], rows[0][3]
-            from_chain = spot is not None
-            if not from_chain:
-                spot, spot_ts = next((r[1] for r in rows if r[0] >= day), rows[-1][1]), None
+            spot, spot_ts = rows[0][0], rows[0][1]
             out.append(
                 {
                     "et_date": day,
                     "ts_utc": ts,
                     "spot": spot,
-                    "spot_ts": spot_ts,
-                    "spot_from_chain": from_chain,
-                    "basis": rows[0][4],
-                    "contracts": read_chain(c for r in rows for c in decode_json_blob(r[5])),
+                    # a trade time without its price is no spot
+                    "spot_ts": None if spot is None else spot_ts,
+                    "basis": rows[0][2],
+                    "contracts": read_chain(c for r in rows for c in decode_json_blob(r[3])),
                 }
             )
         return out

@@ -54,7 +54,6 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
                     "et_date": CRWD.now.date().isoformat(),
                     "basis": server.CAPTURE_BASIS,
                     "spot_ts": None,
-                    "spot_from_chain": False,
                 }
             ],
             now=CRWD.now,
