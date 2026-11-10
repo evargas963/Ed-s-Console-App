@@ -28,6 +28,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import live_price_rows
 import server
+import time_et
 from option_contract import read_chain
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
@@ -584,3 +585,28 @@ def test_the_beat_after_a_new_surface_stamps_it_whatever_beat_stamped_the_last()
     server.restamp_open_surfaces(_AT + 0.6)
     states = _sym_states()
     assert states and set(states) == {"live"}
+
+
+def test_a_restamp_that_waited_is_stamped_from_the_beat_of_the_instant_it_runs():
+    """A restamp queued behind a pricing judges the feed when it runs, not when it was queued.
+
+    SPY's chain is priced with SYM held and no tick landed. A beat queues the restamp while the
+    pricing thread is busy with another ticker, and a later beat lands before it runs: SYM is
+    pending (held, no tick yet), as that newest beat says, not a contract the daemon does not
+    stream.
+    """
+    _publish_chain(_AT)
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)  # the pricing thread is busy, as with a ticker
+    try:
+        queued = time_et.now()
+        _beat(queued)
+        server.restamp_off_the_loop()
+        while time_et.now() <= queued:  # the clock moves on while the restamp waits
+            pass
+        _beat(time_et.now())
+    finally:
+        gate.set()
+    server._chain_pricing.submit(int).result(10)  # the restamp queued before this has run
+    states = _sym_states()
+    assert states and set(states) == {"pending"}

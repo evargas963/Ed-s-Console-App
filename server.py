@@ -1038,13 +1038,17 @@ STREAM_WORDS = {
 _last_feed_stamp: dict[str, tuple] = {}
 
 
-def restamp_off_the_loop(now: float) -> None:
+def restamp_off_the_loop() -> None:
     """Take the daemon's beat (the feed's callback, on the event loop) to the pricing thread.
 
     The surfaces are stamped where they are priced (_chain_pricing), never on the event loop,
-    whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1).
+    whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1). The restamp is at the
+    instant it runs, as a pricing is (_price_waiting_chain): one that waited behind a pricing
+    is judged by the beat of then, not by the time it was queued.
     """
-    _chain_pricing.submit(restamp_open_surfaces, now).add_done_callback(_restamp_ended)
+    _chain_pricing.submit(lambda: restamp_open_surfaces(time_et.now())).add_done_callback(
+        _restamp_ended
+    )
 
 
 def _restamp_ended(done: Future) -> None:
