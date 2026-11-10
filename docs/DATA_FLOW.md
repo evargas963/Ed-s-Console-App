@@ -614,7 +614,11 @@ the program.
   `tests/test_data_path_live_status_v1.py` (a push's reprice keeps a held contract live; the beat
   after a new surface stamps it). A streamed contract's Greeks and volatility are the stream's newest once the stream
   holds all six, else the chain's (`math_exposure_core.overlay_streamed_contract_fields`); its
-  volume, bid and ask are the stream's. A contract the stream does not hold takes its newest
+  volume, bid and ask are the stream's: the chain as delivered and as stored carries them as
+  the stream held them when the chain was complete (`ChainSweep.take_greeks`,
+  `option_contract.streamed_top`, `streamed_volume`), so the close values and a stored capture
+  hold a quote for every contract, and the console lays the newest over while the option market
+  is open. A contract the stream does not hold takes its newest
   `/quotes` answer received since its chain began, the moment it arrives; an answer received
   before the chain began is older than the chain's own values and is not laid over it
   (`state.rest_quotes`). The levels' time (`levels_ts_utc`, served as `levels_time_ct` and the
