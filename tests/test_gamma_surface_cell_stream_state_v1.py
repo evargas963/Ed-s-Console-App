@@ -28,7 +28,7 @@ import server
 from option_contract import read_chain
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
-from tests.real_chains import CRWD
+from tests.real_chains import CRWD, MRVL
 from time_et import ET
 
 _SPOT = CRWD.spot
@@ -155,3 +155,34 @@ def test_a_contract_the_daemon_does_not_stream_is_not_streaming():
     cov, surface = _publish([], [])
     assert all(leg["state"] == "unavailable" for sym in CALLS for leg in _legs(surface, sym))
     assert cov["unavailable"] == cov["cells"] == len(CALLS) and cov["label"] == "0% STREAMING"
+
+
+def test_a_strike_an_expiry_does_not_list_has_no_stream_state():
+    """MRVL's 20 expiries do not all list the same strikes (its half-dollar strikes, for one).
+
+    A cell with no contract has nothing to stream: it carries no state, so the page draws no
+    "not streaming" mark on it (production 2026-11-10: every such cell was outlined), and its
+    column's state is its listed contracts' alone.
+    """
+    tk = server.ticker_storage_key("MRVL")
+    try:
+        server._publish_levels(
+            tk,
+            read_chain(MRVL.chain),
+            MRVL.now.timestamp() - 10.0,
+            chain_spot=(MRVL.spot, MRVL.now.timestamp()),
+            now=MRVL.now,
+        )
+        surface = server.published_levels(tk).gamma_surface
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+    stamped = [
+        (bool(pair["call"] or pair["put"]), col)
+        for cell in surface["cells"]
+        for col, pair in zip(cell["stream"], cell["contracts"], strict=True)
+    ]
+    unlisted = [col for listed, col in stamped if not listed]
+    assert len(unlisted) > 100 and all(col is None for col in unlisted)
+    assert all(col["state"] == "unavailable" for listed, col in stamped if listed)
+    assert set(surface["stream_by_expiry"].values()) == {"unavailable"}
