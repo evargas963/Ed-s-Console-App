@@ -37,10 +37,12 @@ function watchRequests(page) {
 }
 
 // The page's clock held from before the page loads: its timers run only when the test moves its
-// time (`install` alone leaves the clock running).
+// time (`install` alone leaves the clock running). The clock is installed a minute behind the
+// instant it is paused at, so however late the pause reaches the page, that instant is ahead of it.
 async function holdClock(page) {
-  await page.clock.install();
-  await page.clock.pauseAt(Date.now());
+  const at = Date.now();
+  await page.clock.install({ time: at - 60_000 });
+  await page.clock.pauseAt(at);
 }
 
 module.exports = { watchRequests, holdClock };
