@@ -14,8 +14,8 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
 2. `.venv/Scripts/python.exe -P -m ruff check .` and `.venv/Scripts/python.exe -P -m ruff format --check .` — no findings; then
    `.venv/Scripts/python.exe -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__)[\\/])' .`
    — exit 0 (both as the `hardening` job runs them).
-3. The full suite on the final commit: the required CI jobs `pytest-full` (Playwright, then the full
-   pytest), `pytest-windows` (the same two on Windows as production runs) and `hardening` green, shown
+3. The full suite on the final commit: the required CI jobs `pytest-full` (Playwright and the full
+   pytest, side by side), `pytest-windows` (the same two on Windows as production runs) and `hardening` green, shown
    by `gh pr checks <pr>` on the final commit (operator 2026-10-30: "Yes, CI proves it"). The suites
    run here only while a test is written or a failure is chased: `npm run test:all`, one at a time.
 4. `.venv/Scripts/python.exe -m tools.check_one_reader --base origin/main` — exit 0; then

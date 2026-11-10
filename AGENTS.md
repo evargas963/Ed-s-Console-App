@@ -250,7 +250,9 @@ then the rule binds with no machine check.
   suite is the required CI jobs green there, not a local repeat (operator 2026-10-30: "Yes, CI
   proves it"). Branch protection on `main` requires `pytest-full`, `pytest-windows`, `hardening` and `locks`
   on the final commit, current with `main`; `pytest-windows` runs the browser tests and the full
-  pytest suite on Windows as production runs (operator 2026-10-30: "Yes, do both").
+  pytest suite on Windows as production runs (operator 2026-10-30: "Yes, do both"). On each system
+  the two suites run side by side, each on a runner of its own, and the required job reads both
+  results (operator 2026-11-10: "they take so long to run. it doesn't seem like them should").
 - Claims. Every statement about how something is now (a process, a file, a branch, a pull request,
   a test result, data, the screen) is CONFIRMED only by command output shown in the same reply.
   Anything else is NOT VERIFIED, with when it was last checked. "Done" = a test that failed before
