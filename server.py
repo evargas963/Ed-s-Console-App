@@ -2184,11 +2184,10 @@ def bars(ticker: str, now: float, params: dict) -> dict:
         raise ValueError(f"limit {limit!r} is not a count from 1 to {BARS_LIMIT_MAX}")
     held = [_bar_dict(c) for c in _bars_1m(ticker, limit)]
     shown = chart_bars(ticker, tf, held, datetime.fromtimestamp(now, ET))
-    last = held[-1]["t"] if held else None
     return {
         "bars": [_lpr.with_change(b) for b in shown],
         "tf": tf,
-        "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None,
+        "last_bar": {"t": held[-1]["t"], "label": ct_label(held[-1]["t"])} if held else None,
     }
 
 
@@ -4168,7 +4167,7 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict:
         extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
     _canon = canonical_price_level_snapshot(ticker_upper, now)
     if _canon is None:
-        return {"ticker": ticker_upper, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
+        return unavailable(ticker_upper, NO_PRICE_LEVELS_REASON, zones=[])
     out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now, extra_levels=extra)
     zones_payload = [
         {

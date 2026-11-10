@@ -8,6 +8,8 @@ BID_PRICE/ASK_PRICE/TOTAL_VOLUME.
 
 from __future__ import annotations
 
+import pytest
+
 import server
 from app.options.order_flow import streaming as S
 from app.options.order_flow.engine import read_book
@@ -202,12 +204,9 @@ def test_a_window_outside_the_books_kept_is_refused_never_replaced():
     window the page did not ask.
     """
 
-    def answered(minutes) -> bool:
-        try:
+    for minutes in (0.5, 15, 60, 120, 240):
+        assert "available" in server.bookmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
+    for minutes in (241, 0, -60, "abc"):
+        with pytest.raises(ValueError) as refused:
             server.bookmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
-        except ValueError:
-            return False
-        return True
-
-    assert [answered(m) for m in (0.5, 15, 60, 120, 240)] == [True, True, True, True, True]
-    assert [answered(m) for m in (241, 0, -60, "abc")] == [False, False, False, False]
+        assert repr(minutes) in str(refused.value), "the refusal names the window asked"

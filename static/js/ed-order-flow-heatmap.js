@@ -9,7 +9,6 @@
   'use strict';
 
   function isHeatmap() { var s = window.EdShell.getState(); return s.workspace === 'order-flow' && s.subview === 'heatmap'; }
-  function ticker() { return window.EdShell.getState().ticker; }
   function fmtCT(ts) {
     try { return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' }); } catch (e) { return '-'; }
   }
@@ -24,13 +23,13 @@
     return _chart;
   }
 
-  function render(h, tk, d) {
+  function render(h, d) {
     var c = ensureChart(h); if (!c) return;
     var ok = !!(d.available && d.display_lo != null);
     c.setHeatmap(ok ? d : null);
     var empty = h.querySelector('.ofh-empty');
     empty.hidden = ok;
-    empty.textContent = ok ? '' : !d.available ?((d.reason) || 'no book history for ' + tk)
+    empty.textContent = ok ? '' : !d.available ? d.reason
       : 'rows were captured but carried no populated price levels';
     h.querySelector('.ofh-foot').textContent = !ok ? '' : d.rows_scanned + ' books · ' +
       fmtCT(d.since_ts) + '–' + fmtCT(d.until_ts) + ' CT · latest capture ' + fmtCT(d.latest_captured_ts) + ' CT — every cell is a captured book tick; nothing is interpolated between ticks.';
@@ -45,7 +44,7 @@
   document.addEventListener('ed:panel', function (e) {
     var d = e.detail, h = host();
     if (d.type !== 'bookmap' || !h || !isHeatmap()) return;
-    render(h, ticker(), d.failed != null ? { available: false, reason: d.failed } : d);
+    render(h, d.failed != null ? { available: false, reason: d.failed } : d);
   });
 
   if (typeof document !== 'undefined') {

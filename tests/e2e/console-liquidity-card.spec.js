@@ -20,7 +20,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     return sock;
   }
   // every venue the page asked a book of, on any of its subscribes
-  const bookVenues = (sock) => sock.subscribes.flatMap((s) => Object.keys(s.panels || {})
+  const bookVenues = (sock) => sock.subscribes.flatMap((s) => Object.keys(s.panels)
     .filter((n) => n.split(':')[0] === 'book').map((n) => s.panels[n].venue));
   const card = (page) => page.locator('#tdmCardLiq');
   const left = (pct) => (50 + pct * 0.45) + '%';

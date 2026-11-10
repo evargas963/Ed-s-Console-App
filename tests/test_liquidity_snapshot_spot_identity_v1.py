@@ -17,6 +17,13 @@ from tests.feed_live_helper import daemon_status
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
 
 
+def test_a_ticker_with_no_levels_published_gets_no_zones_and_the_reason():
+    """Before the bar writer publishes a ticker's levels, the panel says so and draws no zone."""
+    body = srv.liquidity_snapshot("ZZNOLV", FRIDAY)
+    assert (body["available"], body["zones"]) == (False, [])
+    assert body["reason"] == srv.NO_PRICE_LEVELS_REASON
+
+
 @pytest.mark.usefixtures("published")
 def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached():
     """With no live spot, spot_used_for_scoring is null, never the VWAP under the "spot" name.

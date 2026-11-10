@@ -279,8 +279,10 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         # push itself, on the socket server's loop)
         with pages() as served:
             shown = {t: served.open(t, "liquidity", "levels") for t in (tk, other)}
+            elsewhere = served.open("ZZELSE", "liquidity", "levels")
             srv._write_streamed_bars([pushed[t] for t in (tk, other)], now)
             told = {t: served.told(page, 5) for t, page in shown.items()}
+            assert served.told(elsewhere) == set(), "a page on another ticker is told nothing"
         assert told == {tk: {"liquidity", "levels"}, other: {"liquidity", "levels"}}
         served = srv.levels_payload(tk, "1", now)
         assert served["generation"] is not None
