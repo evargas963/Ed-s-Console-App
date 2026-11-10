@@ -20,13 +20,14 @@ It does four things, in one loop:
   1. SUBSCRIBE Once per connection, every watchlist ticker on each equity service (with the
              market context the page header shows, MARKET_CONTEXT, on LEVELONE_EQUITIES,
              CHART_EQUITY and NEWS_HEADLINE), and the option contracts the option rule picks
-             (pick_options: the contract selected on the Flow panel, then the rest of Schwab's
-             limit on each option service split evenly across the watchlist, each ticker's
-             contracts with the highest gamma in its newest chain, none expired). A change to the
-             watchlist or the picked contracts is asked once: UNSUBS what left, then SUBS (a
-             service's first request) or ADD what came. Nothing asked is asked again on this
-             connection, whatever Schwab answered. Requests are split so none exceeds Schwab's
-             64 KB message limit (a larger request closes the socket).
+             (pick_options: the contract selected on the Flow panel, then every ticker's
+             contracts dealt in turn, each ticker's highest gamma in its newest chain first, none
+             expired). No number of ours caps a service: Schwab is asked for all of them, and
+             when it refuses with its symbol limit (code 19) the service is asked again once, a
+             SUBS of the first that many. A change to the watchlist or the picked contracts is
+             asked once: UNSUBS what left, then SUBS (a service's first request) or ADD what
+             came. Any other refusal is not asked again on this connection. Requests are split
+             so none exceeds Schwab's 64 KB message limit (a larger request closes the socket).
   2. ANSWERS Every Schwab answer is matched to its own request by its requestid, logged and
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
@@ -563,9 +564,8 @@ class Daemon:
         self.clock = clock
         #: the one list of tickers Schwab is asked for, in its order (stored_watchlist at startup)
         self.watchlist: list[str] = list(watchlist)
-        #: the option contracts the option rule picked, per option service (pick_options)
-        self.options: dict[str, frozenset[str]] = {s: frozenset() for s in lmp.OPTION_SERVICES}
-        self.option_order: tuple[str, ...] = ()  # the picked contracts, in the rule's order
+        #: the option contracts the option rule picked, in its order (pick_options)
+        self.option_order: tuple[str, ...] = ()
         #: the contract Ed selected on the Flow panel (the console's {"op": "flow_contract"}),
         #: streamed on both option services on top of the rule
         self.flow_contract: str | None = None
@@ -580,9 +580,11 @@ class Daemon:
         self.chains: ChainSweep | None = None  # its round time, its tickers
         self.writer: CaptureWriter | None = None  # its state rides the heartbeat
         self.schwab_client = None  # the daemon's one Schwab client (run): the checks
-        #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
+        #: what this connection has asked Schwab for, what Schwab accepted (code 0), and the symbol
+        #: limit Schwab stated for the service in a refusal (code 19), None until it states one
         self.asked: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
         self.held: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
+        self.limit: dict[str, int | None] = dict.fromkeys(SERVICES)
         #: requests waiting to be sent, and every request sent on this connection by requestid
         self._requests: list[tuple[str, str, list[str]]] = []
         self._sent: dict[int, _Sent] = {}
@@ -596,37 +598,38 @@ class Daemon:
         self.schwab_down = SCHWAB_CONNECTING
         self._down_since: float | None = None
 
-    def wanted(self) -> dict[str, frozenset[str]]:
-        """Return what Schwab is asked for, per service.
+    def wanted(self) -> dict[str, tuple[str, ...]]:
+        """Return what Schwab is asked for, per service, in the order it is asked.
 
-        That is every watchlist ticker on each equity service, the market context on
-        MARKET_CONTEXT_SERVICES, and the option contracts the rule picked.
+        That is every watchlist ticker on each equity service, then the market context on
+        MARKET_CONTEXT_SERVICES, and the option contracts in the rule's order on each option
+        service; each cut at the symbol limit Schwab stated for the service on this connection.
         """
-        out = {svc: frozenset(self.watchlist) for svc in EQUITY_SERVICES}
+        out = {svc: tuple(self.watchlist) for svc in EQUITY_SERVICES}
         for svc in MARKET_CONTEXT_SERVICES:
-            out[svc] |= frozenset(MARKET_CONTEXT)
-        out.update(self.options)
-        return out
+            out[svc] = tuple(dict.fromkeys([*self.watchlist, *MARKET_CONTEXT]))
+        for svc in lmp.OPTION_SERVICES:
+            out[svc] = self.option_order
+        return {svc: order[: self.limit[svc]] for svc, order in out.items()}
 
     def ask(self) -> None:
-        """Queue, once, what this connection has not asked Schwab for.
+        """Queue what this connection has not asked Schwab for.
 
-        Per service, UNSUBS what left, then SUBS (its first request) or ADD what came. What is
-        asked is never asked again on this connection, whatever Schwab answers. Nothing is
-        queued while no connection is open: a connection asks for everything when it opens.
+        Per service, UNSUBS what left, then SUBS (when nothing asked stays: its first request, or
+        the first since Schwab stated its limit) or ADD what came, in the service's order. What
+        Schwab refuses is not asked again on this connection. Nothing is queued while no
+        connection is open: a connection asks for everything when it opens.
         """
         if self.stream is None:
             return
         for svc, want in self.wanted().items():
             have = self.asked[svc]
-            drop, add = sorted(have - want), sorted(want - have)
-            if svc in lmp.OPTION_SERVICES:  # the option rule's order: its best asked first
-                add = [s for s in self.option_order if s in want - have]
+            drop, add = sorted(have.difference(want)), [s for s in want if s not in have]
             if drop:
                 self._requests.append((svc, "UNSUBS", drop))
             if add:
                 self._requests.append((svc, "ADD" if have - set(drop) else "SUBS", add))
-            self.asked[svc] = want
+            self.asked[svc] = frozenset(want)
         self.wake.set()
 
     def pick_options(self) -> None:
@@ -636,30 +639,17 @@ class Daemon:
         and on the Flow panel's selection. The contract selected on the Flow panel streams on
         both option services when a watchlist ticker's chain lists it, not expired; then every
         ticker's contracts in the rule's order (by_gamma), dealt across the watchlist, each
-        ticker's first, then each one's second. No number of ours caps them: Schwab holds what
-        it accepts, asked in that order, and its refusal of the rest is its answer (code 19).
-        A ticker without a chain and a price yet has none. When the picked
-        contracts change, the difference is asked once (ask: one UNSUBS and one ADD per
+        ticker's first, then each one's second. No number of ours caps them: every one is asked
+        until Schwab states its symbol limit for the service (code 19), and from then the first
+        that many of this order are (wanted). A ticker without a chain and a price yet has none.
+        When what is wanted changes, the difference is asked (ask: one UNSUBS and one ADD per
         service).
         """
         ranked = [self._ranked[tk] for tk in self.watchlist if tk in self._ranked]
         flow = [c for c in [self.flow_contract] if any(c in r for r in ranked)]
-        # every ticker's first, then every ticker's second, ...: Schwab holds what it accepts
-        # in this order, and refuses the rest
+        # every ticker's first, then every ticker's second, ...
         dealt = [s for row in zip_longest(*ranked) for s in row if s is not None]
         self.option_order = tuple(dict.fromkeys([*flow, *dealt]))
-        new = {svc: frozenset(self.option_order) for svc in lmp.OPTION_SERVICES}
-        if new == self.options:
-            return
-        log.info(
-            "option rule: %s",
-            "; ".join(
-                f"{svc} {len(new[svc])} (+{len(new[svc] - self.options[svc])} "
-                f"-{len(self.options[svc] - new[svc])})"
-                for svc in lmp.OPTION_SERVICES
-            ),
-        )
-        self.options = new
         self.ask()
 
     def _keep_options(self) -> None:
@@ -934,8 +924,10 @@ class Daemon:
         """Take one answer from Schwab (an entry of a frame's `response`).
 
         It is matched to its request by its requestid, logged and recorded
-        (stream_subscriptions) exactly as Schwab sent it. A first answer of code 0 changes what
-        is held; a later answer to the same request is recorded as its own.
+        (stream_subscriptions) exactly as Schwab sent it. The first answer to a request decides
+        what the service holds; a later answer to the same request is recorded as its own. An
+        answer of code 19 that states a symbol limit not yet known has the service asked again
+        within it (ask).
         """
         rid = int(response["requestid"])
         sent = self._sent.get(rid)
@@ -968,22 +960,23 @@ class Daemon:
                 reason=msg,
             ),
         )
+        svc = sent.service
+        stated = re.search(rf"{svc}=(\d+)", msg)
+        if code == SYMBOL_LIMIT and stated and int(stated[1]) != self.limit[svc]:
+            # Schwab states the service's limit, and not which of the request's symbols it kept:
+            # the service is asked again from nothing, the first that many of its order
+            self.limit[svc] = int(stated[1])
+            self.asked[svc] = frozenset()
+            self.ask()
         if sent.answers > 1:
             return
-        symbols = sent.symbols
-        if code == SYMBOL_LIMIT and sent.command != "UNSUBS":
-            # Schwab held the request's symbols up to its limit and names how many it discarded:
-            # the request's last ones
-            discarded = int(re.search(r"DISCARDED=(\d+)", msg).group(1))
-            symbols = symbols[: len(symbols) - discarded]
-        elif code != 0:
-            return
-        held = set(self.held[sent.service])
-        held = held - set(symbols) if sent.command == "UNSUBS" else held | set(symbols)
-        self.held[sent.service] = frozenset(held)
-        if sent.command == "UNSUBS":  # no longer held: no longer current
-            for sym in sent.symbols:
-                self.bus.forget(_current_key(sent.service, sym))
+        # a SUBS overwrites all the service held, an ADD adds, an UNSUBS removes (Schwab Streamer
+        # API, Command Name); what Schwab refuses it does not confirm, so a refused SUBS holds none
+        held, new = self.held[svc], frozenset(sent.symbols if code == 0 else ())
+        kept = {"SUBS": new, "ADD": held | new, "UNSUBS": held - new}[sent.command]
+        for sym in (held | new) - kept:  # no longer held: no longer current
+            self.bus.forget(_current_key(svc, sym))
+        self.held[svc] = kept
 
     async def connect(self, client) -> None:
         stream = _TimedStream(client)
@@ -991,9 +984,6 @@ class Daemon:
         # message at 1 MiB by default, and nothing of ours does
         await stream.login(websocket_connect_args={"max_size": None})
         self.stream = stream
-        # a new connection has asked for nothing and holds nothing
-        self.asked = {s: frozenset() for s in SERVICES}
-        self.held = {s: frozenset() for s in SERVICES}
         self._requests, self._sent = [], {}
         self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
         log.info("schwab: connected")
@@ -1003,8 +993,10 @@ class Daemon:
         for svc in lmp.OPTION_SERVICES:  # an option contract's hold ends with its connection
             for sym in self.held[svc]:
                 self.bus.forget(_current_key(svc, sym))
+        # the next connection has asked for nothing, holds nothing and has been told no limit
         self.asked = {k: frozenset() for k in SERVICES}
         self.held = {k: frozenset() for k in SERVICES}
+        self.limit = dict.fromkeys(SERVICES)
         if s is not None:
             try:
                 await asyncio.wait_for(s.logout(), timeout=5)

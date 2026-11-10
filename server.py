@@ -3353,8 +3353,7 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         return _unavailable(f"expiry {expiry!r} is not an expiry date or null")
     if held is None:
         return _unavailable(_terrain_refresh_last_error.get(t) or NO_CHAIN_YET)
-    chain = held.chain
-    if not chain:
+    if not held.priced_chain:
         return _unavailable(held.snap.error or _terrain_refresh_last_error.get(t) or NO_CHAIN_YET)
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")

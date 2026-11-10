@@ -290,12 +290,14 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                 180,
                 lambda: {
                     "held": len(daemon.held["LEVELONE_OPTIONS"]),
-                    "options": len(daemon.options["LEVELONE_OPTIONS"]),
+                    "options": len(daemon.option_order),
                     "levels": server.published_levels("SPY") is not None,
                     "why": server._terrain_refresh_last_error.get("SPY"),
                 },
             )
             await asyncio.sleep(2 * ofs.HEARTBEAT_SEC)  # the beats that restamp it
+            # the sampler wakes by the computer's timer, not every 0.01 s: until it has sampled
+            await _until(lambda: len(behind) > 100, 30, lambda: len(behind))
         finally:
             sampled.set()
             sampler.join(5)
@@ -340,8 +342,8 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
             server._terrain_cache.pop("SPY", None)
         server._last_feed_stamp.clear()
     # no cap of ours: every SPY contract the rule ranks is asked, Schwab's answer decides
-    picked = daemon.options["LEVELONE_OPTIONS"]
-    assert picked == frozenset(daemon.option_order) and len(picked) > 3000, len(picked)
+    wanted = daemon.wanted()["LEVELONE_OPTIONS"]
+    assert wanted == daemon.option_order and len(set(wanted)) > 3000, len(wanted)
     assert len(behind) > 100, "the reader was sampled throughout"
     assert set(work) == {name for name, _thread in calls}, "every piece of the work ran"
     assert not sorted({name for name, thread in calls if thread == loop_thread[0]}), (

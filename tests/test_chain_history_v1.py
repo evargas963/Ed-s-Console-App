@@ -214,8 +214,12 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     ]
     assert isinstance(rows[0][4], bytes), "stored compressed"
     stored = {c["symbol"]: c for c in decode_json_blob(rows[0][4])}
-    assert all(stored[s]["gamma"] == q["gamma"] for s, q in _QUOTED.items()), (
-        "the quote's gamma is stored"
+    assert all(stored[s]["quote"] == q for s, q in _QUOTED.items()), (
+        "Schwab's /quotes answer is stored as sent, its gamma in it"
+    )
+    read = {c.symbol: c for c in read_chain(stored.values())}
+    assert all(read[s].gamma == q["gamma"] for s, q in _QUOTED.items()), (
+        "the history's reader takes the quote's gamma"
     )
 
 

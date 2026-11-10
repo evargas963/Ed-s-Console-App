@@ -324,12 +324,25 @@ the program.
   (`tests/test_option_contract_rule_v1.py`). The contract
   selected on the Flow panel (`POST /api/flow-contract`, only one Schwab listed in a chain the
   console holds; the console names it to the daemon on every connection, `{"op":
-  "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK. What is left of
-  Schwab's limits (LEVELONE_OPTIONS 3,000, OPTIONS_BOOK 100, measured on the daemon's own
-  connection 2026-10-07) is split evenly across the watchlist tickers, and each ticker's share
-  on each service is its contracts with the highest gamma, Schwab's as sent, the gamma the levels
-  take (none sent, -999, or a -999 volatility is no gamma, ranked last); of equal gammas the nearest expiration, then the strike nearest the price, calls before
-  puts. A contract has expired once now passes Schwab's expirationDate: it stays in the records
+  "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK, first in the order
+  Schwab is asked in. After it come every ticker's contracts, dealt across the watchlist (each
+  ticker's first, then each one's second, `Daemon.pick_options`); a ticker's own order is its
+  contracts with the highest gamma first, Schwab's as sent, the gamma the levels
+  take (none sent, -999, or a -999 volatility is no gamma, ranked last); of equal gammas the
+  nearest expiration, then the strike nearest the price, calls before puts. No number of ours
+  caps what is asked: on each connection every contract of the order is asked on both services,
+  and a service that takes fewer says so itself, code 19 (REACHED_SYMBOL_LIMIT,
+  `docs/schwab/schwab_streamer_api.pdf`, response codes) with its limit in the message, as on
+  2026-10-07: "(LEVELONE_OPTIONS=3000, DISCARDED=2181)", "(OPTIONS_BOOK=100, DISCARDED=1)". The
+  daemon takes the limit Schwab stated (`Daemon.limit`, for that connection only) and asks the
+  service once more from nothing: one SUBS of the first that many of the order, which overwrites
+  whatever Schwab kept of the refused request (its document does not say which symbols those
+  are). From then the order is cut at that limit (`Daemon.wanted`). A refusal that states no
+  limit, or the one already known, is published as sent (`sub.<service>`) and not asked again on
+  that connection. What the daemon counts as held (`Daemon.held`) follows Schwab's commands on
+  each request's first answer (`Daemon.answered`): an accepted SUBS replaces what the service
+  held, an accepted ADD adds to it, an accepted UNSUBS removes from it, and a refused SUBS holds
+  nothing. A contract has expired once now passes Schwab's expirationDate: it stays in the records
   and is never streamed (Schwab still lists an expired Friday on a weekend); one that expires
   between chains streams until the ticker's next chain (one is asked after each option close). Each
   change is one UNSUBS and one ADD of only the difference (`Daemon.ask`). The levels use every
@@ -337,7 +350,9 @@ the program.
   streams: every cell keeps its value and the header says OFFLINE. A contract the daemon stops
   holding keeps its last quote; the Flow panel marks it NOT STREAMED
   (`get_option_contract_streaming_diagnostics`). Tests:
-  `tests/test_option_contract_rule_v1.py`, `tests/test_data_path_released_contract_v1.py`.
+  `tests/test_option_contract_rule_v1.py` (the order, the limit Schwab states, a chain that
+  arrives later, a new connection), `tests/test_data_path_one_watchlist_v1.py` (a refusal that
+  states no limit), `tests/test_data_path_released_contract_v1.py`.
 - **1-minute bar and daily candles.** Schwab's price history: the daemon's chain sweep
   asks `/pricehistory` for each ticker (`complete_chain_capture.PRICE_HISTORY`,
   per `docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`, each request ending
@@ -509,7 +524,8 @@ the program.
   (`option_contract.streamed_greek_set`). An option record
   ends with its hold: the daemon forgets it when Schwab drops the contract or the connection
   ends (`Daemon.disconnect`), so the next hold starts from what Schwab sends then. Every other
-  contract (the stream holds at most 3,000, Schwab Trader API Support 2026-10-12) is asked for
+  contract (one the stream does not hold: past the limit Schwab stated, or not yet answered) is
+  asked for
   on `/quotes`, comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab
   Trader API Support 2026-10-06: not more than 300), and takes its quote's, as sent (its
   `greeksTime` is None). Each `/quotes` answer goes to the console at once, as Schwab sent it,
