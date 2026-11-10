@@ -9,7 +9,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
-const { watchRequests } = require('./fixtures/settled');
+const { watchRequests, holdClock } = require('./fixtures/settled');
 
 const {
   EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, LIVE_COMP, MICRO, LIQ, STRIKES, BARS, intercept, watchErrors,
@@ -497,7 +497,7 @@ test.describe('Trade Desk renders served values', () => {
     const sock = await deskSocket(page, []);            // the daemon answers what SPY is (its served key)
     const barReads = sock.subscribes;           // each ask the page makes of the program, the bars among them
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
-    await page.clock.install();                 // the page's timers run when the test moves its time
+    await holdClock(page);                      // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
     const legend = page.locator('#tdmChart .tvc-legend');
