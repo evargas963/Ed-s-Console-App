@@ -46,6 +46,7 @@ from calibration.complete_chain_capture import (
 from option_contract import read_chain
 from schwab_client import build_client_from_token
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
+from tests.call_count import calls
 from tests.capture_store import store_capture
 from tests.real_chains import CRWD, MRVL, NFLX
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
@@ -909,18 +910,23 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             tk, read_chain(contracts), CRWD.now.timestamp(), None, (CRWD.spot, CRWD.now.timestamp())
         )
         server._chain_pricing.submit(lambda: None).result(timeout=60)
-        before = server._gamma_surface_seq[tk]
-        ticker.start()
-        try:
-            assert server._load_stored_levels(list(names)) == 2
-            deadline = time_et.elapsed() + 10
-            while priced() != set(names) and time_et.elapsed() < deadline:
-                time.sleep(0.05)
-            done = priced()
-            repriced = server._gamma_surface_seq[tk] - before
-        finally:
-            ticking.set()
-            ticker.join(10)
+        done: set[str] = set()
+
+        def load_while_ticking():
+            ticker.start()
+            try:
+                assert server._load_stored_levels(list(names)) == 2
+                deadline = time_et.elapsed() + 10
+                while priced() != set(names) and time_et.elapsed() < deadline:
+                    time.sleep(0.05)
+                done.update(priced())
+            finally:
+                ticking.set()
+                ticker.join(10)
+
+        # every pricing job that ran: the two stored captures', the rest CRWD's reprices
+        jobs = calls({"_price_chain": server._price_chain.__code__}, load_while_ticking)
+        repriced = jobs["_price_chain"] - len(names)
     finally:
         push_changes.unsubscribe(page)
         _drain()  # what still waits is priced

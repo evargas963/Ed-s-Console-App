@@ -12,7 +12,6 @@ from __future__ import annotations
 import gzip
 import json
 import math
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +20,7 @@ import terrain_engine
 import time_et
 from option_contract import read_chain
 from terrain_engine import compute_terrain
+from tests.call_count import calls
 from tests.terrain_digest import canonical, real_terrains
 from time_et import ET
 
@@ -74,29 +74,6 @@ def test_every_value_is_what_it_was():
         _same(BEFORE[tk], canonical(snap), tk)
 
 
-def _calls(codes, run) -> dict[str, int]:
-    """Run `run`, counting the calls of each function in `codes` (name -> its code object)."""
-    mon = sys.monitoring
-    tool = next(i for i in range(6) if mon.get_tool(i) is None)
-    by_code = {code: name for name, code in codes.items()}
-    counts = dict.fromkeys(codes, 0)
-
-    def start(code, _offset):
-        counts[by_code[code]] += 1
-
-    mon.use_tool_id(tool, "call count")
-    mon.register_callback(tool, mon.events.PY_START, start)
-    try:
-        for code in codes.values():
-            mon.set_local_events(tool, code, mon.events.PY_START)
-        run()
-    finally:
-        for code in codes.values():
-            mon.set_local_events(tool, code, 0)
-        mon.free_tool_id(tool)
-    return counts
-
-
 def test_each_value_is_computed_once_and_nothing_unread_is_computed():
     """SPY's whole chain: one time to expiry per expiry, one ATM IV map, no unread value.
 
@@ -115,7 +92,7 @@ def test_each_value_is_computed_once_and_nothing_unread_is_computed():
         nonlocal snap
         snap = compute_terrain("SPY", chain, _SPY["spot"], now=now)
 
-    counts = _calls(
+    counts = calls(
         {
             "time_to_expiry_years": time_et.time_to_expiry_years.__code__,
             "atm_sigma_by_expiry": terrain_engine.atm_sigma_by_expiry.__code__,
