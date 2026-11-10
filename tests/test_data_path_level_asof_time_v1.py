@@ -17,7 +17,7 @@ _BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 def _forget(*tickers: str) -> None:
     for tk in tickers:
         server._bars.pop(tk, None)
-        server._daily.pop(tk, None)
+        server._series.pop((tk, "1d"), None)
         for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
             del _MATERIALIZED_SNAPSHOTS[key]
 

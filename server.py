@@ -197,9 +197,10 @@ CANDLE_1M_MAX_BARS: int = 390
 #: reader reads this, never a database (docs/DATA_FLOW.md §2 D6).
 BARS_KEPT = 24_000
 _bars: dict[str, list[Candle]] = {}
-#: every ticker's daily candles as Schwab's /pricehistory sent them (the daemon asks once a day):
-#: ticker -> candles, oldest first. Owned by the bar writer; the ATR reads them (_atr).
-_daily: dict[str, list[Candle]] = {}
+#: every ticker's other series of Schwab's /pricehistory, each its newest answer as sent
+#: ((ticker, series) -> candles, oldest first; series "5m", "15m", "30m", "1d": the daemon's
+#: PRICE_HISTORY). Owned by the bar writer; the charts (/api/bars1m) and the ATR (_atr) read them.
+_series: dict[tuple[str, str], list[Candle]] = {}
 _bars_lock = threading.Lock()
 #: where the bars come from, named in every level's provenance
 BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
@@ -228,14 +229,15 @@ def _write_price_history(msg: dict) -> str | None:
 
     Pushed by the capture daemon: its 1-minute bars into the ticker's bars, only the minutes not
     held taken (a held minute, a streamed bar or an earlier history's, stands over Schwab's
-    history of it); its daily candles replacing the held ones. A candle without a valid field is
+    history of it); any other series replacing the one held. A candle without a valid field is
     not kept. The ticker when the bars or candles it holds changed, else None. Runs on the bar
-    writer, the one writer of _bars and _daily.
+    writer, the one writer of _bars and _series.
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
     if msg["series"] != "1m":
-        daily = [
+        key = (tk, msg["series"])
+        candles = [
             b
             for b in (
                 _schwab_bar(
@@ -250,10 +252,10 @@ def _write_price_history(msg: dict) -> str | None:
             )
             if b is not None
         ]
-        if tk in _daily and _daily[tk] == daily:
+        if key in _series and _series[key] == candles:
             return None
         with _bars_lock:
-            _daily[tk] = daily
+            _series[key] = candles
         return tk
     held = _bars[tk] if tk in _bars else []
     held_minutes = {b.ts for b in held}
@@ -360,7 +362,7 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
 
 
 def _bar_writer() -> None:
-    """Run the bar writer, the one owner of the bars and candles in memory (_bars, _daily).
+    """Run the bar writer, the one owner of the bars and candles in memory (_bars, _series).
 
     It writes every streamed bar and price history the capture daemon pushes, as it arrives, with
     those already waiting behind it. Ends at stop_bar_writer's None, once everything queued before
@@ -1980,7 +1982,7 @@ def stop_terrain_loop() -> None:
 def _atr(ticker: str, now: datetime) -> Atr:
     """Return the ticker's daily, weekly and monthly ATR at `now`.
 
-    From Schwab's daily candles as the bar writer holds them (_daily; none from Schwab yet: none
+    From Schwab's daily candles as the bar writer holds them (_series; none from Schwab yet: none
     held) up to yesterday, and today's candle rolled up live from today's 1-minute bars inside
     Schwab's regular session for today (none before it opens). Too few reads as None.
     """
@@ -1989,7 +1991,7 @@ def _atr(ticker: str, now: datetime) -> Atr:
     s = session(today.isoformat())
     with _bars_lock:
         held_daily, held_bars = (
-            (_daily[tk] if tk in _daily else []),
+            (_series[(tk, "1d")] if (tk, "1d") in _series else []),
             (_bars[tk] if tk in _bars else []),
         )
         daily = [c for c in held_daily if datetime.fromtimestamp(c.ts, ET).date() < today]
@@ -2174,14 +2176,14 @@ def get_bars1m(
     limit: int = Query(default=780, ge=1, le=12000),
     tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$"),
 ):
-    """Completed Schwab 1m bars, newest-last, rolled up to `tf` by aggregate_bars.
+    """The ticker's bars at chart timeframe `tf` (chart_bars), newest-last.
 
-    [{t,o,h,l,c,v}] epoch-seconds bar starts. `last_bar`: the newest completed minute and its
-    label.
+    [{t,o,h,l,c,v}] epoch-seconds bar starts, over the span of its newest `limit` 1-minute bars.
+    `last_bar`: the newest completed minute and its label.
     """
     tk = ticker_storage_key(_required_ticker(ticker))  # SPX -> $SPX
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
-    out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
+    out = [_lpr.with_change(b) for b in chart_bars(tk, tf, bars, now_et())]
     last = bars[-1]["t"] if bars else None
     return JSONResponse(
         {
@@ -2219,6 +2221,52 @@ def aggregate_vwap(rows: list, tf: str) -> list:
         else:
             out[-1] = [out[-1][0]] + list(r[1:])
     return out
+
+
+#: the chart timeframes Schwab sends as a /pricehistory series of their own (the daemon's
+#: PRICE_HISTORY): chart timeframe -> series
+SCHWAB_SERIES = {"5": "5m", "15": "15m", "30": "30m", "D": "1d"}
+
+
+def chart_bars(tk: str, tf: str, minutes: list[dict], now: datetime) -> list[dict]:
+    """`tk`'s bars at chart timeframe `tf` over the span of `minutes` (its 1-minute bars).
+
+    A timeframe Schwab sends (SCHWAB_SERIES) is Schwab's series as the bar writer holds it, but
+    for the bar Schwab has not sent whole yet: a minute series' newest bar (forming, or not asked
+    again yet; the daemon asks as each completes), and today's daily candle until Schwab's
+    regular window for today has ended and Schwab has sent it. That bar is rolled up
+    (aggregate_bars) from Schwab's 1-minute bars, today's inside its regular window for the daily.
+    Every other timeframe (3 and 60 minutes, which Schwab does not send), or one whose series is
+    not held yet, is rolled up from the 1-minute bars.
+    """
+    key = (tk, SCHWAB_SERIES[tf]) if tf in SCHWAB_SERIES else None
+    with _bars_lock:
+        sent = list(_series[key]) if key in _series else []
+    if not sent:
+        return aggregate_bars(minutes, tf)
+    if tf != "D":
+        newest = sent[-1].ts
+        first = minutes[0]["t"] if minutes else sent[0].ts
+        schwab = [_bar_dict(c) for c in sent if first <= c.ts < newest]
+        return schwab + aggregate_bars([m for m in minutes if m["t"] >= newest], tf)
+    today = now.astimezone(ET).date()
+    s = session(today.isoformat())
+    ended = s is not None and bool(s.regular) and now >= s.regular[-1][1]
+    first_day = datetime.fromtimestamp(minutes[0]["t"], ET).date() if minutes else None
+    schwab = [
+        _bar_dict(c)
+        for c in sent
+        if (first_day is None or first_day <= (day := datetime.fromtimestamp(c.ts, ET).date()))
+        and (day < today or (ended and day == today))
+    ]
+    if schwab and datetime.fromtimestamp(schwab[-1]["t"], ET).date() == today:
+        return schwab
+    todays = [
+        m
+        for m in minutes
+        if s is not None and any(a.timestamp() <= m["t"] < b.timestamp() for a, b in s.regular)
+    ]
+    return schwab + aggregate_bars(todays, "D")
 
 
 def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
@@ -3599,7 +3647,7 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
     before = canonical_price_level_snapshot(tk, now)
     try:
         with _bars_lock:
-            daily = list(_daily[tk]) if tk in _daily else []  # Schwab's daily candles held
+            daily = list(_series[(tk, "1d")]) if (tk, "1d") in _series else []
         snap = materialize_price_level_snapshot(
             tk,
             market_session_date(now),
