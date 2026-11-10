@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -82,12 +83,23 @@ def _stored(tk: str) -> list:
 def _print(msg: dict, tk: str = "SPY") -> list:
     """Take one SPY LEVELONE_EQUITIES message as the daemon received it into its plane.
 
-    The quote's tick reaches the console. Returns the crosses it stored (on the pricing
-    thread).
+    The quote's tick reaches the console, and the reprice it queues runs at the print's receive
+    time, as the pricing job runs one at its own instant. Returns the crosses it stored (on the
+    pricing thread).
     """
     lmp.record_from_level_one_equity(tk, msg["native"], received_ts=msg["ts_recv"])
     before = {c["cross_id"] for c in _stored(tk)}
-    server._on_stream_tick(tk, msg["ts_recv"])
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)  # the queued reprice waits to be taken here
+    try:
+        server._on_stream_tick(tk)
+        with server._chains_waiting_lock:
+            job = server._chains_waiting.pop(tk, None)
+    finally:
+        gate.set()
+    at = datetime.fromtimestamp(msg["ts_recv"], ET)
+    if job is not None:
+        server._chain_pricing.submit(server._price_chain, tk, *job, at).result()
     server._chain_pricing.submit(lambda: None).result()
     return [c for c in _stored(tk) if c["cross_id"] not in before]
 

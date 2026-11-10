@@ -21,6 +21,7 @@ receive time (no captured stream of a 2026-11-20 contract carries its Greeks); t
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import replace
 from datetime import datetime
 
@@ -111,17 +112,22 @@ def _cached() -> server.PublishedLevels:
 
 
 def _repriced(answer: dict, received: float) -> server.PublishedLevels:
-    """Return the levels once the pricing thread has priced the ticks of `answer`."""
+    """Return the levels once the reprice the ticks of `answer` queued has run, at `received`.
+
+    The pricing job runs at its own instant (server._price_waiting_chain): here, `received`.
+    """
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
     ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
         _answered(answer, received)
-        while True:
-            server._chain_pricing.submit(lambda: None).result(timeout=60)
-            with server._chains_waiting_lock:
-                if not server._chains_waiting:
-                    break
+        with server._chains_waiting_lock:
+            job = server._chains_waiting.pop(TK)
     finally:
         ofs._on_tick_callback = None
+        gate.set()
+    assert job[0] == server.REPRICE
+    server._price_chain(TK, *job, datetime.fromtimestamp(received, ET))
     return _cached()
 
 

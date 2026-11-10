@@ -130,10 +130,11 @@ _feed_running = False
 #: by ticker_storage_key.
 _option_contract_last_update_ts: dict[str, float] = {}
 
-#: Called with the symbol and the daemon's receive time of every streamed equity quote and every
-#: option quote carrying a _REPRICE_FIELDS value (server._on_stream_tick: reprices its ticker).
+#: Called with the symbol of every streamed equity quote, every option quote carrying a
+#: _REPRICE_FIELDS value and every contract of a /quotes answer (server._on_stream_tick:
+#: reprices its ticker).
 #: Runs on the event loop, so it must return at once.
-_on_tick_callback: Callable[[str, float], None] | None = None
+_on_tick_callback: Callable[[str], None] | None = None
 _on_feed_callback: Callable[[float], None] | None = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write;
@@ -197,12 +198,12 @@ def assemble_chain_part(
     return out
 
 
-def _tick(sym: str, ts: float) -> None:
+def _tick(sym: str) -> None:
     global _tick_callback_failures
     if _on_tick_callback is None:
         return
     try:
-        _on_tick_callback(sym, ts)
+        _on_tick_callback(sym)
     except Exception as e:  # counted + WARNING; ingest must go on
         _tick_callback_failures += 1
         if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
@@ -311,7 +312,7 @@ def _apply_rest_quotes(msg: dict) -> None:
     received = float(msg["ts_recv"])
     push_rest_quotes(msg["answer"], received)
     for sym in msg["answer"]:
-        _tick(sym, received)
+        _tick(sym)
 
 
 def _answer_watchlist_request(msg: dict) -> None:
@@ -328,7 +329,7 @@ def _apply_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
         return
     push_level_one(sym, item, ts_recv=ts, field_received=received)
     push_changes.changed(sym, push_changes.FLOW)
-    _tick(sym, ts)
+    _tick(sym)
 
 
 def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
@@ -360,7 +361,7 @@ def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -
     recent.TAPE.record(sym, content, ts, option_top(sym), get_stream_greeks(sym))
     _option_contract_last_update_ts[sym] = ts
     if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
-        _tick(sym, ts)
+        _tick(sym)
 
 
 #: each symbol's message, by its topic's kind, and what applies it (_ingest_pushed)
@@ -449,7 +450,7 @@ def bind_daemon(daemon) -> None:
 
 
 def start_order_flow_stream(
-    on_tick_callback: Callable[[str, float], None] | None = None,
+    on_tick_callback: Callable[[str], None] | None = None,
     on_chain_callback: Callable[..., None] | None = None,
     on_feed_callback: Callable[[float], None] | None = None,
 ) -> bool:

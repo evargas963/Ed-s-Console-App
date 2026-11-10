@@ -247,19 +247,24 @@ def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
 
     A LEVELONE_OPTIONS message the
     daemon pushed reaches the console's feed (streaming._ingest_pushed), whose tick queues the
-    ticker's reprice as of the message's receive time, and the levels the pricing thread
-    publishes carry the pushed Greeks.
+    ticker's reprice, and the levels the pricing thread publishes carry the pushed Greeks, with
+    the push's time as theirs.
     """
     _daemon(held=[_A])
     _put_chain(fetched_ts=_T - 30.0)
+    gate = _busy()
     ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
         _streamed(_A, _PUSHED_SET, _T)
-        _drain()
+        with server._chains_waiting_lock:
+            job = server._chains_waiting.pop(TK)
     finally:
         ofs._on_tick_callback = None
+        gate.set()
+    server._price_chain(TK, *job, _AT)  # the job's own instant, as _price_waiting_chain passes
     c = _cached()
     pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
+    assert job[0] == server.REPRICE
     assert c.snap.per_strike == pushed.per_strike
     assert c.levels_ts_utc == _T
 
@@ -536,22 +541,22 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
     """A streamed tick on a viewed ticker queues one reprice of its kept chain.
 
     The tick is an equity quote or one of its options. Every tick that arrives while it waits is
-    in that one reprice, which is as of the newest tick's receive time.
+    in that one reprice, which the pricing job runs at its own instant.
     """
     _daemon()
     _put_chain()
     _view(_clean)
     gate = _busy()
     try:
-        server._on_stream_tick(_A, _T)  # an option of TK
-        for i in range(10):
-            server._on_stream_tick(TK, _T + 1 + i)
+        server._on_stream_tick(_A)  # an option of TK
+        for _ in range(10):
+            server._on_stream_tick(TK)
         with server._chains_waiting_lock:
             waiting = dict(server._chains_waiting)
     finally:
         gate.set()
         _drain()
-    assert waiting == {TK: (server.REPRICE, None, _T + 10, None)}
+    assert waiting == {TK: (server.REPRICE, None, None, None)}
 
 
 def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
@@ -709,9 +714,7 @@ def _real_option(with_greek: bool) -> dict:
 def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_greek):
     m = _real_option(with_greek)
     hits: list = []
-    ofs._on_tick_callback = lambda sym, ts: hits.append(
-        (sym, ts)
-    )  # the console's callback, as start_order_flow_stream sets it
+    ofs._on_tick_callback = hits.append  # the console's callback, as start_order_flow_stream sets
     try:
         ofs._ingest_pushed(
             f"optquote.{m['item']['key']}",
@@ -724,7 +727,7 @@ def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_g
         )
     finally:
         ofs._on_tick_callback = None
-    assert hits == ([(m["item"]["key"], m["ts_recv"])] if with_greek else [])
+    assert hits == ([m["item"]["key"]] if with_greek else [])
 
 
 def test_a_delivered_chain_is_priced_at_the_pricing_jobs_own_instant():

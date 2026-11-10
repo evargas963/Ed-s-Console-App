@@ -1045,9 +1045,10 @@ STREAM_WORDS = {
     },
 }
 
-#: per ticker, the beat its open surface was last stamped from (the socket open, the surface's
-#: contracts the daemon holds, the option market open), so a beat that changes none of them for a
-#: surface does not restamp or republish it
+#: per ticker, the beat its open surface was last stamped from (_feed_stamp_key: the socket open,
+#: the surface's contracts the daemon holds, the option market open), by its pricing
+#: (_publish_levels) or a restamp, so a beat that changes none of them for a surface does not
+#: restamp or republish it
 _last_feed_stamp: dict[str, tuple] = {}
 
 
@@ -1077,6 +1078,32 @@ def _levels_changed(tk: str) -> None:
     live_ui.changed(app.state, tk, *LEVELS_PANELS)
 
 
+def _surface_symbols(surface: dict) -> list[str]:
+    """Return every contract a heatmap's cells name."""
+    return [
+        s
+        for cell in surface["cells"]
+        for pair in cell["contracts"]
+        for s in (pair["call"], pair["put"])
+        if s
+    ]
+
+
+def _feed_stamp_key(feed: lmp.FeedNow, symbols: list[str], now: float) -> tuple:
+    """Return what a heatmap's stamp takes from one beat (`feed`) at `now`.
+
+    That is whether Schwab's socket is open, which of the heatmap's `symbols` the daemon holds on
+    LEVELONE_OPTIONS, and whether the option market is open.
+    """
+    socket_open = lmp.feed_up(feed)
+    held = feed.held.get("LEVELONE_OPTIONS", frozenset()) if socket_open else frozenset()
+    return (
+        socket_open,
+        held.intersection(symbols),
+        options_open(datetime.fromtimestamp(now, ET)),
+    )
+
+
 def restamp_open_surfaces(now: float) -> None:
     """Mark every cached heatmap from the daemon's heartbeat at `now`, without repricing.
 
@@ -1087,9 +1114,6 @@ def restamp_open_surfaces(now: float) -> None:
     thread, the one writer of the levels, so the cache's lock is held only to read and to store.
     """
     feed = lmp.feed_now(now)
-    socket_open = lmp.feed_up(feed)
-    held_now = feed.held.get("LEVELONE_OPTIONS", frozenset()) if socket_open else frozenset()
-    market_open = options_open(datetime.fromtimestamp(now, ET))
     with _terrain_cache_lock:
         cached = list(_terrain_cache.items())
     bumped: list[str] = []
@@ -1097,18 +1121,12 @@ def restamp_open_surfaces(now: float) -> None:
         surface = levels.gamma_surface
         if surface is None:  # this ticker's levels hold no surface (no price or no book)
             continue
-        symbols = [
-            s
-            for cell in surface["cells"]
-            for pair in cell["contracts"]
-            for s in (pair["call"], pair["put"])
-            if s
-        ]
-        held = held_now.intersection(symbols)
-        key = (socket_open, held, market_open)
+        symbols = _surface_symbols(surface)
+        key = _feed_stamp_key(feed, symbols, now)
         if _last_feed_stamp.get(tk) == key:
             continue
         _last_feed_stamp[tk] = key
+        held = key[1]
         streamed = {}
         for sym in symbols:
             greeks = get_stream_greeks(sym)
@@ -1451,6 +1469,8 @@ def _publish_levels(
             projected, streamed, feed_live, held, now.timestamp()
         )
         surface["surface_seq"] = _next_gamma_surface_seq(tk, now.timestamp())
+        # a later beat that differs from this one restamps it (restamp_open_surfaces)
+        _last_feed_stamp[tk] = _feed_stamp_key(feed, _surface_symbols(surface), now.timestamp())
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
@@ -1596,16 +1616,14 @@ def _tick_ticker(sym: str) -> str | None:
     return _contract_ticker(sym)
 
 
-def _on_stream_tick(sym: str, ts: float) -> None:
-    """Take one tick of `sym`, received by the daemon at `ts`.
+def _on_stream_tick(sym: str) -> None:
+    """Take one tick of `sym`.
 
     Called by the live feed, on the event loop, for every streamed equity quote, every option
-    quote carrying Greeks or volume, and every contract of a /quotes answer, with the daemon's
-    receive time of it (`ts`). An equity quote
-    checks the ticker's levels for a cross at the live price (stored off the event loop);
-    the ticker, whichever it is, is queued for a reprice as of `ts` with every value Schwab has
-    sent (one waits per ticker, as of its newest tick, so the reprice that runs takes the
-    newest). Returns at once.
+    quote carrying Greeks or volume, and every contract of a /quotes answer. An equity quote
+    checks the ticker's levels for a cross at the live price (stored off the event loop); the
+    ticker, whichever it is, is queued for a reprice with every value Schwab has sent (one waits
+    per ticker, so the reprice that runs takes the newest). Returns at once.
     """
     tk = _tick_ticker(sym)
     if tk and not vendor_option_root(sym):
@@ -1624,7 +1642,7 @@ def _on_stream_tick(sym: str, ts: float) -> None:
                 datetime.fromtimestamp(now, ET).strftime("%Y-%m-%d %H:%M:%S ET"),
             )
     if tk:
-        _wait_to_price(tk, REPRICE, ts=ts)
+        _wait_to_price(tk, REPRICE)
 
 
 #: prices every ticker's levels, off the event loop, one at a time
@@ -1633,7 +1651,7 @@ _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pri
 #: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its held
 #: chain (a streamed tick of the ticker or of one of its contracts)
 DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
-#: ticker -> (what, contracts, fetched time or a reprice's tick time, the chain's spot): at most
+#: ticker -> (what, contracts, a chain's fetched time, the chain's spot): at most
 #: one per ticker however far
 #: pricing falls behind; a delivered chain replaces what waits, and whatever waits already prices
 #: the newest ticks. Every pricing runs on the one pricing thread, so each ticker's chains are
@@ -1672,15 +1690,11 @@ def _wait_to_price(
     """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread.
 
     A delivered chain replaces whatever waits for the ticker; anything else waits only for a
-    ticker with nothing waiting, and stored captures only for one with nothing delivered. A
-    reprice that finds one waiting moves it to its own tick's time (`ts`), so the one that runs is
-    as of the newest tick. Returns whether it was queued.
+    ticker with nothing waiting, and stored captures only for one with nothing delivered.
+    Returns whether it was queued.
     """
     with _chains_waiting_lock:
         held = _chains_waiting.get(tk)
-        if what == REPRICE and held is not None and held[0] == REPRICE:
-            _chains_waiting[tk] = (REPRICE, None, ts, None)
-            return False
         if what != DELIVERED and (held is not None or (what == STORED and tk in _chains_delivered)):
             return False
         if what == DELIVERED:
@@ -1719,13 +1733,15 @@ def _price_chain(
     """Price a ticker's levels through THE producer of them (_publish_levels), at `now`.
 
     From a newly fetched chain, with the chain's own fetch time as its as-of (an older streamed
-    value never overrides it); from the held chain with the newest values Schwab sent (the
-    stream's, a /quotes answer's), as of the newest tick's receive time (REPRICE, `fetched_ts`);
-    or from the ticker's newest stored captures (STORED, DATA_FLOW decision 7).
+    value never overrides it); from the held chain with the newest values Schwab sent, the
+    stream's and a /quotes answer's (REPRICE; the levels' time is the newest of them,
+    levels_ts_utc); or from the ticker's newest stored captures (STORED, DATA_FLOW decision 7).
+    Every pricing is at the job's own instant, so the daemon's newest beat is a beat of that
+    instant and its contracts are judged by it.
     """
     if what == REPRICE:  # the held chain: the ticker's reason stays the chain's own
         try:
-            _publish_levels(tk, now=datetime.fromtimestamp(fetched_ts, ET))
+            _publish_levels(tk, now=now)
         except Exception as e:  # logged; the next tick or chain reprices
             log.warning("levels reprice failed for %s: %s", tk, e, exc_info=True)
         return
