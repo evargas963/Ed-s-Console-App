@@ -1285,6 +1285,8 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
         tracemalloc.start()
         await publish()
         await _until(lambda: _mix_rows(db) == n, limit=30.0)
+        # the writer's thread lets go of a round after its commit: the base is read once it has
+        await _until(lambda: writer.status()["rows_written"] == n and not writer._round, limit=30.0)
         holder.execute("BEGIN IMMEDIATE")
         base = tracemalloc.get_traced_memory()[0]
         for _ in range(3):
