@@ -4187,25 +4187,19 @@ TERRAIN_FUSION_LEVELS = (
 def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
     """Return the ticker's option levels from its published terrain, tagged for liquidity zones."""
     published = published_levels(tk)
-    if published is None:
-        return []
-    snap = published.snap
     return [
-        (float(getattr(snap, k)), tag)
+        (float(getattr(published.snap, k)), tag)
         for k, tag in TERRAIN_FUSION_LEVELS
-        if getattr(snap, k) is not None
+        if published is not None and getattr(published.snap, k) is not None
     ]
 
 
 def _zone_against_spot(lo: float, hi: float, spot: float | None) -> dict:
     """Return the zone's distance_to_spot and spot_inside_zone, each None without a spot."""
-    if spot is None:
-        return {"distance_to_spot": None, "spot_inside_zone": None}
-    inside = within(lo, hi, spot)
-    return {
-        "distance_to_spot": 0.0 if inside else min(abs(spot - lo), abs(spot - hi)),
-        "spot_inside_zone": inside,
-    }
+    known = spot is not None
+    inside = within(lo, hi, spot) if known else None
+    outside_by = min(abs(spot - lo), abs(spot - hi)) if known else None
+    return {"distance_to_spot": 0.0 if inside else outside_by, "spot_inside_zone": inside}
 
 
 def _spot_location(zones: list, spot) -> dict | None:
