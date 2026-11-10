@@ -828,10 +828,8 @@ class ChainSweep:
             raise
 
 
-def newest_capture_ts(
-    db_path: Path | str, ticker: str, *, before_ts: float = float("inf")
-) -> float | None:
-    """When the ticker's newest full capture before `before_ts` was taken.
+def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
+    """When the ticker's newest full capture was taken.
 
     None when there is none.
     """
@@ -845,8 +843,8 @@ def newest_capture_ts(
             return None
         return conn.execute(
             "SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
-            "AND completeness_basis=? AND ts_utc<?",
-            (ticker_storage_key(ticker), CAPTURE_BASIS, before_ts),
+            "AND completeness_basis=?",
+            (ticker_storage_key(ticker), CAPTURE_BASIS),
         ).fetchone()[0]
     finally:
         conn.close()
@@ -858,7 +856,6 @@ def last_capture_per_day(
     days: int,
     *,
     before_et_date: str | None = None,
-    before_ts: float = float("inf"),
 ) -> list[dict[str, Any]]:
     """Return the last capture of each of the newest `days` market days (newest first).
 
@@ -868,7 +865,7 @@ def last_capture_per_day(
     (`spot_from_chain` true); a capture written without one
     gives its nearest expiry's underlyingPrice, `spot_ts` None and `spot_from_chain` false.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
-    view); `before_ts` only captures taken before it.
+    view).
     """
     tk = ticker_storage_key(ticker)
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
@@ -884,7 +881,7 @@ def last_capture_per_day(
             (tk, CAPTURE_BASIS),
         ):
             day = datetime.fromtimestamp(ts, ET).date().isoformat()
-            if ts >= before_ts or (before_et_date is not None and day >= before_et_date):
+            if before_et_date is not None and day >= before_et_date:
                 continue
             if picked and picked[-1][0] == day:
                 continue

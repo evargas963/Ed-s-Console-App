@@ -31,16 +31,34 @@ not a second price. The expiry, including
 for the chosen expiry uses that expiry's contracts at the book's valuation time. Known open
 interest of zero is zero charm.
 
-Outside a session day's option window (operator 2026-10-22: the last number stands after the
-close, the way a balance stands after the bank closes), a reported open interest or volume of
-zero leaves the last count above zero. That count is the one already published, or the newest
-stored capture when this process has not published one. A missing count and Schwab's no-value
-code are not that zero. A day Schwab says is closed is outside every window, so the same rule holds
-on it (operator 2026-10-25: keep the last valid number, consistently, as a bank shows the last
-balance on its books while it is closed; this replaces 2026-09-27's "a closed day keeps a reported
-zero"). A chain begun inside the window keeps a reported zero. A streamed zero after the close does
-not replace the count. A zero book from a closed day does not replace the last count, through the
-next open.
+Outside a ticker's option window, and on a day Schwab says is closed, the close values are the
+balance until the next open (`docs/DATA_FLOW.md` §3.4, the option chain): Schwab's values as of
+the close, a reported 0 included, and nothing sent after them replaces them. This replaces the
+2026-10-22/25 rule that a reported zero outside the window kept the last count above zero.
+
+## Operator decisions on the live-path audit (2026-11-09)
+
+The operator's answers to the live-path audit's questions, in his words:
+
+- (2) "upon market close (when the bank closes) that is the balance until the bank opens again,
+  post market, pre market, etc." Every value as of the regular close stands until the next
+  regular open; a reported 0 at the close is the balance (built: the close values above).
+- (3) Keep the placeholders.
+- (4) "agree yes, if they are duplicates": stop storing the flat LEVELONE and CHART columns that
+  duplicate `native`, only where production's stream database shows an exact duplicate in every
+  row; a column that is not one stays and is reported (FLAT-COPIES).
+- (5) "yes", corrected the same day: "does schwab provide 1 minute bars? if so i think they are
+  supposed to be the canonical 1 minute candles, where we can reconstruct or build any time frame
+  from there". The 1-minute candle is the one source of the intraday bars (BARS-1M).
+- Confirmed the same day (his message 59, as relayed): daily and longer bars come from Schwab's
+  own daily candle, the official session record, with weekly and monthly built from the daily;
+  the intraday timeframes from the 1-minute bar. Schwab's Greeks stay taken as sent, with no
+  validity rule of ours.
+
+| ID | Status | Work item |
+|---|---|---|
+| BARS-1M | NEXT | The 1-minute candle is the one source of every intraday timeframe: live from CHART_EQUITY (Streamer §5.1), history from `/pricehistory` minute/1; 3/5/15/30/60-minute bars built from it by exact OHLCV aggregation, one registered derived producer; no other intraday frequency fetched. Daily and longer: Schwab's own daily candles, weekly and monthly built from them (confirmed, message 59). |
+| FLAT-COPIES | QUEUED | The flat LEVELONE and CHART columns that duplicate `native`: proven exact on production's `stream_capture.db` (read only), then their writers and readers deleted; a column that is not an exact duplicate stays and is reported. |
 
 ## Data path (operator 2026-10-02: one rule the whole way through, end to end)
 
