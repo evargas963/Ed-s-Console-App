@@ -204,16 +204,30 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             timeout=90,
         )
         assert (stopped.returncode, stopped.stdout) == (0, "Ed Console: stopped\n"), stopped.stderr
+        stopped_at = time_et.now()
         end = time_et.elapsed() + 8  # past the batch's 5 s restart wait
         while time_et.elapsed() < end:
+            # each one found, with when it started against the stop: one started after it is a
+            # restart, one started before it is a process the stop did not wait for
             started = [
-                p.pid
-                for p in psutil.process_iter(["name", "cwd"])
+                {
+                    "pid": p.pid,
+                    "started_sec_after_the_stop": round(p.info["create_time"] - stopped_at, 2),
+                    "seen_sec_after_the_stop": round(time_et.now() - stopped_at, 2),
+                    "line": p.info["cmdline"],
+                }
+                for p in psutil.process_iter(["name", "cwd", "create_time", "cmdline"])
                 if p.info["name"] == "python.exe"
                 and p.info["cwd"]
                 and Path(p.info["cwd"]).resolve() == home.resolve()
             ]
-            assert not started, f"the batch restarted a daemon stopped on request: {started}"
+            log_ends = [
+                f.read_text(encoding="utf-8")[-1500:] for f in (tmp_path / "logs").glob("*.log")
+            ]
+            assert not started, (
+                f"the batch restarted a daemon stopped on request: {started}; "
+                f"the stop's error output: {stopped.stderr!r}; the daemon's log ends: {log_ends}"
+            )
             time.sleep(0.2)
     finally:
         for p in psutil.process_iter(["cmdline"]):
