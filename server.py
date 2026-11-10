@@ -2011,19 +2011,34 @@ def _todays_candles(tk: str, now: datetime) -> list[Candle]:
     return [Candle(s.regular[0][0].timestamp(), *day, row["total_volume"])]
 
 
-def _atr(ticker: str, now: datetime) -> Atr:
-    """Return the ticker's daily, weekly and monthly ATR at `now`.
+def _daily_candles(tk: str, now: datetime) -> list[Candle]:
+    """`tk`'s daily candles through today, every one Schwab's: the ATR's and the daily chart's.
 
-    From Schwab's daily candles as the bar writer holds them (_series; none from Schwab yet: none
-    held) up to yesterday, and today's candle as Schwab pushes it (_todays_candles). Too few
-    reads as None.
+    Schwab's /pricehistory series as the bar writer holds it (_series; none from Schwab yet: none
+    held), today's candle of it once Schwab's regular window for today has ended and Schwab has
+    sent it. Until then today's is the one Schwab pushes (_todays_candles).
     """
-    tk = ticker_storage_key(ticker)
     today = now.astimezone(ET).date()
+    s = session(today.isoformat())
+    ended = s is not None and bool(s.regular) and now >= s.regular[-1][1]
     with _bars_lock:
-        held_daily = _series[(tk, "1d")] if (tk, "1d") in _series else []
-        daily = [c for c in held_daily if datetime.fromtimestamp(c.ts, ET).date() < today]
-    return compute_atrs(daily + _todays_candles(tk, now))
+        sent = list(_series[(tk, "1d")]) if (tk, "1d") in _series else []
+    daily = [
+        c
+        for day, c in ((datetime.fromtimestamp(c.ts, ET).date(), c) for c in sent)
+        if day < today or (ended and day == today)
+    ]
+    if daily and datetime.fromtimestamp(daily[-1].ts, ET).date() == today:
+        return daily
+    return daily + _todays_candles(tk, now)
+
+
+def _atr(ticker: str, now: datetime) -> Atr:
+    """Return the ticker's daily, weekly and monthly ATR at `now`, from _daily_candles.
+
+    Too few reads as None.
+    """
+    return compute_atrs(_daily_candles(ticker_storage_key(ticker), now))
 
 
 def _atr_fields(tk: str, now: datetime) -> dict:
@@ -2254,10 +2269,9 @@ def chart_bars(tk: str, tf: str, minutes: list[dict], now: datetime) -> list[dic
     A timeframe Schwab sends (SCHWAB_SERIES) is Schwab's series as the bar writer holds it, but
     for the bar Schwab has not sent whole yet: a minute series' newest bar (forming, or not asked
     again yet; the daemon asks as each completes), which is rolled up (aggregate_bars) from
-    Schwab's 1-minute bars; and today's daily candle, which is the one Schwab pushes
-    (_todays_candles) until Schwab's regular window for today has ended and Schwab has sent it
-    in the series. Every other timeframe (3 and 60 minutes, which Schwab does not send), or one
-    whose series is not held yet, is rolled up from the 1-minute bars.
+    Schwab's 1-minute bars; and today's daily candle (_daily_candles). Every other timeframe (3
+    and 60 minutes, which Schwab does not send), or one whose series is not held yet, is rolled
+    up from the 1-minute bars.
     """
     key = (tk, SCHWAB_SERIES[tf]) if tf in SCHWAB_SERIES else None
     with _bars_lock:
@@ -2269,18 +2283,12 @@ def chart_bars(tk: str, tf: str, minutes: list[dict], now: datetime) -> list[dic
         first = minutes[0]["t"] if minutes else sent[0].ts
         schwab = [_bar_dict(c) for c in sent if first <= c.ts < newest]
         return schwab + aggregate_bars([m for m in minutes if m["t"] >= newest], tf)
-    today = now.astimezone(ET).date()
-    s = session(today.isoformat())
-    ended = s is not None and bool(s.regular) and now >= s.regular[-1][1]
     first_day = datetime.fromtimestamp(minutes[0]["t"], ET).date() if minutes else None
-    schwab = [
+    return [
         _bar_dict(c)
-        for day, c in ((datetime.fromtimestamp(c.ts, ET).date(), c) for c in sent)
-        if (first_day is None or first_day <= day) and (day < today or (ended and day == today))
+        for c in _daily_candles(tk, now)
+        if first_day is None or first_day <= datetime.fromtimestamp(c.ts, ET).date()
     ]
-    if schwab and datetime.fromtimestamp(schwab[-1]["t"], ET).date() == today:
-        return schwab
-    return schwab + [_bar_dict(c) for c in _todays_candles(tk, now)]
 
 
 def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
