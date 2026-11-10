@@ -35,6 +35,7 @@ from option_contract import read_chain
 from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import daemon_status
+from tests.page_on_socket import pages
 from tests.schwab_rest_standin import FX, SPY
 from time_et import ET
 
@@ -120,7 +121,9 @@ def _repriced(answer: dict, received: float) -> server.PublishedLevels:
     server._chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
     ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
-        _answered(answer, received)
+        with pages() as served:
+            served.open(TK)  # a page shows SPY, so its ticks reprice it
+            _answered(answer, received)
         with server._chains_waiting_lock:
             job = server._chains_waiting.pop(TK)
     finally:

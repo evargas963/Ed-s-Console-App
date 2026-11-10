@@ -1563,6 +1563,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
                 heartbeat_fn=daemon.status,
                 panels=server.PAGE_PANELS,
                 priced=server.PRICED_PANELS,
+                on_select=server.ticker_selected,
             ),
             name="live ui",
         ),

@@ -595,9 +595,16 @@ the program.
   watchlist decides which tickers are fetched and priced. Every tick of a ticker (an
   equity quote, a LEVELONE_OPTIONS message of one of its contracts carrying a Greek or its
   volume, `streaming._REPRICE_FIELDS`, or a `/quotes` answer for one of its contracts) queues a
-  reprice of that ticker on the pricing thread,
-  whether a page shows it or not (operator 2026-11-06: "the live price is the key"; the levels
-  follow what Schwab pushes). The ticks that arrive while one waits or runs are all in the next.
+  reprice of that ticker on the pricing thread while a page shows it (`live_ui.selected`). A
+  ticker no page shows is priced by each chain the daemon delivers, with every value Schwab has
+  pushed since, and repriced at once when a page selects it (`server.ticker_selected`, called by
+  the page socket's subscribe). Operator 2026-11-10: "yes i like this fix.", replacing the
+  2026-11-06 reprice of every ticker on every tick, which put 60% of the program's samples in
+  pricing on the one thread and the levels on screen 10 to 16 s behind (py-spy, production,
+  2026-11-10 10:58 CT). The ticks that arrive while one waits or runs are all in the next.
+  Enforced by: `tests/test_instant_ui_blockers_a_v1.py::test_a_tick_queues_a_reprice_only_for_a_ticker_a_page_shows`,
+  `tests/test_one_levels_producer_v1.py::test_a_push_on_a_ticker_no_page_shows_is_priced_with_its_next_chain`
+  and `tests/test_data_path_silent_price_v1.py::test_a_page_selecting_a_ticker_queues_its_reprice_and_its_ticks_end_with_the_page`.
   Every pricing runs at the job's own instant (`server._price_waiting_chain`), so the daemon's
   newest beat judges which of its contracts stream; it is pushed to the page the moment it
   changes, and the next beat stamps the new heatmap (`server.restamp_open_surfaces`). Enforced by:

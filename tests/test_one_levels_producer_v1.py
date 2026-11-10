@@ -235,8 +235,8 @@ def test_a_pushed_greek_set_prices_the_levels_and_their_time_is_the_push():
     assert (c.levels_ts_utc, c.computed_ts_utc) == (_T, _T - 30.0)
 
 
-def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
-    """Schwab -> the levels, with no page open on the ticker.
+def test_a_push_reprices_the_ticker_a_page_shows_through_the_feed(_clean):
+    """Schwab -> the levels of the ticker a page shows.
 
     A LEVELONE_OPTIONS message the
     daemon pushed reaches the console's feed (streaming._ingest_pushed), whose tick queues the
@@ -245,6 +245,7 @@ def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
     """
     _daemon(held=[_A])
     _put_chain(fetched_ts=_T - 30.0)
+    _clean.open(TK)
     gate = _busy()
     ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
@@ -550,6 +551,35 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
         gate.set()
         _drain()
     assert waiting == {TK: (server.REPRICE, None, None, None)}
+
+
+def test_a_push_on_a_ticker_no_page_shows_is_priced_with_its_next_chain():
+    """No page shows the ticker: a pushed tick queues no reprice, and its next chain carries it.
+
+    The LEVELONE_OPTIONS message reaches the console's feed and is held. The chain the daemon
+    delivers next is priced with the pushed Greeks, and the push's time is the levels'.
+    """
+    _daemon(held=[_A])
+    _put_chain(fetched_ts=_T - 30.0)
+    gate = _busy()
+    ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
+    try:
+        _streamed(_A, _PUSHED_SET, _T)
+        with server._chains_waiting_lock:
+            after_push = dict(server._chains_waiting)
+        server._on_chain(TK, _RECORDS, _T - 1.0, None, (_SPOT, _T))
+        with server._chains_waiting_lock:
+            job = server._chains_waiting.pop(TK)
+    finally:
+        ofs._on_tick_callback = None
+        gate.set()
+    server._price_chain(TK, *job, _AT)  # the job's own instant, as _price_waiting_chain passes
+    c = _cached()
+    pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
+    assert TK not in after_push
+    assert job[0] == server.DELIVERED
+    assert c.snap.per_strike == pushed.per_strike
+    assert (c.levels_ts_utc, c.computed_ts_utc) == (_T, _T - 1.0)
 
 
 def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():

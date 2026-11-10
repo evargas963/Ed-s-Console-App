@@ -165,20 +165,21 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
     assert held_no_trade["spot"] is None
 
 
-def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
-    """Every ticker's levels follow what Schwab pushes, not only the one on screen.
+def test_a_tick_queues_a_reprice_only_for_a_ticker_a_page_shows():
+    """The one pricing thread follows the ticker on screen (operator 2026-11-10).
 
-    A tick queues a reprice of its ticker, whether a page shows it or not
-    (a page open on one, the pricing thread held while the ticks arrive, the queue read as it
-    stands).
+    A tick queues a reprice of its ticker while a page shows it, and none for a ticker no page
+    shows, which each delivered chain prices (two pages open, each on a ticker of its own, the
+    pricing thread held while the ticks arrive, the queue read as it stands).
     """
     served = Pages()
     served.open("ZZVIEW")
+    served.open("ZZOTHERPAGE")  # a second page, on another ticker
     gate = threading.Event()
     srv._chain_pricing.submit(gate.wait, 10)
     try:
-        srv._on_stream_tick("ZZNOTVIEWED")
-        srv._on_stream_tick("ZZVIEW")
+        for tk in ("ZZNOTVIEWED", "ZZVIEW", "ZZOTHERPAGE"):
+            srv._on_stream_tick(tk)
         with srv._chains_waiting_lock:
             waiting = dict(srv._chains_waiting)
     finally:
@@ -186,6 +187,6 @@ def test_a_tick_queues_a_reprice_for_its_ticker_viewed_or_not():
         srv._chain_pricing.submit(lambda: None).result(timeout=10)
         served.stop()
     assert waiting == {
-        "ZZNOTVIEWED": (srv.REPRICE, None, None, None),
         "ZZVIEW": (srv.REPRICE, None, None, None),
+        "ZZOTHERPAGE": (srv.REPRICE, None, None, None),
     }
