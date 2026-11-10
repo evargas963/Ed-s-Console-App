@@ -862,7 +862,7 @@ def build_price_level_snapshot(
     tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
     levels: dict[str, PriceLevelValue] = {}
     families_absent: list[dict] = []
-    degraded: list[dict] = []
+    degraded: list[str] = []
     vwap_path: list[tuple[float, float]] = []
     vwap_series: list[tuple] = []
 
@@ -899,15 +899,9 @@ def build_price_level_snapshot(
         )
         if eng["rth_bars"] < LEVELS_PRIOR_SESSION_MIN_BARS:
             degraded.append(
-                {
-                    "family": "prior_day",
-                    "last_good_ts_utc": None,
-                    "reason": (
-                        f"prior session {prior_date} holds only {eng['rth_bars']} of >= "
-                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
-                        "estimated from a partial tape"
-                    ),
-                }
+                f"prior_day: prior session {prior_date} holds only {eng['rth_bars']} of >= "
+                f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
+                "estimated from a partial tape"
             )
 
     sess_window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"

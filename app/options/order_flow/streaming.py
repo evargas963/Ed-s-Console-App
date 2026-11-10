@@ -126,10 +126,6 @@ async def select_flow_contract(contract: str | None) -> None:
 _feed_task: asyncio.Task | None = None
 _feed_running = False
 
-#: Each option contract's last streamed message time (LEVELONE_OPTIONS or OPTIONS_BOOK), keyed
-#: by ticker_storage_key.
-_option_contract_last_update_ts: dict[str, float] = {}
-
 #: Called with the symbol of every streamed equity quote, every option quote carrying a
 #: _REPRICE_FIELDS value and every contract of a /quotes answer (server._on_stream_tick:
 #: reprices its ticker).
@@ -339,7 +335,6 @@ def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
         return
     book = push_book(sym, content, msg["service"])
     if msg.get("service") == "OPTIONS_BOOK":
-        _option_contract_last_update_ts[sym] = ts
         return
     if book is not None:
         recent.BOOKS.record(sym, msg["service"], book, ts)
@@ -348,7 +343,7 @@ def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
 
 
 def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
-    """Apply a LEVELONE_OPTIONS message: the contract's order-flow state, tape and update time.
+    """Apply a LEVELONE_OPTIONS message: the contract's order-flow state and tape.
 
     A tick when the newest message carried a value the levels use (a merged record holds the last
     of each field; only one this message brought is new).
@@ -359,7 +354,6 @@ def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -
     push_level_one(sym, content, ts_recv=ts, field_received=received)
     push_option_top(sym, content)
     recent.TAPE.record(sym, content, ts, option_top(sym), get_stream_greeks(sym))
-    _option_contract_last_update_ts[sym] = ts
     if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
         _tick(sym)
 
@@ -421,11 +415,9 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     l1 = _service_feed(c, "LEVELONE_OPTIONS", now)
     healthy = bool(_feed_running and l1["state"] == _lmp.LIVE)
     return {
-        "queried_contract": c,
         "subscription_state": SUBSCRIBED
         if levelone is not None and c in levelone
         else NOT_STREAMED,
-        "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {
             "replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
             "l1": l1,
@@ -487,7 +479,6 @@ def stop_order_flow_stream() -> None:
     """
     global _feed_running, _feed_task
     _feed_running = False
-    _option_contract_last_update_ts.clear()
     clear_all_live_state()
     task = _feed_task
     if task is not None and not task.done():

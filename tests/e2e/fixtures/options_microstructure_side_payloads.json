@@ -116,8 +116,6 @@
         },
         "replay": "not connected"
       },
-      "queried_contract": "SPY   261023C00761000",
-      "streaming_last_update_ts": 1792762339.431057,
       "subscription_state": "SUBSCRIBED"
     },
     "top_feed_label": "LIVE",
@@ -254,8 +252,6 @@
         },
         "replay": "not connected"
       },
-      "queried_contract": "SPY   261023P00762000",
-      "streaming_last_update_ts": 1792762339.4350789,
       "subscription_state": "SUBSCRIBED"
     },
     "top_feed_label": "LIVE",

@@ -62,14 +62,14 @@ def test_thin_banked_prior_session_is_stamped_degraded():
             tk,
             "the thin tape still serves — the defect was silence, not existence",
         )
-        stamps = [d for d in snap.degraded if d.get("family") == "prior_day"]
-        assert stamps and "prior session 2026-10-02" in stamps[0]["reason"], (tk, snap.degraded)
-        assert "estimated from a partial tape" in stamps[0]["reason"], (tk, stamps)
-        assert "291" in stamps[0]["reason"], (tk, stamps)
+        stamps = [d for d in snap.degraded if d.startswith("prior_day: ")]
+        assert stamps and "prior session 2026-10-02" in stamps[0], (tk, snap.degraded)
+        assert "estimated from a partial tape" in stamps[0], (tk, stamps)
+        assert "291" in stamps[0], (tk, stamps)
 
 
 def test_full_banked_prior_session_carries_no_stamp():
     """Fri 2026-10-02: the prior session, Thursday, holds all 390 regular-session bars."""
     for tk, snap in _published(datetime(2026, 10, 2, 12, 0, tzinfo=ET)).items():
         assert snap.price("PDH") is not None, tk
-        assert [d for d in snap.degraded if d.get("family") == "prior_day"] == [], tk
+        assert snap.degraded == [], tk
