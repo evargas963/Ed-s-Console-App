@@ -5,7 +5,7 @@
 // console's watchlist routes (fixtures/watchlist.js).
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
-const { watchRequests } = require('./fixtures/settled');
+const { watchRequests, holdClock } = require('./fixtures/settled');
 
 // one beat as the program sends it, the daemon's status reduced to its time, its watchlist and
 // the session (Unknown: Schwab's /markets answer not held) (null: no status); `ts` on the
@@ -47,7 +47,7 @@ test('the header session follows each beat, while quotes keep arriving between t
 });
 
 test('before a beat has carried a list, the rail reads "-", never an empty list', async ({ page }) => {
-  await page.clock.install();   // the page's timers run when the test moves its time
+  await holdClock(page);
   await page.routeWebSocket(/\/ws$/, () => {});          // open, no beat yet
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.wl-empty')).toHaveText('-');
@@ -71,7 +71,7 @@ test('a change the daemon makes reaches the rail with the next beat; an add here
 test('a beat built before an add, arriving after its answer, does not take the added ticker away', async ({ page }) => {
   // the program's clock: the add's record at 1002; a beat built at 1001 still carries the old list
   let socket;
-  await page.clock.install();
+  await holdClock(page);
   await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(feed(['SPY'], 1000)); });
   await page.route('**/api/watchlist', (route) => route.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify({ ok: true, op: 'added', ticker: 'AMD', tickers: ['SPY', 'AMD'], ts: 1002, status: 200, answer: {} }) }));
@@ -120,7 +120,7 @@ test('the socket drops: the rail stands marked; it returns: the new connection\'
 
 test('the same list on every beat leaves the rail as drawn (no redraw, no flicker)', async ({ page }) => {
   let socket;
-  await page.clock.install();
+  await holdClock(page);
   await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(feed(['SPY', 'QQQ'])); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'QQQ']);

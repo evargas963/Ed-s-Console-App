@@ -10,7 +10,7 @@ const { test, expect } = require('@playwright/test');
 const { expiriesAnswer, pushExpiries } = require('./fixtures/expiries');
 const { expiriesFrame, served, chainAt } = require('./fixtures/price_socket');
 const { routeWatchlist, beat } = require('./fixtures/watchlist');
-const { watchRequests } = require('./fixtures/settled');
+const { watchRequests, holdClock } = require('./fixtures/settled');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
 // the served window: every column, or the selected expiry's alone (server.py _surface_view)
@@ -175,7 +175,7 @@ test.describe('ticker / expiry / measure controls', () => {
 
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol subscribe afterwards', async ({ page }) => {
     const requests = watchRequests(page);
-    await page.clock.install();   // the page's timers run when the test moves its time
+    await holdClock(page);   // the page's timers run when the test moves its time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await typeSymbol(page, 'AAPL');
     await expect(page.locator('#hSym')).toHaveText('AAPL');
