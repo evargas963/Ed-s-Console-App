@@ -958,7 +958,8 @@ def _stamp_gamma_surface_cell_stream_state(
       'unavailable'  — a symbol the daemon does not stream.
 
     Cell aggregate, over the legs that exist for this strike/expiry: live when all are live,
-    partial when some are, else the first of stale > pending present, else unavailable.
+    partial when some are, else the first of stale > pending present, else unavailable. A strike
+    the expiry does not list has no contract and so no state: its place in `stream` is None.
     """
     cells = []
     for cell in surface["cells"]:
@@ -987,6 +988,9 @@ def _stamp_gamma_surface_cell_stream_state(
                     "ts_recv": ts_recv,
                     "age_sec": (now - ts_recv if ts_recv is not None else None),
                 }
+            if not leg_states:  # the expiry lists no contract at this strike: nothing streams
+                state_row.append(None)
+                continue
             legs["state"] = _stream_state_of(leg_states)
             confirmed = [
                 leg
@@ -1005,7 +1009,9 @@ def _stamp_gamma_surface_cell_stream_state(
         "cells": cells,
         # each expiry column's state, from its cells' states -- the column header's status
         "stream_by_expiry": {
-            e["expiry"]: _stream_state_of([row["stream"][j]["state"] for row in cells])
+            e["expiry"]: _stream_state_of(
+                [row["stream"][j]["state"] for row in cells if row["stream"][j]]
+            )
             for j, e in enumerate(surface["expirations"])
         },
     }
