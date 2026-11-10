@@ -309,7 +309,7 @@ the program.
   information at any moment (operator 2026-10-08). The daemon picks the contracts from each
   watchlist ticker's newest whole chain on its bus (owner `capture.Daemon.pick_options`, run when
   a chain is put in the rule's order, by `Daemon.follow_market`; on a watchlist change,
-  `Daemon.watchlist_request`; and on the Flow panel's selection, `Daemon.console_frame`). A chain is put in the rule's order once, `capture.by_gamma`, at the
+  `Daemon.watchlist_request`; and on the Flow panel's selection, `Daemon.console_frame`). A chain is put in the rule's order once, `capture.shown_first`, at the
   daemon's time and the ticker's live price, the price row's (`live_price_rows.spot`, the rule
   reads LAST_PRICE nowhere else): as it arrives, or, while the row has no price, at the next price
   row. The plane is fed by `Daemon.follow_market` (each equity quote on the bus,
@@ -325,8 +325,11 @@ the program.
   console holds; the console names it to the daemon on every connection, `{"op":
   "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK, first in the order
   Schwab is asked in. After it come every ticker's contracts, dealt across the watchlist (each
-  ticker's first, then each one's second, `Daemon.pick_options`); a ticker's own order is its
-  contracts with the highest gamma first, Schwab's as sent, the gamma the levels
+  ticker's first, then each one's second, `Daemon.pick_options`); a ticker's own order is the
+  contracts the heatmap shows first (`shown_first`, operator 2026-11-10): by the larger of the
+  expiration's place among the chain's expirations and twice the strike's count of listed
+  strikes from the one nearest the price, the nearest first; of contracts equally near, the
+  highest gamma first, Schwab's as sent, the gamma the levels
   take (none sent, -999, or a -999 volatility is no gamma, ranked last); of equal gammas the
   nearest expiration, then the strike nearest the price, calls before puts. No number of ours
   caps what is asked: on each connection every contract of the order is asked on both services,
@@ -855,7 +858,7 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 | Part | Runs on | Why |
 |---|---|---|
 | **Feed** | the program's event loop (the Schwab stream) and one thread (the REST chain sweep, one request at a time) | the stream must read every frame as it comes |
-| **Calculators** | one pricing thread the program owns (`server._chain_pricing`), never the event loop: the levels and their heatmap's stream states (`server.restamp_off_the_loop`, each surface restamped only when its own contracts' hold, the socket or the option market changes), and the option rule's ladders and order of a chain (`strike_ladders`, `by_gamma`); a fetched chain is read once, on the chain sweep's thread (`chain_messages`) | heavy computing ON the event loop stalls it, and a stalled loop stops answering Schwab's stream; the console's loop did stall this way (2026-09-24, per-tick repricing; 2026-10-02, chain-part decoding on the loop, gone with the socket; 2026-11-09, the heatmap restamp and the option rule's chain read on the loop, up to 80% and 58% of it in 10-s windows, the reader 17.97 s behind Schwab, `tests/test_stream_reader_keeps_up_v1.py`). Feed and Push never wait on a calculation: it is handed off, and its result returns to State as its own update. The pool was measured in step 3 (2026-11-05: an event loop ticking every 10 ms while every watchlist ticker's newest stored chain, every expiry, SPY's 12,890 contracts among them, is priced back to back; read_chain, compute_terrain and the gamma surface): idle, the loop's lag p50 5.6 ms, p99 19 ms, max 50 ms; on the one thread, all 10 in 14.0 s, p50 20.7 ms, p99 64 ms, max 224 ms; in a process pool sent the raw chain, 11.3 s, p50 5.6 ms, p99 54 ms, max 203 ms; in a process pool sent the read chain, 17.1 s, p50 5.9 ms, p99 119 ms, max 309 ms. Handing a chain to another process costs the interpreter as much as pricing it, so a process pool does not lower the worst wait; the one thread keeps it near 0.2 s, far inside the 1 s beat and Schwab's 30 s silence limit, and adds no code |
+| **Calculators** | one pricing thread the program owns (`server._chain_pricing`), never the event loop: the levels and their heatmap's stream states (`server.restamp_off_the_loop`, each surface restamped only when its own contracts' hold, the socket or the option market changes), and the option rule's ladders and order of a chain (`strike_ladders`, `shown_first`); a fetched chain is read once, on the chain sweep's thread (`chain_messages`) | heavy computing ON the event loop stalls it, and a stalled loop stops answering Schwab's stream; the console's loop did stall this way (2026-09-24, per-tick repricing; 2026-10-02, chain-part decoding on the loop, gone with the socket; 2026-11-09, the heatmap restamp and the option rule's chain read on the loop, up to 80% and 58% of it in 10-s windows, the reader 17.97 s behind Schwab, `tests/test_stream_reader_keeps_up_v1.py`). Feed and Push never wait on a calculation: it is handed off, and its result returns to State as its own update. The pool was measured in step 3 (2026-11-05: an event loop ticking every 10 ms while every watchlist ticker's newest stored chain, every expiry, SPY's 12,890 contracts among them, is priced back to back; read_chain, compute_terrain and the gamma surface): idle, the loop's lag p50 5.6 ms, p99 19 ms, max 50 ms; on the one thread, all 10 in 14.0 s, p50 20.7 ms, p99 64 ms, max 224 ms; in a process pool sent the raw chain, 11.3 s, p50 5.6 ms, p99 54 ms, max 203 ms; in a process pool sent the read chain, 17.1 s, p50 5.9 ms, p99 119 ms, max 309 ms. Handing a chain to another process costs the interpreter as much as pricing it, so a process pool does not lower the worst wait; the one thread keeps it near 0.2 s, far inside the 1 s beat and Schwab's 30 s silence limit, and adds no code |
 | **State** | the event loop | one writer of each value, read by Push and the Recorder |
 | **Push** | the event loop | a snapshot on connect, then every change |
 | **Recorder** | its own thread (the writer) | the page never waits on a database |

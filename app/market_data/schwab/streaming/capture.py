@@ -21,8 +21,8 @@ It does four things, in one loop:
              market context the page header shows, MARKET_CONTEXT, on LEVELONE_EQUITIES,
              CHART_EQUITY and NEWS_HEADLINE), and the option contracts the option rule picks
              (pick_options: the contract selected on the Flow panel, then every ticker's
-             contracts dealt in turn, each ticker's highest gamma in its newest chain first, none
-             expired). No number of ours caps a service: Schwab is asked for all of them, and
+             contracts dealt in turn, each ticker's in shown_first's order of its newest chain,
+             none expired). No number of ours caps a service: Schwab is asked for all of them, and
              when it refuses with its symbol limit (code 19) the service is asked again once, a
              SUBS of the first that many. A change to the watchlist or the picked contracts is
              asked once: UNSUBS what left, then SUBS (a service's first request) or ADD what
@@ -113,6 +113,7 @@ from stream_spine import (
     subscription_msg,
     verbatim_msg,
 )
+from terrain_engine import nearest_strike
 from time_et import (
     ET,
     ct_label,
@@ -293,32 +294,45 @@ def split_request(symbols: list[str], max_bytes: int = MAX_REQUEST_BYTES) -> lis
 # ---------------------------------------------------------------------------- the option rule
 
 
-def by_gamma(contracts: list[OptionContract], price: float, now: float) -> tuple[str, ...]:
+def shown_first(contracts: list[OptionContract], price: float, now: float) -> tuple[str, ...]:
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`.
 
-    Highest Schwab gamma first, as sent (one Schwab sent none of, or as -999, ranked last); of equal
-    gammas the nearest expiration, then the strike nearest `price` (the lower of two equally
-    near), calls before puts. A contract has expired once now passes its
+    The contracts the heatmap shows come first. A contract's distance is the larger of two counts:
+    its expiration's place among the chain's expirations, nearest first, and twice its strike's
+    count of listed strikes from the one nearest `price` (nearest_strike, the heatmap's centre
+    row; twice, since the window reaches both ways from it). The nearest distance first, so the
+    order grows as the heatmap's window does: as many strikes as expirations (strike_window's
+    rows of the nearest expirations). Of equal distances the highest Schwab gamma, as sent (one
+    Schwab sent none of, or as -999, last); then the nearest expiration, the strike nearest
+    `price` (the lower of two equally near), calls before puts. A contract has expired once now
+    passes its
     expirationDate and is left out (it stays in the records; it is never streamed); so is one
     whose strike or expiration is not a number, whose side is not CALL or PUT, or that has no
     symbol to stream (rule 2).
     """
-    with_gamma, without = [], []
-    for c in contracts:
-        strike, expires = c.strike, c.expires_at
-        if (
-            c.symbol
-            and strike is not None
-            and expires is not None
-            and c.side is not None
-            and expires > now
-        ):
-            row = (expires, abs(strike - price), strike, c.side, c.symbol)
-            if c.gamma is not None:
-                with_gamma.append((-c.gamma, *row))
-            else:
-                without.append(row)
-    return tuple(r[-1] for r in sorted(with_gamma)) + tuple(r[-1] for r in sorted(without))
+    listed = [
+        c
+        for c in contracts
+        if c.symbol
+        and c.strike is not None
+        and c.expires_at is not None
+        and c.side is not None
+        and c.expires_at > now
+    ]
+    expirations = sorted({c.expires_at for c in listed})
+    strikes = sorted({c.strike for c in listed})
+    centre = strikes.index(nearest_strike(strikes, price)) if strikes else 0
+    rows = []
+    for c in listed:
+        distance = max(
+            bisect.bisect_left(expirations, c.expires_at),
+            2 * abs(bisect.bisect_left(strikes, c.strike) - centre),
+        )
+        gamma = (1, 0.0) if c.gamma is None else (0, -c.gamma)
+        rows.append(
+            (distance, *gamma, c.expires_at, abs(c.strike - price), c.strike, c.side, c.symbol)
+        )
+    return tuple(r[-1] for r in sorted(rows))
 
 
 #: listed strikes each side of the one nearest the price whose option quotes and option books are
@@ -559,7 +573,7 @@ class Daemon:
     ) -> None:
         self.bus = bus
         self.health = health
-        #: the time a chain is put in the option rule's order at (by_gamma's `now`, read as it
+        #: the time a chain is put in the option rule's order at (shown_first's `now`, read as it
         #: arrives)
         self.clock = clock
         #: the one list of tickers Schwab is asked for, in its order (stored_watchlist at startup)
@@ -570,8 +584,9 @@ class Daemon:
         #: streamed on both option services on top of the rule
         self.flow_contract: str | None = None
         #: per watchlist ticker: its newest whole chain while it waits for a price, that chain in
-        #: the rule's order (by_gamma), its strikes per expiration (strike_ladders) and its recorded
-        #: contracts (saved_window, as last placed); every contract the writer records (saves)
+        #: the rule's order (shown_first), its strikes per expiration (strike_ladders) and its
+        #: recorded contracts (saved_window, as last placed); every contract the writer records
+        #: (saves)
         self._chains: dict[str, list[OptionContract]] = {}
         self._ranked: dict[str, tuple[str, ...]] = {}
         self._ladders: dict[str, list] = {}
@@ -638,7 +653,7 @@ class Daemon:
         It runs when a ticker's chain is put in the rule's order (_rank), on a watchlist change
         and on the Flow panel's selection. The contract selected on the Flow panel streams on
         both option services when a watchlist ticker's chain lists it, not expired; then every
-        ticker's contracts in the rule's order (by_gamma), dealt across the watchlist, each
+        ticker's contracts in the rule's order (shown_first), dealt across the watchlist, each
         ticker's first, then each one's second. No number of ours caps them: every one is asked
         until Schwab states its symbol limit for the service (code 19), and from then the first
         that many of this order are (wanted). A ticker without a chain and a price yet has none.
@@ -685,7 +700,7 @@ class Daemon:
         return not option or msg["symbol"] in self.saved_options
 
     async def _rank(self, ticker: str, now: float) -> None:
-        """Put `ticker`'s waiting chain in the rule's order (by_gamma) and redo the pick.
+        """Put `ticker`'s waiting chain in the rule's order (shown_first) and redo the pick.
 
         The order is taken at its live price and `now`, on the program's pricing thread, never on
         the event loop; while its row has no price, the chain waits and the order stands. A
@@ -695,7 +710,7 @@ class Daemon:
         if price is not None:
             chain = self._chains.pop(ticker)
             ranked = await asyncio.get_running_loop().run_in_executor(
-                server._chain_pricing, by_gamma, chain, price, now
+                server._chain_pricing, shown_first, chain, price, now
             )
             if ticker in self.watchlist:
                 self._ranked[ticker] = ranked

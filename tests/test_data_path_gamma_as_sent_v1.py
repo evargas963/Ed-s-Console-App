@@ -20,7 +20,7 @@ import pytest
 
 import server
 import time_et
-from app.market_data.schwab.streaming.capture import by_gamma
+from app.market_data.schwab.streaming.capture import shown_first
 from option_contract import read_chain
 from tests.real_chains import NFLX
 from time_et import ET, record_markets
@@ -99,9 +99,24 @@ def test_the_heatmap_cell_of_a_large_gamma_has_its_gex():
     assert all(r["gex"][0] is not None for r in body["cells"])
 
 
-def test_the_option_rule_ranks_the_largest_gamma_schwab_sent_first():
-    ranked = by_gamma(read_chain(NVDA["contracts"]), NVDA["spot"], NVDA["ts_utc"])
-    assert ranked[0] == LARGE
+def test_the_option_rule_ranks_the_largest_gamma_schwab_sent_first_of_those_equally_near():
+    """The chain is one expiration, so a contract's distance is its strike's count from the price.
+
+    The four contracts that far (a call and a put each side) are ordered by gamma as sent: the
+    large one first, taken as it is.
+    """
+    ranked = shown_first(read_chain(NVDA["contracts"]), NVDA["spot"], NVDA["ts_utc"])
+    strikes = sorted({c["strikePrice"] for c in NVDA["contracts"]})
+    centre = strikes.index(min(strikes, key=lambda k: (abs(k - NVDA["spot"]), k)))
+    far = abs(strikes.index(148.0) - centre)
+    as_near = [
+        c["symbol"]
+        for c in NVDA["contracts"]
+        if abs(strikes.index(c["strikePrice"]) - centre) == far
+    ]
+    assert len(as_near) == 4
+    assert min(as_near, key=ranked.index) == LARGE
+    assert set(ranked[:2]) == {"NVDA  261218P00213000", "NVDA  261218C00213000"}, "at the price"
 
 
 def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():

@@ -38,6 +38,8 @@ from calibration.complete_chain_capture import chain_messages
 from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
 from stream_spine import HealthRegistry, MessageBus, quote_msg
+from terrain_engine import strike_window
+from tests.real_chains import CRWD, MRVL, SPY_FULL, TSLA
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import LocalStreamer
 from time_et import ET
@@ -61,7 +63,7 @@ def _expires(ct: dict) -> float:
 
 
 def _order(ct: dict, price: float) -> tuple:
-    """Ed's order: the highest Schwab gamma first.
+    """Ed's order among contracts equally near the heatmap's corner: the highest Schwab gamma first.
 
     Absent, -999, or a -999 volatility is no gamma, last; of equal gammas the nearest
     expiration, then the strike nearest the price (the lower of two), calls before puts.
@@ -87,10 +89,22 @@ SCHWAB_LIMITS = {L1: 3000, BOOK: 100}
 def by_definition(contracts: list[dict], price: float, now: float) -> list[str]:
     """Return the rule's order of a chain, from its definition.
 
-    Its contracts not expired at `now` (Schwab's expirationDate), in Ed's order.
+    Its contracts not expired at `now` (Schwab's expirationDate), the ones the heatmap shows
+    first (operator 2026-11-10: "it is our code"): by the larger of the expiration's place among
+    the chain's expirations and twice the strike's count of listed strikes from the one nearest
+    the price (the lower of two equally near), then in Ed's order.
     """
-    live = sorted((c for c in contracts if _expires(c) > now), key=lambda c: _order(c, price))
-    return [c["symbol"] for c in live]
+    live = [c for c in contracts if _expires(c) > now]
+    expirations = sorted({_expires(c) for c in live})
+    strikes = sorted({c["strikePrice"] for c in live})
+    centre = min(range(len(strikes)), key=lambda i: (abs(strikes[i] - price), strikes[i]))
+
+    def distance(c: dict) -> int:
+        return max(
+            expirations.index(_expires(c)), 2 * abs(strikes.index(c["strikePrice"]) - centre)
+        )
+
+    return [c["symbol"] for c in sorted(live, key=lambda c: (distance(c), *_order(c, price)))]
 
 
 def _rule(
@@ -218,11 +232,12 @@ def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(
     assert subs[0] > 100 and subs[1:] == [100], "asked again once, within the limit Schwab stated"
 
 
-def test_a_contract_without_gamma_streams_only_after_every_one_with_it(tmp_path):
+def test_a_contract_without_gamma_streams_after_the_ones_with_it_that_are_equally_near(tmp_path):
     """SPY's 2026-10-14 chain as the console served it: 60 contracts with Schwab's gamma.
 
-    And 242 with -999. OPTIONS_BOOK's 100 are the 60, then the 40 without gamma nearest the
-    price.
+    And 242 with -999, one expiration. OPTIONS_BOOK's 100 are every contract nearer the price
+    than the last strike count it reaches, and of the contracts that far, the ones with gamma
+    before any without.
     """
     contracts, price, ts = (
         _SPY_NO_GAMMA["contracts"],
@@ -239,7 +254,14 @@ def test_a_contract_without_gamma_streams_only_after_every_one_with_it(tmp_path)
         await _until(lambda: m.holds(want))
 
     market.run(steps)
-    assert len(with_gamma) == 60 and with_gamma < want[BOOK] and len(want[BOOK]) == 100
+    strikes = sorted({c["strikePrice"] for c in contracts})
+    centre = strikes.index(min(strikes, key=lambda k: (abs(k - price), k)))
+    far = {c["symbol"]: abs(strikes.index(c["strikePrice"]) - centre) for c in contracts}
+    edge = max(far[s] for s in want[BOOK])
+    at_edge = {s for s in far if far[s] == edge}
+    assert len(with_gamma) == 60 and len(want[BOOK]) == 100
+    assert {s for s in far if far[s] < edge} < want[BOOK]
+    assert not (at_edge - want[BOOK]) & with_gamma or (at_edge & want[BOOK]) <= with_gamma
     assert len(want[L1]) == len(contracts)
 
 
@@ -535,3 +557,22 @@ def test_a_contract_no_chain_the_console_holds_lists_is_not_taken():
     finally:
         ofs.bind_daemon(None)
     assert answer.status_code == 409 and daemon.flow_contract is None
+
+
+@pytest.mark.parametrize("real", [SPY_FULL, CRWD, TSLA, MRVL], ids=lambda real: real.ticker)
+def test_every_contract_the_heatmap_shows_is_in_the_tickers_share_of_schwabs_limit(real):
+    """The heatmap's Auto window: strike_window's rows by as many of the nearest expirations.
+
+    Production streams eight tickers, so each has an eighth of LEVELONE_OPTIONS' 3000. Every
+    contract of the window comes within it (on 2026-11-10, under the highest gamma first, 20 to
+    78 of each ticker's 121 cells were not streamed).
+    """
+    now = real.now.timestamp()
+    listed = [c for c in read_chain(real.chain) if c.expires_at > now]
+    strikes = sorted({c.strike for c in listed})
+    first, last, _centre = strike_window(strikes, real.spot, "auto")
+    rows = set(strikes[first : last + 1])
+    columns = set(sorted({c.expires_at for c in listed})[: len(rows)])
+    shown = {c.symbol for c in listed if c.strike in rows and c.expires_at in columns}
+    share = set(capture.shown_first(listed, real.spot, now)[: SCHWAB_LIMITS[L1] // 8])
+    assert len(shown) > len(rows) and shown <= share

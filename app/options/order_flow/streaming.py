@@ -405,7 +405,7 @@ async def _beat_loop() -> None:
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
 #: LEVELONE_OPTIONS, or it does not (capture.Daemon.pick_options streams each ticker's contracts
-#: with the highest gamma)
+#: the heatmap shows first)
 SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 

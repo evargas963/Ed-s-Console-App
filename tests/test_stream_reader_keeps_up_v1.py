@@ -160,7 +160,7 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
         server._last_feed_stamp.clear()
     assert len(reads) == len(MRVL.chain) == len(read), "each contract read once"
     assert all(a is b for a, b in zip(levels.chain, read, strict=True)), "the levels: that read"
-    assert daemon._ranked[tk] == capture.by_gamma(read, MRVL.spot, now), "the rule: that read"
+    assert daemon._ranked[tk] == capture.shown_first(read, MRVL.spot, now), "the rule: that read"
 
 
 class _TimerCountingLoop(asyncio.SelectorEventLoop):
@@ -311,7 +311,7 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
         for f in (
             read_chain,
             capture.strike_ladders,
-            capture.by_gamma,
+            capture.shown_first,
             terrain_engine.compute_terrain,
             server.restamp_open_surfaces,
             server._stamp_gamma_surface_cell_stream_state,
