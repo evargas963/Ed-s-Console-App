@@ -16,22 +16,12 @@ from typing import Any
 from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
-from numeric_contract import schwab_count, schwab_number
+from option_contract import OptionContract
 
 #: the newest prints kept per contract (the tape route serves up to 500)
 TAPE_KEPT = 500
 #: how long a venue's books are kept (the heatmap route's longest window)
 BOOKS_KEPT_SEC = 240 * 60
-#: the contract details Schwab sends once and then only when they change: carried forward
-_CONTEXT = (
-    "STRIKE_TYPE",
-    "CONTRACT_TYPE",
-    "EXPIRATION_YEAR",
-    "EXPIRATION_MONTH",
-    "EXPIRATION_DAY",
-    "MULTIPLIER",
-    "UNDERLYING",
-)
 
 
 class RecentTape:
@@ -39,14 +29,13 @@ class RecentTape:
 
     A print is a genuinely NEW
     (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) triple, never a repeat of the same trade sent again
-    with an unrelated field (l1_trade_observation's rule, the live tape's); the contract's details
-    are carried forward from the newest message that sent them.
+    with an unrelated field (l1_trade_observation's rule, the live tape's). The contract's terms
+    are not kept here: the tape shows them from its chain record (tape_row).
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._prints: dict[str, deque] = {}
-        self._context: dict[str, dict] = {}
         self._last: dict[str, tuple] = {}
 
     def record(
@@ -56,15 +45,12 @@ class RecentTape:
 
         It carries its top of book
         (`top`, state.option_top) and its streamed Greeks and volume (`streamed`,
-        state.get_stream_greeks), each read once by the state; the print and the contract's
-        details are read here.
+        state.get_stream_greeks), each read once by the state; the print is read here.
         """
         sym = ticker_storage_key(contract)
         if not sym or not isinstance(item, dict):
             return
         with self._lock:
-            context = self._context.setdefault(sym, {})
-            context.update({k: item[k] for k in _CONTEXT if item.get(k) is not None})
             p = extract_vendor_print(item)
             if p is None:
                 return
@@ -73,7 +59,7 @@ class RecentTape:
                 return
             self._last[sym] = key
             self._prints.setdefault(sym, deque(maxlen=TAPE_KEPT)).append(
-                _print_row(sym, item, p, dict(context), float(ts_recv), top, streamed)
+                _print(sym, p, float(ts_recv), top, streamed)
             )
 
     def forget(self, contract: str) -> None:
@@ -81,7 +67,6 @@ class RecentTape:
         sym = ticker_storage_key(contract)
         with self._lock:
             self._prints.pop(sym, None)
-            self._context.pop(sym, None)
             self._last.pop(sym, None)
 
     def rows(self, contract: str, limit: int) -> list[dict[str, Any]]:
@@ -91,53 +76,19 @@ class RecentTape:
             held = list(self._prints[sym]) if sym in self._prints else []
         return held[::-1][: max(0, int(limit))]
 
-    def put_call(self, contract: str) -> str | None:
-        """Return the contract's side (CALL / PUT) as Schwab's CONTRACT_TYPE last sent it.
 
-        None until sent.
-        """
-        sym = ticker_storage_key(contract)
-        with self._lock:
-            return (
-                put_call_side(self._context[sym].get("CONTRACT_TYPE"))
-                if sym in self._context
-                else None
-            )
-
-
-def _print_row(
-    sym: str,
-    item: dict,
-    p: dict,
-    context: dict,
-    ts_recv: float,
-    top: dict | None,
-    streamed: dict | None,
+def _print(
+    sym: str, p: dict, ts_recv: float, top: dict | None, streamed: dict | None
 ) -> dict[str, Any]:
-    """Return one trade print in the Options Flow tape's schema.
+    """Return one trade print as the tape keeps it: Schwab's stream values as sent.
 
-    Schwab's values as sent; premium =
-    trade x size x Schwab's multiplier; `classification` only where the trade landed against
-    the same record's bid and ask (no aggressor side).
+    `classification` says only where the trade landed against the bid and ask held when it was
+    received (no aggressor side).
     """
-    strike = schwab_number(context.get("STRIKE_TYPE"))
-    side = put_call_side(context.get("CONTRACT_TYPE"))
-    y, m, d = (
-        context.get("EXPIRATION_YEAR"),
-        context.get("EXPIRATION_MONTH"),
-        context.get("EXPIRATION_DAY"),
-    )
-    expiry = f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None
-    mult = schwab_number(context.get("MULTIPLIER"))
-    trade, size = p["price"], p["size"]
-    premium = (
-        trade * size * mult
-        if (trade is not None and size is not None and mult is not None)
-        else None
-    )
+    trade = p["price"]
     bid, ask = _held(top, "bid"), _held(top, "ask")
     classification = "unknown"
-    if trade is not None and bid is not None and ask is not None:
+    if bid is not None and ask is not None:
         if trade <= bid:
             classification = "at_bid" if trade == bid else "outside_spread_low"
         elif trade >= ask:
@@ -147,34 +98,40 @@ def _print_row(
     return {
         "ts_recv": ts_recv,
         "symbol": sym,
-        "underlying": context.get("UNDERLYING"),
-        "expiry": expiry,
-        "type": side,
-        "strike": strike,
         "bid": bid,
         "bid_size": _held(top, "bid_size"),
         "ask": ask,
         "ask_size": _held(top, "ask_size"),
         "trade": trade,
-        "size": size,
-        "premium": premium,
+        "size": p["size"],
         "volume": _held(streamed, "total_volume"),
-        "oi": schwab_count(item.get("OPEN_INTEREST")),
         "iv": _held(streamed, "volatility"),
         "delta": _held(streamed, "delta"),
-        "multiplier": mult,
         "classification": classification,
+    }
+
+
+def tape_row(printed: dict[str, Any], contract: OptionContract) -> dict[str, Any]:
+    """Return one kept print as the Options Flow tape shows it, with its contract's terms.
+
+    Expiry, side, strike and open interest are the chain record's (option_contract.read_contract,
+    the one reader of them); premium = trade x size x that record's multiplier, unknown without
+    a size or a multiplier.
+    """
+    size, mult = printed["size"], contract.multiplier
+    return {
+        **printed,
+        "expiry": contract.expiry,
+        "type": contract.side,
+        "strike": contract.strike,
+        "oi": contract.open_interest,
+        "premium": None if size is None or mult is None else printed["trade"] * size * mult,
     }
 
 
 def _held(record: dict | None, name: str) -> Any:
     """Return `record`'s value of `name`; None when the state holds no record or no such value."""
     return None if record is None else record.get(name)
-
-
-def put_call_side(contract_type) -> str | None:
-    """Schwab's LEVELONE_OPTIONS CONTRACT_TYPE ('C' / 'P'), as CALL / PUT; None when not sent."""
-    return {"C": "CALL", "P": "PUT"}.get(contract_type)
 
 
 #: The default price window drops this share of displayed size at each end: one thin resting order
