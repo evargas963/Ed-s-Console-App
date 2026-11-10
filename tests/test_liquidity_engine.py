@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 
 from liquidity_models import (
     MAX_BINS_PER_BAR,
+    ZONE_DISPLAY,
     PlaybookConfig,
     SnapshotType,
     ZoneType,
@@ -325,7 +326,8 @@ def test_no_pool_language_in_rendered_zone_payload():
         zt = z.zone_type.value
         notes = z.interpretation_notes.lower()
         assert "side_liquidity" not in zt, f"zone_type claims a pool: {zt}"
-        assert z.zone_class != "liquidity", f"zone_class claims a pool: {z.zone_class}"
+        label = ZONE_DISPLAY[z.zone_type][0].lower()
+        assert "liquidity" not in label, f"the zone's name on screen claims a pool: {label}"
         for w in _POOL_WORDS:
             assert w not in notes, (
                 f"interpretation_notes asserts {w!r} on an untested extreme: "

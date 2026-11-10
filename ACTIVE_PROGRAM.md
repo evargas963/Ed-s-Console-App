@@ -147,7 +147,7 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - S-38 `_publish_levels` reads the database (`newest_capture_ts`) on every new chain to learn whether a newer capture exists; the daemon, which writes the captures, could carry that time on the chain it delivers.
 - S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the microstructure content build return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
-- S-37 / M-03 `_liquidity_zone_tradeable_fields`: midpoint anchor when `zone_mid` is missing; `/api/options/tape` turns an invalid `limit` into 100. (The zone score and its distance penalty are deleted: no page read the score, and its division by the spot failed the whole route at a last price of 0.)
+- S-37 / M-03 `/api/options/tape` turns an invalid `limit` into 100. (A zone's anchor is its own mid, as built; the zone fields no page read are deleted.)
 - M-28 `gsf_state` (model curve at spot) and `regime` (Schwab's book) judge gamma at spot from two sources; `gsf_state` is documented as the regime and carries no basis.
 
 **liquidity_value_engine.py, liquidity_models.py**

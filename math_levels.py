@@ -623,19 +623,11 @@ def compute_gamma_flip_v2(
     at 770.35 against a full-chain reference of 745.61).
     """
     if not contracts or not spot or spot <= 0:
-        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
+        return None, GAMMA_FLIP_UNAVAILABLE, {}
     strikes = [c.strike for c in contracts if c.strike is not None]
     if not strikes:
-        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_strikes"}
+        return None, GAMMA_FLIP_UNAVAILABLE, {}
     lo, hi = min(strikes), max(strikes)
-    diag = {
-        "strike_lo": lo,
-        "strike_hi": hi,
-        "n_strikes": len(set(strikes)),
-        "span_below_pct": (spot - lo) / spot,
-        "span_above_pct": (hi - spot) / spot,
-        "min_span_pct": GAMMA_FLIP_MIN_SPAN_PCT,
-    }
     # TWO span tests, because they answer two different questions.
     #  covers_regime — reaches the conservative floor below which we decline to claim anything.
     #                  Span does not establish the sign (see GAMMA_FLIP_MIN_SPAN_PCT for the
@@ -658,32 +650,23 @@ def compute_gamma_flip_v2(
         if covers_regime
         else GAMMA_FLIP_NARROW
     )
-    diag = {
-        **diag,
-        "trusted_span_pct": GAMMA_FLIP_TRUSTED_SPAN_PCT,
-        "covers_regime_span": covers_regime,
-        "covers_level_span": covers_level,
-    }
-    flip = gamma_flip_from_profile(profile, spot)  # nearest crossing, EITHER direction
-
     # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where
-    # that sign changes -- it is a landmark, not a prerequisite.
-    # No crossing inside the window means there is no regime boundary to worry about, which
-    # is MORE certain than a flip sitting next to spot -- not less. Only the flip level is
-    # unknown, never the regime.
+    # that sign changes -- it is a landmark, not a prerequisite: with no crossing inside the
+    # window the regime is still known, only the flip level is not.
     at_spot = gamma_at_price(profile, spot)
     diag = {
-        **diag,
+        "strike_lo": lo,
+        "strike_hi": hi,
+        "span_below_pct": (spot - lo) / spot,
+        "span_above_pct": (hi - spot) / spot,
+        "covers_regime_span": covers_regime,
+        "covers_level_span": covers_level,
         "curve_gamma_at_spot": at_spot,
-        "no_crossing_in_window": flip is None and at_spot is not None,
     }
-
     if at_spot is None:
-        return None, GAMMA_FLIP_UNAVAILABLE, {**diag, "reason": "empty_profile"}
-    if flip is None:
-        # regime is knowable; the flip level is not
-        return None, _verdict, {**diag, "reason": "no_zero_crossing_regime_still_defined"}
-    return flip, _verdict, diag
+        return None, GAMMA_FLIP_UNAVAILABLE, diag
+    # nearest crossing, EITHER direction; None when the curve does not cross in the window
+    return gamma_flip_from_profile(profile, spot), _verdict, diag
 
 
 # ── Max Pain — OI-weighted expiry settlement magnet ────────────────────────────

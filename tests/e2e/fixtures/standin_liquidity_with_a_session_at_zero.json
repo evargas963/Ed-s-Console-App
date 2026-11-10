@@ -1,18 +1,14 @@
 {
  "ticker": "ZZLIQ",
- "symbol": "ZZLIQ",
- "session_date": "2026-10-02",
  "snapshot_type": "live",
  "zones": [
   {
    "zone_type": "pivot_value",
    "zone_label": "Pivot / value",
    "zone_side": "value",
-   "zone_class": "value",
    "zone_low": -44.3533325484506,
    "zone_high": -44.3533325484506,
-   "zone_mid": -44.3533325484506,
-   "zone_width": 0.0,
+   "anchor": -44.3533325484506,
    "source_levels": [
     {
      "label": "VWAP_M1",
@@ -23,13 +19,7 @@
     "VWAP_M1"
    ],
    "confluence_score": 1,
-   "merged_levels_count": 1,
    "interpretation_notes": "Fair value / pivot",
-   "first_snapshot": "live",
-   "last_snapshot": "live",
-   "persistence": 1,
-   "anchor": -44.3533325484506,
-   "options_level_count": 0,
    "distance_to_spot": null,
    "spot_inside_zone": null
   },
@@ -37,11 +27,9 @@
    "zone_type": "resistance_liquidity",
    "zone_label": "Resistance",
    "zone_side": "resistance",
-   "zone_class": "structure",
    "zone_low": 0.0,
    "zone_high": 0.0,
-   "zone_mid": 0.0,
-   "zone_width": 0.0,
+   "anchor": 0.0,
    "source_levels": [
     {
      "label": "ORB_HIGH",
@@ -82,13 +70,7 @@
     "OVERNIGHT_LOW"
    ],
    "confluence_score": 7,
-   "merged_levels_count": 7,
    "interpretation_notes": "Resistance / upper structure",
-   "first_snapshot": "live",
-   "last_snapshot": "live",
-   "persistence": 1,
-   "anchor": 0.0,
-   "options_level_count": 0,
    "distance_to_spot": null,
    "spot_inside_zone": null
   },
@@ -96,11 +78,9 @@
    "zone_type": "pivot_value",
    "zone_label": "Pivot / value",
    "zone_side": "value",
-   "zone_class": "value",
    "zone_low": 2.9153649326952222,
    "zone_high": 2.9153649326952222,
-   "zone_mid": 2.9153649326952222,
-   "zone_width": 0.0,
+   "anchor": 2.9153649326952222,
    "source_levels": [
     {
      "label": "VWAP",
@@ -111,13 +91,7 @@
     "VWAP"
    ],
    "confluence_score": 1,
-   "merged_levels_count": 1,
    "interpretation_notes": "Fair value / pivot",
-   "first_snapshot": "live",
-   "last_snapshot": "live",
-   "persistence": 1,
-   "anchor": 2.9153649326952222,
-   "options_level_count": 0,
    "distance_to_spot": null,
    "spot_inside_zone": null
   },
@@ -125,11 +99,9 @@
    "zone_type": "pivot_value",
    "zone_label": "Pivot / value",
    "zone_side": "value",
-   "zone_class": "value",
    "zone_low": 50.18406241384104,
    "zone_high": 50.18406241384104,
-   "zone_mid": 50.18406241384104,
-   "zone_width": 0.0,
+   "anchor": 50.18406241384104,
    "source_levels": [
     {
      "label": "VWAP_P1",
@@ -140,13 +112,7 @@
     "VWAP_P1"
    ],
    "confluence_score": 1,
-   "merged_levels_count": 1,
    "interpretation_notes": "Fair value / pivot",
-   "first_snapshot": "live",
-   "last_snapshot": "live",
-   "persistence": 1,
-   "anchor": 50.18406241384104,
-   "options_level_count": 0,
    "distance_to_spot": null,
    "spot_inside_zone": null
   },
@@ -154,11 +120,9 @@
    "zone_type": "support_liquidity",
    "zone_label": "Support",
    "zone_side": "support",
-   "zone_class": "structure",
    "zone_low": 758.7901,
    "zone_high": 758.7901,
-   "zone_mid": 758.7901,
-   "zone_width": 0.0,
+   "anchor": 758.7901,
    "source_levels": [
     {
      "label": "PDL",
@@ -169,13 +133,7 @@
     "PDL"
    ],
    "confluence_score": 1,
-   "merged_levels_count": 1,
    "interpretation_notes": "Support / lower structure",
-   "first_snapshot": "live",
-   "last_snapshot": "live",
-   "persistence": 1,
-   "anchor": 758.7901,
-   "options_level_count": 0,
    "distance_to_spot": null,
    "spot_inside_zone": null
   },
@@ -183,11 +141,9 @@
    "zone_type": "support_liquidity",
    "zone_label": "Support",
    "zone_side": "support",
-   "zone_class": "structure",
    "zone_low": 761.19,
    "zone_high": 761.19,
-   "zone_mid": 761.19,
-   "zone_width": 0.0,
+   "anchor": 761.19,
    "source_levels": [
     {
      "label": "PD_VAL",
@@ -198,13 +154,7 @@
     "PD_VAL"
    ],
    "confluence_score": 1,
-   "merged_levels_count": 1,
    "interpretation_notes": "Support / lower structure",
-   "first_snapshot": "live",
-   "last_snapshot": "live",
-   "persistence": 1,
-   "anchor": 761.19,
-   "options_level_count": 0,
    "distance_to_spot": null,
    "spot_inside_zone": null
   },
@@ -212,11 +162,9 @@
    "zone_type": "resistance_liquidity",
    "zone_label": "Resistance",
    "zone_side": "resistance",
-   "zone_class": "structure",
    "zone_low": 764.35,
    "zone_high": 765.65,
-   "zone_mid": 765.0,
-   "zone_width": 1.2999999999999545,
+   "anchor": 765.0,
    "source_levels": [
     {
      "label": "PD_POC",
@@ -242,29 +190,15 @@
     "PDH"
    ],
    "confluence_score": 4,
-   "merged_levels_count": 4,
    "interpretation_notes": "Resistance / upper structure",
-   "first_snapshot": "live",
-   "last_snapshot": "live",
-   "persistence": 1,
-   "anchor": 765.0,
-   "options_level_count": 0,
    "distance_to_spot": null,
    "spot_inside_zone": null
   }
  ],
  "summary": {
   "value_state": "shifted_lower",
-  "vwap_relation": "above_value",
-  "auction_interpretation": "",
-  "notes": [
-   "Live zones: volume/VWAP/OR/prior day through cutoff; options fused when cache hit."
-  ]
+  "vwap_relation": "above_value"
  },
- "fusion": "levels_not_ready",
  "spot_used_for_scoring": null,
- "spot_location": null,
- "level_generation": 2,
- "level_snapshot_as_of_ts_utc": 1790967540.0,
- "level_bar_source": "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
+ "spot_location": null
 }

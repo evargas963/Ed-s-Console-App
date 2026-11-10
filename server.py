@@ -4184,36 +4184,28 @@ TERRAIN_FUSION_LEVELS = (
 )
 
 
-def _liquidity_option_levels(tk: str) -> tuple[list[tuple[float, str]], str]:
+def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
     """Return the ticker's option levels from its published terrain, tagged for liquidity zones."""
     published = published_levels(tk)
     if published is None:
-        return [], "levels_not_ready"
+        return []
     snap = published.snap
-    levels = [
+    return [
         (float(getattr(snap, k)), tag)
         for k, tag in TERRAIN_FUSION_LEVELS
         if getattr(snap, k) is not None
     ]
-    return levels, "fused" if levels else "fused_empty"
 
 
-def _liquidity_zone_tradeable_fields(zp: dict, spot: float | None) -> None:
-    """Add anchor, distance_to_spot, spot_inside_zone, options_level_count (mutates zp)."""
-    lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
-    zp["anchor"] = float(zp["zone_mid"])  # the zone's own mid, built with it
-    n_opt = sum(
-        1 for t in zp["source_tags"] if t.startswith(("GAMMA_", "DELTA_", "OI_", "EM_", "SYNTH_"))
-    )
-    zp["options_level_count"] = n_opt
+def _zone_against_spot(lo: float, hi: float, spot: float | None) -> dict:
+    """Return the zone's distance_to_spot and spot_inside_zone, each None without a spot."""
     if spot is None:
-        zp["distance_to_spot"] = None
-        zp["spot_inside_zone"] = None
-        return
-    sf = float(spot)
-    inside = within(lo, hi, sf)
-    zp["distance_to_spot"] = 0.0 if inside else min(abs(sf - lo), abs(sf - hi))
-    zp["spot_inside_zone"] = inside
+        return {"distance_to_spot": None, "spot_inside_zone": None}
+    inside = within(lo, hi, spot)
+    return {
+        "distance_to_spot": 0.0 if inside else min(abs(spot - lo), abs(spot - hi)),
+        "spot_inside_zone": inside,
+    }
 
 
 def _spot_location(zones: list, spot) -> dict | None:
@@ -4251,7 +4243,7 @@ def liquidity_snapshot(ticker: str, now: datetime):
     try:
         ticker_upper = ticker_storage_key(ticker)
         config = PlaybookConfig(max_zone_width=2.0)
-        extra, fusion_status = _liquidity_option_levels(ticker_upper)
+        extra = _liquidity_option_levels(ticker_upper)
         # the one spot (resolve_spot), the header's own
         spot_for_zones, _, _ = resolve_spot(ticker_upper, now=now.timestamp())
         if spot_for_zones is not None:
@@ -4267,54 +4259,34 @@ def liquidity_snapshot(ticker: str, now: datetime):
     except HTTPException as e:
         # its own status code (a missing ticker is 400), never re-issued as a bare 500
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
-    snapshot_val = out.snapshot_type.value
-    zones_payload = []
-    for z in out.zones:
-        w = z.zone_high - z.zone_low
-        merged = len(z.source_tags)
-        zp = {
+    zones_payload = [
+        {
             "zone_type": z.zone_type.value,
             "zone_label": ZONE_DISPLAY[z.zone_type][0],
             "zone_side": ZONE_DISPLAY[z.zone_type][1],
-            "zone_class": z.zone_class,
             "zone_low": z.zone_low,
             "zone_high": z.zone_high,
-            "zone_mid": z.zone_mid,
-            "zone_width": w,
+            "anchor": z.zone_mid,
             "source_levels": z.source_levels,
             "source_tags": z.source_tags,
             "confluence_score": z.confluence_score,
-            "merged_levels_count": merged,
             "interpretation_notes": z.interpretation_notes,
-            "first_snapshot": snapshot_val,
-            "last_snapshot": snapshot_val,
-            "persistence": 1,
+            **_zone_against_spot(z.zone_low, z.zone_high, spot_for_zones),
         }
-        _liquidity_zone_tradeable_fields(zp, spot_for_zones)
-        zones_payload.append(zp)
+        for z in out.zones
+    ]
     zones_payload.sort(key=lambda x: x["zone_low"])
     if spot_for_zones is not None:
         zones_payload.sort(key=lambda x: x["distance_to_spot"])
-    result = {
+    return {
         "ticker": out.ticker,
-        "symbol": ticker_upper,
-        "session_date": out.session_date,
-        "snapshot_type": snapshot_val,
+        "snapshot_type": out.snapshot_type.value,
         "zones": zones_payload,
-        "summary": None,
-        "fusion": fusion_status,
-        "spot_used_for_scoring": spot_for_zones,
-        "spot_location": _spot_location(zones_payload, spot_for_zones),
-        # which snapshot generation these level values ARE
-        "level_generation": _canon.generation,
-        "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
-        "level_bar_source": _canon.bar_source,
-    }
-    if out.summary:
-        result["summary"] = {
+        "summary": out.summary
+        and {
             "value_state": out.summary.value_state,
             "vwap_relation": out.summary.vwap_relation,
-            "auction_interpretation": out.summary.auction_interpretation,
-            "notes": out.summary.notes,
-        }
-    return result
+        },
+        "spot_used_for_scoring": spot_for_zones,
+        "spot_location": _spot_location(zones_payload, spot_for_zones),
+    }
