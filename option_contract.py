@@ -53,8 +53,6 @@ class OptionContract:
     #: the stream's BID_PRICE and ASK_PRICE for a contract it streams); never the chain's
     bid: float | None
     ask: float | None
-    #: Schwab's quoteTime (ms) of the /quotes answer its values are from; None: none taken
-    quote_time: float | None
     #: a contract size: None when not a number or negative
     multiplier: float | None
     #: Schwab's volatility, a percent
@@ -135,7 +133,7 @@ def quote_values(quote: Mapping[str, Any]) -> dict[str, Any]:
     """Return a contract record's values from Schwab's /quotes answer for it (its `quote`).
 
     Its bid and ask, volume, Greeks and volatility, each as sent (rule 2; a -999 volatility voids
-    the Greeks), and `quote_time`, Schwab's quoteTime (ms) of them.
+    the Greeks).
     """
     vol = quote.get("volatility")
     void = vol is not None and vol == SCHWAB_NO_VALUE
@@ -143,7 +141,6 @@ def quote_values(quote: Mapping[str, Any]) -> dict[str, Any]:
         "bid": schwab_number(quote.get("bidPrice")),
         "ask": schwab_number(quote.get("askPrice")),
         "volume": schwab_count(quote.get("totalVolume")),
-        "quote_time": schwab_number(quote.get("quoteTime")),
         "volatility": schwab_number(vol),
         **{g: _greek(quote, g, void) for g in GREEKS},
     }
@@ -173,7 +170,6 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         volume=quoted["volume"] if quoted else schwab_count(raw.get("totalVolume")),
         bid=quoted.get("bid"),
         ask=quoted.get("ask"),
-        quote_time=quoted.get("quote_time"),
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
         # the stream's, as the sweep wrote them, or the quote's
         **{

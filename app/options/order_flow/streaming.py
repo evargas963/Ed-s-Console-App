@@ -260,10 +260,12 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
                    imbalance readout's value of both books then held; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
+      optquotes    Schwab's /quotes answer for option contracts -> each contract's newest values
+                   (state.push_rest_quotes), at the answer's receive time
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
 
-    Every equity quote, and every option quote carrying a _REPRICE_FIELDS value, is passed to the
-    tick callback. A message missing its symbol, its
+    Every equity quote, every option quote carrying a _REPRICE_FIELDS value, and every contract
+    of a /quotes answer, is passed to the tick callback. A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part.
     """
@@ -302,10 +304,14 @@ def _apply_chain_part(msg: dict) -> None:
 
 
 def _apply_rest_quotes(msg: dict) -> None:
-    """Take a /quotes answer: each contract's newest values, its ticker repriced now."""
-    push_rest_quotes(msg["answer"])
+    """Take a /quotes answer: each contract's newest values, its ticker repriced now.
+
+    The answer's time is the daemon's receive time for it (`ts_recv`).
+    """
+    received = float(msg["ts_recv"])
+    push_rest_quotes(msg["answer"], received)
     for sym in msg["answer"]:
-        _tick(sym, float(msg["ts_recv"]))
+        _tick(sym, received)
 
 
 def _answer_watchlist_request(msg: dict) -> None:

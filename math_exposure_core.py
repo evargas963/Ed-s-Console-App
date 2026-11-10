@@ -466,21 +466,22 @@ def overlay_streamed_contract_fields(
     contracts: list[OptionContract],
     streamed_by_symbol: dict[str, dict],
     held: set[str],
-    quoted: dict[str, dict],
+    quoted: dict[str, tuple[float, dict]],
 ) -> tuple[list[OptionContract], int]:
     """Give each contract its newest values: the stream's when it is held, else /quotes'.
 
-    A contract Schwab does not stream takes the values of its newest /quotes answer (`quoted`,
-    app.options.order_flow.state.rest_quotes), the moment that answer arrives.
+    A contract Schwab does not stream (not in `held`) takes the values of its newest /quotes
+    answer received since its chain began (`quoted`: symbol -> (receive time, values),
+    app.options.order_flow.state.rest_quotes), the moment that answer arrives; with no such
+    answer it keeps the chain's.
 
-    `streamed_by_symbol` holds its newest streamed record; the pushed field is its one producer
-    (AGENTS.md rule 3). Its volume, bid and ask are the stream's (`total_volume`, `bid`, `ask`),
-    each None until the stream sends it.
-    Its Greeks and volatility are the stream's newest once the stream holds all six (the set the
-    chain sweep takes, option_contract.streamed_greek_set); until then they are the chain's, which
-    the sweep asked /quotes for because the stream had not sent them. Every other contract keeps
-    the chain's. Open interest is the chain's for every contract (the stream does not send it for
-    every contract it streams).
+    A contract Schwab streams takes its newest streamed record (`streamed_by_symbol`); the pushed
+    field is its one producer (AGENTS.md rule 3). Its volume, bid and ask are the stream's
+    (`total_volume`, `bid`, `ask`), each None until the stream sends it. Its Greeks and
+    volatility are the stream's newest once the stream holds all six (the set the chain sweep
+    takes, option_contract.streamed_greek_set); until then they are the chain's, which the sweep
+    asked /quotes for because the stream had not sent them. Open interest is the chain's for
+    every contract (the stream does not send it for every contract it streams).
 
     Pure: a contract given values is a new record, every other the same one. Returns
     (new_contracts, streamed_count).
@@ -488,7 +489,7 @@ def overlay_streamed_contract_fields(
     out: list[OptionContract] = []
     for c in contracts:
         if c.symbol not in held:
-            out.append(replace(c, **quoted[c.symbol]) if c.symbol in quoted else c)
+            out.append(replace(c, **quoted[c.symbol][1]) if c.symbol in quoted else c)
         elif c.symbol in streamed_by_symbol:
             sent = streamed_by_symbol[c.symbol]
             pushed = {

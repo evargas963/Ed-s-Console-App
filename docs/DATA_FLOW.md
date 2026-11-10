@@ -503,20 +503,20 @@ the program.
   (operator 2026-11-05; Schwab Streamer API §1.1 and §1.5: LEVELONE_OPTIONS is delivered on
   Change). A contract whose LEVELONE_OPTIONS record on the daemon's bus
   (`Daemon.option_record`) carries all six as values (`option_contract.streamed_greeks`, the one
-  reader of those stream fields) takes the stream's, each with its field's Schwab time, and is
-  not asked for on `/quotes`. A contract's Greeks are one set, never some from the stream and
-  some from `/quotes` (`option_contract.streamed_greek_set`), and they are the chain's: the
-  console's levels take them as the sweep set them, and no streamed tick replaces them between
-  chains (a live update without a second copy waits for SHAPE's one store). An option record
+  reader of those stream fields) takes the stream's, each with its field's Schwab time
+  (`greeksTime`, {field: ms}), and is not asked for on `/quotes`. A contract's Greeks are one
+  set, never some from the stream and some from `/quotes`
+  (`option_contract.streamed_greek_set`). An option record
   ends with its hold: the daemon forgets it when Schwab drops the contract or the connection
   ends (`Daemon.disconnect`), so the next hold starts from what Schwab sends then. Every other
   contract (the stream holds at most 3,000, Schwab Trader API Support 2026-10-12) is asked for
   on `/quotes`, comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab
-  Trader API Support 2026-10-06: not more than 300), and takes its quote's, as sent. Each
-  contract carries the time of its Greeks as Schwab sent it, `greeksTime` ({field: ms}: the
-  stream field's time, or the quote's `quoteTime`). Enforced by:
+  Trader API Support 2026-10-06: not more than 300), and takes its quote's, as sent (its
+  `greeksTime` is None). Each `/quotes` answer goes to the console at once, as Schwab sent it,
+  with the time the daemon received it (topic `optquotes`, `state.push_rest_quotes`).
+  Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (a contract the stream holds is not asked
-  for on `/quotes`).
+  for on `/quotes`; each answer reaches the bus as sent with its receive time).
   Outside that ticker's option window — after it has ended, and before the next one opens; a
   day Schwab says is closed is outside every window (`time_et.option_market_open`) — the close
   values are the balance until the next open (operator 2026-11-09: "upon market close (when the
@@ -578,18 +578,23 @@ the program.
   absent (`server._forces_from_captures`), and a charm, DEX, ΔOI, GEX or volume side with a strike not known, or no strike at all, leaves that side
   absent (enforced by `tests/test_data_path_charm_side_unknown_v1.py` and `tests/test_data_path_side_volume_v1.py`); the screen draws "-". ΔOI is a side's total on the newer day less its total on the older day, both cut at the newer price: a strike a whole chain does not list holds no contracts that day, and the card names the older day. An ATR that cannot be computed is absent (`server._atr_fields`); the
   screen draws "-". None of these rules names a ticker; the
-  watchlist decides which tickers are fetched and priced. Every streamed tick of a ticker (an
-  equity quote, or a LEVELONE_OPTIONS message of one of its contracts carrying a Greek or its
-  volume, `streaming._REPRICE_FIELDS`) queues a reprice of that ticker on the pricing thread, as
+  watchlist decides which tickers are fetched and priced. Every tick of a ticker (an
+  equity quote, a LEVELONE_OPTIONS message of one of its contracts carrying a Greek or its
+  volume, `streaming._REPRICE_FIELDS`, or a `/quotes` answer for one of its contracts) queues a
+  reprice of that ticker on the pricing thread, as
   of the tick's receive time, whether a page shows it or not (operator 2026-11-06: "the live
   price is the key"; the levels follow what Schwab pushes). The ticks that arrive while one waits
   or runs are all in the next, which is as of the newest; it is pushed to the page the moment it
   changes. A streamed contract's Greeks and volatility are the stream's newest once the stream
   holds all six, else the chain's (`math_exposure_core.overlay_streamed_contract_fields`); its
-  volume is the stream's. The levels' time (`levels_ts_utc`, served as `levels_time_ct` and the
-  age) is the newest Schwab option value in them: the chain, or a value pushed since; their
+  volume, bid and ask are the stream's. A contract the stream does not hold takes its newest
+  `/quotes` answer received since its chain began, the moment it arrives; an answer received
+  before the chain began is older than the chain's own values and is not laid over it
+  (`state.rest_quotes`). The levels' time (`levels_ts_utc`, served as `levels_time_ct` and the
+  age) is the newest Schwab option value in them: the chain, a value pushed since, or a
+  `/quotes` answer received since (its receive time); their
   verdict is judged on the chain's own time (`computed_ts_utc`), so a chain that stops arriving
-  still turns them stale. A viewed
+  still turns them stale (enforced by `tests/test_rest_quotes_reach_the_levels_v1.py`). A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
   stream runs). Which page opened last decides nothing. With the daemon not reporting (no
   current heartbeat), no ticker reads "warming": its reason says first that the daemon is not

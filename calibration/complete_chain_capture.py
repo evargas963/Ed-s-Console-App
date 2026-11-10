@@ -331,11 +331,12 @@ class ChainSweep:
     chain once per ET date, then one chain request per expiry (strike_range=ALL), as Schwab says
     to break up a large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never
     kept. A contract Schwab streams (its LEVELONE_OPTIONS record on the bus, `streamed`) with
-    every Greek sent takes the stream's, each with its field's Schwab time, and is not asked for
-    again. Every other contract is asked for on the quotes endpoint, QUOTES_BATCH_MAX symbols to
-    a request across tickers, and takes its quote's, with the quote's quoteTime. A Greek Schwab
-    does not send is absent (None). Each contract carries the time of its Greeks as `greeksTime`
-    ({field: Schwab's time, ms}).
+    every Greek sent takes the stream's, each with its field's Schwab time (`greeksTime`,
+    {field: ms}), and is not asked for again. Every other contract is asked for on the quotes
+    endpoint, QUOTES_BATCH_MAX symbols to a request across tickers, and takes its quote as Schwab
+    sent it (`quote`; its `greeksTime` is None). Each /quotes answer goes to the console at once
+    with the time it was received (topic `optquotes`). A Greek Schwab does not send is absent
+    (None).
 
     The price history (candles, fetch_price_history): each watchlist ticker's 1-minute bars and
     daily candles once per ET date (candles_due).
@@ -673,7 +674,8 @@ class ChainSweep:
             errors = answer.pop("errors") if "errors" in answer else {}
             named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
             quoted = {s: e["quote"] for s, e in answer.items()}
-            # Schwab's quote per symbol as sent, to the console at once (state.push_rest_quotes)
+            # Schwab's quote per symbol as sent, to the console at once with the time it was
+            # received (state.push_rest_quotes)
             self.publish(
                 "optquotes", {"src": "schwab_quotes", "ts_recv": self.clock(), "answer": quoted}
             )

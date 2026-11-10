@@ -1332,12 +1332,13 @@ def _publish_levels(
 ) -> TerrainSnapshot | None:
     """Produce a ticker's levels, per-strike rows and gamma-surface grid: THE producer of them.
 
-    Prices the ticker's chain once -- each streamed contract with the values Schwab pushed it
-    (overlay_streamed_contract_fields) -- and publishes all three together, so the heatmap, Strike
-    Detail and Key Levels always show one computation. A delivered chain is passed in with its spot
-    (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade time; (None, None)
-    when the daemon held none); a streamed tick passes none and the kept chain is repriced at the
-    live price (resolve_spot) with every value pushed since. Once that ticker's option window has
+    Prices the ticker's chain once -- each contract with its newest values, the stream's or its
+    /quotes answer's (overlay_streamed_contract_fields) -- and publishes all three together, so the
+    heatmap, Strike Detail and Key Levels always show one computation. A delivered chain is passed
+    in with its spot (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade
+    time; (None, None) when the daemon held none); a tick (a streamed value, or a /quotes answer)
+    passes none and the kept chain is repriced at the live price (resolve_spot) with every value
+    received since. Once that ticker's option window has
     ended, a
     later publication keeps the spot already published, so a later equity print does not move
     the close book. Called only on the one pricing thread
@@ -1347,9 +1348,10 @@ def _publish_levels(
     read once: the newest is priced at that capture's chain spot (one written before the chain
     carried one: its nearest expiry's underlyingPrice, labelled chain_capture), valued at
     its own time, or at that ticker's option close when the capture is past it, and both feed
-    the forces and prior-day rows. `now`: the instant of this publication (omitted, the clock's).
+    the forces and prior-day rows. `now`: the instant of this publication.
     A chain that is not a capture is valued then, or at that ticker's option close once it has
-    passed. Inside that window the last streamed values price over the chain, and each leg's age
+    passed. Inside that window each contract's newest values price over the chain (the stream's,
+    or its /quotes answer's when that was received since the chain began), and each leg's age
     is taken. Outside it the close values are the balance until the next open: the first chain
     begun at or after the close, the one published or the ticker's stored capture taken then,
     priced as Schwab sent it, a reported 0 included; nothing Schwab sends later (a chain, a
@@ -1400,11 +1402,12 @@ def _publish_levels(
     streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
     held = set(_held_option_symbols_for_ticker(listed, now.timestamp(), feed))
-    # inside the window each contract's newest values (the stream's, or its newest /quotes
-    # answer's); the close values are the chain as sent. The cell stamp says whether that stream
-    # is live.
+    # inside the window each contract's newest values (the stream's, or its /quotes answer's
+    # when that was received since this chain began); the close values are the chain as sent.
+    # The cell stamp says whether that stream is live.
+    quoted = rest_quotes(listed, fetched_ts)
     priced, n_live = (
-        overlay_streamed_contract_fields(chain, streamed, held, rest_quotes())
+        overlay_streamed_contract_fields(chain, streamed, held, quoted)
         if closed is None
         else (chain, 0)
     )
@@ -1414,6 +1417,8 @@ def _publish_levels(
         for s in live_syms
         if s in streamed and (ts := _leg_stream_ts_recv(streamed[s])) is not None
     ]
+    # a contract the stream does not hold was given its /quotes answer: that answer's receive time
+    quoted_ts = [quoted[s][0] for s in live_syms if s not in held]
     snap = compute_terrain(tk, priced, spot, now=valued_at)
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
@@ -1449,7 +1454,7 @@ def _publish_levels(
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
-        levels_ts_utc=max([fetched_ts, *pushed_ts]),
+        levels_ts_utc=max([fetched_ts, *pushed_ts, *quoted_ts]),
         chain_basis=capture["basis"] if capture is not None else CAPTURE_BASIS,
         spot_source=spot_source,
         spot_as_of_ts_utc=spot_ts,
@@ -1592,13 +1597,14 @@ def _tick_ticker(sym: str) -> str | None:
 
 
 def _on_stream_tick(sym: str, ts: float) -> None:
-    """Take one streamed tick of `sym`, received by the daemon at `ts`.
+    """Take one tick of `sym`, received by the daemon at `ts`.
 
-    Called by the live feed, on the event loop, for every streamed equity quote and every option
-    quote carrying Greeks or volume, with the daemon's receive time of it (`ts`). An equity quote
+    Called by the live feed, on the event loop, for every streamed equity quote, every option
+    quote carrying Greeks or volume, and every contract of a /quotes answer, with the daemon's
+    receive time of it (`ts`). An equity quote
     checks the ticker's levels for a cross at the live price (stored off the event loop);
     the ticker, whichever it is, is queued for a reprice as of `ts` with every value Schwab has
-    pushed (one waits per ticker, as of its newest tick, so the reprice that runs takes the
+    sent (one waits per ticker, as of its newest tick, so the reprice that runs takes the
     newest). Returns at once.
     """
     tk = _tick_ticker(sym)
@@ -1713,9 +1719,9 @@ def _price_chain(
     """Price a ticker's levels through THE producer of them (_publish_levels), at `now`.
 
     From a newly fetched chain, with the chain's own fetch time as its as-of (an older streamed
-    value never overrides it); from the held chain with the newest streamed values, as of the
-    newest tick's receive time (REPRICE, `fetched_ts`); or from the ticker's newest stored
-    captures (STORED, DATA_FLOW decision 7).
+    value never overrides it); from the held chain with the newest values Schwab sent (the
+    stream's, a /quotes answer's), as of the newest tick's receive time (REPRICE, `fetched_ts`);
+    or from the ticker's newest stored captures (STORED, DATA_FLOW decision 7).
     """
     if what == REPRICE:  # the held chain: the ticker's reason stays the chain's own
         try:
