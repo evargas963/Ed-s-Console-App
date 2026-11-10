@@ -320,7 +320,6 @@ def _priced(tk, chain, spot, ts_utc):
                 "ts_utc": ts_utc,
                 "spot": spot,
                 "spot_ts": None,
-                "spot_from_chain": False,
                 "basis": CAPTURE_BASIS,
                 "contracts": read_chain(chain),
             }

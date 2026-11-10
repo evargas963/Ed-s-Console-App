@@ -637,9 +637,10 @@ the program.
   (`ChainSweep.deliver`). The chain carries it to the console (`chain_messages`) and to the chain
   history. A reprice of the kept chain is at the live price (`resolve_spot`, operator 2026-11-06,
   replacing 2026-10-23's one spot per chain), or at the price the levels were last computed at
-  while Schwab has sent this program none; a capture written before the chain carried
-  one is read at its nearest expiry's underlyingPrice, labelled `chain_capture`
-  (`tests/test_data_path_chain_spot_v1.py`). Every route names that price `priced_at_spot` (with
+  while Schwab has sent this program none; a capture stored without the chain's spot has no
+  price (the underlyingPrice of its /chains answers is recorded with it and read by nothing:
+  the stream's LAST_PRICE is the price's one source, operator 2026-11-10: "we only have one
+  producer, one source"; `tests/test_data_path_chain_spot_v1.py`). Every route names that price `priced_at_spot` (with
   `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`
   as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
   checks every GET route that answers a ticker and every page panel that serves a price). Every relation of the price to the levels is at

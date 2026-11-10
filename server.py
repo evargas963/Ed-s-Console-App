@@ -142,9 +142,6 @@ log = logging.getLogger("ed_server")
 SPOT_SOURCE_PLANE = (
     "streaming_plane"  # live_market_plane.get_quote — the freshest real trade this process has seen
 )
-SPOT_SOURCE_CAPTURE = (
-    "chain_capture"  # underlyingPrice of a stored chain capture (DATA_FLOW decision 7)
-)
 SPOT_SOURCE_NONE = "none"  # Schwab has sent no price
 
 
@@ -1330,16 +1327,13 @@ def _close_capture(tk: str, closed: datetime) -> list | None:
 def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
     """Return the price a publication of `tk`'s levels is computed at: (price, source, time).
 
-    A stored capture's chain spot (one written before the chain carried one: its nearest
-    expiry's underlyingPrice); a delivered chain's (Schwab's LAST_PRICE when the chain was
-    complete, with its trade time; SPOT_SOURCE_NONE when the daemon held no price); for a
-    streamed tick, the live price, newer than any the levels hold, or the last one published
-    while Schwab has sent this program none.
+    A chain's spot, a stored capture's or a delivered chain's: Schwab's LAST_PRICE when the
+    chain was complete, with its trade time (SPOT_SOURCE_NONE when the daemon held no price,
+    as a capture stored without one reads); for a streamed tick, the live price, newer than any
+    the levels hold, or the last one published while Schwab has sent this program none.
     """
-    if capture is not None and capture["spot_from_chain"]:
-        return capture["spot"], SPOT_SOURCE_PLANE, capture["spot_ts"]
     if capture is not None:
-        return capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
+        chain_spot = capture["spot"], capture["spot_ts"]
     if new_chain:
         source = SPOT_SOURCE_NONE if chain_spot[0] is None else SPOT_SOURCE_PLANE
         return chain_spot[0], source, chain_spot[1]
@@ -1371,10 +1365,9 @@ def _publish_levels(
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
-    read once: the newest is priced at that capture's chain spot (one written before the chain
-    carried one: its nearest expiry's underlyingPrice, labelled chain_capture), valued at
-    its own time, or at that ticker's option close when the capture is past it, and both feed
-    the forces and prior-day rows. `now`: the instant of this publication.
+    read once: the newest is priced at that capture's chain spot (one stored without it has no
+    price), valued at its own time, or at that ticker's option close when the capture is past
+    it, and both feed the forces and prior-day rows. `now`: the instant of this publication.
     A chain that is not a capture is valued then, or at that ticker's option close once it has
     passed. Inside that window each contract's newest values price over the chain (the stream's,
     or its /quotes answer's when that was received since the chain began), and each leg's age

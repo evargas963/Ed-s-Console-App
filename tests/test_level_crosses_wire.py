@@ -59,7 +59,6 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
                 "et_date": SPY_CLOSE.now.date().isoformat(),
                 "basis": server.CAPTURE_BASIS,
                 "spot_ts": None,
-                "spot_from_chain": False,
             }
         ],
         now=SPY_CLOSE.now,

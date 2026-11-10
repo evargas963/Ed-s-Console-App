@@ -84,6 +84,7 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
                 expiry=exp,
                 contracts=cts,
                 spot=SPY_0DTE.spot,
+                chain_spot=SPY_0DTE.spot,
                 completeness_basis=CAPTURE_BASIS,
                 ts_utc=ts,
             )

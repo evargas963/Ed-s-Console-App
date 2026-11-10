@@ -119,7 +119,6 @@ def build_side_e2e_fixture_response() -> dict:
                 "ts_utc": close["ts_utc"],
                 "spot": close["spot"],
                 "spot_ts": None,
-                "spot_from_chain": False,
                 "et_date": at_close.date().isoformat(),
                 "basis": srv.CAPTURE_BASIS,
             }

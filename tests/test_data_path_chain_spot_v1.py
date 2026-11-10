@@ -4,7 +4,7 @@ A chain's one spot (operator 2026-10-23): Schwab's LAST_PRICE with its
 trade time, as the daemon's price row holds it when the chain is complete. The daemon's chain sweep
 sends it with the chain and stores it with the capture (each expiry's underlyingPrice kept as sent
 beside it); the console prices the chain at it; the stored-capture reader gives it back. A capture
-written before the chain carried a spot is read at its nearest expiry's underlyingPrice, labelled.
+stored without the chain's spot has no price: no underlyingPrice stands in for it.
 
 Real data: CRWD's 2026-10-16 expiry captured 2026-10-07 10:38:40 ET (tests/real_chains.py CRWD,
 underlyingPrice 269.04) and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
@@ -93,7 +93,13 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
     assert held["spot"] != CRWD.spot
 
 
-def test_a_capture_written_before_the_chain_carried_a_spot_is_read_at_its_nearest_expiry(tmp_path):
+def test_a_capture_stored_without_the_chains_spot_has_no_price(tmp_path):
+    """The price has one source, the stream's LAST_PRICE: no /chains value stands in for it.
+
+    CRWD's capture stored with each expiry's underlyingPrice (269.04) and no chain spot, as
+    captures were written before the chain carried one. The reader gives no spot, the levels
+    are published with no price (source none), and the underlyingPrice stays recorded.
+    """
     db = tmp_path / "ed_console.db"
     by_expiry: dict = {}
     for ct in CRWD.chain:
@@ -109,7 +115,10 @@ def test_a_capture_written_before_the_chain_carried_a_spot_is_read_at_its_neares
             ts_utc=CRWD.now.timestamp(),
         )
     (read,) = cch.last_capture_per_day(db, TK, 1)
-    assert (read["spot"], read["spot_ts"], read["spot_from_chain"]) == (CRWD.spot, None, False)
+    assert (read["spot"], read["spot_ts"]) == (None, None)
+    with sqlite3.connect(db) as c:
+        recorded = {r[0] for r in c.execute("SELECT spot FROM complete_chain_captures")}
+    assert recorded == {CRWD.spot}
     published = []
     try:
         server._publish_levels(TK, captures=[read], now=CRWD.now)
@@ -120,9 +129,9 @@ def test_a_capture_written_before_the_chain_carried_a_spot_is_read_at_its_neares
         _forget()
     for held in published:
         assert (held["spot"], held["spot_source"], held["spot_as_of_ts_utc"]) == (
-            CRWD.spot,
-            server.SPOT_SOURCE_CAPTURE,
-            CRWD.now.timestamp(),
+            None,
+            server.SPOT_SOURCE_NONE,
+            None,
         )
 
 
@@ -140,4 +149,4 @@ def test_a_stored_trade_time_without_its_price_is_no_chain_spot(tmp_path):
         chain_spot_ts=TRADED,
     )
     (read,) = cch.last_capture_per_day(db, TK, 1)
-    assert (read["spot"], read["spot_ts"], read["spot_from_chain"]) == (CRWD.spot, None, False)
+    assert (read["spot"], read["spot_ts"]) == (None, None)
