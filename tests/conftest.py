@@ -118,7 +118,6 @@ def _live_feed_starts_down():
 def feed():
     """Clear the console's state before and after, and leave no daemon bound after."""
     ofs.stop_order_flow_stream()
-    ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
     live_market_plane._by_ticker.clear()
     yield

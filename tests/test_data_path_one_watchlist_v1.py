@@ -23,6 +23,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import live_market_plane as lmp
@@ -104,7 +105,10 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
     request by its requestid. Every watchlist ticker is asked for on each equity service and the
     header's market context on quotes, bars and news, in one request per service; SPY's 442
     2026-11-20 contracts on LEVELONE_OPTIONS past a limit of 2 (a stand-in limit) get Schwab's
-    refusal, both answers recorded as sent, and nothing is asked again.
+    refusal, both answers recorded as sent. The refusal states the limit, so that service is
+    asked once more, a SUBS of the first 2 of the option rule's order, which Schwab accepts; on
+    OPTIONS_BOOK, where the stand-in sets no limit, all 442 are asked once and held. Nothing
+    else is asked again.
     """
     schwab = _Schwab(
         tmp_path,
@@ -127,11 +131,11 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         ]
         _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
         await _until(
-            lambda: len(schwab.streamer.answers) >= 9
-        )  # login + 7 requests, one answered twice
+            lambda: len(schwab.streamer.answers) >= 10
+        )  # login + 8 requests, one answered twice
         # the daemon has recorded each answer but the login's, and taken SPY's data entry (its
         # quote follows the one _market published)
-        await _until(lambda: log.queue.qsize() == 8 and quotes.queue.qsize() >= 2)
+        await _until(lambda: log.queue.qsize() == 9 and quotes.queue.qsize() >= 2)
         daemon.ask()  # nothing changed: nothing is asked
         await _until(lambda: not daemon.wake.is_set())  # the connection has taken what is queued
         connected = dict(daemon.held)
@@ -154,8 +158,8 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
     ]
     assert schwab.streamer.requests[-1]["command"] == "LOGOUT", "every request came before it"
     context = sorted(["SPY", "TSLA", *MARKET_CONTEXT])
-    book = sorted(daemon.options["OPTIONS_BOOK"])
-    assert len(book) == 50  # SPY's half of 100
+    order = list(daemon.option_order)  # SPY's contracts in the option rule's order
+    assert sorted(order) == symbols  # each of the 442 once: no number of ours caps a service
     assert sorted(asked) == sorted(
         [
             *[
@@ -164,16 +168,21 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
             ],
             *[(svc, "SUBS", ["SPY", "TSLA"]) for svc in ("NYSE_BOOK", "NASDAQ_BOOK")],
             ("LEVELONE_OPTIONS", "SUBS", symbols),
-            ("OPTIONS_BOOK", "SUBS", book),
+            ("OPTIONS_BOOK", "SUBS", symbols),
+            ("LEVELONE_OPTIONS", "SUBS", sorted(order[:2])),  # within the limit Schwab stated
         ]
     )
     answers = _answers(log)
     assert [a for a in answers if a[0] == "LEVELONE_OPTIONS"] == [
         ("LEVELONE_OPTIONS", "SUBS", 19, refusal("LEVELONE_OPTIONS", 2, len(symbols) - 2)),
         ("LEVELONE_OPTIONS", "SUBS", 24, "SUBS command failed"),
-    ], "both of Schwab's answers, as sent"
+        ("LEVELONE_OPTIONS", "SUBS", 0, "SUBS command succeeded"),
+    ], "both of Schwab's answers to the refused request, as sent, then its answer to the next"
     assert all(code == 0 for svc, _c, code, _m in answers if svc != "LEVELONE_OPTIONS"), answers
-    assert held["NYSE_BOOK"] == {"SPY", "TSLA"} and held["LEVELONE_OPTIONS"] == frozenset()
+    assert held["NYSE_BOOK"] == {"SPY", "TSLA"} and held["OPTIONS_BOOK"] == set(symbols)
+    # the daemon holds what Schwab holds: the first 2 of the rule's order
+    assert held["LEVELONE_OPTIONS"] == set(order[:2])
+    assert schwab.streamer.held["LEVELONE_OPTIONS"] == order[:2]
     # each request asks for every field number Schwab accepts on its service (code 22 past it), and
     # the fields Schwab sends past its Streamer Guide (LEVELONE_EQUITIES 52-56) reach SPY's record
     # as sent
@@ -234,6 +243,66 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
     commands = [c for c, _k in schwab.streamer.asked("LEVELONE_OPTIONS")]
     assert len(commands) > 1 and commands == ["SUBS"] + ["ADD"] * (len(commands) - 1)
     assert sorted(schwab.streamer.held["LEVELONE_OPTIONS"]) == symbols, "Schwab holds every part"
+
+
+@pytest.mark.parametrize(
+    ("code", "msg"),
+    [
+        (22, "SUBS command failed"),  # as Schwab answered a field number it does not take
+        (19, "You've reached the maximum number of symbols allowed."),  # no limit in its text
+    ],
+)
+def test_a_refusal_that_states_no_limit_is_recorded_and_not_asked_again(tmp_path, code, msg):
+    """Schwab refuses OPTIONS_BOOK's request and states no symbol limit to fit within.
+
+    Induced condition: the streamer here answers each OPTIONS_BOOK request with `code` and `msg`
+    (code 19's text without its limit is not one Schwab has sent). The daemon records the answer
+    as sent, holds nothing on that service, asks it for nothing more and keeps its connection, on
+    which LEVELONE_OPTIONS holds SPY's 442 contracts.
+    """
+    schwab = _Schwab(tmp_path, limits={}, data={})
+    answer = schwab.streamer.answer
+
+    def refuse(req: dict) -> list[dict]:
+        frames = answer(req)
+        if req["service"] == "OPTIONS_BOOK":
+            frames[0]["response"][0]["content"] = {"code": code, "msg": msg}
+        return frames
+
+    schwab.streamer.answer = refuse
+    bus = MessageBus()
+    log = bus.subscribe("sub.OPTIONS_BOOK", policy=LOG)
+    daemon = capture.Daemon(
+        bus, HealthRegistry(), ["SPY"], clock=lambda: SPY_CHAIN["capture_ts_utc"]
+    )
+    symbols = {c["symbol"] for c in SPY_CHAIN["chain"]}
+
+    async def go():
+        stop = asyncio.Event()
+        tasks = [
+            asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
+            asyncio.create_task(daemon.follow_market(stop)),
+        ]
+        _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
+        await _until(lambda: log.queue.qsize() == 1 and daemon.held["LEVELONE_OPTIONS"] == symbols)
+        daemon.ask()  # nothing changed: nothing is asked
+        await _until(lambda: not daemon.wake.is_set())  # the connection has taken what is queued
+        connected = dict(daemon.held)
+        stop.set()
+        await asyncio.wait_for(asyncio.gather(*tasks), 10)
+        return connected
+
+    try:
+        held = asyncio.run(go())
+    finally:
+        schwab.close()
+        lmp._by_ticker.pop("SPY", None)  # the plane row its price wrote
+        lmp._fields_by_ticker.pop("SPY", None)
+    asked = [(c, set(keys)) for c, keys in schwab.streamer.asked("OPTIONS_BOOK")]
+    assert asked == [("SUBS", symbols)], "asked once, and not again"
+    assert _answers(log) == [("OPTIONS_BOOK", "SUBS", code, msg)]
+    assert held["OPTIONS_BOOK"] == frozenset() and held["LEVELONE_OPTIONS"] == symbols
+    assert len([r for r in schwab.streamer.requests if r["command"] == "LOGIN"]) == 1
 
 
 def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(tmp_path):
@@ -332,7 +401,7 @@ def test_an_answer_schwab_sent_at_once_but_read_late_keeps_the_connection(tmp_pa
         schwab.close()
     assert time_et.elapsed() - started > READER_LAG_SEC > capture.REQUEST_TIMEOUT_SEC
     assert [r["command"] for r in schwab.streamer.requests].count("LOGIN") == 1, "one session"
-    wanted = daemon.wanted()
+    wanted = {svc: frozenset(want) for svc, want in daemon.wanted().items()}
     assert {svc: held[svc] for svc in wanted} == wanted, "every request answered and held"
     assert answers == [1] * len(EQUITY), answers
 

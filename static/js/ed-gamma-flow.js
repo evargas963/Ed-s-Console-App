@@ -4,8 +4,8 @@
    which contracts stream is the daemon's option rule, never the page's — this view never POSTs,
    never constructs a symbol, never recomputes book/flow semantics.
    ONE canonical payload contract (app/options/order_flow/live_payload.py over engine.py):
-     d.top_of_book / d.mid / d.microprice / d.spread_pts / d.depth / d.ages — book microstructure,
-       classified by d.classification (engine keys, e.g. "top_of_book.bid", "mid", "depth.*.imbalance");
+     d.top_of_book / d.mark / d.microprice / d.spread_pts / d.depth / d.ages — book microstructure,
+       classified by d.classification (engine keys, e.g. "top_of_book.bid", "mark", "depth.*.imbalance");
      d.flow.{tape_pressure_30s,tape_pressure_2m,tape_pressure_5m,cum_delta_proxy,cum_delta_slope,
        top_book_pressure} — classified by d.flow.classification; d.flow.native_aggressor_available;
      d.streaming_plane — producer binding / feed health (no classification concept).
@@ -98,7 +98,7 @@
       ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', bk('top_of_book.ask_size')],
     ];
     var rowsBook = [
-      ['Mid', num(d.mid), 'mid', bk('mid')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
+      ['Mark', num(d.mark), 'mark', bk('mark')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
       ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],
       ['Depth 1 · imbalance', num(dep(1, 'imbalance'), 3), 'depth.1.imbalance', bk('depth.*.imbalance')],
       ['Depth 3 · imbalance', num(dep(3, 'imbalance'), 3), 'depth.3.imbalance', bk('depth.*.imbalance')],

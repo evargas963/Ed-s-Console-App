@@ -60,7 +60,7 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     ("terrain", "put_charm_wall"): ("max_put_charm", FULL),
     ("terrain", "call_delta_wall"): ("max_call_delta", FULL),
     ("terrain", "put_delta_wall"): ("max_put_delta", FULL),
-    # nearest expiry, gamma and delta rebuilt to today's option close (one producer, every ticker)
+    # the nearest listed expiry, Schwab's gamma and delta as sent (one producer, every ticker)
     ("terrain", "same_day.call_wall"): ("max_call_gamma", TODAY),
     ("terrain", "same_day.put_wall"): ("max_put_gamma", TODAY),
     ("terrain", "same_day.gamma_flip"): ("net_gamma_zero_cross", TODAY),

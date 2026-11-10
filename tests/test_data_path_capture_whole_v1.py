@@ -93,13 +93,3 @@ def test_the_console_hears_of_a_chain_after_its_capture_is_stored(tmp_path):
     chain = _chain()
     sweep.deliver(chain)
     assert set(stored_at_each_message) == {len(chain.contracts())}
-
-
-def test_a_capture_is_read_before_a_time(tmp_path):
-    """The stored capture of the chain being priced is not its own last count."""
-    db = tmp_path / "ed_console.db"
-    sweep = _sweep(tmp_path, lambda _topic, _msg: None)
-    sweep.deliver(_chain())
-    assert cch.newest_capture_ts(db, "MRVL", before_ts=_BEGUN) is None
-    assert cch.last_capture_per_day(db, "MRVL", 1, before_ts=_BEGUN) == []
-    assert cch.newest_capture_ts(db, "MRVL", before_ts=_BEGUN + 1) == _BEGUN

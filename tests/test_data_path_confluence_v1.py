@@ -938,10 +938,10 @@ def _zero_counts(chain):
 
 
 def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
-    """SPY's captured chain is published after the index close.
+    """SPY's captured chain is published after the index close: the close values.
 
-    A later chain that reports
-    zero open interest and zero volume does not erase those counts, or the score they carry.
+    They are the balance until the next open: a later chain that reports zero open interest and
+    zero volume does not replace those counts, or the score they carry.
     """
     held = SPY_0DTE
     tk = "SPY"
@@ -974,8 +974,8 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
 def _first_chain_keeps_the_capture(now, capture_at):
     """No chain is in memory.
 
-    The delivered chain reports zero counts. The stored capture
-    is the last count, so put/call volume stays.
+    The delivered chain reports zero counts. The stored capture taken after the close is the
+    balance, so put/call volume stays.
     """
     held = SPY_0DTE
     tk = "SPYKEEP"
@@ -1016,8 +1016,8 @@ def test_the_first_chain_after_the_close_keeps_the_stored_counts():
     """A restart after the close has no chain in memory.
 
     The chain the daemon delivers
-    reports zero open interest and zero volume. The stored close capture is the last
-    count, so put/call volume stays.
+    reports zero open interest and zero volume. The stored close capture is the balance, so
+    put/call volume stays.
     """
     _first_chain_keeps_the_capture(
         datetime(2026, 10, 7, 18, 0, tzinfo=ET), datetime(2026, 10, 7, 16, 15, tzinfo=ET)
@@ -1046,17 +1046,18 @@ def _no_value_counts(chain):
 
 
 def test_a_no_value_count_after_the_close_is_not_the_last_count():
-    """Schwab's no-value code is not a reported zero. It does not keep the last count."""
+    """Schwab's no-value code in the close values is no count. The count before it is not kept."""
     held = SPY_0DTE
     tk = "SPY"
+    inside = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, read_chain(held.chain), after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(held.chain), inside.timestamp(), chain_spot=spot, now=inside
         )
-        first = server.confluence_payload(tk, expiry, after)
+        first = server.confluence_payload(tk, expiry, inside)
         assert any(row["pc_vol_text"] is not None for row in first["rows"])
         server._publish_levels(
             tk,
@@ -1094,13 +1095,13 @@ def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
         _forget(tk)
 
 
-def test_a_chain_past_its_close_stored_first_keeps_the_capture_before_it():
+def test_a_close_capture_of_zeros_is_the_balance_not_the_capture_before_it():
     """SPY's chain with its counts stored at 16:00, then one begun after the close with zeros.
 
     A chain begun after the option close with every count zero, stored before the console hears
-    of it, on a console holding no earlier chain: the last count is the 16:00 capture's, not the
-    zeros of the chain's own capture. Induced test condition: one chain stored twice, once with
-    its counts set to 0, as Schwab's after a close.
+    of it, on a console holding no earlier chain: the newest capture after the close is the
+    balance, and its reported zeros stand; the 16:00 capture's counts are not carried. Induced
+    test condition: one chain stored twice, once with its counts set to 0.
     """
     held = SPY_0DTE
     tk = "SPYOWN"
@@ -1124,7 +1125,7 @@ def test_a_chain_past_its_close_stored_first_keeps_the_capture_before_it():
             tk, read_chain(_zero_counts(fresh)), after.timestamp(), chain_spot=spot, now=after
         )
         served = server.confluence_payload(tk, expiry, after)
-        assert any(row["pc_vol_text"] is not None for row in served["rows"])
+        assert served["rows"] and all(row["pc_vol_text"] is None for row in served["rows"])
     finally:
         _forget(tk)
 
@@ -1133,7 +1134,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
     """A day Schwab says is closed is outside every option window.
 
     Sunday's zero book does not
-    replace the last count, the stored capture's; and Monday before the open it still stands.
+    replace the balance, the stored close capture; and Monday before the open it still stands.
     """
     held = SPY_0DTE
     tk = "SPYMON"
@@ -1188,8 +1189,8 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
     """SPY's 2026-10-19 expiry from the 2026-10-16 close capture, published before Monday's open.
 
     Published Monday 2026-10-19 before the open: the LEVELONE_OPTIONS messages Schwab sent that
-    morning with TOTAL_VOLUME 0, taken in as the daemon received them, leave each contract the
-    volume the capture reported.
+    morning with TOTAL_VOLUME 0, taken in as the daemon received them, are values sent after the
+    close: none is put over the capture, and each contract keeps the volume it reported.
     """
     held, messages = _SPY_MONDAY["close"], _SPY_MONDAY["zero_volume_messages"]
     tk = "SPY"
@@ -1230,12 +1231,18 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
         book = server.published_levels(tk)
         overlaid = book.gamma_surface["stream_overlay_contracts"]
         kept = {ct.symbol: ct.volume for ct in book.priced_chain if ct.symbol in traded}
+        panel = server.chain(
+            tk, after.timestamp(), {"expiry": str(held["chain"][0]["expirationDate"])[:10]}
+        )
+        shown = {row["symbol"]: row.get("totalVolume") for row in panel["contracts"]}
     finally:
         ofls.clear_all_live_state()
         _forget(tk)
-    assert overlaid
+    assert overlaid == 0
     assert all(m["native"]["TOTAL_VOLUME"] == 0 for m in messages)
     assert all(traded[s] > 0 and kept[s] == traded[s] for s in symbols)
+    # the chain panel shows the contracts as the levels priced them
+    assert all(shown[s] == traded[s] for s in symbols)
 
 
 def _drop_counts(chain):
@@ -1250,17 +1257,18 @@ def _drop_counts(chain):
 
 
 def test_a_missing_count_after_the_close_is_not_the_last_count():
-    """A count Schwab did not send is not a reported zero. It does not keep the last count."""
+    """A count Schwab did not send in the close values is no count. The one before is not kept."""
     held = SPY_0DTE
     tk = "SPY"
+    inside = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(
-            tk, read_chain(held.chain), after.timestamp(), chain_spot=spot, now=after
+            tk, read_chain(held.chain), inside.timestamp(), chain_spot=spot, now=inside
         )
-        first = server.confluence_payload(tk, expiry, after)
+        first = server.confluence_payload(tk, expiry, inside)
         assert any(row["pc_vol_text"] is not None for row in first["rows"])
         server._publish_levels(
             tk, read_chain(_drop_counts(held.chain)), after.timestamp(), chain_spot=spot, now=after
@@ -1353,6 +1361,40 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
     finally:
         _forget(tk)
     assert kept.volume == later[target["symbol"]] != target["totalVolume"]
+
+
+def test_the_close_values_stand_until_the_next_open():
+    """SPY's 2026-10-21 close capture, delivered after that close, is the balance.
+
+    Until 2026-10-22's open neither a reprice on a value pushed after the close nor a later
+    chain replaces it. Induced test condition: the chain delivered before the open is SPY's
+    2026-10-22 close capture, a real chain with other counts.
+    """
+    older, newer = _SPY_TWO_CLOSES["older"], _SPY_TWO_CLOSES["newer"]
+    tk = "SPYBAL"
+    after = datetime(2026, 10, 21, 18, 0, tzinfo=ET)
+    before = datetime(2026, 10, 22, 8, 0, tzinfo=ET)
+    later = {ct["symbol"]: ct["totalVolume"] for ct in newer["chain"]}
+    try:
+        spot = _chain_spot(tk, _SPY_TWO_CLOSES["quote_at_older"])
+        server._publish_levels(
+            tk, read_chain(older["chain"]), after.timestamp(), chain_spot=spot, now=after
+        )
+        balance = server.published_levels(tk)
+        server._publish_levels(tk, now=before)
+        server._publish_levels(
+            tk, read_chain(newer["chain"]), before.timestamp(), chain_spot=spot, now=before
+        )
+        held = server.published_levels(tk)
+    finally:
+        _forget(tk)
+    other = [
+        ct.symbol
+        for ct in balance.priced_chain
+        if ct.volume is not None and later.get(ct.symbol, ct.volume) != ct.volume
+    ]
+    assert other
+    assert held is balance
 
 
 def test_during_the_session_a_zero_count_replaces_the_old_count():

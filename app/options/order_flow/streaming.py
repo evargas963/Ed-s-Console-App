@@ -45,6 +45,7 @@ from app.options.order_flow.state import (
     push_book,
     push_level_one,
     push_option_top,
+    push_rest_quotes,
 )
 from instrument_identity import ticker_storage_key
 from stream_spine import LATEST
@@ -125,12 +126,9 @@ async def select_flow_contract(contract: str | None) -> None:
 _feed_task: asyncio.Task | None = None
 _feed_running = False
 
-#: Each option contract's last streamed message time (LEVELONE_OPTIONS or OPTIONS_BOOK), keyed
-#: by ticker_storage_key.
-_option_contract_last_update_ts: dict[str, float] = {}
-
-#: Called with the symbol of every streamed equity quote and every option quote carrying a
-#: _REPRICE_FIELDS value (server._on_stream_tick: reprices its ticker).
+#: Called with the symbol of every streamed equity quote, every option quote carrying a
+#: _REPRICE_FIELDS value and every contract of a /quotes answer (server._on_stream_tick:
+#: reprices its ticker).
 #: Runs on the event loop, so it must return at once.
 _on_tick_callback: Callable[[str], None] | None = None
 _on_feed_callback: Callable[[float], None] | None = None
@@ -259,10 +257,12 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
                    imbalance readout's value of both books then held; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
+      optquotes    Schwab's /quotes answer for option contracts -> each contract's newest values
+                   (state.push_rest_quotes), at the answer's receive time
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
 
-    Every equity quote, and every option quote carrying a _REPRICE_FIELDS value, is passed to the
-    tick callback. A message missing its symbol, its
+    Every equity quote, every option quote carrying a _REPRICE_FIELDS value, and every contract
+    of a /quotes answer, is passed to the tick callback. A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part.
     """
@@ -275,8 +275,8 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if msg["status"] == 200:
             record_markets(msg["answer"])
         return
-    if topic == "watchlist":
-        _answer_watchlist_request(msg)
+    if topic in _APPLY_BY_TOPIC:
+        _APPLY_BY_TOPIC[topic](msg)
         return
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
@@ -298,6 +298,17 @@ def _apply_chain_part(msg: dict) -> None:
     for done in assemble_chain_part(msg):
         if _on_chain_callback is not None:
             _on_chain_callback(*done)
+
+
+def _apply_rest_quotes(msg: dict) -> None:
+    """Take a /quotes answer: each contract's newest values, its ticker repriced now.
+
+    The answer's time is the daemon's receive time for it (`ts_recv`).
+    """
+    received = float(msg["ts_recv"])
+    push_rest_quotes(msg["answer"], received)
+    for sym in msg["answer"]:
+        _tick(sym)
 
 
 def _answer_watchlist_request(msg: dict) -> None:
@@ -324,7 +335,6 @@ def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
         return
     book = push_book(sym, content, msg["service"])
     if msg.get("service") == "OPTIONS_BOOK":
-        _option_contract_last_update_ts[sym] = ts
         return
     if book is not None:
         recent.BOOKS.record(sym, msg["service"], book, ts)
@@ -333,7 +343,7 @@ def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
 
 
 def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
-    """Apply a LEVELONE_OPTIONS message: the contract's order-flow state, tape and update time.
+    """Apply a LEVELONE_OPTIONS message: the contract's order-flow state and tape.
 
     A tick when the newest message carried a value the levels use (a merged record holds the last
     of each field; only one this message brought is new).
@@ -344,13 +354,14 @@ def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -
     push_level_one(sym, content, ts_recv=ts, field_received=received)
     push_option_top(sym, content)
     recent.TAPE.record(sym, content, ts, option_top(sym), get_stream_greeks(sym))
-    _option_contract_last_update_ts[sym] = ts
     if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
         _tick(sym)
 
 
 #: each symbol's message, by its topic's kind, and what applies it (_ingest_pushed)
 _APPLY_BY_KIND = {"quote": _apply_quote, "book": _apply_book, "optquote": _apply_option_quote}
+#: a whole-topic message (no one symbol), and what applies it (_ingest_pushed)
+_APPLY_BY_TOPIC = {"watchlist": _answer_watchlist_request, "optquotes": _apply_rest_quotes}
 
 
 async def _bus_loop(bus) -> None:
@@ -404,11 +415,9 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     l1 = _service_feed(c, "LEVELONE_OPTIONS", now)
     healthy = bool(_feed_running and l1["state"] == _lmp.LIVE)
     return {
-        "queried_contract": c,
         "subscription_state": SUBSCRIBED
         if levelone is not None and c in levelone
         else NOT_STREAMED,
-        "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
         "feed_health": {
             "replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
             "l1": l1,
@@ -470,7 +479,6 @@ def stop_order_flow_stream() -> None:
     """
     global _feed_running, _feed_task
     _feed_running = False
-    _option_contract_last_update_ts.clear()
     clear_all_live_state()
     task = _feed_task
     if task is not None and not task.done():

@@ -107,13 +107,20 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         }, (topic, series)
 
 
-def _true_range_mean(candles: list[dict]) -> float:
-    """ATR(14) worked out here from Schwab's candles: the mean of the last 14 true ranges."""
+def _wilder_atr(candles: list[dict]) -> float:
+    """ATR(14) worked out here from Schwab's candles by Wilder's definition (Wilder 1978).
+
+    The first ATR is the mean of the first 14 true ranges; each later one is
+    (ATR_(t-1) * 13 + TR_t) / 14.
+    """
     tr = [
         max(c["high"] - c["low"], abs(c["high"] - p["close"]), abs(c["low"] - p["close"]))
         for p, c in zip(candles, candles[1:])
     ]
-    return sum(tr[-14:]) / 14
+    atr = sum(tr[:14]) / 14
+    for x in tr[14:]:
+        atr = (atr * 13 + x) / 14
+    return atr
 
 
 def _grouped(candles: list[dict], key) -> list[dict]:
@@ -195,7 +202,7 @@ def test_today_s_candle_is_rolled_up_live_from_the_regular_session_bars():
             ]
             (rolled,) = _grouped(window, lambda day: day)
             assert (rolled["high"], rolled["low"]) == (schwabs["high"], schwabs["low"]), tk
-            assert server._atr(tk, now).daily == _true_range_mean(before + [rolled]), tk
+            assert server._atr(tk, now).daily == _wilder_atr(before + [rolled]), tk
         finally:
             server._bars.pop(tk, None)
             server._daily.pop(tk, None)
@@ -245,10 +252,8 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
             daily = HISTORY[(tk, "daily", "1")]["body"]["candles"]
             months = _grouped(daily, lambda day: (day.year, day.month))
             atr = server._atr(tk, answered)
-            assert atr.daily == _true_range_mean(daily), tk
-            assert atr.weekly == _true_range_mean(
-                _grouped(daily, lambda day: day.isocalendar()[:2])
-            ), tk
+            assert atr.daily == _wilder_atr(daily), tk
+            assert atr.weekly == _wilder_atr(_grouped(daily, lambda day: day.isocalendar()[:2])), tk
             assert len(months) < 15, tk  # a year captured: ATR(14) of months needs 15
             assert atr.monthly is None, tk
     finally:

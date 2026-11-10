@@ -7,12 +7,14 @@ Walls, pins, inflections, support/resistance derived from options exposure struc
 from __future__ import annotations
 
 import functools
+from dataclasses import replace
 from datetime import datetime
 
 import numpy as np
 
 from math_exposure_core import (
     bs_charm_array,
+    bsm_gamma_delta,
     bucket_metric,
     d1_vt,
     key_level_strikes_with_oi,
@@ -44,7 +46,8 @@ def compute_charm_by_strike(
     mechanism attributed to the end-of-day pin: dealers bleeding delta into the close.
 
     Convention matches net GEX exactly (+call / -put), so a positive net value means the
-    dealer book's delta decay creates BUYING pressure at that strike.
+    dealer book gains delta as time passes, which the dealer hedges by SELLING the underlying
+    (a negative net value: losing delta, hedged by buying).
 
     Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
 
@@ -139,20 +142,58 @@ _CHARM_SIDES = ("call_charm", "put_charm")
 def contract_inputs(
     contracts: list[OptionContract], now: datetime, product: str = "EQO"
 ) -> tuple[list, dict]:
-    """(priced, unpriced): _contract_inputs for every contract with open interest.
+    """(priced, unpriced): the gamma profile's inputs for every contract with open interest.
 
-    They are parsed once for the gamma profile (compute_terrain); `unpriced` counts the
-    contracts with open interest the profile could not price, by reason.
+    Each priced row is the contract's _profile_row. They are parsed once for the gamma profile
+    (compute_terrain); `unpriced` counts the contracts with open interest the profile could not
+    price, by reason.
     """
     priced, unpriced = [], {}
     tte = _expiry_years(now, product)
     for c in contracts:
-        r = _contract_inputs(c, now=now, t_years=tte(c.expiration, c.settlement), product=product)
-        if isinstance(r, tuple):
-            priced.append(r)
-        elif r != "zero_open_interest":
-            unpriced[r] = unpriced.get(r, 0) + 1
+        row = _profile_row(c, now, tte(c.expiration, c.settlement), product)
+        if isinstance(row, tuple):
+            priced.append(row)
+        elif row != "zero_open_interest":
+            unpriced[row] = unpriced.get(row, 0) + 1
     return priced, unpriced
+
+
+def _profile_row(
+    c: OptionContract, now: datetime, t_years: float | None, product: str
+) -> tuple | str:
+    """One contract's gamma-profile row, or the reason it cannot be priced.
+
+    The row is _contract_inputs' (strike, oi, mult, t_years, sigma, sign) and then the contract's
+    rate and dividend yield as decimals: Schwab's /chains `interestRate` (OptionChain,
+    docs/schwab/schwab_market_data_api_spec.pdf p. 27) and `dividendYield`, percents as sent. A
+    contract sent without either is not priced ("no_rate").
+    """
+    row = _contract_inputs(c, now, t_years=t_years, product=product)
+    rate, dividend = c.interest_rate, c.dividend_yield
+    if isinstance(row, tuple) and rate is not None and dividend is not None:
+        return (*row, rate / 100.0, dividend / 100.0)
+    return row if isinstance(row, str) else "no_rate"
+
+
+def repriced_to_close(
+    contracts: list[OptionContract], spot: float, now: datetime, t_close: float, product: str
+) -> tuple[list[OptionContract], list]:
+    """(contracts, priced): each contract as if it expired `t_close` years from `now`.
+
+    Its gamma and delta are the Black-Scholes-Merton ones at that horizon (bsm_gamma_delta, on
+    Schwab's volatility, rate and dividend yield as sent), from the row the gamma profile prices
+    it by (`priced`, as contract_inputs'). A contract with no row has neither: not known, never
+    Schwab's Greek at its own expiry.
+    """
+    rows = [_profile_row(c, now, t_close, product) for c in contracts]
+    greeks = (
+        bsm_gamma_delta(spot, r[0], *r[3:]) if isinstance(r, tuple) else (None, None) for r in rows
+    )
+    return (
+        [replace(c, gamma=g, delta=d) for c, (g, d) in zip(contracts, greeks, strict=True)],
+        [r for r in rows if isinstance(r, tuple)],
+    )
 
 
 def _expiry_years(now: datetime, product: str):
@@ -206,19 +247,14 @@ GAMMA_PROFILE_SPAN_PCT = 0.15
 GAMMA_PROFILE_STEPS = 240
 
 
-def compute_gamma_profile(
-    contracts: list[OptionContract], spot: float, *, now: datetime, parsed: list | None = None
-) -> list[tuple[float, float]]:
+def compute_gamma_profile(parsed: list, spot: float) -> list[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
-    One dealer convention for every instrument: +call / -put. Returns [(price, total_gex)]
-    ascending. The zero crossing of this curve is the gamma flip.
+    `parsed`: the contracts' priced rows (contract_inputs', or repriced_to_close's). One dealer
+    convention for every instrument: +call / -put. Returns [(price, total_gex)] ascending. The
+    zero crossing of this curve is the gamma flip.
     """
-    if not contracts or spot is None or spot <= 0:
-        return []
-    if parsed is None:
-        parsed, _ = contract_inputs(contracts, now)
-    if not parsed:
+    if not parsed or spot is None or spot <= 0:
         return []
     lo, hi = spot * (1.0 - GAMMA_PROFILE_SPAN_PCT), spot * (1.0 + GAMMA_PROFILE_SPAN_PCT)
     steps = GAMMA_PROFILE_STEPS
@@ -233,23 +269,23 @@ _GAMMA_PROFILE_BLOCK = 32
 
 
 def _gamma_profile_totals(parsed: list, grid: list[float]) -> list[float]:
-    """Sum over contracts of side_sign * bs_gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
+    """Sum over contracts of side_sign * gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
 
-    The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
-    passes), evaluated as arrays instead of one Python call per (price, contract) pair: on SPY's
-    full chain (13,290 contracts, 241 prices) a per-call loop over the contracts it could price
-    made 2.27M bs_gamma calls, 82% of compute_terrain's 17.8 s with that loop. A gamma that is not
-    finite contributes nothing, matching bs_gamma's None.
+    gamma is the Black-Scholes-Merton gamma with each contract's rate r and dividend yield q as
+    Schwab sent them (Hull, Options, Futures and Other Derivatives, ch. 19):
+    e^(-qT) * phi(d1) / (s * sigma * sqrt(T)), d1 = (ln(s/K) + (r - q + sigma^2/2) T) /
+    (sigma sqrt(T)). Evaluated as arrays, one block of prices at a time. A gamma that is not
+    finite contributes nothing.
     """
     arr = np.asarray(parsed, dtype=float)
-    strike, oi, mult, t_years, sigma, side = (arr[:, i] for i in range(6))
-    weight = side * oi * mult
+    strike, oi, mult, t_years, sigma, side, rate, dividend = (arr[:, i] for i in range(8))
+    weight = side * oi * mult * np.exp(-dividend * t_years)
     s_all = np.asarray(grid, dtype=float)
     out: list[float] = []
     with np.errstate(all="ignore"):
         for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
             s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
-            d1, vt = d1_vt(s, strike, t_years, sigma, log=np.log, sqrt=np.sqrt)
+            d1, vt = d1_vt(s, strike, t_years, sigma, rate - dividend, log=np.log, sqrt=np.sqrt)
             g = norm_pdf(d1, exp=np.exp) / (s * vt)
             g = np.where(np.isfinite(g), g, 0.0)
             out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
@@ -452,7 +488,7 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: The floor makes no claim about the at-spot SIGN: the flip-LEVEL convergence study measures
 #: |windowed flip - full-chain flip|, a LEVEL distance, and is silent about the SIGN of gamma at
 #: spot. MEASURED (260 seed-fixed chains from the study's reference cohort, at-spot gamma
-#: recomputed on truncated windows via _contract_inputs/bs_gamma, counting ONLY genuinely
+#: recomputed on truncated windows by Black-Scholes gamma at r = q = 0, counting ONLY genuinely
 #: truncated chains):
 #:   sign agreement with the full delivered chain — +/-1% 79.8% (n=233), +/-5% 86.2% (n=253,
 #:   95% CI [0.814, 0.899]), +/-10% 90.2% (n=254), +/-15% 92.7% (n=248).
@@ -587,19 +623,11 @@ def compute_gamma_flip_v2(
     at 770.35 against a full-chain reference of 745.61).
     """
     if not contracts or not spot or spot <= 0:
-        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
+        return None, GAMMA_FLIP_UNAVAILABLE, {}
     strikes = [c.strike for c in contracts if c.strike is not None]
     if not strikes:
-        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_strikes"}
+        return None, GAMMA_FLIP_UNAVAILABLE, {}
     lo, hi = min(strikes), max(strikes)
-    diag = {
-        "strike_lo": lo,
-        "strike_hi": hi,
-        "n_strikes": len(set(strikes)),
-        "span_below_pct": (spot - lo) / spot,
-        "span_above_pct": (hi - spot) / spot,
-        "min_span_pct": GAMMA_FLIP_MIN_SPAN_PCT,
-    }
     # TWO span tests, because they answer two different questions.
     #  covers_regime — reaches the conservative floor below which we decline to claim anything.
     #                  Span does not establish the sign (see GAMMA_FLIP_MIN_SPAN_PCT for the
@@ -622,32 +650,23 @@ def compute_gamma_flip_v2(
         if covers_regime
         else GAMMA_FLIP_NARROW
     )
-    diag = {
-        **diag,
-        "trusted_span_pct": GAMMA_FLIP_TRUSTED_SPAN_PCT,
-        "covers_regime_span": covers_regime,
-        "covers_level_span": covers_level,
-    }
-    flip = gamma_flip_from_profile(profile, spot)  # nearest crossing, EITHER direction
-
     # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where
-    # that sign changes -- it is a landmark, not a prerequisite.
-    # No crossing inside the window means there is no regime boundary to worry about, which
-    # is MORE certain than a flip sitting next to spot -- not less. Only the flip level is
-    # unknown, never the regime.
+    # that sign changes -- it is a landmark, not a prerequisite: with no crossing inside the
+    # window the regime is still known, only the flip level is not.
     at_spot = gamma_at_price(profile, spot)
     diag = {
-        **diag,
+        "strike_lo": lo,
+        "strike_hi": hi,
+        "span_below_pct": (spot - lo) / spot,
+        "span_above_pct": (hi - spot) / spot,
+        "covers_regime_span": covers_regime,
+        "covers_level_span": covers_level,
         "curve_gamma_at_spot": at_spot,
-        "no_crossing_in_window": flip is None and at_spot is not None,
     }
-
     if at_spot is None:
-        return None, GAMMA_FLIP_UNAVAILABLE, {**diag, "reason": "empty_profile"}
-    if flip is None:
-        # regime is knowable; the flip level is not
-        return None, _verdict, {**diag, "reason": "no_zero_crossing_regime_still_defined"}
-    return flip, _verdict, diag
+        return None, GAMMA_FLIP_UNAVAILABLE, diag
+    # nearest crossing, EITHER direction; None when the curve does not cross in the window
+    return gamma_flip_from_profile(profile, spot), _verdict, diag
 
 
 # ── Max Pain — OI-weighted expiry settlement magnet ────────────────────────────

@@ -12,8 +12,6 @@ from __future__ import annotations
 import gzip
 import json
 import math
-import sys
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +20,7 @@ import terrain_engine
 import time_et
 from option_contract import read_chain
 from terrain_engine import compute_terrain
+from tests.call_count import calls
 from tests.terrain_digest import canonical, real_terrains
 from time_et import ET
 
@@ -35,11 +34,10 @@ DELETED = frozenset(
 )
 
 #: every field of each real chain's terrain, books, profile and per-strike rows included, as
-#: compute_terrain produced it before its numpy pricing (#895's first commit, on Windows),
-#: written out by tests/terrain_digest.canonical
-BEFORE = json.loads(
-    gzip.decompress((_FX / "real_terrains_before_numpy_2026_11_09.json.gz").read_bytes())
-)["terrains"]
+#: compute_terrain produced it on Windows when the record was written, written out by
+#: tests/terrain_digest.canonical
+_RECORD = gzip.decompress((_FX / "real_terrains_2026_11_09.json.gz").read_bytes())
+BEFORE = json.loads(_RECORD)["terrains"]
 
 #: a number may differ from what it was only in the last digits of a double: Python's math and
 #: numpy's exp and log, on one platform and another, round their last bit their own way. On
@@ -65,7 +63,7 @@ def _same(was, now, path: str) -> None:
 
 
 def test_every_value_is_what_it_was():
-    """Every field still computed is what it was before the numpy pricing, on every chain.
+    """Every field is what it was when the record was written, on every chain.
 
     Every key, order, absent value (None stays None: no value is invented, none turned into 0)
     and text exactly; every number within a double's last digits (REL_TOL, ABS_TOL).
@@ -73,31 +71,7 @@ def test_every_value_is_what_it_was():
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)
     for tk, snap in terrains.items():
-        now = canonical({k: v for k, v in asdict(snap).items() if k not in DELETED})
-        _same(BEFORE[tk], now, tk)
-
-
-def _calls(codes, run) -> dict[str, int]:
-    """Run `run`, counting the calls of each function in `codes` (name -> its code object)."""
-    mon = sys.monitoring
-    tool = next(i for i in range(6) if mon.get_tool(i) is None)
-    by_code = {code: name for name, code in codes.items()}
-    counts = dict.fromkeys(codes, 0)
-
-    def start(code, _offset):
-        counts[by_code[code]] += 1
-
-    mon.use_tool_id(tool, "call count")
-    mon.register_callback(tool, mon.events.PY_START, start)
-    try:
-        for code in codes.values():
-            mon.set_local_events(tool, code, mon.events.PY_START)
-        run()
-    finally:
-        for code in codes.values():
-            mon.set_local_events(tool, code, 0)
-        mon.free_tool_id(tool)
-    return counts
+        _same(BEFORE[tk], canonical(snap), tk)
 
 
 def test_each_value_is_computed_once_and_nothing_unread_is_computed():
@@ -118,7 +92,7 @@ def test_each_value_is_computed_once_and_nothing_unread_is_computed():
         nonlocal snap
         snap = compute_terrain("SPY", chain, _SPY["spot"], now=now)
 
-    counts = _calls(
+    counts = calls(
         {
             "time_to_expiry_years": time_et.time_to_expiry_years.__code__,
             "atm_sigma_by_expiry": terrain_engine.atm_sigma_by_expiry.__code__,

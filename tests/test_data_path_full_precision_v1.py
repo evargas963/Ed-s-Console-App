@@ -10,8 +10,9 @@ Real data (tests/real_chains.py): SPY's 0DTE chain of 2026-10-07 12:32 ET (20 st
 
 from __future__ import annotations
 
-from math_levels import GAMMA_FLIP_NARROW, compute_gamma_flip_v2, compute_gamma_profile
+from math_levels import GAMMA_FLIP_NARROW
 from option_contract import read_chain
+from terrain_engine import compute_terrain
 from tests.real_chains import SPY_0DTE
 
 
@@ -23,11 +24,10 @@ def test_the_flip_is_the_profiles_full_zero_crossing():
     only ~+/-1.3% of spot, with both span flags False.
     """
     chain, spot = read_chain(SPY_0DTE.chain), SPY_0DTE.spot
-    flip, confidence, diag = compute_gamma_flip_v2(
-        chain, spot, profile=compute_gamma_profile(chain, spot, now=SPY_0DTE.now)
-    )
+    snap = compute_terrain(SPY_0DTE.ticker, chain, spot, now=SPY_0DTE.now)
+    flip, confidence, diag = snap.gamma_flip, snap.confidence, snap.flip_diag
     assert confidence == GAMMA_FLIP_NARROW
-    assert flip == 779.0301083220422
+    assert flip == 779.018978504471
     assert (diag["strike_lo"], diag["strike_hi"]) == (767.0, 786.0)
     assert (
         diag["span_below_pct"] == (spot - 767.0) / spot

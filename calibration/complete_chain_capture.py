@@ -331,11 +331,12 @@ class ChainSweep:
     chain once per ET date, then one chain request per expiry (strike_range=ALL), as Schwab says
     to break up a large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never
     kept. A contract Schwab streams (its LEVELONE_OPTIONS record on the bus, `streamed`) with
-    every Greek sent takes the stream's, each with its field's Schwab time, and is not asked for
-    again. Every other contract is asked for on the quotes endpoint, QUOTES_BATCH_MAX symbols to
-    a request across tickers, and takes its quote's, with the quote's quoteTime. A Greek Schwab
-    does not send is absent (None). Each contract carries the time of its Greeks as `greeksTime`
-    ({field: Schwab's time, ms}).
+    every Greek sent takes the stream's, each with its field's Schwab time (`greeksTime`,
+    {field: ms}), and is not asked for again. Every other contract is asked for on the quotes
+    endpoint, QUOTES_BATCH_MAX symbols to a request across tickers, and takes its quote as Schwab
+    sent it (`quote`; its `greeksTime` is None). Each /quotes answer goes to the console at once
+    with the time it was received (topic `optquotes`). A Greek Schwab does not send is absent
+    (None).
 
     The price history (candles, fetch_price_history): each watchlist ticker's 1-minute bars and
     daily candles once per ET date (candles_due).
@@ -629,6 +630,7 @@ class ChainSweep:
         A contract is queued for its quote; the chain is delivered at once when none is queued.
         """
         for ct in chain.contracts():
+            ct["totalVolume"] = None  # the stream's (laid over by the console) or the quote's
             entry = self.streamed(ct["symbol"])
             if (
                 entry is not None
@@ -672,6 +674,10 @@ class ChainSweep:
             errors = answer.pop("errors") if "errors" in answer else {}
             named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
             quoted = {s: e["quote"] for s, e in answer.items()}
+            # Schwab's quote per symbol as sent, to the console at once with its receive time
+            self.publish(
+                "optquotes", {"src": "schwab_quotes", "ts_recv": self.clock(), "answer": quoted}
+            )
         except Exception as e:  # those tickers' answer is the failure; the rotation goes on
             log.warning(
                 "quotes for %d contracts failed: %s: %s",
@@ -692,8 +698,8 @@ class ChainSweep:
         for chain, ct in batch:
             quote = quoted.get(ct["symbol"])
             if quote is not None:
-                ct.update({f: quote.get(f) for f in GREEK_FIELDS})
-                ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
+                # Schwab's /quotes answer for the contract, as sent: its values are read from it
+                ct["quote"] = quote
             elif ct["symbol"] in named:
                 chain.named_invalid.add(ct["symbol"])
             chain.unquoted.discard(ct["symbol"])
@@ -767,7 +773,9 @@ class ChainSweep:
         missing = sum(
             1
             for ct in contracts
-            if ct["greeksTime"] is None and ct["symbol"] not in chain.named_invalid
+            if "quote" not in ct
+            and ct["greeksTime"] is None
+            and ct["symbol"] not in chain.named_invalid
         )
         if missing:
             log.warning(
@@ -814,10 +822,8 @@ class ChainSweep:
             raise
 
 
-def newest_capture_ts(
-    db_path: Path | str, ticker: str, *, before_ts: float = float("inf")
-) -> float | None:
-    """When the ticker's newest full capture before `before_ts` was taken.
+def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
+    """When the ticker's newest full capture was taken.
 
     None when there is none.
     """
@@ -831,8 +837,8 @@ def newest_capture_ts(
             return None
         return conn.execute(
             "SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
-            "AND completeness_basis=? AND ts_utc<?",
-            (ticker_storage_key(ticker), CAPTURE_BASIS, before_ts),
+            "AND completeness_basis=?",
+            (ticker_storage_key(ticker), CAPTURE_BASIS),
         ).fetchone()[0]
     finally:
         conn.close()
@@ -844,7 +850,6 @@ def last_capture_per_day(
     days: int,
     *,
     before_et_date: str | None = None,
-    before_ts: float = float("inf"),
 ) -> list[dict[str, Any]]:
     """Return the last capture of each of the newest `days` market days (newest first).
 
@@ -854,7 +859,7 @@ def last_capture_per_day(
     (`spot_from_chain` true); a capture written without one
     gives its nearest expiry's underlyingPrice, `spot_ts` None and `spot_from_chain` false.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
-    view); `before_ts` only captures taken before it.
+    view).
     """
     tk = ticker_storage_key(ticker)
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
@@ -870,7 +875,7 @@ def last_capture_per_day(
             (tk, CAPTURE_BASIS),
         ):
             day = datetime.fromtimestamp(ts, ET).date().isoformat()
-            if ts >= before_ts or (before_et_date is not None and day >= before_et_date):
+            if before_et_date is not None and day >= before_et_date:
                 continue
             if picked and picked[-1][0] == day:
                 continue

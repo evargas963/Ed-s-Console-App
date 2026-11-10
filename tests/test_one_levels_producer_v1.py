@@ -252,14 +252,19 @@ def test_a_push_reprices_a_ticker_no_page_shows_through_the_feed(_clean):
     """
     _daemon(held=[_A])
     _put_chain(fetched_ts=_T - 30.0)
+    gate = _busy()
     ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
         _streamed(_A, _PUSHED_SET, _T)
-        _drain()
+        with server._chains_waiting_lock:
+            job = server._chains_waiting.pop(TK)
     finally:
         ofs._on_tick_callback = None
+        gate.set()
+    server._price_chain(TK, *job, _AT)  # the job's own instant, as _price_waiting_chain passes
     c = _cached()
     pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
+    assert job[0] == server.REPRICE
     assert c.snap.per_strike == pushed.per_strike
     assert c.levels_ts_utc == _T
 

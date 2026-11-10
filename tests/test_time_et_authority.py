@@ -91,9 +91,7 @@ def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
     ]
     am = [c for c in spx if c["settlementType"] == "A"]
     pm = [c for c in spx if c["settlementType"] == "P"]
-    tsla = json.loads(
-        (fx / "real_tsla_complete_chain_strike_range_all.json").read_text(encoding="utf-8")
-    )
+    tsla = json.loads((fx / "real_tsla_complete_chain_2026_10_07.json").read_text(encoding="utf-8"))
     equity = [
         dict(
             c, openInterest=100, expirationDate="2026-10-16T20:00:00.000+00:00"

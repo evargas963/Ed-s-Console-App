@@ -23,7 +23,10 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
+from itertools import zip_longest
 from pathlib import Path
+
+import pytest
 
 import live_market_plane as lmp
 import live_price_rows
@@ -75,29 +78,33 @@ def _order(ct: dict, price: float) -> tuple:
     return (0, -gamma, *rest) if known else (1, *rest)
 
 
-def by_definition(contracts: list[dict], price: float, n: int, now: float) -> set[str]:
-    """Return the rule's set, from its definition.
+#: Schwab's limit on each option service, as its own code-19 answers on the daemon's connection
+#: stated it (2026-10-07: "(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, ...)"):
+#: the stand-in streamer's, never the daemon's
+SCHWAB_LIMITS = {L1: 3000, BOOK: 100}
 
-    Of the contracts not expired at `now` (Schwab's expirationDate), the first `n` in Ed's order.
+
+def by_definition(contracts: list[dict], price: float, now: float) -> list[str]:
+    """Return the rule's order of a chain, from its definition.
+
+    Its contracts not expired at `now` (Schwab's expirationDate), in Ed's order.
     """
     live = sorted((c for c in contracts if _expires(c) > now), key=lambda c: _order(c, price))
-    return {c["symbol"] for c in live[:n]}
+    return [c["symbol"] for c in live]
 
 
 def _rule(
     chains: dict, prices: dict, now: float, watchlist: list[str], flow: str | None = None
 ) -> dict[str, set[str]]:
-    taken = 1 if flow else 0
-    out = {L1: set(), BOOK: set()}
-    for tk in watchlist:
-        for svc in (L1, BOOK):
-            out[svc] |= by_definition(
-                chains[tk], prices[tk], (capture.OPTION_LIMITS[svc] - taken) // len(watchlist), now
-            )
-    if flow:
-        out[L1].add(flow)
-        out[BOOK].add(flow)
-    return out
+    """What Schwab holds: the Flow contract, then each ticker's first, each one's second, ...
+
+    Up to Schwab's limit on each service: asked for more, Schwab states its limit and the daemon
+    asks once more, for the first that many.
+    """
+    ranked = [by_definition(chains[tk], prices[tk], now) for tk in watchlist]
+    dealt = [s for row in zip_longest(*ranked) for s in row if s is not None]
+    order = list(dict.fromkeys([*([flow] if flow else []), *dealt]))
+    return {svc: set(order[: SCHWAB_LIMITS[svc]]) for svc in (L1, BOOK)}
 
 
 async def _until(cond, seconds: float = 20.0) -> None:
@@ -113,8 +120,8 @@ class _Market:
     Its bus is fed as the chain sweep and the stream feed it.
     """
 
-    def __init__(self, tmp_path, watchlist: list[str], clock):
-        self.streamer = LocalStreamer(capture.OPTION_LIMITS, data={})
+    def __init__(self, tmp_path, watchlist: list[str], clock, keeps_what_fits: bool = True):
+        self.streamer = LocalStreamer(SCHWAB_LIMITS, data={}, keeps_what_fits=keeps_what_fits)
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
         self.bus = MessageBus()
@@ -182,15 +189,20 @@ def _answers(streamer, service: str) -> list[int]:
     ]
 
 
-def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(tmp_path):
-    """MRVL and SPY on the watchlist: each streams its half of Schwab's limits.
+@pytest.mark.parametrize("keeps_what_fits", [True, False])
+def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(
+    tmp_path, keeps_what_fits
+):
+    """MRVL and SPY on the watchlist: Schwab is asked for every contract of both, on each service.
 
-    Each streams its half of 3,000 on LEVELONE_OPTIONS (MRVL the 1,500 of its 2,432 with the
-    highest gamma; SPY all 442 of its 2026-11-20 contracts), and its half of 100 on
-    OPTIONS_BOOK, the highest gamma of every expiration; Schwab holds every one and refuses none.
+    LEVELONE_OPTIONS holds them all (MRVL's 2,432 and the 442 of SPY's 2026-11-20, under its
+    3,000) and refuses nothing. OPTIONS_BOOK refuses, stating its limit of 100, and is asked
+    once more, a SUBS of the first 100 of the rule's order (each ticker's highest gamma, dealt in
+    turn), which it holds: whichever symbols of the refused request Schwab kept, the first that
+    fit or none (induced: Schwab's document does not say which).
     """
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
-    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, keeps_what_fits)
 
     async def steps(m):
         for tk in ("MRVL", "SPY"):
@@ -199,8 +211,11 @@ def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(t
         await _until(lambda: m.holds(want))
 
     market.run(steps)
-    assert (len(want[L1]), len(want[BOOK])) == (1500 + 442, 100)
-    assert set(_answers(market.streamer, L1)) == set(_answers(market.streamer, BOOK)) == {0}
+    assert (len(want[L1]), len(want[BOOK])) == (2432 + 442, 100)
+    book = _answers(market.streamer, BOOK)
+    assert set(_answers(market.streamer, L1)) == {0} and book[:2] == [19, 24] and book[-1] == 0
+    subs = [len(keys) for command, keys in market.streamer.asked(BOOK) if command == "SUBS"]
+    assert subs[0] > 100 and subs[1:] == [100], "asked again once, within the limit Schwab stated"
 
 
 def test_a_contract_without_gamma_streams_only_after_every_one_with_it(tmp_path):
@@ -232,8 +247,9 @@ def test_a_price_tick_asks_schwab_for_nothing_and_the_next_chain_only_the_differ
     """MRVL moves from Schwab's last (263.51) to its close (258.95): nothing is asked.
 
     Its next chain, after its 2026-09-25 contracts expire at 20:00 UTC (Schwab still lists
-    them), is ordered at the close price: one UNSUBS of the contracts that left and one ADD of
-    those that came, on each option service, and no 2026-09-25 contract streams anywhere.
+    them), is ordered at the close price: on each option service one UNSUBS of the contracts
+    that left and one ADD of those that came (none on LEVELONE_OPTIONS, which held every
+    contract), and no 2026-09-25 contract streams anywhere.
     """
     clock = [CAPTURED]
     expired = {c["symbol"] for c in CHAINS["MRVL"] if c["expirationDate"].startswith("2026-09-25")}
@@ -262,12 +278,80 @@ def test_a_price_tick_asks_schwab_for_nothing_and_the_next_chain_only_the_differ
     )
     for svc in (L1, BOOK):
         moved = [(c, sorted(k)) for c, k in market.streamer.asked(svc)[sent[svc] :]]
-        assert moved == [
-            ("UNSUBS", sorted(before[svc] - then[svc])),
-            ("ADD", sorted(then[svc] - before[svc])),
-        ], svc
+        left, came = sorted(before[svc] - then[svc]), sorted(then[svc] - before[svc])
+        assert moved == [(c, k) for c, k in (("UNSUBS", left), ("ADD", came)) if k], svc
         assert before[svc] != then[svc] and not expired & then[svc]
     assert expired & before[BOOK]
+    assert then[L1] < before[L1] and then[BOOK] - before[BOOK]  # nothing to add, and an ADD
+
+
+def test_a_chain_that_arrives_later_is_fitted_within_the_limit_schwab_stated(tmp_path):
+    """MRVL's chain arrives alone, and SPY's once Schwab holds MRVL's contracts.
+
+    OPTIONS_BOOK holds MRVL's 100 highest gamma, and has stated its limit. SPY's chain is fitted
+    within it: one UNSUBS of the 50 of MRVL's that give way and one ADD of SPY's 50 highest gamma.
+    LEVELONE_OPTIONS, which refused nothing, is asked for SPY's 442 on top. Schwab refuses nothing
+    more: no contract past a limit it stated is asked for.
+    """
+    alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"])
+    both = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    sent: dict = {}
+
+    async def steps(m):
+        m.chain("MRVL")
+        m.price("MRVL", PRICES["MRVL"])
+        await _until(lambda: m.holds(alone))
+        sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
+        sent["answers"] = len(m.streamer.answers)
+        m.chain("SPY")
+        m.price("SPY", PRICES["SPY"])
+        await _until(lambda: m.holds(both))
+
+    market.run(steps)
+    for svc in (L1, BOOK):
+        moved = [(c, sorted(k)) for c, k in market.streamer.asked(svc)[sent[svc] :]]
+        left, came = sorted(alone[svc] - both[svc]), sorted(both[svc] - alone[svc])
+        assert moved == [(c, k) for c, k in (("UNSUBS", left), ("ADD", came)) if k], svc
+    assert len(alone[BOOK] - both[BOOK]) == 50 == len(both[BOOK] - alone[BOOK])
+    assert alone[L1] < both[L1] and len(both[L1] - alone[L1]) == 442
+    later = [
+        a["response"][0]["content"]["code"] for a in market.streamer.answers[sent["answers"] :]
+    ]
+    assert later and set(later) == {0}, "Schwab refused nothing after it stated its limit"
+
+
+def test_a_new_connection_is_asked_in_full_and_told_schwabs_limit_again(tmp_path):
+    """Schwab drops the socket once it holds the rule's contracts.
+
+    A limit Schwab stated belongs to the connection that heard it. The next one, a session that
+    holds nothing, is asked for every contract again: OPTIONS_BOOK states its 100 again and is
+    asked once more for the first 100, and Schwab holds the rule's contracts as before.
+    """
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    sent: dict = {}
+
+    def logins(m):
+        return [r for r in m.streamer.requests if r["command"] == "LOGIN"]
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.holds(want))
+        sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
+        sent["answers"] = len(_answers(m.streamer, BOOK))
+        await m.daemon.stream._socket.close()  # the socket is gone
+        await _until(lambda: len(logins(m)) == 2 and m.holds(want))
+
+    market.run(steps)
+    again = {s: market.streamer.asked(s)[sent[s] :] for s in (L1, BOOK)}
+    assert {k for _c, keys in again[L1] for k in keys} == want[L1], "every contract, once again"
+    subs = [len(keys) for command, keys in again[BOOK] if command == "SUBS"]
+    assert subs[0] > 100 and subs[1:] == [100], "told the limit again, asked once within it"
+    book = _answers(market.streamer, BOOK)[sent["answers"] :]
+    assert book[:2] == [19, 24] and book[-1] == 0
 
 
 def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_none(tmp_path):
@@ -398,9 +482,10 @@ def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_pa
 def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tmp_path):
     """Ed selects MRVL's last contract in the rule's order on the Flow panel.
 
-    Through the console's route to the daemon it runs in: Schwab streams it on LEVELONE_OPTIONS
-    and OPTIONS_BOOK, and the rule splits what is left (2,999 and 99) across the watchlist. Ed's
-    selection cleared, Schwab holds the rule's contracts alone again.
+    Through the console's route to the daemon it runs in: Schwab streams it on LEVELONE_OPTIONS,
+    which held every contract already, and on OPTIONS_BOOK, where it is the first of the 100 and
+    the rule's first 99 follow. Ed's selection cleared, Schwab holds the rule's contracts alone
+    again.
     """
     far = max(CHAINS["MRVL"], key=lambda c: _order(c, PRICES["MRVL"]))["symbol"]
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], flow=far)
@@ -436,7 +521,8 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
         with server._terrain_cache_lock:
             server._terrain_cache.pop("MRVL", None)
     assert far in held[L1] and far in held[BOOK]
-    assert far not in by_definition(CHAINS["MRVL"], PRICES["MRVL"], 1500, CAPTURED)
+    # the rule alone streams it on LEVELONE_OPTIONS and not on OPTIONS_BOOK: the selection did
+    assert far in rule_alone[L1] and far not in rule_alone[BOOK]
 
 
 def test_a_contract_no_chain_the_console_holds_lists_is_not_taken():

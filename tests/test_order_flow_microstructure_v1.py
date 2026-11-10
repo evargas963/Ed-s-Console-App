@@ -85,11 +85,21 @@ def test_top_of_book_is_native():
 
 def test_derived_scalars():
     m = _micro(_data(), now_ts=1787233772.0)
-    assert m["mid"] == 712.48
+    # the mark is Schwab's MARK as the top holds it (none here: "-"), never computed from bid/ask
+    assert "mid" not in m and m["mark"] is None and m["classification"]["mark"] == "NATIVE"
     # microprice weights each price by the OPPOSITE size: (712.47*500 + 712.49*300)/800.
     assert abs(m["microprice"] - 712.4775) < 1e-6
     assert m["spread_pts"] == 712.49 - 712.47  # exact, unrounded
     assert m["classification"]["microprice"] == "DERIVED"
+
+
+def test_a_mark_of_zero_schwab_sent_is_zero_and_the_spread_over_it_is_no_value():
+    """A reported 0 is 0 (AGENTS.md rule 2): the MARK is served as 0, never "-".
+
+    The spread over it is undefined, so it is no value.
+    """
+    m = _micro({**_data(), "top": {**_l1_top(), "mark": 0.0}}, now_ts=1787233772.0)
+    assert m["mark"] == 0.0 and m["spread_frac"] is None
 
 
 def test_depth_totals_values():
@@ -176,8 +186,8 @@ def test_every_emitted_metric_is_classified():
     """The metric set is taken from the actual payload.
 
     So a newly emitted metric with no classification entry fails. A family match requires a
-    dotted boundary (`key + "."`), so a bare prefix collision (an unrelated `mid_price` entry)
-    cannot stand in for the real `mid` entry.
+    dotted boundary (`key + "."`), so a bare prefix collision (an unrelated `mark_price` entry)
+    cannot stand in for the real `mark` entry.
     """
     m = _micro(_data(), now_ts=1787233772.0)
     cls = m["classification"]
@@ -281,8 +291,8 @@ def test_invalid_sizes_are_rejected():
     assert m["top_of_book"]["ask_size"] == 500
 
 
-def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
-    """A crossed book (bid > ask): Schwab sent both quotes, so mid and microprice are computed.
+def test_a_crossed_book_computes_microprice_and_says_it_is_crossed():
+    """A crossed book (bid > ask): Schwab sent both quotes, so the microprice is computed.
 
     Computed from them and the payload flags crossed ("we use what schwab gives us and we
     display it").
@@ -299,7 +309,7 @@ def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
     }
     m = _micro(crossed, now_ts=2.0)
     assert m["crossed"] is True
-    assert m["mid"] == (712.60 + 712.49) / 2.0
+    assert m["mark"] is None, "Schwab's MARK as sent; none in this top"
     assert m["microprice"] == (712.60 * 500 + 712.49 * 300) / 800
     assert m["classification"]["microprice"] == "DERIVED"
 
@@ -614,6 +624,11 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
         )
         payload = options_live_payload(sym, RTH_INSTANT)  # a TSLA option
         assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
+        # the option's price between bid and ask is Schwab's MARK as sent (LEVELONE_OPTIONS
+        # field 37, the newest one sent); nothing computes a mid beside it
+        sent = [ev["content"]["MARK"] for ev in c["events"][:4] if "MARK" in ev["content"]]
+        assert sent and payload["mark"] == sent[-1]
+        assert payload["classification"]["mark"] == "NATIVE" and "mid" not in payload
     finally:
         lmp.record_feed_down()
         ofls.clear_all_live_state()
@@ -643,6 +658,8 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
         )
         body = server.order_flow_microstructure("ZZTB", "NYSE_BOOK", now)
         assert body["flow"]["top_book_pressure"] == (3 - 5) / 8 and body["top_outage"] is None
+        # the equity's MARK is served as the price row holds it; no mid is computed beside it
+        assert body["mark"] == 10.01 and "mid" not in body
     finally:
         lmp._by_ticker.pop("ZZTB", None)
         lmp._fields_by_ticker.pop("ZZTB", None)

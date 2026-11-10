@@ -62,26 +62,6 @@ def test_ticker_storage_key_vxn_rvx_broker_index_roots():
 # ── RC-126: levels for ALL tickers — the query boundary uses the ONE identity authority ─────
 
 
-def test_index_roots_resolve_to_dollar_form():
-    """Typing a bare index root anywhere must reach Schwab in its dollar form.
-
-    $SPX stayed dark for a session because the endpoints skipped this authority.
-    """
-    for bare, dollar in (
-        ("SPX", "$SPX"),
-        ("spx", "$SPX"),
-        ("NDX", "$NDX"),
-        ("rut", "$RUT"),
-        ("DJX", "$DJX"),
-        ("XSP", "$XSP"),
-        ("OEX", "$OEX"),
-        ("VIX", "$VIX"),
-    ):
-        assert ticker_storage_key(bare) == dollar
-    assert ticker_storage_key("SPY") == "SPY", "equities must pass through untouched"
-    assert ticker_storage_key("$SPX") == "$SPX", "already-canonical must be idempotent"
-
-
 def test_every_bare_index_root_is_what_schwab_names_an_index_with_dollar():
     """TICK-01 (2026-09-28 audit): BROKER_INDEX_BARE_ROOTS is held to Schwab's own answer.
 

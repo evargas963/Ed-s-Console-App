@@ -160,8 +160,9 @@ def stop() -> int:
 
 
 def wait_for_pages(seconds: float, db_path: Path | None = None) -> Ports:
-    """Return the program's ports once its pages answer /api/health with 200.
+    """Return the program's ports once its pages answer /api/health with 200, the answer read whole.
 
+    A connection closed on an unread answer is reset, which the program's stop then waits on.
     The ports are the ones it wrote in its lock (program_ports; `db_path` is for tests). Raises
     TimeoutError when `seconds` pass first, with the last answer: no ports written yet, an error
     status, a refused connection or a timeout.
@@ -175,6 +176,7 @@ def wait_for_pages(seconds: float, db_path: Path | None = None) -> Ports:
                 with urllib.request.urlopen(
                     f"http://127.0.0.1:{ports.console}/api/health", timeout=min(left, 2.0)
                 ) as r:
+                    r.read()
                     if r.status == 200:
                         return ports
                     why = f"HTTP {r.status}"

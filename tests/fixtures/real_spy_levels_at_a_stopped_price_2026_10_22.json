@@ -93,14 +93,14 @@
    }
   },
   {
-   "distance": -2.3576794711594857,
+   "distance": -2.358114961753813,
    "evidence_tier": "DERIVED",
    "family": "gamma",
    "from_spot_text": "2.36 below spot",
    "id": "gamma_flip",
    "label": "Gamma flip",
    "not_live_text": null,
-   "price": 770.7692205288405,
+   "price": 770.7687850382462,
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -319,10 +319,10 @@
    }
   },
   {
-   "carried": 770.7692205288405,
+   "carried": 770.7687850382462,
    "id": "gamma_flip",
    "label": "Gamma flip",
-   "price": 770.7692205288405,
+   "price": 770.7687850382462,
    "staleness": {
     "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -334,7 +334,7 @@
    "carried": 765.0,
    "id": "absolute_gamma_strike",
    "label": "Abs \u0393",
-   "price": 764.0,
+   "price": 765.0,
    "staleness": {
     "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",

@@ -174,24 +174,6 @@ class ZoneType(str, Enum):
     HIGH_EXTREME = "high_extreme"
 
 
-def zone_class_for_type(zone_type: ZoneType) -> str:
-    """Return zone_class from zone_type: structure | trigger | value.
-
-    There is no `liquidity` class: no zone in this taxonomy is a measured liquidity pool, and a
-    class is read as a category of evidence.
-    """
-    _class_map = {
-        ZoneType.LOW_EXTREME: "structure",
-        ZoneType.HIGH_EXTREME: "structure",
-        ZoneType.SUPPORT_LIQUIDITY: "structure",
-        ZoneType.RESISTANCE_LIQUIDITY: "structure",
-        ZoneType.BREAKDOWN_TRIGGER: "trigger",
-        ZoneType.BREAKOUT_TRIGGER: "trigger",
-        ZoneType.PIVOT_VALUE: "value",
-    }
-    return _class_map[zone_type]
-
-
 #: each zone type's name on screen and the side of price it is drawn as: support, resistance or
 #: value (neither)
 ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
@@ -219,11 +201,6 @@ class Zone:
     snapshot_type: SnapshotType = SnapshotType.PREMARKET
     interpretation_notes: str = ""
 
-    @property
-    def zone_class(self) -> str:
-        """Derived: liquidity | structure | trigger | value."""
-        return zone_class_for_type(self.zone_type)
-
 
 @dataclass
 class SnapshotSummary:
@@ -231,8 +208,6 @@ class SnapshotSummary:
 
     value_state: str = ""  # "shifted_higher" | "shifted_lower" | "unchanged"
     vwap_relation: str = ""  # "above_value" | "below_value" | "at_value"
-    auction_interpretation: str = ""  # "bullish_acceptance" | "bearish_acceptance" | etc.
-    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -240,7 +215,6 @@ class SnapshotOutput:
     """Full structural snapshot output."""
 
     ticker: str
-    session_date: str
     snapshot_type: SnapshotType
     zones: list[Zone] = field(default_factory=list)
     summary: SnapshotSummary | None = None

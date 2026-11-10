@@ -4,8 +4,9 @@ The daemon's ChainSweep asks Schwab's host (tests/schwab_rest_standin.py, on the
 client as the daemon builds it) for each ticker's expiration chain, the market hours of each
 expiry date not yet answered that day, its chain one expiry at a time and its contracts' quotes,
 300 symbols to a request across tickers, one request at a time. Each chain reaches the bus with
-Schwab's exact Greeks and their times: the stream's for a contract the stream holds
-(Daemon.option_record), which is not asked for on /quotes, the quote's for every other.
+Schwab's exact Greeks: the stream's, with their times, for a contract the stream holds
+(Daemon.option_record), which is not asked for on /quotes, the quote's for every other. Each
+/quotes answer reaches the bus at once as Schwab sent it, with the time it was received.
 
 Real data: the stand-in's (SPY 2026-11-20 chain and quotes, TSLA 2026-10-09 chain) and the
 LEVELONE_OPTIONS events of SPY 260904C00772000
@@ -192,12 +193,25 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     assert {f: getattr(spy[HELD], f) for f in GREEKS} == {f: content[f.upper()] for f in GREEKS}
     assert spy[HELD].listing["greeksTime"] == {f: record["field_ts"][f.upper()][0] for f in GREEKS}
     rounded = {ct["symbol"]: ct["gamma"] for ct in SPY["chain"]}
+    # each /quotes answer went to the console at once as Schwab sent it, its quoteTime included,
+    # with the time it was received (the sweep's clock)
+    answers = [msg for topic, msg in published if topic == "optquotes"]
+    assert {msg["ts_recv"] for msg in answers} == {_et("2026-10-01 10:15")}
+    sent = {sym: quote for msg in answers for sym, quote in msg["answer"].items()}
     for sym, ct in spy.items():
         if sym != HELD:
             quote = SPY_QUOTES[sym]["quote"]
             assert {f: getattr(ct, f) for f in GREEKS} == {f: quote[f] for f in GREEKS}, sym
-            assert ct.listing["greeksTime"] == dict.fromkeys(GREEKS, quote["quoteTime"]), sym
+            assert sent[sym] == quote, sym
     assert any(rounded[s] != spy[s].gamma for s in spy), "the chain's rounded Greeks are not kept"
+    # bid and ask are the quote's as sent; the chain's are not used, and the held contract,
+    # not asked on /quotes, has none until the stream's are laid over it
+    for sym, ct in spy.items():
+        if sym != HELD:
+            quote = SPY_QUOTES[sym]["quote"]
+            assert (ct.bid, ct.ask) == (quote["bidPrice"], quote["askPrice"]), sym
+            assert ct.listing.get("quote") is None, "the answer is read, not listed"
+    assert (spy[HELD].bid, spy[HELD].ask) == (None, None)
     assert all(
         getattr(ct, f) is None and ct.listing["greeksTime"] is None
         for ct in tsla.values()

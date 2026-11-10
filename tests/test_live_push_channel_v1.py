@@ -343,7 +343,7 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks():
         )
         assert await _until(lambda: _CONTRACT in seen)
         assert seen.count(_CONTRACT) == 1
-        assert ofs._option_contract_last_update_ts[_CONTRACT] == ts
+        assert ofls.get_stream_greeks(_CONTRACT)["total_volume_ts_recv"] == ts
         assert ofls.option_top(_CONTRACT) == {"bid": 1.2, "ask": 1.3}
 
     asyncio.run(_run(body, on_tick=seen.append))

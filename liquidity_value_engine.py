@@ -345,7 +345,6 @@ def cluster_price_levels_into_zones(
 
 def build_premarket_snapshot(
     ticker: str,
-    session_date: date,
     config: PlaybookConfig,
     *,
     canonical: PriceLevelSnapshot,
@@ -367,13 +366,7 @@ def build_premarket_snapshot(
         else:
             zone_type, notes = _premarket_type_by_tags(tags), ""
         zones.append(_zone(cluster, zone_type, notes, SnapshotType.PREMARKET))
-    return SnapshotOutput(
-        ticker=ticker,
-        session_date=session_date.isoformat(),
-        snapshot_type=SnapshotType.PREMARKET,
-        zones=zones,
-        summary=None,
-    )
+    return SnapshotOutput(ticker=ticker, snapshot_type=SnapshotType.PREMARKET, zones=zones)
 
 
 #: the levels a premarket snapshot clusters, in order
@@ -476,8 +469,8 @@ def _classify_value_state_and_vwap_relation(
     poc: float | None,
     prev_pd_poc: float | None,
     vwap: float | None,
-) -> tuple[str, str, str]:
-    """Value-area shift + VWAP-vs-value relation + auction interpretation."""
+) -> tuple[str, str]:
+    """Value-area shift + VWAP-vs-value relation."""
     value_state = "unchanged"
     if poc is not None and prev_pd_poc is not None:
         if poc > prev_pd_poc * 1.002:
@@ -492,13 +485,7 @@ def _classify_value_state_and_vwap_relation(
         elif vwap < poc * 0.999:
             vwap_relation = "below_value"
 
-    auction_interp = ""
-    if value_state == "shifted_higher" and vwap_relation == "above_value":
-        auction_interp = "bullish_acceptance"
-    elif value_state == "shifted_lower" and vwap_relation == "below_value":
-        auction_interp = "bearish_acceptance"
-
-    return value_state, vwap_relation, auction_interp
+    return value_state, vwap_relation
 
 
 def _classify_live_cluster(tags: list[str]) -> tuple[ZoneType, str]:
@@ -571,10 +558,9 @@ def build_live_snapshot(
     here. Before the session's regular open it is the premarket shape, as it is while the session's
     hours are not held: the regular session Schwab's /markets sent.
     """
-    session_date = canonical.session_date
-    regular = _regular(session_date)
+    regular = _regular(canonical.session_date)
     if regular is None or now < regular[0]:
-        return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
+        return build_premarket_snapshot(ticker, config, canonical=canonical)
     levels = _held_levels(canonical, LIVE_LEVELS) + [
         (float(pair[0]), str(pair[1])) for pair in extra_levels
     ]
@@ -582,23 +568,14 @@ def build_live_snapshot(
         _zone(cluster, *_classify_live_cluster(cluster[3]), SnapshotType.LIVE)
         for cluster in cluster_price_levels_into_zones(levels, config)
     ]
-    value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
+    value_state, vwap_relation = _classify_value_state_and_vwap_relation(
         canonical.price("TODAY_POC"), canonical.price("PD_POC"), canonical.price("VWAP")
-    )
-    summary = SnapshotSummary(
-        value_state=value_state,
-        vwap_relation=vwap_relation,
-        auction_interpretation=auction_interp,
-        notes=[
-            "Live zones: volume/VWAP/OR/prior day through cutoff; options fused when cache hit.",
-        ],
     )
     return SnapshotOutput(
         ticker=ticker,
-        session_date=session_date.isoformat(),
         snapshot_type=SnapshotType.LIVE,
         zones=zones,
-        summary=summary,
+        summary=SnapshotSummary(value_state=value_state, vwap_relation=vwap_relation),
     )
 
 
@@ -885,7 +862,7 @@ def build_price_level_snapshot(
     tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
     levels: dict[str, PriceLevelValue] = {}
     families_absent: list[dict] = []
-    degraded: list[dict] = []
+    degraded: list[str] = []
     vwap_path: list[tuple[float, float]] = []
     vwap_series: list[tuple] = []
 
@@ -922,15 +899,9 @@ def build_price_level_snapshot(
         )
         if eng["rth_bars"] < LEVELS_PRIOR_SESSION_MIN_BARS:
             degraded.append(
-                {
-                    "family": "prior_day",
-                    "last_good_ts_utc": None,
-                    "reason": (
-                        f"prior session {prior_date} holds only {eng['rth_bars']} of >= "
-                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
-                        "estimated from a partial tape"
-                    ),
-                }
+                f"prior_day: prior session {prior_date} holds only {eng['rth_bars']} of >= "
+                f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
+                "estimated from a partial tape"
             )
 
     sess_window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"

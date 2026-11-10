@@ -36,10 +36,11 @@ from math_levels import (
     GAMMA_FLIP_TRUSTED_SPAN_PCT,
     compute_gamma_flip_v2,
     compute_gamma_profile,
+    contract_inputs,
 )
 from option_contract import read_chain
 from terrain_read import POSTURE_STAND_ASIDE, REGIME_UNAVAILABLE, build_terrain_read
-from time_et import ET
+from time_et import EQUITY_OPTIONS, ET
 
 #: the chain here expires 2027-07-16 (a date Schwab's /markets answers); valued a month before
 NOW = datetime(2027, 6, 16, 12, 0, tzinfo=ET)
@@ -47,9 +48,8 @@ NOW = datetime(2027, 6, 16, 12, 0, tzinfo=ET)
 
 def _verdict(span: float) -> str:
     chain = _chain(span)
-    return compute_gamma_flip_v2(
-        chain, 100.0, profile=compute_gamma_profile(chain, 100.0, now=NOW)
-    )[1]
+    priced, _unpriced = contract_inputs(chain, NOW, product=EQUITY_OPTIONS)
+    return compute_gamma_flip_v2(chain, 100.0, profile=compute_gamma_profile(priced, 100.0))[1]
 
 
 def _chain(span: float, spot: float = 100.0, n: int = 41):
@@ -68,6 +68,9 @@ def _chain(span: float, spot: float = 100.0, n: int = 41):
                 "volatility": 20.0,
                 "daysToExpiration": 30,
                 "expirationDate": "2027-07-16T00:00:00.000+00:00",
+                # the rate and dividend yield every /chains answer carries (CRWD's of 2026-10-07)
+                "interestRate": 4.04,
+                "dividendYield": 0.0,
             }
             for side in ("CALL", "PUT")
         )

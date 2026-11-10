@@ -31,6 +31,7 @@ _FORWARDED = {
     "news.": "schwab_news",
     "bar1m.": "schwab_chart",
     "chain.": "schwab_chain",
+    "optquotes": "schwab_quotes",
     "pricehistory.": "schwab_pricehistory",
     "markets.": "schwab_markets",
     "watchlist": "daemon_watchlist",

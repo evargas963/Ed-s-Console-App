@@ -85,7 +85,7 @@
     var wallSet = {};
     walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
 
-    var midHtml = '<div class="dom-mid"><span>mid ' + num(d.mid) + '</span><span>spread ' + num(d.spread_pts) +
+    var midHtml = '<div class="dom-mid"><span>mark ' + num(d.mark) + '</span><span>spread ' + num(d.spread_pts) +
       '</span><span>microprice ' + num(d.microprice) + '</span></div>';
 
     var rowsTob = [

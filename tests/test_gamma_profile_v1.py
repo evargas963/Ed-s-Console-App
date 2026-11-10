@@ -31,7 +31,7 @@ from option_contract import OptionContract, read_chain, read_contract
 from terrain_engine import compute_terrain
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
-#: own capture time (a live 0DTE, ~3.5 h to Schwab's 16:00 EQO close)
+#: own capture time (a live 0DTE, ~3.7 h to SPY's 16:15 option close)
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_2026_10_07.json"
 _DATA = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
 NOW = datetime.fromtimestamp(_DATA["ts_utc"], time_et.ET)
@@ -41,9 +41,16 @@ def _load_real_chain() -> tuple[list[OptionContract], float]:
     return read_chain(_DATA["chain"]), float(_DATA["spot"])
 
 
+def _profile(contracts: list[OptionContract], spot: float) -> list[tuple[float, float]]:
+    """The gamma profile as compute_terrain builds it for SPY: rows priced to its option close."""
+    product = time_et.option_close_product("SPY")
+    priced, _unpriced = contract_inputs(contracts, NOW, product=product)
+    return compute_gamma_profile(priced, spot)
+
+
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot, now=NOW)
+    prof = _profile(chain, spot)
     assert len(prof) == 241
     assert all(math.isfinite(v) for _, v in prof)
     prices = [p for p, _ in prof]
@@ -56,7 +63,7 @@ def test_profile_uses_dealer_sign_convention() -> None:
     chain, spot = _load_real_chain()
     calls = [c for c in chain if c.side == "CALL"]
     assert calls, "fixture must contain calls"
-    prof = compute_gamma_profile(calls, spot, now=NOW)
+    prof = _profile(calls, spot)
     assert prof and all(v >= 0 for _, v in prof)
 
 
@@ -65,15 +72,15 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
 
     The old `if flip is not None` guard let a flip-always-None regression pass silently while
     asserting nothing. MEASURED on this
-    fixture at its capture time: 241 profile points, 1 sign crossing, flip = 779.03, inside
+    fixture at its capture time: 241 profile points, 1 sign crossing, flip = 779.02, inside
     the span. Existence is pinned; the exact value is not (it moves with vol/time inputs) -
     span containment is the invariant.
     """
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot, now=NOW)
+    prof = _profile(chain, spot)
     flip = gamma_flip_from_profile(prof, spot)
     assert flip is not None, (
-        "the real fixture chain has a zero crossing (measured flip 779.03); a None flip "
+        "the real fixture chain has a zero crossing (measured flip 779.02); a None flip "
         "here means the profile or crossing detection regressed"
     )
     assert prof[0][0] <= flip <= prof[-1][0]
@@ -97,7 +104,7 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     of 51 live tickers reported UNAVAILABLE while their gamma was uniformly signed.
     """
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot, now=NOW)
+    prof = _profile(chain, spot)
     assert prof, "real chain must produce a profile"
 
     at_spot = gamma_at_price(prof, spot)
@@ -259,7 +266,8 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     spx = json.loads((fx / "real_spx_chain_2026_10_07_2027_12_17.json").read_text(encoding="utf-8"))
     now = datetime.fromtimestamp(nflx["ts_utc"], time_et.ET)
     nflx_chain = read_chain(nflx["chain"])
-    priced, unpriced = contract_inputs(nflx_chain, now)
+    nflx_close = time_et.option_close_product("NFLX")
+    priced, unpriced = contract_inputs(nflx_chain, now, product=nflx_close)
     assert (len(priced), unpriced) == (685, {"no_volatility": 8})
     far = next(ct for ct in nflx["chain"] if ct["expirationDate"].startswith("2028-01-21"))
     assert (
@@ -272,4 +280,5 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     snap = compute_terrain("NFLX", nflx_chain, nflx["spot"], now=now)
     assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8}
     at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)
-    assert contract_inputs(read_chain(spx["chain"]), at)[1] == {}
+    spx_close = time_et.option_close_product("$SPX")
+    assert contract_inputs(read_chain(spx["chain"]), at, product=spx_close)[1] == {}
