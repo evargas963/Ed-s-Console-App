@@ -155,6 +155,7 @@
   #app:not(.rail-open) .wl-empty{display:none}
   .wl-msg{padding:0 15px 4px;font-size:11px;color:var(--ed-ink-3);min-height:14px}
   #app:not(.rail-open) .wl-msg{display:none}
+  .wl-feed:empty{display:none}
   /* A degraded poll keeps the last real numbers on screen (blanking them would be its own
      kind of dishonesty) but must not look identical to a healthy one. Operator finding
      (2026-09-11): opacity:.4 on the numbers themselves made real values hard to read right
@@ -695,6 +696,7 @@
       <!-- rows injected by ed-core.js; foundation is editable + localStorage-backed -->
       <div class="wl-add" id="wlAdd"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg><span class="lbl-add">Add symbol</span></div>
       <div class="wl-msg" id="wlMsg" aria-live="polite"></div>
+      <div class="wl-msg wl-feed" id="wlFeed" aria-live="polite"></div>
     </div>
   </nav>
 

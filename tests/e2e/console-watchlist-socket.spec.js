@@ -19,7 +19,7 @@ function feed(list, ts = Date.now() / 1000, session = 'Unknown') {
 // page replaces or clears it).
 async function taken(page, socket) {
   socket.send(feed(null));
-  await expect(page.locator('#wlMsg')).toHaveText('the capture daemon is not reporting');
+  await expect(page.locator('#wlFeed')).toHaveText('the capture daemon is not reporting');
 }
 
 test('the rail fills from the first beat on the socket, and nothing asks for the list', async ({ page }) => {
@@ -94,8 +94,31 @@ test('a beat with no status keeps the list drawn and says the daemon is not repo
     ws.onClose(() => clearInterval(timer));
   });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#wlMsg')).toHaveText('the capture daemon is not reporting');
+  await expect(page.locator('#wlFeed')).toHaveText('the capture daemon is not reporting');
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'QQQ']);
+});
+
+// The message line is the answer to the operator's own add; the daemon's state has its own line.
+// A beat with no status, taken just after Schwab refuses a ticker, does not write over the answer,
+// and a beat with a status again clears the state line. STAND-IN: the console's answer to the add
+// is Schwab's for ZQZQZ on 2026-10-07 (tests/fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json).
+test('the answer to an add stands when a beat then carries no status', async ({ page }) => {
+  let socket;
+  await holdClock(page);   // the page's timers run when the test moves its time: nothing self-clears
+  await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(feed(['SPY', 'QQQ'])); });
+  await page.route('**/api/watchlist', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: false, op: 'invalid', ticker: 'ZQZQZ', tickers: ['SPY', 'QQQ'], ts: Date.now() / 1000,
+      status: 200, answer: { errors: { invalidSymbols: ['ZQZQZ'] } } }) }));
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'QQQ']);
+  await page.evaluate(() => window.EdShell.addSymbol('ZQZQZ'));
+  const said = 'ZQZQZ is not added: Schwab does not quote it ({"errors":{"invalidSymbols":["ZQZQZ"]}})';
+  await expect(page.locator('#wlMsg')).toHaveText(said);
+  await taken(page, socket);                               // a beat with no status, after the answer
+  await expect(page.locator('#wlMsg')).toHaveText(said);
+  socket.send(feed(['SPY', 'QQQ']));                       // the daemon reports again
+  await expect(page.locator('#wlFeed')).toHaveText('');
+  await expect(page.locator('#wlMsg')).toHaveText(said);
 });
 
 test('the socket drops: the rail stands marked; it returns: the new connection\'s beat redraws it', async ({ page }) => {

@@ -39,7 +39,7 @@ const SURFACE = {
   source: 'terrain_live_cache', levels_age_sec: 3, chain_basis: 'full',
   levels_state: 'LIVE', levels_age_text: '3s', levels_stale_reason: '',
   complete: false,
-  chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
+  spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }, { expiry: '2026-09-18', dte: 9, front: false }],
   strikes: [580, 583, 586],
   cells: [
@@ -1042,7 +1042,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
     const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', warming: false, spot: 583.41,
-      complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', levels_age_sec: age,
+      complete: false, spot_as_of_ts_utc: 1000, chain_basis: 'full', levels_age_sec: age,
       levels_state: stale ? 'STALE' : 'LIVE', levels_age_text: age + 's', levels_stale_reason: stale ? 'chain overdue' : '',
       expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], spot: true }],
       view: view({ coverage: served.cov }) });

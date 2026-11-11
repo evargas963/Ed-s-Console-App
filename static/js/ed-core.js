@@ -480,10 +480,12 @@
     if (shown === _wlShown) return;
     _wlShown = shown; _wl = list; renderWatchlist();
   }
-  // one beat's status: a beat with none (the daemon's status failed) keeps the list drawn
+  // one beat's status: a beat with none (the daemon's status failed) keeps the list drawn and says
+  // so on the list's own state line, which stands until a beat carries a status again (the
+  // message line is the answer to the operator's add or removal alone)
   function ingestWatchlist(feed) {
+    document.getElementById('wlFeed').textContent = feed ? '' : 'the capture daemon is not reporting';
     if (feed) setWL(feed.watchlist, feed.ts);
-    else wlNotify('the capture daemon is not reporting');
   }
   // the daemon's answer to an add or a removal: the new list, or what happened instead
   function wlAnswer(a) {
