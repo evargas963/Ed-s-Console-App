@@ -333,9 +333,10 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
     """$SPX as Schwab streamed it 2026-10-19: SECURITY_STATUS Normal at the open, Closed at close.
 
     Normal at the 09:30 open, Closed at the 16:00 close. At 17:00 ET (After-Hours, the stock
-    market still trading) $SPX is not live and says Schwab marks it Closed. NVDA, Normal from
-    04:00, is not live at 04:30, before the 07:00 pre-market Schwab's /markets sent, is live at
-    07:30, and is not live once the day's last window has ended.
+    market still trading) $SPX is not live and says Schwab marks it Closed. NVDA, Closed with
+    the evening's last trade, is not live at 03:00; Normal with the day's first trade (04:00), it
+    is live at 04:30, before the 07:00 pre-market Schwab's /markets sent (operator 2026-11-11),
+    and at 07:30, and is not live once the day's last window has ended.
     """
     spx_open, spx_close = (m for m in _STATUS if m["symbol"] == "$SPX")
     nvda_closed, nvda_normal = (
@@ -366,7 +367,7 @@ def test_a_symbol_schwab_marks_closed_is_not_live_in_an_open_session():
         )
         at = _et("2026-10-19", 4, 30)
         _all_held(at, "$SPX", "NVDA")
-        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) == "outside Schwab's market hours"
+        assert lmp.outage("NVDA", "LEVELONE_EQUITIES", at) is None
         at = _et("2026-10-19", 7, 30)
         _all_held(at, "$SPX", "NVDA")
         assert lmp.feed_live_for("NVDA", "LEVELONE_EQUITIES", at) is True

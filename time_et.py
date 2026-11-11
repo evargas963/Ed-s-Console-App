@@ -206,13 +206,32 @@ def session(day: str) -> Session | None:
     return _sessions.get(day)
 
 
+_first_trade: dict[
+    str, datetime
+] = {}  # ET date (YYYY-MM-DD) -> the earliest stock trade Schwab streamed that was made that day
+
+
+def record_trade(at: datetime) -> None:
+    """Record a stock trade Schwab streamed, made at `at` (LEVELONE_EQUITIES TRADE_TIME_MILLIS).
+
+    The earliest one of its ET date is when that date's trading began (session_label).
+    """
+    day = at.astimezone(ET).date().isoformat()
+    global _first_trade
+    if day not in _first_trade or at < _first_trade[day]:
+        # a new dict, never an insert, as _sessions is
+        _first_trade = {**_first_trade, day: at}
+
+
 def session_label(now: datetime) -> str:
     """Return the stock market's session at `now`.
 
-    PRE_MARKET, RTH or AFTER_HOURS inside the window Schwab sent for today, CLOSED outside them
-    (and on a day Schwab says is closed), UNKNOWN when Schwab's answer for today is not held. A
-    valid session is live; with none the last values stand. What Schwab streams is shown and
-    recorded whatever it says.
+    PRE_MARKET, RTH or AFTER_HOURS inside the window Schwab's /markets sent for today. Before
+    its first window, PRE_MARKET from the first stock trade Schwab streamed that was made today
+    (record_trade): /markets starts the pre-market at 07:00 ET and Schwab streams the trades
+    made from 04:00 (operator 2026-11-11). CLOSED otherwise (and on a day Schwab says is
+    closed), UNKNOWN when Schwab's answer for today is not held. A valid session is live; with
+    none the last values stand. What Schwab streams is shown and recorded whatever it says.
     """
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
@@ -220,6 +239,9 @@ def session_label(now: datetime) -> str:
     for state, windows in ((PRE_MARKET, s.pre), (RTH, s.regular), (AFTER_HOURS, s.post)):
         if any(start <= now < end for start, end in windows):
             return state
+    starts = [start for start, _end in (*s.pre, *s.regular)]
+    if s.day in _first_trade and starts and _first_trade[s.day] <= now < min(starts):
+        return PRE_MARKET
     return CLOSED
 
 

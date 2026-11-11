@@ -167,8 +167,12 @@ from Schwab to the screen (daemon, console, page), are these:
   windows for, while Schwab's SECURITY_STATUS for it is not Closed or Halted. One rule (operator
   2026-11-02): a valid session is live, and with none the screen reads CLOSED and the last value
   stands. The sessions are Schwab's /markets windows as sent (`time_et.session_label`: stocks 07:00
-  to 20:00 ET in its schedule of 2026-10-30; a stock quote from 04:00 is shown and recorded, not
-  live). An option contract, the chain sweep and the levels follow the option windows it sends,
+  to 20:00 ET in its schedule of 2026-10-30), and before the first of them the pre-market begins
+  with the first stock trade Schwab streams that was made that day (`time_et.record_trade`, from
+  LEVELONE_EQUITIES TRADE_TIME_MILLIS; measured 2026-11-04 to 11-11: 04:00:00 ET on every market
+  day, the last at 20:00 ET, none between and none on a weekend, while SECURITY_STATUS stays
+  Normal for SPY and IWM all night; operator 2026-11-11: "it is premarket", "the data should be
+  live"; `tests/test_markets_sessions_v1.py`). An option contract, the chain sweep and the levels follow the option windows it sends,
   pre-market and post-market included (`time_et.options_open`: 07:30 to 09:25, 09:30 to 16:15),
   while `time_et.option_market_open` stays the option markets' regular window, which decides the close
   values and what a pre-market zero does not replace. When it stops

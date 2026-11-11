@@ -1,0 +1,390 @@
+{
+ "source": "production stream_capture.db, read 2026-11-11: stream_quotes_raw (LEVELONE_EQUITIES messages as recorded) and stream_markets_raw (GET /markets for 2026-11-11, status 200)",
+ "markets": {
+  "equity": {
+   "EQ": {
+    "date": "2026-11-11",
+    "marketType": "EQUITY",
+    "product": "EQ",
+    "productName": "equity",
+    "isOpen": true,
+    "sessionHours": {
+     "preMarket": [
+      {
+       "start": "2026-11-11T07:00:00-05:00",
+       "end": "2026-11-11T09:30:00-05:00"
+      }
+     ],
+     "regularMarket": [
+      {
+       "start": "2026-11-11T09:30:00-05:00",
+       "end": "2026-11-11T16:00:00-05:00"
+      }
+     ],
+     "postMarket": [
+      {
+       "start": "2026-11-11T16:00:00-05:00",
+       "end": "2026-11-11T20:00:00-05:00"
+      }
+     ]
+    }
+   }
+  },
+  "option": {
+   "EQO": {
+    "date": "2026-11-11",
+    "marketType": "OPTION",
+    "product": "EQO",
+    "productName": "equity option",
+    "isOpen": true,
+    "sessionHours": {
+     "preMarket": [
+      {
+       "start": "2026-11-11T07:30:00-05:00",
+       "end": "2026-11-11T09:25:00-05:00"
+      }
+     ],
+     "regularMarket": [
+      {
+       "start": "2026-11-11T09:30:00-05:00",
+       "end": "2026-11-11T16:00:00-05:00"
+      }
+     ],
+     "postMarket": [
+      {
+       "start": "2026-11-11T16:00:00-05:00",
+       "end": "2026-11-11T16:15:00-05:00"
+      }
+     ]
+    }
+   },
+   "IND": {
+    "date": "2026-11-11",
+    "marketType": "OPTION",
+    "product": "IND",
+    "productName": "index option",
+    "isOpen": true,
+    "sessionHours": {
+     "preMarket": [
+      {
+       "start": "2026-11-11T07:30:00-05:00",
+       "end": "2026-11-11T09:25:00-05:00"
+      }
+     ],
+     "regularMarket": [
+      {
+       "start": "2026-11-11T09:30:00-05:00",
+       "end": "2026-11-11T16:15:00-05:00"
+      }
+     ]
+    }
+   }
+  }
+ },
+ "messages": [
+  {
+   "ticker": "SPY",
+   "which": "last print of the evening",
+   "ts_recv": 1794384828.6740015,
+   "item": {
+    "key": "SPY",
+    "delayed": false,
+    "assetMainType": "EQUITY",
+    "assetSubType": "ETF",
+    "cusip": "78462F103",
+    "52": 5,
+    "53": 1424286,
+    "54": 40698598.165742,
+    "55": 40,
+    "56": 480,
+    "BID_PRICE": 752.61,
+    "ASK_PRICE": 752.64,
+    "LAST_PRICE": 752.62,
+    "BID_SIZE": 40,
+    "ASK_SIZE": 480,
+    "ASK_ID": "P",
+    "BID_ID": "P",
+    "TOTAL_VOLUME": 40698598,
+    "LAST_SIZE": 5,
+    "HIGH_PRICE": 0,
+    "LOW_PRICE": 0,
+    "CLOSE_PRICE": 749.92,
+    "EXCHANGE_ID": "P",
+    "MARGINABLE": true,
+    "DESCRIPTION": "State Street SPDR S&P 500 ETF Trust",
+    "LAST_ID": "P",
+    "OPEN_PRICE": 0,
+    "NET_CHANGE": 2.7,
+    "HIGH_PRICE_52_WEEK": 781.62,
+    "LOW_PRICE_52_WEEK": 629.28,
+    "PE_RATIO": 7.31728,
+    "DIVIDEND_AMOUNT": 7.55534,
+    "DIVIDEND_YIELD": 1.02753,
+    "NAV": 0,
+    "EXCHANGE_NAME": "NYSE Arca",
+    "DIVIDEND_DATE": "2026-09-18 00:00:00.0",
+    "REGULAR_MARKET_QUOTE": true,
+    "REGULAR_MARKET_TRADE": true,
+    "REGULAR_MARKET_LAST_PRICE": 749.92,
+    "REGULAR_MARKET_LAST_SIZE": 1424286,
+    "REGULAR_MARKET_NET_CHANGE": -2.77,
+    "SECURITY_STATUS": "Normal",
+    "MARK": 749.92,
+    "QUOTE_TIME_MILLIS": 1794358800052,
+    "TRADE_TIME_MILLIS": 1794358796318,
+    "REGULAR_MARKET_TRADE_MILLIS": 1794358800028,
+    "BID_TIME_MILLIS": 1794358799815,
+    "ASK_TIME_MILLIS": 1794358800052,
+    "ASK_MIC_ID": "ARCX",
+    "BID_MIC_ID": "ARCX",
+    "LAST_MIC_ID": "ARCX",
+    "NET_CHANGE_PERCENT": 0.360038,
+    "REGULAR_MARKET_CHANGE_PERCENT": -0.368013,
+    "MARK_CHANGE": 0,
+    "MARK_CHANGE_PERCENT": 0,
+    "HTB_QUANTITY": -1,
+    "HTB_RATE": 0,
+    "HARD_TO_BORROW": 0,
+    "IS_SHORTABLE": 1,
+    "POST_MARKET_NET_CHANGE": 2.7,
+    "POST_MARKET_NET_CHANGE_PERCENT": 0.360038
+   }
+  },
+  {
+   "ticker": "SPY",
+   "which": "first print of the day",
+   "ts_recv": 1794387601.165446,
+   "item": {
+    "key": "SPY",
+    "52": 1,
+    "54": 212.351268,
+    "55": 200,
+    "56": 40,
+    "BID_PRICE": 755.3,
+    "ASK_PRICE": 755.33,
+    "LAST_PRICE": 755.3,
+    "BID_SIZE": 200,
+    "ASK_SIZE": 40,
+    "TOTAL_VOLUME": 212,
+    "LAST_SIZE": 1,
+    "NET_CHANGE": 5.38,
+    "REGULAR_MARKET_TRADE": false,
+    "MARK": 755.3,
+    "QUOTE_TIME_MILLIS": 1794387601061,
+    "TRADE_TIME_MILLIS": 1794387600912,
+    "BID_TIME_MILLIS": 1794387601061,
+    "ASK_TIME_MILLIS": 1794387601048,
+    "NET_CHANGE_PERCENT": 0.71741,
+    "MARK_CHANGE": 5.38,
+    "MARK_CHANGE_PERCENT": 0.71741,
+    "POST_MARKET_NET_CHANGE": 5.38,
+    "POST_MARKET_NET_CHANGE_PERCENT": 0.71741
+   }
+  },
+  {
+   "ticker": "TSLA",
+   "which": "last print of the evening",
+   "ts_recv": 1794384828.6739438,
+   "item": {
+    "key": "TSLA",
+    "delayed": false,
+    "assetMainType": "EQUITY",
+    "assetSubType": "COE",
+    "cusip": "88160R101",
+    "52": 368,
+    "53": 2399503,
+    "54": 23999841.750819,
+    "55": 40,
+    "56": 680,
+    "BID_PRICE": 381.9,
+    "ASK_PRICE": 381.93,
+    "LAST_PRICE": 381.9,
+    "BID_SIZE": 40,
+    "ASK_SIZE": 680,
+    "ASK_ID": "P",
+    "BID_ID": "P",
+    "TOTAL_VOLUME": 23999841,
+    "LAST_SIZE": 368,
+    "HIGH_PRICE": 380,
+    "LOW_PRICE": 370.4,
+    "CLOSE_PRICE": 379.78,
+    "EXCHANGE_ID": "Q",
+    "MARGINABLE": true,
+    "DESCRIPTION": "TESLA INC",
+    "LAST_ID": "D",
+    "OPEN_PRICE": 370.85,
+    "NET_CHANGE": 2.12,
+    "HIGH_PRICE_52_WEEK": 498.83,
+    "LOW_PRICE_52_WEEK": 297.38,
+    "PE_RATIO": 415.3574,
+    "DIVIDEND_AMOUNT": 0,
+    "DIVIDEND_YIELD": 0,
+    "NAV": 0,
+    "EXCHANGE_NAME": "Nasdaq",
+    "DIVIDEND_DATE": "",
+    "REGULAR_MARKET_QUOTE": true,
+    "REGULAR_MARKET_TRADE": false,
+    "REGULAR_MARKET_LAST_PRICE": 379.78,
+    "REGULAR_MARKET_LAST_SIZE": 2399503,
+    "REGULAR_MARKET_NET_CHANGE": 1.73,
+    "SECURITY_STATUS": "Closed",
+    "MARK": 379.78,
+    "QUOTE_TIME_MILLIS": 1794358792632,
+    "TRADE_TIME_MILLIS": 1794358796150,
+    "REGULAR_MARKET_TRADE_MILLIS": 1794344400388,
+    "BID_TIME_MILLIS": 1794358792632,
+    "ASK_TIME_MILLIS": 1794358792632,
+    "ASK_MIC_ID": "ARCX",
+    "BID_MIC_ID": "ARCX",
+    "LAST_MIC_ID": "XADF",
+    "NET_CHANGE_PERCENT": 0.558218,
+    "REGULAR_MARKET_CHANGE_PERCENT": 0.457611,
+    "MARK_CHANGE": 0,
+    "MARK_CHANGE_PERCENT": 0,
+    "HTB_QUANTITY": -1,
+    "HTB_RATE": 0,
+    "HARD_TO_BORROW": 0,
+    "IS_SHORTABLE": 1,
+    "POST_MARKET_NET_CHANGE": 2.12,
+    "POST_MARKET_NET_CHANGE_PERCENT": 0.558218
+   }
+  },
+  {
+   "ticker": "TSLA",
+   "which": "first print of the day",
+   "ts_recv": 1794387601.165406,
+   "item": {
+    "key": "TSLA",
+    "52": 1,
+    "54": 3174,
+    "55": 160,
+    "56": 120,
+    "BID_PRICE": 385.26,
+    "ASK_PRICE": 386,
+    "LAST_PRICE": 386.29,
+    "BID_SIZE": 160,
+    "ASK_SIZE": 120,
+    "ASK_ID": "K",
+    "BID_ID": "K",
+    "TOTAL_VOLUME": 3174,
+    "LAST_SIZE": 1,
+    "NET_CHANGE": 6.51,
+    "REGULAR_MARKET_QUOTE": true,
+    "SECURITY_STATUS": "Normal",
+    "MARK": 385.26,
+    "QUOTE_TIME_MILLIS": 1794387600700,
+    "TRADE_TIME_MILLIS": 1794387601099,
+    "BID_TIME_MILLIS": 1794387600700,
+    "ASK_TIME_MILLIS": 1794387600700,
+    "ASK_MIC_ID": "EDGX",
+    "BID_MIC_ID": "EDGX",
+    "NET_CHANGE_PERCENT": 1.71415,
+    "MARK_CHANGE": 5.48,
+    "MARK_CHANGE_PERCENT": 1.442941,
+    "POST_MARKET_NET_CHANGE": 6.51,
+    "POST_MARKET_NET_CHANGE_PERCENT": 1.71415
+   }
+  },
+  {
+   "ticker": "IWM",
+   "which": "last print of the evening",
+   "ts_recv": 1794384828.674018,
+   "item": {
+    "key": "IWM",
+    "delayed": false,
+    "assetMainType": "EQUITY",
+    "assetSubType": "ETF",
+    "cusip": "464287655",
+    "52": 3,
+    "53": 360,
+    "54": 21530262.711707,
+    "55": 280,
+    "56": 280,
+    "BID_PRICE": 281.18,
+    "ASK_PRICE": 281.25,
+    "LAST_PRICE": 281.239,
+    "BID_SIZE": 280,
+    "ASK_SIZE": 280,
+    "ASK_ID": "P",
+    "BID_ID": "P",
+    "TOTAL_VOLUME": 21530262,
+    "LAST_SIZE": 3,
+    "HIGH_PRICE": 0,
+    "LOW_PRICE": 0,
+    "CLOSE_PRICE": 280.58,
+    "EXCHANGE_ID": "P",
+    "MARGINABLE": true,
+    "DESCRIPTION": "iShares Russell 2000 ETF",
+    "LAST_ID": "Y",
+    "OPEN_PRICE": 0,
+    "NET_CHANGE": 0.659,
+    "HIGH_PRICE_52_WEEK": 305.18,
+    "LOW_PRICE_52_WEEK": 228.9,
+    "PE_RATIO": 5.63472,
+    "DIVIDEND_AMOUNT": 3.00174,
+    "DIVIDEND_YIELD": 1.09685,
+    "NAV": 0,
+    "EXCHANGE_NAME": "NYSE Arca",
+    "DIVIDEND_DATE": "2026-09-15 00:00:00.0",
+    "REGULAR_MARKET_QUOTE": true,
+    "REGULAR_MARKET_TRADE": true,
+    "REGULAR_MARKET_LAST_PRICE": 280.58,
+    "REGULAR_MARKET_LAST_SIZE": 360,
+    "REGULAR_MARKET_NET_CHANGE": -1.93,
+    "SECURITY_STATUS": "Normal",
+    "MARK": 280.58,
+    "QUOTE_TIME_MILLIS": 1794358800056,
+    "TRADE_TIME_MILLIS": 1794358784189,
+    "REGULAR_MARKET_TRADE_MILLIS": 1794358800137,
+    "BID_TIME_MILLIS": 1794358800056,
+    "ASK_TIME_MILLIS": 1794358800056,
+    "ASK_MIC_ID": "ARCX",
+    "BID_MIC_ID": "ARCX",
+    "LAST_MIC_ID": "BATY",
+    "NET_CHANGE_PERCENT": 0.234871,
+    "REGULAR_MARKET_CHANGE_PERCENT": -0.683162,
+    "MARK_CHANGE": 0,
+    "MARK_CHANGE_PERCENT": 0,
+    "HTB_QUANTITY": -1,
+    "HTB_RATE": 0,
+    "HARD_TO_BORROW": 0,
+    "IS_SHORTABLE": 1,
+    "POST_MARKET_NET_CHANGE": 0.659,
+    "POST_MARKET_NET_CHANGE_PERCENT": 0.234871
+   }
+  },
+  {
+   "ticker": "IWM",
+   "which": "first print of the day",
+   "ts_recv": 1794387600.1479406,
+   "item": {
+    "key": "IWM",
+    "52": 40,
+    "54": 143,
+    "55": 40,
+    "56": 440,
+    "BID_PRICE": 282.12,
+    "ASK_PRICE": 282.18,
+    "LAST_PRICE": 282.16,
+    "BID_SIZE": 40,
+    "ASK_SIZE": 440,
+    "TOTAL_VOLUME": 143,
+    "LAST_SIZE": 40,
+    "LAST_ID": "P",
+    "NET_CHANGE": 1.58,
+    "REGULAR_MARKET_TRADE": false,
+    "MARK": 282.12,
+    "QUOTE_TIME_MILLIS": 1794387600060,
+    "TRADE_TIME_MILLIS": 1794387600036,
+    "BID_TIME_MILLIS": 1794387600060,
+    "ASK_TIME_MILLIS": 1794387600036,
+    "LAST_MIC_ID": "ARCX",
+    "NET_CHANGE_PERCENT": 0.563119,
+    "MARK_CHANGE": 1.54,
+    "MARK_CHANGE_PERCENT": 0.548863,
+    "POST_MARKET_NET_CHANGE": 1.58,
+    "POST_MARKET_NET_CHANGE_PERCENT": 0.563119
+   }
+  }
+ ]
+}

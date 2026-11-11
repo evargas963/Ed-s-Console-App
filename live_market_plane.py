@@ -14,7 +14,7 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
-from time_et import CLOSED, ET, UNKNOWN, options_open, session_label
+from time_et import CLOSED, ET, UNKNOWN, options_open, record_trade, session_label
 
 #: the services the capture daemon streams the option rule's contracts on
 #: (capture.Daemon.pick_options): live until the last option market closes (time_et.options_open)
@@ -114,6 +114,9 @@ def record_from_level_one_equity(
         snapshot = dict(fs)
     if not seen:
         return False
+    if "TRADE_TIME_MILLIS" in item and "TRADE_TIME_MILLIS" in snapshot:
+        # a trade Schwab streamed: the day's first one starts its pre-market (session_label)
+        record_trade(datetime.fromtimestamp(snapshot["TRADE_TIME_MILLIS"][0], ET))
 
     def val(name: str) -> float | str | None:
         return snapshot[name][0] if name in snapshot else None
