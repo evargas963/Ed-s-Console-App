@@ -54,12 +54,15 @@ def recent_prints(contract: str, content: list, limit: int) -> list[dict[str, An
 
     `content` is the live state's for the contract (state.get_content_for_symbol): each print it
     kept, a genuinely new (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE), with what it held then.
+    `trade_time_ms` is Schwab's TRADE_TIME_MILLIS as sent (None: the message carried none);
+    `ts_recv`, when the message arrived, orders prints of several contracts and is not shown.
     The contract's terms are not here: the tape shows them from its chain record (tape_row).
     """
     sym = ticker_storage_key(contract)
     return [
         {
             "ts_recv": p["server_received_ts"],
+            "trade_time_ms": p["time_millis"],
             "symbol": sym,
             "bid": p["bid"],
             "bid_size": p["bid_size"],
@@ -81,11 +84,11 @@ def tape_row(printed: dict[str, Any], contract: OptionContract) -> dict[str, Any
 
     Expiry, side, strike and open interest are the chain record's (option_contract.read_contract,
     the one reader of them); premium = trade x size x that record's multiplier, unknown without
-    a size or a multiplier.
+    a size or a multiplier. Its time is Schwab's trade time; the receive time is not served.
     """
     size, mult = printed["size"], contract.multiplier
     return {
-        **printed,
+        **{k: v for k, v in printed.items() if k != "ts_recv"},
         "expiry": contract.expiry,
         "type": contract.side,
         "strike": contract.strike,
