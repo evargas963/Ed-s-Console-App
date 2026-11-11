@@ -132,6 +132,32 @@ def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     assert len(fractional) == _TSLA["n_fractional_strikes"]
 
 
+def test_a_contract_with_no_side_is_logged_and_left_off_the_ladder_with_no_count_served(caplog):
+    """Induced condition: one of TSLA's real contracts sent with a putCall that is neither side.
+
+    The ladder cannot place it. The panel serves Schwab's contracts as sent and no count of
+    ours; the console's log names the ticker, the expiry and how many were left off.
+    """
+    odd = dict(_TSLA_CONTRACTS[0], putCall="X")
+    _hold("TSLA", [odd, *_TSLA_CONTRACTS[1:]], _AT.timestamp(), 330.0)
+    with caplog.at_level("WARNING", logger="ed_server"):
+        body = _get(ticker="tsla")
+    assert body["status"] == "ok" and "contracts_not_on_ladder" not in body
+    on_ladder = {r[s]["symbol"] for r in body["ladder"] for s in ("call", "put") if r[s]}
+    assert odd["symbol"] not in on_ladder and len(on_ladder) == len(_TSLA_CONTRACTS) - 1
+    said = [r.getMessage() for r in caplog.records if "not on the chain ladder" in r.getMessage()]
+    assert len(said) == 1 and said[0].startswith(f"TSLA {_TSLA_EXPIRY}: 1 contract(s)"), said
+    # the chain as Schwab sends it: every contract placed, nothing logged
+    _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="ed_server"):
+        whole = _get(ticker="tsla")
+    assert len({r[s]["symbol"] for r in whole["ladder"] for s in ("call", "put") if r[s]}) == len(
+        _TSLA_CONTRACTS
+    )
+    assert not [r for r in caplog.records if "not on the chain ladder" in r.getMessage()]
+
+
 def test_only_the_requested_expiry_is_served():
     _hold("MRVL", _MRVL_CONTRACTS, _AT.timestamp(), _MRVL["full"]["underlying"]["last"])
     expiries = sorted({c["expirationDate"][:10] for c in _MRVL_CONTRACTS})
