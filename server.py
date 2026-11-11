@@ -1311,7 +1311,7 @@ def _close_capture(tk: str, closed: datetime) -> list | None:
     return stored if stored and stored[0]["ts_utc"] >= closed.timestamp() else None
 
 
-def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
+def _priced_at(tk, new_chain, chain_spot, previous, now):
     """Return the price a publication of `tk`'s levels is computed at: (price, source, time).
 
     A chain's spot, a stored capture's or a delivered chain's: Schwab's LAST_PRICE when the
@@ -1319,8 +1319,6 @@ def _priced_at(tk, capture, new_chain, chain_spot, previous, now):
     as a capture stored without one reads); for a streamed tick, the live price, newer than any
     the levels hold, or the last one published while Schwab has sent this program none.
     """
-    if capture is not None:
-        chain_spot = capture["spot"], capture["spot_ts"]
     if new_chain:
         source = SPOT_SOURCE_NONE if chain_spot[0] is None else SPOT_SOURCE_PLANE
         return chain_spot[0], source, chain_spot[1]
@@ -1377,6 +1375,7 @@ def _publish_levels(
     capture = captures[0] if captures else None
     if capture is not None:
         chain, fetched_ts = capture["contracts"], capture["ts_utc"]
+        chain_spot = capture["spot"], capture["spot_ts"]
     new_chain = chain is not None
     if chain is None:
         if previous is None or not previous.chain:
@@ -1384,7 +1383,7 @@ def _publish_levels(
         chain, fetched_ts = previous.chain, previous.computed_ts_utc
     begun = datetime.fromtimestamp(fetched_ts, ET)
     valued_at = valuation_instant(begun if capture is not None else now, product)
-    priced_at = _priced_at(tk, capture, new_chain, chain_spot, previous, now)
+    priced_at = _priced_at(tk, new_chain, chain_spot, previous, now)
     if (
         capture is None
         and valued_at < now
@@ -3141,10 +3140,8 @@ def options_microstructure(c: str, now: float) -> dict:
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
     # the side of the contract's chain record; None while no chain the console holds lists it
-    with _terrain_cache_lock:
-        payload["put_call"] = next(
-            (lv.contracts[c].side for lv in _terrain_cache.values() if c in lv.contracts), None
-        )
+    tk = _contract_ticker(c)
+    payload["put_call"] = None if tk is None else published_levels(tk).contracts[c].side
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     _stamp_book_times(payload)

@@ -177,10 +177,10 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     void = vol_sent is not None and vol_sent == SCHWAB_NO_VALUE
     multiplier = schwab_number(raw.get("multiplier"))
     quoted = quote_values(raw["quote"]) if isinstance(raw.get("quote"), Mapping) else {}
-    streamed = raw.get("streamed")
-    if isinstance(streamed, Mapping):
-        # a contract Schwab streams: the stream's quote when its chain was complete (the sweep)
-        quoted = {"bid": streamed["bid"], "ask": streamed["ask"], "volume": streamed["volume"]}
+    if isinstance(raw.get("streamed"), Mapping):
+        # a contract Schwab streams: the stream's bid, ask and volume when its chain was
+        # complete, as the sweep read them (ChainSweep.take_greeks)
+        quoted = raw["streamed"]
     return OptionContract(
         symbol=raw.get("symbol"),
         side=side if side in ("CALL", "PUT") else None,
