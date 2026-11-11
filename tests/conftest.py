@@ -24,6 +24,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane
+import time_et
 from db_authority import canonical_console_db_path, canonical_stream_db_path
 from time_et import ET, now, record_markets, session
 
@@ -95,8 +96,10 @@ def _live_feed_starts_down():
     Every test starts with NO live feed and no remembered held set or watchlist, so a heartbeat
     one test marks can never make another test's price live. A down feed keeps that set and that
     list for the screen (record_feed_down); this fixture clears them. Tests that need a live
-    price mark it (tests/feed_live_helper.py).
+    price mark it (tests/feed_live_helper.py). The day's first streamed trade (time_et.record_trade)
+    is process-global too: every test starts with none.
     """
+    time_et._first_trade = {}
     live_market_plane.record_feed_down()
     with live_market_plane._lock:
         live_market_plane._feed["held"] = {}

@@ -161,6 +161,64 @@ def test_the_label_follows_schwabs_windows():
     assert time_et.closed_since(_et("2026-10-10 12:00")) == _et("2026-10-09 20:00")
 
 
+def test_the_pre_market_begins_with_the_first_trade_schwab_streams_that_day():
+    """Schwab's own messages of 2026-11-11, before its /markets pre-market (07:00 ET).
+
+    tests/fixtures/real_premarket_first_prints_2026_11_11.json: /markets for that date as sent,
+    and for SPY, TSLA and IWM the full refresh a restart took at 03:13 ET (each one's last trade
+    made the evening before, 19:59 ET) and the first message of the day with a trade (04:00:00 to
+    04:00:01 ET). The evening's trades leave the label Closed and the prices not live, at a
+    restart too; from the day's first trade the label is Pre-Market and the prices are live, to
+    07:00 ET, where Schwab's window goes on. A trade received twice, and a later one, move
+    nothing. Operator 2026-11-11, at 04:17 ET: "it is premarket", "the data should be live".
+    """
+    fx = json.loads(
+        (FX / "real_premarket_first_prints_2026_11_11.json").read_text(encoding="utf-8")
+    )
+    evening = [m for m in fx["messages"] if m["which"] == "last print of the evening"]
+    first = [m for m in fx["messages"] if m["which"] == "first print of the day"]
+    tickers = sorted({m["ticker"] for m in fx["messages"]})
+    held, label = time_et._sessions, time_et.session_label
+
+    def states(at: str) -> set:
+        now = _et(at).timestamp()
+        mark_feed_live(*tickers, now=now)
+        return {lmp.live_state(tk, "LEVELONE_EQUITIES", now) for tk in tickers}
+
+    def take(messages) -> None:
+        for m in messages:
+            lmp.record_from_level_one_equity(m["ticker"], m["item"], received_ts=m["ts_recv"])
+
+    try:
+        time_et.record_markets(fx["markets"])
+        take(evening)
+        assert label(_et("2026-11-11 04:17")) == time_et.CLOSED
+        assert {why for _state, why in states("2026-11-11 04:17")} == {
+            "outside Schwab's market hours"
+        }
+        take(first)
+        opened = min(m["item"]["TRADE_TIME_MILLIS"] for m in first) / 1000
+        assert time_et._first_trade["2026-11-11"] == datetime.fromtimestamp(opened, ET)
+        assert label(_et("2026-11-11 04:00")) == time_et.CLOSED  # before that trade was made
+        assert label(_et("2026-11-11 04:00:01")) == time_et.PRE_MARKET
+        assert label(_et("2026-11-11 04:17")) == time_et.PRE_MARKET
+        assert label(_et("2026-11-11 06:59:59")) == time_et.PRE_MARKET
+        assert label(_et("2026-11-11 07:00")) == time_et.PRE_MARKET  # Schwab's own window
+        assert label(_et("2026-11-11 09:30")) == time_et.RTH
+        assert label(_et("2026-11-11 20:00")) == time_et.CLOSED
+        assert states("2026-11-11 04:17") == {(lmp.LIVE, None)}
+        assert time_et.market_session_date(_et("2026-11-11 04:17")) == date(2026, 11, 11)
+        before = time_et._first_trade
+        take(first)
+        assert time_et._first_trade is before
+    finally:
+        time_et._sessions = held
+        time_et._first_trade = {}
+        for tk in tickers:
+            lmp._by_ticker.pop(tk, None)
+            lmp._fields_by_ticker.pop(tk, None)
+
+
 def test_every_beat_to_the_page_carries_the_session_at_that_beat():
     """The header's session is the daemon's status on each beat of the page's socket.
 
