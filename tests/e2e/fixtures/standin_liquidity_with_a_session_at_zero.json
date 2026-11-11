@@ -196,7 +196,7 @@
   }
  ],
  "summary": {
-  "value_state": "shifted_lower",
+  "value_state": "lower",
   "vwap_relation": "above_value"
  },
  "spot_used_for_scoring": null,
