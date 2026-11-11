@@ -9,7 +9,6 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from db_authority import (
-    classify_db_path,
     default_console_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
@@ -162,8 +161,7 @@ class EdDB:
             allow_noncanonical
         ):
             raise ValueError(
-                f"EdDB: non-canonical database path {self.db_path!r} "
-                f"(classification={classify_db_path(self.db_path)}). "
+                f"EdDB: non-canonical database path {self.db_path!r}. "
                 "Pass allow_noncanonical=True, or set ED_CONSOLE_ALLOW_NONCANONICAL_DB=1 "
                 "for harness/test/alternate DBs."
             )

@@ -22,7 +22,6 @@ from typing import Literal
 
 from runtime_layout import data_dir
 
-Classification = Literal["canonical", "harness", "proof", "unknown"]
 PermanentDatabaseIdentity = Literal["ed_console", "stream_capture"]
 
 
@@ -61,19 +60,6 @@ def default_console_db_path() -> Path:
 
 def is_canonical_db_path(p: Path | str) -> bool:
     return Path(p).resolve() == canonical_console_db_path()
-
-
-def classify_db_path(p: Path | str) -> Classification:
-    """Best-effort classification for guardrails and error messages."""
-    rp = Path(p).resolve()
-    s = str(rp).replace("\\", "/")
-    if permanent_database_identity(rp) is not None:
-        return "canonical"
-    if "calibration_accumulation_validation.db" in s:
-        return "harness"
-    if "calibration_anchor_proof.db" in s:
-        return "proof"
-    return "unknown"
 
 
 def env_allows_noncanonical_db() -> bool:
