@@ -24,18 +24,15 @@ process.env.ED_E2E_PORT ||= String(await freePort());
 export const e2eBaseURL = `http://127.0.0.1:${process.env.ED_E2E_PORT}`;
 
 // RC-515 + RC-534 reconciled: this is the one E2E process boundary. The web server
-// receives no live runtime path, token, or credentials from its parent. RC-534 disabled the
-// ambient ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db.py raises on them), so
-// isolation is ONE knob — ED_RUNTIME_ROOT — under which the console DB, stream DB and the
-// DB-adjacent ticker/option signals all resolve canonically and process-private. Inherited
-// production selectors are deleted first so a live parent value can never win.
+// receives no live runtime path, token, or credentials from its parent. Isolation is ONE
+// knob — ED_RUNTIME_ROOT — under which the console DB, stream DB and the DB-adjacent
+// ticker/option signals all resolve canonically and process-private. The inherited stream
+// database selector is deleted first so a live parent value can never win.
 export const e2eRuntimeRoot = fs.mkdtempSync(
   path.join(os.tmpdir(), 'ed-console-e2e-runtime-'),
 );
 export const e2eServerEnv = (() => {
   const env = { ...process.env };
-  delete env.ED_CONSOLE_DB;
-  delete env.ED_DB_PATH;
   delete env.STREAM_CAPTURE_DB_PATH;
   env.ED_RUNTIME_ROOT = e2eRuntimeRoot;
   env.ED_CONSOLE_ALLOW_NONCANONICAL_DB = '1';

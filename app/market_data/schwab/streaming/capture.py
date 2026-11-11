@@ -415,18 +415,26 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
     """schwab-py handler for one service: every item -> the bus.
 
     Each item goes with the timestamp Schwab put on the frame. The service counts as alive only
-    when a frame delivered data, not merely arrived.
+    when a frame delivered data, not merely arrived. A frame with no list of items, and an item
+    with no symbol, cannot be taken: each is logged as it came and the stream goes on.
     """
 
     def handler(msg: dict) -> None:
         published = False
         schwab_ts = msg.get("timestamp")
-        for item in msg.get("content") or []:
-            sym = str(item.get("key") or "").upper() if isinstance(item, dict) else ""
-            if sym:
-                kind, out = _message(service, sym, item, schwab_ts)
-                bus.publish(f"{kind}.{sym}", out)
-                published = True
+        content = msg.get("content")
+        if not isinstance(content, list):
+            log.warning("%s: a frame with no list of items, not taken: %.500r", service, msg)
+            return
+        for item in content:
+            key = item.get("key") if isinstance(item, dict) else None
+            if not isinstance(key, str) or not key:
+                log.warning("%s: an item with no symbol, not taken: %.500r", service, item)
+                continue
+            sym = key.upper()
+            kind, out = _message(service, sym, item, schwab_ts)
+            bus.publish(f"{kind}.{sym}", out)
+            published = True
         if published:
             health.beat(service)
 

@@ -49,18 +49,6 @@ OF_BOOK_DEPTH_DEEP: int = 5
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _iter_content(data: dict) -> list:
-    """Yield all content items (content.*) as a flat list."""
-    content = data.get("content")
-    if content is None:
-        return []
-    if isinstance(content, list):
-        return content
-    if isinstance(content, dict):
-        return list(content.values())
-    return []
-
-
 Exchanges = tuple[tuple[str, float, float | None], ...]
 
 
@@ -281,7 +269,7 @@ def _extract_canonical_book(data: dict) -> dict:
     (``data["top"]``). Every downstream metric reads this result; nothing else re-walks the raw
     book.
     """
-    snapshot = _latest_book_snapshot(_iter_content(data))
+    snapshot = _latest_book_snapshot(data["content"])
     bid, ask = _resolve_bid_ask_prices(data)
     t = _top(data)
     bid_size = schwab_count(t.get("bid_size"))
@@ -966,7 +954,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
 def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> float | None:
     """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
     return _canonical_tape_pressure(
-        canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0
+        canonical_tape_prints(data["content"]), window_sec, now * 1000.0
     )
 
 
@@ -977,13 +965,13 @@ def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> float |
 
 def _compute_cum_delta_proxy(data: dict) -> float | None:
     """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
-    return _canonical_cum_delta(canonical_tape_prints(_iter_content(data)))
+    return _canonical_cum_delta(canonical_tape_prints(data["content"]))
 
 
 def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> float | None:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
     points = iter_signed_cum_points(
-        canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0
+        canonical_tape_prints(data["content"]), window_sec, now * 1000.0
     )
     if len(points) < 2:
         return None
@@ -1018,7 +1006,7 @@ class OrderFlowEngine:
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
-        cum_first, cum_last = cum_delta_window(canonical_tape_prints(_iter_content(data)))
+        cum_first, cum_last = cum_delta_window(canonical_tape_prints(data["content"]))
         cum_delta_slope = _compute_cum_delta_slope(data, now)
 
         return {

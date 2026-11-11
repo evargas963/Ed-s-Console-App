@@ -56,12 +56,26 @@ def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
     root = Path(server_env.pop("_E2E_RUNTIME_ROOT")).resolve()
 
     assert root.name.startswith("ed-console-e2e-runtime-")
-    # RC-534: the one isolation knob is ED_RUNTIME_ROOT; the forbidden ambient DB overrides
-    # are deleted from the server env, and the canonical DBs resolve under <root>/data.
+    # The one isolation knob is ED_RUNTIME_ROOT; the stream database's own override is
+    # deleted from the server env, and the canonical DBs resolve under <root>/data.
     assert Path(server_env["ED_RUNTIME_ROOT"]).resolve() == root
     assert "ED_ARTIFACTS_ROOT" not in server_env  # no runtime root but ED_RUNTIME_ROOT
-    assert "ED_CONSOLE_DB" not in server_env
     assert "STREAM_CAPTURE_DB_PATH" not in server_env
+    # a console database path a parent set under a retired name selects nothing
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import db_authority; print(db_authority.default_console_db_path())",
+        ],
+        cwd=ROOT,
+        env=server_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    assert root in Path(child.stdout.strip()).resolve().parents, child.stdout
     token = Path(server_env["SCHWAB_TOKEN_PATH"]).resolve()
     assert token.parent == root, token
     assert tmp_path not in token.parents

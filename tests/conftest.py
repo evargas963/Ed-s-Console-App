@@ -29,22 +29,18 @@ from time_et import ET, now, record_markets, session
 
 # Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
 # deterministic, process-private runtime boundary before any application module imports
-# (RC-523 runtime root + RC-515 explicit isolation, reconciled). Inherited production DB
-# selectors are cleared first so a host/live value can never win; every mutable runtime path
-# is then rooted under one directory, and Schwab is explicitly OFFLINE with a missing token
+# (RC-523 runtime root + RC-515 explicit isolation, reconciled). Every mutable runtime path
+# is rooted under one directory, and Schwab is explicitly OFFLINE with a missing token
 # so no test can reach the live account. Tests of live/offline semantics monkeypatch after
 # this boundary and therefore state their own inputs.
-os.environ.pop("ED_CONSOLE_DB", None)
-os.environ.pop("ED_DB_PATH", None)
 _PYTEST_RUNTIME_ROOT = Path(
     tempfile.mkdtemp(prefix=f"ed-pytest-{os.getpid()}-")  # the process id names each worker's
 ).resolve()
 os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
 os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
-# The console DB and stream-capture DB are NOT set by env: RC-534 disabled ambient
-# ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db._resolve_console_db_path raises on
-# them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
-# knob — the _stream_spine_fallback fixture below still pins the stream reader default.
+# The console DB and stream-capture DB are NOT set by env: both resolve canonically under
+# ED_RUNTIME_ROOT above, which is the one isolation knob — the _stream_spine_fallback fixture
+# below still pins the stream reader default.
 
 # Schwab hermetic AND explicitly offline: placeholder credentials in the environment;
 # ED_CI_OFFLINE guarantees no test constructs a live Schwab client. SCHWAB_TOKEN_PATH is NOT
@@ -65,7 +61,6 @@ pytest_plugins = ["tests.liquidity_friday"]
 def pytest_configure() -> None:
     """Hold the import-time runtime boundary in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
-    assert "ED_CONSOLE_DB" not in os.environ  # RC-534: no ambient console-DB override
     assert _PYTEST_RUNTIME_ROOT in canonical_console_db_path().parents
     assert _PYTEST_RUNTIME_ROOT in canonical_stream_db_path().parents
 

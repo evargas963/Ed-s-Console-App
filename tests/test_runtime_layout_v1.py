@@ -71,25 +71,6 @@ def test_a_named_runtime_root_never_works_out_the_default(tmp_path):
     assert "cannot resolve canonical runtime root" in unnamed.stderr
 
 
-def test_ambient_db_override_is_refused(tmp_path):
-    rt = tmp_path / "runtime"
-    explicit = tmp_path / "elsewhere" / "ed_console.db"
-    explicit.parent.mkdir(parents=True)
-    explicit.write_bytes(b"")
-    env = dict(os.environ)
-    env.update({"ED_RUNTIME_ROOT": str(rt), "ED_CONSOLE_DB": str(explicit)})
-    result = subprocess.run(
-        [sys.executable, "-c", "import db; db.EdDB()"],
-        cwd=str(REPO),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert result.returncode != 0
-    assert "ambient console database overrides are disabled" in result.stderr
-
-
 def test_runtime_root_cannot_be_a_linked_worktree(tmp_path):
     linked = tmp_path / "linked"
     linked.mkdir()
@@ -158,8 +139,7 @@ print(json.dumps(payload))
 shutil.rmtree(runtime_layout.runtime_root(), ignore_errors=True)
 """
     env = dict(os.environ)
-    for name in ("ED_CONSOLE_DB", "ED_DB_PATH", "ED_RUNTIME_ROOT"):
-        env.pop(name, None)
+    env.pop("ED_RUNTIME_ROOT", None)
     if worker is None:
         env.pop("PYTEST_XDIST_WORKER", None)
     else:

@@ -431,7 +431,7 @@ def test_engine_and_route_read_the_same_canonical_state():
 
 
 def test_top_prices_and_sizes_are_carried_exactly():
-    data = {"top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
+    data = {"content": [], "top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
     bid, ask = ofe._resolve_bid_ask_prices(data)
     assert (bid, ask) == (0.58, 0.59)
     assert ofe._extract_canonical_book(data)["mark"] is None

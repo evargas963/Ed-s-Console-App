@@ -1005,5 +1005,5 @@ def test_a_database_path_under_backups_is_refused_as_any_other_non_canonical_pat
     A path under backups/db/ is no class of its own. The console's database (db.EdDB) refuses it
     as it refuses every path but the canonical one, named unknown.
     """
-    with pytest.raises(ValueError, match=r"classification=unknown"):
+    with pytest.raises(ValueError, match=r"non-canonical database path"):
         db.EdDB(tmp_path / "backups" / "db" / "ed_console.db", allow_noncanonical=False)

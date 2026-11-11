@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 import threading
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from db_authority import (
-    classify_db_path,
     default_console_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
@@ -65,20 +63,9 @@ def configure_sqlite_connection(conn: sqlite3.Connection, *, busy_timeout_ms: in
 
 
 # ── Database location (ONE APP, ONE MAIN, ONE DB) ───────────────────────────
-# Default: data/ed_console.db, for every process and every worktree. No ambient setting
-# (an agent role, ED_CONSOLE_DB, ED_DB_PATH) selects the production database: recovery and
-# tests pass explicit paths to EdDB; runtime placement belongs only to runtime_layout.
-
-
-def _resolve_console_db_path() -> Path:
-    blocked = [name for name in ("ED_CONSOLE_DB", "ED_DB_PATH") if os.environ.get(name, "").strip()]
-    if blocked:
-        raise RuntimeError(
-            "ambient console database overrides are disabled: "
-            f"{', '.join(blocked)}. Configure ED_RUNTIME_ROOT for a dedicated runtime, "
-            "or pass an explicit path to a recovery/test API."
-        )
-    return default_console_db_path()
+# Default: data/ed_console.db, for every process and every worktree. No setting selects the
+# production database: recovery and tests pass explicit paths to EdDB; runtime placement
+# belongs only to runtime_layout.
 
 
 @dataclass
@@ -169,13 +156,12 @@ class EdDB:
     def __init__(
         self, db_path: Path | None = None, *, allow_noncanonical: bool | None = None
     ) -> None:
-        self.db_path = Path(db_path or _resolve_console_db_path()).resolve()
+        self.db_path = Path(db_path or default_console_db_path()).resolve()
         if not is_canonical_db_path(self.db_path) and not eddb_allow_noncanonical_path(
             allow_noncanonical
         ):
             raise ValueError(
-                f"EdDB: non-canonical database path {self.db_path!r} "
-                f"(classification={classify_db_path(self.db_path)}). "
+                f"EdDB: non-canonical database path {self.db_path!r}. "
                 "Pass allow_noncanonical=True, or set ED_CONSOLE_ALLOW_NONCANONICAL_DB=1 "
                 "for harness/test/alternate DBs."
             )
