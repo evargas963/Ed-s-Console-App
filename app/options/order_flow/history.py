@@ -9,6 +9,7 @@ The database keeps the whole history.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections import defaultdict, deque
 from typing import Any
@@ -17,6 +18,8 @@ from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import canonical_tape_prints
 from option_contract import OptionContract
+
+log = logging.getLogger(__name__)
 
 #: how long a venue's books are kept (the heatmap route's longest window)
 BOOKS_KEPT_SEC = 240 * 60
@@ -138,25 +141,36 @@ def _display_window(cells: list[dict]) -> tuple[float, float]:
 class RecentBooks:
     """Per (ticker, venue): its books for BOOKS_KEPT_SEC, one per second.
 
-    The newest in that second, each as (receive time, bid levels, ask levels). A book with no
-    level (after the close Schwab keeps sending empty ones) is not kept, so the window ends at
-    the last real one.
+    The newest in that second, each as (Schwab's BOOK_TIME in seconds, bid levels, ask levels):
+    a book is placed at the time Schwab gives it, not when it arrived. A book with no level
+    (after the close Schwab keeps sending empty ones) is not kept, so the window ends at the
+    last real one. A book with no BOOK_TIME, or one older than the newest kept (neither seen on
+    NYSE_BOOK or NASDAQ_BOOK), has no place on this time axis: it is logged and not kept.
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._books: dict[tuple[str, str], deque] = {}
 
-    def record(self, ticker: str, venue: str, book: Book, ts_recv: float) -> None:
+    def record(self, ticker: str, venue: str, book: Book) -> None:
         sym = ticker_storage_key(ticker)
         if not sym:
             return
         bids, asks = tuple(book.pairs("BIDS")), tuple(book.pairs("ASKS"))
         if not bids and not asks:
             return
-        kept = (float(ts_recv), bids, asks)
         with self._lock:
             held = self._books.setdefault((sym, venue), deque())
+            if book.book_time_ms is None or (held and book.book_time_ms / 1000.0 < held[-1][0]):
+                log.warning(
+                    "%s %s book not placed on the heatmap: BOOK_TIME %s, newest kept %s",
+                    sym,
+                    venue,
+                    book.book_time_ms,
+                    held[-1][0] if held else None,
+                )
+                return
+            kept = (book.book_time_ms / 1000.0, bids, asks)
             if held and int(held[-1][0]) == int(kept[0]):
                 held[-1] = kept
             else:
@@ -233,8 +247,9 @@ def book_heatmap_for_ticker(
     `venue` is NYSE_BOOK or NASDAQ_BOOK; the two are never merged. Its recent books binned into
     a time x price grid, a cell the LAST observed size at that price within the bucket -- never
     a sum (a book is a full snapshot, so an unchanged resting level comes again with every other
-    change). The window ends at the newest book, never the wall clock, so outside market hours
-    the last real session shows with its own time. No interpolated cell.
+    change). Every time is Schwab's BOOK_TIME (seconds): the window ends at the newest book's,
+    never the wall clock, so outside market hours the last real session shows with its own
+    time. No interpolated cell.
     """
     sym = ticker_storage_key(ticker)
     if not sym:
@@ -291,7 +306,6 @@ def book_heatmap_for_ticker(
         "available": True,
         "since_ts": t0,
         "until_ts": rows[-1][0],
-        "latest_captured_ts": rows[-1][0],
         "n_buckets": n_buckets,
         "bucket_sec": bucket_sec,
         # the default price window, and the largest displayed size (the colour scale's top)

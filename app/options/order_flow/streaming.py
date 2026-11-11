@@ -342,7 +342,7 @@ def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
     if msg.get("service") == "OPTIONS_BOOK":
         return
     if book is not None:
-        recent.BOOKS.record(sym, msg["service"], book, ts)
+        recent.BOOKS.record(sym, msg["service"], book)
     recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
     _flow(sym)
 

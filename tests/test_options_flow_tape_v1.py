@@ -310,9 +310,7 @@ def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     at, first = _sent(CALL)[0]
     _ingest_pushed(f"optquote.{CALL}", {"symbol": CALL, "ts_recv": at, "content": first})
     book = _load("real_spy_nyse_nasdaq_books.json")["books"]["NYSE_BOOK"]
-    history.BOOKS.record(
-        "SPY", "NYSE_BOOK", read_book(book["content"], "NYSE_BOOK"), book["ts_recv"]
-    )
+    history.BOOKS.record("SPY", "NYSE_BOOK", read_book(book["content"], "NYSE_BOOK"))
     kept = recent_prints(CALL, state.get_content_for_symbol(CALL), 50)
     assert len(kept) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)
     state.clear_symbol(CALL)

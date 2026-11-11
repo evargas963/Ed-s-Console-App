@@ -32,7 +32,7 @@
     empty.textContent = ok ? '' : !d.available ? d.reason
       : 'rows were captured but carried no populated price levels';
     h.querySelector('.ofh-foot').textContent = !ok ? '' : d.rows_scanned + ' books · ' +
-      fmtCT(d.since_ts) + '–' + fmtCT(d.until_ts) + ' CT · latest capture ' + fmtCT(d.latest_captured_ts) + ' CT — every cell is a captured book tick; nothing is interpolated between ticks.';
+      fmtCT(d.since_ts) + '–' + fmtCT(d.until_ts) + ' CT, Schwab\'s book times — every cell is a captured book tick; nothing is interpolated between ticks.';
   }
 
   // The grid is the `bookmap` panel (server.bookmap) on the page's socket while this view is on,

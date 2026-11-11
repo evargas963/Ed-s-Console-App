@@ -18,7 +18,8 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   page.on('console', (m) => { if (m.type() === 'error' && !/WebSocket|EventSource|Failed to load resource/.test(m.text())) errs.push(m.text()); });
   await routeWatchlist(page, ['TSLA']);
   await mockPriceSocket(page, [], [], undefined, { bookmap: HEAT });
-  await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'heatmap'); });
+  // the payload is the producer's for NASDAQ_BOOK: the page shows the venue it asked, so it asks that one
+  await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'heatmap'); localStorage.setItem('ed_book_venue', 'NASDAQ_BOOK'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   // drawn on the one shared chart (ed-tv-chart.js), every served cell handed to it
   const plot = page.locator('#ofhBody .ofh-plot');
