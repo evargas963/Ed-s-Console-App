@@ -23,6 +23,7 @@ def _e2e_server_env(poison_root: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.update(
         {
+            "ED_CONSOLE_DB": str(poison_root / "production_console.db"),
             "STREAM_CAPTURE_DB_PATH": str(poison_root / "production_stream.db"),
             "SCHWAB_TOKEN_PATH": str(poison_root / "production_token.json"),
             "ED_CI_OFFLINE": "0",
@@ -60,6 +61,21 @@ def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
     assert Path(server_env["ED_RUNTIME_ROOT"]).resolve() == root
     assert "ED_ARTIFACTS_ROOT" not in server_env  # no runtime root but ED_RUNTIME_ROOT
     assert "STREAM_CAPTURE_DB_PATH" not in server_env
+    # a console database path a parent set under a retired name selects nothing
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import db_authority; print(db_authority.default_console_db_path())",
+        ],
+        cwd=ROOT,
+        env=server_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    assert root in Path(child.stdout.strip()).resolve().parents, child.stdout
     token = Path(server_env["SCHWAB_TOKEN_PATH"]).resolve()
     assert token.parent == root, token
     assert tmp_path not in token.parents
