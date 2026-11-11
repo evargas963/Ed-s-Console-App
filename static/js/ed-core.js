@@ -739,11 +739,11 @@
       else { ce.textContent = '-'; ce.className = 'wl-chg'; }
     }
   }
-  // A silent price push marks the list degraded. The last prices stay.
-  function markWlDegraded(reason) {
+  // A silent price push marks the list degraded (the header says why). The last prices stay, and
+  // the message line stays the answer to the operator's own add or removal.
+  function markWlDegraded() {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
-    wlNotify(reason);
   }
   function markWlHealthy() {
     var host = document.getElementById('watchlist');
@@ -901,8 +901,7 @@
   function checkPriceSilence() {
     if (!state.ticker || pricePushHealthy()) return;
     markHeaderPushDown();
-    var wlHost = document.getElementById('watchlist');
-    if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
+    markWlDegraded();
   }
 
   // market session (RTH / Pre-Market / After-Hours / Closed, or Unknown while Schwab's /markets

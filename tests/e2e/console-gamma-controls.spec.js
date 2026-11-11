@@ -173,6 +173,22 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'IWM']);
   });
 
+  // The message line is the answer to the operator's own add: the price watchdog finding the push
+  // silent a moment later marks the list (the header says why) and does not write over it.
+  test('the answer to an add stands when the price watchdog then finds the push silent', async ({ page }) => {
+    await routeWatchlist(page, ['SPY', 'QQQ', 'IWM'], ['ZQZQZ']);
+    await holdClock(page);   // the page's timers run when the test moves its time
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.wl-row')).toHaveCount(3);
+    await expect(page.locator('#watchlist')).not.toHaveClass(/wl-degraded/);
+    await page.evaluate(() => window.EdShell.addSymbol('ZQZQZ'));
+    const said = 'ZQZQZ is not added: Schwab does not quote it ({"errors":{"invalidSymbols":["ZQZQZ"]}})';
+    await expect(page.locator('#wlMsg')).toHaveText(said);
+    await page.clock.runFor(1500);   // the watchdog's next look: no price row has come
+    await expect(page.locator('#watchlist')).toHaveClass(/wl-degraded/);
+    await expect(page.locator('#wlMsg')).toHaveText(said);
+  });
+
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol subscribe afterwards', async ({ page }) => {
     const requests = watchRequests(page);
     await holdClock(page);   // the page's timers run when the test moves its time
