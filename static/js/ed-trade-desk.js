@@ -195,7 +195,7 @@
     } else {
       var grew = (m.grew || []).map(function (k) { return num(k, 0); }).join('/');
       var shrank = (m.shrank || []).map(function (k) { return num(k, 0); }).join('/');
-      out += '<div class="mig-coach"><b>Levels since the prior close: ' + esc((moves || []).map(levelMove).join(' · ')) + '</b>' +
+      out += '<div class="mig-coach"><b>Levels since the prior close: ' + esc(moves.map(levelMove).join(' · ')) + '</b>' +
         (grew ? 'Gamma grew most at ' + esc(grew) : 'No strike grew') +
         (shrank ? '; shrank most at ' + esc(shrank) + '. ' : '. ') +
         'Opened or closed? Tomorrow’s ΔOI confirms.</div>';
