@@ -328,11 +328,12 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
 
 
 def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
-    """SPY's 2026-10-22 close capture: a strike with open interest 0 everywhere has no charm.
+    """SPY's 2026-10-22 close capture: a strike with open interest 0 everywhere has charm 0.
 
-    A strike whose every contract Schwab sent with open interest 0 has no charm entry, and its
-    book's charm magnitude is 0, not missing. The publication's call
-    wall is a level at its own price, in the options lane, its text two decimals.
+    A strike whose every contract Schwab sent with open interest 0 is 0 on the charm map (its
+    one producer), and its book's charm magnitude is that 0; with no charm entry the magnitude
+    is not known. The publication's call wall is a level at its own price, in the options
+    lane, its text two decimals.
     """
     zero_oi = sorted(
         k
@@ -342,14 +343,16 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     strike = zero_oi[0]
     inside = datetime(2026, 10, 22, 15, 0, tzinfo=ET)  # before the close: charm has time
     legs = read_chain([c for c in SPY_CLOSE.chain if c["strikePrice"] == strike])
-    assert strike not in compute_charm_by_strike(legs, SPY_CLOSE.spot, now=inside)
+    charm = compute_charm_by_strike(legs, SPY_CLOSE.spot, now=inside)
+    assert charm == {strike: {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0}}
     try:
         live = _publish_close()
         bucket = live.snap.books[("2026-10-22", 0.0)][0][strike]
         body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         server._terrain_cache.pop("SPY", None)
-    assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] == 0.0
+    assert magnitudes(bucket, charm[strike], None, SPY_CLOSE.spot)["CHARMM"] == 0.0
+    assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] is None
     walls = [level for level in body["levels"] if level["abbrev"] == "CW"]
     assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
         (live.snap.call_wall, price_text(live.snap.call_wall), "options")

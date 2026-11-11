@@ -52,7 +52,8 @@ def compute_charm_by_strike(
     Units: charm/year * OI * multiplier / 365 -> delta-shares per day.
 
     A contract that cannot be priced leaves its side None and the strike's net None, as a side's
-    unknown gamma does in compute_exposures_by_strike. A settled one has no charm left.
+    unknown gamma does in compute_exposures_by_strike. A contract with open interest 0 adds
+    nothing, so a strike whose contracts all have none is 0. A settled one has no charm left.
     """
     out: dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
@@ -63,13 +64,15 @@ def compute_charm_by_strike(
     slot, inputs = [], []
     for c in contracts:
         years = t_years if t_years is not None else tte(c.expiration, c.settlement)
-        row = _contract_inputs(c, now, t_years=years, product=product)
-        if row in ("zero_open_interest", "settled") or c.strike is None or c.side is None:
+        if years == 0 or c.strike is None or c.side is None:  # settled, or no strike or side
             continue
         out.setdefault(c.strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
+        row = _contract_inputs(c, now, t_years=years, product=product)
+        if row == "zero_open_interest":  # no contract open: it adds nothing to its strike's 0
+            continue
         slot.append((c.strike, c.side == "CALL"))
         inputs.append(row[1:5] if isinstance(row, tuple) else (np.nan,) * 4)
-    if not out:
+    if not slot:
         return out
     at = {k: i for i, k in enumerate(out)}
     where = np.array([2 * at[k] + (not call) for k, call in slot])

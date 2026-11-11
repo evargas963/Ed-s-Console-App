@@ -960,7 +960,9 @@ behavior (AGENTS.md).
     interest whose gamma is not known (not sent, or it cannot be rebuilt) leaves its side and that
     strike's total unknown, as in the whole book; the other side's known value still ranks
     (operator 2026-10-31: "you're guide is how would a financial banking app work"). Charm follows
-    the same rule, in both books. The close is the regular window Schwab's /markets sent: the
+    the same rule, in both books, and a strike whose contracts all have open interest 0 is 0 on
+    the charm map (`math_levels.compute_charm_by_strike`, its one producer; operator 2026-11-11:
+    "Yes, move it"). The close is the regular window Schwab's /markets sent: the
     index window for an index it names with "$" and for SPY, QQQ and IWM, the equity-option window
     for every other ticker. After that close the levels stand as priced at it, a later expiry's at
     the 10-minute floor, until the next open (the close values, §3.4). A later expiry's levels are
