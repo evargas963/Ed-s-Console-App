@@ -103,7 +103,7 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
   await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(AT_ZERO.zones.length);
   await page.addInitScript(() => { localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdmAgree')).toContainText('shifted lower');
+  await expect(page.locator('#tdmAgree')).toContainText('VALUElower');
   await expect(page.locator('#tdmAgree')).toContainText('above value');
   expect(errs).toEqual([]);
 });

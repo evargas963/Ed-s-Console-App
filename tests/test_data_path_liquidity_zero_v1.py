@@ -117,9 +117,13 @@ def test_every_level_at_zero_stands_in_the_zones_before_the_open():
 @pytest.mark.parametrize(
     ("zero_days", "value_state", "vwap_relation"),
     [
-        (THURSDAY_ON, "shifted_higher", "at_value"),
-        (FRIDAY_ON, "shifted_lower", "at_value"),
-        (BOTH, "unchanged", "at_value"),
+        # Thursday's area at 0, Friday's at its prices: wholly above it
+        (THURSDAY_ON, "higher", "inside_value"),
+        # Friday's area at 0 under Thursday's: wholly below it; VWAP 0 at the area's edges
+        (FRIDAY_ON, "lower", "inside_value"),
+        (BOTH, "unchanged", "inside_value"),
+        # both days as Schwab sent them: Friday's area (768.3 to 772.0) above Thursday's (to 765.7)
+        (set(), "higher", "inside_value"),
     ],
 )
 def test_a_value_area_at_zero_is_compared_as_a_price(zero_days, value_state, vwap_relation):
@@ -128,25 +132,53 @@ def test_a_value_area_at_zero_is_compared_as_a_price(zero_days, value_state, vwa
 
 
 def test_a_value_state_missing_an_input_is_unknown_never_unchanged_or_at_value():
-    """No prior day's POC, no POC or no VWAP: the comparison was never made, so it is unknown.
+    """An edge of either day's value area or the VWAP missing: the comparison is unknown.
 
     The price is Friday's last close as Schwab sent it; the rule is which inputs are present.
     """
-    classify = liquidity_value_engine._classify_value_state_and_vwap_relation
     price = friday_bars()[-1]["close"]
-    assert classify(price, None, price) == (None, "at_value")
-    assert classify(price, price, None) == ("unchanged", None)
-    assert classify(None, price, price) == (None, None)
+    relation, vwap = (
+        liquidity_value_engine.value_area_relation,
+        liquidity_value_engine.vwap_against_value,
+    )
+    assert (
+        relation(price, price, price, None) is None and relation(None, price, price, price) is None
+    )
+    assert vwap(None, price, price) is None and vwap(price, price, None) is None
+    assert (relation(price, price, price, price), vwap(price, price, price)) == (
+        "unchanged",
+        "inside_value",
+    )
+
+
+def test_each_value_area_relation_is_the_two_areas_own_edges_with_no_tolerance():
+    """Friday's real value area against areas placed around it: one relation each, no percent.
+
+    The edges are Friday's own low and high of its last bar as Schwab sent it (lo < hi); the
+    other areas are built from those two prices alone.
+    """
+    last = friday_bars()[-1]
+    lo, hi = last["low"], last["high"]
+    assert lo < hi
+    relation = liquidity_value_engine.value_area_relation
+    width = hi - lo
+    assert relation(lo, hi, lo - 3 * width, lo - 2 * width) == "higher"
+    assert relation(lo, hi, hi + 2 * width, hi + 3 * width) == "lower"
+    assert relation(lo, hi, lo - width, hi + width) == "inside"
+    assert relation(lo - width, hi + width, lo, hi) == "outside"
+    assert relation(lo, hi, lo - width, hi - width / 2) == "overlapping_higher"
+    assert relation(lo, hi, lo + width / 2, hi + width) == "overlapping_lower"
+    assert relation(lo, hi, lo, hi + width) == "inside" and relation(lo, hi, lo, hi) == "unchanged"
 
 
 @pytest.mark.usefixtures("published")
 def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value():
-    """Friday's bars at 0 but its last, which keeps its prices: the POC is 0, VWAP above it.
+    """Friday's bars at 0 but its last, which keeps its prices: its value area is at 0, VWAP above.
 
     The browser tests draw this answer (tests/e2e/console-trade-desk.spec.js).
     """
     last = max(b["timestamp"] for b in friday_bars()) / 1000
     body = _snapshot(FRIDAY_ON, FRIDAY, keep=last)
     summary = body["summary"]
-    assert (summary["value_state"], summary["vwap_relation"]) == ("shifted_lower", "above_value")
+    assert (summary["value_state"], summary["vwap_relation"]) == ("lower", "above_value")
     assert body == json.loads(DRAWN.read_text(encoding="utf-8"))
