@@ -1,5 +1,6 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
+import server
 from math_exposure_core import (
     bucket_metric_abs,
     compute_exposures_by_strike,
@@ -10,7 +11,12 @@ from math_exposure_core import (
     pick_volatility_point_strikes,
 )
 from option_contract import read_chain
-from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain, price_relations
+from terrain_engine import (
+    SAME_DAY_LEVELS,
+    TERRAIN_SCHEMA_VERSION,
+    compute_terrain,
+    price_relations,
+)
 from tests.real_chains import SPY_0DTE
 
 _SPY = read_chain(SPY_0DTE.chain)
@@ -108,6 +114,17 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     exposures, _ = compute_exposures_by_strike(_SPY, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
     assert d["key_delta_strike"] == pick_key_delta_strike(exposures)
     assert (d["hvp"], d["lvp"]) == pick_volatility_point_strikes(exposures)
+
+
+def test_the_net_gamma_peaks_are_served_under_names_that_say_what_they_are():
+    """Each list that names a level calls the two by what they hold, and each has its pill."""
+    for levels in (SAME_DAY_LEVELS, server.GAMMA_LEVELS):
+        named = dict(levels)
+        assert (named["hvp"], named["lvp"]) == ("Net put Γ peak", "Net call Γ peak")
+    for _key, label in server.GAMMA_LEVELS:
+        assert label in server._OPTION_SHORT, label
+    assert server._option_abbrev("Net put Γ peak", same_day=False) == "Net PΓ"
+    assert server._option_abbrev("Net call Γ peak", same_day=True) == "0D Net CΓ"
 
 
 def test_volatility_points_one_sided_chain_returns_none_side():

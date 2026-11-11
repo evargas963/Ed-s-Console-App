@@ -54,18 +54,18 @@
    "title": "Abs \u0393"
   },
   {
-   "abbrev": "HVP",
+   "abbrev": "Net P\u0393",
    "lane": "options",
    "price": 764.0,
    "price_text": "764.00",
-   "title": "HVP"
+   "title": "Net put \u0393 peak"
   },
   {
-   "abbrev": "LVP",
+   "abbrev": "Net C\u0393",
    "lane": "options",
    "price": 776.0,
    "price_text": "776.00",
-   "title": "LVP"
+   "title": "Net call \u0393 peak"
   },
   {
    "abbrev": "Key \u0394",
@@ -124,18 +124,18 @@
    "title": "0DTE Net \u0393 peak"
   },
   {
-   "abbrev": "0D HVP",
+   "abbrev": "0D Net P\u0393",
    "lane": "options",
    "price": 764.0,
    "price_text": "764.00",
-   "title": "0DTE HVP"
+   "title": "0DTE Net put \u0393 peak"
   },
   {
-   "abbrev": "0D LVP",
+   "abbrev": "0D Net C\u0393",
    "lane": "options",
    "price": 776.0,
    "price_text": "776.00",
-   "title": "0DTE LVP"
+   "title": "0DTE Net call \u0393 peak"
   },
   {
    "abbrev": "0D Key \u0394",
