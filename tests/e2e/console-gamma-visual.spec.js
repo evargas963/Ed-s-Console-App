@@ -33,7 +33,7 @@ function gexAt(k, ci) {
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: SPOT, source: 'terrain_live_cache',
   levels_state: 'LIVE', levels_age_sec: 4, chain_basis: 'full', complete: false,
-  chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
+  spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: EXPS, strikes: STRIKE_LIST,
   cells: STRIKE_LIST.map(function (k) {
     return { strike: k, gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }), spot: k === SPOT }; }),
