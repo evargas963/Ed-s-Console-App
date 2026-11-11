@@ -29,11 +29,18 @@ from typing import Any
 from schwab.client import Client
 
 import time_et
+from app.options.order_flow.state import streamed_volume
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from live_price_rows import price_row
 from numeric_contract import schwab_number
-from option_contract import GREEK_FIELDS, read_chain, streamed_greek_set, streamed_greeks
+from option_contract import (
+    GREEK_FIELDS,
+    read_chain,
+    streamed_greek_set,
+    streamed_greeks,
+    streamed_top,
+)
 from schwab_client import (
     QUOTES_BATCH_MAX,
     flatten_chain_contracts,
@@ -668,17 +675,27 @@ class ChainSweep:
     def take_greeks(self, chain: _Chain) -> None:
         """Each contract of a fetched chain takes its Greeks from the stream, or queues for them.
 
-        A contract is queued for its quote; the chain is delivered at once when none is queued.
+        With them it takes the stream's bid, ask and volume as the stream holds them now
+        (`streamed`), so the chain as delivered and as stored carries a streamed contract's quote
+        as it carries a quoted one's: the close values and a stored capture hold them. A contract
+        the stream holds no full set of Greeks for is queued for its quote; the chain is
+        delivered at once when none is queued.
         """
         for ct in chain.contracts():
-            ct["totalVolume"] = None  # the stream's (laid over by the console) or the quote's
+            ct["totalVolume"] = None  # the stream's or the quote's
             entry = self.streamed(ct["symbol"])
             if (
                 entry is not None
                 and (greeks := streamed_greek_set(streamed_greeks(entry[1]["content"]))) is not None
             ):
+                top = streamed_top(entry[1]["content"])
                 ct.update(greeks)
                 ct["greeksTime"] = {g: entry[1]["field_ts"][g.upper()][0] for g in GREEK_FIELDS}
+                ct["streamed"] = {
+                    "bid": top.get("bid"),
+                    "ask": top.get("ask"),
+                    "volume": streamed_volume(entry[1]["content"]),
+                }
                 chain.pushed += 1
             else:
                 ct.update(dict.fromkeys(GREEK_FIELDS))

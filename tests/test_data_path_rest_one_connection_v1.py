@@ -23,11 +23,13 @@ import logging
 import sqlite3
 import threading
 import time
+from dataclasses import replace
 from datetime import datetime
 
 import schwab_client as sc
 from app.market_data.schwab.streaming import capture
-from calibration.complete_chain_capture import ChainSweep
+from calibration.complete_chain_capture import ChainSweep, last_capture_per_day
+from math_exposure_core import compute_exposures_by_strike, put_call_volume_ratio
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, verbatim_msg
 from tests.schwab_rest_standin import (
     CHAIN,
@@ -204,14 +206,36 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
             assert {f: getattr(ct, f) for f in GREEKS} == {f: quote[f] for f in GREEKS}, sym
             assert sent[sym] == quote, sym
     assert any(rounded[s] != spy[s].gamma for s in spy), "the chain's rounded Greeks are not kept"
-    # bid and ask are the quote's as sent; the chain's are not used, and the held contract,
-    # not asked on /quotes, has none until the stream's are laid over it
+    # bid, ask and volume are the quote's as sent; the chain's are not used, and the held
+    # contract, not asked on /quotes, carries the stream's as the stream held them when its
+    # chain was complete, so the chain as delivered and as stored has a quote for every contract
     for sym, ct in spy.items():
         if sym != HELD:
             quote = SPY_QUOTES[sym]["quote"]
             assert (ct.bid, ct.ask) == (quote["bidPrice"], quote["askPrice"]), sym
+            assert ct.volume == quote["totalVolume"], sym
             assert ct.listing.get("quote") is None, "the answer is read, not listed"
-    assert (spy[HELD].bid, spy[HELD].ask) == (None, None)
+    # (these twelve records carry TOTAL_VOLUME and no BID_PRICE or ASK_PRICE: Change delivery)
+    assert content["TOTAL_VOLUME"] == 486836 and not {"BID_PRICE", "ASK_PRICE"} & set(content)
+    assert (spy[HELD].bid, spy[HELD].ask, spy[HELD].volume) == (None, None, 486836)
+    assert all(ct.volume is not None for ct in spy.values()), "no contract without a volume"
+    (stored,) = last_capture_per_day(tmp_path / "ed_console.db", "SPY", 1)
+    kept = {ct.symbol: ct for ct in stored["contracts"]}[HELD]
+    assert (kept.bid, kept.ask, kept.volume) == (spy[HELD].bid, spy[HELD].ask, spy[HELD].volume)
+    # so the chain as delivered, with nothing laid over it (the close values), has a put/call
+    # volume ratio: one contract without a volume leaves it unknown
+    book, _diag = compute_exposures_by_strike(
+        list(spy.values()),
+        spot=SPY["spot"],
+        now=datetime.fromtimestamp(_et("2026-10-01 10:15"), ET),
+    )
+    assert put_call_volume_ratio(book) is not None
+    unknown, _diag = compute_exposures_by_strike(
+        [replace(ct, volume=None) if sym == HELD else ct for sym, ct in spy.items()],
+        spot=SPY["spot"],
+        now=datetime.fromtimestamp(_et("2026-10-01 10:15"), ET),
+    )
+    assert put_call_volume_ratio(unknown) is None
     assert all(
         getattr(ct, f) is None and ct.listing["greeksTime"] is None
         for ct in tsla.values()

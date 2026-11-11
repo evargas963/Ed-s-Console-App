@@ -110,6 +110,28 @@ def streamed_greek_set(greeks: Mapping[str, Any]) -> dict[str, float] | None:
     return {name: greeks[name] for name in GREEK_FIELDS}
 
 
+#: a streamed contract's top of book on LEVELONE_OPTIONS: each stream field, the record's name
+#: of it and its reader (rule 2)
+STREAMED_TOP = (
+    ("BID_PRICE", "bid", schwab_number),
+    ("ASK_PRICE", "ask", schwab_number),
+    ("BID_SIZE", "bid_size", schwab_count),
+    ("ASK_SIZE", "ask_size", schwab_count),
+    ("MARK", "mark", schwab_number),
+    ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_number),
+)
+
+
+def streamed_top(content: Mapping[str, Any]) -> dict[str, float | None]:
+    """Return the top of book a contract's LEVELONE_OPTIONS record carries, under our names.
+
+    The one reader of those stream fields (the console's order-flow state and the chain sweep).
+    A field the record does not carry is left out; one it carries is as Schwab sent it, None
+    when it is not a number.
+    """
+    return {name: read(content[field]) for field, name, read in STREAMED_TOP if field in content}
+
+
 def _expires_at(raw: Any, symbol: Any) -> float | None:
     """Schwab's expirationDate ("2026-09-18T20:00:00.000+00:00") as a time.
 
@@ -155,6 +177,10 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     void = vol_sent is not None and vol_sent == SCHWAB_NO_VALUE
     multiplier = schwab_number(raw.get("multiplier"))
     quoted = quote_values(raw["quote"]) if isinstance(raw.get("quote"), Mapping) else {}
+    streamed = raw.get("streamed")
+    if isinstance(streamed, Mapping):
+        # a contract Schwab streams: the stream's quote when its chain was complete (the sweep)
+        quoted = {"bid": streamed["bid"], "ask": streamed["ask"], "volume": streamed["volume"]}
     return OptionContract(
         symbol=raw.get("symbol"),
         side=side if side in ("CALL", "PUT") else None,
@@ -165,8 +191,8 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         days_to_expiry=schwab_number(raw.get("daysToExpiration")),
         settlement=raw.get("settlementType"),
         open_interest=schwab_count(raw.get("openInterest")),
-        # the quote's (the sweep's /quotes answer); a chain stored before quotes were kept with
-        # it carries only the volume /chains sent, as recorded
+        # the quote's (the sweep's /quotes answer) or, for a streamed contract, the stream's; a
+        # chain stored before quotes were kept with it carries only the volume /chains sent
         volume=quoted["volume"] if quoted else schwab_count(raw.get("totalVolume")),
         bid=quoted.get("bid"),
         ask=quoted.get("ask"),
