@@ -224,6 +224,31 @@ def test_every_window_line_reaches_the_window_before_the_program_ends(tmp_path):
     assert shown == [f"PUSH line {i}" for i in range(2000)]
 
 
+def test_a_frame_the_daemon_cannot_take_is_logged_and_the_stream_goes_on(caplog):
+    """A frame with no list of items, and an item with no symbol, are logged as they came.
+
+    Induced on real messages Schwab sent (2026-10-05 14:00 CT): one frame without its `content`,
+    then one frame holding an item with its `key` taken out beside an item as Schwab sent it.
+    The first is logged and nothing is published; in the second the item without a symbol is
+    logged and the other is published, and the service counts as alive.
+    """
+    mix = json.loads((REPO / "tests/fixtures/real_stream_mix_2026_10_05_1400ct.json").read_text())
+    sent = next(m for m in mix["messages"] if m["service"] == "LEVELONE_EQUITIES")
+    bus, health = capture.MessageBus(), capture.HealthRegistry()
+    handler = capture._publisher("LEVELONE_EQUITIES", bus, health)
+    nameless = {k: v for k, v in sent["item"].items() if k != "key"}
+    with caplog.at_level(logging.WARNING, logger="capture"):
+        handler({"timestamp": sent["schwab_ts"]})
+        nothing = dict(bus.current)
+        handler({"timestamp": sent["schwab_ts"], "content": [nameless, sent["item"]]})
+    lines = [r.getMessage() for r in caplog.records]
+    assert nothing == {}
+    assert len(lines) == 2
+    assert lines[0].startswith("LEVELONE_EQUITIES: a frame with no list of items, not taken: ")
+    assert lines[1].startswith("LEVELONE_EQUITIES: an item with no symbol, not taken: ")
+    assert [topic for topic, _msg in bus.current.values()] == [f"quote.{sent['item']['key']}"]
+
+
 def test_the_window_shows_each_second_what_schwab_streamed(caplog):
     """Real LEVELONE and book messages Schwab sent (2026-10-05 14:00 CT) through the handler.
 
