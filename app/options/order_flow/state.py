@@ -130,12 +130,11 @@ class OrderFlowState:
             if is_adjacent_restatement(self._prev_trade.get(sym), key):
                 return
             self._prev_trade[sym] = key
-            seq = self._receive_seq.get(sym, 0) + 1
-            self._receive_seq[sym] = seq
+            self._receive_seq[sym] = self._receive_seq.get(sym, 0) + 1
             self._get_tape(sym).append(
                 {
                     **trade,
-                    "receive_seq": seq,
+                    "receive_seq": self._receive_seq[sym],
                     # the daemon's receive time of the message that carried the trade, not the
                     # console's clock, and not a later tick merged into the same record
                     "server_received_ts": float(received("LAST_PRICE")),

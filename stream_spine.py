@@ -639,7 +639,7 @@ _INSERTS = {
             m.get("ts"),
             m.get("service"),
             m.get("command"),
-            json.dumps(m.get("symbols") or []),
+            json.dumps(m["symbols"]),
             m.get("code"),
             m.get("reason"),
         ),
