@@ -6,6 +6,7 @@ scheduling live in the caller, so this stays trivially testable.
 
 from __future__ import annotations
 
+import bisect
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 from typing import Any
@@ -304,6 +305,17 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
     }
 
 
+def nearest_position(ascending: list[float], spot: float) -> int:
+    """Return where the strike nearest `spot` stands in `ascending` (the lower one on a tie).
+
+    The one rule of nearness, for a caller that holds its strikes in order. -1 with no strike.
+    """
+    i = bisect.bisect_left(ascending, spot)
+    if i == len(ascending) or (i > 0 and spot - ascending[i - 1] <= ascending[i] - spot):
+        i -= 1
+    return i
+
+
 def nearest_strike(strikes, spot) -> float | None:
     """Return the listed strike nearest `spot` (the lower one on a tie).
 
@@ -312,7 +324,7 @@ def nearest_strike(strikes, spot) -> float | None:
     ks = sorted(float(k) for k in strikes)
     if spot is None or not ks:
         return None
-    return min(ks, key=lambda k: abs(k - float(spot)))
+    return ks[nearest_position(ks, float(spot))]
 
 
 #: The strikes a panel shows per scope: Auto and Wider a count centred on the price, All every one.
