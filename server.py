@@ -32,7 +32,6 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow.engine import (
     BOOK_VENUES,
     COMPOSITE,
-    OrderFlowEngine,
     book_age_sec,
     book_readout,
     compute_book_microstructure,
@@ -45,7 +44,7 @@ from app.options.order_flow.history import (
     book_heatmap_for_ticker,
     tape_row,
 )
-from app.options.order_flow.live_payload import flow_block, options_live_payload
+from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import (
     get_content_for_symbol,
     get_stream_greeks,
@@ -3004,13 +3003,6 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
         top_label,
         book_label,
     )
-    # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
-    # same OrderFlowEngine the option book uses (no second classifier).
-    try:
-        payload["flow"] = flow_block(OrderFlowEngine().compute(data, now=now, ticker=t))
-    except Exception as e:  # flow is additive -- the book payload stands without it
-        log.warning("microstructure flow failed for %s: %s", t, e, exc_info=True)
-        payload["flow"] = None
     payload["ticker"] = t
     payload["venue"] = venue
     _stamp_book_times(payload)

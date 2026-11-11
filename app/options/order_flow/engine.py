@@ -241,8 +241,8 @@ def _resolve_quote_mark(data: dict) -> float | None:
 #: HEURISTIC only: a displayed level is a WALL CANDIDATE when its size is at least this multiple
 #: of the MEDIAN level size across the ladder. A relative size-outlier convention (tunable, and
 #: blind to hidden/reserve size) — NOT an objectively-known liquidity wall. Surfaced with each
-#: candidate's `median_mult` and a self-describing `wall_method` block so the API never asserts
-#: a proven wall. magic-threshold-ok: relative (× median), carries its method in the payload.
+#: candidate's `median_mult` so the API never asserts a proven wall. magic-threshold-ok:
+#: relative (× median).
 OF_BOOK_WALL_MEDIAN_MULT: float = 3.0
 
 #: Depth ladder for the canonical depth totals/imbalance — the existing 1/3/5 ladder.
@@ -354,38 +354,6 @@ def _book_pressure_curve(levels: list[tuple[float, float]], max_levels: int) -> 
     return out
 
 
-def _book_slope(levels: list[tuple[float, float]], depth: int, total: float | None) -> float | None:
-    """Return the displayed depth density across the best `depth` levels.
-
-        book_slope = (canonical top-`depth` TOTAL_VOLUME) / |best_price − last_level_price|
-    Units: shares per $1 of book depth = dVolume/dPrice (depth per unit price), NOT a
-    price-impact slope. Higher = liquidity packed near the touch. Reuses the CANONICAL depth
-    total (passed in) rather than re-summing. None if a side has <2 levels (no span), the
-    top-`depth` levels share one price (zero span), or the total is absent.
-    """
-    lv = levels[:depth]
-    if len(lv) < 2 or total is None:
-        return None
-    span = abs(lv[0][0] - lv[-1][0])
-    if span <= 0:
-        return None
-    return total / span
-
-
-def _book_concentration(levels: list[tuple[float, float]], total: float | None) -> float | None:
-    """Return the fraction of the top-`depth` displayed volume resting at the touch.
-
-    The touch is the best level; the volume is the canonical top-`depth` displayed volume.
-        liquidity_concentration = best_level_volume / (canonical top-`depth` TOTAL_VOLUME)
-    Range [0, 1]. 1.0 = all near-book size at the inside (fragile); low = distributed down the
-    ladder (resilient). Reuses the CANONICAL depth total (passed in), not a private re-sum. A
-    single-level side returns 1.0. None if the side is empty or the total is non-positive.
-    """
-    if not levels or total is None or total <= 0:
-        return None
-    return levels[0][1] / total
-
-
 def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: int) -> list[dict]:
     """Return HEURISTIC displayed-size anomalies as wall candidates.
 
@@ -428,7 +396,7 @@ def _microstructure_structural(cb: dict) -> dict:
     mark = cb["mark"]
 
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
-    # totals and imbalance), carried; slope and concentration reuse its top-5 totals.
+    # totals and imbalance), carried.
     ladder = _readout(bid_levels, ask_levels, cb["book_time_ms"])["views"]
     depth: dict[str, dict] = {}
     for n in OF_MICRO_DEPTH_LADDER:
@@ -438,10 +406,6 @@ def _microstructure_structural(cb: dict) -> dict:
             "ask_total": lv["ask_total"],
             "imbalance": lv["imbalance"],
         }
-    deep_bt, deep_at = (
-        ladder[str(OF_BOOK_DEPTH_DEEP)]["bid_total"],
-        ladder[str(OF_BOOK_DEPTH_DEEP)]["ask_total"],
-    )
 
     return {
         "status": "ok" if cb["has_book"] else "no_book",
@@ -455,26 +419,10 @@ def _microstructure_structural(cb: dict) -> dict:
             "bid": _book_pressure_curve(bid_levels, OF_BOOK_DEPTH_DEEP),
             "ask": _book_pressure_curve(ask_levels, OF_BOOK_DEPTH_DEEP),
         },
-        "book_slope": {
-            "bid": _book_slope(bid_levels, OF_BOOK_DEPTH_DEEP, deep_bt),
-            "ask": _book_slope(ask_levels, OF_BOOK_DEPTH_DEEP, deep_at),
-        },
-        "liquidity_concentration": {
-            "bid": _book_concentration(bid_levels, deep_bt),
-            "ask": _book_concentration(ask_levels, deep_at),
-        },
         "wall_candidates": (
             _book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)
             + _book_wall_candidates(ask_levels, "ask", OF_BOOK_DEPTH_DEEP)
         ),
-        "wall_method": {
-            "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",
-            "mult": OF_BOOK_WALL_MEDIAN_MULT,
-            "depth": OF_BOOK_DEPTH_DEEP,
-            "heuristic": True,
-            "note": "size-outlier candidates in the DISPLAYED book only; blind to hidden/reserve "
-            "size; NOT an objectively-known liquidity wall",
-        },
         "provenance_structural": {
             "book_time_ms": cb["book_time_ms"],
             "n_bid_levels": len(bid_levels),
@@ -494,9 +442,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "depth.*.ask_total": "DERIVED",
             "depth.*.imbalance": "DERIVED",
             "depth_pressure": "DERIVED",
-            "book_slope": "DERIVED",
-            "liquidity_concentration": "DERIVED",
-            "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
+            "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention)",
             "ages.book_age_sec": "DERIVED",
             "ages.quote_age_sec": "DERIVED",
             "ages.book_stale": "DERIVED",

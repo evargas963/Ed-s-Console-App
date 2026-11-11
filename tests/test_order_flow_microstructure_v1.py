@@ -107,13 +107,8 @@ def test_depth_totals_values():
     assert (d5["bid_total"], d5["ask_total"]) == (1360.0, 2430.0)
 
 
-def test_book_shape_metrics():
+def test_the_depth_pressure_curve_is_cumulative_best_first():
     m = _micro(_data(), now_ts=1787233772.0)
-    # slope: 1360 shares over a 0.04 price span (712.47 -> 712.43) = 34000 shares/$.
-    assert abs(m["book_slope"]["bid"] - 34000.0) < 1e-6
-    # concentration: 1000 at the touch / 1360 top-5 = 0.7353.
-    assert abs(m["liquidity_concentration"]["bid"] - (1000.0 / 1360.0)) < 1e-9
-    # depth-pressure curve is cumulative, best-first.
     bid_curve = m["depth_pressure"]["bid"]
     assert [round(x["cum"], 1) for x in bid_curve] == [1000.0, 1040.0, 1080.0, 1160.0, 1360.0]
 
@@ -123,11 +118,11 @@ def test_wall_candidates_are_flagged_heuristic():
     # median top-5 bid size = 80; the 1000-share touch is 12.5x median -> a candidate. None on ask.
     bid_walls = [w for w in m["wall_candidates"] if w["side"] == "bid"]
     assert bid_walls == [{"side": "bid", "price": 712.47, "volume": 1000.0, "median_mult": 12.5}]
-    # The API must NOT imply an objective wall: the field is 'wall_candidates', carries a
-    # self-describing heuristic method, and is classified as a heuristic.
+    # The API must NOT imply an objective wall: the field is 'wall_candidates', each candidate
+    # carries how many times the median it is, and it is classified as a heuristic.
     assert "walls" not in m
-    assert m["wall_method"]["heuristic"] is True
-    assert m["wall_method"]["mult"] == ofe.OF_BOOK_WALL_MEDIAN_MULT
+    assert bid_walls[0]["median_mult"] >= ofe.OF_BOOK_WALL_MEDIAN_MULT
+    assert [w for w in m["wall_candidates"] if w["side"] == "ask"] == []
     assert "HEURISTIC" in m["classification"]["wall_candidates"].upper()
 
 
@@ -146,21 +141,6 @@ def test_microprice_is_computed_from_every_quote_schwab_sent():
     assert ofe._microprice(None, 712.49, 300, 500) is None  # missing leg
     # locked book (bid == ask, spread 0) is a valid input, returns the common price.
     assert ofe._microprice(712.49, 712.49, 300, 500) == 712.49
-
-
-def test_slope_and_concentration_sparse_and_asymmetric():
-    # Sparse: a single bid level -> slope None (no span), concentration 1.0 (all at touch).
-    one = {
-        "BIDS": [{"BID_PRICE": 10.0, "TOTAL_VOLUME": 50}],
-        "ASKS": [{"ASK_PRICE": 10.1, "TOTAL_VOLUME": 40}, {"ASK_PRICE": 10.2, "TOTAL_VOLUME": 40}],
-        "BOOK_TIME": 1,
-    }
-    m = _micro({"content": [one]}, now_ts=1.0)
-    assert m["book_slope"]["bid"] is None  # <2 bid levels -> no span
-    assert m["liquidity_concentration"]["bid"] == 1.0
-    # Asymmetric: ask side has 2 levels over a 0.1 span -> slope = 80/0.1 = 800 shares/$.
-    assert abs(m["book_slope"]["ask"] - 800.0) < 1e-9
-    assert abs(m["liquidity_concentration"]["ask"] - 0.5) < 1e-9
 
 
 def test_ages_from_native_timestamps():
@@ -189,9 +169,8 @@ def test_every_emitted_metric_is_classified():
     m = _micro(_data(), now_ts=1787233772.0)
     cls = m["classification"]
     # Self-describing meta blocks, not emitted metrics: the classification map
-    # itself, the explicit deferral list, the status flag, and wall_method (which
-    # documents HOW wall_candidates is computed and carries no metric of its own).
-    meta = {"classification", "deferred", "status", "wall_method"}
+    # itself, the explicit deferral list and the status flag.
+    meta = {"classification", "deferred", "status"}
     unclassified = [
         key
         for key in m
@@ -654,7 +633,8 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
             received_ts=now,
         )
         body = server.order_flow_microstructure("ZZTB", "NYSE_BOOK", now)
-        assert body["flow"]["top_book_pressure"] == (3 - 5) / 8 and body["top_outage"] is None
+        top = body["top_of_book"]
+        assert (top["bid_size"], top["ask_size"]) == (3, 5) and body["top_outage"] is None
         # the equity's MARK is served as the price row holds it; no mid is computed beside it
         assert body["mark"] == 10.01 and "mid" not in body
     finally:

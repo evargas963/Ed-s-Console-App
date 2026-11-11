@@ -48,18 +48,6 @@ def test_the_bars_panel_accepts_30m_and_twelve_thousand_rows_and_nothing_beyond(
         srv.bars("SPY", now, {"tf": "30", "limit": 12001})
 
 
-def test_equity_microstructure_serves_the_engines_tick_rule_flow_labelled_proxy():
-    flow = srv.book("SPY", time_et.now(), {"venue": "NYSE_BOOK"})["flow"]
-    assert set(flow) >= {
-        "tape_pressure_30s",
-        "tape_pressure_2m",
-        "tape_pressure_5m",
-        "cum_delta_proxy",
-    }
-    assert flow["classification"]["tape_pressure_5m"] == "PROXY"
-    assert flow["native_aggressor_available"] is False
-
-
 def test_every_shipped_page_script_parses():
     """Every script the console serves must parse.
 
