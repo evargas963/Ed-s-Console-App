@@ -1,1 +1,8073 @@
-{"ticker":"TSLA","available":true,"since_ts":1790380503.223281,"until_ts":1790387352.0824609,"latest_captured_ts":1790387352.0824609,"n_buckets":90,"bucket_sec":76.1,"price_min":350.0,"price_max":423.77,"display_lo":350.0,"display_hi":375.0,"max_size":1000.0,"rows_scanned":150,"rows_capped":false,"cells":[{"t":0,"price":350.0,"bid":40.0,"ask":0.0,"side":"BID"},{"t":0,"price":370.15,"bid":40.0,"ask":0.0,"side":"BID"},{"t":0,"price":371.01,"bid":80.0,"ask":0.0,"side":"BID"},{"t":0,"price":371.52,"bid":200.0,"ask":0.0,"side":"BID"},{"t":0,"price":372.3,"bid":40.0,"ask":0.0,"side":"BID"},{"t":0,"price":372.4,"bid":200.0,"ask":0.0,"side":"BID"},{"t":0,"price":372.41,"bid":40.0,"ask":0.0,"side":"BID"},{"t":0,"price":372.44,"bid":40.0,"ask":0.0,"side":"BID"},{"t":0,"price":372.45,"bid":240.0,"ask":0.0,"side":"BID"},{"t":0,"price":372.47,"bid":2.0,"ask":0.0,"side":"BID"},{"t":0,"price":372.48,"bid":33.0,"ask":6.0,"side":"BID"},{"t":0,"price":372.5,"bid":80.0,"ask":100.0,"side":"ASK"},{"t":0,"price":372.51,"bid":10.0,"ask":5.0,"side":"BID"},{"t":0,"price":372.53,"bid":0.0,"ask":160.0,"side":"ASK"},{"t":0,"price":372.69,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":0,"price":372.78,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":0,"price":372.8,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":0,"price":373.16,"bid":0.0,"ask":280.0,"side":"ASK"},{"t":0,"price":374.3,"bid":0.0,"ask":120.0,"side":"ASK"},{"t":0,"price":375.0,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":0,"price":379.86,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":1,"price":350.0,"bid":40.0,"ask":0.0,"side":"BID"},{"t":1,"price":370.15,"bid":40.0,"ask":0.0,"side":"BID"},{"t":1,"price":371.01,"bid":80.0,"ask":0.0,"side":"BID"},{"t":1,"price":371.52,"bid":200.0,"ask":0.0,"side":"BID"},{"t":1,"price":372.3,"bid":40.0,"ask":0.0,"side":"BID"},{"t":1,"price":372.4,"bid":255.0,"ask":0.0,"side":"BID"},{"t":1,"price":372.41,"bid":10.0,"ask":0.0,"side":"BID"},{"t":1,"price":372.44,"bid":13.0,"ask":0.0,"side":"BID"},{"t":1,"price":372.45,"bid":0.0,"ask":80.0,"side":"ASK"},{"t":1,"price":372.46,"bid":5.0,"ask":0.0,"side":"BID"},{"t":1,"price":372.47,"bid":2.0,"ask":6.0,"side":"ASK"},{"t":1,"price":372.48,"bid":0.0,"ask":6.0,"side":"ASK"},{"t":1,"price":372.53,"bid":0.0,"ask":160.0,"side":"ASK"},{"t":1,"price":372.69,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":1,"price":372.8,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":1,"price":373.16,"bid":0.0,"ask":280.0,"side":"ASK"},{"t":1,"price":374.3,"bid":0.0,"ask":120.0,"side":"ASK"},{"t":1,"price":375.0,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":1,"price":379.86,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":2,"price":350.0,"bid":40.0,"ask":0.0,"side":"BID"},{"t":2,"price":370.15,"bid":40.0,"ask":0.0,"side":"BID"},{"t":2,"price":371.01,"bid":80.0,"ask":0.0,"side":"BID"},{"t":2,"price":371.52,"bid":200.0,"ask":0.0,"side":"BID"},{"t":2,"price":372.3,"bid":40.0,"ask":0.0,"side":"BID"},{"t":2,"price":372.35,"bid":600.0,"ask":0.0,"side":"BID"},{"t":2,"price":372.4,"bid":120.0,"ask":0.0,"side":"BID"},{"t":2,"price":372.41,"bid":0.0,"ask":5.0,"side":"ASK"},{"t":2,"price":372.42,"bid":90.0,"ask":0.0,"side":"BID"},{"t":2,"price":372.43,"bid":0.0,"ask":15.0,"side":"ASK"},{"t":2,"price":372.44,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":2,"price":372.45,"bid":0.0,"ask":200.0,"side":"ASK"},{"t":2,"price":372.48,"bid":0.0,"ask":30.0,"side":"ASK"},{"t":2,"price":372.69,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":2,"price":372.8,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":2,"price":373.16,"bid":0.0,"ask":280.0,"side":"ASK"},{"t":2,"price":373.5,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":2,"price":374.3,"bid":0.0,"ask":120.0,"side":"ASK"},{"t":2,"price":375.0,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":2,"price":379.86,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":3,"price":350.0,"bid":40.0,"ask":0.0,"side":"BID"},{"t":3,"price":370.15,"bid":40.0,"ask":0.0,"side":"BID"},{"t":3,"price":371.01,"bid":80.0,"ask":0.0,"side":"BID"},{"t":3,"price":371.52,"bid":200.0,"ask":0.0,"side":"BID"},{"t":3,"price":372.3,"bid":40.0,"ask":0.0,"side":"BID"},{"t":3,"price":372.4,"bid":40.0,"ask":0.0,"side":"BID"},{"t":3,"price":372.42,"bid":50.0,"ask":0.0,"side":"BID"},{"t":3,"price":372.43,"bid":80.0,"ask":80.0,"side":"EVEN"},{"t":3,"price":372.44,"bid":13.0,"ask":40.0,"side":"ASK"},{"t":3,"price":372.45,"bid":0.0,"ask":160.0,"side":"ASK"},{"t":3,"price":372.48,"bid":0.0,"ask":4.0,"side":"ASK"},{"t":3,"price":372.51,"bid":0.0,"ask":5.0,"side":"ASK"},{"t":3,"price":372.52,"bid":0.0,"ask":5.0,"side":"ASK"},{"t":3,"price":372.59,"bid":0.0,"ask":300.0,"side":"ASK"},{"t":3,"price":372.6,"bid":0.0,"ask":800.0,"side":"ASK"},{"t":3,"price":372.64,"bid":0.0,"ask":1000.0,"side":"ASK"},{"t":3,"price":372.69,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":3,"price":372.8,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":3,"price":373.16,"bid":0.0,"ask":280.0,"side":"ASK"},{"t":3,"price":373.39,"bid":0.0,"ask":480.0,"side":"ASK"},{"t":3,"price":373.5,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":3,"price":374.3,"bid":0.0,"ask":120.0,"side":"ASK"},{"t":3,"price":379.86,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":3,"price":423.77,"bid":0.0,"ask":5.0,"side":"ASK"},{"t":38,"price":350.0,"bid":40.0,"ask":0.0,"side":"BID"},{"t":38,"price":370.15,"bid":40.0,"ask":0.0,"side":"BID"},{"t":38,"price":371.01,"bid":80.0,"ask":0.0,"side":"BID"},{"t":38,"price":371.52,"bid":200.0,"ask":0.0,"side":"BID"},{"t":38,"price":372.3,"bid":40.0,"ask":0.0,"side":"BID"},{"t":38,"price":372.4,"bid":40.0,"ask":0.0,"side":"BID"},{"t":38,"price":372.43,"bid":80.0,"ask":0.0,"side":"BID"},{"t":38,"price":372.64,"bid":0.0,"ask":1000.0,"side":"ASK"},{"t":38,"price":372.8,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":38,"price":373.16,"bid":0.0,"ask":280.0,"side":"ASK"},{"t":38,"price":373.39,"bid":0.0,"ask":480.0,"side":"ASK"},{"t":38,"price":373.5,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":38,"price":374.3,"bid":0.0,"ask":120.0,"side":"ASK"},{"t":38,"price":379.86,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":89,"price":350.0,"bid":40.0,"ask":0.0,"side":"BID"},{"t":89,"price":370.15,"bid":40.0,"ask":0.0,"side":"BID"},{"t":89,"price":371.01,"bid":80.0,"ask":0.0,"side":"BID"},{"t":89,"price":371.52,"bid":200.0,"ask":0.0,"side":"BID"},{"t":89,"price":372.3,"bid":40.0,"ask":0.0,"side":"BID"},{"t":89,"price":372.4,"bid":40.0,"ask":0.0,"side":"BID"},{"t":89,"price":372.43,"bid":80.0,"ask":0.0,"side":"BID"},{"t":89,"price":372.64,"bid":0.0,"ask":1000.0,"side":"ASK"},{"t":89,"price":372.8,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":89,"price":373.16,"bid":0.0,"ask":280.0,"side":"ASK"},{"t":89,"price":373.39,"bid":0.0,"ask":480.0,"side":"ASK"},{"t":89,"price":373.5,"bid":0.0,"ask":40.0,"side":"ASK"},{"t":89,"price":374.3,"bid":0.0,"ask":120.0,"side":"ASK"},{"t":89,"price":379.86,"bid":0.0,"ask":40.0,"side":"ASK"}],"method":"stream_book_raw NASDAQ_BOOK+NYSE_BOOK rows for this ticker, oldest-to-newest in the window ending at the data's own latest captured tick, binned into n_buckets time columns x native BID_PRICE/ASK_PRICE rows; cell value = the LAST observed native TOTAL_VOLUME at that price within the bucket (displayed size only, both venues merged) -- never summed across repeated observations of the same resting size, which would measure retransmission frequency, not liquidity."}
+{
+ "ticker": "TSLA",
+ "venue": "NASDAQ_BOOK",
+ "available": true,
+ "since_ts": 1790380502.815,
+ "until_ts": 1790380803.232,
+ "n_buckets": 90,
+ "bucket_sec": 3.3379666672812567,
+ "display_lo": 350.0,
+ "display_hi": 375.0,
+ "max_size": 1000.0,
+ "rows_scanned": 136,
+ "cells": [
+  {
+   "t": 0,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 0,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 0,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 0,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 0,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 0,
+   "price": 372.45,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 0,
+   "price": 372.5,
+   "bid": 143.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 0,
+   "price": 372.53,
+   "bid": null,
+   "ask": 140.0,
+   "side": "ASK"
+  },
+  {
+   "t": 0,
+   "price": 372.78,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 0,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 0,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 0,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 0,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 0,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 2,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 2,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 2,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 2,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 2,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 2,
+   "price": 372.45,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 2,
+   "price": 372.5,
+   "bid": 143.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 2,
+   "price": 372.53,
+   "bid": null,
+   "ask": 180.0,
+   "side": "ASK"
+  },
+  {
+   "t": 2,
+   "price": 372.78,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 2,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 2,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 2,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 2,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 2,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 4,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 4,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 4,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 4,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 4,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 4,
+   "price": 372.45,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 4,
+   "price": 372.5,
+   "bid": 143.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 4,
+   "price": 372.53,
+   "bid": null,
+   "ask": 180.0,
+   "side": "ASK"
+  },
+  {
+   "t": 4,
+   "price": 372.78,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 4,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 4,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 4,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 4,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 4,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 5,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 5,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 5,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 5,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 5,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 5,
+   "price": 372.45,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 5,
+   "price": 372.5,
+   "bid": 143.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 5,
+   "price": 372.53,
+   "bid": null,
+   "ask": 180.0,
+   "side": "ASK"
+  },
+  {
+   "t": 5,
+   "price": 372.78,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 5,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 5,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 5,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 5,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 5,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 6,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 372.3,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 372.45,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 372.48,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 372.5,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 372.51,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 6,
+   "price": 372.53,
+   "bid": null,
+   "ask": 180.0,
+   "side": "ASK"
+  },
+  {
+   "t": 6,
+   "price": 372.78,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 6,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 6,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 6,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 6,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 6,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 7,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 372.3,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 372.45,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 372.5,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 372.51,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 7,
+   "price": 372.53,
+   "bid": null,
+   "ask": 180.0,
+   "side": "ASK"
+  },
+  {
+   "t": 7,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 7,
+   "price": 372.78,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 7,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 7,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 7,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 7,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 7,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 8,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 372.3,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 372.45,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 372.5,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 372.51,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 8,
+   "price": 372.53,
+   "bid": null,
+   "ask": 180.0,
+   "side": "ASK"
+  },
+  {
+   "t": 8,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 8,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 8,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 8,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 8,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 8,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 9,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 9,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 9,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 9,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 9,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 9,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 9,
+   "price": 372.45,
+   "bid": 240.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 9,
+   "price": 372.48,
+   "bid": 33.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 9,
+   "price": 372.53,
+   "bid": null,
+   "ask": 180.0,
+   "side": "ASK"
+  },
+  {
+   "t": 9,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 9,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 9,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 9,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 9,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 9,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 10,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 10,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 10,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 10,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 10,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 10,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 10,
+   "price": 372.45,
+   "bid": 240.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 10,
+   "price": 372.48,
+   "bid": 33.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 10,
+   "price": 372.53,
+   "bid": null,
+   "ask": 180.0,
+   "side": "ASK"
+  },
+  {
+   "t": 10,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 10,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 10,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 10,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 10,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 10,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 11,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 11,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 11,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 11,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 11,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 11,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 11,
+   "price": 372.45,
+   "bid": 240.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 11,
+   "price": 372.48,
+   "bid": 33.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 11,
+   "price": 372.51,
+   "bid": null,
+   "ask": 5.0,
+   "side": "ASK"
+  },
+  {
+   "t": 11,
+   "price": 372.53,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 11,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 11,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 11,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 11,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 11,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 11,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 12,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 12,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 12,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 12,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 12,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 12,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 12,
+   "price": 372.45,
+   "bid": 240.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 12,
+   "price": 372.48,
+   "bid": 33.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 12,
+   "price": 372.51,
+   "bid": null,
+   "ask": 5.0,
+   "side": "ASK"
+  },
+  {
+   "t": 12,
+   "price": 372.53,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 12,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 12,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 12,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 12,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 12,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 12,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 14,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 14,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 14,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 14,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 14,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 14,
+   "price": 372.4,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 14,
+   "price": 372.45,
+   "bid": 240.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 14,
+   "price": 372.48,
+   "bid": 33.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 14,
+   "price": 372.51,
+   "bid": null,
+   "ask": 5.0,
+   "side": "ASK"
+  },
+  {
+   "t": 14,
+   "price": 372.53,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 14,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 14,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 14,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 14,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 14,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 14,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 15,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 372.44,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 372.45,
+   "bid": 240.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 372.48,
+   "bid": 33.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 15,
+   "price": 372.5,
+   "bid": null,
+   "ask": 100.0,
+   "side": "ASK"
+  },
+  {
+   "t": 15,
+   "price": 372.53,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 15,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 15,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 15,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 15,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 15,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 15,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 16,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 16,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 16,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 16,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 16,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 16,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 16,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 16,
+   "price": 372.47,
+   "bid": 2.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 16,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 16,
+   "price": 372.53,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 16,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 16,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 16,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 16,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 16,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 16,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 17,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 17,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 17,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 17,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 17,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 17,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 17,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 17,
+   "price": 372.47,
+   "bid": 2.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 17,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 17,
+   "price": 372.53,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 17,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 17,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 17,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 17,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 17,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 17,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 18,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 18,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 18,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 18,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 18,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 18,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 18,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 18,
+   "price": 372.47,
+   "bid": 2.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 18,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 18,
+   "price": 372.53,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 18,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 18,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 18,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 18,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 18,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 18,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 20,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 20,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 20,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 20,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 20,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 20,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 20,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 20,
+   "price": 372.47,
+   "bid": 2.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 20,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 20,
+   "price": 372.53,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 20,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 20,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 20,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 20,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 20,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 20,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 21,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 21,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 21,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 21,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 21,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 21,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 21,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 21,
+   "price": 372.47,
+   "bid": 2.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 21,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 21,
+   "price": 372.53,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 21,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 21,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 21,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 21,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 21,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 21,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 22,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 22,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 22,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 22,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 22,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 22,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 22,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 22,
+   "price": 372.47,
+   "bid": 2.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 22,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 22,
+   "price": 372.53,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 22,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 22,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 22,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 22,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 22,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 22,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 25,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 25,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 25,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 25,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 25,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 25,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 25,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 25,
+   "price": 372.46,
+   "bid": 5.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 25,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 25,
+   "price": 372.53,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 25,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 25,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 25,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 25,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 25,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 25,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 26,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 26,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 26,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 26,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 26,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 26,
+   "price": 372.4,
+   "bid": 160.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 26,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 26,
+   "price": 372.44,
+   "bid": 13.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 26,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 26,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 26,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 26,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 26,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 26,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 26,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 26,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 28,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 28,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 28,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 28,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 28,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 28,
+   "price": 372.4,
+   "bid": 160.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 28,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 28,
+   "price": 372.44,
+   "bid": 13.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 28,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 28,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 28,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 28,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 28,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 28,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 28,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 28,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 29,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 29,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 29,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 29,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 29,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 29,
+   "price": 372.4,
+   "bid": 160.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 29,
+   "price": 372.41,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 29,
+   "price": 372.44,
+   "bid": 13.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 29,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 29,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 29,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 29,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 29,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 29,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 29,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 31,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 31,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 31,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 31,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 31,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 31,
+   "price": 372.4,
+   "bid": 160.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 31,
+   "price": 372.41,
+   "bid": 100.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 31,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 31,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 31,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 31,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 31,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 31,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 31,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 32,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 32,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 32,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 32,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 32,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 32,
+   "price": 372.4,
+   "bid": 160.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 32,
+   "price": 372.41,
+   "bid": 100.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 32,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 32,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 32,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 32,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 32,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 32,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 32,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 33,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 33,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 33,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 33,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 33,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 33,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 33,
+   "price": 372.41,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 33,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 33,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 33,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 33,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 33,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 33,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 33,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 34,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 34,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 34,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 34,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 34,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 34,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 34,
+   "price": 372.41,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 34,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 34,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 34,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 34,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 34,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 34,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 34,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 35,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 35,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 35,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 35,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 35,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 35,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 35,
+   "price": 372.41,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 35,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 35,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 35,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 35,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 35,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 35,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 35,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 36,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 36,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 36,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 36,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 36,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 36,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 36,
+   "price": 372.41,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 36,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 36,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 36,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 36,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 36,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 36,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 36,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 37,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 37,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 37,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 37,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 37,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 37,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 37,
+   "price": 372.41,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 37,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 37,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 37,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 37,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 37,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 37,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 37,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 38,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 38,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 38,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 38,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 38,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 38,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 38,
+   "price": 372.41,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 38,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 38,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 38,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 38,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 38,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 38,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 38,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 39,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 39,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 39,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 39,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 39,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 39,
+   "price": 372.4,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 39,
+   "price": 372.41,
+   "bid": 10.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 39,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 39,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 39,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 39,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 39,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 39,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 39,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 40,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 40,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 40,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 40,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 40,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 40,
+   "price": 372.4,
+   "bid": 250.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 40,
+   "price": 372.45,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 40,
+   "price": 372.47,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 40,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 40,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 40,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 40,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 40,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 40,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 41,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 41,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 41,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 41,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 41,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 41,
+   "price": 372.4,
+   "bid": 250.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 41,
+   "price": 372.45,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 41,
+   "price": 372.48,
+   "bid": null,
+   "ask": 46.0,
+   "side": "ASK"
+  },
+  {
+   "t": 41,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 41,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 41,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 41,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 41,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 42,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 42,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 42,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 42,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 42,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 42,
+   "price": 372.4,
+   "bid": 250.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 42,
+   "price": 372.45,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 42,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 42,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 42,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 42,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 42,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 42,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 42,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 43,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 43,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 43,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 43,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 43,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 43,
+   "price": 372.4,
+   "bid": 250.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 43,
+   "price": 372.45,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 43,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 43,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 43,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 43,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 43,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 43,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 43,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 44,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 44,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 44,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 44,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 44,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 44,
+   "price": 372.4,
+   "bid": 255.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 44,
+   "price": 372.45,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 44,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 44,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 44,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 44,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 44,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 44,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 44,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 45,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 45,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 45,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 45,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 45,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 45,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 45,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 45,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 45,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 45,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 45,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 45,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 45,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 45,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 46,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 46,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 46,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 46,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 46,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 46,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 46,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 46,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 46,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 46,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 46,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 46,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 46,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 46,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 47,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 47,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 47,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 47,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 47,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 47,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 47,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 47,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 47,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 47,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 47,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 47,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 47,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 47,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 49,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 49,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 49,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 49,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 49,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 49,
+   "price": 372.35,
+   "bid": 600.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 49,
+   "price": 372.4,
+   "bid": 175.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 49,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 49,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 49,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 49,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 49,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 49,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 49,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 49,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 50,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 50,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 50,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 50,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 50,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 50,
+   "price": 372.35,
+   "bid": 600.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 50,
+   "price": 372.4,
+   "bid": 175.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 50,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 50,
+   "price": 372.48,
+   "bid": null,
+   "ask": 30.0,
+   "side": "ASK"
+  },
+  {
+   "t": 50,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 50,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 50,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 50,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 50,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 50,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 51,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 51,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 51,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 51,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 51,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 51,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 51,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 51,
+   "price": 372.48,
+   "bid": null,
+   "ask": 30.0,
+   "side": "ASK"
+  },
+  {
+   "t": 51,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 51,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 51,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 51,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 51,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 51,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 52,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 52,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 52,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 52,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 52,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 52,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 52,
+   "price": 372.43,
+   "bid": null,
+   "ask": 100.0,
+   "side": "ASK"
+  },
+  {
+   "t": 52,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 52,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 52,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 52,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 52,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 52,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 52,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 53,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 53,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 53,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 53,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 53,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 53,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 53,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 53,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 53,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 53,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 53,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 53,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 53,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 53,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 54,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 54,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 54,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 54,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 54,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 54,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 54,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 54,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 54,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 54,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 54,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 54,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 54,
+   "price": 375.0,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 54,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 55,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 55,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 55,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 55,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 55,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 55,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 55,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 55,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 55,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 55,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 55,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 55,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 55,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 55,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 56,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 56,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 56,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 56,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 56,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 56,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 56,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 56,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 56,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 56,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 56,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 56,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 56,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 56,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 57,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 57,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 57,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 57,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 57,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 57,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 57,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 57,
+   "price": 372.44,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 57,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 57,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 57,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 57,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 57,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 57,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 58,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 58,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 58,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 58,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 58,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 58,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 58,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 58,
+   "price": 372.44,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 58,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 58,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 58,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 58,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 58,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 58,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 59,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 59,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 59,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 59,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 59,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 59,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 372.44,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 59,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 60,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 60,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 60,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 60,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 60,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 60,
+   "price": 372.4,
+   "bid": 215.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 60,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 60,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 60,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 60,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 60,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 60,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 60,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 60,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 61,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 61,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 61,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 61,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 61,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 61,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 61,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 61,
+   "price": 372.43,
+   "bid": null,
+   "ask": 94.0,
+   "side": "ASK"
+  },
+  {
+   "t": 61,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 61,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 61,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 61,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 61,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 61,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 61,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 63,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 63,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 63,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 63,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 63,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 63,
+   "price": 372.4,
+   "bid": 160.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 63,
+   "price": 372.42,
+   "bid": 26.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 63,
+   "price": 372.43,
+   "bid": null,
+   "ask": 81.0,
+   "side": "ASK"
+  },
+  {
+   "t": 63,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 63,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 63,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 63,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 63,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 63,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 63,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 64,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 64,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 64,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 64,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 64,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 64,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 64,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 64,
+   "price": 372.43,
+   "bid": null,
+   "ask": 15.0,
+   "side": "ASK"
+  },
+  {
+   "t": 64,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 64,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 64,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 64,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 64,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 64,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 64,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 65,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 65,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 65,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 65,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 65,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 65,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 65,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 65,
+   "price": 372.43,
+   "bid": null,
+   "ask": 15.0,
+   "side": "ASK"
+  },
+  {
+   "t": 65,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 65,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 65,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 65,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 65,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 65,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 65,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 66,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 66,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 66,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 66,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 66,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 66,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 66,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 66,
+   "price": 372.43,
+   "bid": null,
+   "ask": 15.0,
+   "side": "ASK"
+  },
+  {
+   "t": 66,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 66,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 66,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 66,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 66,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 66,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 66,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 67,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 67,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 67,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 67,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 67,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 67,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 67,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 67,
+   "price": 372.43,
+   "bid": null,
+   "ask": 15.0,
+   "side": "ASK"
+  },
+  {
+   "t": 67,
+   "price": 372.45,
+   "bid": null,
+   "ask": 200.0,
+   "side": "ASK"
+  },
+  {
+   "t": 67,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 67,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 67,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 67,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 67,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 67,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 68,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 68,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 68,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 68,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 68,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 68,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 68,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 68,
+   "price": 372.43,
+   "bid": null,
+   "ask": 15.0,
+   "side": "ASK"
+  },
+  {
+   "t": 68,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 68,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 68,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 68,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 68,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 68,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 68,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 69,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 69,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 69,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 69,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 69,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 69,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 69,
+   "price": 372.43,
+   "bid": null,
+   "ask": 55.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 372.69,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 69,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 70,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 70,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 70,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 70,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 70,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 70,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 70,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 70,
+   "price": 372.43,
+   "bid": null,
+   "ask": 55.0,
+   "side": "ASK"
+  },
+  {
+   "t": 70,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 70,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 70,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 70,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 70,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 70,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 71,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 71,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 71,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 71,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 71,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 71,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 71,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 71,
+   "price": 372.43,
+   "bid": null,
+   "ask": 15.0,
+   "side": "ASK"
+  },
+  {
+   "t": 71,
+   "price": 372.44,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 71,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 71,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 71,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 71,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 71,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 71,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 72,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 72,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 72,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 72,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 72,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 72,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 72,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 72,
+   "price": 372.45,
+   "bid": null,
+   "ask": 160.0,
+   "side": "ASK"
+  },
+  {
+   "t": 72,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 72,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 72,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 72,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 72,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 72,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 72,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 73,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 73,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 73,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 73,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 73,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 73,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 73,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 73,
+   "price": 372.43,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 73,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 73,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 73,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 73,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 73,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 73,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 73,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 75,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 75,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 75,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 75,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 75,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 75,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 75,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 75,
+   "price": 372.43,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 75,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 75,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 75,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 75,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 75,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 75,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 75,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 76,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 76,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 76,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 76,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 76,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 76,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 76,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 76,
+   "price": 372.43,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 76,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 76,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 76,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 76,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 76,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 76,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 76,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 77,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 77,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 77,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 77,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 77,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 77,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 77,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 77,
+   "price": 372.43,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 77,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 77,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 77,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 77,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 77,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 77,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 77,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 78,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 78,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 78,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 78,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 78,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 78,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 78,
+   "price": 372.42,
+   "bid": 98.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 78,
+   "price": 372.43,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 78,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 78,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 78,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 78,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 78,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 78,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 78,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 79,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 79,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 79,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 79,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 79,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 79,
+   "price": 372.42,
+   "bid": 98.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 79,
+   "price": 372.43,
+   "bid": null,
+   "ask": 80.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 372.48,
+   "bid": null,
+   "ask": 6.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 372.6,
+   "bid": null,
+   "ask": 800.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 79,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 80,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 80,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 80,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 80,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 80,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 80,
+   "price": 372.4,
+   "bid": 120.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 80,
+   "price": 372.42,
+   "bid": 90.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 80,
+   "price": 372.48,
+   "bid": null,
+   "ask": 4.0,
+   "side": "ASK"
+  },
+  {
+   "t": 80,
+   "price": 372.6,
+   "bid": null,
+   "ask": 800.0,
+   "side": "ASK"
+  },
+  {
+   "t": 80,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 80,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 80,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 80,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 80,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 80,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 82,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 82,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 82,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 82,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 82,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 82,
+   "price": 372.4,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 82,
+   "price": 372.42,
+   "bid": 50.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 82,
+   "price": 372.43,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 82,
+   "price": 372.48,
+   "bid": null,
+   "ask": 4.0,
+   "side": "ASK"
+  },
+  {
+   "t": 82,
+   "price": 372.6,
+   "bid": null,
+   "ask": 800.0,
+   "side": "ASK"
+  },
+  {
+   "t": 82,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 82,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 82,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 82,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 82,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 82,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 83,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 83,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 83,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 83,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 83,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 83,
+   "price": 372.4,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 83,
+   "price": 372.42,
+   "bid": 50.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 83,
+   "price": 372.43,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 83,
+   "price": 372.51,
+   "bid": null,
+   "ask": 5.0,
+   "side": "ASK"
+  },
+  {
+   "t": 83,
+   "price": 372.6,
+   "bid": null,
+   "ask": 800.0,
+   "side": "ASK"
+  },
+  {
+   "t": 83,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 83,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 83,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 83,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 83,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 83,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 84,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 84,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 84,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 84,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 84,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 84,
+   "price": 372.4,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 84,
+   "price": 372.43,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 84,
+   "price": 372.44,
+   "bid": 13.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 84,
+   "price": 372.59,
+   "bid": null,
+   "ask": 300.0,
+   "side": "ASK"
+  },
+  {
+   "t": 84,
+   "price": 372.64,
+   "bid": null,
+   "ask": 1000.0,
+   "side": "ASK"
+  },
+  {
+   "t": 84,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 84,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 84,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 84,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 84,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 84,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 85,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 85,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 85,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 85,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 85,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 85,
+   "price": 372.4,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 85,
+   "price": 372.43,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 85,
+   "price": 372.44,
+   "bid": 13.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 85,
+   "price": 372.59,
+   "bid": null,
+   "ask": 300.0,
+   "side": "ASK"
+  },
+  {
+   "t": 85,
+   "price": 372.64,
+   "bid": null,
+   "ask": 1000.0,
+   "side": "ASK"
+  },
+  {
+   "t": 85,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 85,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 85,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 85,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 85,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 85,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 87,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 87,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 87,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 87,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 87,
+   "price": 372.4,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 87,
+   "price": 372.43,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 87,
+   "price": 372.44,
+   "bid": 13.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 87,
+   "price": 372.52,
+   "bid": null,
+   "ask": 5.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 372.59,
+   "bid": null,
+   "ask": 300.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 372.64,
+   "bid": null,
+   "ask": 1000.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 87,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 88,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 372.4,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 372.42,
+   "bid": 50.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 372.43,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 372.44,
+   "bid": 13.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 88,
+   "price": 372.52,
+   "bid": null,
+   "ask": 5.0,
+   "side": "ASK"
+  },
+  {
+   "t": 88,
+   "price": 372.64,
+   "bid": null,
+   "ask": 1000.0,
+   "side": "ASK"
+  },
+  {
+   "t": 88,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 88,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 88,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 88,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 88,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 88,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 89,
+   "price": 350.0,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 89,
+   "price": 370.15,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 89,
+   "price": 371.01,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 89,
+   "price": 371.52,
+   "bid": 200.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 89,
+   "price": 372.3,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 89,
+   "price": 372.4,
+   "bid": 40.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 89,
+   "price": 372.43,
+   "bid": 80.0,
+   "ask": null,
+   "side": "BID"
+  },
+  {
+   "t": 89,
+   "price": 372.64,
+   "bid": null,
+   "ask": 1000.0,
+   "side": "ASK"
+  },
+  {
+   "t": 89,
+   "price": 372.8,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 89,
+   "price": 373.16,
+   "bid": null,
+   "ask": 280.0,
+   "side": "ASK"
+  },
+  {
+   "t": 89,
+   "price": 373.39,
+   "bid": null,
+   "ask": 480.0,
+   "side": "ASK"
+  },
+  {
+   "t": 89,
+   "price": 373.5,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  },
+  {
+   "t": 89,
+   "price": 374.3,
+   "bid": null,
+   "ask": 120.0,
+   "side": "ASK"
+  },
+  {
+   "t": 89,
+   "price": 379.86,
+   "bid": null,
+   "ask": 40.0,
+   "side": "ASK"
+  }
+ ],
+ "method": "the venue's books in the console's memory, one per second, in the window ending at the newest, binned into n_buckets time columns x Schwab's BID_PRICE/ASK_PRICE rows; cell value = the LAST observed TOTAL_VOLUME at that price within the bucket -- never summed across repeated observations of the same resting size."
+}

@@ -5,10 +5,13 @@ console's intake) into a time x price grid -- the time-dimensioned counterpart a
 snapshot cannot show. No interpolation: every cell traces to a real book's own native
 BID_PRICE/ASK_PRICE/TOTAL_VOLUME.
 
+Every time is Schwab's own BOOK_TIME, never when a message arrived.
+
 The books are Schwab's own SPY messages of 2026-11-02, 10:00:00 to 10:02:30 ET, both venues in
-the order received (tests/fixtures/real_spy_books_2026_11_02.json): 141 NYSE_BOOK messages in
-139 seconds, 149.85 s from first to last, so a column of the 90 is 1.665 s and some hold two
-books.
+the order received (tests/fixtures/real_spy_books_2026_11_02.json): 141 NYSE_BOOK messages, each
+in its own BOOK_TIME second, 149.523 s from the first BOOK_TIME to the last, so a column of the
+90 is 1.6614 s and some hold two books. Two books Schwab stamped inside one second are its SPY
+NYSE_BOOK messages of 2026-11-11 (real_spy_nyse_books_one_book_second_2026_11_11.json).
 """
 
 from __future__ import annotations
@@ -39,12 +42,17 @@ def _sent(venue: str) -> list[tuple[float, str, dict]]:
 def _books(rows: list[tuple[float, str, dict]]) -> RecentBooks:
     """Feed a fresh store each (ts_recv, venue, book message) as the console's intake does.
 
-    The message is read by the one reader (engine.read_book) first.
+    The message is read by the one reader (engine.read_book) first; its time is its BOOK_TIME.
     """
     books = RecentBooks()
-    for ts_recv, service, content in rows:
-        books.record(SYM, service, read_book(content, service), ts_recv)
+    for _ts_recv, service, content in rows:
+        books.record(SYM, service, read_book(content, service))
     return books
+
+
+def _at(row: tuple[float, str, dict]) -> float:
+    """Return Schwab's BOOK_TIME of one (ts_recv, venue, book message), in seconds."""
+    return row[2]["BOOK_TIME"] / 1000
 
 
 def _sizes(sent: dict, side: str) -> dict:
@@ -73,47 +81,56 @@ def test_repeated_unchanged_levels_do_not_inflate_the_cell():
         )
     d = book_heatmap_for_ticker(SYM, NYSE, minutes=60, books=_books(sent))
     assert d["available"] is True
-    assert d["rows_scanned"] == 139 and d["bucket_sec"] == (sent[-1][0] - sent[0][0]) / 90
+    assert d["rows_scanned"] == 141 and d["bucket_sec"] == (_at(sent[-1]) - _at(sent[0])) / 90
     bids = _shown(d, "bid")
     assert bids[(3, 759.6)] == 840  # not 1680
     assert bids[(7, 760.39)] == 1480  # not 2960
 
 
 def test_books_within_one_second_keep_only_the_newest():
-    """One book per second, the newest in that second.
+    """One book per second of Schwab's BOOK_TIME, the newest in that second.
 
-    Schwab's 69th and 70th NYSE books came 0.81 s apart in one second; the 70th is the one kept.
+    Two SPY NYSE books of 2026-11-11 Schwab stamped 0.729 s apart inside one second (they arrived
+    in two different seconds); the later is the one kept, at its own BOOK_TIME.
     """
-    older, newer = _sent(NYSE)[68:70]
-    assert int(older[0]) == int(newer[0]) and older[2]["BIDS"] != newer[2]["BIDS"]
+    older, newer = (
+        tuple(row)
+        for row in json.loads(
+            (_FX / "real_spy_nyse_books_one_book_second_2026_11_11.json").read_text(
+                encoding="utf-8"
+            )
+        )["rows"]
+    )
+    assert int(_at(older)) == int(_at(newer)) and int(older[0]) != int(newer[0])
+    assert older[2]["BIDS"] != newer[2]["BIDS"]
     d = book_heatmap_for_ticker(SYM, NYSE, minutes=60, books=_books([older, newer]))
-    assert d["rows_scanned"] == 1 and d["until_ts"] == newer[0]
+    assert d["rows_scanned"] == 1 and d["until_ts"] == _at(newer) == 1794414811.984
     assert {p: v for (_, p), v in _shown(d, "bid").items()} == _sizes(newer[2], "BIDS")
     assert {p: v for (_, p), v in _shown(d, "ask").items()} == _sizes(newer[2], "ASKS")
 
 
 def test_a_changed_level_in_the_same_bucket_reads_as_its_latest_observed_size():
-    """Schwab's 3rd and 4th NYSE books are 1.09 s apart, in column 1.
+    """Schwab's 4th and 5th NYSE books are 0.996 s apart by BOOK_TIME, in column 2.
 
-    The bid at 760.05 went from 720 to 40 and the ask at 760.80 from 960 to 160.
+    The bid at 760.24 went from 1,480 to 400 and the ask at 760.80 from 160 to 120.
     """
     sent = _sent(NYSE)
-    older, newer = sent[2][2], sent[3][2]
-    assert (_sizes(older, "BIDS")[760.05], _sizes(newer, "BIDS")[760.05]) == (720, 40)
-    assert (_sizes(older, "ASKS")[760.8], _sizes(newer, "ASKS")[760.8]) == (960, 160)
+    older, newer = sent[3][2], sent[4][2]
+    assert (_sizes(older, "BIDS")[760.24], _sizes(newer, "BIDS")[760.24]) == (1480, 400)
+    assert (_sizes(older, "ASKS")[760.8], _sizes(newer, "ASKS")[760.8]) == (160, 120)
     d = book_heatmap_for_ticker(SYM, NYSE, minutes=60, books=_books(sent))
     assert d["available"] is True
-    assert d["rows_scanned"] == 139
+    assert d["rows_scanned"] == 141
     cells = {(c["t"], c["price"]): c for c in d["cells"]}
     # a side Schwab sent no level for at a price is absent, never a 0 size (operator 2026-10-01:
     # "we use what schwab gives us and we display it")
     assert (
-        (1, 760.05) in cells
-        and cells[(1, 760.05)]["bid"] == 40
-        and cells[(1, 760.05)]["ask"] is None
+        (2, 760.24) in cells
+        and cells[(2, 760.24)]["bid"] == 400
+        and cells[(2, 760.24)]["ask"] is None
     )
     assert (
-        (1, 760.8) in cells and cells[(1, 760.8)]["ask"] == 160 and cells[(1, 760.8)]["bid"] is None
+        (2, 760.8) in cells and cells[(2, 760.8)]["ask"] == 120 and cells[(2, 760.8)]["bid"] is None
     )
 
 
@@ -133,27 +150,44 @@ def test_each_venue_shows_only_its_own_book():
 def test_window_anchors_to_the_datas_own_latest_row_never_wallclock_now():
     """A real prior session (all books far in the past) must still render honestly outside RTH.
 
-    The window is [latest_captured_ts - minutes*60, latest_captured_ts], never
+    The window is [until_ts - minutes*60, until_ts], the newest book's own BOOK_TIME, never
     [now - minutes*60, now], or every weekend/after-hours request would show an empty grid
-    despite real data existing a few hours earlier. These books are of 2026-11-02.
+    despite real data existing a few hours earlier. These books are of 2026-11-02. Each end is
+    Schwab's time for that book (1793631599.215 and 1793631748.738), not when it arrived.
     """
     sent = _sent(NYSE)
     d = book_heatmap_for_ticker(SYM, NYSE, minutes=5, books=_books(sent))
     assert d["available"] is True
-    assert d["latest_captured_ts"] == sent[-1][0] == d["until_ts"]
-    assert d["since_ts"] == sent[0][0]
+    assert d["until_ts"] == _at(sent[-1]) == 1793631748.738 != sent[-1][0]
+    assert d["since_ts"] == _at(sent[0]) == 1793631599.215 and "latest_captured_ts" not in d
+
+
+def test_a_book_with_no_book_time_or_older_than_the_newest_kept_is_not_placed(caplog):
+    """Induced: Schwab's 2nd NYSE book after its 3rd, and its 4th with no BOOK_TIME.
+
+    Neither has a place on Schwab's time axis: each is logged and not kept (no captured NYSE or
+    NASDAQ book lacks a BOOK_TIME or goes back in time).
+    """
+    sent = _sent(NYSE)
+    untimed = (sent[3][0], NYSE, {k: v for k, v in sent[3][2].items() if k != "BOOK_TIME"})
+    with caplog.at_level("WARNING", logger="app.options.order_flow.history"):
+        d = book_heatmap_for_ticker(
+            SYM, NYSE, minutes=60, books=_books([sent[0], sent[2], sent[1], untimed])
+        )
+    assert d["rows_scanned"] == 2 and (d["since_ts"], d["until_ts"]) == (_at(sent[0]), _at(sent[2]))
+    assert len([r for r in caplog.records if "not placed on the heatmap" in r.getMessage()]) == 2
 
 
 def test_rows_outside_the_minutes_window_are_excluded():
-    """The last minute of the 150 s holds 55 of the 139 seconds' books.
+    """The last minute of the 149.5 s holds 57 of the 141 books.
 
     744.50 is a price only the books before it hold, 759.14 one only its books hold.
     """
     books = _books(_sent(NYSE))
     whole = book_heatmap_for_ticker(SYM, NYSE, minutes=60, books=books)
-    assert whole["rows_scanned"] == 139
+    assert whole["rows_scanned"] == 141
     d = book_heatmap_for_ticker(SYM, NYSE, minutes=1, books=books)
-    assert d["available"] is True and d["rows_scanned"] == 55
+    assert d["available"] is True and d["rows_scanned"] == 57
     prices = {c["price"] for c in d["cells"]}
     assert 744.5 not in prices and 744.5 in {c["price"] for c in whole["cells"]}
     assert 759.14 in prices and d["since_ts"] >= d["until_ts"] - 60

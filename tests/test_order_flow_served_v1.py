@@ -31,10 +31,10 @@ def _books(rows) -> RecentBooks:
     message with no book not recorded.
     """
     books = RecentBooks()
-    for ts, svc, nat in rows:
+    for _ts, svc, nat in rows:
         book = read_book(nat, svc)
         if book is not None:
-            books.record("TSLA", svc, book, ts)
+            books.record("TSLA", svc, book)
     return books
 
 
@@ -94,7 +94,8 @@ def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_clos
     Measured 2026-09-27: SPY's latest NASDAQ_BOOK message is {"key": "SPY", "BOOK_TIME": ...,
     "BIDS": [], "ASKS": []}. Anchoring the window on those left the heatmap blank all weekend.
     """
-    last = _FX["rows"][-1][0]
+    # the newest book with levels, at Schwab's own BOOK_TIME (the window's time base)
+    last = max(nat["BOOK_TIME"] for _, svc, nat in _FX["rows"] if svc == "NASDAQ_BOOK") / 1000
     empties = [
         (
             last + 3600 * h,
@@ -108,3 +109,29 @@ def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_clos
     )
     assert d["available"] is True and d["cells"]
     assert d["until_ts"] == last
+
+
+#: the heatmap the browser tests draw (tests/e2e/console-order-flow-heatmap.spec.js)
+_DRAWN = Path(__file__).resolve().parent / "e2e" / "fixtures" / "book_heatmap_payload.json"
+
+
+def write_heatmap_e2e_fixture() -> None:
+    """Regeneration utility (never called by a test): the producer's answer, as the socket sends.
+
+    python -c "import tests.conftest, tests.test_order_flow_served_v1 as t
+    t.write_heatmap_e2e_fixture()"
+    """
+    d = book_heatmap_for_ticker("TSLA", "NASDAQ_BOOK", minutes=240, books=_books(_FX["rows"]))
+    _DRAWN.write_bytes((json.dumps(d, indent=1) + "\n").encode("utf-8"))
+
+
+def test_the_heatmap_the_browser_draws_is_the_producers_own(heat):
+    """The browser test's payload is the producer's answer on the real TSLA books, kept equal.
+
+    Its times are Schwab's BOOK_TIME of the first and the newest book with levels.
+    """
+    assert json.loads(_DRAWN.read_text(encoding="utf-8")) == json.loads(json.dumps(heat)), (
+        "drifted from the producer; regenerate with write_heatmap_e2e_fixture()"
+    )
+    timed = [nat["BOOK_TIME"] / 1000 for _, svc, nat in _FX["rows"] if svc == "NASDAQ_BOOK"]
+    assert (heat["since_ts"], heat["until_ts"]) == (min(timed), max(timed))
