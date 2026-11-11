@@ -45,7 +45,8 @@ def _environment(call: ast.Call) -> bool:
 def _stand_ins(node: ast.AST) -> list[ast.AST] | None:
     """Return the values `node` puts where one is missing; None when it is not such a node."""
     if isinstance(node, ast.If) and e2e._none_check(node.test):
-        return [getattr(node.body[0], "value", None)]
+        stmt = node.body[0]
+        return [stmt.value] if isinstance(stmt, (ast.Return, ast.Assign, ast.AnnAssign)) else None
     if isinstance(node, ast.IfExp) and e2e._none_check(node.test):
         return [node.body, node.orelse]
     if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
@@ -65,7 +66,7 @@ def stands_in(source: str, line: int) -> bool:
     read here.
     """
     for node in ast.walk(ast.parse(source)):
-        if getattr(node, "lineno", None) != line:
+        if not isinstance(node, (ast.stmt, ast.expr)) or node.lineno != line:
             continue
         values = _stand_ins(node)
         if values is None:
