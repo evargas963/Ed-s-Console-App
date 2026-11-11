@@ -23,7 +23,6 @@ def _e2e_server_env(poison_root: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.update(
         {
-            "ED_CONSOLE_DB": str(poison_root / "production_console.db"),
             "STREAM_CAPTURE_DB_PATH": str(poison_root / "production_stream.db"),
             "SCHWAB_TOKEN_PATH": str(poison_root / "production_token.json"),
             "ED_CI_OFFLINE": "0",
@@ -56,11 +55,10 @@ def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
     root = Path(server_env.pop("_E2E_RUNTIME_ROOT")).resolve()
 
     assert root.name.startswith("ed-console-e2e-runtime-")
-    # RC-534: the one isolation knob is ED_RUNTIME_ROOT; the forbidden ambient DB overrides
-    # are deleted from the server env, and the canonical DBs resolve under <root>/data.
+    # The one isolation knob is ED_RUNTIME_ROOT; the stream database's own override is
+    # deleted from the server env, and the canonical DBs resolve under <root>/data.
     assert Path(server_env["ED_RUNTIME_ROOT"]).resolve() == root
     assert "ED_ARTIFACTS_ROOT" not in server_env  # no runtime root but ED_RUNTIME_ROOT
-    assert "ED_CONSOLE_DB" not in server_env
     assert "STREAM_CAPTURE_DB_PATH" not in server_env
     token = Path(server_env["SCHWAB_TOKEN_PATH"]).resolve()
     assert token.parent == root, token

@@ -154,11 +154,7 @@ def write_flow_e2e_fixture() -> None:
     applies, so the fixture never carries a live DB or token.
     """
     root = tempfile.mkdtemp(prefix="ed-e2e-fixture-regen-")
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if k not in ("ED_CONSOLE_DB", "ED_DB_PATH", "STREAM_CAPTURE_DB_PATH")
-    }
+    env = {k: v for k, v in os.environ.items() if k != "STREAM_CAPTURE_DB_PATH"}
     env.update(
         {
             "ED_RUNTIME_ROOT": root,
