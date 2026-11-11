@@ -743,11 +743,11 @@ def pick_key_delta_strike(exposures: dict[float, dict]) -> float | None:
 def pick_volatility_point_strikes(
     exposures: dict[float, dict],
 ) -> tuple[float | None, float | None]:
-    """(HVP, LVP): strike holding the most NEGATIVE / most POSITIVE net GEX$.
+    """(net put gamma peak, net call gamma peak): the most NEGATIVE / most POSITIVE net GEX$.
 
-    Signed extremes, not magnitudes: HVP exists only where net dealer gamma is
-    actually negative at some strike (amplification pocket), LVP only where
-    positive (damping pocket). A one-sided chain returns None for the absent side.
+    Signed extremes, not magnitudes: the put peak exists only where net gamma is
+    actually negative at some strike, the call peak only where it is positive.
+    A one-sided chain returns None for the absent side.
     """
     if not exposures_have_dollar_gex(exposures):
         return None, None

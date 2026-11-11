@@ -32,14 +32,14 @@
    "family": "gamma",
    "from_spot_text": "2.87 above spot",
    "id": "lvp",
-   "label": "LVP",
+   "label": "Net call \u0393 peak",
    "not_live_text": null,
    "price": 776.0,
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
    },
-   "short": "LVP",
+   "short": "Net call \u0393 peak",
    "side": "ABOVE",
    "staleness": {
     "age_sec": 6176.727853059769,
@@ -252,14 +252,14 @@
    "family": "gamma",
    "from_spot_text": "9.13 below spot",
    "id": "hvp",
-   "label": "HVP",
+   "label": "Net put \u0393 peak",
    "not_live_text": null,
    "price": 764.0,
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
    },
-   "short": "HVP",
+   "short": "Net put \u0393 peak",
    "side": "BELOW",
    "staleness": {
     "age_sec": 6176.727853059769,
@@ -381,7 +381,7 @@
   {
    "carried": 764.0,
    "id": "hvp",
-   "label": "HVP",
+   "label": "Net put \u0393 peak",
    "price": 764.0,
    "staleness": {
     "age_sec": 6176.727853059769,
@@ -393,7 +393,7 @@
   {
    "carried": 776.0,
    "id": "lvp",
-   "label": "LVP",
+   "label": "Net call \u0393 peak",
    "price": 776.0,
    "staleness": {
     "age_sec": 6176.727853059769,
