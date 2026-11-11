@@ -135,10 +135,6 @@
     },
     {
       "category": "one value, several producers",
-      "item": "linear interpolation: math_levels.py two copies"
-    },
-    {
-      "category": "one value, several producers",
       "item": "whole-book merge: terrain_engine and server"
     },
     {
