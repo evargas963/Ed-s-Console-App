@@ -1918,16 +1918,6 @@
    "volume_total": 9570957.0
   }
  },
- "priced_at_spot": 764.04,
- "prior": {
-  "all": [],
-  "far": [],
-  "near": []
- },
- "prior_source": null,
- "scope": "auto",
- "spot": 773.1269,
- "spot_source": "streaming_plane",
  "spot_strike": 773.0,
  "ticker": "SPY",
  "today": {
@@ -2058,11 +2048,6 @@
    "max_abs_with_prior": 39931287.640042946,
    "note": null
   },
-  "dex": {
-   "centre": 773.0,
-   "max_abs": 633515384.1419919,
-   "note": null
-  },
   "far": {
    "centre": null,
    "max_abs": null,
@@ -2073,11 +2058,6 @@
    "centre": 773.0,
    "max_abs": 39931287.640042946,
    "max_abs_with_prior": 39931287.640042946,
-   "note": null
-  },
-  "oi": {
-   "centre": 773.0,
-   "max_abs": 18268.0,
    "note": null
   }
  }

@@ -1128,7 +1128,8 @@ def test_each_strikes_reader_gets_its_own_window_at_once_with_no_get():
             assert seen["strikes:chart"]["today"]["all"] == rows
             gbs = seen["strikes:gbs"]["today"]["all"]
             assert len(gbs) == 11 and gbs == rows[rows.index(gbs[0]) : rows.index(gbs[0]) + 11]
-            assert seen["strikes:gbs"]["scope"] == "auto"
+            drawn = max(abs(r[1]) for r in gbs if r[1] is not None)
+            assert seen["strikes:gbs"]["views"]["all"]["max_abs"] == drawn
 
     asyncio.run(_serve_panels(body))
     assert "/api/terrain/strikes" not in {r.path for r in server.app.routes}
@@ -1221,7 +1222,7 @@ def test_a_strikes_producer_that_raises_fails_its_panel_alone_in_words():
                 "type": "strikes:gbs",
                 "ticker": A,
                 "failed": "the program could not produce this panel: "
-                "TypeError: cannot unpack non-iterable NoneType object",
+                "TypeError: 'NoneType' object is not subscriptable",
             }
             assert _terrain_of(seen["terrain:levels"]) == _published_terrain(A)
 

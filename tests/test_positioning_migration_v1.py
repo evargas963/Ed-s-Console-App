@@ -83,7 +83,17 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     assert not m["compared"] and m["drift"] is None  # no prior day: nothing to compare
 
 
-def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
+def _prior_gex(body: dict) -> dict:
+    """Return the prior day's net GEX the migration compared, by strike."""
+    return {r[0]: r[2] for r in body["migration"]["all"]["rows"] if r[2] is not None}
+
+
+def _gex(per_strike: dict) -> dict:
+    """Return a day's own net GEX by strike, from its per-strike rows."""
+    return {r[0]: r[1] for r in per_strike["all"] if r[1] is not None}
+
+
+def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_days):
     """On a weekend the terrain holds the newest capture (Friday).
 
     The prior day was picked by the wall clock's date, so it was that same Friday capture: every
@@ -134,14 +144,15 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
             received_ts=monday.timestamp(),
         )
         server._publish_levels("PCG", newest["contracts"], monday.timestamp(), now=monday)
-        monday_body = server.strikes("PCG", time_et.now(), _AUTO)
+        monday_prior = server.published_levels("PCG").prior_strikes
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("PCG", None)
         lmp._by_ticker.pop("PCG", None)
         lmp._fields_by_ticker.pop("PCG", None)
         lmp.record_feed_down()
-    assert body["prior_source"] == "chain_capture:2026-09-24"
+    (thursday, _), (friday, _) = two_days  # the captures of 2026-09-24 and 2026-09-25
+    assert _prior_gex(body) == pytest.approx(_gex(thursday))
     m = body["migration"]["all"]
     assert (
         m["compared"] and sum(1 for r in m["rows"] if r[3]) > 10
@@ -152,4 +163,4 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
     both = [abs(v) for r in m["rows"] if r[0] in drawn for v in (r[1], r[2]) if v is not None]
     both += [abs(r[1]) for r in body["today"]["all"] if r[1] is not None]
     assert body["views"]["all"]["max_abs_with_prior"] == max(both)
-    assert monday_body["prior_source"] == "chain_capture:2026-09-25"
+    assert _gex(monday_prior) == pytest.approx(_gex(friday))

@@ -229,7 +229,7 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
     every = lists(_strikes("all"))
     assert every["all"] and every["dex"] and every["oi"]
     for name, rows in lists(body).items():
-        view = body["views"][name]
+        view = body["measures"][name]["view"] if name in body["measures"] else body["views"][name]
         assert len(rows) == min(SCOPE_ROWS["auto"], len(every[name])), name
         assert all(r in every[name] for r in rows), name  # rows of the list, as published
         known = [abs(r[1]) for r in rows if r[1] is not None]
@@ -238,7 +238,7 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
     # no prior day is stored here: the migration's scale is today's
     assert body["views"]["all"]["max_abs_with_prior"] == body["views"]["all"]["max_abs"] is not None
     assert body["views"]["near"]["max_abs_with_prior"] is None  # no near-term rows
-    assert body["measures"]["dex"]["view"] == body["views"]["dex"]
+    assert set(body["views"]) == {"all", "near", "far"}  # a measure's view is served once
     for key in server.STRIKE_BAR_METHODS:  # vanna, charm
 
         def bars(scope, centre=None, shift=0, key=key):

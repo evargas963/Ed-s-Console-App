@@ -192,6 +192,7 @@ def test_strikes_payload_carries_server_side_sums():
     )
     try:
         body = srv.strikes(C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
+        live = srv.resolve_spot(C.ticker, now=time_et.now())[0]
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(C.ticker, None)
@@ -207,7 +208,7 @@ def test_strikes_payload_carries_server_side_sums():
     drawn = body["today"]["all"]
     assert drawn, "the panel draws strikes of the real chain"
     assert all(r[2] == strike_total_volume(book[r[0]]) for r in drawn)
-    assert body["spot"] == C.spot, "sums must be computed against the payload's own spot"
+    assert live == C.spot, "sums must be computed against the one live spot"
 
 
 def test_api_levels_prior_day_is_the_whole_recorded_prior_session():

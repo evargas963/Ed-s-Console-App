@@ -64,7 +64,7 @@ def test_terrain_strikes_endpoint_shape_and_scopes():
     body = srv.strikes("SPY", time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
     assert json.loads(json.dumps(body)) == body  # the socket's frame, as it is
     assert body["ticker"] == "SPY"
-    for side in ("today", "prior"):
+    for side in ("today", "migration", "views"):
         assert set(body[side]) == {"all", "near", "far"}
     rows = body["today"]["all"]
     if rows:

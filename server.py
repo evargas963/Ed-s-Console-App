@@ -632,7 +632,7 @@ class PublishedLevels:
     contracts: Mapping[str, OptionContract]
     #: read from the stored captures, recomputed only when `captures_key` changes
     forces: dict
-    prior_strikes: tuple[dict, str | None]
+    prior_strikes: dict
     captures_key: tuple
 
     def served(self) -> dict:
@@ -2028,15 +2028,15 @@ def _atr_fields(tk: str, now: datetime) -> dict:
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
-def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict, str | None]:
+def _prior_strikes(captures: list, chain_ts: float, product: str) -> dict:
     """Return the previous market day's close before the day of the chain the rows came from.
 
-    The rows are the ticker's; the close comes as per-strike rows ({all, near, far}), with its
-    source. On a closed market today's rows ARE the newest capture, so the day before is the
-    chain's day's, not the wall clock's (which picks that same capture and compares it with
-    itself). Run by _publish_levels when the ticker's newest capture or its chain's day changes,
-    on the same two newest market days' captures the forces read: the chain's day is today or the
-    newest capture's, so the day before it is one of those two.
+    The rows are the ticker's; the close comes as per-strike rows ({all, near, far}), none with
+    no prior day captured. On a closed market today's rows ARE the newest capture, so the day
+    before is the chain's day's, not the wall clock's (which picks that same capture and
+    compares it with itself). Run by _publish_levels when the ticker's newest capture or its
+    chain's day changes, on the same two newest market days' captures the forces read: the
+    chain's day is today or the newest capture's, so the day before it is one of those two.
     """
 
     def _per_strike(contracts: list, spot: float, at: datetime) -> dict:
@@ -2059,15 +2059,10 @@ def _prior_strikes(captures: list, chain_ts: float, product: str) -> tuple[dict,
     chain_day = et_date_str_from_ts_utc(float(chain_ts))
     prior = next((c for c in captures if c["et_date"] < chain_day), None)
     if prior is not None and prior["spot"] is not None:
-        return (
-            _per_strike(
-                prior["contracts"],
-                float(prior["spot"]),
-                datetime.fromtimestamp(prior["ts_utc"], ET),
-            ),
-            f"chain_capture:{prior['et_date']}",
+        return _per_strike(
+            prior["contracts"], float(prior["spot"]), datetime.fromtimestamp(prior["ts_utc"], ET)
         )
-    return {"all": [], "near": [], "far": []}, None  # no prior day captured: no rows, no source
+    return {"all": [], "near": [], "far": []}
 
 
 def _max_abs_row(rows) -> list | None:
@@ -2117,11 +2112,11 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     # the dex and oi rows), served as-is; with no levels published, that view of no book: no rows
     levels, verdict = terrain_cache_get(tk, now)
     if levels is None:  # no levels published for tk: no rows, no prior day, no walls
-        rows, prior, prior_src = per_strike_view({}, {}), {"all": [], "near": [], "far": []}, None
-        walls, spot_used = (None, None), None
+        rows, prior = per_strike_view({}, {}), {"all": [], "near": [], "far": []}
+        walls = (None, None)
     else:  # the prior day's rows are set with every chain the levels are published from
-        rows, (prior, prior_src) = levels.snap.per_strike, levels.prior_strikes
-        walls, spot_used = (levels.snap.call_wall, levels.snap.put_wall), levels.snap.spot
+        rows, prior = levels.snap.per_strike, levels.prior_strikes
+        walls = (levels.snap.call_wall, levels.snap.put_wall)
     today = {k: rows[k] for k in ("all", "near", "far")}
     measures = {m: rows[m] for m in ("dex", "oi")}
 
@@ -2135,7 +2130,7 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
             "gex_above": side_total([c[1] for c in cells if c[0] is not None and c[0] > s]),
         }
 
-    live_spot, live_src, _live_ts = resolve_spot(tk, now=now)  # the one spot on every screen
+    live_spot, _live_src, _live_ts = resolve_spot(tk, now=now)  # the one spot on every screen
     migration = {
         sc: positioning_migration(today[sc], prior[sc], *walls) for sc in ("all", "near", "far")
     }
@@ -2157,9 +2152,6 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         windows[sc][1]["max_abs_with_prior"] = max(both) if both else None
     return {
         "ticker": tk,
-        "spot": live_spot,
-        "spot_source": live_src,
-        "priced_at_spot": spot_used,
         "today": {sc: windows[sc][0] for sc in ("all", "near", "far")},
         # the Chart view's DEX and OI profiles: each measure's window (terrain_engine
         # _per_strike_measure_rows) and its largest-magnitude row, on screen or not (the label)
@@ -2167,9 +2159,8 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
             m: {"rows": windows[m][0], "view": windows[m][1], "max_abs_row": _max_abs_row(rows)}
             for m, rows in measures.items()
         },
-        # each list's window: its centre strike and the largest |value| drawn
-        "views": {name: windows[name][1] for name in lists},
-        "scope": scope,
+        # each scope's window: its centre strike and the largest |value| drawn
+        "views": {sc: windows[sc][1] for sc in ("all", "near", "far")},
         "today_side_sums": _side_sums(today["all"], live_spot),
         "spot_strike": nearest_strike([r[0] for r in today["all"]], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
@@ -2177,8 +2168,6 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         "migration": migration,
         # the levels verdict these rows carry (LIVE, CLOSE, STALE, NOT LIVE), their time and age
         **verdict,
-        "prior": prior,
-        "prior_source": prior_src,
     }
 
 

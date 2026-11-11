@@ -115,7 +115,8 @@ def test_every_route_and_panel_serves_the_live_spot_and_names_the_computed_one(h
     """Every page panel, found from the app (no GET route answers a ticker).
 
     A panel that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
-    payload was computed at.
+    payload was computed at. The strikes panel serves neither: its pages take the price from the
+    header row.
     """
     now = time_et.now()
     served = {}
@@ -124,7 +125,7 @@ def test_every_route_and_panel_serves_the_live_spot_and_names_the_computed_one(h
         body = panel(Asked(TK, now, {**ASKED, "contract": contract}))
         if {"spot", "priced_at_spot"} & set(body):
             served[kind] = (body.get("spot"), body.get("priced_at_spot"))
-    assert {"terrain", "strikes", "surface", "chain", "levels"} <= set(served)
+    assert {"terrain", "surface", "chain", "levels"} <= set(served) and "strikes" not in served
     routes = [r for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods]
     assert [r.path for r in routes if "ticker" in inspect.signature(r.endpoint).parameters] == []
     assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
@@ -137,7 +138,7 @@ def test_strike_side_sums_split_at_the_live_spot(held):
     assert below and above, "the real chain has strikes on both sides of the live price"
     body = server.strikes(TK, time_et.now(), AUTO)
     sums = body["today_side_sums"]
-    assert body["spot"] == LIVE
+    assert server.resolve_spot(TK, now=time_et.now())[0] == LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
     assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
 
