@@ -105,7 +105,7 @@ def test_a_contract_the_feed_delivers_is_live_with_its_own_age():
     cov, surface = _publish([sym], [sym])
     legs = _legs(surface, sym)
     assert legs and all(
-        leg["state"] == "live" and leg["age_sec"] == pytest.approx(1.0) for leg in legs
+        leg["state"] == "live" and leg["ts_recv"] == _AT.timestamp() - 1 for leg in legs
     )
     assert cov["partial"] == 1 and cov["live"] == 0  # its put is not streamed: the cell is partial
 
