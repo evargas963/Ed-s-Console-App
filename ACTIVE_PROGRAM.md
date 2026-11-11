@@ -142,7 +142,6 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 ### P1-6 — what is still open, by file
 
 **server.py**
-- S-22 `_prior_strikes` and `terrain_engine.per_strike_view` each define the 7-DTE near/far split.
 - S-23 `_side_sums`' sums use the live spot while the rows were priced at the snapshot's.
 - S-38 `_publish_levels` reads the database (`newest_capture_ts`) on every new chain to learn whether a newer capture exists; the daemon, which writes the captures, could carry that time on the chain it delivers.
 - S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the microstructure content build return None/{} after an exception with no reason.

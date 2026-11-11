@@ -252,9 +252,23 @@ def _per_strike_rows(exposures: dict) -> list[list]:
     return rows
 
 
-#: Weighted positive-gamma strike move below which drift reads as none. Its origin is not
-#: recorded -- NOT_PROVEN.
-MIGRATION_DRIFT_STRIKES = 0.15
+#: the levels compared day over day (level_moves), in the order the page lists them
+LEVELS_COMPARED = ("call_wall", "put_wall", "gamma_flip")
+
+
+def level_moves(today: TerrainSnapshot | None, prior: TerrainSnapshot | None) -> list[dict]:
+    """Return the call wall, put wall and gamma flip today against the prior day's own.
+
+    Each as {level, prior, today, change}: change = today - prior, None (unknown) without both.
+    Both days' levels are the one producer's (compute_terrain); none is held without that day.
+    """
+    moves = []
+    for name in LEVELS_COMPARED:
+        was = None if prior is None else getattr(prior, name)
+        now = None if today is None else getattr(today, name)
+        change = None if was is None or now is None else now - was
+        moves.append({"level": name, "prior": was, "today": now, "change": change})
+    return moves
 
 
 def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict:
@@ -263,38 +277,16 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
     It is built from GEX-by-strike rows [strike, net_gex_1pct$, volume] of today and of the
     prior capture.
 
-    rows: [strike, gex today, gex prior, change] (None where either day has no value); drift:
-    the positive-gamma-weighted strike today against the prior day, UP / DOWN / FLAT (None
-    without positive gamma on both days); grew / shrank: the two strikes that gained / lost the
-    most GEX; busiest: the two strikes with the most volume and where they sit against the walls;
-    volume_total: the scope's session volume (side_total).
+    rows: [strike, gex today, gex prior, change] (None where either day has no value); grew /
+    shrank: the two strikes that gained / lost the most GEX; busiest: the two strikes with the
+    most volume and where they sit against the walls; volume_total: the scope's session volume
+    (side_total).
     """
     prior_gex = {r[0]: r[1] for r in prior}
-    rows, pos_t, pos_p = [], [], []
+    rows = []
     for k, gx, _vol in today:
         gy = prior_gex.get(k)
-        both = gx is not None and gy is not None
-        rows.append([k, gx, gy, (gx - gy) if both else None])
-        if both and gx > 0:
-            pos_t.append((k, gx))
-        if both and gy > 0:
-            pos_p.append((k, gy))
-
-    def _wmean(pairs):
-        w = sum(g for _k, g in pairs)
-        return sum(k * g for k, g in pairs) / w if w else None
-
-    wm_t, wm_p = _wmean(pos_t), _wmean(pos_p)
-    drift = None
-    if wm_t is not None and wm_p is not None:
-        d = wm_t - wm_p
-        drift = (
-            "UP"
-            if d > MIGRATION_DRIFT_STRIKES
-            else "DOWN"
-            if -d > MIGRATION_DRIFT_STRIKES
-            else "FLAT"
-        )
+        rows.append([k, gx, gy, (gx - gy) if gx is not None and gy is not None else None])
     changes = sorted((r for r in rows if r[3] is not None), key=lambda r: r[3], reverse=True)
     grew = [r[0] for r in changes if r[3] > 0][:2]
     shrank = [r[0] for r in changes if r[3] < 0][-2:]
@@ -312,7 +304,6 @@ def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict
     return {
         "rows": rows,
         "compared": bool(changes),
-        "drift": drift,
         "grew": grew,
         "shrank": shrank,
         "busiest": busiest,

@@ -1,4 +1,24 @@
 {
+ "level_moves": [
+  {
+   "change": null,
+   "level": "call_wall",
+   "prior": null,
+   "today": 765.0
+  },
+  {
+   "change": null,
+   "level": "put_wall",
+   "prior": null,
+   "today": 764.0
+  },
+  {
+   "change": null,
+   "level": "gamma_flip",
+   "prior": null,
+   "today": 770.7687850382462
+  }
+ ],
  "levels_age_sec": 6176.727853059769,
  "levels_age_text": "2h",
  "levels_failing": false,
@@ -134,7 +154,6 @@
    ],
    "busiest_vs_walls": "BELOW_PUT_WALL",
    "compared": false,
-   "drift": null,
    "grew": [],
    "rows": [
     [
@@ -1021,7 +1040,6 @@
    "busiest": [],
    "busiest_vs_walls": null,
    "compared": false,
-   "drift": null,
    "grew": [],
    "rows": [],
    "shrank": [],
@@ -1034,7 +1052,6 @@
    ],
    "busiest_vs_walls": "BELOW_PUT_WALL",
    "compared": false,
-   "drift": null,
    "grew": [],
    "rows": [
     [

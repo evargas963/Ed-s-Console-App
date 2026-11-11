@@ -96,9 +96,9 @@ from terrain_engine import (
     SAME_DAY_LEVELS,
     SCOPES,
     TerrainSnapshot,
-    _per_strike_rows,
     chain_ladder,
     compute_terrain,
+    level_moves,
     nearest_strike,
     per_strike_view,
     positioning_migration,
@@ -632,7 +632,7 @@ class PublishedLevels:
     contracts: Mapping[str, OptionContract]
     #: read from the stored captures, recomputed only when `captures_key` changes
     forces: dict
-    prior_strikes: dict
+    prior_day: TerrainSnapshot | None
     captures_key: tuple
 
     def served(self) -> dict:
@@ -1431,14 +1431,14 @@ def _publish_levels(
         else previous.captures_key
     )
     if previous is not None and previous.captures_key == captures_key:
-        forces, prior = previous.forces, previous.prior_strikes
+        forces, prior = previous.forces, previous.prior_day
     else:
         stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
         # This publication priced a stored capture, so its charm map is that newer capture.
         # A live chain is not that capture: the same function then runs once on the banked one.
         held_charm = snap.charm_by_strike if captures and captures[0]["spot"] is not None else None
         forces = _forces_from_captures(tk, stored, held_charm)
-        prior = _prior_strikes(stored, fetched_ts, product)
+        prior = _prior_day(tk, stored, fetched_ts)
     surface = None
     if spot is not None and snap.books:
         projected = project_gamma_surface(priced, snap.books)
@@ -1470,7 +1470,7 @@ def _publish_levels(
         priced_chain=priced,
         contracts=listed,
         forces=forces,
-        prior_strikes=prior,
+        prior_day=prior,
         captures_key=captures_key,
     )
     with _terrain_cache_lock:
@@ -2028,41 +2028,27 @@ def _atr_fields(tk: str, now: datetime) -> dict:
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
-def _prior_strikes(captures: list, chain_ts: float, product: str) -> dict:
-    """Return the previous market day's close before the day of the chain the rows came from.
+def _prior_day(tk: str, captures: list, chain_ts: float) -> TerrainSnapshot | None:
+    """Return the levels of the previous market day's close before the day of the chain's.
 
-    The rows are the ticker's; the close comes as per-strike rows ({all, near, far}), none with
-    no prior day captured. On a closed market today's rows ARE the newest capture, so the day
-    before is the chain's day's, not the wall clock's (which picks that same capture and
-    compares it with itself). Run by _publish_levels when the ticker's newest capture or its
-    chain's day changes, on the same two newest market days' captures the forces read: the
-    chain's day is today or the newest capture's, so the day before it is one of those two.
+    The one producer (compute_terrain) on that day's stored capture, at its own spot and time:
+    its per-strike rows and its walls and flip. None with no prior day captured, or none stored
+    with its spot. On a closed market today's rows ARE the newest capture, so the day before is
+    the chain's day's, not the wall clock's (which picks that same capture and compares it with
+    itself). Run by _publish_levels when the ticker's newest capture or its chain's day changes,
+    on the same two newest market days' captures the forces read: the chain's day is today or
+    the newest capture's, so the day before it is one of those two.
     """
-
-    def _per_strike(contracts: list, spot: float, at: datetime) -> dict:
-        def _scope(cts: list) -> list:
-            if not cts:
-                return []
-            exposures, _diag = compute_exposures_by_strike(
-                cts,
-                spot=spot,
-                now=at,  # at the capture's own time
-                product=product,
-            )
-            return _per_strike_rows(exposures)
-
-        # a contract with no readable days to expiry is in neither near nor far
-        near = [c for c in contracts if (d := c.days_to_expiry) is not None and d <= 7]
-        far = [c for c in contracts if (d := c.days_to_expiry) is not None and d > 7]
-        return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
-
     chain_day = et_date_str_from_ts_utc(float(chain_ts))
     prior = next((c for c in captures if c["et_date"] < chain_day), None)
-    if prior is not None and prior["spot"] is not None:
-        return _per_strike(
-            prior["contracts"], float(prior["spot"]), datetime.fromtimestamp(prior["ts_utc"], ET)
-        )
-    return {"all": [], "near": [], "far": []}
+    if prior is None or prior["spot"] is None:
+        return None
+    return compute_terrain(
+        tk,
+        prior["contracts"],
+        float(prior["spot"]),
+        now=datetime.fromtimestamp(prior["ts_utc"], ET),
+    )
 
 
 def _max_abs_row(rows) -> list | None:
@@ -2111,12 +2097,13 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
     # terrain_engine.per_strike_view: {all, near, far} of [strike, net_gex_1pct$, volume], and
     # the dex and oi rows), served as-is; with no levels published, that view of no book: no rows
     levels, verdict = terrain_cache_get(tk, now)
-    if levels is None:  # no levels published for tk: no rows, no prior day, no walls
-        rows, prior = per_strike_view({}, {}), {"all": [], "near": [], "far": []}
-        walls = (None, None)
-    else:  # the prior day's rows are set with every chain the levels are published from
-        rows, prior = levels.snap.per_strike, levels.prior_strikes
-        walls = (levels.snap.call_wall, levels.snap.put_wall)
+    # no levels published for tk: no rows, no walls; no prior day captured: no prior rows. The
+    # prior day's levels are set with every chain the levels are published from.
+    snap = None if levels is None else levels.snap
+    prior_day = None if levels is None else levels.prior_day
+    rows = per_strike_view({}, {}) if snap is None else snap.per_strike
+    prior = per_strike_view({}, {}) if prior_day is None else prior_day.per_strike
+    walls = (None, None) if snap is None else (snap.call_wall, snap.put_wall)
     today = {k: rows[k] for k in ("all", "near", "far")}
     measures = {m: rows[m] for m in ("dex", "oi")}
 
@@ -2166,6 +2153,8 @@ def terrain_strikes_payload(tk: str, scope: str, centre, shift: int, now: float)
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
         "max_abs_row": _max_abs_row(today["all"]),
         "migration": migration,
+        # the call wall, put wall and gamma flip today against the prior day's own
+        "level_moves": level_moves(snap, prior_day),
         # the levels verdict these rows carry (LIVE, CLOSE, STALE, NOT LIVE), their time and age
         **verdict,
     }

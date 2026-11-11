@@ -635,8 +635,9 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('Put wall 6.30 below spot, call wall 3.70 above spot');   // the levels panel's own rows
     await expect(body).toContainText('Resistance zone above at 772.00');
     await expect(body).toContainText('Pivot / value zone below at 769.00');
-    await expect(body).toContainText('moved UP the chain');
-    await expect(body).toContainText('Grew most at 771/770');
+    // the walls' and the flip's own moves since the prior close, as served (no drift word)
+    await expect(body).toContainText('Call wall 774 → 775 (+1) · Put wall 765 → 765 (unchanged) · Gamma flip 768.25 → 767.50 (-0.75)');
+    await expect(body).toContainText('Gamma grew most at 771/770');
     await expect(body).toContainText('inside the wall range');
     expect(errs).toEqual([]);
   });

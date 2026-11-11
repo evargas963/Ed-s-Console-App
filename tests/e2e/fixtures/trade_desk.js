@@ -52,8 +52,10 @@ const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type:
   { zone_low: 768, zone_high: 769, zone_type: 'pivot_value', zone_label: 'Pivot / value', zone_side: 'value', confluence_score: 2 }],
   spot_location: { inside: null, above: 0, below: 1 }, summary: null };
 const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, levels_state: 'LIVE',
-  today: { all: [[770, 500000, 1000], [771, 900000, 5000], [772, -200000, 3000]] }, prior: { all: [[770, 400000, 800], [771, 700000, 2000], [772, -100000, 900]] },
-  migration: { all: { compared: true, drift: 'UP', grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
+  today: { all: [[770, 500000, 1000], [771, 900000, 5000], [772, -200000, 3000]] },
+  level_moves: [{ level: 'call_wall', prior: 774, today: 775, change: 1 }, { level: 'put_wall', prior: 765, today: 765, change: 0 },
+    { level: 'gamma_flip', prior: 768.25, today: 767.5, change: -0.75 }],
+  migration: { all: { compared: true, grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
     volume_total: 9000, rows: [[770, 500000, 400000, 100000], [771, 900000, 700000, 200000], [772, -200000, -100000, -100000]] } },
   views: { all: { centre: 771, max_abs: 900000, max_abs_with_prior: 900000 } } };
 const BARS = { ticker: 'SPY', tf: '30', bars: [{ t: 1790343000, o: 770, h: 772, l: 769, c: SPOT, v: 1000, chg: SPOT - 770, chg_pct: (SPOT - 770) / 770 * 100 }],
