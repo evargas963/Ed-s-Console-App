@@ -682,7 +682,7 @@ def flatten_chain_contracts(c_json: dict) -> list[dict]:
     # carries them as sent, so a stored contract can be priced on its own
     chain_fields = {k: c_json[k] for k in ("interestRate", "dividendYield") if k in c_json}
     for side_key in ("callExpDateMap", "putExpDateMap"):
-        side_map = c_json.get(side_key) or {}
+        side_map = c_json.get(side_key)
         if not isinstance(side_map, dict):
             continue
         for exp_map in side_map.values():

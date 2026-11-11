@@ -54,14 +54,14 @@ def display_symbol(key: str) -> str:
     return key[1:] if key.startswith("$") else key
 
 
-def vendor_option_root(symbol: str | None) -> str:
+def vendor_option_root(symbol: str) -> str:
     """Option root already encoded in a Schwab/OCC OSI vendor symbol.
 
     Does not construct a symbol. Production Schwab ``symbol`` fields in this repo
     are the 21-character OSI form: 6-char space-padded root + YYMMDD + C/P +
     8-digit strike (see ``tests/fixtures/real_cde_complete_chain_half_dollar.json``).
     """
-    raw = (symbol or "").strip().upper()
+    raw = symbol.strip().upper()
     if len(raw) != 21:
         return ""
     if not raw[6:12].isdigit() or raw[12] not in "CP" or not raw[13:].isdigit():
