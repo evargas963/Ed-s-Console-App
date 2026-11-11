@@ -3262,11 +3262,7 @@ def chain(ticker: str, now: float, params: dict) -> dict:
             "contracts": [],
             "status": "unavailable",
             **verdict,
-            "scope": {
-                "kind": "unavailable",
-                "requested_expiry": resolved_expiry,
-                "reason": reason,
-            },
+            "scope": {"kind": "unavailable", "reason": reason},
         }
 
     if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
@@ -3313,7 +3309,6 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         "ticker": t,
         "spot": live_spot,
         "priced_at_spot": held.snap.spot,
-        "spot_as_of_ts_utc": live_ts,
         "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
         "net_gex_by_strike": net_gex_by_strike,
@@ -3337,11 +3332,7 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         "status": "ok",
         "ladder": ladder,
         "n_strikes": len({r["strike"] for r in ladder}),
-        "scope": {
-            "kind": "complete_single_expiry",
-            "requested_expiry": resolved_expiry,
-            "completeness_basis": held.chain_basis,
-        },  # the publication's own label
+        "scope": {"kind": "complete_single_expiry"},
     }
 
 
