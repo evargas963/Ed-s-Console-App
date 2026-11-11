@@ -147,12 +147,12 @@ def persist_complete_chain_capture(
     tk = ticker_storage_key(ticker)
     if not tk:
         return {"status": "skipped", "reason": "no_ticker"}
-    exp = str(expiry or "").strip()[:10]
+    exp = expiry.strip()[:10]
     if not exp:
         return {"status": "skipped", "reason": "no_expiry"}
     if not completeness_basis:
         return {"status": "skipped", "reason": "no_completeness_basis"}
-    clean = [dict(c) for c in (contracts or []) if isinstance(c, dict)]
+    clean = [dict(c) for c in contracts if isinstance(c, dict)]
     if not clean:
         return {"status": "skipped", "reason": "no_contracts", "ticker": tk, "expiry": exp}
 
