@@ -223,11 +223,7 @@ def magnitudes(
     vanna = bucket_metric(bucket, "net_vanna")
     oi = strike_total_oi(bucket)
     vol = strike_total_volume(bucket)
-    charm_net = None
-    if charm is None and oi == 0:
-        charm_net = 0.0
-    elif charm is not None:
-        charm_net = schwab_number(charm.get("net_charm"))
+    charm_net = None if charm is None else schwab_number(charm["net_charm"])
     out = {
         "GEXM": None if gex is None or net_gex is None else abs(net_gex),
         "OI": oi,
