@@ -114,9 +114,6 @@ def record_from_level_one_equity(
         snapshot = dict(fs)
     if not seen:
         return False
-    if "TRADE_TIME_MILLIS" in item and "TRADE_TIME_MILLIS" in snapshot:
-        # a trade Schwab streamed: the day's first one starts its pre-market (session_label)
-        record_trade(datetime.fromtimestamp(snapshot["TRADE_TIME_MILLIS"][0], ET))
 
     def val(name: str) -> float | str | None:
         return snapshot[name][0] if name in snapshot else None
@@ -156,6 +153,9 @@ def record_from_level_one_equity(
     }
     with _lock:
         _by_ticker[t] = out
+    if out["trade_ts"] is not None:
+        # the last trade Schwab streamed: the day's first one starts its pre-market (session_label)
+        record_trade(datetime.fromtimestamp(out["trade_ts"], ET))
     for fn in _row_listeners:
         fn(t)
     return True
