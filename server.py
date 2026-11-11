@@ -2973,13 +2973,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict:
     composite (liquidity_readout).
     """
     t = ticker_storage_key(ticker)
-    data: dict = {}
-    try:
-        _content = get_content_for_symbol(t, venue)
-        if _content:
-            data["content"] = _content
-    except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
-        log.warning("microstructure content build failed for %s: %s", t, e, exc_info=True)
+    # the venue's newest book and the ticker's prints, as the order-flow state holds them
+    data: dict = {"content": get_content_for_symbol(t, venue)}
     # top of book: the daemon's price row. The last bid and ask stand when it is not live;
     # top_outage says why and top_feed_label is the page's word for it (docs/DATA_FLOW.md §2 D5)
     top_label, top_outage = price_state(t, now)
