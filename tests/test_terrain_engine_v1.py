@@ -24,6 +24,7 @@ from terrain_engine import (
     atm_sigma_by_expiry,
     compute_implied_one_day_move,
     compute_terrain,
+    nearest_strike,
     price_relations,
     wall_geometry_state,
 )
@@ -148,6 +149,25 @@ def test_implied_one_day_move_matches_the_named_formula() -> None:
     assert em["iv_pct_atm"] == 22.0, "sigma must be the ATM call/put mean, Schwab percent /100"
     assert em["dte_used"] == 1
     assert "sqrt(1/252)" in em["method"], "the method label is part of the contract"
+
+
+def test_a_price_midway_between_two_strikes_takes_the_lower_strikes_iv_in_any_order() -> None:
+    """The real SPY chain at a price exactly between two of its listed strikes.
+
+    Each leg's IV is the lower strike's (nearest_strike's rule), whichever way the chain is
+    ordered: once the first contract met won, so the answer followed the chain's order.
+    """
+    chain, spot = _real_chain()
+    strikes = sorted({c.strike for c in chain if c.expiry == chain[0].expiry})
+    lower = max(k for k in strikes if k <= spot)
+    upper = min(k for k in strikes if k > lower)
+    midway = (lower + upper) / 2.0
+    assert nearest_strike(strikes, midway) == lower
+    at_lower = atm_sigma_by_expiry([c for c in chain if c.strike != upper], midway)
+    forward = atm_sigma_by_expiry(chain, midway)
+    assert forward == atm_sigma_by_expiry(list(reversed(chain)), midway)
+    front = min(k for k in forward if k[0] == chain[0].expiry)
+    assert forward[front] is not None and forward[front] == at_lower[front]
 
 
 def test_implied_move_fails_closed_without_usable_iv() -> None:

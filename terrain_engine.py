@@ -385,19 +385,19 @@ def atm_sigma_by_expiry(
     """Return each expiry's ATM implied vol as a fraction, keyed like exposure_books.
 
     The key is (expiry, days to expiry). The value is the mean of the call and the put IV, each
-    at its side's strike nearest spot. Both legs or None: one side's IV never stands in for the
-    mean, and a leg whose nearest contract has no IV from Schwab (-999, or 0: no sigma) has
-    none -- the next strike's IV never stands in for it. Schwab `volatility` is a percent,
-    converted by schwab_iv_to_sigma.
+    at its side's strike nearest spot (the lower one on a tie, as nearest_strike). Both legs or
+    None: one side's IV never stands in for the mean, and a leg whose nearest contract has no IV
+    from Schwab (-999, or 0: no sigma) has none -- the next strike's IV never stands in for it.
+    Schwab `volatility` is a percent, converted by schwab_iv_to_sigma.
     """
-    legs: dict[tuple[str | None, float | None], dict[str, tuple[float, float | None]]] = {}
+    legs: dict[tuple[str | None, float | None], dict[str, tuple]] = {}
     for c in contracts:
         sides = legs.setdefault((c.expiry, c.days_to_expiry), {})
         if c.strike is None or c.side is None:
             continue
-        d = abs(c.strike - float(spot))
-        if c.side not in sides or d < sides[c.side][0]:
-            sides[c.side] = (d, schwab_iv_to_sigma(c.volatility))
+        near = (abs(c.strike - float(spot)), c.strike)
+        if c.side not in sides or near < sides[c.side][0]:
+            sides[c.side] = (near, schwab_iv_to_sigma(c.volatility))
     out: dict[tuple[str | None, float | None], float | None] = {}
     # a contract with no expiry date keeps its own key (None), last
     for k, s in sorted(legs.items(), key=lambda kv: (kv[0][0] is None, kv[0][0])):
