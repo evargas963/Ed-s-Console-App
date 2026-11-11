@@ -212,7 +212,7 @@ def test_a_contract_with_no_rebuilt_gamma_leaves_its_side_and_the_strike_total_u
     A call that cannot be rebuilt is put at each level's strike in turn. No level stays on, or
     moves to, that strike.
     """
-    names = ("call_wall", "absolute_gamma_strike", "net_gex_peak", "hvp", "lvp", "key_delta_strike")
+    names = ("call_wall", "absolute_gamma_strike", "hvp", "lvp", "key_delta_strike")
     same = compute_terrain(TSLA.ticker, read_chain(TSLA.chain), TSLA.spot, now=TSLA.now).same_day
     for strike in {same[name] for name in names}:
         after = _with_a_call_at(strike, TSLA)

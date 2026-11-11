@@ -10,7 +10,6 @@
   "call_charm_wall",
   "put_charm_wall",
   "put_wall",
-  "net_gex_peak",
   "hvp"
  ],
  "degraded": [],
@@ -229,28 +228,6 @@
    "evidence_tier": "DERIVED",
    "family": "gamma",
    "from_spot_text": "9.13 below spot",
-   "id": "net_gex_peak",
-   "label": "Net \u0393 peak",
-   "not_live_text": null,
-   "price": 764.0,
-   "provenance": {
-    "carried": true,
-    "producer": "terrain_engine.compute_terrain"
-   },
-   "short": "Net \u0393 peak",
-   "side": "BELOW",
-   "staleness": {
-    "age_sec": 6176.727853059769,
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
-   }
-  },
-  {
-   "distance": -9.126899999999978,
-   "evidence_tier": "DERIVED",
-   "family": "gamma",
-   "from_spot_text": "9.13 below spot",
    "id": "hvp",
    "label": "Net put \u0393 peak",
    "not_live_text": null,
@@ -335,18 +312,6 @@
    "id": "absolute_gamma_strike",
    "label": "Abs \u0393",
    "price": 765.0,
-   "staleness": {
-    "age_sec": 6176.727853059769,
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
-   }
-  },
-  {
-   "carried": 764.0,
-   "id": "net_gex_peak",
-   "label": "Net \u0393 peak",
-   "price": 764.0,
    "staleness": {
     "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",

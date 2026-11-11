@@ -17,7 +17,7 @@ only if nothing needs it at all.
 
 from __future__ import annotations
 
-from math_exposure_core import pick_net_gex_peak_strike, pick_pin_and_strength
+from math_exposure_core import pick_pin_and_strength, pick_volatility_point_strikes
 
 
 def test_the_two_pin_metrics_are_different_quantities():
@@ -29,7 +29,7 @@ def test_the_two_pin_metrics_are_different_quantities():
     back to treating them as one.
 
     It also pins what each one IS. `pick_pin_and_strength` maximises |call| + |put| GEX$: a
-    gross CONCENTRATION, where the most hedging sits. `pick_net_gex_peak_strike` maximises
+    gross CONCENTRATION, where the most hedging sits. `pick_volatility_point_strikes` maximises
     |call - put|: where the SIGNED book leans. The first discards the sign, and the sign is
     what decides whether hedging at a strike stabilises or repels — which is why neither is
     a demonstrated magnet and why RC-315 withdrew the claim that one of them is.
@@ -58,7 +58,8 @@ def test_the_two_pin_metrics_are_different_quantities():
     }
 
     pin, strength = pick_pin_and_strength(exposures)
-    peak = pick_net_gex_peak_strike(exposures)
+    no_put_peak, peak = pick_volatility_point_strikes(exposures)
+    assert no_put_peak is None, "no strike of this book is net negative"
 
     assert pin == 800.0, f"gross concentration is at 800 (17.6B vs 4.1B), got {pin}"
     assert peak == 810.0, f"signed-net peak is at 810 (3.9B vs 0.4B), got {peak}"

@@ -40,13 +40,6 @@
    "title": "Max pain"
   },
   {
-   "abbrev": "Net \u0393",
-   "lane": "options",
-   "price": 764.0,
-   "price_text": "764.00",
-   "title": "Net \u0393 peak"
-  },
-  {
    "abbrev": "Abs \u0393",
    "lane": "options",
    "price": 765.0,
@@ -115,13 +108,6 @@
    "price": 765.0,
    "price_text": "765.00",
    "title": "0DTE Abs \u0393"
-  },
-  {
-   "abbrev": "0D Net \u0393",
-   "lane": "options",
-   "price": 764.0,
-   "price_text": "764.00",
-   "title": "0DTE Net \u0393 peak"
   },
   {
    "abbrev": "0D Net P\u0393",

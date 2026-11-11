@@ -7,8 +7,8 @@ under TWO definitions over TWO chain scopes while every writer-scan stayed green
 
 THE LAW THIS FILE ENFORCES: a published level-bearing NAME maps to exactly ONE metric
 definition repo-wide. The same definition may legitimately exist at both chain scopes
-(full_book vs selected_expiry) — e.g. net_gex_peak on the terrain payload versus
-summary_rows — but then the SCOPE is declared per surface, and the (name, surface) pair
+(full_book vs the nearest expiry) — e.g. call_wall on the terrain payload versus its
+same_day copy — but then the SCOPE is declared per surface, and the (name, surface) pair
 resolves to exactly one (definition, scope). Two definitions under one name is the RC-292
 defect and fails here BY CONSTRUCTION, not by review.
 
@@ -25,8 +25,8 @@ from pathlib import Path
 
 from math_exposure_core import (
     compute_exposures_by_strike,
-    pick_net_gex_peak_strike,
     pick_pin_and_strength,
+    pick_volatility_point_strikes,
 )
 from option_contract import read_chain
 from terrain_engine import compute_terrain, price_relations, qualify_pin_candidate
@@ -50,7 +50,6 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     # terrain payload (the terrain panel, TerrainSnapshot.to_dict) — the levels SSOT
     ("terrain", "absolute_gamma_strike"): ("max_total_gamma", FULL),
     ("terrain", "pin_candidate"): ("qualified_max_total_gamma", FULL),
-    ("terrain", "net_gex_peak"): ("max_abs_net_gex", FULL),
     ("terrain", "call_wall"): ("max_call_gamma", FULL),
     ("terrain", "put_wall"): ("max_put_gamma", FULL),
     ("terrain", "gamma_flip"): ("net_gamma_zero_cross", FULL),
@@ -65,7 +64,6 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     ("terrain", "same_day.put_wall"): ("max_put_gamma", TODAY),
     ("terrain", "same_day.gamma_flip"): ("net_gamma_zero_cross", TODAY),
     ("terrain", "same_day.absolute_gamma_strike"): ("max_total_gamma", TODAY),
-    ("terrain", "same_day.net_gex_peak"): ("max_abs_net_gex", TODAY),
     ("terrain", "same_day.key_delta_strike"): ("max_total_delta", TODAY),
     ("terrain", "same_day.call_charm_wall"): ("max_call_charm", TODAY),
     ("terrain", "same_day.put_charm_wall"): ("max_put_charm", TODAY),
@@ -74,8 +72,6 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     ("terrain", "same_day.gsf"): ("gamma_support_floor", TODAY),
     ("terrain", "same_day.grc"): ("gamma_resistance_ceiling", TODAY),
     # analytics summary rows (/api/state summary_rows[]) — the SELECTED-EXPIRY book.
-    # Same definition token as terrain net_gex_peak: same function, declared other scope.
-    ("summary_rows", "net_gex_peak"): ("max_abs_net_gex", SEL),
     # KL overlay (analytics payload kl_* family) — stamped FROM terrain by the one writer
     ("kl_overlay", "kl_absolute_gamma_strike"): ("max_total_gamma", FULL),
     ("kl_overlay", "kl_pin_candidate"): ("qualified_max_total_gamma", FULL),
@@ -126,7 +122,7 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     chain, spot = _fixture_book()
     ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     total_leader, _strength = pick_pin_and_strength(ex)
-    net_leader = pick_net_gex_peak_strike(ex)
+    net_leader, _net_call_peak = pick_volatility_point_strikes(ex)  # the net put gamma peak
     assert total_leader is not None and net_leader is not None
     assert total_leader != net_leader, (
         "the fixture no longer separates max-total-gamma from max-|net-GEX| — replace it "
@@ -138,7 +134,7 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
 
 
 def test_terrain_names_carry_their_declared_definitions():
-    """absolute_gamma_strike ≡ pick_pin_and_strength; net_gex_peak ≡ pick_net_gex_peak_strike.
+    """absolute_gamma_strike ≡ pick_pin_and_strength; hvp, lvp ≡ pick_volatility_point_strikes.
 
     Same book, same strikes, ONE faucet per definition.
     """
@@ -146,12 +142,13 @@ def test_terrain_names_carry_their_declared_definitions():
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     assert snap.absolute_gamma_strike == pick_pin_and_strength(ex)[0]
-    assert snap.net_gex_peak == pick_net_gex_peak_strike(ex)
+    assert (snap.hvp, snap.lvp) == pick_volatility_point_strikes(ex)
     # the cross-wire that RC-292 could never see: each name now refuses the other metric
-    assert snap.absolute_gamma_strike != snap.net_gex_peak
+    assert snap.absolute_gamma_strike not in (snap.hvp, snap.lvp)
     d = snap.to_dict()
     assert d["absolute_gamma_strike"] == snap.absolute_gamma_strike
-    assert d["net_gex_peak"] == snap.net_gex_peak
+    assert (d["hvp"], d["lvp"]) == (snap.hvp, snap.lvp)
+    assert "net_gex_peak" not in d, "the level that only repeated one of the two peaks returned"
     assert "gamma_pin" not in d, "the retired two-definition name returned to the payload"
 
 

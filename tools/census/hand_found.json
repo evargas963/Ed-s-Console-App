@@ -163,10 +163,6 @@
     },
     {
       "category": "one value, several producers",
-      "item": "net GEX peak always equals HVP or LVP"
-    },
-    {
-      "category": "one value, several producers",
       "item": "gross gamma (confluence) same as Abs gamma metric"
     },
     {

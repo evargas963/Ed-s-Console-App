@@ -18,7 +18,7 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, fron
     { strike: 102, gex: [-264500], spot: false }],
   view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
-  absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
+  absolute_gamma_strike: 100, lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
   levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 21 };
 const STRIKES = { ticker: 'SPY', spot: 100, spot_strike: 100, spot_source: 'schwab_quote_last',
   levels_state: 'LIVE', levels_age_sec: 21, levels_age_text: '21s', levels_stale_reason: '',

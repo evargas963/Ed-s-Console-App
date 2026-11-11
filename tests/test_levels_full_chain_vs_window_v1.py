@@ -52,7 +52,8 @@ def _levels(snap) -> dict:
             "put_wall",
             "gamma_flip",
             "absolute_gamma_strike",
-            "net_gex_peak",
+            "hvp",
+            "lvp",
             "max_pain",
         )
     }

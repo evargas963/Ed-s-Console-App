@@ -62,7 +62,6 @@
  "max_pain": 771.0,
  "max_pain_dte": 0.0,
  "net_gex_at_spot": -2718991225.452607,
- "net_gex_peak": 764.0,
  "pcr_all": 1.0943957688082107,
  "pcr_by_expiry": {
   "2026-10-22": 1.0943957688082107
@@ -97,11 +96,10 @@
   "hvp": 764.0,
   "key_delta_strike": 772.0,
   "lvp": 776.0,
-  "net_gex_peak": 764.0,
   "put_charm_wall": 765.0,
   "put_wall": 764.0
  },
- "schema_version": 4,
+ "schema_version": 5,
  "spot": 773.1269,
  "spot_age_sec": 4859.43825507164,
  "spot_as_of_ts_utc": 1792701541.652,

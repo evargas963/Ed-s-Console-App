@@ -16,7 +16,7 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, sour
   strikes: [98, 100, 102], cells: [98, 100, 102].map(function (k) { return { strike: k, gex: [-90000, 120000], spot: k === 100 }; }),
   view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 120000 }, missing_expiry: null } };
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
-  net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 10 };
+  lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 10 };
 const STRIKES = { spot: 100, levels_state: 'LIVE',
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
   views: { all: { centre: 100, note: null, max_abs: 958600 } } };

@@ -40,7 +40,7 @@ ON_A_STRIKE = SPY_PRINT_ON_A_STRIKE["native"]["LAST_PRICE"]
 STRIKE_AWAY = SPY_PRINT_A_STRIKE_AWAY["native"]["LAST_PRICE"]
 AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
 #: the levels between 764.00 and 773.1269: the call wall 765, the gamma flip 770.77, max pain 771
-#: and the put delta wall 772 (the put wall and the net-gamma peak are at 764.00 itself)
+#: and the put delta wall 772 (the put wall is at 764.00 itself)
 BETWEEN = {"Call g-Wall", "Gamma Flip", "Max Pain", "Put d-Wall"}
 
 
@@ -122,7 +122,7 @@ def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prin
     """The levels are the close capture's, published at 764.04.
 
     The 16:33 print (764.00), the ticker's first, is the price the next is checked from and
-    crosses nothing; from it, the put wall and the net-gamma peak (764) are left, not crossed.
+    crosses nothing; from it, the put wall (764) is left, not crossed.
     The 16:39 print (773.1269) crosses upward each level between the two prints; the 18:00
     print (764.27) crosses each of them back down, a reversal stored at once. No chain was
     published in between.
@@ -145,6 +145,29 @@ def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prin
     assert _named(down) == {n: (CROSSED_DOWN, levels[n], AFTER_HOURS) for n in BETWEEN}
     # each stored cross is held for the live readers, newest last
     assert sorted(c["cross_id"] for c in held[-8:]) == sorted(c["cross_id"] for c in up + down)
+
+
+def test_a_price_through_each_net_gamma_peak_is_a_cross_under_its_own_name():
+    """The two net gamma peaks are crossed as levels of their own, on the published close.
+
+    The level that named whichever of the two was larger is gone from the crossings.
+    """
+    _forget()
+    levels = _publish_close()
+    try:
+        snap = server.published_levels("SPY").snap
+    finally:
+        _forget()
+    assert "Net Γ peak" not in levels
+    assert (levels["Net call Γ peak"], levels["Net put Γ peak"]) == (snap.lvp, snap.hvp)
+    for name in ("Net call Γ peak", "Net put Γ peak"):
+        level = levels[name]
+        assert level is not None, name
+        assert (level, name, CROSSED_UP) in server._level_crosses_at(snap, level - 0.5, level + 0.5)
+        assert (level, name, CROSSED_DOWN) in server._level_crosses_at(
+            snap, level + 0.5, level - 0.5
+        )
+        assert name not in {n for _v, n, _s in server._level_crosses_at(snap, level + 1, level + 2)}
 
 
 def test_a_restart_holds_back_the_cross_its_last_minute_stored():
