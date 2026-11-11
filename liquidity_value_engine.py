@@ -465,29 +465,38 @@ def _place_premarket_cluster(
     return _premarket_type_by_tags(tags), ""
 
 
-def _classify_value_state_and_vwap_relation(
-    poc: float | None,
-    prev_pd_poc: float | None,
-    vwap: float | None,
-) -> tuple[str | None, str | None]:
-    """Value-area shift + VWAP-vs-value relation; each None (unknown) without both its inputs."""
-    value_state = None
-    if poc is not None and prev_pd_poc is not None:
-        value_state = "unchanged"
-        if poc > prev_pd_poc * 1.002:
-            value_state = "shifted_higher"
-        elif poc < prev_pd_poc * 0.998:
-            value_state = "shifted_lower"
+def value_area_relation(
+    val: float | None, vah: float | None, prior_val: float | None, prior_vah: float | None
+) -> str | None:
+    """Return where today's value area (`val` to `vah`) sits against the prior day's.
 
-    vwap_relation = None
-    if vwap is not None and poc is not None:
-        vwap_relation = "at_value"
-        if vwap > poc * 1.001:
-            vwap_relation = "above_value"
-        elif vwap < poc * 0.999:
-            vwap_relation = "below_value"
+    The Market Profile comparison of the two areas themselves, with no tolerance: higher (wholly
+    above), lower (wholly below), inside, outside, overlapping_higher or overlapping_lower (both
+    edges moved that way), unchanged (the same edges). None, unknown, without all four edges.
+    """
+    if val is None or vah is None or prior_val is None or prior_vah is None:
+        return None
+    if (val, vah) == (prior_val, prior_vah):
+        return "unchanged"
+    if val > prior_vah:
+        return "higher"
+    if vah < prior_val:
+        return "lower"
+    if val >= prior_val and vah <= prior_vah:
+        return "inside"
+    if val <= prior_val and vah >= prior_vah:
+        return "outside"
+    return "overlapping_higher" if vah > prior_vah else "overlapping_lower"
 
-    return value_state, vwap_relation
+
+def vwap_against_value(vwap: float | None, val: float | None, vah: float | None) -> str | None:
+    """Return where VWAP sits against today's value area: above it, inside it or below it.
+
+    None, unknown, without the VWAP or an edge.
+    """
+    if vwap is None or val is None or vah is None:
+        return None
+    return "above_value" if vwap > vah else "below_value" if vwap < val else "inside_value"
 
 
 def _classify_live_cluster(tags: list[str]) -> tuple[ZoneType, str]:
@@ -570,14 +579,17 @@ def build_live_snapshot(
         _zone(cluster, *_classify_live_cluster(cluster[3]), SnapshotType.LIVE)
         for cluster in cluster_price_levels_into_zones(levels, config)
     ]
-    value_state, vwap_relation = _classify_value_state_and_vwap_relation(
-        canonical.price("TODAY_POC"), canonical.price("PD_POC"), canonical.price("VWAP")
-    )
+    val, vah = canonical.price("TODAY_VAL"), canonical.price("TODAY_VAH")
     return SnapshotOutput(
         ticker=ticker,
         snapshot_type=SnapshotType.LIVE,
         zones=zones,
-        summary=SnapshotSummary(value_state=value_state, vwap_relation=vwap_relation),
+        summary=SnapshotSummary(
+            value_state=value_area_relation(
+                val, vah, canonical.price("PD_VAL"), canonical.price("PD_VAH")
+            ),
+            vwap_relation=vwap_against_value(canonical.price("VWAP"), val, vah),
+        ),
     )
 
 
