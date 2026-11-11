@@ -88,6 +88,22 @@ def test_charm_walls_are_real_strikes_from_the_chain() -> None:
     assert put_wall is None or put_wall in strikes
 
 
+def test_two_strikes_with_the_same_charm_give_the_lower_strike_whatever_their_order() -> None:
+    """The real chain's charm map with its largest call charm put on a second, higher strike.
+
+    The wall is the lower of the two in either order of the map, as every other level picks.
+    """
+    chain, spot = _load_real_chain()
+    cbs = compute_charm_by_strike(chain, spot, now=NOW)
+    call_wall, put_wall = pick_charm_wall_strikes(cbs)
+    assert call_wall is not None
+    higher = max(k for k in cbs if k > call_wall)
+    tied = {k: dict(b) for k, b in cbs.items()}
+    tied[higher]["call_charm"] = cbs[call_wall]["call_charm"]
+    for order in (sorted(tied), sorted(tied, reverse=True)):
+        assert pick_charm_wall_strikes({k: tied[k] for k in order}) == (call_wall, put_wall)
+
+
 def test_charm_by_strike_fails_closed() -> None:
     assert compute_charm_by_strike([], 100.0, now=NOW) == {}
     assert compute_charm_by_strike(None, 100.0, now=NOW) == {}

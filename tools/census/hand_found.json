@@ -155,10 +155,6 @@
     },
     {
       "category": "one value, several producers",
-      "item": "max-metric strike: ties broken two ways"
-    },
-    {
-      "category": "one value, several producers",
       "item": "prior close: stream field 12 and REST"
     },
     {
