@@ -12,6 +12,7 @@ from math_exposure_core import (
 )
 from option_contract import read_chain
 from terrain_engine import (
+    OPTION_LEVELS,
     SAME_DAY_LEVELS,
     TERRAIN_SCHEMA_VERSION,
     compute_terrain,
@@ -119,10 +120,16 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
 
 def test_the_net_gamma_peaks_are_served_under_names_that_say_what_they_are():
     """Each list that names a level calls the two by what they hold, and each has its pill."""
-    for levels in (SAME_DAY_LEVELS, server.GAMMA_LEVELS):
+    for levels in (SAME_DAY_LEVELS, OPTION_LEVELS):
         named = dict(levels)
         assert (named["hvp"], named["lvp"]) == ("Net put Γ peak", "Net call Γ peak")
-    for _key, label in server.GAMMA_LEVELS:
+    # one list names the levels: the same-day levels are its own entries, in its order
+    assert [level for level in OPTION_LEVELS if level in SAME_DAY_LEVELS] == list(SAME_DAY_LEVELS)
+    assert {key for key, _label in OPTION_LEVELS} - {key for key, _label in SAME_DAY_LEVELS} == {
+        "max_pain",
+        "pin_candidate",
+    }
+    for _key, label in OPTION_LEVELS:
         assert label in server._OPTION_SHORT, label
     assert server._option_abbrev("Net put Γ peak", same_day=False) == "Net PΓ"
     assert server._option_abbrev("Net call Γ peak", same_day=True) == "0D Net CΓ"

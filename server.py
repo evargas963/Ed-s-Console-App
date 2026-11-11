@@ -92,6 +92,7 @@ from numeric_contract import float_finite_or_none, price_text, schwab_count, sch
 from option_contract import OptionContract, chain_row
 from terrain_atr import Atr, compute_atrs
 from terrain_engine import (
+    OPTION_LEVELS,
     PRICE_RELATIONS,
     SAME_DAY_LEVELS,
     SCOPES,
@@ -3569,24 +3570,6 @@ NO_PRICE_LEVELS_REASON = (
 )
 
 
-#: the terrain's price levels the chart draws (terrain_engine.compute_terrain), in its words
-GAMMA_LEVELS = (
-    ("call_wall", "Call wall"),
-    ("put_wall", "Put wall"),
-    ("gamma_flip", "Gamma flip"),
-    ("max_pain", "Max pain"),
-    ("absolute_gamma_strike", "Abs Γ"),
-    ("pin_candidate", "Pin candidate"),
-    ("gsf", "GSF"),
-    ("grc", "GRC"),
-    ("hvp", "Net put Γ peak"),
-    ("lvp", "Net call Γ peak"),
-    ("key_delta_strike", "Key Δ strike"),
-    ("call_charm_wall", "Call charm wall"),
-    ("put_charm_wall", "Put charm wall"),
-)
-
-
 def _expiry_order(item: tuple) -> tuple:
     """Known days-to-expiration first, then the date. A missing count sorts last."""
     dte = item[1]
@@ -3671,7 +3654,7 @@ def _confluence_markers(live: TerrainSnapshot, tk: str, now: datetime, spot) -> 
                 )
     served = live.to_dict()
     at_spot = served | price_relations(served, spot).to_dict()  # the pin candidate: live price
-    for gid, label in GAMMA_LEVELS:
+    for gid, label in OPTION_LEVELS:
         price = at_spot[gid]
         if price is not None:
             markers.append(
@@ -3922,7 +3905,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         t |= price_relations(t, spot).to_dict()
     em = None if published is None else expected_move(published.snap.implied_1d_move, spot)
     carried = [
-        (gid, label, "gamma", t[gid] if t is not None else None) for gid, label in GAMMA_LEVELS
+        (gid, label, "gamma", t[gid] if t is not None else None) for gid, label in OPTION_LEVELS
     ]
     carried += [
         ("em_up", "+1σ move", "expected_move", None if em is None else em[0]),

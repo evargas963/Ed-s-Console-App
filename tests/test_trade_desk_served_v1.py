@@ -380,9 +380,9 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
     body = serve()
     by_id = {r["id"]: r for r in body["levels"]}
     assert (
-        sum(terrain.get(gid) is not None for gid, _ in server.GAMMA_LEVELS) >= 8
+        sum(terrain.get(gid) is not None for gid, _ in server.OPTION_LEVELS) >= 8
     )  # the real chain prices most
-    for gid, _label in server.GAMMA_LEVELS:
+    for gid, _label in server.OPTION_LEVELS:
         if terrain.get(gid) is not None:
             assert by_id[gid]["family"] == "gamma" and by_id[gid]["price"] == terrain[gid]
             assert gid in body["by_distance"]
