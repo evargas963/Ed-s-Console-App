@@ -35,7 +35,7 @@ async function intercept(page, tapeBody) {
   await routeWatchlist(page, ['SPY']);
   await pushExpiries(page, ['2026-09-18'], undefined, { tape: tapeBody, bars: BARS, terrain: TERRAIN, surface: SURFACE,
     chain: { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable',
-      scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } },
+      scope: { kind: 'unavailable', reason: 'no listed expiry for this ticker' } },
     strikes: { ticker: 'SPY', spot: 100, today: { all: [] }, views: { all: { centre: null, note: null, max_abs: null } } } });
 }
 

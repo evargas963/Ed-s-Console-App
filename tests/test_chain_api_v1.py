@@ -120,13 +120,15 @@ def test_no_held_chain_is_unavailable_with_its_reason():
     body = _get(ticker="ZZNOCHAIN")
     assert body["status"] == "unavailable" and body["contracts"] == []
     assert body["scope"]["reason"]
+    assert set(body["scope"]) == {"kind", "reason"}
 
 
 def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     body = _get(ticker="tsla")
     assert body["status"] == "ok" and body["expiry"] == _TSLA_EXPIRY
-    assert body["scope"]["kind"] == "complete_single_expiry"
+    # the expiry is served once (`expiry`), and no label of ours rides with the chain
+    assert body["scope"] == {"kind": "complete_single_expiry"}
     assert body["contracts"] == _as_shown(_TSLA_CONTRACTS)
     fractional = [c for c in body["contracts"] if c["strikePrice"] != int(c["strikePrice"])]
     assert len(fractional) == _TSLA["n_fractional_strikes"]

@@ -34,7 +34,8 @@ def test_the_chain_spot_carries_schwabs_trade_time():
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
     assert body["spot"] == 601.23
-    assert body["spot_as_of_ts_utc"] == 1790380799.83
+    # Schwab's trade time is served once, as the text the page shows: no second, raw copy
+    assert "spot_as_of_ts_utc" not in body
     assert body["spot_time_ct"] == "Fri 09/25 06:59 PM CT"
     # levels with no surface: this expiry's net GEX is unknown, not an empty list
     assert body["net_gex_by_strike"] is None

@@ -27,7 +27,7 @@ function occSymbol(root, isoExpiry, side, strike) {
   return root.padEnd(6, ' ') + yymmdd + (side === 'PUT' ? 'P' : 'C') + strikeStr;
 }
 const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
-  scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+  scope: { kind: 'complete_single_expiry' },
   contracts: [
     ct('CALL', 102, 'SPY   260911C00102000', 1200, 300, 11.1, 0.35), ct('PUT', 102, 'SPY   260911P00102000', 900, 250, 12.1, -0.65),
     ct('CALL', 100, 'SPY   260911C00100000', 5400, 2100, 12.3, 0.52), ct('PUT', 100, 'SPY   260911P00100000', 4100, 1800, 12.6, -0.48),
@@ -141,7 +141,7 @@ test.describe('D — Gamma Chain subview', () => {
   test('the header table never moves regardless of scrolling the body, including real wheel scroll during a refresh (state-authority review)', async ({ page }) => {
     let vol = 10;
     const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
-      scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+      scope: { kind: 'complete_single_expiry' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
     panels.chain = () => served(BIG());
     await page.setViewportSize({ width: 900, height: 640 });   // a representative, not maximal, size
@@ -206,7 +206,7 @@ test.describe('D — Gamma Chain subview', () => {
   test('a routine background refresh with changed data completes, and preserves a manually-scrolled position', async ({ page }) => {
     let vol = 10;
     const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
-      scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+      scope: { kind: 'complete_single_expiry' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
     panels.chain = () => served(BIG());
     await toChain(page);
@@ -249,7 +249,7 @@ test.describe('D — Gamma Chain subview', () => {
       const strike = exp === EXP_A ? 100 : 200;   // distinct strike AND distinct symbol per expiry
       const sym = exp === EXP_A ? symA : symB;
       return { ticker: 'SPY', spot: strike, expiry: exp, status: 'ok',
-        scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+        scope: { kind: 'complete_single_expiry' },
         contracts: [ct('CALL', strike, sym, 1, 1, 1, 0.1, exp)] };   // expirationDate == exp, genuinely
     });
     sock = await pushExpiries(page, [EXP_A, EXP_B], undefined, panels);
@@ -269,7 +269,7 @@ test.describe('D — Gamma Chain subview', () => {
   test('A -> B -> A: a frame of an expiry no longer selected is not drawn over the selected one', async ({ page }) => {
     const EXP_A = '2026-09-11', EXP_B = '2026-09-18';
     const ladder = (exp, strike) => ({ ticker: 'SPY', spot: strike, expiry: exp, status: 'ok',
-      scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+      scope: { kind: 'complete_single_expiry' },
       contracts: [ct('CALL', strike, occSymbol('SPY', exp, 'CALL', strike), 1, 1, 1, 0.1, exp)] });
     panels = chainPanels((asked) => (asked === EXP_B ? ladder(EXP_B, 222) : ladder(EXP_A, 333)));
     sock = await pushExpiries(page, [EXP_A, EXP_B], undefined, panels);
