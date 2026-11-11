@@ -688,7 +688,8 @@ def pick_pin_and_strength(exposures: dict[float, dict]) -> tuple[float | None, f
     Treat the result as a pin CANDIDATE.
 
     The NET book (calls minus puts) is a different question — where the signed book leans —
-    and lives under its own name as net_gex_peak (pick_net_gex_peak_strike below).
+    and lives under its own names, the net call and net put gamma peaks
+    (pick_volatility_point_strikes below).
 
     strength_pct = the leader's margin over the runner-up on the same metric. A 1% lead is a
     coin flip and the label should say so; a 40% lead is a decisive CONCENTRATION, which is
@@ -708,18 +709,6 @@ def pick_pin_and_strength(exposures: dict[float, dict]) -> tuple[float | None, f
         if t is not None and t > second:
             second = t
     return s, (v - second) / v * 100.0
-
-
-def pick_net_gex_peak_strike(exposures: dict[float, dict]) -> float | None:
-    """Net-GEX peak: strike with largest |net GEX$| per 1% (calls minus puts).
-
-    Where the SIGNED book concentrates (the standard pin is total gamma, pick_pin_and_strength).
-    None when the book has no dollar GEX (no spot).
-    """
-    if not exposures_have_dollar_gex(exposures):
-        return None
-    s, _ = _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "net_gex_1pct"))
-    return s
 
 
 def pick_key_delta_strike(exposures: dict[float, dict]) -> float | None:

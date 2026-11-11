@@ -42,7 +42,7 @@ const SURFACE = {
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
 const TERRAIN = { ticker: '$SPX', spot: SPOT, gamma_flip: 4992.4, call_wall: 5100, put_wall: 4900,
-  absolute_gamma_strike: 5000, net_gex_peak: 5000, net_gex_at_spot: 3.14e9, regime: 'LONG_GAMMA_CHOP',
+  absolute_gamma_strike: 5000, lvp: 5000, net_gex_at_spot: 3.14e9, regime: 'LONG_GAMMA_CHOP',
   levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 4 };
 const STRIKES = { ticker: '$SPX', spot: SPOT,
   levels_state: 'LIVE', levels_age_sec: 4,

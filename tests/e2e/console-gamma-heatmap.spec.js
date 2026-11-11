@@ -118,7 +118,7 @@ function surfaceWithStreamState(perCol) {
 }
 const TERRAIN = {
   ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
-  absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
+  absolute_gamma_strike: 583, lvp: 590, hvp: 560, net_gex_at_spot: 2140000000,
   regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_mark_reason: null,
   expiries: ['2026-09-11', '2026-09-18'], pcr_by_expiry: { '2026-09-11': 0.87, '2026-09-18': 1.13 },
   pcr_volume_by_expiry: { '2026-09-11': 1.42, '2026-09-18': 0.64 },
@@ -1251,7 +1251,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('the Key Levels rail shows regular and 0DTE in the same row', async ({ page }) => {
     panels.terrain = Object.assign({}, TERRAIN, {
       same_day: { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
-        absolute_gamma_strike: 572.5, net_gex_peak: 570 },
+        absolute_gamma_strike: 572.5, lvp: 575, hvp: 565 },
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klBody .kl-pairs .h').nth(0)).toHaveText('Regular');
@@ -1263,7 +1263,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#kl0Call')).toHaveText('575.00');
     await expect(page.locator('#kl0Put')).toHaveText('570.00');
     await expect(page.locator('#kl0Abs')).toHaveText('572.50');
-    await expect(page.locator('#kl0Peak')).toHaveText('570.00');
+    await expect(page.locator('#kl0NetCall')).toHaveText('575.00');
+    await expect(page.locator('#kl0NetPut')).toHaveText('565.00');
+    await expect(page.locator('#klNetCall')).toHaveText('590.00');   // the whole book's two peaks
+    await expect(page.locator('#klNetPut')).toHaveText('560.00');
+    await expect(page.locator('#klBody')).not.toContainText('Net GEX peak');
     await expect(page.locator('#klNet')).toBeVisible();
   });
 

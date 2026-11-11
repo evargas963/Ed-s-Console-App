@@ -57,8 +57,8 @@
     if (isGamma()) renderLevels(_levels);
   });
   function renderLevels(d) {   // d: the panel as sent; undefined: none yet for this ticker
-    var ids = ['klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime',   // terrain's (Spot is the price row's)
-      'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0Peak'];
+    var ids = ['klFlip', 'klCall', 'klPut', 'klAbs', 'klNetCall', 'klNetPut', 'klNet', 'klRegime',   // terrain's (Spot is the price row's)
+      'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0NetCall', 'kl0NetPut'];
     // nothing to draw: none sent yet ('-'), the program could not produce it, or no levels yet
     var why = d === undefined ? '-' : d.failed != null ? d.failed : d.error ? 'terrain not ready' : null;
     paintPcr(why == null ? d : null);
@@ -73,13 +73,15 @@
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));
-    txt('klPeak', px(d.net_gex_peak));
+    txt('klNetCall', px(d.lvp));
+    txt('klNetPut', px(d.hvp));
     var z = d.same_day != null ? d.same_day : null;
     txt('kl0Flip', px(z ? z.gamma_flip : null));
     txt('kl0Call', px(z ? z.call_wall : null));
     txt('kl0Put', px(z ? z.put_wall : null));
     txt('kl0Abs', px(z ? z.absolute_gamma_strike : null));
-    txt('kl0Peak', px(z ? z.net_gex_peak : null));
+    txt('kl0NetCall', px(z ? z.lvp : null));
+    txt('kl0NetPut', px(z ? z.hvp : null));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)
     var net = document.getElementById('klNet');
     if (net) {

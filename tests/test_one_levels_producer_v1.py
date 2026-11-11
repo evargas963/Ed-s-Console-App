@@ -175,7 +175,8 @@ def test_published_levels_equal_compute_terrain_on_the_same_inputs():
         "put_wall",
         "absolute_gamma_strike",
         "max_pain",
-        "net_gex_peak",
+        "hvp",
+        "lvp",
         "contracts_used",
     ):
         assert got[k] == expected[k], k

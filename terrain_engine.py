@@ -22,7 +22,6 @@ from math_exposure_core import (
     pick_delta_wall_strikes,
     pick_gamma_wall_strikes,
     pick_key_delta_strike,
-    pick_net_gex_peak_strike,
     pick_pin_and_strength,
     pick_volatility_point_strikes,
     put_call_oi_ratio,
@@ -50,7 +49,7 @@ from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_sid
 from time_et import ET, option_close_product, time_to_expiry_years
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
-TERRAIN_SCHEMA_VERSION = 4
+TERRAIN_SCHEMA_VERSION = 5
 
 
 @dataclass(frozen=True)
@@ -89,13 +88,6 @@ class TerrainSnapshot:
     absolute_gamma_gex_dollars: float | None = None
     absolute_gamma_oi: float | None = None
     book_oi_total: float | None = None
-    #: Max |net GEX$| (calls minus puts): where the SIGNED book peaks, distinct from the
-    #: concentration.
-    #: Scope: FULL_BOOK here; ExposureRow.net_gex_peak is the SAME definition over the
-    #: SELECTED_EXPIRY chain (declared, distinct surface).
-    net_gex_peak: float | None = None
-    #: Total-gamma renders once as ABS GAMMA. Analytics `kl_hvl` is a DIFFERENT book
-    #: (net_gex_peak → "Net Γ peak").
     #: Max pain is defined PER EXPIRY (standard: the settlement price minimising intrinsic
     #: payout on ONE expiry's open interest): the FRONT expiry only, and max_pain_dte says
     #: which.
@@ -701,7 +693,6 @@ SAME_DAY_LEVELS = (
     ("put_wall", "Put wall"),
     ("gamma_flip", "Gamma flip"),
     ("absolute_gamma_strike", "Abs Γ"),
-    ("net_gex_peak", "Net Γ peak"),
     ("gsf", "GSF"),
     ("grc", "GRC"),
     ("hvp", "Net put Γ peak"),
@@ -763,7 +754,6 @@ def same_day_levels(
         "put_wall": put_wall,
         "gamma_flip": flip,
         "absolute_gamma_strike": pin,
-        "net_gex_peak": pick_net_gex_peak_strike(exposures),
         "gsf": support["gsf"],
         "grc": support["grc"],
         "hvp": hvp,
@@ -897,7 +887,6 @@ def compute_terrain(
         absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
         absolute_gamma_oi=_abs_gamma_oi,
         book_oi_total=_book_oi_total,
-        net_gex_peak=pick_net_gex_peak_strike(exposures),
         key_delta_strike=pick_key_delta_strike(exposures),
         hvp=hvp,
         lvp=lvp,
