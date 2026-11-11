@@ -194,13 +194,7 @@ def _top(data: dict) -> dict:
 def _compute_top_book_pressure(data: dict) -> float | None:
     """Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size), streamed sizes."""
     t = _top(data)
-    bid_sz, ask_sz = t.get("bid_size"), t.get("ask_size")
-    if bid_sz is None or ask_sz is None:
-        return None
-    total = bid_sz + ask_sz
-    if total <= 0:
-        return None
-    return (bid_sz - ask_sz) / total
+    return _book_imbalance_from_totals(t.get("bid_size"), t.get("ask_size"))
 
 
 def _resolve_bid_ask_prices(data: dict) -> tuple[float | None, float | None]:
@@ -377,7 +371,7 @@ def _microstructure_structural(cb: dict) -> dict:
     bid_size, ask_size = cb["bid_size"], cb["ask_size"]
     bid_levels, ask_levels = cb["bid_levels"], cb["ask_levels"]
     have_quotes = bid is not None and ask is not None
-    crossed = have_quotes and bid > ask
+    crossed = bid > ask if have_quotes else None  # unknown without both quotes
 
     microprice = _microprice(bid, ask, bid_size, ask_size)
     spread_pts = ask - bid if have_quotes else None

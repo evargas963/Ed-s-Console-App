@@ -323,6 +323,7 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
     m = _micro({"content": st.get_content_for_symbol("ONESIDE")}, now_ts=2.0)
     assert m["status"] == "ok"
     assert m["depth"]["1"]["ask_total"] == 77.0 and m["depth"]["1"]["bid_total"] is None
+    assert m["crossed"] is None  # no bid: whether the book is crossed is unknown, not "no"
 
 
 def test_route_serializes_carried_state_without_recomputing():

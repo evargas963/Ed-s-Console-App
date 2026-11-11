@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+import liquidity_value_engine
 import live_market_plane as lmp
 import server as srv
 from micro_structure import Candle
@@ -124,6 +125,18 @@ def test_every_level_at_zero_stands_in_the_zones_before_the_open():
 def test_a_value_area_at_zero_is_compared_as_a_price(zero_days, value_state, vwap_relation):
     summary = _snapshot(zero_days, FRIDAY)["summary"]
     assert (summary["value_state"], summary["vwap_relation"]) == (value_state, vwap_relation)
+
+
+def test_a_value_state_missing_an_input_is_unknown_never_unchanged_or_at_value():
+    """No prior day's POC, no POC or no VWAP: the comparison was never made, so it is unknown.
+
+    The price is Friday's last close as Schwab sent it; the rule is which inputs are present.
+    """
+    classify = liquidity_value_engine._classify_value_state_and_vwap_relation
+    price = friday_bars()[-1]["close"]
+    assert classify(price, None, price) == (None, "at_value")
+    assert classify(price, price, None) == ("unchanged", None)
+    assert classify(None, price, price) == (None, None)
 
 
 @pytest.mark.usefixtures("published")
