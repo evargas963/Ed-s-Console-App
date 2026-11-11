@@ -920,26 +920,23 @@ def _stream_state_of(states: list) -> str:
     return next((o for o in _STREAM_STATE_ORDER if o in states), "unavailable")
 
 
-def _stream_cell_title(state: str, age: float | None, ts_recv: float | None) -> str | None:
+def _stream_cell_title(state: str, ts_recv: float | None) -> str | None:
     """Return the tooltip for a cell that is not live.
 
-    The served word, Schwab's time in Central Time, and the age. A live cell has no tooltip.
+    The served word and the time its oldest leg was last received, in Central Time. A live cell
+    has no tooltip. No age: the stamp stands until the feed next changes (hours, after the
+    close), and an age written at the stamp would be read long after it stopped being true.
     """
     if state == "live":
         return None
     word = STREAM_WORDS["cell"].get(state)
     if word is None:
         return None
-    parts = [word]
-    if ts_recv is not None:
-        parts.append(ct_label(ts_recv))
-    if age is not None:
-        parts.append(f"{age:.0f}s")
-    return " · ".join(parts)
+    return word if ts_recv is None else f"{word} · {ct_label(ts_recv)}"
 
 
 def _stamp_gamma_surface_cell_stream_state(
-    surface: dict, streamed: dict, overlay_symbols: set, held_symbols: set[str], now: float
+    surface: dict, streamed: dict, overlay_symbols: set, held_symbols: set[str]
 ) -> dict:
     """`surface` with per-leg (call/put) and per-cell STREAM state on its cells and columns.
 
@@ -950,7 +947,8 @@ def _stamp_gamma_surface_cell_stream_state(
     ticker (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
     (live_market_plane.live_on, the one live rule); `held_symbols`: every contract on that
     beat, ticked or not (_held_option_symbols_for_ticker). A missing beat is not live: those
-    cells keep the last streamed value and are not live. Each leg's age is at `now`.
+    cells keep the last streamed value and are not live. Each leg carries the time it was last
+    received (`ts_recv`), never an age: the stamp stands until the feed next changes.
       'live'         — the feed is delivering this symbol now.
       'stale'        — the symbol has streamed but the feed is not delivering it now.
       'pending'      — the daemon holds the symbol and no tick has landed yet.
@@ -980,27 +978,17 @@ def _stamp_gamma_surface_cell_stream_state(
                 else:
                     leg_state = "unavailable"
                 leg_states.append(leg_state)
-                ts_recv = _leg_stream_ts_recv(greeks)
                 legs[side] = {
                     "symbol": sym,
                     "state": leg_state,
-                    "ts_recv": ts_recv,
-                    "age_sec": (now - ts_recv if ts_recv is not None else None),
+                    "ts_recv": _leg_stream_ts_recv(greeks),
                 }
             if not leg_states:  # the expiry lists no contract at this strike: nothing streams
                 state_row.append(None)
                 continue
+            received = [leg["ts_recv"] for leg in legs.values() if leg["ts_recv"] is not None]
             legs["state"] = _stream_state_of(leg_states)
-            confirmed = [
-                leg
-                for leg in legs.values()
-                if isinstance(leg, dict) and isinstance(leg.get("age_sec"), (int, float))
-            ]
-            oldest = max(confirmed, key=lambda leg: leg["age_sec"]) if confirmed else None
-            legs["age_sec"] = oldest["age_sec"] if oldest else None
-            legs["title"] = _stream_cell_title(
-                legs["state"], legs["age_sec"], None if oldest is None else oldest.get("ts_recv")
-            )
+            legs["title"] = _stream_cell_title(legs["state"], min(received) if received else None)
             state_row.append(legs)
         cells.append({**cell, "stream": state_row})
     return {
@@ -1142,7 +1130,7 @@ def restamp_open_surfaces(now: float) -> None:
             if greeks:
                 streamed[sym] = greeks
         live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
-        stamped = _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held, now)
+        stamped = _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held)
         stamped["surface_seq"] = _next_gamma_surface_seq(tk, now)
         with _terrain_cache_lock:
             _terrain_cache[tk] = replace(levels, gamma_surface=stamped)
@@ -1464,9 +1452,7 @@ def _publish_levels(
             stream_overlay_symbols=live_syms,
             stream_overlay_computed_ts_utc=now.timestamp(),
         )
-        surface = _stamp_gamma_surface_cell_stream_state(
-            projected, streamed, feed_live, held, now.timestamp()
-        )
+        surface = _stamp_gamma_surface_cell_stream_state(projected, streamed, feed_live, held)
         surface["surface_seq"] = _next_gamma_surface_seq(tk, now.timestamp())
         # a later beat that differs from this one restamps it (restamp_open_surfaces)
         _last_feed_stamp[tk] = _feed_stamp_key(feed, _surface_symbols(surface), now.timestamp())

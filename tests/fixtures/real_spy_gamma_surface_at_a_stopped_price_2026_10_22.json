@@ -24,15 +24,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00768000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00768000",
       "ts_recv": null
@@ -76,15 +73,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00769000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00769000",
       "ts_recv": null
@@ -128,15 +122,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00770000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00770000",
       "ts_recv": null
@@ -180,15 +171,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00771000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00771000",
       "ts_recv": null
@@ -232,15 +220,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00772000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00772000",
       "ts_recv": null
@@ -284,15 +269,12 @@
    "spot": true,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00773000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00773000",
       "ts_recv": null
@@ -336,15 +318,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00774000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00774000",
       "ts_recv": null
@@ -388,15 +367,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00775000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00775000",
       "ts_recv": null
@@ -440,15 +416,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00776000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00776000",
       "ts_recv": null
@@ -492,15 +465,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00777000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00777000",
       "ts_recv": null
@@ -544,15 +514,12 @@
    "spot": false,
    "stream": [
     {
-     "age_sec": null,
      "call": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022C00778000",
       "ts_recv": null
      },
      "put": {
-      "age_sec": null,
       "state": "unavailable",
       "symbol": "SPY   261022P00778000",
       "ts_recv": null

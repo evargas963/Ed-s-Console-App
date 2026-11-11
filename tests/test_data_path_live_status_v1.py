@@ -238,7 +238,9 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
     assert cells and all(col["state"] == "stale" for col in cells)
     title = cells[0]["title"]
     assert title.startswith("this cell has stopped streaming")
-    assert "CT" in title and title.endswith("s")
+    # the word and the time the value was last received; no age, which would be read hours
+    # after the stamp that wrote it
+    assert title.endswith(" CT")
 
 
 def _et(day: str, hh: int, mm: int = 0) -> float:

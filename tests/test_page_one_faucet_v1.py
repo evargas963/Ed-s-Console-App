@@ -262,11 +262,11 @@ def test_put_call_ratios_over_every_expiry_are_served(held):
 
 
 def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
-    """Column streaming status and a cell's age come from the server's own stream states.
+    """Column streaming status and a cell's time come from the server's own stream states.
 
     The front column is the nearest unexpired expiry. One call streaming (its update 2 s before the
     publication, carrying the gamma Schwab sent for it): the column is partly streaming and the
-    cell's age is 2 s.
+    cell's leg carries the time that update was received.
     """
     call = next(c for c in _CONTRACTS if c["putCall"] == "CALL" and c.get("gamma") is not None)
     sym = call["symbol"]
@@ -286,12 +286,12 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     finally:
         _forget()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
-    ages = [
-        c["stream"][0]["age_sec"]
+    received = [
+        c["stream"][0]["call"]["ts_recv"]
         for c in body["cells"]
-        if c["stream"][0] and c["stream"][0]["age_sec"] is not None
+        if c["stream"][0] and c["stream"][0]["call"]["ts_recv"] is not None
     ]
-    assert ages == [pytest.approx(2.0)]
+    assert received == [_AT.timestamp() - 2]
     assert [e["expiry"] for e in body["expirations"] if e["front"]] == [EXPIRY]
 
 
