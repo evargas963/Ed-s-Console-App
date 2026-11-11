@@ -177,18 +177,26 @@
   // position label, not a provenance claim, and reusing them would misread as one.
   function migTag(txt, cls) { return '<span class="mig-mark ' + cls + '">' + esc(txt) + '</span>'; }
 
-  var DRIFT_WORDS = { UP: 'UP the chain', DOWN: 'DOWN the chain', FLAT: 'with little net drift' };
+  var LEVEL_WORDS = { call_wall: 'Call wall', put_wall: 'Put wall', gamma_flip: 'Gamma flip' };
+  // one served level move {level, prior, today, change}: 'Call wall 755 → 760 (+5)'; a side not
+  // known is '-', and a change is said only when both days are known
+  function levelMove(v) {
+    var px = function (x) { return x == null ? '-' : num(x, x % 1 ? 2 : 0); };
+    var by = v.change == null ? '' : v.change === 0 ? ' (unchanged)'
+      : ' (' + (v.change > 0 ? '+' : '') + num(v.change, v.change % 1 ? 2 : 0) + ')';
+    return LEVEL_WORDS[v.level] + ' ' + px(v.prior) + ' → ' + px(v.today) + by;
+  }
   var WALL_WORDS = { ABOVE_CALL_WALL: 'ABOVE the call wall', BELOW_PUT_WALL: 'BELOW the put wall', INSIDE_WALLS: 'inside the wall range' };
-  function migrationCoach(m) {   // m: the served positioning_migration for this DTE scope
+  // m: the served positioning_migration for this DTE scope; moves: the served level_moves
+  function migrationCoach(m, moves) {
     var out = '';
     if (!m || !m.compared) {
       out += '<div class="mig-coach"><b>Migration view warming up</b>The first day-over-day comparison lands after the next wide morning capture.</div>';
     } else {
-      var dir = m.drift ? DRIFT_WORDS[m.drift] : 'with no positive-gamma mass to compare';
       var grew = (m.grew || []).map(function (k) { return num(k, 0); }).join('/');
       var shrank = (m.shrank || []).map(function (k) { return num(k, 0); }).join('/');
-      out += '<div class="mig-coach"><b>Positive gamma mass moved ' + esc(dir) + '</b>' +
-        (grew ? 'Grew most at ' + esc(grew) : 'No strike grew') +
+      out += '<div class="mig-coach"><b>Levels since the prior close: ' + esc((moves || []).map(levelMove).join(' · ')) + '</b>' +
+        (grew ? 'Gamma grew most at ' + esc(grew) : 'No strike grew') +
         (shrank ? '; shrank most at ' + esc(shrank) + '. ' : '. ') +
         'Opened or closed? Tomorrow’s ΔOI confirms.</div>';
     }
@@ -288,7 +296,7 @@
       scopeChips + '<div class="mig-top">' + note + volNote + '</div>' +
       '<div class="gbs-scroll"><div class="gbs">' + rows + '</div></div>' +
       '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>' +
-      migrationCoach(mig) +
+      migrationCoach(mig, strikesD.level_moves) +
       '</div>';
   }
 

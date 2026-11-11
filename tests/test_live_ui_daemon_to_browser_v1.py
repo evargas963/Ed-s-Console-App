@@ -1206,10 +1206,10 @@ def test_a_page_that_drops_and_returns_gets_its_strikes_again():
 
 @pytest.mark.usefixtures("no_levels")
 def test_a_strikes_producer_that_raises_fails_its_panel_alone_in_words():
-    """Induced condition: CRWD's publication holds no prior day (None), so the strikes raise."""
+    """Induced condition: CRWD's publication holds a prior day with no rows: the strikes raise."""
     _publish(CRWD)
     with server._terrain_cache_lock:
-        server._terrain_cache[A] = replace(server._terrain_cache[A], prior_strikes=None)
+        server._terrain_cache[A] = replace(server._terrain_cache[A], prior_day=object())
 
     async def body(url):
         async with connect(url) as ws:
@@ -1222,7 +1222,7 @@ def test_a_strikes_producer_that_raises_fails_its_panel_alone_in_words():
                 "type": "strikes:gbs",
                 "ticker": A,
                 "failed": "the program could not produce this panel: "
-                "TypeError: 'NoneType' object is not subscriptable",
+                "AttributeError: 'object' object has no attribute 'per_strike'",
             }
             assert _terrain_of(seen["terrain:levels"]) == _published_terrain(A)
 

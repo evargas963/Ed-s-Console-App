@@ -16,7 +16,7 @@ import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
 from option_contract import read_chain
-from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
+from terrain_engine import compute_terrain, level_moves, positioning_migration
 from tests.capture_store import store_capture
 
 #: the strikes panel's window as the page asks it: Auto, following the price
@@ -43,7 +43,7 @@ def two_days():
 
 
 def test_the_migration_matches_the_two_days_rows(two_days):
-    (prior, _), (today, snap) = two_days
+    (prior, prior_snap), (today, snap) = two_days
     m = positioning_migration(today["all"], prior["all"], snap.call_wall, snap.put_wall)
     prior_gex = {r[0]: r[1] for r in prior["all"]}
     changes = {
@@ -58,18 +58,22 @@ def test_the_migration_matches_the_two_days_rows(two_days):
         == [k for k, _ in sorted(changes.items(), key=lambda kv: -kv[1]) if changes[k] > 0][:2]
     )
 
-    # the weighted positive-gamma strike, each day, over strikes known on both days
-    def wmean(day_gex):
-        pos = [(k, day_gex[k]) for k in changes if day_gex[k] > 0]
-        return sum(k * g for k, g in pos) / sum(g for _k, g in pos) if pos else None
-
-    today_gex = {r[0]: r[1] for r in today["all"]}
-    wt, wp = wmean(today_gex), wmean(prior_gex)
-    assert wt is not None and wp is not None
-    d = wt - wp
-    assert m["drift"] == (
-        "UP" if d > MIGRATION_DRIFT_STRIKES else "DOWN" if -d > MIGRATION_DRIFT_STRIKES else "FLAT"
-    )
+    # the walls and the flip, each day's own, and the move between them: no drift word
+    assert "drift" not in m
+    moves = {
+        v["level"]: (v["prior"], v["today"], v["change"]) for v in level_moves(snap, prior_snap)
+    }
+    assert snap.call_wall is not None and prior_snap.call_wall is not None
+    assert moves == {
+        name: (
+            getattr(prior_snap, name),
+            getattr(snap, name),
+            None
+            if getattr(prior_snap, name) is None or getattr(snap, name) is None
+            else getattr(snap, name) - getattr(prior_snap, name),
+        )
+        for name in ("call_wall", "put_wall", "gamma_flip")
+    }
 
 
 def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
@@ -78,7 +82,8 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     vols = {r[0]: r[2] for r in today["all"] if r[2]}
     assert m["busiest"] == sorted(sorted(vols, key=lambda k: -vols[k])[:2])
     assert m["volume_total"] == sum(r[2] for r in today["all"] if r[2] is not None)
-    assert not m["compared"] and m["drift"] is None  # no prior day: nothing to compare
+    # no prior day: nothing is compared, and no level's move is known
+    assert not m["compared"] and [v["change"] for v in level_moves(snap, None)] == [None] * 3
 
 
 def _prior_gex(body: dict) -> dict:
@@ -138,7 +143,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
             chain_spot=(newest["spot"], monday.timestamp()),
             now=monday,
         )
-        monday_prior = server.published_levels("PCG").prior_strikes
+        monday_prior = server.published_levels("PCG").prior_day.per_strike
         monday_migration = server.strikes("PCG", monday.timestamp(), _AUTO)["migration"]["all"]
     finally:
         with server._terrain_cache_lock:
