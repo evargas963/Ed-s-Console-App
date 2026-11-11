@@ -2673,7 +2673,6 @@ def gamma_surface_payload(
             "reason": None,
             "source": "terrain_live_cache",
             **levels_verdict(verdict),
-            "chain_as_of_ts_utc": live.computed_ts_utc,
             "chain_basis": live.chain_basis,
             **window,
             "view": view,
@@ -3322,7 +3321,6 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         # two contracts listed at one (strike, side): the chain is not strike-unique
         "has_duplicate_contracts": len({(c.strike, c.side) for c in response_contracts})
         < len(response_contracts),
-        "chain_as_of_ts_utc": held.computed_ts_utc,
         **verdict,
         "contracts": shown,
         "status": "ok",
@@ -3847,7 +3845,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
             # the distances, the spot line and the pin candidate are from the live price: its mark
             **price_mark(tk, live_ts, now.timestamp()),
             "priced_at_spot": float(live.spot),
-            "chain_as_of_ts_utc": fetched,
             "status_text": "Chain as of " + ct_label(fetched),
             "levels": levels,
             "regime": live.regime,

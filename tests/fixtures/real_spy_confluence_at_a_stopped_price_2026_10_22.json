@@ -1,7 +1,6 @@
 {
  "available": true,
  "ceiling": 72.0,
- "chain_as_of_ts_utc": 1792700224.362402,
  "expiries": [
   {
    "dte": 0.0,

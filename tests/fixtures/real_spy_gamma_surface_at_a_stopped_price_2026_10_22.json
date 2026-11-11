@@ -541,7 +541,6 @@
    ]
   }
  ],
- "chain_as_of_ts_utc": 1792700224.362402,
  "chain_basis": "every_expiry_strike_range_ALL",
  "contracts_excluded_malformed_expiry": 0,
  "contracts_total": 292,
