@@ -12,14 +12,12 @@ from pathlib import Path
 
 import pytest
 
-import live_market_plane as lmp
 import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
 from option_contract import read_chain
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
 from tests.capture_store import store_capture
-from tests.feed_live_helper import daemon_status
 
 #: the strikes panel's window as the page asks it: Auto, following the price
 _AUTO = {"scope": "auto", "centre": None, "shift": 0}
@@ -100,7 +98,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
     change 0, served as `compared` (2026-09-27). It is the capture before the day of the chain the
     rows came from; and a new market day's first chain makes Friday's capture the prior day. Real
     PCG chains, stored as the daemon writes them in the console's database. STAND-IN (named):
-    Monday's price row, Friday's capture price.
+    Monday's chain and its spot, Friday's capture's.
     """
     db = server.get_db().db_path
     for day in _FX["days"]:
@@ -133,24 +131,18 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
         # a new market day's first chain (Monday 2026-09-28 10:00 ET), before that day's first
         # capture: the prior day is recomputed against the new day
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
-        lmp.record_feed_heartbeat(
-            daemon_status(
-                time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["PCG"]}
-            )
-        )
-        lmp.record_from_level_one_equity(
+        server._publish_levels(
             "PCG",
-            {"LAST_PRICE": newest["spot"], "TRADE_TIME_MILLIS": int(monday.timestamp() * 1000)},
-            received_ts=monday.timestamp(),
+            newest["contracts"],
+            monday.timestamp(),
+            chain_spot=(newest["spot"], monday.timestamp()),
+            now=monday,
         )
-        server._publish_levels("PCG", newest["contracts"], monday.timestamp(), now=monday)
         monday_prior = server.published_levels("PCG").prior_strikes
+        monday_migration = server.strikes("PCG", monday.timestamp(), _AUTO)["migration"]["all"]
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("PCG", None)
-        lmp._by_ticker.pop("PCG", None)
-        lmp._fields_by_ticker.pop("PCG", None)
-        lmp.record_feed_down()
     (thursday, _), (friday, _) = two_days  # the captures of 2026-09-24 and 2026-09-25
     assert _prior_gex(body) == pytest.approx(_gex(thursday))
     m = body["migration"]["all"]
@@ -164,3 +156,5 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
     both += [abs(r[1]) for r in body["today"]["all"] if r[1] is not None]
     assert body["views"]["all"]["max_abs_with_prior"] == max(both)
     assert _gex(monday_prior) == pytest.approx(_gex(friday))
+    # Monday's own rows are priced (the chain came with its spot) and compared with Friday's
+    assert monday_migration["compared"] and len(monday_migration["rows"]) > 10
