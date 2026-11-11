@@ -162,7 +162,7 @@
   // ([strike, value, ...], ascending), drawn highest strike first, each bar's length its |value|
   // against the served scale (view.max_abs). The strike labels pan the window (wireStrikeAxis ->
   // `reload`); a pan is never silent. `opts`: `top` html above the list, `attrs(r)` and `cells(r)`
-  // a row's extra attributes and cells.
+  // a row's extra attributes and cells, `value(v)` the value's text (dollars when not given).
   function drawStrikeBars(host, rows, view, pan, spotStrike, reload, opts) {
     window.EdShell.panServed(pan, view.centre);
     var maxAbs = view.max_abs;   // at least |v| for every v drawn
@@ -178,7 +178,7 @@
         (opts.attrs ? opts.attrs(r) : '') + '>' +
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-        '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '-' : usd(v)) + '</span>' +
+        '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '-' : (opts.value || usd)(v)) + '</span>' +
         (opts.cells ? opts.cells(r) : '') + '</div>';
     });
     // the bars scroll in their own area; the -/0/+ axis is pinned at the foot
@@ -335,7 +335,8 @@
         window.EdShell.placeholder(host, d.failed != null ? d.failed : d.reason);
         return;
       }
-      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, { top: '' });
+      // vanna and charm are delta-shares (per vol point, per day), not dollars: no '$'
+      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, { top: '', value: window.EdGamma.formatCount });
     }
     function ask() {
       if (!inSub()) { window.EdShell.showPanel(kind, null); return; }

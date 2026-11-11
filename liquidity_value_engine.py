@@ -469,17 +469,19 @@ def _classify_value_state_and_vwap_relation(
     poc: float | None,
     prev_pd_poc: float | None,
     vwap: float | None,
-) -> tuple[str, str]:
-    """Value-area shift + VWAP-vs-value relation."""
-    value_state = "unchanged"
+) -> tuple[str | None, str | None]:
+    """Value-area shift + VWAP-vs-value relation; each None (unknown) without both its inputs."""
+    value_state = None
     if poc is not None and prev_pd_poc is not None:
+        value_state = "unchanged"
         if poc > prev_pd_poc * 1.002:
             value_state = "shifted_higher"
         elif poc < prev_pd_poc * 0.998:
             value_state = "shifted_lower"
 
-    vwap_relation = "at_value"
+    vwap_relation = None
     if vwap is not None and poc is not None:
+        vwap_relation = "at_value"
         if vwap > poc * 1.001:
             vwap_relation = "above_value"
         elif vwap < poc * 0.999:

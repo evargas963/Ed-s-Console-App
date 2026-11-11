@@ -195,8 +195,8 @@ class Zone:
 class SnapshotSummary:
     """Readable auction context interpretation."""
 
-    value_state: str = ""  # "shifted_higher" | "shifted_lower" | "unchanged"
-    vwap_relation: str = ""  # "above_value" | "below_value" | "at_value"
+    value_state: str | None = None  # "shifted_higher" | "shifted_lower" | "unchanged"
+    vwap_relation: str | None = None  # "above_value" | "below_value" | "at_value"
 
 
 @dataclass

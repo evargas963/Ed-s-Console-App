@@ -72,6 +72,19 @@ test.describe('Vanna and Charm by strike: the panels on the page\'s socket', () 
     expect(s.last().panels).toEqual({ expiries: {}, charm: AUTO });
   });
 
+  test('vanna and charm are delta-shares, not dollars: no value is drawn with a dollar sign', async ({ page }) => {
+    await open(page, 'vanna', answerCrwd);
+    await expect.poll(() => strikes(page, '#vnBody')).toEqual(sentStrikes('vanna'));
+    const vanna = await page.locator('#vnBody .gbs-v').allTextContents();
+    await page.evaluate(() => window.EdShell.setSubview('charm'));
+    await expect.poll(() => strikes(page, '#chmBody')).toEqual(sentStrikes('charm'));
+    const charm = await page.locator('#chmBody .gbs-v').allTextContents();
+    expect(vanna.length).toBe(PANELS.vanna.rows.length);
+    expect(charm.length).toBe(PANELS.charm.rows.length);
+    expect(vanna.concat(charm).filter((t) => t.includes('$'))).toEqual([]);
+    expect(vanna.concat(charm).some((t) => /\d/.test(t))).toBe(true);
+  });
+
   test('a new scope and a pan ask the new window; a double-click follows the price again', async ({ page }) => {
     const s = await open(page, 'vanna', answerCrwd);
     await expect.poll(() => strikes(page, '#vnBody')).toEqual(sentStrikes('vanna'));

@@ -270,5 +270,5 @@
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
-  _root.EdGamma = { formatUsd: formatUsd };
+  _root.EdGamma = { formatUsd: formatUsd, formatCount: formatCount };
 })();
