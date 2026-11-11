@@ -171,13 +171,7 @@ class LiveUiServer:
         )
         self.stats = stats
         self.clients: set[_Client] = set()
-        stats.update(
-            clients=0,
-            rows_sent=0,
-            frames_sent=0,
-            beat_send_failures=0,
-            last_send_ms=None,
-        )
+        stats.update(clients=0, rows_sent=0, beat_send_failures=0)
 
     # -- plane side -------------------------------------------------------------------
 
@@ -215,12 +209,9 @@ class LiveUiServer:
     # -- browser side -----------------------------------------------------------------
 
     async def _send(self, c: _Client, payload: dict) -> None:
-        t0 = time_et.elapsed()
         await c.ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
-        self.stats["frames_sent"] += 1
         if "rows" in payload:  # a symbols frame carries none
             self.stats["rows_sent"] += len(payload["rows"])
-        self.stats["last_send_ms"] = (time_et.elapsed() - t0) * 1000.0
 
     async def _pump(self, c: _Client) -> None:
         while True:
