@@ -38,6 +38,7 @@ import db
 import time_et
 from tools import check_end_to_end as e2e
 from tools import check_integrity
+from tools.census import python_literals
 
 log = logging.getLogger("census")
 ARGS = argparse.ArgumentParser(description="The census of everything that must reach 0.")
@@ -256,10 +257,13 @@ def patch_kind(f, line, kind):
 
     A fallback puts an invented value where one is missing; a swallow throws an error away.
     check_end_to_end gives JS one label for all three: a JS line holding a catch is a swallow, one
-    with a literal js_fallback reads as a value a fallback, and the rest is reported apart.
+    with a literal js_fallback reads as a value a fallback, and the rest is reported apart. A
+    Python literal that invents nothing (python_literals.stands_in) is reported apart too.
     """
     if f.endswith(".py"):
-        return "swallows" if SWALLOW.search(kind) else "fallbacks"
+        if SWALLOW.search(kind):
+            return "swallows"
+        return "fallbacks" if python_literals.stands_in(TEXT[f], line) else NOT_FALLBACK
     text = TEXT[f]
     ln = text.splitlines()[line - 1]
     if SWALLOW.search(ln) or "catch" in ln:
