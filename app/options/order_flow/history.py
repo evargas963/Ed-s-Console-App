@@ -1,9 +1,9 @@
-"""The recent option prints, books and imbalance readout values, in the console's memory.
+"""The recent books and imbalance readout values, and the option tape's rows.
 
-The recent option trade prints (the options tape), the recent books (the book heatmap) and the
-imbalance readout's one-second values (the Liquidity card), in the console's memory: fed by the
-console's intake as the daemon pushes each record (app.options.order_flow.streaming), never read
-from the database (docs/DATA_FLOW.md §2 D6).
+The recent books (the book heatmap) and the imbalance readout's one-second values (the Liquidity
+card), in the console's memory: fed by the console's intake as the daemon pushes each record
+(app.options.order_flow.streaming), never read from the database (docs/DATA_FLOW.md §2 D6).
+The options tape is drawn from the live state's prints (state.push_level_one keeps each once).
 The database keeps the whole history.
 """
 
@@ -15,100 +15,65 @@ from typing import Any
 
 from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
-from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
+from l1_trade_observation import canonical_tape_prints
 from option_contract import OptionContract
 
-#: the newest prints kept per contract (the tape route serves up to 500)
-TAPE_KEPT = 500
 #: how long a venue's books are kept (the heatmap route's longest window)
 BOOKS_KEPT_SEC = 240 * 60
 
 
-class RecentTape:
-    """Per option contract: its newest TAPE_KEPT trade prints.
+def quoted(trade: float, top: dict | None, streamed: dict | None) -> dict[str, Any]:
+    """Return what the live state held as a print at `trade` was received, kept with the print.
 
-    A print is a genuinely NEW
-    (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) triple, never a repeat of the same trade sent again
-    with an unrelated field (l1_trade_observation's rule, the live tape's). The contract's terms
-    are not kept here: the tape shows them from its chain record (tape_row).
+    Its top of book (`top`), its streamed volume, volatility and delta (`streamed`), and
+    `landed`: only where the trade landed against that bid and ask (no aggressor side).
     """
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._prints: dict[str, deque] = {}
-        self._last: dict[str, tuple] = {}
-
-    def record(
-        self, contract: str, item: dict, ts_recv: float, top: dict | None, streamed: dict | None
-    ) -> None:
-        """Record one LEVELONE_OPTIONS record of `contract` as the live state took it.
-
-        It carries its top of book
-        (`top`, state.option_top) and its streamed Greeks and volume (`streamed`,
-        state.get_stream_greeks), each read once by the state; the print is read here.
-        """
-        sym = ticker_storage_key(contract)
-        if not sym or not isinstance(item, dict):
-            return
-        with self._lock:
-            p = extract_vendor_print(item)
-            if p is None:
-                return
-            key = vendor_triple(p["time_millis"], p["price"], p["size"])
-            if is_adjacent_restatement(self._last.get(sym), key):
-                return
-            self._last[sym] = key
-            self._prints.setdefault(sym, deque(maxlen=TAPE_KEPT)).append(
-                _print(sym, p, float(ts_recv), top, streamed)
-            )
-
-    def forget(self, contract: str) -> None:
-        """Drop the contract's prints, when the console stops streaming it."""
-        sym = ticker_storage_key(contract)
-        with self._lock:
-            self._prints.pop(sym, None)
-            self._last.pop(sym, None)
-
-    def rows(self, contract: str, limit: int) -> list[dict[str, Any]]:
-        """Return the contract's newest `limit` prints, newest first."""
-        sym = ticker_storage_key(contract)
-        with self._lock:
-            held = list(self._prints[sym]) if sym in self._prints else []
-        return held[::-1][: max(0, int(limit))]
-
-
-def _print(
-    sym: str, p: dict, ts_recv: float, top: dict | None, streamed: dict | None
-) -> dict[str, Any]:
-    """Return one trade print as the tape keeps it: Schwab's stream values as sent.
-
-    `classification` says only where the trade landed against the bid and ask held when it was
-    received (no aggressor side).
-    """
-    trade = p["price"]
     bid, ask = _held(top, "bid"), _held(top, "ask")
-    classification = "unknown"
+    landed = "unknown"
     if bid is not None and ask is not None:
         if trade <= bid:
-            classification = "at_bid" if trade == bid else "outside_spread_low"
+            landed = "at_bid" if trade == bid else "outside_spread_low"
         elif trade >= ask:
-            classification = "at_ask" if trade == ask else "outside_spread_high"
+            landed = "at_ask" if trade == ask else "outside_spread_high"
         else:
-            classification = "inside_spread"
+            landed = "inside_spread"
     return {
-        "ts_recv": ts_recv,
-        "symbol": sym,
         "bid": bid,
         "bid_size": _held(top, "bid_size"),
         "ask": ask,
         "ask_size": _held(top, "ask_size"),
-        "trade": trade,
-        "size": p["size"],
         "volume": _held(streamed, "total_volume"),
         "iv": _held(streamed, "volatility"),
         "delta": _held(streamed, "delta"),
-        "classification": classification,
+        "landed": landed,
     }
+
+
+def recent_prints(contract: str, content: list, limit: int) -> list[dict[str, Any]]:
+    """Return the newest `limit` prints of `contract` as the tape names them, newest first.
+
+    `content` is the live state's for the contract (state.get_content_for_symbol): each print it
+    kept, a genuinely new (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE), with what it held then.
+    The contract's terms are not here: the tape shows them from its chain record (tape_row).
+    """
+    sym = ticker_storage_key(contract)
+    return [
+        {
+            "ts_recv": p["server_received_ts"],
+            "symbol": sym,
+            "bid": p["bid"],
+            "bid_size": p["bid_size"],
+            "ask": p["ask"],
+            "ask_size": p["ask_size"],
+            "trade": p["price"],
+            "size": p["size"],
+            "volume": p["volume"],
+            "iv": p["iv"],
+            "delta": p["delta"],
+            "classification": p["landed"],
+        }
+        for p in canonical_tape_prints(content)[::-1][: max(0, int(limit))]
+    ]
 
 
 def tape_row(printed: dict[str, Any], contract: OptionContract) -> dict[str, Any]:
@@ -252,8 +217,7 @@ class RecentLean:
             return list(self._points[ticker_storage_key(ticker)])
 
 
-#: the recent prints, books and imbalance values, fed by the console's intake
-TAPE = RecentTape()
+#: the recent books and imbalance values, fed by the console's intake
 BOOKS = RecentBooks()
 LEAN = RecentLean()
 

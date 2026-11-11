@@ -38,9 +38,7 @@ from app.options.order_flow import history as recent
 from app.options.order_flow.engine import BOOK_VENUES, book_readout
 from app.options.order_flow.state import (
     clear_all_live_state,
-    get_stream_greeks,
     newest_book,
-    option_top,
     push_book,
     push_level_one,
     push_option_top,
@@ -350,17 +348,17 @@ def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
 
 
 def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
-    """Apply a LEVELONE_OPTIONS message: the contract's order-flow state and tape.
+    """Apply a LEVELONE_OPTIONS message: the contract's top of book, then its state and tape.
 
-    A tick when the newest message carried a value the levels use (a merged record holds the last
-    of each field; only one this message brought is new).
+    The top first: a print is kept with the bid and ask its own message brought. A tick when the
+    newest message carried a value the levels use (a merged record holds the last of each field;
+    only one this message brought is new).
     """
     content = msg.get("content")
     if not isinstance(content, dict):
         return
-    push_level_one(sym, content, ts_recv=ts, field_received=received)
     push_option_top(sym, content)
-    recent.TAPE.record(sym, content, ts, option_top(sym), get_stream_greeks(sym))
+    push_level_one(sym, content, ts_recv=ts, field_received=received)
     if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
         _tick(sym)
 

@@ -38,7 +38,6 @@ import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server as srv
 from app.options.order_flow import streaming as ofs
-from app.options.order_flow.history import TAPE
 from option_contract import read_chain
 from stream_spine import book_msg, verbatim_msg
 from time_et import ET
@@ -139,8 +138,6 @@ def build_side_e2e_fixture_response() -> dict:
             out[sym] = srv.options_microstructure(sym, at)
         return out
     finally:
-        for sym in contracts:
-            TAPE.forget(sym)
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop("SPY", None)
         lmp.record_feed_down()

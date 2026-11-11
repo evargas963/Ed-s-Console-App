@@ -40,8 +40,8 @@ from app.options.order_flow.engine import (
 from app.options.order_flow.history import (
     BOOKS_KEPT_SEC,
     LEAN,
-    TAPE,
     book_heatmap_for_ticker,
+    recent_prints,
     tape_row,
 )
 from app.options.order_flow.live_payload import options_live_payload
@@ -2374,7 +2374,8 @@ def tape(ticker: str, now: float) -> dict:
     """Return the `tape` panel at `now`: the newest option trade prints of the ticker.
 
     The prints the console builds from Schwab's LEVELONE_OPTIONS as the daemon pushes them
-    (history.TAPE), of every contract of `ticker` the daemon streams
+    (the live state's prints, history.recent_prints), of every contract of `ticker` the daemon
+    streams
     (_held_option_symbols_for_ticker), merged newest first and capped at TAPE_ROWS across the
     merge, each with its contract's terms and open interest from the chain record and its
     premium (history.tape_row). No aggressor side. `ticker` is the levels' own key.
@@ -2385,7 +2386,11 @@ def tape(ticker: str, now: float) -> dict:
     symbols = _held_option_symbols_for_ticker(held.contracts, now)
     if not symbols:
         return unavailable(ticker, "the daemon streams no option contract of this ticker", rows=[])
-    prints = [(p, held.contracts[sym]) for sym in symbols for p in TAPE.rows(sym, TAPE_ROWS)]
+    prints = [
+        (p, held.contracts[sym])
+        for sym in symbols
+        for p in recent_prints(sym, get_content_for_symbol(sym), TAPE_ROWS)
+    ]
     prints.sort(key=lambda kept: kept[0]["ts_recv"], reverse=True)
     rows = [tape_row(p, contract) for p, contract in prints[:TAPE_ROWS]]
     return {

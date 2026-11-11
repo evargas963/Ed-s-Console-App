@@ -140,6 +140,9 @@ class OrderFlowState:
                     "server_received_ts": float(received("LAST_PRICE")),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
+                    **history.quoted(
+                        trade["price"], self._top.get(sym), self._stream_greeks.get(sym)
+                    ),
                 }
             )
 
@@ -158,7 +161,7 @@ class OrderFlowState:
             out.extend(
                 book for book in self._book[sym].values() if venue is None or book.service == venue
             )
-            out.extend(dict(item) for item in self._get_tape(sym))
+            out.extend(self._get_tape(sym))  # a kept print is never changed: no copy
         return out
 
     def newest_book(self, symbol: str, venue: str) -> Book | None:
@@ -187,7 +190,6 @@ class OrderFlowState:
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol, its recent prints and books included."""
         sym = ticker_storage_key(symbol)
-        history.TAPE.forget(sym)
         history.BOOKS.forget(sym)
         history.LEAN.forget(sym)
         with self._lock:
