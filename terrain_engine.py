@@ -687,12 +687,14 @@ def qualify_pin_candidate(
     return float(absolute_gamma_strike), []
 
 
-#: The levels a same-day clock can move, in the order the levels list shows them.
-SAME_DAY_LEVELS = (
+#: The terrain's price levels and the name each is shown under, in the order they are listed.
+OPTION_LEVELS = (
     ("call_wall", "Call wall"),
     ("put_wall", "Put wall"),
     ("gamma_flip", "Gamma flip"),
+    ("max_pain", "Max pain"),
     ("absolute_gamma_strike", "Abs Γ"),
+    ("pin_candidate", "Pin candidate"),
     ("gsf", "GSF"),
     ("grc", "GRC"),
     ("hvp", "Net put Γ peak"),
@@ -700,6 +702,10 @@ SAME_DAY_LEVELS = (
     ("key_delta_strike", "Key Δ strike"),
     ("call_charm_wall", "Call charm wall"),
     ("put_charm_wall", "Put charm wall"),
+)
+#: The levels a same-day clock can move: all but the two read on the whole book alone.
+SAME_DAY_LEVELS = tuple(
+    level for level in OPTION_LEVELS if level[0] not in ("max_pain", "pin_candidate")
 )
 
 
