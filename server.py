@@ -3285,6 +3285,14 @@ def chain(ticker: str, now: float, params: dict) -> dict:
     shown = [chain_row(c) for c in response_contracts]
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)
+    if not_on_ladder:
+        log.warning(
+            "%s %s: %d contract(s) Schwab sent have no strike or no CALL/PUT side and are not "
+            "on the chain ladder",
+            t,
+            resolved_expiry,
+            not_on_ladder,
+        )
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
     # Strike Detail shows it beside this expiry's contracts -- one value, one producer
     surf = held.gamma_surface
@@ -3329,7 +3337,6 @@ def chain(ticker: str, now: float, params: dict) -> dict:
         "status": "ok",
         "ladder": ladder,
         "n_strikes": len({r["strike"] for r in ladder}),
-        "contracts_not_on_ladder": not_on_ladder,  # no strike, or a putCall other than CALL/PUT
         "scope": {
             "kind": "complete_single_expiry",
             "requested_expiry": resolved_expiry,
