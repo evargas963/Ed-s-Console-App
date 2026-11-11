@@ -19,8 +19,10 @@ import liquidity_value_engine
 import live_market_plane as lmp
 import server as srv
 from micro_structure import Candle
+from option_contract import read_chain
 from tests.feed_live_helper import daemon_status, price_history
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
+from tests.real_chains import SPY_CLOSE
 from time_et import ET
 
 BEFORE_OPEN = FRIDAY.replace(hour=8)
@@ -75,6 +77,53 @@ def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones():
     assert body["spot_used_for_scoring"] == 0
     tags = [t for z in body["zones"] for t in z["source_tags"]]
     assert "SPOT_LIVE" in tags, tags
+
+
+@pytest.mark.usefixtures("published")
+def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
+    """SPY's real close chain of 2026-10-22 published for the stand-in ticker, on Friday's bars.
+
+    Each option level the terrain holds reaches the zones under its tag, and the zone holding it
+    reads as a positioning zone. The tags are the one list the engine classifies by, so no tag
+    is sent that it does not know (ABS_GAMMA once was).
+    """
+    srv._publish_levels(
+        TK,
+        captures=[
+            {
+                "contracts": read_chain(SPY_CLOSE.chain),
+                "ts_utc": SPY_CLOSE.now.timestamp(),
+                "spot": SPY_CLOSE.spot,
+                "et_date": SPY_CLOSE.now.date().isoformat(),
+                "basis": srv.CAPTURE_BASIS,
+                "spot_ts": None,
+            }
+        ],
+        now=SPY_CLOSE.now,
+    )
+    try:
+        snap = srv.published_levels(TK).snap
+        resp = srv.liquidity_snapshot(TK, FRIDAY)
+    finally:
+        with srv._terrain_cache_lock:
+            srv._terrain_cache.pop(TK, None)
+    body = json.loads(resp.body) if hasattr(resp, "body") else resp
+    held = {
+        tag
+        for key, tag in liquidity_value_engine.OPTION_LEVEL_TAGS
+        if getattr(snap, key) is not None
+    }
+    assert held >= {"GAMMA_CALL_WALL", "GAMMA_PUT_WALL", "ABS_GAMMA", "NET_CALL_PEAK", "MAX_PAIN"}
+    sent = {t for z in body["zones"] for t in z["source_tags"]}
+    assert held <= sent, held - sent
+    for z in body["zones"]:
+        tags = set(z["source_tags"])
+        if tags & held and "SPOT_LIVE" not in tags:
+            assert z["interpretation_notes"].startswith("Confluence:"), z
+    # each tag beside a session level in a zone of its own, as a level away from the others lands
+    for _level, tag in liquidity_value_engine.OPTION_LEVEL_TAGS:
+        _zone_type, notes = liquidity_value_engine._classify_live_cluster([tag, "VWAP"])
+        assert notes.startswith("Confluence:"), tag
 
 
 @pytest.mark.usefixtures("published")

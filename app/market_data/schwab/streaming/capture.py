@@ -113,7 +113,7 @@ from stream_spine import (
     subscription_msg,
     verbatim_msg,
 )
-from terrain_engine import nearest_strike
+from terrain_engine import nearest_position
 from time_et import (
     ET,
     ct_label,
@@ -299,7 +299,7 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
 
     The contracts the heatmap shows come first. A contract's distance is the larger of two counts:
     its expiration's place among the chain's expirations, nearest first, and twice its strike's
-    count of listed strikes from the one nearest `price` (nearest_strike, the heatmap's centre
+    count of listed strikes from the one nearest `price` (nearest_position, the heatmap's centre
     row; twice, since the window reaches both ways from it). The nearest distance first, so the
     order grows as the heatmap's window does: as many strikes as expirations (strike_window's
     rows of the nearest expirations). Of equal distances the highest Schwab gamma, as sent (one
@@ -321,7 +321,7 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
     ]
     expirations = sorted({c.expires_at for c in listed})
     strikes = sorted({c.strike for c in listed})
-    centre = strikes.index(nearest_strike(strikes, price)) if strikes else 0
+    centre = nearest_position(strikes, price) if strikes else 0
     rows = []
     for c in listed:
         distance = max(
@@ -366,9 +366,7 @@ def saved_window(ladders: list, price: float, now: float) -> frozenset[str]:
     """
     for expires, strikes, symbols in ladders:
         if expires > now:
-            i = bisect.bisect_left(strikes, price)
-            if i == len(strikes) or (i > 0 and price - strikes[i - 1] <= strikes[i] - price):
-                i -= 1
+            i = nearest_position(strikes, price)
             return frozenset(
                 s
                 for k in strikes[max(0, i - STRIKES_SAVED) : i + STRIKES_SAVED + 1]

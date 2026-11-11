@@ -499,34 +499,28 @@ def vwap_against_value(vwap: float | None, val: float | None, vah: float | None)
     return "above_value" if vwap > vah else "below_value" if vwap < val else "inside_value"
 
 
+#: the terrain levels the zones are fused with, and the tag each carries: the one list of them
+OPTION_LEVEL_TAGS = (
+    ("call_wall", "GAMMA_CALL_WALL"),
+    ("put_wall", "GAMMA_PUT_WALL"),
+    ("call_delta_wall", "DELTA_CALL_WALL"),
+    ("put_delta_wall", "DELTA_PUT_WALL"),
+    ("absolute_gamma_strike", "ABS_GAMMA"),
+    ("lvp", "NET_CALL_PEAK"),
+    ("hvp", "NET_PUT_PEAK"),
+    ("max_pain", "MAX_PAIN"),
+    ("gamma_flip", "GAMMA_FLIP"),
+)
+
+
 def _classify_live_cluster(tags: list[str]) -> tuple[ZoneType, str]:
     """Map clustered level tags to zone type + note (live / fused playbook)."""
     ts = " ".join(tags)
-    opt_markers = (
-        "GAMMA_CALL",
-        "GAMMA_PUT",
-        "DELTA_CALL",
-        "DELTA_PUT",
-        "OI_CALL",
-        "OI_PUT",
-        "GAMMA_PIN",
-        "NET_CALL_PEAK",
-        "NET_PUT_PEAK",
-        "MAX_PAIN",
-        "GAMMA_FLIP",
-        "GAMMA_INFLECTION",
-        "DELTA_INFLECTION",
-        "OI_CENTER",
-        "EM_UPPER",
-        "EM_LOWER",
-        "SYNTH_FWD",
-    )
-    has_opt = any(m in ts for m in opt_markers)
     if "SPOT_LIVE" in ts:
         return ZoneType.PIVOT_VALUE, "Live spot (from console cache)"
-    if has_opt:
-        up = any(x in ts for x in ("GAMMA_CALL", "DELTA_CALL", "OI_CALL", "EM_UPPER"))
-        dn = any(x in ts for x in ("GAMMA_PUT", "DELTA_PUT", "OI_PUT", "EM_LOWER"))
+    if not {tag for _level, tag in OPTION_LEVEL_TAGS}.isdisjoint(tags):
+        up = not {"GAMMA_CALL_WALL", "DELTA_CALL_WALL"}.isdisjoint(tags)
+        dn = not {"GAMMA_PUT_WALL", "DELTA_PUT_WALL"}.isdisjoint(tags)
         if up and not dn:
             return ZoneType.RESISTANCE_LIQUIDITY, "Confluence: overhead positioning / supply"
         if dn and not up:

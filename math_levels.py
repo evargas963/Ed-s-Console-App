@@ -20,6 +20,7 @@ from math_exposure_core import (
     key_level_strikes_with_oi,
     norm_pdf,
     schwab_iv_to_sigma,
+    strike_of_largest,
     strike_oi_legs,
 )
 from option_contract import OptionContract
@@ -132,9 +133,10 @@ def pick_charm_wall_strikes(
     """
 
     def wall(side: str) -> float | None:
-        known = {k: abs(b[side]) for k, b in charm_by_strike.items() if b[side] is not None}
-        strike = max(known, key=known.get, default=None)
-        return strike if strike is not None and known[strike] > 0 else None
+        strike, _charm = strike_of_largest(
+            charm_by_strike, lambda b: None if b[side] is None else abs(b[side])
+        )
+        return strike
 
     return wall("call_charm"), wall("put_charm")
 

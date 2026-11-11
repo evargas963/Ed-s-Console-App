@@ -649,10 +649,15 @@ def net_gex_dollars_at_strike(bucket: dict) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
 
 
-def _pick_strike_max_metric(
+def strike_of_largest(
     exposures: dict[float, dict],
     metric_fn,
 ) -> tuple[float | None, float | None]:
+    """Return (strike, value) where `metric_fn` of a strike's bucket is largest and above 0.
+
+    Every level that is a largest-at-a-strike is picked here. Two strikes with the same value:
+    the lower strike.
+    """
     best_s: float | None = None
     best_v: float | None = None
     for s in sorted(exposures):
@@ -698,7 +703,7 @@ def pick_pin_and_strength(exposures: dict[float, dict]) -> tuple[float | None, f
     """
     if not exposures_have_dollar_gex(exposures):
         return None, None
-    s, v = _pick_strike_max_metric(exposures, total_gex_dollars_at_strike)
+    s, v = strike_of_largest(exposures, total_gex_dollars_at_strike)
     if s is None or v is None or v <= 0:
         return None, None
     second = 0.0
@@ -725,7 +730,7 @@ def pick_key_delta_strike(exposures: dict[float, dict]) -> float | None:
         p = bucket_metric_abs(b, "put_dex_dollars")
         return None if c is None or p is None else c + p
 
-    s, _ = _pick_strike_max_metric(exposures, _total_dex)
+    s, _ = strike_of_largest(exposures, _total_dex)
     return s
 
 
@@ -762,8 +767,8 @@ def pick_gamma_wall_strikes(
     if not exposures_have_dollar_gex(exposures):
         return (None, None), (None, None)
     return (
-        _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "call_gex_1pct")),
-        _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "put_gex_1pct")),
+        strike_of_largest(exposures, lambda b: bucket_metric_abs(b, "call_gex_1pct")),
+        strike_of_largest(exposures, lambda b: bucket_metric_abs(b, "put_gex_1pct")),
     )
 
 
@@ -774,6 +779,6 @@ def pick_delta_wall_strikes(
     if not exposures_have_dollar_gex(exposures):
         return (None, None), (None, None)
     return (
-        _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "call_dex_dollars")),
-        _pick_strike_max_metric(exposures, lambda b: bucket_metric_abs(b, "put_dex_dollars")),
+        strike_of_largest(exposures, lambda b: bucket_metric_abs(b, "call_dex_dollars")),
+        strike_of_largest(exposures, lambda b: bucket_metric_abs(b, "put_dex_dollars")),
     )

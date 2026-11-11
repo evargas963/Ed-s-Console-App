@@ -73,6 +73,7 @@ from instrument_identity import display_symbol, ticker_storage_key, vendor_optio
 from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 from liquidity_value_engine import (
     _MATERIALIZED_SNAPSHOTS,
+    OPTION_LEVEL_TAGS,
     bars_from_candles,
     build_live_snapshot,
     materialize_price_level_snapshot,
@@ -4051,26 +4052,12 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
     }
 
 
-#: the terrain levels the liquidity zones are fused with, and the tag each carries
-TERRAIN_FUSION_LEVELS = (
-    ("call_wall", "GAMMA_CALL_WALL"),
-    ("put_wall", "GAMMA_PUT_WALL"),
-    ("call_delta_wall", "DELTA_CALL_WALL"),
-    ("put_delta_wall", "DELTA_PUT_WALL"),
-    ("absolute_gamma_strike", "ABS_GAMMA"),
-    ("lvp", "NET_CALL_PEAK"),
-    ("hvp", "NET_PUT_PEAK"),
-    ("max_pain", "MAX_PAIN"),
-    ("gamma_flip", "GAMMA_FLIP"),
-)
-
-
 def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
     """Return the ticker's option levels from its published terrain, tagged for liquidity zones."""
     published = published_levels(tk)
     return [
         (float(getattr(published.snap, k)), tag)
-        for k, tag in TERRAIN_FUSION_LEVELS
+        for k, tag in OPTION_LEVEL_TAGS
         if published is not None and getattr(published.snap, k) is not None
     ]
 
