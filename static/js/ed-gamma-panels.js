@@ -423,10 +423,10 @@
     outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '-' };
   function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(2); }
   function fmtOfSize(n) { return (n == null || isNaN(n)) ? '-' : String(n); }
-  function fmtOfTime(tsRecv) {
-    if (tsRecv == null) return '-';
-    var d = new Date(tsRecv * 1000);
-    return d.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
+  // Schwab's own trade time (TRADE_TIME_MILLIS, as sent), in Central Time; '-' when it sent none
+  function fmtOfTime(tradeTimeMs) {
+    if (tradeTimeMs == null) return '-';
+    return new Date(tradeTimeMs).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
   }
   function renderOf(host, d) {
     var src = document.getElementById('ofSrc'); if (src) src.textContent = '';
@@ -440,7 +440,7 @@
     }
     var body = d.rows.map(function (r) {
       return '<tr>' +
-        '<td>' + fmtOfTime(r.ts_recv) + '</td>' +
+        '<td>' + fmtOfTime(r.trade_time_ms) + '</td>' +
         '<td class="of-sym">' + esc(r.symbol || '-') + '</td>' +
         '<td>' + esc(r.expiry ? r.expiry.slice(5) : '-') + '</td>' +
         '<td>' + esc(r.type || '-') + '</td>' +

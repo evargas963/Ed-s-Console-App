@@ -96,7 +96,8 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     assert r["volume"] == 4391 and r["oi"] == 843
     assert r["iv"] == 27.10704925 and r["delta"] == 0.45935825
     assert r["classification"] == "at_ask"
-    assert set(r) == {"ts_recv", "symbol", "expiry", "type", "strike", "bid", "bid_size"} | {
+    assert r["trade_time_ms"] == sent[0][1]["TRADE_TIME_MILLIS"] == 1792762334664  # Schwab's own
+    assert set(r) == {"trade_time_ms", "symbol", "expiry", "type", "strike", "bid", "bid_size"} | {
         "ask",
         "ask_size",
         "trade",
@@ -235,8 +236,21 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
     assert unlisted[1] == [None, None]
     assert sides == ["CALL", "PUT"]
     assert body["available"] is True
-    received = [r["ts_recv"] for r in body["rows"]]
-    assert len(received) == 6 and received == sorted(received, reverse=True)
+    # newest received first, each with Schwab's own trade time of its message (none sent: None)
+    newest_first = sorted(
+        (
+            (ts, sym, item)
+            for sym, rows in sent.items()
+            for ts, item in rows
+            if "LAST_PRICE" in item
+        ),
+        key=lambda m: m[0],
+        reverse=True,
+    )
+    assert len(body["rows"]) == 6 and [
+        (r["symbol"], r["trade"], r["trade_time_ms"]) for r in body["rows"]
+    ] == [(sym, item["LAST_PRICE"], item.get("TRADE_TIME_MILLIS")) for _, sym, item in newest_first]
+    assert all("ts_recv" not in r for r in body["rows"])
     terms = {(r["symbol"], r["expiry"], r["type"], r["strike"], r["oi"]) for r in body["rows"]}
     assert terms == {
         (CALL, "2026-10-23", "CALL", 761.0, 843),
