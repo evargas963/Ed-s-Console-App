@@ -213,8 +213,7 @@
     }
     // the strikes panel is aggregate across expiries; with one expiry selected, say so
     var expOn = window.EdShell.getExpiry();
-    // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change];
-    // the change is null where either day has no value)
+    // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change or null])
     var chg = {};
     d.migration.all.rows.forEach(function (m) { chg[m[0]] = m[3]; });
     // rows: [strike, net_gex_1pct$, session volume]; the volume is a count, never coloured
