@@ -1075,11 +1075,11 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   // the one way a value the console did not send is drawn: "-" (a 0 is a value and is drawn)
-  function shown(v) { return v == null || v === '' ? '-' : v; }
+  function orDash(v) { return v == null || v === '' ? '-' : v; }
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, emit: emit,
-    esc: esc, shown: shown,
+    esc: esc, orDash: orDash,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]

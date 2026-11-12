@@ -34,7 +34,7 @@
   var CT_DAYKEY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
   var CT_MD = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric' });
 
-  var esc = window.EdShell.esc, shown = window.EdShell.shown;
+  var esc = window.EdShell.esc, orDash = window.EdShell.orDash;
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function usd(n) {
     if (n == null || isNaN(n)) return '-';
@@ -504,16 +504,16 @@
       (r.touch_flag ? '<span class="liq-pill">' + esc(r.touch_flag) + '</span>' : '') +
       (r.live ? '' : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + '</span>') + '</div>' +
       (one ? '<div class="liq-hl"><span class="liq-word">ONE-SIDED</span><span class="liq-pct">-</span></div>'
-        : '<div class="liq-hl" data-liqdetail title="Open the detail"><span class="liq-word ' + tone + '">' + esc(shown(v.side_word)) + '</span>' +
-          '<span class="liq-pct ' + tone + '">' + esc(shown(v.pct_text)) + '</span>' +
-          '<span class="liq-live">' + esc(shown(v.live_text)) + ' live</span></div>' +
+        : '<div class="liq-hl" data-liqdetail title="Open the detail"><span class="liq-word ' + tone + '">' + esc(orDash(v.side_word)) + '</span>' +
+          '<span class="liq-pct ' + tone + '">' + esc(orDash(v.pct_text)) + '</span>' +
+          '<span class="liq-live">' + esc(orDash(v.live_text)) + ' live</span></div>' +
           (v.divergence ? '<div class="liq-flag">' + esc(v.divergence) + '</div>' : '')) + '</div>' +
       // the side Schwab sent levels for fills its track; a missing side draws no bar and "-"
       '<figure class="tdm-chartbox"><div class="liq-bars">' +
       liqBar('bid', 'Bids', v.bid_text, v.bid_total, one ? v.bid_total : v.total_depth) +
       liqBar('ask', 'Asks', v.ask_text, v.ask_total, one ? v.ask_total : v.total_depth) + '</div>' +
-      '<figcaption><span class="liq-sent">' + esc(one ? r.one_sided_text : shown(v.sentence)) + '</span>' +
-      (one ? '' : ' <span class="liq-line">Difference: ' + esc(shown(v.difference_text)) + ' shares · Total depth: ' + esc(shown(v.total_text)) + ' shares</span>') +
+      '<figcaption><span class="liq-sent">' + esc(one ? r.one_sided_text : orDash(v.sentence)) + '</span>' +
+      (one ? '' : ' <span class="liq-line">Difference: ' + esc(orDash(v.difference_text)) + ' shares · Total depth: ' + esc(orDash(v.total_text)) + ' shares</span>') +
       '</figcaption></figure>' +
       (rd.auction_text ? '<div class="liq-flag liq-keep">' + esc(rd.auction_text) + '</div>' : '') +
       '<div class="liq-gr"><div><div class="liq-lbl"><span>VENUES</span></div>' +
@@ -522,7 +522,7 @@
         return p == null ? '' : '<i class="liq-dot ' + k + (k === key ? ' sel' : '') + '" style="left:' + liqLeft(p) + '" title="' + LIQ_NAME[k] + ' ' + esc(rd.venues[k].views[view].pct_text) + '"></i>';
       }).join('') + '</div>' +
       (rd.disagree[view] ? '<span class="liq-pill">VENUES DISAGREE</span>' : '') + '</div>' +
-      '<div><div class="liq-lbl"><span>AT THE TOUCH</span><b>' + esc(shown(r.touch_text)) + '</b></div>' +
+      '<div><div class="liq-lbl"><span>AT THE TOUCH</span><b>' + esc(orDash(r.touch_text)) + '</b></div>' +
       '<div class="liq-gauge">' + (r.touch_pct == null ? '' : '<i style="left:' + liqLeft(r.touch_pct) + '"></i>') + '</div></div>' +
       '<div><div class="liq-lbl"><span>LEAN</span><span class="liq-pill plain">◷ ' + esc(v.held_text || 'HELD -') + '</span></div>' +
       (v.lean ? '<div class="liq-lean"><span>2m</span>' + liqSpark(v.lean['2m']) + '<span>5m</span>' + liqSpark(v.lean['5m']) + '</div>' : '') +
@@ -532,7 +532,7 @@
       (r.dedup_partial_text && !one ? '<span class="tdm-r">' + esc(r.dedup_partial_text) + '</span>' : '') +
       '<span class="tdm-r">Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue</span>' +
       '<span class="tdm-r">' + liqSpans(rd, view) + '</span>' +
-      '<span class="tdm-r">NYSE + Nasdaq only — not the whole market · Book ' + esc(shown(r.book_time_ct)) + '</span></div>' +
+      '<span class="tdm-r">NYSE + Nasdaq only — not the whole market · Book ' + esc(orDash(r.book_time_ct)) + '</span></div>' +
       (S.liqDetail ? liqDetail(rd, key) : '');
     body.innerHTML = h;
   }
@@ -579,8 +579,8 @@
     var lv = m && m.readout && m.readout.venues[liqKey()], lz = lv && lv.views[S.liqView] && lv.views[S.liqView].zone;
     var cells = [
       ['LIQUIDITY', lz ? lv.views[S.liqView].side_word.toLowerCase() : 'No book', lz === 'BALANCED' ? '' : lz ? (/BID/.test(lz) ? 'up' : 'dn') : ''],
-      ['VALUE', l && l.summary ? String(shown(l.summary.value_state)).replace(/_/g, ' ') : '-', ''],
-      ['VWAP', l && l.summary ? String(shown(l.summary.vwap_relation)).replace(/_/g, ' ') : '-', ''],
+      ['VALUE', l && l.summary ? String(orDash(l.summary.value_state)).replace(/_/g, ' ') : '-', ''],
+      ['VWAP', l && l.summary ? String(orDash(l.summary.vwap_relation)).replace(/_/g, ' ') : '-', ''],
       ['OPTIONS', t && !why(t) && t.posture ? String(t.posture).replace(/_/g, ' ') : '-', ''],
       ['GAMMA', t && t.flip_relation ? ({ ABOVE: 'Above flip', AT: 'At flip', BELOW: 'Below flip' })[t.flip_relation] + notLive(t) : '-',
         t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
@@ -619,8 +619,8 @@
     var t = S.terrain, m = S.micro, L = S.levels;
     host.innerHTML = [
       'Bars: <b>' + (S.bars.length ? 'streamed 1m bars' : '-') + '</b>',
-      'Book: <b>' + esc(shown(m && m.provenance && m.provenance.book_source)) + '</b>',
-      'Levels: <b>' + esc(shown(L && L.bar_source)) + '</b>',
+      'Book: <b>' + esc(orDash(m &&m.provenance && m.provenance.book_source)) + '</b>',
+      'Levels: <b>' + esc(orDash(L &&L.bar_source)) + '</b>',
       'Options: <b>' + esc(t && !why(t) ? (t.chain_basis == null ? '-' : t.chain_basis) + ' chain · ' + (t.strikes_used == null ? '-' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + ' contracts' : '-') + '</b>',
       'Clock: <b>Central</b>'
     ].map(function (x) { return '<span>' + x + '</span>'; }).join('');

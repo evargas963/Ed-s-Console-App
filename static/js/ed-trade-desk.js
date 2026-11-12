@@ -14,7 +14,7 @@
 (function () {
   'use strict';
 
-  var esc = window.EdShell.esc, shown = window.EdShell.shown;
+  var esc = window.EdShell.esc, orDash = window.EdShell.orDash;
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function isRightNow() { var s = window.EdShell.getState(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
   function ticker() { return window.EdShell.getState().ticker; }
@@ -116,7 +116,7 @@
     // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
-      ['Posture', shown(d.posture)], ['Confidence', shown(d.confidence)],
+      ['Posture', orDash(d.posture)], ['Confidence', orDash(d.confidence)],
       ['Call wall', num(d.call_wall)], ['Put wall', num(d.put_wall)],
       ['Gamma flip', num(d.gamma_flip)],
       // max pain is per expiry: label it with the expiry the server computed it on (front)
@@ -124,7 +124,7 @@
       // the heatmap's own dollar formatter: a value under $50K reads as itself, never "0.0M"
       ['Net GEX @ spot', d.net_gex_at_spot != null ? window.EdGamma.formatUsd(d.net_gex_at_spot) : '-'],
     ];
-    return stage(3, 'td-accent-amber', 'Confirm — options regime', shown(d.regime), '', 0, rows, d.confidence,
+    return stage(3, 'td-accent-amber', 'Confirm — options regime', orDash(d.regime), '', 0, rows, d.confidence,
       d.confidence === 'TRUSTED' ? 'live' : 'warn');
   }
 
@@ -133,7 +133,7 @@
   function contextSummary(terrain, snap, levelsD) {
     var lines = [];
     if (terrain) {
-      lines.push(['Regime', shown(terrain.regime) + (terrain.posture ? ' · ' + terrain.posture : '')]);
+      lines.push(['Regime', orDash(terrain.regime) + (terrain.posture ? ' · ' + terrain.posture : '')]);
       if (terrain.headline) lines.push(['Read', terrain.headline]);
     }
     var zones = (snap && snap.zones) || [], sl = snap && snap.spot_location;   // served
@@ -201,7 +201,7 @@
     }
     if (m && m.busiest && m.busiest.length) {
       out += '<div class="mig-coach"><b>Heaviest option trading at ' + m.busiest.map(function (k) { return num(k, 0); }).join('–') + '</b>' +
-        'That is ' + esc(shown(WALL_WORDS[m.busiest_vs_walls])) + '. Activity fact only — buyer/seller split stays unproven until the ΔOI test.</div>';
+        'That is ' + esc(orDash(WALL_WORDS[m.busiest_vs_walls])) + '. Activity fact only — buyer/seller split stays unproven until the ΔOI test.</div>';
     }
     return out;
   }
