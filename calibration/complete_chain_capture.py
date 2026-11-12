@@ -255,14 +255,17 @@ def chain_messages(
 #: period, frequencyType, frequency). Each request ends now (endDate; without it Schwab ends at the
 #: previous business day's close), extended hours included. The 1-minute bars once per ET date
 #: (the stream's CHART_EQUITY bars carry them on from there); the 5-, 15- and 30-minute bars each
-#: time one of theirs completes in a session (BAR_MINUTES); two years of daily candles once per ET
-#: date and again after the regular close, for that day's (monthly ATR(14) needs 15 months).
+#: time one of theirs completes in a session (BAR_MINUTES); two years of daily, weekly and monthly
+#: candles, each as Schwab sends it, once per ET date and again after the regular close, for that
+#: day's (ATR(14) needs 15 candles).
 PRICE_HISTORY = {
     "1m": ("day", 10, "minute", 1),
     "5m": ("day", 10, "minute", 5),
     "15m": ("day", 10, "minute", 15),
     "30m": ("day", 10, "minute", 30),
     "1d": ("year", 2, "daily", 1),
+    "1w": ("year", 2, "weekly", 1),
+    "1mo": ("year", 2, "monthly", 1),
 }
 #: the minute series asked again as each of their bars completes, by the bar's minutes
 BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
@@ -491,7 +494,7 @@ class ChainSweep:
         completed since it was asked, unless Schwab's sessions (time_et.session_label) were
         closed both then and now: the bar that ends a session is asked once after it, and a
         session not known (Schwab's /markets answer not held) is asked as an open one, as the
-        chain is (chain_due). The daily
+        chain is (chain_due). The daily, weekly and monthly
         candles: once per ET date, and once after today's regular window Schwab sent has ended.
         The 1-minute bars: once per ET date.
         """
@@ -507,7 +510,7 @@ class ChainSweep:
             return now.timestamp() // span > asked // span and in_session
         if datetime.fromtimestamp(asked, ET).date() < now.date():
             return True
-        if series != "1d":
+        if series == "1m":
             return False
         today = session(now.date().isoformat())
         if today is None or not today.regular:

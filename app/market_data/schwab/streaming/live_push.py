@@ -9,8 +9,8 @@ by each message's `src` (anything else published on the same topics is refused, 
   news.SYM     src "schwab_news"        NEWS_HEADLINE
   bar1m.SYM    src "schwab_chart"       CHART_EQUITY
   chain.TK     src "schwab_chain"       the REST option chain, in parts (the daemon's chain sweep)
-  pricehistory.TK.SERIES src "schwab_pricehistory"  Schwab's 1-minute bars, 15-minute and daily
-               candles of the ticker (the chain sweep's /pricehistory requests)
+  pricehistory.TK.SERIES src "schwab_pricehistory"  Schwab's minute bars and its daily, weekly
+               and monthly candles of the ticker (the chain sweep's /pricehistory requests)
   markets.DATE src "schwab_markets"     Schwab's /markets answer for the market date (the chain
                sweep's requests), with its status
   watchlist    src "daemon_watchlist"   the watchlist after each add or removal the console asked

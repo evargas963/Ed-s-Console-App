@@ -195,8 +195,8 @@ CANDLE_1M_MAX_BARS: int = 390
 BARS_KEPT = 24_000
 _bars: dict[str, list[Candle]] = {}
 #: every ticker's other series of Schwab's /pricehistory, each its newest answer as sent
-#: ((ticker, series) -> candles, oldest first; series "5m", "15m", "30m", "1d": the daemon's
-#: PRICE_HISTORY). Owned by the bar writer; the bars panel and the ATR (_atr) read them.
+#: ((ticker, series) -> candles, oldest first; every series of the daemon's PRICE_HISTORY but
+#: "1m"). Owned by the bar writer; the bars panel and the ATR (_atr) read them.
 _series: dict[tuple[str, str], list[Candle]] = {}
 _bars_lock = threading.Lock()
 #: where the bars come from, named in every level's provenance
@@ -2014,11 +2014,17 @@ def _daily_candles(tk: str, now: datetime) -> list[Candle]:
 
 
 def _atr(ticker: str, now: datetime) -> Atr:
-    """Return the ticker's daily, weekly and monthly ATR at `now`, from _daily_candles.
+    """Return the ticker's daily, weekly and monthly ATR at `now`, each from Schwab's candles.
 
-    Too few reads as None.
+    The daily from _daily_candles; the weekly and monthly from Schwab's own weekly and monthly
+    /pricehistory series as the bar writer holds them (_series). Too few reads as None.
     """
-    return compute_atrs(_daily_candles(ticker_storage_key(ticker), now))
+    tk = ticker_storage_key(ticker)
+    with _bars_lock:
+        weekly, monthly = (
+            list(_series[(tk, s)]) if (tk, s) in _series else [] for s in ("1w", "1mo")
+        )
+    return compute_atrs(_daily_candles(tk, now), weekly, monthly)
 
 
 def _atr_fields(tk: str, now: datetime) -> dict:

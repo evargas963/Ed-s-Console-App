@@ -366,7 +366,7 @@ the program.
 - **1-minute bar and daily candles.** Schwab's price history: the daemon's chain sweep
   asks `/pricehistory` for each ticker (`complete_chain_capture.PRICE_HISTORY`,
   per `docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`, each request ending
-  now, extended hours included): the 1-minute bars (10 days) and the daily candles (2 years) once
+  now, extended hours included): the 1-minute bars (10 days) and the daily, weekly and monthly candles (2 years) once
   per ET date (`ChainSweep.candles_due`), asked before the chains in each pass of the sweep
   (`ChainSweep.work`: the price-built levels wait for it, a rotation of the chains takes minutes)
   -- every watchlist ticker, options listed or not; each answer whole, as Schwab sent it →
@@ -609,8 +609,10 @@ the program.
   them, at the live price (below).
   A publication carries the same fields whatever its chain's source (a live download or a stored
   capture). The terrain panel adds the daily, weekly and monthly ATR(14) when it is read (`server._atr`):
-  Schwab's daily candles before today, today's candle rolled up live from today's 1-minute bars
-  inside Schwab's regular window, and the weeks and months those make. The day-over-day
+  the daily from Schwab's daily candles before today and today's candle as Schwab pushes it; the
+  weekly and monthly from Schwab's own weekly and monthly candles, as sent (operator 2026-11-12:
+  "we should not be calculating anything that schwab sends us"), so the current week and month
+  are as of Schwab's newest answer, asked once per ET date and after the close. The day-over-day
   open-interest change has one producer: the forces, from the stored captures (the forces panel,
   shown on the Trade Desk). Fewer than two market days of captures leaves each forces number
   absent (`server._forces_from_captures`), and a charm, DEX, ΔOI, GEX or volume side with a strike not known, or no strike at all, leaves that side
