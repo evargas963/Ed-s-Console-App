@@ -34,22 +34,21 @@ const { test, expect } = require('@playwright/test');
 const { pushExpiries } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
-const STRIKES = { spot: 100, spot_strike: 100, max_abs_row: [100, 958600, 50], levels_state: 'LIVE',
-  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
-  views: { all: { centre: 100, max_abs: 958600 } },
-  measures: { dex: { rows: [[97, -41000], [98, -12000], [100, 88000], [102, 23000]], view: { centre: 100, max_abs: 88000 },
-    max_abs_row: [100, 88000] },
-    oi: { rows: [[97, 300], [98, 1500], [100, 5200], [102, 2180], [104, 90]], view: { centre: 100, max_abs: 5200 },
-      max_abs_row: [100, 5200] } } };
-const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
-const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
-const CALL_SYM = 'SPY   260918C00102000';
-const PUT_SYM = 'SPY   260918P00102000';
-const CHAIN = { spot: 100, spot_strike: 102, expiry: '2026-09-18', status: 'ok', scope: { kind: 'complete_single_expiry' },
+// the strikes panel as the server sends it on CRWD's real chain (held to the server by
+// tests/test_vanna_charm_by_strike_v1.py): eleven strikes around 270, with the DEX and OI measures
+const STRIKES = require('./fixtures/vanna_charm_panels_crwd.json').strikes;
+const SPOT = STRIKES.spot_strike;                                  // 270
+const K = STRIKES.today.all[6][0];                                 // 272.5, the strike a test clicks
+const TERRAIN = { spot: SPOT, gamma_flip: SPOT - 0.5, call_wall: K, put_wall: STRIKES.today.all[4][0],
+  regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
+const BARS = { bars: [{ t: 1757000000, o: SPOT - 1, h: SPOT + 1, l: SPOT - 2, c: SPOT, v: 1 }] };
+const CALL_SYM = 'CRWD  260918C00272500';
+const PUT_SYM = 'CRWD  260918P00272500';
+const CHAIN = { spot: SPOT, spot_strike: K, expiry: '2026-09-18', status: 'ok', scope: { kind: 'complete_single_expiry' },
   net_gex_by_strike: [], adjusted_deliverable_symbols: [],
   contracts: [
-    { symbol: CALL_SYM, putCall: 'CALL', strikePrice: 102, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12 },
-    { symbol: PUT_SYM, putCall: 'PUT', strikePrice: 102, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12 },
+    { symbol: CALL_SYM, putCall: 'CALL', strikePrice: K, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12 },
+    { symbol: PUT_SYM, putCall: 'PUT', strikePrice: K, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12 },
   ] };
 
 // the page's socket sends `terrain` (the flip and the walls), `strikes` (the profile) and `bars`
@@ -92,17 +91,17 @@ test.describe('Options/Gamma Chart subview', () => {
     await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBeGreaterThan(0);
 
     chainRequests.length = 0;
-    // A genuine pointer click on strike 102's profile row on the shared chart
-    await clickStrike(page, 102);
+    // A genuine pointer click on strike K's profile row on the shared chart
+    await clickStrike(page, K);
 
     // the page applies a click on its own schedule: wait for the selection, never read it at once
-    await expect.poll(() => page.evaluate(() => window.EdShell.getState().selStrike)).toBe(102);
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().selStrike)).toBe(K);
     const state = await page.evaluate(() => window.EdShell.getState());
     expect(state.selExpiry).toBe('2026-09-18');   // NOT null -- the workspace filter, carried through
     await expect.poll(() => chainRequests.length).toBeGreaterThan(0);
     expect(chainRequests.every((e) => e === '2026-09-18')).toBeTruthy();
 
-    // Strike Detail shows strike 102's call AND put at this expiry, each its own contract's open
+    // Strike Detail shows strike K's call AND put at this expiry, each its own contract's open
     // interest as served -- the complete workflow, not just the numeric strike+expiry handoff.
     await expect(page.locator('#sdBody table.sd tbody tr').nth(0).locator('td').nth(1)).toHaveText('1200');
     await expect(page.locator('#sdBody table.sd tbody tr').nth(1).locator('td').nth(1)).toHaveText('980');
@@ -115,19 +114,21 @@ test.describe('Options/Gamma Chart subview', () => {
     await expect(page.locator('#expSel')).toHaveValue('');
     await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBeGreaterThan(0);
 
-    await clickStrike(page, 102);
-    await expect.poll(() => page.evaluate(() => window.EdShell.getState().selStrike)).toBe(102);
+    await clickStrike(page, K);
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().selStrike)).toBe(K);
     expect(await page.evaluate(() => window.EdShell.getState().selExpiry)).toBeNull();
   });
 
   test('the GEX profile leaves a strike of GEX not known undrawn, with no page error', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    const today = { all: [[98, -90000, 10], [100, null, 50], [102, -264500, 12]] };
+    // induced: the real rows with the GEX of the strike at the price not known
+    const today = { all: STRIKES.today.all.map((row) => (row[0] === SPOT ? [row[0], null, row[2]] : row)) };
     await intercept(page, TERRAIN, Object.assign({}, STRIKES, { today }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
-    await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(2);
+    await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows))
+      .toBe(STRIKES.today.all.length - 1);
     expect(errors).toEqual([]);
   });
 
@@ -161,7 +162,7 @@ test.describe('Options/Gamma Chart subview', () => {
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('#mvTitle')).toHaveText(title);
       await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(rows);
-      await expect(page.locator('#chartBody .chart-legend')).toContainText('largest |' + (sub === 'oi' ? 'OI' : 'DEX') + '| 100');
+      await expect(page.locator('#chartBody .chart-legend')).toContainText('largest |' + (sub === 'oi' ? 'OI' : 'DEX') + '| ' + STRIKES.measures[sub].max_abs_row[0]);
     }
   });
 });
