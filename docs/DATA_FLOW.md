@@ -632,7 +632,13 @@ the program.
   2026-11-06 reprice of every ticker on every tick, which put 60% of the program's samples in
   pricing on the one thread and the levels on screen 10 to 16 s behind (py-spy, production,
   2026-11-10 10:58 CT). The ticks that arrive while one waits or runs are all in the next.
+  A ticker's ticks queue at most one reprice a second (`server.REPRICE_EVERY_SEC`, the operator's
+  setting, 2026-11-12: "Yes, once a second"; repricing on every tick took 38% of the program's
+  samples and left a round of the watchlist at about 5 minutes): the first tick after a second
+  queues it at once, and one that comes sooner sets the ticker's one timer for the rest of it,
+  so the newest values are priced when it ends (`server._reprice_from_tick`).
   Enforced by: `tests/test_instant_ui_blockers_a_v1.py::test_a_tick_queues_a_reprice_only_for_a_ticker_a_page_shows`,
+  `test_a_tickers_ticks_queue_one_reprice_a_second_and_the_last_tick_is_not_lost` there,
   `tests/test_one_levels_producer_v1.py::test_a_push_on_a_ticker_no_page_shows_is_priced_with_its_next_chain`
   and `tests/test_data_path_silent_price_v1.py::test_a_page_selecting_a_ticker_queues_its_reprice_and_its_ticks_end_with_the_page`.
   Every pricing runs at the job's own instant (`server._price_waiting_chain`), so the daemon's

@@ -1608,7 +1608,8 @@ def _on_stream_tick(sym: str) -> None:
     quote carrying Greeks or volume, and every contract of a /quotes answer. An equity quote
     checks the ticker's levels for a cross at the live price (stored off the event loop); a
     ticker a page shows (_gamma_surface_wanted) is queued for a reprice with every value Schwab
-    has sent (one waits per ticker, so the reprice that runs takes the newest). A ticker no page
+    has sent, at most once a second (_reprice_from_tick; one waits per ticker, so the reprice
+    that runs takes the newest). A ticker no page
     shows is priced by each chain the daemon delivers, and repriced when a page selects it
     (ticker_selected). Returns at once.
     """
@@ -1629,6 +1630,47 @@ def _on_stream_tick(sym: str) -> None:
                 datetime.fromtimestamp(now, ET).strftime("%Y-%m-%d %H:%M:%S ET"),
             )
     if tk and _gamma_surface_wanted(tk):
+        _reprice_from_tick(tk)
+
+
+#: the least time between two reprices a ticker's ticks queue (the operator's setting,
+#: 2026-11-12: "Yes, once a second")
+REPRICE_EVERY_SEC = 1.0
+#: ticker -> when its ticks last queued a reprice (time_et.elapsed), and the one timer that
+#: queues the next for a tick that came sooner
+_repriced_at: dict[str, float] = {}
+_reprice_timers: dict[str, threading.Timer] = {}
+_reprice_lock = threading.Lock()
+
+
+def _reprice_from_tick(tk: str) -> None:
+    """Queue a reprice of `tk` for a tick of it, at most one each REPRICE_EVERY_SEC.
+
+    A tick that comes that long after the last one queued does so at once. One that comes
+    sooner starts the ticker's one timer for the rest of that time, so the newest values Schwab
+    sent are priced when it ends and no tick is left unpriced.
+    """
+    with _reprice_lock:
+        now = time_et.elapsed()
+        wait = _repriced_at[tk] + REPRICE_EVERY_SEC - now if tk in _repriced_at else 0.0
+        if wait > 0:
+            if tk not in _reprice_timers:
+                timer = threading.Timer(wait, _reprice_due, (tk,))
+                timer.daemon = True
+                _reprice_timers[tk] = timer
+                timer.start()
+            return
+        _repriced_at[tk] = now
+    _wait_to_price(tk, REPRICE)
+
+
+def _reprice_due(tk: str) -> None:
+    """Queue the reprice a tick of `tk` waited for (its timer), while a page still shows it."""
+    with _reprice_lock:
+        if _reprice_timers.pop(tk, None) is None:  # dropped by the stop
+            return
+        _repriced_at[tk] = time_et.elapsed()
+    if _gamma_surface_wanted(tk):
         _wait_to_price(tk, REPRICE)
 
 
@@ -1968,6 +2010,10 @@ def stop_terrain_loop() -> None:
     """
     global _terrain_loop_running
     _terrain_loop_running = False
+    with _reprice_lock:  # a timer that fires after this queues nothing (_reprice_due)
+        for timer in _reprice_timers.values():
+            timer.cancel()
+        _reprice_timers.clear()
     with _chains_waiting_lock:
         _chains_waiting.clear()
 
