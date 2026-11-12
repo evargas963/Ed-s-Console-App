@@ -35,9 +35,10 @@ The facts below hold today and in the design, except where a bullet says what to
   `tools/schwab_field_inventory.py` (its own client, which takes a token the daemon saved
   before refreshing one itself). Its session (`schwab_client.OneRefreshSession`) starts nothing else: it refreshes
   the token when it is within 300 s of expiry, one request at a time (the others carry the token
-  it returned), and writes it to the token file atomically. Its session holds one connection
-  (`schwab_client.ONE_CONNECTION`), kept through a pause (operator 2026-11-02: "Yes, keep it
-  open"): every request waits for it, in turn. Nothing of ours closes it. When Schwab closes it,
+  it returned), and writes it to the token file atomically. Its session holds as many connections as
+  the quotes requests it sends together for a ticker a page shows (`schwab_client.CONNECTIONS`,
+  `QUOTES_AT_ONCE`: two, operator 2026-11-12: "lets go up in step"), each kept through a pause
+  (operator 2026-11-02: "Yes, keep it open"): every other request is sent alone, in turn. Nothing of ours closes it. When Schwab closes it,
   the pool drops it before the next request; a request caught in that close fails, and its caller
   logs it and asks again, a watchlist add excepted, which reports NOT_CHECKED for the operator to
   repeat; one dropped in silence stalls that request to schwab-py's 30 s timeout,

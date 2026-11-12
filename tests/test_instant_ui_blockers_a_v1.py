@@ -64,11 +64,12 @@ def test_every_token_refresh_writes_atomically(tmp_path):
     assert os.stat(tok).st_ino != before, "the refresh must land via os.replace"
 
 
-def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
-    """Operator 2026-10-06: chains and quotes one request at a time on one connection.
+def test_the_client_never_sends_more_requests_at_once_than_its_setting(tmp_path):
+    """Operator 2026-11-12: "lets go up in step", replacing 2026-10-06's one at a time.
 
-    The client the daemon builds, asked for 20 requests at once from 20 threads, sends them one at a
-    time (the server never holds two) over one connection (one client port).
+    The client the daemon builds, asked for 20 requests at once from 20 threads, sends them
+    QUOTES_AT_ONCE at a time (the server never holds more) over as many connections (client
+    ports).
     """
     n = 20
     lock = threading.Lock()
@@ -104,8 +105,8 @@ def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
     finally:
         httpd.shutdown()
     assert codes == [200] * n
-    assert seen["most"] == 1, f"{seen['most']} requests at once"
-    assert len(seen["ports"]) == 1, f"{len(seen['ports'])} connections"
+    assert seen["most"] == sc.QUOTES_AT_ONCE, f"{seen['most']} requests at once"
+    assert len(seen["ports"]) == sc.QUOTES_AT_ONCE, f"{len(seen['ports'])} connections"
 
 
 # ── PR C: server-side bar roll-up; quote_tick carries the screen's numbers; heatmap demand ──
