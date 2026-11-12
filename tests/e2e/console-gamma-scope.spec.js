@@ -19,7 +19,7 @@ const BY_SCOPE = { auto: REAL.strikes, wider: REAL.strikes_wider, all: REAL.stri
 const WINDOW = { auto: BY_SCOPE.auto.today.all, wider: BY_SCOPE.wider.today.all, all: BY_SCOPE.all.today.all };
 function strikesFor(scope) { return BY_SCOPE[scope]; }
 const SPOT = REAL.strikes.spot_strike;                                  // the strike at the price
-const label = (k) => (k % 1 ? k.toFixed(2) : String(k));                // a strike as the page writes it
+const strikeText = (k) => (k % 1 ? k.toFixed(2) : String(k));           // a strike as the page writes it
 const TERRAIN = REAL.terrain;
 const BARS = { ticker: 'SPY', bars: [-0.4, -0.1, 0.1, -0.2, 0.3, 0.5, 0.2, 0.0].map(function (d, i) {
   const c = SPOT + d;
@@ -87,8 +87,8 @@ test.describe('the Gamma presentation scope', () => {
       await expect.poll(() => asked[asked.length - 1]).toBe(scope);
       const rows = WINDOW[scope];
       await expect(gbs.locator('.gbs-row')).toHaveCount(rows.length);
-      await expect(gbs.locator('.gbs-row').first().locator('.gbs-k')).toHaveText(label(rows[rows.length - 1][0]));
-      await expect(gbs.locator('.gbs-row').last().locator('.gbs-k')).toHaveText(label(rows[0][0]));
+      await expect(gbs.locator('.gbs-row').first().locator('.gbs-k')).toHaveText(strikeText(rows[rows.length - 1][0]));
+      await expect(gbs.locator('.gbs-row').last().locator('.gbs-k')).toHaveText(strikeText(rows[0][0]));
       // rows keep a legible height at every count (never shrunk to fit)
       const rowH = await gbs.locator('.gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
       expect(rowH).toBeGreaterThanOrEqual(24);
