@@ -348,8 +348,9 @@ class _Chain:
 class ChainSweep:
     """The one fetcher of option chains.
 
-    One thread, one request at a time on the daemon's one Schwab client, every ticker the same,
-    in one rotation (sorted): every watchlist ticker (`watchlist`, which the daemon replaces on
+    One thread, one request at a time on the daemon's one Schwab client, in one rotation
+    (sorted, a ticker a page has selected before each other one, `rotation`): every watchlist
+    ticker (`watchlist`, which the daemon replaces on
     each add or removal: an added ticker is in the next rotation, a removed one is asked for no
     more). For each ticker, Schwab's expiration
     chain once per ET date, then one chain request per expiry (strike_range=ALL), as Schwab says
@@ -392,8 +393,10 @@ class ChainSweep:
         *,
         failures: CaptureWriter,
         streamed: Callable[[str], tuple[str, dict] | None],
+        shown: Callable[[], list[str]] = list,
     ) -> None:
         self.db_path = db_path
+        self.shown = shown  # the watchlist tickers a page has selected, read before each chain
         self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change
         self.publish = publish  # (topic, msg) -> None, safe from any thread
         self.clock = clock  # when a request begins, and when a chain is delivered
@@ -554,24 +557,33 @@ class ChainSweep:
             self.publish(*markets_message(day, resp.status_code, answer, self.clock()))
 
     def rotation(self, schwab_client, tickers: list[str], stop: threading.Event) -> set[str]:
-        """Each ticker's chain in turn.
+        """Each ticker's chain in turn, a ticker on a page before each other one.
 
-        One removed from the watchlist since the rotation began is not asked for; the queued
-        quotes asked for whenever a full request's worth is waiting and the rest at the end; the
-        tickers delivered. Its time is the round's (`round_sec`) only when it asked for every
-        watchlist ticker: the console judges a ticker's chain overdue by the round, and a round
-        of a few tickers is shorter than the watchlist's.
+        Before each ticker's chain, the chain of every ticker a page has selected (`shown`, read
+        then: operator 2026-11-11, the ticker on the screen first) with all its quotes, so it is
+        delivered before the next ticker is asked for; never the same ticker twice in a row. A
+        chain is asked for only while it is due (chain_due), so one delivered after the close is
+        not asked again. One removed from the watchlist since the rotation began is not asked
+        for; the other queued quotes asked for whenever a full request's worth is waiting and
+        the rest at the end; the tickers delivered. Its time is the round's (`round_sec`) only
+        when it asked for every watchlist ticker: the console judges a ticker's chain overdue by
+        the round, and a round of a few tickers is shorter than the watchlist's.
         """
         started = self.clock()
         self._delivered = set()
+        last = None
         for ticker in tickers:
-            if stop.is_set():
-                break
-            if ticker not in self.watchlist:
-                continue
-            self.fetch_chain(schwab_client, ticker, stop)
-            while len(self._queue) >= QUOTES_BATCH_MAX and not stop.is_set():
-                self.send_quotes(schwab_client)
+            shown = self.shown()
+            for asked in (*shown, ticker):
+                if stop.is_set() or asked == last or asked not in self.watchlist:
+                    continue
+                if not self.chain_due(asked, datetime.fromtimestamp(self.clock(), ET)):
+                    continue
+                self.fetch_chain(schwab_client, asked, stop)
+                last = asked
+                whole = 1 if asked in shown else QUOTES_BATCH_MAX
+                while len(self._queue) >= whole and not stop.is_set():
+                    self.send_quotes(schwab_client)
         while self._queue and not stop.is_set():
             self.send_quotes(schwab_client)
         took = self.clock() - started
