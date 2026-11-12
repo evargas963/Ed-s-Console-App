@@ -227,6 +227,16 @@ then the rule binds with no machine check.
   which puts them before the agent on every message in Claude Code
   (`tests/test_wiring_rules_v1.py`); that they were applied — the builder's audit (rule 14), no
   machine check.
+- Source documents first (operator 2026-11-12: "you always check source documents first"; no
+  change is made "based on a belief"; the documents "should be checked periodically"). A
+  question of fact (what Schwab or an exchange sends, lists, limits or times) is answered from its
+  source document, read that turn and cited from `docs/SOURCES.md`, before any measurement of
+  ours. A measurement on the repository's own data says what that data can show (how often it
+  was recorded, for which contracts); data that cannot show the thing is not evidence of it. A
+  source that answers a new question is added to the register in the change that rests on it.
+  Enforced by: `tests/test_source_register_v1.py` (every listed file exists, every source has
+  its dates, none is past the date it is read again by); that a change rests on a source — the
+  builder's audit (rule 14), no machine check.
 - Trace each value it touches: its source, its one producer, its validity rule and time, its live
   and stored consumers, and what each shows when it is missing. A producer exists: call it. None
   exists: write it once, in its part. Enforced by: no machine check — ENF-08.

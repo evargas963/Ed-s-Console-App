@@ -465,7 +465,11 @@ the program.
   on 0 of 62,181 contracts between the day's first and last capture) are asked for once per
   capture window, the chain the history stores, and each later chain of the window takes them
   again as sent and asks only for its Greeks and quotes (`ChainSweep.fetch_chain`,
-  `tests/test_chain_history_v1.py`); outside those windows every chain asks for them. After that market's close (and on a weekend, a holiday, and when the
+  `tests/test_chain_history_v1.py`); outside those windows every chain asks for them. An
+  exchange may add an option series during the trading day (`docs/SOURCES.md`,
+  occ-listing-procedures-plan), so a contract listed inside a window is first seen at the next
+  window, up to 30 minutes later (before 2026-11-12 it was the next chain, about 4.5 minutes):
+  how soon it must appear for the ticker a page shows is the operator's open decision. After that market's close (and on a weekend, a holiday, and when the
   daemon starts while it is closed) the ticker is fetched once more, its close values (one added
   then too); a fetch that fails is tried again in the next pass. A ticker whose expiration chain
   lists nothing has no option market: its chain is asked once per ET date, only to learn whether
