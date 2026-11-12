@@ -381,7 +381,7 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
         fx = json.loads((Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8"))
         assert fx == served[route], route
     for route in PRICE_MARKED:
-        assert served[route]["spot_not_live_text"].startswith("not live · last trade ")
+        assert served[route]["spot_time_ct"] is not None
         assert served[route]["spot_not_live_text"].startswith("not live · last trade ")
     assert (served["terrain"]["levels_state"], served["terrain"]["levels_mark"]) == (
         "CLOSE",
