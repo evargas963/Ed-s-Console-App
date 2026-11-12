@@ -8,8 +8,7 @@
 
   function px(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   var AS_SENT = 'as_sent';
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  var esc = window.EdShell.esc, shown = window.EdShell.shown;
   function isChain() { var s = window.EdShell.getState(); return s.workspace === 'options' && s.subview === 'chain'; }
 
   function setSrc(d) {
@@ -53,7 +52,7 @@
     // B: the chain panel is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
     var filterNull = !(window.EdShell.getExpiry());
-    var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '-') +
+    var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(shown(d.expiry)) +
       (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + esc(d.n_strikes) + ' strikes' +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
       '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '-') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') +

@@ -27,8 +27,7 @@
   var CT_YEAR = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric' });
   var CT_MONTH = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short' });
 
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  var esc = window.EdShell.esc;
   function fmtVol(n) {
     if (n == null || isNaN(n)) return '-';
     var a = Math.abs(Number(n));

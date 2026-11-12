@@ -7,8 +7,7 @@
 (function () {
   'use strict';
 
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  var esc = window.EdShell.esc, shown = window.EdShell.shown;
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function isMap() { var s = window.EdShell.getState(); return s.workspace === 'liquidity' && s.subview === 'map'; }
   function ticker() { return window.EdShell.getState().ticker; }
@@ -34,7 +33,7 @@
     var tags = (z.source_levels || []).map(function (l) { return esc(l.label) + ' ' + num(l.value); }).join(' · ');
     return '<div class="fl-row"><span class="k">' + esc(z.zone_label) + ' ' + num(z.zone_low) + '–' + num(z.zone_high) + '</span>' +
       '<span class="v">confluence ' + esc(z.confluence_score) + '</span></div>' +
-      '<div class="sm liqm-tags">' + (tags || '-') + (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
+      '<div class="sm liqm-tags">' + shown(tags) +(z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
   }
 
   // a panel as served: one not received yet, or one the program could not produce, draws nothing

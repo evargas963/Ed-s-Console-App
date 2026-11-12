@@ -15,8 +15,7 @@
 (function () {
   'use strict';
 
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  var esc = window.EdShell.esc, shown = window.EdShell.shown;
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '-' : String(Math.round(Number(n))); }
   function isFlow() { var s = window.EdShell.getState(); return s.workspace === 'options' && s.subview === 'flow'; }
@@ -61,7 +60,7 @@
     var l1 = plane && plane.feed_health && plane.feed_health.l1;
     if (s === 'SUBSCRIBED' && l1 && l1.state === 'LIVE') return { label: 'ACTIVE', cls: 'live' };
     if (s === 'SUBSCRIBED' && l1) return { label: l1.state, cls: 'stale' };
-    return { label: s || '-', cls: 'stale' };
+    return { label: shown(s), cls: 'stale' };
   }
 
   // The backend's classification string for one canonical key, verbatim — or null when the
@@ -115,7 +114,7 @@
     var fresh = [
       ['Book age', d.book_when_age_text == null ? '-' : d.book_when_age_text, 'ages.book_age_sec', bk('ages.book_age_sec')],
       ['Quote age', d.quote_when_age_text == null ? '-' : d.quote_when_age_text, 'ages.quote_age_sec', bk('ages.quote_age_sec')],
-      ['Replay', fh.replay || '-', 'streaming_plane.feed_health.replay', undefined],
+      ['Replay', shown(fh.replay), 'streaming_plane.feed_health.replay', undefined],
       ['L1 upstream', fh.l1 ? fh.l1.text : '-', 'streaming_plane.feed_health.l1', undefined],
       ['Book upstream', fh.book ? fh.book.text : '-', 'streaming_plane.feed_health.book', undefined],
     ];
@@ -127,21 +126,21 @@
       section('Freshness / health', fresh, '') +
       '</div>' +
       '<div class="fl-foot">signed aggressor classification NOT PROVEN — native_aggressor_available=' +
-      bool3(flow.native_aggressor_available) + '; tape_classification=' + esc(flow.tape_classification || '-') +
+      bool3(flow.native_aggressor_available) + '; tape_classification=' + esc(shown(flow.tape_classification)) +
       '; no signed buys/sells, CVD, or bull/bear verdict is canonical.</div>';
   }
 
   function header(desired, ss, putCall) {   // putCall: the chain record's side, served
     var strike = window.EdShell.getState().selStrike, expiry = window.EdShell.getState().selExpiry;
     return '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
-      '<span class="fl-sym">' + esc(desired || '-') + '</span>' +
+      '<span class="fl-sym">' + esc(shown(desired)) + '</span>' +
       '<span class="fl-meta">' + (putCall === 'CALL' ? 'Call' : putCall === 'PUT' ? 'Put' : '-') + (strike != null ? ' · ' + strike : '') + (expiry ? ' · ' + esc(expiry) : '') + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' + ss.cls + '">' + ss.label + '</span></div></div>';
   }
   function shell(h, desired, badge, msg, x) {
     var cls = badge === 'NONE' ? 'warn' : (badge === 'FAILED' || badge === 'DEGRADED' ? 'stale' : 'warn');
     h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
-      '<span class="fl-sym">' + esc(desired || '-') + '</span></div>' +
+      '<span class="fl-sym">' + esc(shown(desired)) + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' + cls + '">' + esc(badge) + '</span></div></div>' +
       '<div class="placeholder"><div class="sm">' + esc(msg) + '</div></div>';
   }
