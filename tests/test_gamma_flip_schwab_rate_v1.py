@@ -103,6 +103,23 @@ def test_the_flip_reprices_with_schwabs_rate_and_dividend_yield(book):
     assert snap.gamma_flip == pytest.approx(expected, rel=5e-5)
 
 
+def test_no_product_file_reads_the_stock_streams_dividend_yield():
+    """The options are priced with the yield sent with their own chain, in every file.
+
+    Schwab also pushes a Dividend Yield with the stock's quote (LEVELONE_EQUITIES field 23), a
+    different field with a different value (operator 2026-11-12: the chain's own is the one
+    source). No product file names the pushed one.
+    """
+    repo = Path(__file__).resolve().parent.parent
+    product = [
+        p
+        for p in [*repo.glob("*.py"), *(repo / "app").rglob("*.py"), *repo.glob("calibration/*.py")]
+        if p.name != "conftest.py"
+    ]
+    assert len(product) > 40, "every product file is read"
+    assert [p.name for p in product if "DIVIDEND_YIELD" in p.read_text(encoding="utf-8")] == []
+
+
 def test_a_contract_schwab_sent_without_its_rate_is_not_priced():
     """SPY's same-day chain as captured 2026-09-22, before each contract carried the chain's rate.
 

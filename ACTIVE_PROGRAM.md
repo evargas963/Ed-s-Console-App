@@ -58,7 +58,10 @@ The operator's answers to the live-path audit's questions, in his words:
   as long as we have that, then the entire chain should be correct for all tickers based on what
   schwab sends ... there should not be any special circumstances". Built: ATR(14) by Wilder's
   formula (`terrain_atr.compute_atrs`); the gamma flip, GSF and GRC priced with Schwab's
-  `interestRate` and `dividendYield` as sent (`math_levels`); the Flow panel's Mark is Schwab's
+  `interestRate` and `dividendYield` as sent with the chain (`math_levels`; operator 2026-11-12,
+  told the stock stream pushes a different Dividend Yield: "i agree with your recomendation",
+  the chain's own stays the one source, "document and then make sure that we are consistent
+  throughout the repo"); the Flow panel's Mark is Schwab's
   MARK, with no midpoint of ours.
 - The same day, on 0DTE: "schwab does not have a 0DTE field that is one we compute. i can see
   that for 0dte options but not all options are 0dte and so we must have one producer at the
@@ -331,7 +334,7 @@ and a secret in a quoted-name file after a skip-listed file are refused.
 | RESEARCH | Quant formulas that decide stock, calls, puts or spreads, and research run on the stored chain history. Where it lives (Trade Desk or its own screen) is undecided. |
 | PLAN | Trade Desk → Plan. |
 | PORTFOLIO | Portfolio / Risk: needs the operator's positions from Schwab's account API, fetched by the daemon. |
-| RATE-DIV | The risk-free rate and dividend yield Schwab sends with each chain (stamped on every contract), used or not by the model curve, vanna and charm. |
+| RATE-DIV | The risk-free rate and dividend yield Schwab sends with each chain (stamped on every contract). The model curve uses them (decided 2026-11-12: the chain's own, never the stock stream's Dividend Yield). Open: vanna and charm are still priced at a rate and yield of 0. |
 | PIN-FLOOR | The pin score's $50,000 GEX floor (binds for MTA, NBIX, TSL): keep, change or remove, after research. |
 | VOL-GAMMA | Option volume in the gamma read (e.g. volume-weighted gamma for same-day expiries). |
 | DESK-GAPS | The Trade Desk reference shows elements with no canonical value yet; each keeps its place and says why. (2) High- and low-volume nodes: no producer and not drawn (a 70% value area is not a node; peaks and troughs need a rule of their own; `hvp`/`lvp` are gamma strikes, not volume). (3) Absorption, liquidity pull, replenishment: not produced (open). Each needs per-trade prints at price and venue, which the stream does not carry; TIMESALE is to be asked in market hours in a window the operator agrees (it stops the capture daemon, the one Schwab stream, for about a minute). The chart's events are level crosses as recorded, drawn as numbered callouts. (4) R1/R2/S1/S2: no producer. (5) Severity and each card's 1-hour change: no producer (each card's chart draws a served series: book depth by price, 1-minute volume, put/call OI and ATM IV by expiry; no axis numbers, a page-derived number is not printed). (6) The Trade Desk's Order Flow card shows Schwab's session volume, last trade size, top of book and level crosses; the tick-rule trade-side estimate is off it, and is still shown, labelled PROXY, in Options → Flow (`static/js/ed-gamma-flow.js`; its producer in `app/options/order_flow/engine.py`) until ONE-12 deletes it. |
