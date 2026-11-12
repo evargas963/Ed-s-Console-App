@@ -980,7 +980,8 @@ behavior (AGENTS.md).
     gamma profile, its charm walls from its charm map. With none listed today, the next listed
     expiry keeps its open interest and implied volatility, and its gamma and delta are rebuilt as
     if it expired at today's option close (`math_levels.repriced_to_close`): Black-Scholes-Merton
-    with Schwab's rate and dividend yield as sent, at the time every other greek uses
+    with the chain's own rate and dividend yield as sent (`interestRate`, `dividendYield`; never
+    the stock stream's Dividend Yield, another field), at the time every other greek uses
     (`time_to_expiry_years`, including its 10-minute floor) from the valuation instant to that
     close; its gamma profile and charm are priced at that same time. A contract with open
     interest whose gamma is not known (not sent, or it cannot be rebuilt) leaves its side and that
