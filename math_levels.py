@@ -68,18 +68,18 @@ def compute_charm_by_strike(
         if years == 0 or c.strike is None or c.side is None:  # settled, or no strike or side
             continue
         out.setdefault(c.strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
-        row = _contract_inputs(c, now, t_years=years, product=product)
+        row = _profile_row(c, now, years, product)
         if row == "zero_open_interest":  # no contract open: it adds nothing to its strike's 0
             continue
         slot.append((c.strike, c.side == "CALL"))
-        inputs.append(row[1:5] if isinstance(row, tuple) else (np.nan,) * 4)
+        inputs.append(row[1:] if isinstance(row, tuple) else (np.nan,) * 7)
     if not slot:
         return out
     at = {k: i for i, k in enumerate(out)}
     where = np.array([2 * at[k] + (not call) for k, call in slot])
-    oi, mult, years, sigma = np.array(inputs, float).T
+    oi, mult, years, sigma, sign, rate, dividend = np.array(inputs, float).T
     strike = np.array([k for k, _call in slot], float)
-    charm = bs_charm_array(float(spot), strike, years, sigma)
+    charm = bs_charm_array(float(spot), strike, years, sigma, sign, rate, dividend)
     exposure = charm * oi * mult / 365.0
     known = ~np.isnan(exposure)
     # bincount adds each side's exposures one at a time, in the chain's order

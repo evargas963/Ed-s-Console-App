@@ -148,7 +148,7 @@
  "move_text": null,
  "notes": [],
  "peaks": {
-  "charm": 4050544.1100525763,
+  "charm": 4056885.002748519,
   "dex": 633515384.1419919,
   "gross": 1555131160.7514024,
   "iv": 1273.28951484,
@@ -156,7 +156,7 @@
   "oi": 18268.0,
   "pc_gex_lean": 13.830912026140926,
   "pc_vol_lean": 969.5,
-  "vanna": 2311182.523900607,
+  "vanna": 2312664.0964845996,
   "vol_oi": 258.3359489946052,
   "volume": 1053494.0
  },
@@ -166,7 +166,7 @@
  "regime": "SHORT_GAMMA_TREND",
  "rows": [
   {
-   "charm": -1028.6029902448536,
+   "charm": -1026.488529830075,
    "charm_reason": null,
    "charm_text": "-1.03",
    "contributions": [
@@ -271,12 +271,12 @@
    "pc_vol_lean": 0.9765215820841611,
    "pc_vol_reason": null,
    "pc_vol_text": "0.02",
-   "score": 9.382084415559843,
+   "score": 9.380829636717486,
    "score_text": "9",
    "spot_line": false,
    "strike": 778.0,
    "strike_text": "778.00",
-   "vanna": 123.90424715245294,
+   "vanna": 123.98794750032141,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 2.3901307465204553,
@@ -287,7 +287,7 @@
    "volume_text": "17001"
   },
   {
-   "charm": -1003.8810920183898,
+   "charm": -1002.5550114213439,
    "charm_reason": null,
    "charm_text": "-1.00",
    "contributions": [
@@ -392,12 +392,12 @@
    "pc_vol_lean": 0.9717398875565949,
    "pc_vol_reason": null,
    "pc_vol_text": "0.03",
-   "score": 7.880815822427992,
+   "score": 7.87983600173188,
    "score_text": "8",
    "spot_line": false,
    "strike": 777.0,
    "strike_text": "777.00",
-   "vanna": 129.18727892206928,
+   "vanna": 129.27974229982067,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 3.6169058452922647,
@@ -408,7 +408,7 @@
    "volume_text": "20667"
   },
   {
-   "charm": -4596.177984888329,
+   "charm": -4596.977688002715,
    "charm_reason": null,
    "charm_text": "-4.60",
    "contributions": [
@@ -513,12 +513,12 @@
    "pc_vol_lean": 0.9613350089136978,
    "pc_vol_reason": null,
    "pc_vol_text": "0.04",
-   "score": 19.50160842664255,
-   "score_text": "20",
+   "score": 19.499403444489165,
+   "score_text": "19",
    "spot_line": false,
    "strike": 776.0,
    "strike_text": "776.00",
-   "vanna": 635.2055908947232,
+   "vanna": 635.6894377683723,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 1.945478432231224,
@@ -529,7 +529,7 @@
    "volume_text": "35540"
   },
   {
-   "charm": -2521.87536026325,
+   "charm": -2516.3501719976634,
    "charm_reason": null,
    "charm_text": "-2.52",
    "contributions": [
@@ -634,12 +634,12 @@
    "pc_vol_lean": 0.9284181513928537,
    "pc_vol_reason": null,
    "pc_vol_text": "0.07",
-   "score": 18.04221500205004,
+   "score": 18.03902741344285,
    "score_text": "18",
    "spot_line": false,
    "strike": 775.0,
    "strike_text": "775.00",
-   "vanna": 376.61322761857394,
+   "vanna": 376.9201254846592,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 4.171916915766077,
@@ -650,9 +650,9 @@
    "volume_text": "54431"
   },
   {
-   "charm": -1132.0250610639914,
+   "charm": -1123.006755521792,
    "charm_reason": null,
-   "charm_text": "-1.13",
+   "charm_text": "-1.12",
    "contributions": [
     {
      "label": "open interest",
@@ -714,7 +714,7 @@
     {
      "label": "charm",
      "normalized_text": "0.02",
-     "raw_text": "1.13",
+     "raw_text": "1.12",
      "text": "0.4",
      "weight_text": "0.22"
     },
@@ -755,12 +755,12 @@
    "pc_vol_lean": 0.9621645219632871,
    "pc_vol_reason": null,
    "pc_vol_text": "0.04",
-   "score": 15.958252155616465,
+   "score": 15.954652807383724,
    "score_text": "16",
    "spot_line": true,
    "strike": 774.0,
    "strike_text": "774.00",
-   "vanna": 184.01812109974998,
+   "vanna": 184.17953394906968,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 9.846745562130177,
@@ -771,9 +771,9 @@
    "volume_text": "99846"
   },
   {
-   "charm": -216.6928431107758,
+   "charm": -203.05005152926788,
    "charm_reason": null,
-   "charm_text": "-0.22",
+   "charm_text": "-0.20",
    "contributions": [
     {
      "label": "open interest",
@@ -842,7 +842,7 @@
     {
      "label": "charm",
      "normalized_text": "0.00",
-     "raw_text": "0.22",
+     "raw_text": "0.20",
      "text": "0.1",
      "weight_text": "0.22"
     },
@@ -876,12 +876,12 @@
    "pc_vol_lean": 0.9417367818519301,
    "pc_vol_reason": null,
    "pc_vol_text": "0.06",
-   "score": 16.194770134123935,
+   "score": 16.190127441859428,
    "score_text": "16",
    "spot_line": false,
    "strike": 773.0,
    "strike_text": "773.00",
-   "vanna": 38.684226753144586,
+   "vanna": 38.721025356205246,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 8.94186701728024,
@@ -892,9 +892,9 @@
    "volume_text": "95213"
   },
   {
-   "charm": 2647.2565338387267,
+   "charm": 2672.8293603492502,
    "charm_reason": null,
-   "charm_text": "+2.65",
+   "charm_text": "+2.67",
    "contributions": [
     {
      "label": "open interest",
@@ -956,7 +956,7 @@
     {
      "label": "charm",
      "normalized_text": "0.04",
-     "raw_text": "2.65",
+     "raw_text": "2.67",
      "text": "0.9",
      "weight_text": "0.22"
     },
@@ -997,12 +997,12 @@
    "pc_vol_lean": 0.9371363469910893,
    "pc_vol_reason": null,
    "pc_vol_text": "0.06",
-   "score": 21.81712846035445,
+   "score": 21.824203739288272,
    "score_text": "22",
    "spot_line": false,
    "strike": 772.0,
    "strike_text": "772.00",
-   "vanna": -524.6839159747353,
+   "vanna": -525.2301029873569,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 12.32557407989934,
@@ -1013,9 +1013,9 @@
    "volume_text": "156732"
   },
   {
-   "charm": -1261.2793592706012,
+   "charm": -1247.8225276817284,
    "charm_reason": null,
-   "charm_text": "-1.26",
+   "charm_text": "-1.25",
    "contributions": [
     {
      "label": "open interest",
@@ -1077,7 +1077,7 @@
     {
      "label": "charm",
      "normalized_text": "0.02",
-     "raw_text": "1.26",
+     "raw_text": "1.25",
      "text": "0.4",
      "weight_text": "0.22"
     },
@@ -1118,12 +1118,12 @@
    "pc_vol_lean": 0.9682416938955216,
    "pc_vol_reason": null,
    "pc_vol_text": "0.03",
-   "score": 21.191764182857646,
+   "score": 21.18663200250845,
    "score_text": "21",
    "spot_line": false,
    "strike": 771.0,
    "strike_text": "771.00",
-   "vanna": 281.38806186952326,
+   "vanna": 281.7122767425952,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 18.420397414412257,
@@ -1134,9 +1134,9 @@
    "volume_text": "230826"
   },
   {
-   "charm": 1500.734526840859,
+   "charm": 1524.525215232903,
    "charm_reason": null,
-   "charm_text": "+1.50",
+   "charm_text": "+1.52",
    "contributions": [
     {
      "label": "open interest",
@@ -1198,7 +1198,7 @@
     {
      "label": "charm",
      "normalized_text": "0.02",
-     "raw_text": "1.50",
+     "raw_text": "1.52",
      "text": "0.5",
      "weight_text": "0.22"
     },
@@ -1239,12 +1239,12 @@
    "pc_vol_lean": 0.944864813983462,
    "pc_vol_reason": null,
    "pc_vol_text": "0.06",
-   "score": 22.553854270245225,
+   "score": 22.560963792194702,
    "score_text": "23",
    "spot_line": false,
    "strike": 770.0,
    "strike_text": "770.00",
-   "vanna": -383.7113803856882,
+   "vanna": -384.2080009805681,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 19.76139137510171,
@@ -1255,9 +1255,9 @@
    "volume_text": "291441"
   },
   {
-   "charm": 5035.66249162968,
+   "charm": 5057.698026133875,
    "charm_reason": null,
-   "charm_text": "+5.04",
+   "charm_text": "+5.06",
    "contributions": [
     {
      "label": "open interest",
@@ -1319,7 +1319,7 @@
     {
      "label": "charm",
      "normalized_text": "0.08",
-     "raw_text": "5.04",
+     "raw_text": "5.06",
      "text": "1.7",
      "weight_text": "0.22"
     },
@@ -1360,12 +1360,12 @@
    "pc_vol_lean": 0.8939818309303315,
    "pc_vol_reason": null,
    "pc_vol_text": "0.11",
-   "score": 22.66720695038737,
+   "score": 22.671942571404188,
    "score_text": "23",
    "spot_line": false,
    "strike": 769.0,
    "strike_text": "769.00",
-   "vanna": -1512.2718980809623,
+   "vanna": -1514.5149570113279,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 39.59168838293787,
@@ -1376,9 +1376,9 @@
    "volume_text": "288663"
   },
   {
-   "charm": 13494.485051277943,
+   "charm": 13537.41721547699,
    "charm_reason": null,
-   "charm_text": "+13.49",
+   "charm_text": "+13.54",
    "contributions": [
     {
      "label": "net gamma",
@@ -1440,7 +1440,7 @@
     {
      "label": "charm",
      "normalized_text": "0.20",
-     "raw_text": "13.49",
+     "raw_text": "13.54",
      "text": "4.5",
      "weight_text": "0.22"
     },
@@ -1481,12 +1481,12 @@
    "pc_vol_lean": 0.9174093240344172,
    "pc_vol_reason": null,
    "pc_vol_text": "0.08",
-   "score": 34.553383114785646,
+   "score": 34.561012247733935,
    "score_text": "35",
    "spot_line": false,
    "strike": 768.0,
    "strike_text": "768.00",
-   "vanna": -4931.237387826171,
+   "vanna": -4939.860543427189,
    "vanna_reason": null,
    "vanna_text": "0.00",
    "vol_oi": 57.93114799067343,
