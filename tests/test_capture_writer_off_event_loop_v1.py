@@ -152,6 +152,42 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path):
     assert n == 40, "every delivered message must still be written before run() returns"
 
 
+def test_a_writer_that_is_behind_commits_a_batch_at_a_time(tmp_path):
+    """A writer that starts with a burst already queued commits it `batch_rows` rows at a time.
+
+    Production 2026-11-12: the writer, starved at the open, took everything queued as one round
+    and committed only after writing all of it, so the journal showed no new row for over an
+    hour while 12 GB waited in memory. The burst is production's real messages (_BURST), all
+    handed to the writer before its thread starts.
+    """
+    committed: list[int] = []
+    counted = CaptureWriter._committed.__code__
+
+    def profile(frame, event, _arg):  # the interpreter's profiler: sees calls, changes nothing
+        if event == "call" and frame.f_code is counted:
+            committed.append(len(frame.f_locals["batch"]))
+
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=5, batch_sec=60.0)
+    burst = [item for item in _BURST if writer.saves(*item)]
+    for item in burst:
+        writer._hand(item)
+    sub = MessageBus().subscribe("", policy=LOG)
+
+    async def go():
+        stop = asyncio.Event()
+        stop.set()
+        await writer.run(sub, stop=stop)
+
+    threading.setprofile_all_threads(profile)
+    try:
+        asyncio.run(go())
+    finally:
+        threading.setprofile_all_threads(None)
+    assert len(burst) > 50, "a burst many batches long"
+    assert sum(committed) == len(burst), "every message handed over is committed"
+    assert max(committed) == 5, f"the largest commit held {max(committed)} messages"
+
+
 def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path):
     seen: set = set()
     insert = CaptureWriter.insert.__code__

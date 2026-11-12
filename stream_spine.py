@@ -1093,7 +1093,8 @@ class _Spill:
 class CaptureWriter:
     """Writes every bus message to stream_capture.db from its own thread, in batches.
 
-    Each round writes every message queued, and commits once the batch has `batch_rows` rows or
+    Each round writes up to `batch_rows` queued messages, and commits once the batch has
+    `batch_rows` rows or
     `batch_sec` has passed. Never points at ed_console.db. A message
     whose row is refused is kept as sent in stream_write_failures, in the same batch. While the
     database refuses every write (DATABASE_REFUSALS, each wait `timeout_sec`), the open batch
@@ -1442,15 +1443,19 @@ class CaptureWriter:
         """Take one round's messages from `q`, and whether the stop is taken.
 
         The first is waited for until the batch is due (a moment only while a spill file or a
-        prune has work); then every message already queued is taken, none after the stop.
+        prune has work); then the messages already queued are taken, up to `batch_rows` and none
+        after the stop: a round is one batch at most, so a writer that is behind commits as often
+        as one that is not, and what it has not taken stays queued. While messages are held
+        (the database refuses writes) every queued one is taken, to be held with them.
         """
+        most = None if self._waiting or self._spills else self.batch_rows
         unread = (bool(self._spills) and self._spills[0].read_at < self._spills[0].size) or bool(
             self._prune
         )
         timeout = 0.001 if unread else max(self.batch_sec - (time_et.elapsed() - last_commit), 0.01)
         incoming: list = []
         block = True  # the first is waited for; after it, only what is already queued
-        while block or not stopping:
+        while (block or not stopping) and (most is None or len(incoming) < most):
             try:
                 item = q.get(block=block, timeout=timeout)
             except queue.Empty:
@@ -1505,10 +1510,16 @@ class CaptureWriter:
                             self._batch, self._waiting, self._waiting_bytes = [], [], 0
                     if self._spills and not self._waiting:
                         self._write_back(conn)
-                    if self._prune and not stopping and not self._spills and not self._batch:
-                        self._prune_part(
-                            conn
-                        )  # one part between rounds, none once the stop is taken
+                    if (
+                        self._prune
+                        and not stopping
+                        and not self._spills
+                        and not self._batch
+                        and q.empty()
+                    ):
+                        # one part between rounds, none while messages wait or once the stop
+                        # is taken
+                        self._prune_part(conn)
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
                         conn.close()  # its open transaction is rolled back
