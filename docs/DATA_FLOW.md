@@ -176,7 +176,10 @@ from Schwab to the screen (daemon, console, page), are these:
   live"; `tests/test_markets_sessions_v1.py`). An option contract, the chain sweep and the levels follow the option windows it sends,
   pre-market and post-market included (`time_et.options_open`: 07:30 to 09:25, 09:30 to 16:15),
   while `time_et.option_market_open` stays the option markets' regular window, which decides the close
-  values and what a pre-market zero does not replace. When it stops
+  values. In the option pre-market Schwab sends, a delivered chain is published and its levels are
+  live (`server._closed_since`; operator 2026-11-12: "Yes, make them live"; Schwab pushed option
+  quotes with that morning's quote times and Greeks from 07:30 ET); between that window and the
+  regular one the levels stand. When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
   marked not live with its time and its served age, and every value computed from it is marked not
   live too. While the daemon's push to the page has stopped, no age is served and the page computes
