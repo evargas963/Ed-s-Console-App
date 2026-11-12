@@ -145,7 +145,9 @@ class LocalSchwab:
     quotes endpoint answers 200 with these bytes as its body;
     `refuse_chain`: tickers whose next chain request is answered 502; `throttle_chain`: tickers
     whose next chain request is answered 429; `withheld`: symbols the
-    quotes answer leaves out; `invalid`: SPY contracts (their /chains entries) served in SPY's
+    quotes answer leaves out; `quotes_together`: while set, a quotes request is answered only
+    once that many are waiting together (a barrier), and 503 after 5 seconds alone; `invalid`:
+    SPY contracts (their /chains entries) served in SPY's
     chain answer, which the quotes answer names in Schwab's errors entry
     (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them; `stream_url`: the streamer
     the user preferences name (tests/schwab_stream_standin.LocalStreamer.url); `token`: the token
@@ -167,6 +169,7 @@ class LocalSchwab:
         self.refuse_chain: set[str] = set()
         self.throttle_chain: set[str] = set()
         self.withheld: set[str] = set()
+        self.quotes_together: threading.Barrier | None = None
         self.invalid: list[dict] = []
         outer = self
 
@@ -334,6 +337,11 @@ class LocalSchwab:
             return self.quotes_status, {}
         if self.quotes_body is not None:
             return 200, self.quotes_body
+        if self.quotes_together is not None:
+            try:
+                self.quotes_together.wait(5)
+            except threading.BrokenBarrierError:
+                return 503, {}
         asked = query["symbols"].split(",")
         answer = {s: SPY_QUOTES[s] for s in asked if s in SPY_QUOTES and s not in self.withheld}
         named = [s for s in asked if s in {ct["symbol"] for ct in self.invalid}]

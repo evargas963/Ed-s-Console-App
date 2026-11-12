@@ -71,9 +71,15 @@ TOKEN_LOCK_WAIT_SEC = 10
 #: how long the sign-in waits for the browser to return to the local callback (schwab-py's
 #: callback_timeout)
 OAUTH_CALLBACK_TIMEOUT_SEC = 900.0
-#: the session's one connection, kept through a pause (httpx closes an idle one after 5 s): only
-#: Schwab or the network ends it, and then the next request opens another (docs/DATA_FLOW.md §1)
-ONE_CONNECTION = httpx.Limits(max_connections=1, max_keepalive_connections=1, keepalive_expiry=None)
+#: quotes requests sent together for a ticker a page shows (the operator's setting, raised in
+#: steps while Schwab's refusals are read from the log, 2026-11-12: "lets go up in step")
+QUOTES_AT_ONCE = 2
+#: the session's connections, as many as the requests sent together, each kept through a pause
+#: (httpx closes an idle one after 5 s): only Schwab or the network ends one, and then the next
+#: request opens another (docs/DATA_FLOW.md §1)
+CONNECTIONS = httpx.Limits(
+    max_connections=QUOTES_AT_ONCE, max_keepalive_connections=QUOTES_AT_ONCE, keepalive_expiry=None
+)
 
 
 def token_file_lock(token_path: str) -> FileLock:
@@ -348,7 +354,7 @@ def client_from_token_file_atomic(
         update_token=metadata.wrapped_token_write_func(),
         token_file=resolved,
         metadata=metadata,
-        limits=ONE_CONNECTION,
+        limits=CONNECTIONS,
         event_hooks={"request": [request_sent], "response": [log_request]},
     )
     return Client(api_key, session, token_metadata=metadata, enforce_enums=enforce_enums)

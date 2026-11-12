@@ -20,6 +20,7 @@ import logging
 import sqlite3
 import threading
 from collections.abc import Callable, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -42,6 +43,7 @@ from option_contract import (
     streamed_top,
 )
 from schwab_client import (
+    QUOTES_AT_ONCE,
     QUOTES_BATCH_MAX,
     flatten_chain_contracts,
     option_expiries,
@@ -352,7 +354,8 @@ class _Chain:
 class ChainSweep:
     """The one fetcher of option chains.
 
-    One thread, one request at a time on the daemon's one Schwab client, in one rotation
+    One thread, one request at a time on the daemon's one Schwab client (but the quotes of a
+    ticker a page has selected: QUOTES_AT_ONCE requests together), in one rotation
     (sorted, a ticker a page has selected before each other one, `rotation`): every watchlist
     ticker (`watchlist`, which the daemon replaces on
     each add or removal: an added ticker is in the next rotation, a removed one is asked for no
@@ -417,6 +420,7 @@ class ChainSweep:
         self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
+        self._asking = ThreadPoolExecutor(QUOTES_AT_ONCE, thread_name_prefix="quotes")
         #: ticker -> its newest /chains answers: (their capture window, when they were asked for,
         #: each expiry's underlyingPrice, each expiry's contracts as sent)
         self._answers: dict[str, tuple[float, float, dict, dict]] = {}
@@ -588,9 +592,9 @@ class ChainSweep:
                     continue
                 self.fetch_chain(schwab_client, asked, stop)
                 last = asked
-                whole = 1 if asked in shown else QUOTES_BATCH_MAX
+                whole, at_once = (1, QUOTES_AT_ONCE) if asked in shown else (QUOTES_BATCH_MAX, 1)
                 while len(self._queue) >= whole and not stop.is_set():
-                    self.send_quotes(schwab_client)
+                    self.send_quotes(schwab_client, at_once)
         while self._queue and not stop.is_set():
             self.send_quotes(schwab_client)
         took = self.clock() - started
@@ -743,8 +747,26 @@ class ChainSweep:
         if not chain.unquoted:
             self.deliver(chain)
 
-    def send_quotes(self, schwab_client) -> None:
-        """One quotes request for the next QUOTES_BATCH_MAX queued contracts.
+    def send_quotes(self, schwab_client, at_once: int = 1) -> None:
+        """Ask for the quotes of the next queued contracts, `at_once` requests at a time.
+
+        Each request is for QUOTES_BATCH_MAX contracts; the requests are sent together and
+        their answers taken in the order asked (take_quotes).
+        """
+        self._queue = [
+            (chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist
+        ]  # removed: not asked
+        asked = []
+        while self._queue and len(asked) < at_once:
+            batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
+            symbols = [ct["symbol"] for _chain, ct in batch]
+            ask = self._asking.submit(lambda s=symbols: safe_get_quotes(schwab_client(), s))
+            asked.append((batch, ask))
+        for batch, ask in asked:
+            self.take_quotes(batch, ask)
+
+    def take_quotes(self, batch: list, ask: Future) -> None:
+        """Take Schwab's answer to one quotes request (`ask`) for the contracts of `batch`.
 
         They take their quote's Greeks; each chain it completes is delivered. A request that
         fails fails every ticker in it. Schwab's answer carries a quote per symbol it knows and,
@@ -753,13 +775,9 @@ class ChainSweep:
         contracts get no Greeks, logged once with their count, and the rest of the request is
         delivered.
         """
-        self._queue = [
-            (chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist
-        ]  # removed: not asked
-        batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
         chains = list({id(chain): chain for chain, _ct in batch}.values())
         try:
-            resp = safe_get_quotes(schwab_client(), [ct["symbol"] for _chain, ct in batch])
+            resp = ask.result()
             if resp.status_code != 200:
                 self.fail(
                     chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}"

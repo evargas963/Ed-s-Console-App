@@ -546,6 +546,33 @@ def test_d5_the_ticker_a_page_shows_is_asked_before_each_other_ticker(tmp_path):
     ]
 
 
+def test_d5_the_quotes_of_the_ticker_a_page_shows_are_asked_two_requests_together(tmp_path):
+    """Operator 2026-11-12: "lets go up in step": the shown ticker's quotes, two requests at once.
+
+    SPY on a page, its 442 contracts two quotes requests. INDUCED: Schwab's host answers a
+    quotes request only once two are waiting together, and 503 to one left alone. Both are
+    answered and SPY's chain is delivered with every quote: they were sent together.
+    """
+    swept = _Swept(tmp_path, "2026-10-01 10:00", ["SPY"])
+    swept.sweep.shown = lambda: ["SPY"]
+    swept.schwab.quotes_together = threading.Barrier(2)
+    published: list = []
+    publish = swept.sweep.publish
+    swept.sweep.publish = lambda topic, msg: (published.append((topic, msg)), publish(topic, msg))
+    try:
+        chains = swept.until(1)
+        quotes = [r for r in swept.schwab.requests if r[0] == "/marketdata/v1/quotes"]
+    finally:
+        swept.close()
+    assert chains == ["SPY"] and len(quotes) == 2
+    (_p, _q, first_started, first_answered, *_), (_p2, _q2, second_started, *_) = quotes
+    assert second_started < first_answered, "the second was sent before the first was answered"
+    quoted = [c for t, m in published if t == "chain.SPY" for c in m["contracts"]]
+    assert len(quoted) == 442 and all(
+        c.gamma == SPY_QUOTES[c.symbol]["quote"]["gamma"] for c in quoted
+    )
+
+
 def test_d5_after_the_close_the_ticker_a_page_shows_is_asked_first_and_only_once(tmp_path):
     """After the option close each chain is asked once more (its close values).
 
