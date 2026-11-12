@@ -779,6 +779,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
     // The chart's spot is the header's price row (audit of #280 removed the terrain's copy,
     // a second producer): the daemon's price socket delivers it.
+    // induced: the real levels with the flip moved from 243.91 into the chart's price range (the
+    // chart draws only the levels inside it)
+    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 269 });
     await socketWith(page, [priceRow('SPY', 583.41, { trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
@@ -1240,8 +1243,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#kl0Abs')).toHaveText('572.50');
     await expect(page.locator('#kl0NetCall')).toHaveText('575.00');
     await expect(page.locator('#kl0NetPut')).toHaveText('565.00');
-    await expect(page.locator('#klNetCall')).toHaveText('590.00');   // the whole book's two peaks
-    await expect(page.locator('#klNetPut')).toHaveText('560.00');
+    await expect(page.locator('#klNetCall')).toHaveText('275.00');   // the whole book's two peaks (AMZN's lvp, hvp)
+    await expect(page.locator('#klNetPut')).toHaveText('240.00');
     await expect(page.locator('#klBody')).not.toContainText('Net GEX peak');
     await expect(page.locator('#klNet')).toBeVisible();
   });
