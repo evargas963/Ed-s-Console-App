@@ -223,6 +223,49 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     )
 
 
+def test_schwabs_chains_answers_are_asked_once_a_capture_window_and_its_quotes_every_chain(
+    tmp_path, schwab
+):
+    """Open interest is the prior trading day's (Schwab support, 2026-10-12): asked once a window.
+
+    Three chains of SPY: 10:01 and 10:20 (one capture window, 10:00) and 10:31 (the next).
+    The first asks /chains; the second asks /chains for nothing and takes those answers again,
+    as sent, with its own /quotes for every contract, and is delivered at its own time; the
+    third, in a new window, asks /chains again. Each chain carries every contract with the
+    same open interest and its quote's gamma, and no chain's quote reaches another's contracts.
+    """
+    clock = {"now": 0.0}
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
+    asked = []
+    for at in ("2026-09-30 10:01", "2026-09-30 10:20", "2026-09-30 10:31"):
+        clock["now"] = _ts(at)
+        assert _rotate(sweep, client) == {"SPY"}
+        asked.append((len(schwab.asked(CHAIN)), len(schwab.asked(QUOTES))))
+    (one, quotes), (two, quotes_two), (three, quotes_three) = asked
+    assert one >= 1 and two == one and three == 2 * one, "/chains: once a window"
+    assert (quotes_two, quotes_three) == (2 * quotes, 3 * quotes), "/quotes: every chain"
+    chains = [msg for _t, msg in published if "contracts" in msg]
+    assert [_et(m["ts_recv"]) for m in chains if m["part"] == 0] == [
+        "2026-09-30 10:01",
+        "2026-09-30 10:20",
+        "2026-09-30 10:31",
+    ]
+    by_time: dict[float, dict] = {}
+    for m in chains:
+        by_time.setdefault(m["ts_recv"], {}).update({c.symbol: c for c in m["contracts"]})
+    first, again, later = by_time.values()
+    assert len(first) == 442 and set(first) == set(again) == set(later)
+    assert all(first[s].open_interest == again[s].open_interest for s in first)
+    assert all(again[s].gamma == q["gamma"] for s, q in _QUOTED.items())
+    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+        written = c.execute(
+            "SELECT DISTINCT ts_utc FROM complete_chain_captures ORDER BY ts_utc"
+        ).fetchall()
+    assert [_et(r[0]) for r in written] == ["2026-09-30 10:01", "2026-09-30 10:31"], (
+        "the history holds each window's first chain, the one whose /chains answers were asked"
+    )
+
+
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
     """One rotation; while no page shows a ticker, none comes first (operator 2026-11-11).
 
