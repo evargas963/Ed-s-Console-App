@@ -1480,7 +1480,6 @@
    "spot_time_ct": null,
    "spot_age_sec": null,
    "spot_not_live_text": "not live",
-   "priced_at_spot": 283.73,
    "status_text": "Chain as of Wed 10/07 09:31 AM CT",
    "levels": [
     {
@@ -3115,7 +3114,6 @@
    "spot_time_ct": null,
    "spot_age_sec": null,
    "spot_not_live_text": "not live",
-   "priced_at_spot": 283.73,
    "status_text": "Chain as of Wed 10/07 09:31 AM CT",
    "levels": [
     {
@@ -4746,7 +4744,6 @@
   "spot_time_ct": null,
   "spot_age_sec": null,
   "spot_not_live_text": "not live",
-  "priced_at_spot": 283.73,
   "status_text": "Chain as of Wed 10/07 09:31 AM CT",
   "levels": [
    {

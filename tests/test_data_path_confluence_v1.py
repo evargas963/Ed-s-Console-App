@@ -445,7 +445,7 @@ def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
         _forget(tk)
     on, middle = listed.index(fx["spot"]), len(listed) // 2
     assert abs(on - middle) > 10
-    assert (body["spot"], body["priced_at_spot"]) == (None, fx["spot"])
+    assert body["spot"] is None and "priced_at_spot" not in body
     assert sorted(r["strike"] for r in body["rows"]) == listed[middle - 5 : middle + 6]
     assert body["notes"][-1] == server.WINDOW_NO_PRICE
     assert not any(r["spot_line"] for r in body["rows"])
@@ -475,7 +475,7 @@ def test_the_window_follows_the_live_price_off_the_chains_price():
             if str(c["expirationDate"])[:10] == "2026-10-22"
         }
     )
-    assert (body["spot"], body["priced_at_spot"]) == (live, SPY_CLOSE.spot)
+    assert body["spot"] == live and "priced_at_spot" not in body
     assert (
         sorted(r["strike"] for r in body["rows"])
         == _around(listed, live)
@@ -1420,7 +1420,7 @@ def test_an_after_hours_print_keeps_the_close_book():
         _forget(tk)
     assert print_["native"]["LAST_PRICE"] != held.spot
     assert (again["net_gex_text"], again["vanna_text"], again["charm_text"]) == close_texts
-    assert second_snap.spot == held.spot and second["priced_at_spot"] == held.spot
+    assert second_snap.spot == held.spot and "priced_at_spot" not in second
     assert second["spot"] == print_["native"]["LAST_PRICE"]
 
 
@@ -1513,7 +1513,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     The chain is published at the price Schwab sent in that chain answer (its stored capture's
     spot, 269.04), and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
     (LAST_PRICE 269.395), taken in by the plane and made the price row by the daemon's own
-    function. The matrix stays ranked at the chain's price (priced_at_spot); its window, its
+    function. The matrix stays ranked at the chain's price; its window, its
     spot, its one-day move and each row's distance are the live price's, the move the same two
     prices the levels panel serves (server.expected_move).
     """
@@ -1546,11 +1546,8 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     listed = sorted({float(c["strikePrice"]) for c in CRWD.chain})
     assert live not in listed
     assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live)
-    assert (body["spot"], body["spot_text"], body["priced_at_spot"]) == (
-        live,
-        f"{live:.2f}",
-        CRWD.spot,
-    )
+    assert (body["spot"], body["spot_text"]) == (live, f"{live:.2f}")
+    assert "priced_at_spot" not in body
     assert body["spot_time_ct"] == ct_label(_QUOTE["native"]["TRADE_TIME_MILLIS"] / 1000.0)
     assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}
     assert all(abs(float(r["distance_text"]) - (r["strike"] - live)) <= 0.005 for r in body["rows"])
