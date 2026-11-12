@@ -27,6 +27,7 @@ import time_et
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from option_contract import read_chain
+from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import mark_feed_live
 from tests.real_chains import CRWD
 
@@ -144,13 +145,12 @@ E2E_PANELS = Path(__file__).resolve().parent / "e2e" / "fixtures" / "vanna_charm
 
 
 def build_e2e_panels() -> dict:
-    """Return the Vanna and Charm panels of CRWD's real chain as the page's socket sends them.
+    """Return the panels of CRWD's real chain as the page's socket sends them.
 
-    Each in the page's default window (Auto, following the price), at the quote's own time, with
-    Schwab's CRWD price as the live price: {"vanna": body, "charm": body}. Regenerate the browser
-    test's file (from the repo root, project .venv):
-      python -c "import json, tests.conftest, tests.test_vanna_charm_by_strike_v1 as t;
-      t.E2E_PANELS.write_text(json.dumps(t.build_e2e_panels(), indent=1), encoding='utf-8')"
+    Vanna, Charm and the per-strike rows every Gamma view reads (strikes), each in the page's
+    default window (Auto, following the price), with Schwab's CRWD price as the live price:
+    vanna and charm at the quote's own time, the strikes at the chain's (its verdict is of that
+    instant). Regenerate the browser tests' file with write_e2e_panels.
     """
     _clear()
     try:
@@ -162,11 +162,26 @@ def build_e2e_panels() -> dict:
                 {
                     "vanna": server.strike_bars("vanna_rows", TK, at, AUTO),
                     "charm": server.strike_bars("charm_rows", TK, at, AUTO),
+                    "strikes": server.strikes(TK, CRWD.now.timestamp(), AUTO),
                 }
             )
         )
     finally:
         _clear()
+
+
+def write_e2e_panels() -> None:
+    """Regeneration utility (never called by a test).
+
+    Schwab's /markets answers held as the tests hold them (tests/conftest.py), then the panels
+    written to the browser tests' file:
+    python -c "import tests.conftest, tests.test_vanna_charm_by_strike_v1 as t;
+    t.write_e2e_panels()"
+    """
+    for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
+        if a["status"] == 200:
+            time_et.record_markets(json.loads(a["body"]))
+    E2E_PANELS.write_text(json.dumps(build_e2e_panels(), indent=1), encoding="utf-8")
 
 
 def test_the_browser_tests_panels_are_the_producers_own():
