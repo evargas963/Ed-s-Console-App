@@ -224,7 +224,7 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
 
 
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
-    """Operator 2026-10-06: every ticker the same, in one rotation; none has priority.
+    """One rotation; while no page shows a ticker, none comes first (operator 2026-11-11).
 
     TSLA added to the watchlist beside SPY: SPY first, then TSLA, in sorted order.
     """
@@ -251,7 +251,7 @@ def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_pat
     clock["times"] = itertools.repeat(_ts("2026-09-30 16:00:30"))
     _rotate(sweep, client)  # the 16:00 window's capture
     clock["times"] = itertools.chain(
-        [_ts("2026-09-30 16:14:30")] * 2,  # the rotation and chain begin
+        [_ts("2026-09-30 16:14:30")] * 3,  # the rotation begins, the chain is due and begins
         itertools.repeat(_ts("2026-09-30 16:15:10")),
     )
     _rotate(sweep, client)  # begun 16:14:30, delivered 16:15:10

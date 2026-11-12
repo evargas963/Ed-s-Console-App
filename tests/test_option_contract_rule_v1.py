@@ -107,17 +107,54 @@ def by_definition(contracts: list[dict], price: float, now: float) -> list[str]:
     return [c["symbol"] for c in sorted(live, key=lambda c: (distance(c), *_order(c, price)))]
 
 
-def _rule(
-    chains: dict, prices: dict, now: float, watchlist: list[str], flow: str | None = None
-) -> dict[str, set[str]]:
-    """What Schwab holds: the Flow contract, then each ticker's first, each one's second, ...
+def recorded_by_definition(contracts: list[dict], price: float, now: float) -> set[str]:
+    """Return a chain's recorded contracts, from their definition.
 
-    Up to Schwab's limit on each service: asked for more, Schwab states its limit and the daemon
-    asks once more, for the first that many.
+    Its soonest expiration not passed at `now`, at the listed strike nearest the price (the
+    lower of two equally near) and the 5 listed strikes each side of it.
     """
-    ranked = [by_definition(chains[tk], prices[tk], now) for tk in watchlist]
-    dealt = [s for row in zip_longest(*ranked) for s in row if s is not None]
-    order = list(dict.fromkeys([*([flow] if flow else []), *dealt]))
+    live = [c for c in contracts if _expires(c) > now]
+    soonest = min(_expires(c) for c in live)
+    strikes = sorted({c["strikePrice"] for c in live if _expires(c) == soonest})
+    centre = min(range(len(strikes)), key=lambda i: (abs(strikes[i] - price), strikes[i]))
+    near = set(strikes[max(0, centre - 5) : centre + 6])
+    return {c["symbol"] for c in live if _expires(c) == soonest and c["strikePrice"] in near}
+
+
+def _dealt(rows: list[list[str]]) -> list[str]:
+    """Each row's first, then each row's second, ..."""
+    return [s for row in zip_longest(*rows) for s in row if s is not None]
+
+
+def _rule(
+    chains: dict,
+    prices: dict,
+    now: float,
+    watchlist: list[str],
+    flow: str | None = None,
+    shown: tuple[str, ...] = (),
+) -> dict[str, set[str]]:
+    """What Schwab holds, in the rule's order.
+
+    The Flow contract; every ticker's recorded contracts; every contract of the tickers a page
+    shows (`shown`); every other ticker's. Each group dealt across its tickers: each ticker's
+    first, each one's second, ... Up to Schwab's limit on each service: asked for more, Schwab
+    states its limit and the daemon asks once more, for the first that many.
+    """
+    ranked = {tk: by_definition(chains[tk], prices[tk], now) for tk in watchlist}
+    windows = {tk: recorded_by_definition(chains[tk], prices[tk], now) for tk in watchlist}
+    recorded = [[s for s in ranked[tk] if s in windows[tk]] for tk in watchlist]
+    on_page = [ranked[tk] for tk in watchlist if tk in shown]
+    order = list(
+        dict.fromkeys(
+            [
+                *([flow] if flow else []),
+                *_dealt(recorded),
+                *_dealt(on_page),
+                *_dealt(list(ranked.values())),
+            ]
+        )
+    )
     return {svc: set(order[: SCHWAB_LIMITS[svc]]) for svc in (L1, BOOK)}
 
 
@@ -310,10 +347,11 @@ def test_a_price_tick_asks_schwab_for_nothing_and_the_next_chain_only_the_differ
 def test_a_chain_that_arrives_later_is_fitted_within_the_limit_schwab_stated(tmp_path):
     """MRVL's chain arrives alone, and SPY's once Schwab holds MRVL's contracts.
 
-    OPTIONS_BOOK holds MRVL's 100 highest gamma, and has stated its limit. SPY's chain is fitted
-    within it: one UNSUBS of the 50 of MRVL's that give way and one ADD of SPY's 50 highest gamma.
-    LEVELONE_OPTIONS, which refused nothing, is asked for SPY's 442 on top. Schwab refuses nothing
-    more: no contract past a limit it stated is asked for.
+    OPTIONS_BOOK holds MRVL's first 100 of the rule's order, and has stated its limit. SPY's
+    chain is fitted within it: one UNSUBS of MRVL's that give way and one ADD of as many of
+    SPY's (its recorded contracts, then its share of the deal). LEVELONE_OPTIONS, which refused
+    nothing, is asked for SPY's 442 on top. Schwab refuses nothing more: no contract past a
+    limit it stated is asked for.
     """
     alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"])
     both = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
@@ -335,7 +373,10 @@ def test_a_chain_that_arrives_later_is_fitted_within_the_limit_schwab_stated(tmp
         moved = [(c, sorted(k)) for c, k in market.streamer.asked(svc)[sent[svc] :]]
         left, came = sorted(alone[svc] - both[svc]), sorted(both[svc] - alone[svc])
         assert moved == [(c, k) for c, k in (("UNSUBS", left), ("ADD", came)) if k], svc
-    assert len(alone[BOOK] - both[BOOK]) == 50 == len(both[BOOK] - alone[BOOK])
+    spys = {c["symbol"] for c in CHAINS["SPY"]} & both[BOOK]
+    recorded = recorded_by_definition(CHAINS["SPY"], PRICES["SPY"], CAPTURED)
+    assert both[BOOK] - alone[BOOK] == spys and recorded < spys, "SPY's recorded ones, and more"
+    assert len(alone[BOOK] - both[BOOK]) == len(spys) == 44
     assert alone[L1] < both[L1] and len(both[L1] - alone[L1]) == 442
     later = [
         a["response"][0]["content"]["code"] for a in market.streamer.answers[sent["answers"] :]
@@ -545,6 +586,59 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
     assert far in held[L1] and far in held[BOOK]
     # the rule alone streams it on LEVELONE_OPTIONS and not on OPTIONS_BOOK: the selection did
     assert far in rule_alone[L1] and far not in rule_alone[BOOK]
+
+
+def test_the_ticker_a_page_shows_takes_schwabs_slots_and_a_switch_moves_them(tmp_path):
+    """Operator 2026-11-11: the ticker on the screen first, and the others may lag.
+
+    MRVL (2026-09-25's chain) and SPY's whole chain of 2026-11-09 (more contracts than
+    LEVELONE_OPTIONS' 3,000) on the watchlist, at SPY's capture time. No page: Schwab's slots
+    are dealt across both. A page selects SPY: every slot is SPY's but the recorded contracts
+    of MRVL, which stay streamed so the writer still records them. The page switches to MRVL:
+    every MRVL contract not expired streams, and SPY keeps the rest. On OPTIONS_BOOK (100) the
+    recorded contracts of both come first and the shown ticker takes the rest.
+    """
+    now = SPY_FULL.now.timestamp()
+    chains = {"MRVL": CHAINS["MRVL"], "SPY": SPY_FULL.chain}
+    prices = {"MRVL": PRICES["MRVL"], "SPY": SPY_FULL.spot}
+    both = ["MRVL", "SPY"]
+    dealt = _rule(chains, prices, now, both)
+    spy_shown = _rule(chains, prices, now, both, shown=("SPY",))
+    mrvl_shown = _rule(chains, prices, now, both, shown=("MRVL",))
+    on_page: set[str] = set()
+    market = _Market(tmp_path, both, lambda: now)
+    market.daemon.on_page = lambda: on_page
+
+    async def steps(m):
+        for tk in both:
+            m.chain(tk, now, chains[tk])
+            m.price(tk, prices[tk])
+        await _until(lambda: m.holds(dealt))
+        on_page.add("SPY")
+        m.daemon.page_selected("SPY")
+        await _until(lambda: m.holds(spy_shown))
+        on_page.clear()
+        on_page.add("MRVL")
+        m.daemon.page_selected("MRVL")
+        await _until(lambda: m.holds(mrvl_shown))
+
+    try:
+        market.run(steps)
+    finally:
+        server.stop_terrain_loop()  # the reprices the selections queued
+    spy = {c["symbol"] for c in chains["SPY"]}
+    mrvl_live = {c["symbol"] for c in chains["MRVL"] if _expires(c) > now}
+    mrvl_recorded = recorded_by_definition(chains["MRVL"], prices["MRVL"], now)
+    spy_recorded = recorded_by_definition(chains["SPY"], prices["SPY"], now)
+    assert len(spy) > 3000 > len(mrvl_live) > 1500, "SPY alone is past Schwab's limit"
+    assert all(len(held[L1]) == 3000 for held in (dealt, spy_shown, mrvl_shown))
+    assert len(dealt[L1] & spy) == 1500, "no page: half of Schwab's slots each"
+    assert spy_shown[L1] - spy == mrvl_recorded, "SPY on a page: every slot but MRVL's recorded"
+    assert mrvl_live < mrvl_shown[L1] and spy_recorded < mrvl_shown[L1]
+    assert mrvl_shown[L1] - mrvl_live < spy, "MRVL on a page: all of it, and SPY the rest"
+    for held, shown in ((spy_shown, spy), (mrvl_shown, mrvl_live)):
+        assert mrvl_recorded | spy_recorded < held[BOOK]
+        assert held[BOOK] - mrvl_recorded - spy_recorded < shown, "the books left: the shown one's"
 
 
 def test_a_contract_no_chain_the_console_holds_lists_is_not_taken():

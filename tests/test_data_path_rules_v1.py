@@ -518,6 +518,50 @@ def test_d5_while_its_option_market_is_open_a_ticker_is_fetched_without_end(tmp_
     assert chains[:3] == ["SPY"] * 3, "fetched again and again while SPY's options (EQO) trade"
 
 
+def test_d5_the_ticker_a_page_shows_is_asked_before_each_other_ticker(tmp_path):
+    """Operator 2026-11-11: the ticker on the screen first, and the others may lag.
+
+    SPY and TSLA while their options trade, one rotation each. No page: each in turn. A page
+    selects TSLA: its chain is asked and delivered before SPY's and again after it, never twice
+    in a row. The page switches to SPY: with two tickers it is every other chain already. Both
+    on pages: each before the other, in turn.
+    """
+    swept = _Swept(tmp_path, "2026-10-01 10:00", ["SPY", "TSLA"])
+    shown: list[str] = []
+    swept.sweep.shown = lambda: list(shown)
+    rounds = []
+    try:
+        for on_pages in ([], ["TSLA"], ["SPY"], ["SPY", "TSLA"]):
+            shown[:] = on_pages
+            before = len(swept.chains)
+            assert swept.sweep.step(lambda: swept.client, swept.stop)
+            rounds.append(swept.chains[before:])
+    finally:
+        swept.close()
+    assert rounds == [
+        ["SPY", "TSLA"],
+        ["TSLA", "SPY", "TSLA"],
+        ["SPY", "TSLA"],
+        ["SPY", "TSLA", "SPY", "TSLA"],
+    ]
+
+
+def test_d5_after_the_close_the_ticker_a_page_shows_is_asked_first_and_only_once(tmp_path):
+    """After the option close each chain is asked once more (its close values).
+
+    The one a page shows first, and it is not asked again before or after the other.
+    """
+    swept = _Swept(tmp_path, "2026-10-01 17:00", ["SPY", "TSLA"])
+    swept.sweep.shown = lambda: ["TSLA"]
+    try:
+        chains = swept.until(5)
+        asked = [q["symbol"] for q in swept.schwab.asked("/marketdata/v1/chains")]
+    finally:
+        swept.close()
+    assert chains == ["TSLA", "SPY"]
+    assert asked == sorted(asked, reverse=True), "TSLA's expiries, then SPY's, none again"
+
+
 @pytest.mark.parametrize(
     "at",
     [

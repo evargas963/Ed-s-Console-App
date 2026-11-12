@@ -4,7 +4,7 @@
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
-every watchlist ticker, each in its turn in one rotation.
+every watchlist ticker, each in its turn in one rotation, a ticker on a page before each other.
 
   0. WATCHLIST The one list of tickers Schwab is asked for (Watchlist): the daemon holds it,
              is its only writer, and keeps every change as a `watchlist` record (the writer
@@ -83,6 +83,7 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.market_data.schwab.streaming.live_ui import (
     CONSOLE_HOST,
     PageSocket,
+    selected,
     serve_live_ui,
 )
 from app.market_data.schwab.streaming.program_lock import (
@@ -577,9 +578,12 @@ class Daemon:
         watchlist: Iterable[str] = (),
         *,
         clock=time_et.now,
+        on_page: Callable[[], Iterable[str]] = frozenset,
     ) -> None:
         self.bus = bus
         self.health = health
+        #: the tickers the open pages have selected, read each time it is needed (shown)
+        self.on_page = on_page
         #: the time a chain is put in the option rule's order at (shown_first's `now`, read as it
         #: arrives)
         self.clock = clock
@@ -654,24 +658,53 @@ class Daemon:
             self.asked[svc] = frozenset(want)
         self.wake.set()
 
-    def pick_options(self) -> None:
-        """Run the option rule, every watchlist ticker the same.
+    def shown(self) -> list[str]:
+        """Return the watchlist tickers a page has selected, in the watchlist's order."""
+        on_page = set(self.on_page())
+        return [tk for tk in self.watchlist if tk in on_page]
 
-        It runs when a ticker's chain is put in the rule's order (_rank), on a watchlist change
-        and on the Flow panel's selection. The contract selected on the Flow panel streams on
-        both option services when a watchlist ticker's chain lists it, not expired; then every
-        ticker's contracts in the rule's order (shown_first), dealt across the watchlist, each
-        ticker's first, then each one's second. No number of ours caps them: every one is asked
-        until Schwab states its symbol limit for the service (code 19), and from then the first
-        that many of this order are (wanted). A ticker without a chain and a price yet has none.
-        When what is wanted changes, the difference is asked (ask: one UNSUBS and one ADD per
-        service).
+    def page_selected(self, ticker: str) -> None:
+        """Act on a page newly selecting `ticker` (live_ui's on_select).
+
+        Its levels are repriced (server.ticker_selected) and the option rule runs again, so
+        Schwab's stream is asked for its contracts first.
         """
-        ranked = [self._ranked[tk] for tk in self.watchlist if tk in self._ranked]
-        flow = [c for c in [self.flow_contract] if any(c in r for r in ranked)]
-        # every ticker's first, then every ticker's second, ...
-        dealt = [s for row in zip_longest(*ranked) for s in row if s is not None]
-        self.option_order = tuple(dict.fromkeys([*flow, *dealt]))
+        server.ticker_selected(ticker)
+        self.pick_options()
+
+    def pick_options(self) -> None:
+        """Run the option rule: the ticker on a page first (operator 2026-11-11).
+
+        It runs when a ticker's chain is put in the rule's order (_rank), on a watchlist change,
+        on the Flow panel's selection and when a page selects a ticker. The contract selected on
+        the Flow panel streams on both option services when a watchlist ticker's chain lists it,
+        not expired; then every ticker's recorded contracts (its window, _place), so what the
+        writer records of a ticker no page shows is still streamed; then every contract of the
+        tickers a page shows (shown); then every other ticker's. Each of the three in the rule's
+        order (shown_first), dealt across its tickers, each ticker's first, then each one's
+        second. No number of ours caps them: every one is asked until Schwab states its symbol
+        limit for the service (code 19), and from then the first that many of this order are
+        (wanted). A ticker without a chain and a price yet has none. When what is wanted changes,
+        the difference is asked (ask: one UNSUBS and one ADD per service).
+        """
+        ranked = {tk: self._ranked[tk] for tk in self.watchlist if tk in self._ranked}
+        flow = [c for c in [self.flow_contract] if any(c in r for r in ranked.values())]
+        recorded = [
+            [s for s in order if s in self._windows[tk]]
+            for tk, order in ranked.items()
+            if tk in self._windows
+        ]
+        on_page = [ranked[tk] for tk in self.shown() if tk in ranked]
+        self.option_order = tuple(
+            dict.fromkeys(
+                # every ticker's first, then every ticker's second, ...
+                s
+                for rows in ([flow], recorded, on_page, list(ranked.values()))
+                for row in zip_longest(*rows)
+                for s in row
+                if s is not None
+            )
+        )
         self.ask()
 
     def _keep_options(self) -> None:
@@ -740,13 +773,14 @@ class Daemon:
     async def _took_row(self, ticker: str) -> None:
         """Act on `ticker`'s price row published.
 
-        A watchlist ticker's waiting chain is ordered and its window placed at the price.
+        A watchlist ticker's window is placed at the price and its waiting chain ordered (the
+        window first: the rule streams it).
         """
         if ticker in self.watchlist:
             now = self.clock()
+            self._place(ticker, now)
             if ticker in self._chains:
                 await self._rank(ticker, now)
-            self._place(ticker, now)
 
     async def _took_chain(self, ticker: str, record: list) -> None:
         """Order a watchlist ticker's newest whole chain on the bus (its parts) at its live price.
@@ -764,8 +798,8 @@ class Daemon:
             )
             if ticker in self.watchlist:
                 self._chains[ticker], self._ladders[ticker] = chain, ladders
-                await self._rank(ticker, now)
                 self._place(ticker, now)
+                await self._rank(ticker, now)
 
     async def follow_market(self, stop: asyncio.Event) -> None:
         """Follow the market until `stop`, or a follower's end.
@@ -1493,6 +1527,7 @@ async def run_chains(
         lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg),
         failures=failures,
         streamed=daemon.option_record,
+        shown=daemon.shown,
     )
     daemon.chains = sweep
     worker = loop.run_in_executor(None, sweep.work, schwab_client, halt)
@@ -1565,7 +1600,12 @@ async def run(lock_fd: int, request: StopRequest) -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
-    daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
+    daemon = Daemon(
+        bus,
+        health,
+        stored_watchlist(writer.db_path),
+        on_page=lambda: selected(server.app.state),
+    )
     daemon.writer = writer
     writer.saves = daemon.saves
     wsub = bus.subscribe("", policy=LOG)  # the record of every message
@@ -1585,7 +1625,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
                 heartbeat_fn=daemon.status,
                 panels=server.PAGE_PANELS,
                 priced=server.PRICED_PANELS,
-                on_select=server.ticker_selected,
+                on_select=daemon.page_selected,
             ),
             name="live ui",
         ),
