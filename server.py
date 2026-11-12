@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import json
 import logging
 import os
@@ -70,6 +71,7 @@ from confluence_composite import at_price, build_matrix, window_rows
 from db import LevelCrossEvent, get_db
 from db_authority import canonical_stream_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
+from l1_trade_observation import canonical_tape_prints
 from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 from liquidity_value_engine import (
     _MATERIALIZED_SNAPSHOTS,
@@ -2371,13 +2373,18 @@ def tape(ticker: str, now: float) -> dict:
     symbols = _held_option_symbols_for_ticker(held.contracts, now)
     if not symbols:
         return unavailable(ticker, "the daemon streams no option contract of this ticker", rows=[])
-    prints = [
-        (p, held.contracts[sym])
-        for sym in symbols
-        for p in recent_prints(sym, get_content_for_symbol(sym), TAPE_ROWS)
-    ]
-    prints.sort(key=lambda kept: kept[0]["ts_recv"], reverse=True)
-    rows = [tape_row(p, contract) for p, contract in prints[:TAPE_ROWS]]
+    # the newest TAPE_ROWS of all the contracts' kept prints are picked first, and only those are
+    # made rows: a contract's prints are in receive order, so its newest are its last
+    newest = heapq.nlargest(
+        TAPE_ROWS,
+        (
+            (p, sym)
+            for sym in symbols
+            for p in reversed(canonical_tape_prints(get_content_for_symbol(sym))[-TAPE_ROWS:])
+        ),
+        key=lambda kept: kept[0]["server_received_ts"],
+    )
+    rows = [tape_row(recent_prints(sym, [p], 1)[0], held.contracts[sym]) for p, sym in newest]
     return {
         "available": bool(rows),
         "rows": rows,
