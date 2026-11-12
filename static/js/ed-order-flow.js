@@ -75,7 +75,6 @@
     // always served (engine.compute_book_microstructure)
     var tob = d.top_of_book, depth = d.depth, ages = d.ages, cls = d.classification;
     var bidLevels = d.depth_pressure.bid, askLevels = d.depth_pressure.ask;
-    function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(cls, k); }
     var walls = d.wall_candidates;
     var wallSet = {};
@@ -89,11 +88,11 @@
       ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
     ];
     var rowsImb = [
-      ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
-      ['Depth 3 imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],
-      ['Depth 5 imbalance', num(dep(5, 'imbalance'), 3), bk('depth.*.imbalance')],
-      ['Bid total (5)', int(dep(5, 'bid_total')), bk('depth.*.bid_total')],
-      ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
+      ['Depth 1 imbalance', num(depth['1'].imbalance, 3), bk('depth.*.imbalance')],
+      ['Depth 3 imbalance', num(depth['3'].imbalance, 3), bk('depth.*.imbalance')],
+      ['Depth 5 imbalance', num(depth['5'].imbalance, 3), bk('depth.*.imbalance')],
+      ['Bid total (5)', int(depth['5'].bid_total), bk('depth.*.bid_total')],
+      ['Ask total (5)', int(depth['5'].ask_total), bk('depth.*.ask_total')],
     ];
     var fresh = [
       ['Book age', d.book_when_age_text == null ? '-' : d.book_when_age_text, bk('ages.book_age_sec')],

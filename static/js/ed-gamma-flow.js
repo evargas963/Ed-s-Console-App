@@ -78,7 +78,6 @@
     var flow = d.flow;                              // the ONE flow block (never flattened)
     var bookCls = d.classification;                 // engine's book/microstructure classification
     var flowCls = flow.classification;              // live_payload's flow classification
-    function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(bookCls, k); }
     function fk(k) { return classOf(flowCls, k); }
     // row = [label, displayed value, canonical key (data-k), backend classification | null]
@@ -92,11 +91,11 @@
     var rowsBook = [
       ['Mark', num(d.mark), 'mark', bk('mark')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
       ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],
-      ['Depth 1 · imbalance', num(dep(1, 'imbalance'), 3), 'depth.1.imbalance', bk('depth.*.imbalance')],
-      ['Depth 3 · imbalance', num(dep(3, 'imbalance'), 3), 'depth.3.imbalance', bk('depth.*.imbalance')],
-      ['Depth 5 · imbalance', num(dep(5, 'imbalance'), 3), 'depth.5.imbalance', bk('depth.*.imbalance')],
-      ['Bid total (5)', int(dep(5, 'bid_total')), 'depth.5.bid_total', bk('depth.*.bid_total')],
-      ['Ask total (5)', int(dep(5, 'ask_total')), 'depth.5.ask_total', bk('depth.*.ask_total')],
+      ['Depth 1 · imbalance', num(depth['1'].imbalance, 3), 'depth.1.imbalance', bk('depth.*.imbalance')],
+      ['Depth 3 · imbalance', num(depth['3'].imbalance, 3), 'depth.3.imbalance', bk('depth.*.imbalance')],
+      ['Depth 5 · imbalance', num(depth['5'].imbalance, 3), 'depth.5.imbalance', bk('depth.*.imbalance')],
+      ['Bid total (5)', int(depth['5'].bid_total), 'depth.5.bid_total', bk('depth.*.bid_total')],
+      ['Ask total (5)', int(depth['5'].ask_total), 'depth.5.ask_total', bk('depth.*.ask_total')],
     ];
     var rowsFlow = [
       ['Top-book pressure', num(flow.top_book_pressure, 3), 'flow.top_book_pressure', fk('top_book_pressure')],

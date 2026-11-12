@@ -67,13 +67,12 @@
       return stage(1, 'td-accent-blue', 'Detect — book microstructure', 'No book yet', '', 0, [], 'NO BOOK', 'warn');
     }
     var tob = d.top_of_book, depth = d.depth, cls = d.classification;   // always served (engine.compute_book_microstructure)
-    function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     // Schwab's book time and its age, as served; neither sent shows "-"
     var bookAge = d.book_when_age_text == null ? '-' : d.book_when_age_text;
     var rows = [
       ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
-      ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
+      ['Depth 1 imbalance', num(depth['1'].imbalance, 3), classOf(cls, 'depth.*.imbalance')],
       ['Book age', bookAge, classOf(cls, 'ages.book_age_sec')],
     ];
     // the Liquidity readout's served headline and side word for this book at depth 5: the one
