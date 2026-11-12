@@ -2,34 +2,29 @@
 /**
  * The ONE presentation-scope control (Auto / Wider / All available) governs every Gamma panel: each
  * panel asks the server for its window with the scope and draws the rows it is sent. The server
- * picks the rows (terrain_engine.strike_window, proven in tests/test_heatmap_window_v1.py); here a
- * stand-in serves the window per scope -- 11, 23 or all 41 strikes of 80..120 around spot 100 --
- * and the page is proved to ask with the scope, draw what it is sent and keep the choice.
+ * picks the rows (terrain_engine.strike_window, proven in tests/test_heatmap_window_v1.py); here
+ * the socket sends the server's own answer per scope on CRWD's real chain -- 11, 23 or all 122
+ * strikes around 270 -- and the page is proved to ask with the scope, draw what it is sent and
+ * keep the choice.
  */
 const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
 const { mockPriceSocket } = require('./fixtures/price_socket');
 const { watchRequests } = require('./fixtures/settled');
 
-// spot 100, 41 strikes 80..120; the stand-in's window per scope, as the server serves it
-const ALL_ROWS = [];
-for (let k = 80; k <= 120; k++) ALL_ROWS.push([k, (k % 2 ? 1 : -1) * (100000 + k * 10), 1000]);
-const WINDOW = { auto: ALL_ROWS.slice(15, 26), wider: ALL_ROWS.slice(9, 32), all: ALL_ROWS };
-function strikesFor(scope) {
-  const rows = WINDOW[scope];
-  return { ticker: 'SPY', spot: 100, spot_strike: 100, scope: scope, today: { all: rows },
-    views: { all: { centre: 100, max_abs: 101200 } }, max_abs_row: [120, 101200, 1000] };
-}
-const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,
-  absolute_gamma_strike: 100, lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
-const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 99.8, 100.3, 100.5, 100.2, 100.0].map(function (c, i) {
+// the strikes panel per scope, the levels and the heatmap as the server sends them on CRWD's real
+// chain (held to the server by tests/test_vanna_charm_by_strike_v1.py)
+const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
+const BY_SCOPE = { auto: REAL.strikes, wider: REAL.strikes_wider, all: REAL.strikes_all };
+const WINDOW = { auto: BY_SCOPE.auto.today.all, wider: BY_SCOPE.wider.today.all, all: BY_SCOPE.all.today.all };
+function strikesFor(scope) { return BY_SCOPE[scope]; }
+const SPOT = REAL.strikes.spot_strike;                                  // the strike at the price
+const strikeText = (k) => (k % 1 ? k.toFixed(2) : String(k));           // a strike as the page writes it
+const TERRAIN = REAL.terrain;
+const BARS = { ticker: 'SPY', bars: [-0.4, -0.1, 0.1, -0.2, 0.3, 0.5, 0.2, 0.0].map(function (d, i) {
+  const c = SPOT + d;
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
-  levels_state: 'LIVE', chain_basis: 'full', complete: false,
-  expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [99, 100, 101],
-  cells: [{ strike: 99, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
-    { strike: 101, gex: [-264500], spot: false }],
-  view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
+const SURFACE = REAL.surface;
 
 // the page's socket sends `panels` (a test may change one before the page opens); the strikes
 // panel is the window per scope each reader asks, its scope noted in `asked`
@@ -71,16 +66,16 @@ test.describe('the Gamma presentation scope', () => {
   test('a strike of GEX not known keeps its row: no bar, the dash, no page error', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    const rows = [[99, -90000, 1000], [100, null, null], [101, 264500, 1000]];
-    panels.strikes = Object.assign(strikesFor('auto'), { today: { all: rows }, views: { all: { centre: 100, max_abs: 264500 } },
-      max_abs_row: [101, 264500, 1000] });
+    // induced: the real rows with the GEX and volume of the strike at the price not known
+    const rows = WINDOW.auto.map((r) => (r[0] === SPOT ? [r[0], null, null] : r));
+    panels.strikes = Object.assign({}, strikesFor('auto'), { today: { all: rows } });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const row = page.locator('#gbsBody .gbs-row[data-strike="100"]');
+    const row = page.locator('#gbsBody .gbs-row[data-strike="' + SPOT + '"]');
     await expect(row.locator('.gbs-v')).toHaveText('-');
     await expect(row.locator('.gbs-vol')).toHaveText('-');
     await expect(row.locator('.gbs-chg')).toHaveText('-');
     expect(await row.locator('.gbs-bar').evaluate((el) => el.style.width)).toBe('0%');
-    await expect(page.locator('#gbsBody .gbs-row')).toHaveCount(3);
+    await expect(page.locator('#gbsBody .gbs-row')).toHaveCount(rows.length);
     expect(errors).toEqual([]);
   });
 
@@ -92,8 +87,8 @@ test.describe('the Gamma presentation scope', () => {
       await expect.poll(() => asked[asked.length - 1]).toBe(scope);
       const rows = WINDOW[scope];
       await expect(gbs.locator('.gbs-row')).toHaveCount(rows.length);
-      await expect(gbs.locator('.gbs-row').first().locator('.gbs-k')).toHaveText(String(rows[rows.length - 1][0]));
-      await expect(gbs.locator('.gbs-row').last().locator('.gbs-k')).toHaveText(String(rows[0][0]));
+      await expect(gbs.locator('.gbs-row').first().locator('.gbs-k')).toHaveText(strikeText(rows[rows.length - 1][0]));
+      await expect(gbs.locator('.gbs-row').last().locator('.gbs-k')).toHaveText(strikeText(rows[0][0]));
       // rows keep a legible height at every count (never shrunk to fit)
       const rowH = await gbs.locator('.gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
       expect(rowH).toBeGreaterThanOrEqual(24);
@@ -126,18 +121,19 @@ test.describe('the Gamma presentation scope', () => {
     const asks = () => sock.subscribes.map((s) => s.panels['strikes:gbs']).filter(Boolean)
       .map((w) => ({ centre: w.centre, shift: w.shift }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const label = page.locator('#gbsBody .gbs-row.spot .gbs-k');      // the row at the price, in view
-    await expect(label).toBeVisible();
-    const box = await label.boundingBox();
+    const atPrice = page.locator('#gbsBody .gbs-row.spot .gbs-k');    // the row at the price, in view
+    await expect(atPrice).toBeVisible();
+    const box = await atPrice.boundingBox();
     const rowH = await page.locator('#gbsBody .gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     for (let i = 1; i <= 3; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * rowH);
     await page.mouse.up();
-    await expect.poll(() => asks().pop(), { timeout: 5000 }).toEqual({ centre: 100, shift: 3 });
+    const centre = REAL.strikes.views.all.centre;
+    await expect.poll(() => asks().pop(), { timeout: 5000 }).toEqual({ centre: centre, shift: 3 });
     await requests.settled();                                        // every held read has run
     await page.waitForTimeout(600);                                  // and the slow panels have been sent
-    expect(asks().pop()).toEqual({ centre: 100, shift: 3 });
+    expect(asks().pop()).toEqual({ centre: centre, shift: 3 });
   });
 
   test('the scope choice persists across reloads (ed_scope)', async ({ page }) => {

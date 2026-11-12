@@ -47,6 +47,7 @@ ALL = {**AUTO, "scope": "all"}
 def _clear():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
+    server._gamma_surface_seq.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
 
@@ -150,19 +151,28 @@ def build_e2e_panels() -> dict:
     Vanna, Charm and the per-strike rows every Gamma view reads (strikes), each in the page's
     default window (Auto, following the price), with Schwab's CRWD price as the live price:
     vanna and charm at the quote's own time, the strikes at the chain's (its verdict is of that
-    instant). Regenerate the browser tests' file with write_e2e_panels.
+    instant). At the chain's instant too: the strikes in the Wider and All windows, the levels
+    (terrain) and the heatmap (surface, Auto, every column and expiry). Regenerate the browser
+    tests' file with write_e2e_panels.
     """
     _clear()
     try:
         _put_live_chain()
         at = _QUOTE["ts_recv"]  # when the daemon received it
+        chain_at = CRWD.now.timestamp()
         lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=at)
         return json.loads(
             json.dumps(
                 {
                     "vanna": server.strike_bars("vanna_rows", TK, at, AUTO),
                     "charm": server.strike_bars("charm_rows", TK, at, AUTO),
-                    "strikes": server.strikes(TK, CRWD.now.timestamp(), AUTO),
+                    "strikes": server.strikes(TK, chain_at, AUTO),
+                    "strikes_wider": server.strikes(TK, chain_at, {**AUTO, "scope": "wider"}),
+                    "strikes_all": server.strikes(TK, chain_at, ALL),
+                    "terrain": server.terrain(TK, chain_at),
+                    "surface": server.gamma_surface(
+                        TK, chain_at, {**AUTO, "cols": None, "expiry": None}
+                    ),
                 }
             )
         )
