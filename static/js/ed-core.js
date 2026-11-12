@@ -1071,8 +1071,15 @@
   // the text colour that reads on a heat cell's colour: light on dark, dark on light
   function heatInk(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? '#f4f7fb' : '#0a0e17'; }
 
+  // the one HTML escape of every view module
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  // the one way a value the console did not send is drawn: "-" (a 0 is a value and is drawn)
+  function orDash(v) { return v == null || v === '' ? '-' : v; }
+
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, emit: emit,
+    esc: esc, orDash: orDash,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]

@@ -9,8 +9,7 @@
 (function () {
   'use strict';
 
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  var esc = window.EdShell.esc, orDash = window.EdShell.orDash;
   function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
   function int(n) { return (n == null || isNaN(n)) ? '-' : String(Math.round(Number(n))); }
   function isBook() { var s = window.EdShell.getState(); return s.workspace === 'order-flow' && s.subview === 'book'; }
@@ -101,7 +100,7 @@
       ['Quote age', d.quote_when_age_text == null ? '-' : d.quote_when_age_text, bk('ages.quote_age_sec')],
     ];
     var wallsHtml = walls.length
-      ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '-') + ' @ ' + num(w.price) +
+      ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(orDash(w.side)) + ' @ ' + num(w.price) +
           '</span><span class="v">' + int(w.volume) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
     var deferred = d.deferred.join(' · ');

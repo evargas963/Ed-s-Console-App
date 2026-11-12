@@ -20,8 +20,7 @@
     return String(Math.round(a));
   }
   function txt(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  var esc = window.EdShell.esc, orDash = window.EdShell.orDash;
 
   // Delta/DEX and Open Interest fall back to displaying the SAME gamma `.sub-pane` (they have
   // no dedicated pane of their own -- showSubPane()'s fallback rule), which is where Key
@@ -91,7 +90,7 @@
     }
     var reg = document.getElementById('klRegime');
     if (reg) {
-      var rm = REGIME[d.regime] || { t: (d.regime || '-'), c: 'var(--ed-ink-2)' };
+      var rm = REGIME[d.regime] || { t: orDash(d.regime), c: 'var(--ed-ink-2)' };
       reg.textContent = rm.t; reg.style.color = rm.c;
     }
     // the levels rail recedes while the served levels are STALE
@@ -387,9 +386,9 @@
       ].join('');
       return '<tr><td class="side">' + px(k, k % 1 ? 2 : 0) + '</td>' +
         '<td>' + (rep.multiplier == null ? '-' : rep.multiplier) + '</td>' +
-        '<td>' + esc(rep.settlementType || '-') + '</td>' +
-        '<td>' + esc(rep.exerciseType || '-') + '</td>' +
-        '<td>' + esc(rep.expirationType || '-') + '</td>' +
+        '<td>' + esc(orDash(rep.settlementType)) + '</td>' +
+        '<td>' + esc(orDash(rep.exerciseType)) + '</td>' +
+        '<td>' + esc(orDash(rep.expirationType)) + '</td>' +
         '<td>' + (lastDay == null ? '-' : esc(lastDay)) + '</td>' +
         '<td>' + flags + '</td></tr>';
     }).join('');
@@ -443,9 +442,9 @@
     var body = d.rows.map(function (r) {
       return '<tr>' +
         '<td>' + fmtOfTime(r.trade_time_ms) + '</td>' +
-        '<td class="of-sym">' + esc(r.symbol || '-') + '</td>' +
+        '<td class="of-sym">' + esc(orDash(r.symbol)) + '</td>' +
         '<td>' + esc(r.expiry ? r.expiry.slice(5) : '-') + '</td>' +
-        '<td>' + esc(r.type || '-') + '</td>' +
+        '<td>' + esc(orDash(r.type)) + '</td>' +
         '<td>' + (r.strike == null ? '-' : px(r.strike, r.strike % 1 ? 2 : 0)) + '</td>' +
         '<td>' + fmtOfPrice(r.bid) + '×' + fmtOfSize(r.bid_size) + '</td>' +
         '<td>' + fmtOfPrice(r.ask) + '×' + fmtOfSize(r.ask_size) + '</td>' +
@@ -457,7 +456,7 @@
         '<td>' + (r.iv == null ? '-' : Number(r.iv).toFixed(1)) + '</td>' +
         '<td>' + (r.delta == null ? '-' : Number(r.delta).toFixed(3)) + '</td>' +
         '<td><span class="of-cls ' + esc(r.classification || 'unknown') + '">' +
-          esc(OF_CLS_LABEL[r.classification] || '-') + '</span></td></tr>';
+          esc(orDash(OF_CLS_LABEL[r.classification])) + '</span></td></tr>';
     }).join('');
     host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
       '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
