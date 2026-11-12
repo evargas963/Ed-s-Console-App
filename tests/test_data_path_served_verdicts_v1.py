@@ -25,10 +25,11 @@ import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from tests.capture_store import store_capture
+from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import daemon_status
 from tests.page_on_socket import pages
 from tests.real_chains import SPY_0DTE, TSLA
-from time_et import ET, age_text
+from time_et import ET, age_text, record_markets
 
 _QUOTES = {
     q["ticker"]: q
@@ -132,6 +133,43 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
     assert body["levels_state"] == state
     assert body["levels_age_text"] == age_text(at.timestamp() - delivered.timestamp())
     assert body["levels_time_ct"] is not None
+
+
+def test_in_schwabs_option_pre_market_the_levels_are_live_and_stand_through_the_gap(published):
+    """Schwab's /markets answer of 2026-11-02 sends the options a preMarket, 07:30 to 09:25 ET.
+
+    A chain delivered inside it is published and its levels are LIVE (operator 2026-11-12:
+    "Yes, make them live"); in the gap before the 09:30 open a later chain replaces nothing and
+    the levels read CLOSE; from 09:30 a chain is published again. Stock options' postMarket
+    window (16:00 to 16:15) leaves TSLA's own 16:00 close as it was.
+    """
+    fixtures = Path(__file__).parent / "fixtures"
+    sent = json.loads((fixtures / "real_schwab_markets_2026_11_02.json").read_text("utf-8"))
+    held = json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"]["2026-11-02"]
+    day = "2026-11-02"
+    record_markets(sent["body"])
+    try:
+        published("SPY", SPY_0DTE, _et(16, 16, "2026-10-30"))
+        before = server.terrain("SPY", _et(7, 29, day).timestamp())["levels_state"]
+        published("SPY", SPY_0DTE, _et(8, 0, day))
+        in_pre_market = server.published_levels("SPY").computed_ts_utc
+        live = server.terrain("SPY", _et(8, 1, day).timestamp())["levels_state"]
+        published("SPY", SPY_0DTE, _et(9, 27, day))
+        in_gap = server.published_levels("SPY").computed_ts_utc
+        gap = server.terrain("SPY", _et(9, 28, day).timestamp())["levels_state"]
+        published("SPY", SPY_0DTE, _et(9, 31, day))
+        at_open = server.published_levels("SPY").computed_ts_utc
+        published("TSLA", TSLA, _et(16, 1, day))
+        published("TSLA", TSLA, _et(16, 5, day))
+        after_close = server.published_levels("TSLA").computed_ts_utc
+        closed = server.terrain("TSLA", _et(16, 6, day).timestamp())["levels_state"]
+    finally:
+        record_markets(json.loads(held["body"]))
+    assert (before, live, gap, closed) == ("CLOSE", "LIVE", "CLOSE", "CLOSE")
+    assert in_pre_market == _et(8, 0, day).timestamp(), "the pre-market chain is published"
+    assert in_gap == _et(8, 0, day).timestamp(), "between the windows the levels stand"
+    assert at_open == _et(9, 31, day).timestamp()
+    assert after_close == _et(16, 1, day).timestamp(), "TSLA's close values stand after 16:00"
 
 
 def test_levels_with_no_markets_answer_held_are_not_live(published):

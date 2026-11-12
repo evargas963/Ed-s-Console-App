@@ -1291,9 +1291,16 @@ def _contract_ticker(sym: str) -> str | None:
 def _closed_since(now: datetime, product: str) -> datetime | None:
     """Return the ticker's last option close while its option market is closed at `now`.
 
-    None while it is open, or while Schwab's /markets answer for today is not held.
+    None while it is open: in its regular window, or in an option window Schwab sent before its
+    market has closed that day (the pre-market, operator 2026-11-12: "Yes, make them live"). None
+    too while Schwab's /markets answer for today is not held.
     """
-    return options_closed_at(now, product) if option_market_open(now, product) is False else None
+    if option_market_open(now, product) is not False:
+        return None
+    closed = options_closed_at(now, product)
+    if options_open(now) and (closed is None or closed.date() < now.astimezone(ET).date()):
+        return None
+    return closed
 
 
 def _close_capture(tk: str, closed: datetime) -> list | None:
