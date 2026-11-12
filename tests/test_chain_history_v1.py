@@ -223,32 +223,33 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     )
 
 
-def test_schwabs_chains_answers_are_asked_once_a_capture_window_and_its_quotes_every_chain(
+def test_schwabs_chains_answers_are_asked_every_five_minutes_and_its_quotes_every_chain(
     tmp_path, schwab
 ):
-    """Open interest is the prior trading day's (Schwab support, 2026-10-12): asked once a window.
+    """Operator 2026-11-12: "every five minutes should do" (an exchange may list a series intraday).
 
-    Three chains of SPY: 10:01 and 10:20 (one capture window, 10:00) and 10:31 (the next).
-    The first asks /chains; the second asks /chains for nothing and takes those answers again,
-    as sent, with its own /quotes for every contract, and is delivered at its own time; the
-    third, in a new window, asks /chains again. Each chain carries every contract with the
-    same open interest and its quote's gamma, and no chain's quote reaches another's contracts.
+    Three chains of SPY in the regular session: 10:01, 10:04 and 10:07. The first asks /chains;
+    the second, three minutes on, asks /chains for nothing and takes those answers again, as
+    sent, with its own /quotes for every contract, and is delivered at its own time; the third,
+    six minutes after the answers were asked for, asks /chains again. Each chain carries every
+    contract with the same open interest and its quote's gamma, and no chain's quote reaches
+    another's contracts.
     """
     clock = {"now": 0.0}
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     asked = []
-    for at in ("2026-09-30 10:01", "2026-09-30 10:20", "2026-09-30 10:31"):
+    for at in ("2026-09-30 10:01", "2026-09-30 10:04", "2026-09-30 10:07"):
         clock["now"] = _ts(at)
         assert _rotate(sweep, client) == {"SPY"}
         asked.append((len(schwab.asked(CHAIN)), len(schwab.asked(QUOTES))))
     (one, quotes), (two, quotes_two), (three, quotes_three) = asked
-    assert one >= 1 and two == one and three == 2 * one, "/chains: once a window"
+    assert one >= 1 and two == one and three == 2 * one, "/chains: once in five minutes"
     assert (quotes_two, quotes_three) == (2 * quotes, 3 * quotes), "/quotes: every chain"
     chains = [msg for _t, msg in published if "contracts" in msg]
     assert [_et(m["ts_recv"]) for m in chains if m["part"] == 0] == [
         "2026-09-30 10:01",
-        "2026-09-30 10:20",
-        "2026-09-30 10:31",
+        "2026-09-30 10:04",
+        "2026-09-30 10:07",
     ]
     by_time: dict[float, dict] = {}
     for m in chains:
@@ -261,8 +262,8 @@ def test_schwabs_chains_answers_are_asked_once_a_capture_window_and_its_quotes_e
         written = c.execute(
             "SELECT DISTINCT ts_utc FROM complete_chain_captures ORDER BY ts_utc"
         ).fetchall()
-    assert [_et(r[0]) for r in written] == ["2026-09-30 10:01", "2026-09-30 10:31"], (
-        "the history holds each window's first chain, the one whose /chains answers were asked"
+    assert [_et(r[0]) for r in written] == ["2026-09-30 10:01"], (
+        "the history holds the capture window's first chain"
     )
 
 
