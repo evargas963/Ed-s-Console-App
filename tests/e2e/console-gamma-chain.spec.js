@@ -11,6 +11,9 @@ const { expiriesAnswer, pushExpiries } = require('./fixtures/expiries');
 const { expiriesFrame, priceRow, served: servedSymbol } = require('./fixtures/price_socket');
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
+// the strikes panel as the server sends it on CRWD's real chain (held to the server by
+// tests/test_vanna_charm_by_strike_v1.py)
+const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
 
 function ct(side, strike, sym, oi, vol, iv, delta, expDate) {
   return { putCall: side, strikePrice: strike, symbol: sym, openInterest: oi, totalVolume: vol,
@@ -56,7 +59,7 @@ function chainPanels(chainOf) {
     chain: (key, params) => served(chainOf(params.expiry)),
     bars: { available: false }, tape: { available: false },
     terrain: { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' },
-    strikes: { spot: 100, levels_state: 'LIVE', today: { all: [[100, 1, 1]] }, views: { all: { centre: 100, note: null, max_abs: 1 } } },
+    strikes: REAL.strikes,
     surface: { ticker: 'SPY', available: true, spot: 100,
       source: 'terrain_live_cache', levels_state: 'LIVE', expirations: [{ expiry: '2026-09-11', dte: 2 }],
       strikes: [100], cells: [{ strike: 100, gex: [1] }],

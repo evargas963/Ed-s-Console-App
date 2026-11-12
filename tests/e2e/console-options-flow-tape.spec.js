@@ -12,6 +12,9 @@
 const { test, expect } = require('@playwright/test');
 const { pushExpiries } = require('./fixtures/expiries');
 const { routeWatchlist } = require('./fixtures/watchlist');
+// the strikes panel as the server sends it on CRWD's real chain (held to the server by
+// tests/test_vanna_charm_by_strike_v1.py)
+const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
 
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,
   absolute_gamma_strike: 100, lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
@@ -36,7 +39,7 @@ async function intercept(page, tapeBody) {
   await pushExpiries(page, ['2026-09-18'], undefined, { tape: tapeBody, bars: BARS, terrain: TERRAIN, surface: SURFACE,
     chain: { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable',
       scope: { kind: 'unavailable', reason: 'no listed expiry for this ticker' } },
-    strikes: { ticker: 'SPY', spot: 100, today: { all: [] }, views: { all: { centre: null, note: null, max_abs: null } } } });
+    strikes: REAL.strikes });
 }
 
 test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
