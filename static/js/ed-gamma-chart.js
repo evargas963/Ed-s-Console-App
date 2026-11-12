@@ -20,7 +20,7 @@
   // largest |value|), max_abs_row, name}
   function served(sd) {
     var m = window.EdShell.getState().measure, x = sd && sd.measures && sd.measures[m];
-    if (x) return { rows: x.rows || [], scale: (x.view || {}).max_abs, max_abs_row: x.max_abs_row,
+    if (x) return { rows: x.rows, scale: x.view.max_abs, max_abs_row: x.max_abs_row,
       name: m === 'oi' ? 'OI' : 'DEX', signed: m !== 'oi' };
     return { rows: (sd && sd.today && sd.today.all) || [], scale: sd && sd.views && sd.views.all && sd.views.all.max_abs,
       max_abs_row: sd && sd.max_abs_row, name: 'GEX', signed: true };

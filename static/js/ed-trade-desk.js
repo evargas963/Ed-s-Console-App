@@ -191,8 +191,8 @@
     if (!m || !m.compared) {
       out += '<div class="mig-coach"><b>Migration view warming up</b>The first day-over-day comparison lands after the next wide morning capture.</div>';
     } else {
-      var grew = (m.grew || []).map(function (k) { return num(k, 0); }).join('/');
-      var shrank = (m.shrank || []).map(function (k) { return num(k, 0); }).join('/');
+      var grew = m.grew.map(function (k) { return num(k, 0); }).join('/');
+      var shrank = m.shrank.map(function (k) { return num(k, 0); }).join('/');
       out += '<div class="mig-coach"><b>Levels since the prior close: ' + esc(moves.map(levelMove).join(' · ')) + '</b>' +
         (grew ? 'Gamma grew most at ' + esc(grew) : 'No strike grew') +
         (shrank ? '; shrank most at ' + esc(shrank) + '. ' : '. ') +
@@ -227,7 +227,7 @@
       : strikesD.available === false ? strikesD.reason : null;
     if (why != null) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
       '<div class="placeholder"><div class="sm">' + esc(why) + '</div></div></div>';
-    var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
+    var todayAll = strikesD.today[_migScope];   // always served: every scope's rows, none when there are no levels
     if (!todayAll.length) {
       var stale = strikesD.levels_stale_reason;
       return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
@@ -236,8 +236,8 @@
         '</div></div></div>';
     }
     // served: day-over-day rows [strike, gex today, gex prior, change] and the verdicts
-    var mig = (strikesD.migration || {})[_migScope] || null;
-    var migRow = {}; ((mig && mig.rows) || []).forEach(function (r) { migRow[r[0]] = r; });
+    var mig = strikesD.migration[_migScope];
+    var migRow = {}; mig.rows.forEach(function (r) { migRow[r[0]] = r; });
     function prior(k) { return migRow[k] ? migRow[k][2] : null; }
     var view = strikesD.views[_migScope];
     window.EdShell.panServed(_migPan, view.centre);
