@@ -62,6 +62,9 @@ from time_et import (
 log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
+#: seconds a ticker's /chains answers are taken again before they are asked for again (the
+#: operator's setting, 2026-11-12: "every five minutes should do")
+CHAINS_AGAIN_SEC = 300
 #: why the daemon's captures are complete: every listed expiry, every strike. The daemon writes
 #: only this basis, and rows of any other are not read. The basis is stored before the chain
 #: blob, so filtering on it never reads a chain (measured: filtering on `source`, stored after
@@ -656,16 +659,17 @@ class ChainSweep:
 
         Schwab's /chains answers (the listed contracts, their terms and open interest, which
         Schwab says is the prior trading day's: docs/schwab/schwab_support_emails_2026_10_12.txt,
-        item 5) are asked for once per capture window (capture_slot) and taken again, as sent,
-        by each later chain of the window: that chain asks only for what moves, its Greeks and
-        quotes. Outside those windows every chain asks for them. A series an exchange adds
-        during a window (it may: docs/SOURCES.md, occ-listing-procedures-plan) is first seen at
-        the next window.
+        item 5) are taken again, as sent, by each chain begun in their capture window
+        (capture_slot) within CHAINS_AGAIN_SEC of their request: that chain asks only for what
+        moves, its Greeks and quotes. Outside those windows every chain asks for them. A series
+        an exchange adds during the trading day (it may: docs/SOURCES.md, sec-34-60365) is seen
+        within CHAINS_AGAIN_SEC.
         """
         chain = _Chain(ticker, self.clock())
         window = capture_slot(chain.started)
         held = self._answers.get(ticker)
-        if window is not None and held is not None and held[0] == window:
+        fresh = held is not None and chain.started - held[1] < CHAINS_AGAIN_SEC
+        if window is not None and fresh and held[0] == window:
             chain.answers_age, chain.spots = chain.started - held[1], dict(held[2])
             chain.by_expiry = {e: [dict(ct) for ct in cts] for e, cts in held[3].items()}
             return self.take_greeks(chain)
