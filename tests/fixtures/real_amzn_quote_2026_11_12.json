@@ -1,0 +1,32 @@
+{
+ "source": "production data/stream_capture.db stream_quotes_raw (read-only): AMZN's LEVELONE_EQUITIES message with a last price the capture daemon received last before the chain capture of 2026-11-12T10:39:18.223641-05:00, Schwab's item as recorded (native)",
+ "ticker": "AMZN",
+ "ts_recv": 1794497956.9643304,
+ "native": {
+  "key": "AMZN",
+  "52": 100,
+  "53": 100,
+  "54": 11903350.825811,
+  "55": 440,
+  "BID_PRICE": 269.39,
+  "LAST_PRICE": 269.425,
+  "BID_SIZE": 440,
+  "TOTAL_VOLUME": 11903350,
+  "LAST_SIZE": 100,
+  "LAST_ID": "D",
+  "NET_CHANGE": 3.255,
+  "REGULAR_MARKET_LAST_PRICE": 269.425,
+  "REGULAR_MARKET_LAST_SIZE": 100,
+  "REGULAR_MARKET_NET_CHANGE": 3.255,
+  "MARK": 269.425,
+  "QUOTE_TIME_MILLIS": 1794497956422,
+  "TRADE_TIME_MILLIS": 1794497956430,
+  "REGULAR_MARKET_TRADE_MILLIS": 1794497956430,
+  "BID_TIME_MILLIS": 1794497956422,
+  "LAST_MIC_ID": "XADF",
+  "NET_CHANGE_PERCENT": 1.222903,
+  "REGULAR_MARKET_CHANGE_PERCENT": 1.222903,
+  "MARK_CHANGE": 3.255,
+  "MARK_CHANGE_PERCENT": 1.222903
+ }
+}
