@@ -658,7 +658,9 @@ class ChainSweep:
         Schwab says is the prior trading day's: docs/schwab/schwab_support_emails_2026_10_12.txt,
         item 5) are asked for once per capture window (capture_slot) and taken again, as sent,
         by each later chain of the window: that chain asks only for what moves, its Greeks and
-        quotes. Outside those windows every chain asks for them.
+        quotes. Outside those windows every chain asks for them. A series an exchange adds
+        during a window (it may: docs/SOURCES.md, occ-listing-procedures-plan) is first seen at
+        the next window.
         """
         chain = _Chain(ticker, self.clock())
         window = capture_slot(chain.started)
