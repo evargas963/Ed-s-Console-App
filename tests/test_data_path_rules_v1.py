@@ -32,7 +32,12 @@ from app.market_data.schwab.streaming import capture, live_push
 from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow import live_payload
 from app.options.order_flow.state import push_option_top
-from calibration.complete_chain_capture import ChainSweep, chain_messages, price_history_message
+from calibration.complete_chain_capture import (
+    PRICE_HISTORY,
+    ChainSweep,
+    chain_messages,
+    price_history_message,
+)
 from db import get_db
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
 from stream_spine import (
@@ -728,11 +733,18 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
         "minute15",
         "minute30",
         "daily1",
+        "weekly1",
+        "monthly1",
     ], "every series at the start"
     assert history_at("2026-10-01 20:00:30") == ["minute5", "minute15", "minute30"], (
         "the bars that ended the session"
     )
-    assert history_at("2026-10-02 03:30") == ["minute1", "daily1"], "once on the next ET date"
+    assert history_at("2026-10-02 03:30") == [
+        "minute1",
+        "daily1",
+        "weekly1",
+        "monthly1",
+    ], "once on the next ET date"
     assert history_at("2026-10-02 03:45") == [], "not again that day"
     assert _asked_since(swept, chains, after_hours) == [], "the chain waits for its window"
 
@@ -753,7 +765,8 @@ def test_d5_a_start_asks_every_tickers_price_history_before_any_chain(tmp_path):
         (p, q.get("symbol")) for p, q, *_ in swept.schwab.requests if p != "/marketdata/v1/markets"
     ]
     first_chain = next(i for i, (p, _) in enumerate(asked) if p != history)
-    assert asked[:first_chain] == [(history, "SPY")] * 5 + [(history, "TSLA")] * 5, asked[:12]
+    series = len(PRICE_HISTORY)
+    assert asked[:first_chain] == [(history, "SPY")] * series + [(history, "TSLA")] * series
 
 
 def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_then_stand(
@@ -884,7 +897,8 @@ def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_on
     ]
     assert [(p, sym) for p, sym, s in asked if s <= monday] == [(exps, "TSLA")]
     assert [(p, sym) for p, sym, s in asked if s > monday] == [(exps, "TSLA")]
-    assert len([q for p, q, s, *_ in swept.schwab.requests if p == history and s <= monday]) == 5
+    asked_history = [q for p, q, s, *_ in swept.schwab.requests if p == history and s <= monday]
+    assert len(asked_history) == len(PRICE_HISTORY)
 
 
 def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_with_the_reason():
@@ -1446,7 +1460,7 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
         ("BBB", "expiration chain returned HTTP 403"),
     ]
     gets = _gets(schwab)
-    assert [r[0] for r in gets] == ["/marketdata/v1/pricehistory"] * 10 + [
+    assert [r[0] for r in gets] == ["/marketdata/v1/pricehistory"] * 2 * len(PRICE_HISTORY) + [
         "/marketdata/v1/expirationchain"
     ] * 2
     assert all(b[2] - a[2] < 1.0 for a, b in zip(gets, gets[1:])), "no pause after a 403"

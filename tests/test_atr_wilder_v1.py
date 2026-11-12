@@ -3,8 +3,8 @@
 The first ATR is the simple mean of the first 14 true ranges; each later one is
 (ATR_(t-1) * 13 + TR_t) / 14. Expected values are worked out here, independently of the code,
 as Wilder's recursion unrolled: ATR_n = (13/14)^(n-14) * seed + sum of (1/14) * (13/14)^(n-k) *
-TR_k over the true ranges after the seed. Real daily candles Schwab sent (/pricehistory): SPY and
-TSLA to 2026-10-06, and $SPX's 500 days.
+TR_k over the true ranges after the seed. Real candles Schwab sent (/pricehistory): the daily of
+SPY and TSLA to 2026-10-06 and $SPX's 500 days; the weekly and monthly of SPY and AMD, 2026-11-12.
 """
 
 from __future__ import annotations
@@ -61,24 +61,46 @@ def _wilder_unrolled(hlc: list[tuple[float, float, float]], n: int = 14) -> floa
     )
 
 
+def _weekly_monthly() -> dict[str, dict[str, list[Candle]]]:
+    """Schwab's own weekly and monthly candles of SPY, AMD and TSLA, asked 2026-11-12."""
+    answers = json.loads((_FX / "real_pricehistory_weekly_monthly_2026_11_12.json").read_text())
+    out: dict[str, dict[str, list[Candle]]] = {}
+    for a in answers["answers"]:
+        out.setdefault(a["symbol"], {})[a["series"]] = _candles(a["body"]["candles"])
+    return out
+
+
 @pytest.mark.parametrize("ticker", ["SPY", "TSLA", "$SPX"])
 def test_daily_weekly_and_monthly_atr_are_wilders(ticker):
+    """Each ATR is Wilder's on Schwab's own candles of that length; none sent: none."""
     daily = _daily()[ticker]
-    atr = compute_atrs(daily)
-    expected = [
-        _wilder_unrolled(_period_candles(daily, key))
-        for key in (lambda d: d, lambda d: d.isocalendar()[:2], lambda d: (d.year, d.month))
-    ]
-    assert expected[0] is not None and expected[1] is not None
+    sent = _weekly_monthly()[ticker] if ticker != "$SPX" else {"1w": [], "1mo": []}
+    series = (daily, sent["1w"], sent["1mo"])
+    atr = compute_atrs(*series)
+    expected = [_wilder_unrolled(_period_candles(candles, lambda d: d)) for candles in series]
+    assert expected[0] is not None and (ticker == "$SPX" or None not in expected)
     for got, want in zip((atr.daily, atr.weekly, atr.monthly), expected, strict=True):
         assert (got is None) == (want is None)
         if want is not None:
             assert got == pytest.approx(want, rel=1e-12)
 
 
+@pytest.mark.parametrize("ticker", ["SPY", "AMD", "TSLA"])
+def test_weekly_and_monthly_atr_are_of_schwabs_weekly_and_monthly_candles(ticker):
+    """104 weekly and 24 monthly candles as Schwab sent them: Wilder's ATR(14) of each."""
+    sent = _weekly_monthly()[ticker]
+    atr = compute_atrs([], sent["1w"], sent["1mo"])
+    assert (len(sent["1w"]), len(sent["1mo"]), atr.daily) == (104, 24, None)
+    for got, candles in ((atr.weekly, sent["1w"]), (atr.monthly, sent["1mo"])):
+        want = _wilder_unrolled([(c.high, c.low, c.close) for c in candles])
+        assert want is not None and got == pytest.approx(want, rel=1e-12)
+
+
 def test_fewer_than_fourteen_true_ranges_is_none():
     """SPY's first 14 daily candles give 13 true ranges: no ATR. 15 give 14: the simple mean."""
     daily = _daily()["SPY"]
-    assert compute_atrs(daily[:14]).daily is None
+    assert compute_atrs(daily[:14], [], []).daily is None
     first = _period_candles(daily[:15], lambda d: d)
-    assert compute_atrs(daily[:15]).daily == pytest.approx(_wilder_unrolled(first), rel=1e-12)
+    assert compute_atrs(daily[:15], [], []).daily == pytest.approx(
+        _wilder_unrolled(first), rel=1e-12
+    )

@@ -13,7 +13,9 @@ Real data: SPY's 2026-11-20 chain and its quotes
 expiry as sent (fixtures/real_schwab_chain_tsla_2026_10_09.json, captured 2026-10-08; its quotes
 were not captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 (fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles;
-fixtures/real_pricehistory_5m_30m_spy_tsla_2026_10_07.json: 5- and 30-minute candles), and
+fixtures/real_pricehistory_5m_30m_spy_tsla_2026_10_07.json: 5- and 30-minute candles), SPY's, AMD's
+and TSLA's weekly and monthly /pricehistory answers of 2026-11-12
+(fixtures/real_pricehistory_weekly_monthly_2026_11_12.json), and
 Schwab's /quotes answer for each of SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as the
 daemon's watchlist check asks (fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json; ZQZQZ is
 named in errors.invalidSymbols), Schwab's /markets answer for every date it answered on
@@ -84,6 +86,7 @@ HISTORY = {
     for name in (
         "real_pricehistory_spy_tsla_2026_10_07.json",
         "real_pricehistory_5m_30m_spy_tsla_2026_10_07.json",
+        "real_pricehistory_weekly_monthly_2026_11_12.json",
     )
     for a in json.loads((FX / name).read_text(encoding="utf-8"))["answers"]
 }

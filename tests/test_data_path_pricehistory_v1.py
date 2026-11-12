@@ -2,13 +2,16 @@
 
 The daemon's chain sweep asks /pricehistory for each ticker (tests/schwab_rest_standin.py, on the
 real schwab-py client as the daemon builds it) as docs/schwab lists it -- 1-minute bars and two
-years of daily candles, once per ET date, each request ending at the sweep's clock -- and
-publishes each series as Schwab sent it on the daemon's bus; the console reads it there and its
-bar writer takes it: the 1-minute bars every reader reads, and the daily candles the daily,
-weekly and monthly ATR are computed from, today's candle the one Schwab pushes on the stream.
+years of daily, weekly and monthly candles, once per ET date, each request ending at the sweep's
+clock -- and publishes each series as Schwab sent it on the daemon's bus; the console reads it
+there and its bar writer takes it: the 1-minute bars every reader reads, and the daily, weekly
+and monthly candles the ATR of each is computed from, today's daily candle the one Schwab pushes
+on the stream.
 
 Real data: SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
-(tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json), and SPY's pushed day fields and
+(tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json), SPY's, AMD's and TSLA's weekly and
+monthly answers of 2026-11-12 (tests/fixtures/real_pricehistory_weekly_monthly_2026_11_12.json),
+and SPY's pushed day fields and
 daily candles of 2026-11-10 (tests/fixtures/real_spy_day_fields_and_daily_candles_2026_11_10.json).
 Inputs, named: the clock.
 """
@@ -97,6 +100,8 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         ("day", "10", "minute", "15"),
         ("day", "10", "minute", "30"),
         ("year", "2", "daily", "1"),
+        ("year", "2", "weekly", "1"),
+        ("year", "2", "monthly", "1"),
     ]
     for q, (series, (period_type, period, frequency_type, frequency)) in zip(
         first, PRICE_HISTORY.items()
@@ -117,12 +122,24 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         ["5m"],
         ["5m", "15m"],
         ["5m", "15m", "30m"],
-        ["5m", "15m", "30m", "1d"],
-    ], "a minute series once a bar of its own completed; the daily again after the regular close"
-    assert after_close == ["minute5", "minute15", "minute30", "daily1"], "only the due series"
+        ["5m", "15m", "30m", "1d", "1w", "1mo"],
+    ], "a minute series once a bar of its own completed; the candles again after the regular close"
+    assert after_close == [
+        "minute5",
+        "minute15",
+        "minute30",
+        "daily1",
+        "weekly1",
+        "monthly1",
+    ], "only the due series"
     assert session_end == ["minute5", "minute15", "minute30"], "the bars that end the session"
     assert closed == [], "closed then and now: nothing is asked"
-    assert next_day == ["minute1", "daily1"], "the next ET date, before any session opens"
+    assert next_day == [
+        "minute1",
+        "daily1",
+        "weekly1",
+        "monthly1",
+    ], "the next ET date, before any session opens"
 
     history = [(topic, msg) for topic, msg in published if topic.startswith("pricehistory.")]
     for series in PRICE_HISTORY:
@@ -154,17 +171,8 @@ def _wilder_atr(candles: list[dict]) -> float:
     return atr
 
 
-def _grouped(candles: list[dict], key) -> list[dict]:
-    """Candles worked out here, one per `key` of each candle's ET date.
-
-    First open, highest high, lowest low, last close.
-    """
-    out: dict = {}
-    for c in candles:
-        k = key(datetime.fromtimestamp(c["datetime"] / 1000, ET).date())
-        g = out.setdefault(k, {"open": c["open"], "high": c["high"], "low": c["low"]})
-        g.update(high=max(g["high"], c["high"]), low=min(g["low"], c["low"]), close=c["close"])
-    return list(out.values())
+#: Schwab's frequencyType of its weekly and of its monthly candles
+_SENT = ("weekly", "monthly")
 
 
 def _held(tk: str, series: str, now: datetime, candles: list | None = None) -> None:
@@ -316,22 +324,24 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
 
     Read by live_push.is_forwarded, the console's _bus_loop; taken (streaming._ingest_pushed ->
     the bar writer): the 1-minute bars every reader reads are Schwab's candles, each field as
-    sent; the daily, weekly and monthly ATR are those of Schwab's daily candles, of the weeks and
-    of the months they make (at the answer's time, before the session: no candle of today yet).
+    sent; the daily, weekly and monthly ATR are those of Schwab's daily, weekly and monthly
+    candles (at the answer's time, before the session: no candle of today yet), and a ticker
+    whose weekly and monthly candles have not arrived (TSLA here) has neither ATR.
     """
     bus = MessageBus()
     sub = bus.subscribe("pricehistory.", policy=LATEST)
-    for tk in ("SPY", "TSLA"):
-        for series in ("1m", "1d"):
-            a = HISTORY[(tk, *_SERIES[series])]
-            bus.publish(*price_history_message(tk, series, a["body"], a["answered_utc"]))
+    asked = [(tk, s) for tk in ("SPY", "TSLA") for s in ("1m", "1d")]
+    asked += [(tk, s) for tk in ("SPY", "AMD") for s in ("1w", "1mo")]
+    for tk, series in asked:
+        a = HISTORY[(tk, *_SERIES[series])]
+        bus.publish(*price_history_message(tk, series, a["body"], a["answered_utc"]))
     while not ofs.streamed_bars.empty():
         ofs.streamed_bars.get_nowait()
-    for tk in ("SPY", "TSLA"):
+    for tk, series in asked:
         server._bars.pop(tk, None)
-        server._series.pop((tk, "1d"), None)
+        server._series.pop((tk, series), None)
     try:
-        assert len(sub.changed) == 4, "each ticker's two series, its current record on the bus"
+        assert len(sub.changed) == 8, "each series asked, its current record on the bus"
         for key in list(sub.changed):
             topic, record = bus.current[key]
             assert live_push.is_forwarded(topic, record)
@@ -339,7 +349,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
         msgs = []
         while not ofs.streamed_bars.empty():
             msgs.append(ofs.streamed_bars.get_nowait())
-        assert len(msgs) == 4
+        assert len(msgs) == 8
         answered = datetime.fromtimestamp(HISTORY[("SPY", "minute", "1")]["answered_utc"], ET)
         server._write_streamed_bars(msgs, answered)
         for tk in ("SPY", "TSLA"):
@@ -353,16 +363,18 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
                 for c in minutes
             ], tk
             daily = HISTORY[(tk, "daily", "1")]["body"]["candles"]
-            months = _grouped(daily, lambda day: (day.year, day.month))
+            assert server._atr(tk, answered).daily == _wilder_atr(daily), tk
+        for tk in ("SPY", "AMD"):
             atr = server._atr(tk, answered)
-            assert atr.daily == _wilder_atr(daily), tk
-            assert atr.weekly == _wilder_atr(_grouped(daily, lambda day: day.isocalendar()[:2])), tk
-            assert len(months) < 15, tk  # a year captured: ATR(14) of months needs 15
-            assert atr.monthly is None, tk
+            weekly, monthly = (HISTORY[(tk, kind, "1")]["body"]["candles"] for kind in _SENT)
+            assert atr.weekly == _wilder_atr(weekly), tk
+            assert atr.monthly == _wilder_atr(monthly), tk
+        tsla = server._atr("TSLA", answered)
+        assert (tsla.weekly, tsla.monthly) == (None, None), "not arrived: no ATR, none made up"
     finally:
-        for tk in ("SPY", "TSLA"):
+        for tk, series in asked:
             server._bars.pop(tk, None)
-            server._series.pop((tk, "1d"), None)
+            server._series.pop((tk, series), None)
 
 
 def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():

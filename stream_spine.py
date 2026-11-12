@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS stream_news_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_snr_sym_ts ON stream_news_raw(symbol, ts_recv);
--- Schwab's /pricehistory answers, verbatim: one row per series asked (1m, 15m, 1d), the whole
+-- Schwab's /pricehistory answers, verbatim: one row per series asked (PRICE_HISTORY), the whole
 -- answer.
 CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
     ts_recv REAL NOT NULL,
