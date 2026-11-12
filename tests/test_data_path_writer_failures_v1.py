@@ -50,7 +50,7 @@ from stream_spine import (
     quote_msg,
     verbatim_msg,
 )
-from tests.schwab_rest_standin import CHAIN, LocalSchwab
+from tests.schwab_rest_standin import LocalSchwab
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
 
 _IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
@@ -481,8 +481,8 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
 
     The writer does not fill it, so SQLite refuses each row with IntegrityError, standing in for
     the refusal of a repeated capture key. The chain is delivered and never published as
-    failed, the sweep fetches the next chain at once (no pause: a second chain request reaches
-    the host), and the daemon's writer keeps the chain as delivered.
+    failed, the sweep fetches the next chain at once (no pause: a second chain is delivered),
+    and the daemon's writer keeps the chain as delivered.
     """
     db = tmp_path / "ed_console.db"
     with closing(sqlite3.connect(db)) as conn, conn:
@@ -512,7 +512,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         client = schwab.client(tmp_path)
 
         def chains() -> int:
-            return len(schwab.asked(CHAIN))
+            return sum(1 for m in list(published) if "contracts" in m and m["part"] == 0)
 
         halt = threading.Event()
         worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)

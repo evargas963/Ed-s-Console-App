@@ -340,6 +340,7 @@ class _Chain:
     named_invalid: set[str] = field(default_factory=set)  # contracts Schwab's quotes named invalid
     pushed: int = 0  # contracts whose Greeks the stream pushed (LEVELONE_OPTIONS)
     requested: int = 0  # contracts asked for on /quotes for their Greeks
+    answers_age: float = 0.0  # seconds from its /chains answers' request to its own (fetch_chain)
 
     def contracts(self) -> list[dict]:
         return [ct for cts in self.by_expiry.values() for ct in cts]
@@ -413,6 +414,9 @@ class ChainSweep:
         self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
+        #: ticker -> its newest /chains answers: (their capture window, when they were asked for,
+        #: each expiry's underlyingPrice, each expiry's contracts as sent)
+        self._answers: dict[str, tuple[float, float, dict, dict]] = {}
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """Run the thread's life, until `stop`.
@@ -649,8 +653,20 @@ class ChainSweep:
         Each contract's Greeks from the stream, or the contract queued for its quote; delivered
         at once when none is queued. A stop asked between two
         expiries ends it there: no expiry more is asked for, and the part fetched is not a chain.
+
+        Schwab's /chains answers (the listed contracts, their terms and open interest, which
+        Schwab says is the prior trading day's: docs/schwab/schwab_support_emails_2026_10_12.txt,
+        item 5) are asked for once per capture window (capture_slot) and taken again, as sent,
+        by each later chain of the window: that chain asks only for what moves, its Greeks and
+        quotes. Outside those windows every chain asks for them.
         """
         chain = _Chain(ticker, self.clock())
+        window = capture_slot(chain.started)
+        held = self._answers.get(ticker)
+        if window is not None and held is not None and held[0] == window:
+            chain.answers_age, chain.spots = chain.started - held[1], dict(held[2])
+            chain.by_expiry = {e: [dict(ct) for ct in cts] for e, cts in held[3].items()}
+            return self.take_greeks(chain)
         try:
             client = schwab_client()
             today = datetime.fromtimestamp(chain.started, ET).date()
@@ -682,6 +698,9 @@ class ChainSweep:
         except Exception as e:  # that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
+        if window is not None:  # as sent: take_greeks writes each chain's own Greeks and quote
+            sent = {e: [dict(ct) for ct in cts] for e, cts in chain.by_expiry.items()}
+            self._answers[ticker] = (window, chain.started, dict(chain.spots), sent)
         return self.take_greeks(chain)
 
     def take_greeks(self, chain: _Chain) -> None:
@@ -829,12 +848,14 @@ class ChainSweep:
         self._delivered.add(chain.ticker)
         self._fetched[chain.ticker] = chain.started
         log.info(
-            "CHAIN %s: %d contracts in %d expiries asked on /chains (open interest) | Greeks: %d "
+            "CHAIN %s: %d contracts in %d expiries, /chains answers (open interest) asked %.0f s "
+            "before | Greeks: %d "
             "pushed by LEVELONE_OPTIONS, %d requested on /quotes, %d Schwab named invalid | "
             "%.1f s from the first request",
             chain.ticker,
             len(contracts),
             len(chain.by_expiry),
+            chain.answers_age,
             chain.pushed,
             chain.requested,
             len(chain.named_invalid),

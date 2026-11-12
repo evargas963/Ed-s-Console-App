@@ -627,14 +627,16 @@ def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until
         swept.move("2026-10-05 09:29")
         swept.until(len(swept.chains) + 1)
         quiet = chain_requests_since(weekend)
-        opened = swept.move("2026-10-05 09:30")
+        opened, before_open = swept.move("2026-10-05 09:30"), len(swept.chains)
         swept.until(len(swept.chains) + 2)
-        reopened = chain_requests_since(opened)
+        reopened = len(swept.chains) - before_open
+        asked_at_open = chain_requests_since(opened)
     finally:
         swept.close()
     assert after_close == 1, "one chain asked after the close: the close values"
     assert quiet == 0, "nothing asked through the weekend"
-    assert reopened >= 2, "asked again and again from Monday's option window"
+    assert reopened >= 2, "delivered again and again from Monday's option window"
+    assert asked_at_open == 1, "its /chains answer asked once in the window, then taken again"
 
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_path):
@@ -732,8 +734,9 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
 ):
     """SPY's options trade to 16:15 ET; Schwab's /markets sends EQO to 16:00, IND to 16:15.
 
-    That is Schwab's answer of 2026-10-07. At 16:10 SPY's chain is asked again and again; at
-    16:20 once more (its close values), then not. Levels from that chain stand at 17:00
+    That is Schwab's answer of 2026-10-07. At 16:10 SPY's chain is delivered again and again,
+    its /chains answers asked once in that capture window; at 16:20 once more (its close
+    values), then not. Levels from that chain stand at 17:00
     (After-Hours), not stale; levels from 15:00 are stale at 16:10, while the options are open.
     The clock moves with the sweep at rest (_Swept.move): a request is counted by the clock it
     was made at, never by when it arrived (a 16:10 request that lands after the clock moves is
@@ -742,7 +745,7 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
     try:
-        swept.until(3)  # delivered again and again at 16:10
+        open_chains = swept.until(3)  # delivered again and again at 16:10
         closed = swept.move("2026-10-07 16:20")
         swept.until(len(swept.chains) + 1)
         swept.idle()  # its close values, then not
@@ -750,8 +753,8 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
         swept.close()
     before_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[:closed] if p == chains]
     after_close = [q["fromDate"] for p, q, *_ in swept.schwab.requests[closed:] if p == chains]
-    assert before_close and all(before_close.count(e) > 1 for e in before_close), (
-        "each expiry asked again and again while the last option market is open"
+    assert open_chains == ["SPY"] * 3 and before_close == sorted(set(before_close)), (
+        "delivered again and again while the last option market is open, each expiry asked once"
     )
     assert sorted(after_close) == sorted(set(before_close)), (
         "each expiry once more after the 16:15 close"
