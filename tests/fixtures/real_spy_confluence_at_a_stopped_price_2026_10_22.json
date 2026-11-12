@@ -1499,25 +1499,10 @@
  ],
  "scale_text": "0\u201372",
  "spot": 773.1269,
- "spot_age_sec": 4859.43825507164,
  "spot_as_of_ts_utc": 1792701541.652,
- "spot_feed_label": "OFFLINE",
- "spot_feed_live": false,
  "spot_not_live_text": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",
- "spot_outage": "Schwab LEVELONE_EQUITIES feed down during After-Hours",
  "spot_text": "773.13",
  "spot_time_ct": "Thu 10/22 03:39 PM CT",
  "status_text": "Chain as of Thu 10/22 03:17 PM CT",
- "ticker": "SPY",
- "weights_in_score": {
-  "CHARMM": 0.22,
-  "DEXM": 0.05,
-  "DGEXM": 0.0,
-  "FLOWM": 0.0,
-  "GEXM": 0.15,
-  "IV": 0.05,
-  "OI": 0.1,
-  "VANNAM": 0.05,
-  "VOL": 0.1
- }
+ "ticker": "SPY"
 }

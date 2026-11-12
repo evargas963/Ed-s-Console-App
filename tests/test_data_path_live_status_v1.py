@@ -402,7 +402,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
         row = ofs.price_row("$SPX", at)
         assert (row["feed_label"], row["outage"]) == ("NOT LIVE", "Schwab marks $SPX Closed")
         mark = server.price_mark("$SPX", row["trade_ts"], at)
-        assert (mark["spot_feed_live"], mark["spot_feed_label"], mark["spot_outage"]) == (
+        assert (mark["spot_not_live_text"] is None, *server.price_state("$SPX", at)) == (
             False,
             "NOT LIVE",
             "Schwab marks $SPX Closed",
@@ -446,13 +446,13 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live_and_no_row_is_not_live():
         f"{TK} is not streamed on Schwab LEVELONE_EQUITIES",
     )
     mark = server.price_mark(TK, None, at)
-    assert (mark["spot_feed_live"], mark["spot_feed_label"]) == (False, "NOT LIVE")
+    assert (mark["spot_not_live_text"], mark["spot_time_ct"]) == ("not live", None)
     _all_held(at, TK)
     for kept in (lmp._by_ticker, lmp._fields_by_ticker):  # held, no quote from Schwab yet
         kept.pop(TK, None)
     assert ofs.price_state(TK, at) == ("LIVE", None)
     assert ofs.price_row(TK, at)["spot"] is None
-    assert server.price_mark(TK, None, at)["spot_feed_live"] is True
+    assert server.price_mark(TK, None, at)["spot_not_live_text"] is None
     assert server.resolve_spot(TK, now=at) == (None, server.SPOT_SOURCE_NONE, None)
 
 

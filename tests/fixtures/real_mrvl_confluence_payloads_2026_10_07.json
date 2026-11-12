@@ -4,17 +4,6 @@
   "2026-10-09": {
    "preset": "WEEKLY",
    "scale_text": "0\u201375",
-   "weights_in_score": {
-    "GEXM": 0.25,
-    "OI": 0.15,
-    "DGEXM": 0.0,
-    "VOL": 0.1,
-    "FLOWM": 0.0,
-    "CHARMM": 0.08,
-    "VANNAM": 0.07,
-    "DEXM": 0.05,
-    "IV": 0.05
-   },
    "ceiling": 75.0,
    "notes": [
     "no live price: the middle strikes of the chain"
@@ -1474,11 +1463,7 @@
     }
    ],
    "spot_as_of_ts_utc": null,
-   "spot_feed_live": false,
-   "spot_feed_label": "OFFLINE",
-   "spot_outage": "Schwab LEVELONE_EQUITIES feed down during RTH",
    "spot_time_ct": null,
-   "spot_age_sec": null,
    "spot_not_live_text": "not live",
    "status_text": "Chain as of Wed 10/07 09:31 AM CT",
    "levels": [
@@ -1638,17 +1623,6 @@
   "2026-10-16": {
    "preset": "MONTHLY",
    "scale_text": "0\u201387",
-   "weights_in_score": {
-    "GEXM": 0.3,
-    "OI": 0.2,
-    "VANNAM": 0.1,
-    "DEXM": 0.1,
-    "DGEXM": 0.0,
-    "VOL": 0.07,
-    "FLOWM": 0.0,
-    "CHARMM": 0.05,
-    "IV": 0.05
-   },
    "ceiling": 87.0,
    "notes": [
     "no live price: the middle strikes of the chain"
@@ -3108,11 +3082,7 @@
     }
    ],
    "spot_as_of_ts_utc": null,
-   "spot_feed_live": false,
-   "spot_feed_label": "OFFLINE",
-   "spot_outage": "Schwab LEVELONE_EQUITIES feed down during RTH",
    "spot_time_ct": null,
-   "spot_age_sec": null,
    "spot_not_live_text": "not live",
    "status_text": "Chain as of Wed 10/07 09:31 AM CT",
    "levels": [
@@ -3273,17 +3243,6 @@
  "front_passed": {
   "preset": "MONTHLY",
   "scale_text": "0\u201387",
-  "weights_in_score": {
-   "GEXM": 0.3,
-   "OI": 0.2,
-   "VANNAM": 0.1,
-   "DEXM": 0.1,
-   "DGEXM": 0.0,
-   "VOL": 0.07,
-   "FLOWM": 0.0,
-   "CHARMM": 0.05,
-   "IV": 0.05
-  },
   "ceiling": 87.0,
   "notes": [
    "no live price: the middle strikes of the chain"
@@ -4738,11 +4697,7 @@
    }
   ],
   "spot_as_of_ts_utc": null,
-  "spot_feed_live": false,
-  "spot_feed_label": "OFFLINE",
-  "spot_outage": "Schwab LEVELONE_EQUITIES feed down during Closed",
   "spot_time_ct": null,
-  "spot_age_sec": null,
   "spot_not_live_text": "not live",
   "status_text": "Chain as of Wed 10/07 09:31 AM CT",
   "levels": [

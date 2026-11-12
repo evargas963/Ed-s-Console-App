@@ -109,7 +109,7 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy():
         live["levels_state"],
         live["levels_stale_reason"],
     )
-    assert d["levels_age_sec"] == pytest.approx(live["levels_age_sec"], abs=5.0)
+    assert d["levels_age_text"] == live["levels_age_text"] is not None
     # the chain's time is served once, as the text the page draws
     assert d["levels_time_ct"] == live["levels_time_ct"] == server.ct_label(_AT.timestamp())
 

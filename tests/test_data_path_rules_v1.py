@@ -919,7 +919,7 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
             "this ticker's options are closed and its close values have not been fetched"
         ), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
-        assert st["levels_state"] == "STALE" and st["levels_age_sec"] is None  # absent, not zero
+        assert st["levels_state"] == "STALE" and st["levels_age_text"] is None  # absent, not zero
     st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
     assert (
         st["levels_state"] == "STALE"

@@ -28,7 +28,7 @@ from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
 from tests.page_on_socket import pages
 from tests.real_chains import SPY_0DTE, TSLA
-from time_et import ET
+from time_et import ET, age_text
 
 _QUOTES = {
     q["ticker"]: q
@@ -130,7 +130,7 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
     published(tk, chain, delivered)
     body = server.terrain(tk, at.timestamp())
     assert body["levels_state"] == state
-    assert body["levels_age_sec"] == pytest.approx(at.timestamp() - delivered.timestamp())
+    assert body["levels_age_text"] == age_text(at.timestamp() - delivered.timestamp())
     assert body["levels_time_ct"] is not None
 
 

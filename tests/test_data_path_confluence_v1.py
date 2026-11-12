@@ -308,7 +308,8 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
         server._terrain_cache.pop("SPY", None)
     assert body["available"] is True
     assert (body["preset"], body["ceiling"]) == ("0DTE", 72)
-    assert body["weights_in_score"]["FLOWM"] == 0 and body["weights_in_score"]["DGEXM"] == 0
+    weights = in_score_weights(body["preset"])
+    assert weights["FLOWM"] == 0 and weights["DGEXM"] == 0 and "weights_in_score" not in body
     assert body["expiries"][0]["label"] == "0DTE · 2026-10-22"
     checked = grossed = 0
     for row in body["rows"]:

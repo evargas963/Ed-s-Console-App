@@ -24,7 +24,7 @@ def test_the_strike_panel_carries_the_chain_time():
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-    assert body["levels_age_sec"] == 21
+    assert body["levels_age_text"] == "21s"
     assert body["levels_time_ct"] == "Fri 09/25 06:59 PM CT"
     # 2026-09-25 has no /markets answer held: the rows' verdict is NOT LIVE
     assert (body["levels_state"], body["levels_stale_reason"]) == (
