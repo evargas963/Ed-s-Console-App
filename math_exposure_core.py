@@ -91,23 +91,41 @@ def bs_vanna_array(
     strike: NDArray[np.float64],
     t_years: NDArray[np.float64],
     sigma: NDArray[np.float64],
+    rate: NDArray[np.float64],
+    dividend: NDArray[np.float64],
 ) -> NDArray[np.float64]:
-    """Black-Scholes vanna (dDelta/dSigma) per share of each contract, r = q = 0.
+    """Black-Scholes-Merton vanna (dDelta/dSigma) per share of each contract.
 
-    Identical for calls and puts. Closed form: -e^(-qT) * phi(d1) * d2 / sigma. Sign is driven
-    entirely by -d2, so it flips through SPOT (strikes above spot positive, below negative) --
-    never through the call/put boundary. Equivalent forms: vanna = (vega/S)(1 - d1/(sigma*sqrt(T)))
-    = -Gamma * S * sqrt(T) * d2.
+    `rate` r and `dividend` q are the chain's interestRate and dividendYield as decimals.
+    Identical for calls and puts. Closed form: -e^(-qT) * phi(d1) * d2 / sigma, d1 with the
+    carry r - q (Hull, Options, Futures and Other Derivatives, ch. 19; the same d1 as the gamma
+    profile's). Sign is driven by -d2, never by the call/put boundary.
     Units: delta-change per 1.00 of IV (100 vol points); multiply by 0.01 for per-vol-point
     -- the sigma-scaling convention is LOCKED here beside the dealer convention.
-    NaN where it cannot be priced: an input not positive (or NaN, not known), a d1 or a vanna
-    that is not finite.
+    NaN where it cannot be priced: an input not positive (or NaN, not known), a rate or a
+    dividend yield not known, a d1 or a vanna that is not finite.
     """
     with np.errstate(all="ignore"):
-        priced = (spot > 0) & (strike > 0) & (t_years > 0) & (sigma > 0)
-        d1, vt = d1_vt(spot, strike, t_years, sigma, log=_each(math.log, priced), sqrt=np.sqrt)
+        priced = (
+            (spot > 0)
+            & (strike > 0)
+            & (t_years > 0)
+            & (sigma > 0)
+            & np.isfinite(rate)
+            & np.isfinite(dividend)
+        )
+        exp = _each(math.exp, priced)
+        d1, vt = d1_vt(
+            spot,
+            strike,
+            t_years,
+            sigma,
+            rate - dividend,
+            log=_each(math.log, priced),
+            sqrt=np.sqrt,
+        )
         d2 = d1 - vt
-        v = -np.exp(-0.0 * t_years) * norm_pdf(d1, exp=_each(math.exp, priced)) * d2 / sigma
+        v = -exp(-dividend * t_years) * norm_pdf(d1, exp=exp) * d2 / sigma
     return np.where(priced & np.isfinite(d1) & np.isfinite(v), v, np.nan)
 
 
@@ -116,22 +134,47 @@ def bs_charm_array(
     strike: NDArray[np.float64],
     t_years: NDArray[np.float64],
     sigma: NDArray[np.float64],
+    sign: NDArray[np.float64],
+    rate: NDArray[np.float64],
+    dividend: NDArray[np.float64],
 ) -> NDArray[np.float64]:
-    """Black-Scholes charm (dDelta/dt, calendar time) per share of each contract, r = q = 0.
+    """Black-Scholes-Merton charm (dDelta/dt, calendar time) per share of each contract.
 
-    Textbook (Haug) charm is dDelta/dT = -phi(d1) * [ r/(sigma*sqrt(T)) - d2/(2T) ]; calendar-time
-    charm is the negative of that, with the deliberate 0DTE-stable r-omission (r = 0). Identical
-    for calls and puts at q=0: Delta_put = Delta_call - 1, and the constant vanishes under
-    differentiation with respect to time. Sign verified against a finite-difference derivative of
-    the BS delta (tests/test_charm_sign_finite_difference.py).
-    NaN where it cannot be priced: an input not positive (or NaN, not known), a d1 or a charm
-    that is not finite.
+    `sign` is 1 for a call and -1 for a put; `rate` r and `dividend` q are the chain's
+    interestRate and dividendYield as decimals. The derivative of the Black-Scholes-Merton
+    delta (bsm_gamma_delta; Hull ch. 19) as time passes, T shrinking:
+    call: q e^(-qT) N(d1) - e^(-qT) phi(d1) [ (r - q)/(sigma sqrt(T)) - d2/(2T) ];
+    put: -q e^(-qT) N(-d1) - the same second term. At q = 0 a call's and a put's are equal.
+    Checked against a finite difference of that delta, calls and puts, on real chains'
+    inputs (tests/test_charm_sign_finite_difference.py).
+    NaN where it cannot be priced: an input not positive (or NaN, not known), a rate or a
+    dividend yield not known, a d1 or a charm that is not finite.
     """
     with np.errstate(all="ignore"):
-        priced = (spot > 0) & (strike > 0) & (t_years > 0) & (sigma > 0)
-        d1, vt = d1_vt(spot, strike, t_years, sigma, log=_each(math.log, priced), sqrt=np.sqrt)
+        priced = (
+            (spot > 0)
+            & (strike > 0)
+            & (t_years > 0)
+            & (sigma > 0)
+            & np.isfinite(rate)
+            & np.isfinite(dividend)
+        )
+        exp = _each(math.exp, priced)
+        d1, vt = d1_vt(
+            spot,
+            strike,
+            t_years,
+            sigma,
+            rate - dividend,
+            log=_each(math.log, priced),
+            sqrt=np.sqrt,
+        )
         d2 = d1 - vt
-        c = -norm_pdf(d1, exp=_each(math.exp, priced)) * (0.0 / vt - d2 / (2.0 * t_years))
+        cdf = 0.5 * (1.0 + _each(math.erf, priced)(sign * d1 / math.sqrt(2.0)))
+        c = exp(-dividend * t_years) * (
+            sign * dividend * cdf
+            - norm_pdf(d1, exp=exp) * ((rate - dividend) / vt - d2 / (2.0 * t_years))
+        )
     return np.where(priced & np.isfinite(d1) & np.isfinite(c), c, np.nan)
 
 
@@ -301,9 +344,19 @@ def compute_exposures_by_strike(
     slot = np.array([2 * at[c.strike] + (c.side != "CALL") for c in rows])
     slots = 2 * len(at)
     # Schwab's values as read (option_contract), one row per contract; not sent: NaN
-    oi, mult, volume, delta, gamma, iv, strike = np.array(
+    oi, mult, volume, delta, gamma, iv, strike, rate, dividend = np.array(
         [
-            (c.open_interest, c.multiplier, c.volume, c.delta, c.gamma, c.volatility, c.strike)
+            (
+                c.open_interest,
+                c.multiplier,
+                c.volume,
+                c.delta,
+                c.gamma,
+                c.volatility,
+                c.strike,
+                c.interest_rate,
+                c.dividend_yield,
+            )
             for c in rows
         ],
         float,
@@ -329,7 +382,8 @@ def compute_exposures_by_strike(
             float,
         )
         sigma = iv / 100.0  # schwab_iv_to_sigma: 0 or less is no sigma
-        vanna = bs_vanna_array(spt, strike, years, sigma)
+        # the chain's own rate and dividend yield, percents as sent (math_levels._profile_row)
+        vanna = bs_vanna_array(spt, strike, years, sigma, rate / 100.0, dividend / 100.0)
         terms.update(
             dex_dollars=delta * oi * mult * spt,
             gex_1pct=gamma * oi * mult * spt * spt * 0.01,  # $-GEX per 1% spot move

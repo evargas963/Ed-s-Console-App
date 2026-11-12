@@ -15,9 +15,9 @@
     "volume": 4199.0,
     "vol_oi": 0.8269896193771626,
     "dex": 108495476.27955325,
-    "vanna": 549381.0650691063,
+    "vanna": 549392.1619142124,
     "iv": 313.54237241,
-    "charm": 30835.52217086811,
+    "charm": 31096.66703997757,
     "pc_gex_lean": 4.291376321871279,
     "pc_vol_lean": 131.0
    },
@@ -31,9 +31,9 @@
      "volume": 1883.0,
      "vol_oi": 0.4397477814105558,
      "dex": 72802341.25308914,
-     "vanna": -138095.03659594056,
+     "vanna": -138844.4691648355,
      "iv": 69.84390359429035,
-     "charm": 7636.185255866363,
+     "charm": 7554.741208367406,
      "pc_gex_lean": 0.6102021568401835,
      "pc_vol_lean": -0.8617021276595744,
      "net_gex_text": "+3.26",
@@ -60,9 +60,9 @@
      "vanna_reason": null,
      "iv_text": "69.8",
      "iv_reason": null,
-     "charm_text": "+7.64",
+     "charm_text": "+7.55",
      "charm_reason": null,
-     "score": 56.437909494845975,
+     "score": 56.31189251346549,
      "score_text": "56",
      "missing": [],
      "contributions": [
@@ -112,9 +112,9 @@
       },
       {
        "label": "charm",
-       "text": "6.8",
-       "raw_text": "7.64",
-       "normalized_text": "0.85",
+       "text": "6.7",
+       "raw_text": "7.55",
+       "normalized_text": "0.83",
        "weight_text": "0.08"
       },
       {
@@ -152,9 +152,9 @@
      "volume": 855.0,
      "vol_oi": 0.3971202972596377,
      "dex": 32525747.05959507,
-     "vanna": -21026.881310452733,
+     "vanna": -21086.38353230856,
      "iv": 70.04638664167554,
-     "charm": 1169.6901177187365,
+     "charm": 1158.7968733884527,
      "pc_gex_lean": 0.20763371085454652,
      "pc_vol_lean": -7.095744680851064,
      "net_gex_text": "+0.39",
@@ -181,9 +181,9 @@
      "vanna_reason": null,
      "iv_text": "70.0",
      "iv_reason": null,
-     "charm_text": "+1.17",
+     "charm_text": "+1.16",
      "charm_reason": null,
-     "score": 17.208320708776675,
+     "score": 17.18799995296726,
      "score_text": "17",
      "missing": [],
      "contributions": [
@@ -241,7 +241,7 @@
       {
        "label": "charm",
        "text": "1.0",
-       "raw_text": "1.17",
+       "raw_text": "1.16",
        "normalized_text": "0.13",
        "weight_text": "0.08"
       },
@@ -273,9 +273,9 @@
      "volume": 960.0,
      "vol_oi": 0.17595307917888564,
      "dex": 87124622.63075846,
-     "vanna": -94956.637741154,
+     "vanna": -95053.81193626023,
      "iv": 71.19439301304084,
-     "charm": 5358.072585014106,
+     "charm": 5310.675197038056,
      "pc_gex_lean": 0.32330217397016225,
      "pc_vol_lean": -3.2747252747252746,
      "net_gex_text": "+1.40",
@@ -298,13 +298,13 @@
      "flow_reason": "no signed flow is produced",
      "dex_text": "+87.12",
      "dex_reason": null,
-     "vanna_text": "-0.09",
+     "vanna_text": "-0.10",
      "vanna_reason": null,
      "iv_text": "71.2",
      "iv_reason": null,
-     "charm_text": "+5.36",
+     "charm_text": "+5.31",
      "charm_reason": null,
-     "score": 41.15798789989202,
+     "score": 41.05962561107041,
      "score_text": "41",
      "missing": [],
      "contributions": [
@@ -361,15 +361,15 @@
       },
       {
        "label": "charm",
-       "text": "4.8",
-       "raw_text": "5.36",
-       "normalized_text": "0.60",
+       "text": "4.7",
+       "raw_text": "5.31",
+       "normalized_text": "0.59",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "4.2",
-       "raw_text": "0.09",
+       "raw_text": "0.10",
        "normalized_text": "0.60",
        "weight_text": "0.07"
       },
@@ -394,9 +394,9 @@
      "volume": 308.0,
      "vol_oi": 0.28230980751604035,
      "dex": 14708023.404242462,
-     "vanna": 6882.105471689339,
+     "vanna": 6879.534932230025,
      "iv": 72.40760987,
-     "charm": -394.1021197687469,
+     "charm": -390.53093304908634,
      "pc_gex_lean": -0.1651268512412869,
      "pc_vol_lean": -3.8113207547169807,
      "net_gex_text": "-0.09",
@@ -425,7 +425,7 @@
      "iv_reason": null,
      "charm_text": "-0.39",
      "charm_reason": null,
-     "score": 7.1048822998086445,
+     "score": 7.097162662097062,
      "score_text": "7",
      "missing": [],
      "contributions": [
@@ -482,7 +482,7 @@
       },
       {
        "label": "charm",
-       "text": "0.4",
+       "text": "0.3",
        "raw_text": "0.39",
        "normalized_text": "0.04",
        "weight_text": "0.08"
@@ -515,9 +515,9 @@
      "volume": 1853.0,
      "vol_oi": 0.4894347596407818,
      "dex": 44865043.357486404,
-     "vanna": 68469.28781673918,
+     "vanna": 68359.4364045784,
      "iv": 72.86854457999999,
-     "charm": -3945.8369986233038,
+     "charm": -3910.7302748938528,
      "pc_gex_lean": -0.5905172895502724,
      "pc_vol_lean": -46.76315789473684,
      "net_gex_text": "-0.80",
@@ -544,9 +544,9 @@
      "vanna_reason": null,
      "iv_text": "72.9",
      "iv_reason": null,
-     "charm_text": "-3.95",
+     "charm_text": "-3.91",
      "charm_reason": null,
-     "score": 34.85614271153436,
+     "score": 34.77579705377276,
      "score_text": "35",
      "missing": [],
      "contributions": [
@@ -603,9 +603,9 @@
       },
       {
        "label": "charm",
-       "text": "3.5",
-       "raw_text": "3.95",
-       "normalized_text": "0.44",
+       "text": "3.4",
+       "raw_text": "3.91",
+       "normalized_text": "0.43",
        "weight_text": "0.08"
       },
       {
@@ -636,9 +636,9 @@
      "volume": 152.0,
      "vol_oi": 0.07152941176470588,
      "dex": 19062158.05356197,
-     "vanna": 73670.3403097606,
+     "vanna": 73482.32762291552,
      "iv": 74.1740494,
-     "charm": -4321.6331678342995,
+     "charm": -4283.199518352656,
      "pc_gex_lean": -1.8042549053215544,
      "pc_vol_lean": -28.4,
      "net_gex_text": "-0.75",
@@ -665,9 +665,9 @@
      "vanna_reason": null,
      "iv_text": "74.2",
      "iv_reason": null,
-     "charm_text": "-4.32",
+     "charm_text": "-4.28",
      "charm_reason": null,
-     "score": 19.37716681820499,
+     "score": 19.286434625871813,
      "score_text": "19",
      "missing": [],
      "contributions": [
@@ -679,18 +679,18 @@
        "weight_text": "0.15"
       },
       {
-       "label": "charm",
-       "text": "3.8",
-       "raw_text": "4.32",
-       "normalized_text": "0.48",
-       "weight_text": "0.08"
-      },
-      {
        "label": "net gamma",
        "text": "3.8",
        "raw_text": "0.75",
        "normalized_text": "0.15",
        "weight_text": "0.25"
+      },
+      {
+       "label": "charm",
+       "text": "3.8",
+       "raw_text": "4.28",
+       "normalized_text": "0.47",
+       "weight_text": "0.08"
       }
      ],
      "factors": [
@@ -702,13 +702,6 @@
        "weight_text": "0.15"
       },
       {
-       "label": "charm",
-       "text": "3.8",
-       "raw_text": "4.32",
-       "normalized_text": "0.48",
-       "weight_text": "0.08"
-      },
-      {
        "label": "net gamma",
        "text": "3.8",
        "raw_text": "0.75",
@@ -716,10 +709,17 @@
        "weight_text": "0.25"
       },
       {
-       "label": "vanna",
-       "text": "3.3",
-       "raw_text": "0.07",
+       "label": "charm",
+       "text": "3.8",
+       "raw_text": "4.28",
        "normalized_text": "0.47",
+       "weight_text": "0.08"
+      },
+      {
+       "label": "vanna",
+       "text": "3.2",
+       "raw_text": "0.07",
+       "normalized_text": "0.46",
        "weight_text": "0.07"
       },
       {
@@ -757,9 +757,9 @@
      "volume": 621.0,
      "vol_oi": 0.13830734966592428,
      "dex": 46212977.6924643,
-     "vanna": 97798.59992405742,
+     "vanna": 97468.37896286984,
      "iv": 75.45619496,
-     "charm": -5836.208160087511,
+     "charm": -5783.42797174112,
      "pc_gex_lean": -1.2560986041270388,
      "pc_vol_lean": -3.2184873949579833,
      "net_gex_text": "-1.01",
@@ -786,10 +786,10 @@
      "vanna_reason": null,
      "iv_text": "75.5",
      "iv_reason": null,
-     "charm_text": "-5.84",
+     "charm_text": "-5.78",
      "charm_reason": null,
-     "score": 34.515551973947126,
-     "score_text": "35",
+     "score": 34.389185004872076,
+     "score_text": "34",
      "missing": [],
      "contributions": [
       {
@@ -800,18 +800,18 @@
        "weight_text": "0.15"
       },
       {
-       "label": "charm",
-       "text": "5.2",
-       "raw_text": "5.84",
-       "normalized_text": "0.65",
-       "weight_text": "0.08"
-      },
-      {
        "label": "net gamma",
        "text": "5.1",
        "raw_text": "1.01",
        "normalized_text": "0.20",
        "weight_text": "0.25"
+      },
+      {
+       "label": "charm",
+       "text": "5.1",
+       "raw_text": "5.78",
+       "normalized_text": "0.64",
+       "weight_text": "0.08"
       }
      ],
      "factors": [
@@ -823,13 +823,6 @@
        "weight_text": "0.15"
       },
       {
-       "label": "charm",
-       "text": "5.2",
-       "raw_text": "5.84",
-       "normalized_text": "0.65",
-       "weight_text": "0.08"
-      },
-      {
        "label": "net gamma",
        "text": "5.1",
        "raw_text": "1.01",
@@ -837,10 +830,17 @@
        "weight_text": "0.25"
       },
       {
+       "label": "charm",
+       "text": "5.1",
+       "raw_text": "5.78",
+       "normalized_text": "0.64",
+       "weight_text": "0.08"
+      },
+      {
        "label": "vanna",
        "text": "4.3",
        "raw_text": "0.10",
-       "normalized_text": "0.62",
+       "normalized_text": "0.61",
        "weight_text": "0.07"
       },
       {
@@ -878,9 +878,9 @@
      "volume": 73.0,
      "vol_oi": 0.06703397612488522,
      "dex": 8545886.70501621,
-     "vanna": 32979.21738637437,
+     "vanna": 32853.29712982689,
      "iv": 78.44313467191911,
-     "charm": -2046.8030611752044,
+     "charm": -2028.6008052517896,
      "pc_gex_lean": -2.9596975675062613,
      "pc_vol_lean": -71.0,
      "net_gex_text": "-0.31",
@@ -907,9 +907,9 @@
      "vanna_reason": null,
      "iv_text": "78.4",
      "iv_reason": null,
-     "charm_text": "-2.05",
+     "charm_text": "-2.03",
      "charm_reason": null,
-     "score": 9.190631259982034,
+     "score": 9.146371147526912,
      "score_text": "9",
      "missing": [],
      "contributions": [
@@ -923,8 +923,8 @@
       {
        "label": "charm",
        "text": "1.8",
-       "raw_text": "2.05",
-       "normalized_text": "0.23",
+       "raw_text": "2.03",
+       "normalized_text": "0.22",
        "weight_text": "0.08"
       },
       {
@@ -946,8 +946,8 @@
       {
        "label": "charm",
        "text": "1.8",
-       "raw_text": "2.05",
-       "normalized_text": "0.23",
+       "raw_text": "2.03",
+       "normalized_text": "0.22",
        "weight_text": "0.08"
       },
       {
@@ -959,7 +959,7 @@
       },
       {
        "label": "vanna",
-       "text": "1.5",
+       "text": "1.4",
        "raw_text": "0.03",
        "normalized_text": "0.21",
        "weight_text": "0.07"
@@ -999,9 +999,9 @@
      "volume": 132.0,
      "vol_oi": 0.06398448860882211,
      "dex": 19982435.339907747,
-     "vanna": 35825.991089423514,
+     "vanna": 35661.89040995425,
      "iv": 78.97351512745331,
-     "charm": -2239.0970666487997,
+     "charm": -2218.441818036479,
      "pc_gex_lean": -2.796905521715743,
      "pc_vol_lean": -31.0,
      "net_gex_text": "-0.40",
@@ -1028,9 +1028,9 @@
      "vanna_reason": null,
      "iv_text": "79.0",
      "iv_reason": null,
-     "charm_text": "-2.24",
+     "charm_text": "-2.22",
      "charm_reason": null,
-     "score": 13.956972376602089,
+     "score": 13.906783362197498,
      "score_text": "14",
      "missing": [],
      "contributions": [
@@ -1051,8 +1051,8 @@
       {
        "label": "charm",
        "text": "2.0",
-       "raw_text": "2.24",
-       "normalized_text": "0.25",
+       "raw_text": "2.22",
+       "normalized_text": "0.24",
        "weight_text": "0.08"
       }
      ],
@@ -1074,8 +1074,8 @@
       {
        "label": "charm",
        "text": "2.0",
-       "raw_text": "2.24",
-       "normalized_text": "0.25",
+       "raw_text": "2.22",
+       "normalized_text": "0.24",
        "weight_text": "0.08"
       },
       {
@@ -1089,7 +1089,7 @@
        "label": "vanna",
        "text": "1.6",
        "raw_text": "0.04",
-       "normalized_text": "0.23",
+       "normalized_text": "0.22",
        "weight_text": "0.07"
       },
       {
@@ -1120,9 +1120,9 @@
      "volume": 45.0,
      "vol_oi": 0.035685963521015066,
      "dex": 12539493.81986686,
-     "vanna": 17434.082296739045,
+     "vanna": 17350.893788458485,
      "iv": 82.60036186,
-     "charm": -1138.896547482078,
+     "charm": -1128.5923698460895,
      "pc_gex_lean": -4.291376321871279,
      "pc_vol_lean": -7.0,
      "net_gex_text": "-0.22",
@@ -1149,9 +1149,9 @@
      "vanna_reason": null,
      "iv_text": "82.6",
      "iv_reason": null,
-     "charm_text": "-1.14",
+     "charm_text": "-1.13",
      "charm_reason": null,
-     "score": 8.011194536928492,
+     "score": 7.985994798310491,
      "score_text": "8",
      "missing": [],
      "contributions": [
@@ -1202,8 +1202,8 @@
       {
        "label": "charm",
        "text": "1.0",
-       "raw_text": "1.14",
-       "normalized_text": "0.13",
+       "raw_text": "1.13",
+       "normalized_text": "0.12",
        "weight_text": "0.08"
       },
       {
@@ -1241,9 +1241,9 @@
      "volume": 299.0,
      "vol_oi": 0.08122792719369737,
      "dex": 24921521.60466991,
-     "vanna": 76314.33885410563,
+     "vanna": 75905.72641428745,
      "iv": 83.50422821,
-     "charm": -5039.852743879538,
+     "charm": -4993.267028743839,
      "pc_gex_lean": null,
      "pc_vol_lean": -3.0677966101694913,
      "net_gex_text": "-0.72",
@@ -1270,9 +1270,9 @@
      "vanna_reason": null,
      "iv_text": "83.5",
      "iv_reason": null,
-     "charm_text": "-5.04",
+     "charm_text": "-4.99",
      "charm_reason": null,
-     "score": 25.820596530100165,
+     "score": 25.706576033822472,
      "score_text": "26",
      "missing": [],
      "contributions": [
@@ -1285,9 +1285,9 @@
       },
       {
        "label": "charm",
-       "text": "4.5",
-       "raw_text": "5.04",
-       "normalized_text": "0.56",
+       "text": "4.4",
+       "raw_text": "4.99",
+       "normalized_text": "0.55",
        "weight_text": "0.08"
       },
       {
@@ -1308,9 +1308,9 @@
       },
       {
        "label": "charm",
-       "text": "4.5",
-       "raw_text": "5.04",
-       "normalized_text": "0.56",
+       "text": "4.4",
+       "raw_text": "4.99",
+       "normalized_text": "0.55",
        "weight_text": "0.08"
       },
       {
@@ -1322,7 +1322,7 @@
       },
       {
        "label": "vanna",
-       "text": "3.4",
+       "text": "3.3",
        "raw_text": "0.08",
        "normalized_text": "0.48",
        "weight_text": "0.07"
@@ -1634,9 +1634,9 @@
     "volume": 2768.0,
     "vol_oi": 2.0813397129186604,
     "dex": 307780593.65682524,
-    "vanna": 1511361.7660618115,
+    "vanna": 1494091.6610103934,
     "iv": 236.22027897,
-    "charm": 17961.413078190126,
+    "charm": 18349.517841404617,
     "pc_gex_lean": 16.689595329162245,
     "pc_vol_lean": 78.0
    },
@@ -1650,9 +1650,9 @@
      "volume": 201.0,
      "vol_oi": 0.2960235640648012,
      "dex": 3302187.470770171,
-     "vanna": 78607.40586814152,
+     "vanna": 78655.8283792238,
      "iv": 63.19750973863636,
-     "charm": -948.6742641534962,
+     "charm": -966.698537896813,
      "pc_gex_lean": 0.9835283452503556,
      "pc_vol_lean": 0.953125,
      "net_gex_text": "+0.45",
@@ -1679,9 +1679,9 @@
      "vanna_reason": null,
      "iv_text": "63.2",
      "iv_reason": null,
-     "charm_text": "-0.95",
+     "charm_text": "-0.97",
      "charm_reason": null,
-     "score": 13.344263560495282,
+     "score": 13.370762409847128,
      "score_text": "13",
      "missing": [],
      "contributions": [
@@ -1739,7 +1739,7 @@
       {
        "label": "charm",
        "text": "1.3",
-       "raw_text": "0.95",
+       "raw_text": "0.97",
        "normalized_text": "0.25",
        "weight_text": "0.05"
       },
@@ -1892,9 +1892,9 @@
      "volume": 310.0,
      "vol_oi": 0.05874549933674436,
      "dex": 31883135.552943453,
-     "vanna": 602110.0361684505,
+     "vanna": 600666.3926988769,
      "iv": 62.65728141776446,
-     "charm": -7204.482937960764,
+     "charm": -7342.192505445739,
      "pc_gex_lean": 0.9779150838968407,
      "pc_vol_lean": 0.9802631578947368,
      "net_gex_text": "+4.02",
@@ -1921,7 +1921,7 @@
      "vanna_reason": null,
      "iv_text": "62.7",
      "iv_reason": null,
-     "charm_text": "-7.20",
+     "charm_text": "-7.34",
      "charm_reason": null,
      "score": 63.6915619547742,
      "score_text": "64",
@@ -1974,7 +1974,7 @@
       {
        "label": "charm",
        "text": "5.0",
-       "raw_text": "7.20",
+       "raw_text": "7.34",
        "normalized_text": "1.00",
        "weight_text": "0.05"
       },
@@ -2134,9 +2134,9 @@
      "volume": 154.0,
      "vol_oi": 0.14405986903648269,
      "dex": 8366138.900219321,
-     "vanna": 106710.42266919269,
+     "vanna": 106049.78641361251,
      "iv": 62.15992837000001,
-     "charm": -1266.669521603324,
+     "charm": -1291.782355084047,
      "pc_gex_lean": 0.939516237601036,
      "pc_vol_lean": 0.8153846153846154,
      "net_gex_text": "+0.86",
@@ -2163,9 +2163,9 @@
      "vanna_reason": null,
      "iv_text": "62.2",
      "iv_reason": null,
-     "charm_text": "-1.27",
+     "charm_text": "-1.29",
      "charm_reason": null,
-     "score": 19.39928555270111,
+     "score": 19.413490814550087,
      "score_text": "19",
      "missing": [],
      "contributions": [
@@ -2223,7 +2223,7 @@
       {
        "label": "charm",
        "text": "1.7",
-       "raw_text": "1.27",
+       "raw_text": "1.29",
        "normalized_text": "0.33",
        "weight_text": "0.05"
       },
@@ -2376,9 +2376,9 @@
      "volume": 2768.0,
      "vol_oi": 0.15055751971716072,
      "dex": 174283065.71039993,
-     "vanna": 1511361.7660618115,
+     "vanna": 1494091.6610103934,
      "iv": 62.23376767,
-     "charm": -17961.413078190126,
+     "charm": -18349.517841404617,
      "pc_gex_lean": 0.9139905817933016,
      "pc_vol_lean": 0.9952813067150635,
      "net_gex_text": "+15.48",
@@ -2401,11 +2401,11 @@
      "flow_reason": "no signed flow is produced",
      "dex_text": "+174.28",
      "dex_reason": null,
-     "vanna_text": "+1.51",
+     "vanna_text": "+1.49",
      "vanna_reason": null,
      "iv_text": "62.2",
      "iv_reason": null,
-     "charm_text": "-17.96",
+     "charm_text": "-18.35",
      "charm_reason": null,
      "score": 82.06095514380772,
      "score_text": "82",
@@ -2428,7 +2428,7 @@
       {
        "label": "vanna",
        "text": "10.0",
-       "raw_text": "1.51",
+       "raw_text": "1.49",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       }
@@ -2451,7 +2451,7 @@
       {
        "label": "vanna",
        "text": "10.0",
-       "raw_text": "1.51",
+       "raw_text": "1.49",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       },
@@ -2472,7 +2472,7 @@
       {
        "label": "charm",
        "text": "5.0",
-       "raw_text": "17.96",
+       "raw_text": "18.35",
        "normalized_text": "1.00",
        "weight_text": "0.05"
       },
@@ -2497,9 +2497,9 @@
      "volume": 41.0,
      "vol_oi": 0.020438683948155532,
      "dex": 19241314.145685922,
-     "vanna": 170840.7879874951,
+     "vanna": 168299.8351883207,
      "iv": 61.76060007574988,
-     "charm": -2014.93697335395,
+     "charm": -2062.2610209771715,
      "pc_gex_lean": 0.9796558867814134,
      "pc_vol_lean": 0.71875,
      "net_gex_text": "+2.02",
@@ -2526,9 +2526,9 @@
      "vanna_reason": null,
      "iv_text": "61.8",
      "iv_reason": null,
-     "charm_text": "-2.01",
+     "charm_text": "-2.06",
      "charm_reason": null,
-     "score": 35.686041210232524,
+     "score": 35.67105695256668,
      "score_text": "36",
      "missing": [],
      "contributions": [
@@ -2579,7 +2579,7 @@
       {
        "label": "charm",
        "text": "2.7",
-       "raw_text": "2.01",
+       "raw_text": "2.06",
        "normalized_text": "0.53",
        "weight_text": "0.05"
       },
@@ -2618,9 +2618,9 @@
      "volume": 227.0,
      "vol_oi": 0.08912446014919513,
      "dex": 28279056.73086126,
-     "vanna": 155225.62639864592,
+     "vanna": 152207.80094505273,
      "iv": 61.87646878215213,
-     "charm": -1834.428862062458,
+     "charm": -1882.5262637871706,
      "pc_gex_lean": 0.8858475864794789,
      "pc_vol_lean": 0.9820627802690582,
      "net_gex_text": "+2.19",
@@ -2643,13 +2643,13 @@
      "flow_reason": "no signed flow is produced",
      "dex_text": "+28.28",
      "dex_reason": null,
-     "vanna_text": "+0.16",
+     "vanna_text": "+0.15",
      "vanna_reason": null,
      "iv_text": "61.9",
      "iv_reason": null,
-     "charm_text": "-1.83",
+     "charm_text": "-1.88",
      "charm_reason": null,
-     "score": 41.66533149114034,
+     "score": 41.63561844365595,
      "score_text": "42",
      "missing": [],
      "contributions": [
@@ -2670,7 +2670,7 @@
       {
        "label": "vanna",
        "text": "4.9",
-       "raw_text": "0.16",
+       "raw_text": "0.15",
        "normalized_text": "0.49",
        "weight_text": "0.10"
       }
@@ -2693,7 +2693,7 @@
       {
        "label": "vanna",
        "text": "4.9",
-       "raw_text": "0.16",
+       "raw_text": "0.15",
        "normalized_text": "0.49",
        "weight_text": "0.10"
       },
@@ -2714,7 +2714,7 @@
       {
        "label": "charm",
        "text": "2.4",
-       "raw_text": "1.83",
+       "raw_text": "1.88",
        "normalized_text": "0.49",
        "weight_text": "0.05"
       },
@@ -2739,9 +2739,9 @@
      "volume": 238.0,
      "vol_oi": 0.569377990430622,
      "dex": 5636087.683168381,
-     "vanna": 6257.156631715989,
+     "vanna": 6095.551270913005,
      "iv": 61.53418120908537,
-     "charm": -73.62739042817942,
+     "charm": -75.86526303579403,
      "pc_gex_lean": 0.38002832619599225,
      "pc_vol_lean": 0.8930232558139535,
      "net_gex_text": "+0.11",
@@ -2768,9 +2768,9 @@
      "vanna_reason": null,
      "iv_text": "61.5",
      "iv_reason": null,
-     "charm_text": "-0.07",
+     "charm_text": "-0.08",
      "charm_reason": null,
-     "score": 6.572950372232284,
+     "score": 6.570874587390942,
      "score_text": "7",
      "missing": [],
      "contributions": [
@@ -2835,7 +2835,7 @@
       {
        "label": "charm",
        "text": "0.1",
-       "raw_text": "0.07",
+       "raw_text": "0.08",
        "normalized_text": "0.02",
        "weight_text": "0.05"
       },
@@ -2860,9 +2860,9 @@
      "volume": 674.0,
      "vol_oi": 0.07815398886827458,
      "dex": 110010748.44648893,
-     "vanna": 305668.0902524565,
+     "vanna": 294722.7909691059,
      "iv": 61.84808497000001,
-     "charm": -3610.125800332465,
+     "charm": -3750.666802187423,
      "pc_gex_lean": 0.8402701530010426,
      "pc_vol_lean": 0.8112874779541446,
      "net_gex_text": "+7.08",
@@ -2885,13 +2885,13 @@
      "flow_reason": "no signed flow is produced",
      "dex_text": "+110.01",
      "dex_reason": null,
-     "vanna_text": "+0.31",
+     "vanna_text": "+0.29",
      "vanna_reason": null,
      "iv_text": "61.8",
      "iv_reason": null,
-     "charm_text": "-3.61",
+     "charm_text": "-3.75",
      "charm_reason": null,
-     "score": 78.67678365880975,
+     "score": 78.51821419178607,
      "score_text": "79",
      "missing": [],
      "contributions": [
@@ -2941,9 +2941,9 @@
       },
       {
        "label": "vanna",
-       "text": "9.6",
-       "raw_text": "0.31",
-       "normalized_text": "0.96",
+       "text": "9.4",
+       "raw_text": "0.29",
+       "normalized_text": "0.94",
        "weight_text": "0.10"
       },
       {
@@ -2955,9 +2955,9 @@
       },
       {
        "label": "charm",
-       "text": "4.8",
-       "raw_text": "3.61",
-       "normalized_text": "0.95",
+       "text": "4.9",
+       "raw_text": "3.75",
+       "normalized_text": "0.97",
        "weight_text": "0.05"
       },
       {
@@ -3254,9 +3254,9 @@
    "volume": 2768.0,
    "vol_oi": 2.0813397129186604,
    "dex": 307780593.65682524,
-   "vanna": 1511361.7660618115,
+   "vanna": 1494091.6610103934,
    "iv": 236.22027897,
-   "charm": 17961.413078190126,
+   "charm": 18349.517841404617,
    "pc_gex_lean": 16.689595329162245,
    "pc_vol_lean": 78.0
   },
@@ -3270,9 +3270,9 @@
     "volume": 201.0,
     "vol_oi": 0.2960235640648012,
     "dex": 3302187.470770171,
-    "vanna": 78607.40586814152,
+    "vanna": 78655.8283792238,
     "iv": 63.19750973863636,
-    "charm": -948.6742641534962,
+    "charm": -966.698537896813,
     "pc_gex_lean": 0.9835283452503556,
     "pc_vol_lean": 0.953125,
     "net_gex_text": "+0.45",
@@ -3299,9 +3299,9 @@
     "vanna_reason": null,
     "iv_text": "63.2",
     "iv_reason": null,
-    "charm_text": "-0.95",
+    "charm_text": "-0.97",
     "charm_reason": null,
-    "score": 13.344263560495282,
+    "score": 13.370762409847128,
     "score_text": "13",
     "missing": [],
     "contributions": [
@@ -3359,7 +3359,7 @@
      {
       "label": "charm",
       "text": "1.3",
-      "raw_text": "0.95",
+      "raw_text": "0.97",
       "normalized_text": "0.25",
       "weight_text": "0.05"
      },
@@ -3512,9 +3512,9 @@
     "volume": 310.0,
     "vol_oi": 0.05874549933674436,
     "dex": 31883135.552943453,
-    "vanna": 602110.0361684505,
+    "vanna": 600666.3926988769,
     "iv": 62.65728141776446,
-    "charm": -7204.482937960764,
+    "charm": -7342.192505445739,
     "pc_gex_lean": 0.9779150838968407,
     "pc_vol_lean": 0.9802631578947368,
     "net_gex_text": "+4.02",
@@ -3541,7 +3541,7 @@
     "vanna_reason": null,
     "iv_text": "62.7",
     "iv_reason": null,
-    "charm_text": "-7.20",
+    "charm_text": "-7.34",
     "charm_reason": null,
     "score": 63.6915619547742,
     "score_text": "64",
@@ -3594,7 +3594,7 @@
      {
       "label": "charm",
       "text": "5.0",
-      "raw_text": "7.20",
+      "raw_text": "7.34",
       "normalized_text": "1.00",
       "weight_text": "0.05"
      },
@@ -3754,9 +3754,9 @@
     "volume": 154.0,
     "vol_oi": 0.14405986903648269,
     "dex": 8366138.900219321,
-    "vanna": 106710.42266919269,
+    "vanna": 106049.78641361251,
     "iv": 62.15992837000001,
-    "charm": -1266.669521603324,
+    "charm": -1291.782355084047,
     "pc_gex_lean": 0.939516237601036,
     "pc_vol_lean": 0.8153846153846154,
     "net_gex_text": "+0.86",
@@ -3783,9 +3783,9 @@
     "vanna_reason": null,
     "iv_text": "62.2",
     "iv_reason": null,
-    "charm_text": "-1.27",
+    "charm_text": "-1.29",
     "charm_reason": null,
-    "score": 19.39928555270111,
+    "score": 19.413490814550087,
     "score_text": "19",
     "missing": [],
     "contributions": [
@@ -3843,7 +3843,7 @@
      {
       "label": "charm",
       "text": "1.7",
-      "raw_text": "1.27",
+      "raw_text": "1.29",
       "normalized_text": "0.33",
       "weight_text": "0.05"
      },
@@ -3996,9 +3996,9 @@
     "volume": 2768.0,
     "vol_oi": 0.15055751971716072,
     "dex": 174283065.71039993,
-    "vanna": 1511361.7660618115,
+    "vanna": 1494091.6610103934,
     "iv": 62.23376767,
-    "charm": -17961.413078190126,
+    "charm": -18349.517841404617,
     "pc_gex_lean": 0.9139905817933016,
     "pc_vol_lean": 0.9952813067150635,
     "net_gex_text": "+15.48",
@@ -4021,11 +4021,11 @@
     "flow_reason": "no signed flow is produced",
     "dex_text": "+174.28",
     "dex_reason": null,
-    "vanna_text": "+1.51",
+    "vanna_text": "+1.49",
     "vanna_reason": null,
     "iv_text": "62.2",
     "iv_reason": null,
-    "charm_text": "-17.96",
+    "charm_text": "-18.35",
     "charm_reason": null,
     "score": 82.06095514380772,
     "score_text": "82",
@@ -4048,7 +4048,7 @@
      {
       "label": "vanna",
       "text": "10.0",
-      "raw_text": "1.51",
+      "raw_text": "1.49",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      }
@@ -4071,7 +4071,7 @@
      {
       "label": "vanna",
       "text": "10.0",
-      "raw_text": "1.51",
+      "raw_text": "1.49",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      },
@@ -4092,7 +4092,7 @@
      {
       "label": "charm",
       "text": "5.0",
-      "raw_text": "17.96",
+      "raw_text": "18.35",
       "normalized_text": "1.00",
       "weight_text": "0.05"
      },
@@ -4117,9 +4117,9 @@
     "volume": 41.0,
     "vol_oi": 0.020438683948155532,
     "dex": 19241314.145685922,
-    "vanna": 170840.7879874951,
+    "vanna": 168299.8351883207,
     "iv": 61.76060007574988,
-    "charm": -2014.93697335395,
+    "charm": -2062.2610209771715,
     "pc_gex_lean": 0.9796558867814134,
     "pc_vol_lean": 0.71875,
     "net_gex_text": "+2.02",
@@ -4146,9 +4146,9 @@
     "vanna_reason": null,
     "iv_text": "61.8",
     "iv_reason": null,
-    "charm_text": "-2.01",
+    "charm_text": "-2.06",
     "charm_reason": null,
-    "score": 35.686041210232524,
+    "score": 35.67105695256668,
     "score_text": "36",
     "missing": [],
     "contributions": [
@@ -4199,7 +4199,7 @@
      {
       "label": "charm",
       "text": "2.7",
-      "raw_text": "2.01",
+      "raw_text": "2.06",
       "normalized_text": "0.53",
       "weight_text": "0.05"
      },
@@ -4238,9 +4238,9 @@
     "volume": 227.0,
     "vol_oi": 0.08912446014919513,
     "dex": 28279056.73086126,
-    "vanna": 155225.62639864592,
+    "vanna": 152207.80094505273,
     "iv": 61.87646878215213,
-    "charm": -1834.428862062458,
+    "charm": -1882.5262637871706,
     "pc_gex_lean": 0.8858475864794789,
     "pc_vol_lean": 0.9820627802690582,
     "net_gex_text": "+2.19",
@@ -4263,13 +4263,13 @@
     "flow_reason": "no signed flow is produced",
     "dex_text": "+28.28",
     "dex_reason": null,
-    "vanna_text": "+0.16",
+    "vanna_text": "+0.15",
     "vanna_reason": null,
     "iv_text": "61.9",
     "iv_reason": null,
-    "charm_text": "-1.83",
+    "charm_text": "-1.88",
     "charm_reason": null,
-    "score": 41.66533149114034,
+    "score": 41.63561844365595,
     "score_text": "42",
     "missing": [],
     "contributions": [
@@ -4290,7 +4290,7 @@
      {
       "label": "vanna",
       "text": "4.9",
-      "raw_text": "0.16",
+      "raw_text": "0.15",
       "normalized_text": "0.49",
       "weight_text": "0.10"
      }
@@ -4313,7 +4313,7 @@
      {
       "label": "vanna",
       "text": "4.9",
-      "raw_text": "0.16",
+      "raw_text": "0.15",
       "normalized_text": "0.49",
       "weight_text": "0.10"
      },
@@ -4334,7 +4334,7 @@
      {
       "label": "charm",
       "text": "2.4",
-      "raw_text": "1.83",
+      "raw_text": "1.88",
       "normalized_text": "0.49",
       "weight_text": "0.05"
      },
@@ -4359,9 +4359,9 @@
     "volume": 238.0,
     "vol_oi": 0.569377990430622,
     "dex": 5636087.683168381,
-    "vanna": 6257.156631715989,
+    "vanna": 6095.551270913005,
     "iv": 61.53418120908537,
-    "charm": -73.62739042817942,
+    "charm": -75.86526303579403,
     "pc_gex_lean": 0.38002832619599225,
     "pc_vol_lean": 0.8930232558139535,
     "net_gex_text": "+0.11",
@@ -4388,9 +4388,9 @@
     "vanna_reason": null,
     "iv_text": "61.5",
     "iv_reason": null,
-    "charm_text": "-0.07",
+    "charm_text": "-0.08",
     "charm_reason": null,
-    "score": 6.572950372232284,
+    "score": 6.570874587390942,
     "score_text": "7",
     "missing": [],
     "contributions": [
@@ -4455,7 +4455,7 @@
      {
       "label": "charm",
       "text": "0.1",
-      "raw_text": "0.07",
+      "raw_text": "0.08",
       "normalized_text": "0.02",
       "weight_text": "0.05"
      },
@@ -4480,9 +4480,9 @@
     "volume": 674.0,
     "vol_oi": 0.07815398886827458,
     "dex": 110010748.44648893,
-    "vanna": 305668.0902524565,
+    "vanna": 294722.7909691059,
     "iv": 61.84808497000001,
-    "charm": -3610.125800332465,
+    "charm": -3750.666802187423,
     "pc_gex_lean": 0.8402701530010426,
     "pc_vol_lean": 0.8112874779541446,
     "net_gex_text": "+7.08",
@@ -4505,13 +4505,13 @@
     "flow_reason": "no signed flow is produced",
     "dex_text": "+110.01",
     "dex_reason": null,
-    "vanna_text": "+0.31",
+    "vanna_text": "+0.29",
     "vanna_reason": null,
     "iv_text": "61.8",
     "iv_reason": null,
-    "charm_text": "-3.61",
+    "charm_text": "-3.75",
     "charm_reason": null,
-    "score": 78.67678365880975,
+    "score": 78.51821419178607,
     "score_text": "79",
     "missing": [],
     "contributions": [
@@ -4561,9 +4561,9 @@
      },
      {
       "label": "vanna",
-      "text": "9.6",
-      "raw_text": "0.31",
-      "normalized_text": "0.96",
+      "text": "9.4",
+      "raw_text": "0.29",
+      "normalized_text": "0.94",
       "weight_text": "0.10"
      },
      {
@@ -4575,9 +4575,9 @@
      },
      {
       "label": "charm",
-      "text": "4.8",
-      "raw_text": "3.61",
-      "normalized_text": "0.95",
+      "text": "4.9",
+      "raw_text": "3.75",
+      "normalized_text": "0.97",
       "weight_text": "0.05"
      },
      {
