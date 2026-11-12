@@ -38,6 +38,8 @@ _MARKETS = [
 TK = server.ticker_storage_key(_SET["ticker"])
 #: the window a page asks: Auto, following the price
 AUTO = {"scope": "auto", "centre": None, "shift": 0}
+#: a date Schwab lists no AMZN expiry on in that chain (a Saturday)
+MISSING_EXPIRY = "2026-11-14"
 E2E_PANELS = Path(__file__).resolve().parent / "e2e" / "fixtures" / "panels_amzn_two_day.json"
 
 
@@ -55,7 +57,8 @@ def build_e2e_panels(folder: Path) -> dict:
 
     `folder` holds the database the two captures are stored in. At the newer capture's instant:
     the strikes in the Auto and Wider windows, the levels (terrain), the heatmap (surface, Auto,
-    every column and expiry) and the front expiry's chain. Regenerate the browser tests' file
+    every column and expiry; and asked for an expiry the chain does not list) and the front
+    expiry's chain. Regenerate the browser tests' file
     with write_e2e_panels.
     """
     db = folder / "ed_console.db"
@@ -91,6 +94,9 @@ def build_e2e_panels(folder: Path) -> dict:
                     "strikes_wider": server.strikes(TK, at, {**AUTO, "scope": "wider"}),
                     "terrain": server.terrain(TK, at),
                     "surface": server.gamma_surface(TK, at, {**AUTO, "cols": None, "expiry": None}),
+                    "surface_missing_expiry": server.gamma_surface(
+                        TK, at, {**AUTO, "cols": None, "expiry": MISSING_EXPIRY}
+                    ),
                     "chain": server.chain(TK, at, {"expiry": None}),
                 }
             )
@@ -116,6 +122,7 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(tmp_path):
     assert json.loads(E2E_PANELS.read_text(encoding="utf-8")) == panels
     # what the set is for: a live screen, several expiries, a prior day compared
     assert {panels[name]["levels_state"] for name in panels} == {"LIVE"}
+    assert panels["surface_missing_expiry"]["view"]["missing_expiry"] == MISSING_EXPIRY
     assert len(panels["surface"]["expirations"]) == len(_SET["captures"][1]["rows"])
     assert panels["strikes"]["migration"]["all"]["compared"] is True
     assert panels["terrain"]["spot"] == _QUOTE["native"]["LAST_PRICE"]

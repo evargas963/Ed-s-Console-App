@@ -29,27 +29,27 @@ const path = require('path');
 // The served window (server.py _surface_view): the cells to draw, each with `spot` (the row at
 // the price) and the `view` -- the centre, the coverage words and each measure's colour scale.
 // The page draws these; it picks and counts nothing.
-const WARMING = { state: 'warming', label: 'WARMING', title: 'no cell on screen has a contract yet' };
-function view(over = {}) {
-  return Object.assign({ centre: 583, scope: 'auto', coverage: WARMING,
-    max_abs: { gex: 958600, dex: null, oi: null, volume: null }, missing_expiry: null }, over);
+//
+// The base panels are the server's own answers on AMZN's real chain of 2026-11-12 10:39 ET, 24
+// expiries, levels LIVE, the prior day's close compared (held to the server by
+// tests/test_e2e_panels_two_day_v1.py). A test's induced condition is that answer with the
+// named part changed.
+const REAL = require('./fixtures/panels_amzn_two_day.json');
+const SURFACE = REAL.surface, TERRAIN = REAL.terrain, STRIKES = REAL.strikes, CHAIN = REAL.chain;
+const K = SURFACE.spot_strike;                       // 270, the strike at the price
+const EXPIRIES = SURFACE.expirations.map((e) => e.expiry);
+const E1 = EXPIRIES[0], E2 = EXPIRIES[1];            // 2026-11-13 (the front one), 2026-11-16
+const MISSING = REAL.surface_missing_expiry.view.missing_expiry;   // 2026-11-14: no AMZN expiry
+const CELL_K = SURFACE.cells.find((c) => c.strike === K);
+// a served cell cut to its first `n` columns
+function cut(cell, n) {
+  return Object.fromEntries(Object.entries(cell).map(([k, v]) => [k, Array.isArray(v) ? v.slice(0, n) : v]));
 }
-const SURFACE = {
-  ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, front_expiry: '2026-09-11',
-  source: 'terrain_live_cache', chain_basis: 'full',
-  levels_state: 'LIVE', levels_age_text: '3s', levels_stale_reason: '',
-  complete: false,
-  spot_as_of_ts_utc: 1757000200, spot_source: 'last',
-  expirations: [{ expiry: '2026-09-11', dte: 2, front: true }, { expiry: '2026-09-18', dte: 9, front: false }],
-  strikes: [580, 583, 586],
-  cells: [
-    { strike: 580, gex: [-90000, null], spot: false },
-    { strike: 583, gex: [958600, 300000], spot: true },
-    { strike: 586, gex: [-264500, 120000], spot: false },
-  ],
-  view: view(),
-  provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
-};
+function view(over = {}) { return Object.assign({}, SURFACE.view, over); }
+// the heatmap cell at the price in the front expiry (51,735,223.55), and the surface's most
+// negative cell, 262.5 on 2026-11-20 (-3,907,027.65)
+const CELL = '.hcell[data-strike="' + K + '"][data-expiry="' + E1 + '"]';
+const CELL_NEG = '.hcell[data-strike="262.5"][data-expiry="' + EXPIRIES[3] + '"]';
 // SPY's surface as captured 2026-09-10 pre-market, with the served window the route adds
 function realSpySurface() {
   const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
@@ -89,8 +89,8 @@ function surfaceWithContracts(nExps, nStrikes) {
 // for a single strike, each `{call, put}` naming that leg's state ('live'|'stale'|
 // 'unavailable', or omitted entirely for "no contract on this leg").
 function surfaceWithStreamState(perCol) {
-  var strike = 583;
-  var expirations = perCol.map(function (_, i) { return { expiry: '2026-09-1' + (1 + i), dte: i + 1 }; });
+  var strike = K;
+  var expirations = perCol.map(function (_, i) { return SURFACE.expirations[i]; });
   var contracts = perCol.map(function (legs, i) {
     return { call: legs.call ? 'C' + i : null, put: legs.put ? 'P' + i : null };
   });
@@ -116,39 +116,19 @@ function surfaceWithStreamState(perCol) {
     view: view({ max_abs: { gex: 12345 } }),
   });
 }
-const TERRAIN = {
-  ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
-  absolute_gamma_strike: 583, lvp: 590, hvp: 560, net_gex_at_spot: 2140000000,
-  regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_mark_reason: null,
-  expiries: ['2026-09-11', '2026-09-18'], pcr_by_expiry: { '2026-09-11': 0.87, '2026-09-18': 1.13 },
-  pcr_volume_by_expiry: { '2026-09-11': 1.42, '2026-09-18': 0.64 },
-  pcr_all: 1.02, pcr_volume_all: 0.93,
-};
-const STRIKES = {
-  ticker: '$SPX', spot: 583.41, spot_strike: 583, max_abs_row: [583, 958600, 5400],
-  views: { all: { centre: 583, max_abs: 958600 } },
-  today: { all: [[586, -264500, 1200], [583, 958600, 5400], [580, -90000, 900]] },
-};
+// price bars around the real price (the set holds no bars)
 const BARS = {
-  ticker: '$SPX', n: 8,
-  bars: [582.6, 582.9, 583.1, 582.8, 583.3, 583.5, 583.2, 583.41].map(function (c, i) {
+  ticker: 'AMZN', n: 8,
+  bars: [-0.8, -0.5, -0.3, -0.6, -0.1, 0.1, -0.2, 0].map(function (d, i) {
+    const c = TERRAIN.spot + d;
     return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i };
   }),
 };
-const CHAIN = {
-  ticker: '$SPX', spot: 583.41, spot_strike: 583, expiry: '2026-09-11', status: 'ok',
-  scope: { kind: 'complete_single_expiry' }, net_gex_by_strike: [], adjusted_deliverable_symbols: [],
-  last_trading_day_et: {},
-  contracts: [
-    { putCall: 'CALL', strikePrice: 583, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
-    { putCall: 'PUT', strikePrice: 583, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' },
-  ],
-};
+// the call at the price in the front expiry's chain, as Schwab sent it
+const CALL_K = CHAIN.contracts.find((c) => c.strikePrice === K && c.putCall === 'CALL');
 
 // The capture daemon's price socket, stood in for (tests/e2e/fixtures/price_socket.js).
 const { mockPriceSocket, priceRow, served, panelFrame, chainAt } = require('./fixtures/price_socket');
-// The chain panel's fields the program derives from `contracts` (tests/e2e/fixtures/served_chain.js).
-const { served: servedChain } = require('./fixtures/served_chain');
 // The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
 const { routeWatchlist } = require('./fixtures/watchlist');
 // The page's requests, watched until its work runs out (tests/e2e/fixtures/settled.js).
@@ -167,9 +147,9 @@ async function intercept(page) {
   await page.route('**/api/flow-contract', (route) => route.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify({ ok: true, contract: route.request().postDataJSON().contract }) }));
   await routeWatchlist(page, ['SPY']);
-  panels = { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE, chain: chainAt(servedChain(CHAIN)),
+  panels = { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE, chain: chainAt(CHAIN),
     bars: BARS, tape: { available: false } };
-  sock = await pushExpiries(page, ['2026-09-11', '2026-09-18'], undefined, panels);
+  sock = await pushExpiries(page, EXPIRIES, undefined, panels);
 }
 
 test.describe('Ed Console shell + gamma heatmap', () => {
@@ -193,11 +173,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveClass(/unknown/);
   });
 
-  // one surface cell, 583 on 2026-09-11, holding `value` (the program's surface of a ticker)
+  // induced: the real surface cut to one cell, the strike at the price in the front expiry,
+  // holding `value` (the program's surface of a ticker)
   function oneCell(value, seq, tk) {
     return Object.assign({}, SURFACE, tk ? { ticker: tk, symbol: tk } : {}, {
-      strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-      cells: [{ strike: 583, gex: [value] }], surface_seq: seq });
+      strikes: [K], expirations: SURFACE.expirations.slice(0, 1),
+      cells: [Object.assign(cut(CELL_K, 1), { gex: [value] })], surface_seq: seq });
   }
 
   test('new levels reach the heatmap on the page\'s socket, with no read and no event of the page', async ({ page }) => {
@@ -205,7 +186,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // (server._levels_changed), and the page asks for nothing
     panels.surface = oneCell(1000, 1);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$1.0K');
     const asked = sock.subscribes.length;
     panels.surface = oneCell(2000, 2);
@@ -221,7 +202,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // through the whole burst" from "kept converging".
     panels.surface = oneCell(1000, 1);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$1.0K');   // the initial render
     let call = 1;
     for (let i = 0; i < 6; i++) {
@@ -258,7 +239,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(() => sendSpy !== null).toBe(true);   // SPY's surface is asked, not yet sent
     await page.locator('#symInput').fill('AAPL');
     await page.locator('#symInput').press('Enter');
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$9.0K', { timeout: 3000 });
     sendSpy();                                                 // SPY's, late
     await page.waitForTimeout(200);
@@ -267,21 +248,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('Strike Detail keeps following the workspace expiry filter after a selection, never reverting on refresh (2026-09-13, independent-review finding)', async ({ page }) => {
     // select under Sept 18, filter to Sept 25, then a new chain: the panel asked 18 -> 25 -> 25.
-    // Sept 25 is listed (a selected expiry comes from the list the socket sends on each subscribe)
-    sock = await pushExpiries(page, ['2026-09-11', '2026-09-18', '2026-09-25'], undefined, panels);
+    // (a selected expiry comes from the list the socket sends on each subscribe: the real one)
+    const E3 = EXPIRIES[2];                                 // 2026-11-18
     const asked = () => sock.subscribes[sock.subscribes.length - 1].panels['chain:detail'];
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => window.EdShell.setStrike(583, '2026-09-18'));
-    await expect.poll(asked).toEqual({ expiry: '2026-09-18' });
-    await expect(page.locator('#sdCtx')).toContainText('09-18');
-    await page.evaluate(() => window.EdShell.setExpiry('2026-09-25'));
-    await expect.poll(asked).toEqual({ expiry: '2026-09-25' });
-    await expect(page.locator('#sdCtx')).toContainText('09-25');
+    await page.evaluate(([k, e]) => window.EdShell.setStrike(k, e), [K, E2]);
+    await expect.poll(asked).toEqual({ expiry: E2 });
+    await expect(page.locator('#sdCtx')).toContainText(E2.slice(5));
+    await page.evaluate((e) => window.EdShell.setExpiry(e), E3);
+    await expect.poll(asked).toEqual({ expiry: E3 });
+    await expect(page.locator('#sdCtx')).toContainText(E3.slice(5));
     const subscribes = sock.subscribes.length;
     sock.changed('chain');                                  // the program's next chain
-    await expect(page.locator('#sdCtx')).toContainText('09-25');
+    await expect(page.locator('#sdCtx')).toContainText(E3.slice(5));
     expect(sock.subscribes.length).toBe(subscribes);
-    expect(asked()).toEqual({ expiry: '2026-09-25' });
+    expect(asked()).toEqual({ expiry: E3 });
   });
 
   test('an unavailable heatmap surface is not resurrected by a later theme/expiry/scope event (2026-09-13, independent-review finding)', async ({ page }) => {
@@ -289,9 +270,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // unavailable render untouched, so a LATER presentation-only event (ed:theme here; also
     // ed:expiry/ed:scope) reused it as if still current -- repainting the stale AVAILABLE data.
     const requests = watchRequests(page);
-    panels.surface = Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }], cells: [{ strike: 583, gex: [1000] }] });
+    panels.surface = oneCell(1000, 1);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$1.0K');
 
     panels.surface = { available: false, reason: 'not currently active for this symbol' };
@@ -311,7 +292,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // console-order-flow-heatmap.spec.js.)
   const PANELS = [
     { name: 'the tape', host: '#ofBody', kind: 'tape' },
-    { name: 'the flow panel', host: '#flowBody', kind: 'contract', sub: 'flow', contract: 'SPY   260911C00583000' },
+    { name: 'the flow panel', host: '#flowBody', kind: 'contract', sub: 'flow', contract: CALL_K.symbol },
   ];
   for (const p of PANELS) {
     test(`${p.name}: a panel the program could not produce says the program's words`, async ({ page }) => {
@@ -338,7 +319,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       if (p.sub) await page.evaluate((sub) => window.EdShell.setSubview(sub), p.sub);
-      else await page.evaluate(() => window.EdShell.setStrike(583, '2026-09-11'));
+      else await page.evaluate(([k, e]) => window.EdShell.setStrike(k, e), [K, E1]);
       if (p.badge) await expect(page.locator(p.badge)).not.toBeEmpty();
       else await expect(page.locator(p.host)).not.toHaveText('-');
       panels.chain = { failed: words };
@@ -356,7 +337,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     sock.changed('strikes');
     await expect(page.locator('#gbsBody')).toContainText(words);
     await expect(page.locator('#gbsSrc')).toBeEmpty();
-    await expect(page.locator('#klFlip')).toHaveText('582.90');   // the other panels keep theirs
+    await expect(page.locator('#klFlip')).toHaveText('243.91');   // the other panels keep theirs
   });
 
   test('GEX by strike after a ticker switch: "-" until the new ticker\'s rows, the new ticker\'s window', async ({ page }) => {
@@ -414,7 +395,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     sock.changed('surface');
     await expect(page.locator('#heatBody')).toContainText(words);
     await expect(page.locator('#heatBody .hcell')).toHaveCount(0);
-    await expect(page.locator('#klFlip')).toHaveText('582.90');
+    await expect(page.locator('#klFlip')).toHaveText('243.91');
   });
 
   test('a surface the page fails to draw says so, and the error is reported', async ({ page }) => {
@@ -488,8 +469,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     let value = 1000;
     panels.surface = (key, params) => {
       asked.push(params.scope);
-      return Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-        cells: [{ strike: 583, gex: [value], spot: true }], surface_seq: asked.length, view: view({ scope: params.scope }) });
+      return Object.assign(oneCell(value, asked.length), { view: view({ scope: params.scope }) });
     };
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => asked[0]).toBe('auto');
@@ -498,7 +478,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const fromPush = asked.length;
     value = 2000;                                      // the push's publication has a new value
     sock.changed('surface');                           // after the scope switch
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$2.0K', { timeout: 5000 });   // the push's surface landed
     expect(asked.slice(fromPush)).toEqual(asked.slice(fromPush).map(() => 'wider'));
     expect(asked.length).toBeGreaterThan(fromPush);
@@ -512,22 +492,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // never rendered anywhere. STRIKES.today.all above already carries real volume numbers
     // (1200/5400/900) -- this proves they actually reach the DOM now.
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const row583 = page.locator('.gbs-row[data-strike="583"]');
-    await expect(row583.locator('.gbs-vol')).toHaveText('5.4K');   // fmtVol(5400)
-    await expect(row583).toHaveAttribute('data-volume', '5400');
-    const row580 = page.locator('.gbs-row[data-strike="580"]');
-    await expect(row580.locator('.gbs-vol')).toHaveText('900');    // fmtVol(900), no K suffix under 1000
+    // AMZN's real rows: 32,975 contracts traded at 270, 2,260 at 257.5
+    const rowK = page.locator('.gbs-row[data-strike="' + K + '"]');
+    await expect(rowK.locator('.gbs-vol')).toHaveText('33.0K');
+    await expect(rowK).toHaveAttribute('data-volume', '32975');
+    const rowLow = page.locator('.gbs-row[data-strike="257.5"]');
+    await expect(rowLow.locator('.gbs-vol')).toHaveText('2.3K');
   });
 
   test('Strike Detail redraws on the program\'s next chain, not just on a new strike selection', async ({ page }) => {
-    const withCallVolume = (vol) => servedChain(Object.assign({}, CHAIN,
-      { contracts: [Object.assign({}, CHAIN.contracts[0], { totalVolume: vol }), CHAIN.contracts[1]] }));
-    panels.chain = chainAt(withCallVolume(540));
+    // induced: the real chain with the volume of the call at the price changed
+    const withCallVolume = (vol) => Object.assign({}, CHAIN,
+      { contracts: CHAIN.contracts.map((c) => (c === CALL_K ? Object.assign({}, c, { totalVolume: vol }) : c)) });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
-    await expect(page.locator('#sdCtx')).toContainText('583');
+    await page.locator(CELL).click();
+    await expect(page.locator('#sdCtx')).toContainText('270');
     const callVolCell = page.locator('.sd tbody tr').first().locator('td').nth(2);   // Type, OI, Vol
-    await expect(callVolCell).toHaveText('540');
+    await expect(callVolCell).toHaveText('13152');          // Schwab's totalVolume of that call
     const subscribes = sock.subscribes.length;
     panels.chain = chainAt(withCallVolume(999999));
     sock.changed('chain');                                  // the program prices the next chain
@@ -539,52 +520,47 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // One value, one producer (2026-09-27): the Net row sits beside ONE expiry's contracts, so it
     // shows that expiry's net GEX at the strike -- the heatmap's own cell, served in the same
     // chain panel. It used to read GEX-by-Strike's rows (every expiry summed).
-    panels.strikes = { ticker: '$SPX', spot: 583.41, today: { all: [[583, 777000, 5400]] },
-      views: { all: { centre: 583, note: null, max_abs: 777000 } } };
-    panels.chain = chainAt(servedChain(Object.assign({}, CHAIN, { net_gex_by_strike: [[583, 3000]] })));
+    // AMZN's real answers: 270's net GEX in the front expiry is $51.7M (the chain panel's
+    // net_gex_by_strike, the heatmap's own cell); every expiry summed it is $156.8M (the strikes panel)
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
-    await expect(page.locator('#sdCtx')).toContainText('583');
-    await expect(page.locator('#sdBody .sd-net td').nth(4)).toHaveText('$3.0K');   // Net, OI, Vol, Gamma, GEX$
+    await page.locator(CELL).click();
+    await expect(page.locator('#sdCtx')).toContainText('270');
+    await expect(page.locator('#sdBody .sd-net td').nth(4)).toHaveText('$51.7M');   // Net, OI, Vol, Gamma, GEX$
   });
 
   test('heatmap renders canonical cells verbatim (value == formatted payload; sign -> colour)', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell583 = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    const cell586 = page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]');
-    await expect(cell583).toHaveText('$958.6K');   // E: formatting-only of 958600
-    await expect(cell586).toHaveText('-$264.5K');  // E: formatting-only of -264500
+    const cellPos = page.locator(CELL);       // 270 in the front expiry: 51,735,223.55
+    const cellNeg = page.locator(CELL_NEG);   // 262.5 on 2026-11-20: -3,907,027.65
+    await expect(cellPos).toHaveText('$51.7M');    // E: formatting-only of the served value
+    await expect(cellNeg).toHaveText('-$3.9M');
     // D: positive -> green-dominant fill, negative -> red-dominant fill (no inversion)
     const rgbOf = (s) => { const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(s); return [+m[1], +m[2], +m[3]]; };
-    const bg583 = rgbOf(await cell583.evaluate((el) => getComputedStyle(el).backgroundColor));
-    const bg586 = rgbOf(await cell586.evaluate((el) => getComputedStyle(el).backgroundColor));
-    expect(bg583[1]).toBeGreaterThan(bg583[0]);   // green channel dominant
-    expect(bg586[0]).toBeGreaterThan(bg586[1]);   // red channel dominant
-    // spot row is the 583 strike (nearest 583.41)
-    await expect(page.locator('tr.spotrow .hstrike')).toHaveText('583');
-    // The default SURFACE fixture carries no per-cell `stream` state at all (it predates the
-    // always-live mandate's per-cell stamping and is used here to test value/colour/format
-    // rendering, not streaming disclosure) -- independent-review finding (2026-09-16, follow-
-    // up mandate): the header must NEVER read the word LIVE without genuine per-cell
-    // confirmation, not even via a legacy "payload predates this field" compatibility
-    // fallback. A surface with zero confirmed-identity visible cells honestly reads WARMING.
+    const bgPos = rgbOf(await cellPos.evaluate((el) => getComputedStyle(el).backgroundColor));
+    const bgNeg = rgbOf(await cellNeg.evaluate((el) => getComputedStyle(el).backgroundColor));
+    expect(bgPos[1]).toBeGreaterThan(bgPos[0]);   // green channel dominant
+    expect(bgNeg[0]).toBeGreaterThan(bgNeg[1]);   // red channel dominant
+    // the spot row is the 270 strike (nearest 269.425)
+    await expect(page.locator('tr.spotrow .hstrike')).toHaveText('270');
+    // The header never reads the word LIVE without per-cell confirmation: no contract of this
+    // capture is streaming, and the server's coverage says so (0% STREAMING).
     await expect(page.locator('.heat-banner')).toHaveCount(0);
-    await expect(page.locator('#heatScope')).toContainText('WARMING');
+    await expect(page.locator('#heatScope')).toContainText(SURFACE.view.coverage.label);
     // #7: shade legend present — vertical magnitude legend at the heatmap's right edge
     await expect(page.locator('.heat-vlegend .bar')).toBeVisible();
     // C: nearest-expiry (front) column emphasised
     expect(await page.locator('.heat .hexp.col-front').count()).toBeGreaterThan(0);
     // A: clicking a heatmap cell syncs the selected strike across panels
-    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
-    await expect(page.locator('.hcell.sel-strike')).toHaveCount(2);                 // both expiry cells at 583
-    await expect(page.locator('.gbs-row.gbs-sel[data-strike="583"]')).toHaveCount(1);  // GEX-by-strike synced
-    await expect(page.locator('#sdCtx')).toContainText('583');                       // Strike Detail loaded
+    await page.locator(CELL).click();
+    await expect(page.locator('.hcell.sel-strike')).toHaveCount(EXPIRIES.length);    // every expiry's cell at 270
+    await expect(page.locator('.gbs-row.gbs-sel[data-strike="' + K + '"]')).toHaveCount(1);  // GEX-by-strike synced
+    await expect(page.locator('#sdCtx')).toContainText('270');                       // Strike Detail loaded
   });
 
   test('always-live heatmap mandate: a confirmed-live cell renders its numeric value with no snapshot flag', async ({ page }) => {
     panels.surface = surfaceWithStreamState([{ call: 'live', put: 'live' }]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$12.3K');
     await expect(cell).toHaveAttribute('data-cell-state', 'live');
     await expect(cell).not.toHaveClass(/state-partial|state-stale|state-unavailable/);
@@ -595,7 +571,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // valid timestamped GEX displayed when a contract is not actively updating."
     panels.surface = surfaceWithStreamState([{ call: 'stale', put: 'stale' }]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$12.3K');
     await expect(cell).toHaveAttribute('data-cell-state', 'stale');
     await expect(cell).toHaveAttribute('data-gex', '12345');
@@ -609,7 +585,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('always-live heatmap mandate: an unavailable/not-yet-confirmed cell still shows its real value, honestly labelled, never dashed', async ({ page }) => {
     panels.surface = surfaceWithStreamState([{ call: 'unavailable', put: 'unavailable' }]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$12.3K');
     await expect(cell).toHaveAttribute('data-cell-state', 'unavailable');
     await expect(cell).toHaveAttribute('title', 'not streaming');
@@ -620,7 +596,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     surf.cells[0].gex = [null];
     panels.surface = surf;
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('-');
     await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is beside the value
   });
@@ -628,7 +604,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('always-live heatmap mandate: a partial cell (one leg live, one not) shows the same value as fully live, visibly flagged distinct from fully live', async ({ page }) => {
     panels.surface = surfaceWithStreamState([{ call: 'live', put: 'unavailable' }]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$12.3K');   // ONE FAUCET: the already-computed value is not re-derived
     await expect(cell).toHaveAttribute('data-cell-state', 'partial');
     await expect(cell).toHaveClass(/state-partial/);
@@ -649,7 +625,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     panels.surface = () => Object.assign(
       surfaceWithStreamState([{ call: live ? 'live' : 'stale', put: live ? 'live' : 'stale' }]), { surface_seq: seq });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await expect(cell).toHaveText('$12.3K');
     await expect(cell).toHaveAttribute('data-cell-state', 'live');
 
@@ -682,31 +658,32 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('key levels rail reflects the terrain panel', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klFlip')).toHaveText('582.90');
-    await expect(page.locator('#klCall')).toHaveText('586.00');
-    await expect(page.locator('#klPut')).toHaveText('580.00');
-    await expect(page.locator('#klNet')).toHaveText('$2.1B');
+    await expect(page.locator('#klFlip')).toHaveText('243.91');
+    // AMZN's real levels: flip 243.9135, both walls at 270, net GEX at the price 937,341,251
+    await expect(page.locator('#klCall')).toHaveText('270.00');
+    await expect(page.locator('#klPut')).toHaveText('270.00');
+    await expect(page.locator('#klNet')).toHaveText('$937.3M');
     await expect(page.locator('#klRegime')).toContainText('Long γ');
     // a label with no served number is not on the rail
     await expect(page.locator('#klBody')).not.toContainText('NOT PROVEN');
     await expect(page.locator('#klAbs0')).toHaveCount(0);
     // PCR: with no expiry selected, the whole book's put/call OI ratio as served (pcr_all), its
     // scope disclosed -- the page no longer picks an expiry itself
-    await expect(page.locator('#klPcr')).toHaveText('1.02');
+    await expect(page.locator('#klPcr')).toHaveText('0.78');       // pcr_all 0.7843
     await expect(page.locator('#klPcrScope')).toContainText('OI');
     await expect(page.locator('#klPcrScope')).toContainText('all exp');
     // and the put/call VOLUME ratio (today's trading) on its own row, same scope
-    await expect(page.locator('#klPcrVol')).toHaveText('0.93');
+    await expect(page.locator('#klPcrVol')).toHaveText('0.30');    // pcr_volume_all 0.2952
     await expect(page.locator('#klPcrVolScope')).toContainText('volume');
   });
 
   test('a level built from a price that has stopped stays, and the rail says OFFLINE', async ({ page }) => {
     panels.terrain = Object.assign({}, TERRAIN, {
-      call_wall: 586, levels_mark: 'OFFLINE',
+      levels_mark: 'OFFLINE',
       levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klCall')).toHaveText('586.00');
-    await expect(page.locator('#klSrc')).toHaveText('OFFLINE');
+    await expect(page.locator('#klCall')).toHaveText('270.00');
+    await expect(page.locator('#klSrc')).toHaveText(TERRAIN.levels_time_ct + ' · OFFLINE · ' + TERRAIN.levels_age_text);
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
     await expect(page.locator('#klBody')).not.toHaveClass(/recede/);
   });
@@ -714,10 +691,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('key levels rail keeps the chain time when the price has stopped', async ({ page }) => {
     const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
     panels.terrain = Object.assign({}, TERRAIN, {
-      levels_age_text: '4s', levels_time_ct: CHAIN_TIME, call_wall: 586,
+      levels_age_text: '4s', levels_time_ct: CHAIN_TIME,
       levels_mark: 'OFFLINE', levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klCall')).toHaveText('586.00');
+    await expect(page.locator('#klCall')).toHaveText('270.00');
     await expect(page.locator('#klSrc')).toHaveText(CHAIN_TIME + ' · OFFLINE · 4s');
     await expect(page.locator('#klSrc')).toHaveAttribute('title', 'Schwab LEVELONE_EQUITIES feed down during RTH');
   });
@@ -733,19 +710,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klPcr')).toHaveText('1.02');
+    // AMZN's real ratios: 0.7843 for every expiry, 0.4541 on 2026-11-16, 0.7317 on 2026-11-13
+    await expect(page.locator('#klPcr')).toHaveText('0.78');
     await expect(page.locator('#klPcrScope')).toContainText('all exp');
-    await page.locator('#expSel').selectOption('2026-09-18');
-    await expect(page.locator('#klPcr')).toHaveText('1.13');
-    await expect(page.locator('#klPcrScope')).toContainText('2026-09-18');
-    await page.locator('#expSel').selectOption('2026-09-11');
-    await expect(page.locator('#klPcr')).toHaveText('0.87');
+    await page.locator('#expSel').selectOption(E2);
+    await expect(page.locator('#klPcr')).toHaveText('0.45');
+    await expect(page.locator('#klPcrScope')).toContainText(E2);
+    await page.locator('#expSel').selectOption(E1);
+    await expect(page.locator('#klPcr')).toHaveText('0.73');
   });
 
   test('PCR: a ticker whose terrain carries no ratio paints none, never a number', async ({ page }) => {
     panels.terrain = Object.assign({}, TERRAIN, { pcr_by_expiry: {}, pcr_all: null });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klFlip')).toHaveText('582.90');
+    await expect(page.locator('#klFlip')).toHaveText('243.91');
     await expect(page.locator('#klPcr')).toHaveText('-');
   });
 
@@ -801,7 +779,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
     // The chart's spot is the header's price row (audit of #280 removed the terrain's copy,
     // a second producer): the daemon's price socket delivers it.
-    await socketWith(page, [priceRow('SPY', 583.41, { trade_time_ct: '14:00:01 CT' })]);
+    // induced: the real levels with the flip moved from 243.91 into the chart's price range (the
+    // profile's strikes, 257.5 to 282.5; the chart draws only the levels inside it), far enough
+    // from the walls at 270 that it keeps its own label
+    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 262.5 });
+    await socketWith(page, [priceRow('SPY', 269.43, { trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
@@ -812,8 +794,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(async () => (await cs()).bars).toBeGreaterThan(0);
     await expect.poll(async () => (await cs()).profile.rows).toBeGreaterThan(0);
     await expect.poll(async () => (await cs()).profile.style).toBe('bars');
-    await expect.poll(async () => (await cs()).livePrice).toBe(583.41);
-    await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 583.41');
+    await expect.poll(async () => (await cs()).livePrice).toBe(269.43);
+    await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 269.43');
     await expect(page.locator('#chartBody .gchart-head')).toContainText('last trade 14:00:01 CT');
     await expect.poll(async () => (await cs()).liveTitle).toBe('LAST · last trade 14:00:01 CT');
     await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
@@ -931,7 +913,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.addInitScript(() => { localStorage.setItem('ed_theme', 'system'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');     // A: SYSTEM + OS dark -> dark
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     await cell.click();
     const val = (await cell.textContent()).trim();
     const darkBg = await cell.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -944,7 +926,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     // F: value + selection unchanged through the transitions
     await expect(cell).toHaveText(val);
-    await expect(page.locator('.hcell.sel-strike')).toHaveCount(2);
+    await expect(page.locator('.hcell.sel-strike')).toHaveCount(EXPIRIES.length);
     await expect(page.locator('#hSym')).toHaveText('SPY');
     // D: explicit LIGHT ignores a later OS dark change
     await page.evaluate(() => window.EdShell.setTheme('light'));
@@ -959,20 +941,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('theme D/E/F: switch preserves values, sign mapping, and selection', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setTheme('dark'));
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const cell = page.locator(CELL);
     const darkVal = (await cell.textContent()).trim();
-    await cell.click();                                   // select strike 583
+    await cell.click();                                   // select the strike at the price
     await page.evaluate(() => window.EdShell.setTheme('light'));
     // D: the displayed dollar value is unchanged by theme
     await expect(cell).toHaveText(darkVal);
     // E: positive cell green-dominant, negative cell red-dominant in LIGHT (no inversion)
     const rgbOf = (s) => { const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(s); return [+m[1], +m[2], +m[3]]; };
     const posBg = rgbOf(await cell.evaluate((el) => getComputedStyle(el).backgroundColor));
-    const negBg = rgbOf(await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').evaluate((el) => getComputedStyle(el).backgroundColor));
+    const negBg = rgbOf(await page.locator(CELL_NEG).evaluate((el) => getComputedStyle(el).backgroundColor));
     expect(posBg[1]).toBeGreaterThan(posBg[0]);   // green channel dominant
     expect(negBg[0]).toBeGreaterThan(negBg[1]);   // red channel dominant
     // F: the selected strike + ticker survive the theme switch
-    await expect(page.locator('.hcell.sel-strike')).toHaveCount(2);
+    await expect(page.locator('.hcell.sel-strike')).toHaveCount(EXPIRIES.length);
     await expect(page.locator('#hSym')).toHaveText('SPY');
   });
 
@@ -1039,10 +1021,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
-    const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', warming: false, spot: 583.41,
-      complete: false, spot_as_of_ts_utc: 1000, chain_basis: 'full',
+    // induced: the real surface cut to one cell, with the named status and coverage
+    const live = (age, stale) => Object.assign(oneCell(958600, 1), {
       levels_state: stale ? 'STALE' : 'LIVE', levels_age_text: age + 's', levels_stale_reason: stale ? 'chain overdue' : '',
-      expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], spot: true }],
       view: view({ coverage: served.cov }) });
     const served = { cov: { state: 'partial', label: '50% STREAMING', title: '1 of 2 cells streaming · 1 stale' } };
     served.s = live(3);
@@ -1105,12 +1086,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // (QQQ's surface is never sent, so no new strike is selected): Strike Detail stays reset.
     panels.surface = (key) => (key === 'SPY' ? SURFACE : undefined);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
-    await expect(page.locator('#sdCtx')).toContainText('583');
+    await page.locator(CELL).click();
+    await expect(page.locator('#sdCtx')).toContainText('270');
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
 
-    sock.frame('chain:detail', 'SPY', servedChain(CHAIN));                      // SPY's, late ...
+    sock.frame('chain:detail', 'SPY', CHAIN);                                   // SPY's, late ...
     sock.frame('terrain:levels', 'QQQ', Object.assign({}, TERRAIN, { gamma_flip: 123.45 }));   // ... and QQQ's behind it
     await expect(page.locator('#klFlip')).toHaveText('123.45');
     await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
@@ -1122,41 +1103,41 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // avoided a blank grid, but silently SUBSTITUTED other expiries' data -- the operator's own
   // requirement is that this state reads UNAVAILABLE for the requested expiry, never a silent
   // substitution.
-  // the server's answer for a selected expiry the surface does not have: no columns, and the
-  // expiry named (server.py _surface_view `missing_expiry`)
-  const MISSING_0925 = Object.assign({}, SURFACE, { expirations: [],
-    cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [] })), view: view({ missing_expiry: '2026-09-25' }) });
+  // the server's own answer for a selected expiry the chain does not list (2026-11-14): no
+  // columns, and the expiry named (server.py _surface_view `missing_expiry`)
+  const MISSING_SURFACE = REAL.surface_missing_expiry;
   test('a selected expiry absent from the surface reads unavailable (no substitute expiries)', async ({ page }) => {
-    panels.surface = (key, params) => (params.expiry === '2026-09-25' ? MISSING_0925 : SURFACE);
-    sock = await pushExpiries(page, ['2026-09-11', '2026-09-18', '2026-09-25'], undefined, panels);
+    panels.surface = (key, params) => (params.expiry === MISSING ? MISSING_SURFACE : SURFACE);
+    sock = await pushExpiries(page, EXPIRIES.concat(MISSING), undefined, panels);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
 
-    // '2026-09-25' is listed in the socket's expiries but absent from SURFACE.expirations.
-    await page.locator('#expSel').selectOption('2026-09-25');
-    await expect(page.locator('#heatBody')).toContainText('Expiry 2026-09-25 unavailable');
+    // induced: the date is listed in the socket's expiries, and the surface does not have it
+    await page.locator('#expSel').selectOption(MISSING);
+    await expect(page.locator('#heatBody')).toContainText('Expiry ' + MISSING + ' unavailable');
     await expect(page.locator('#heatBody .hexp')).toHaveCount(0);   // NOT a silent substitute grid
   });
 
   test('recovers automatically once the requested expiry appears in a later surface poll', async ({ page }) => {
-    let missing = MISSING_0925;   // SURFACE only has 2026-09-11/2026-09-18 -- 09-25 is initially missing
-    panels.surface = (key, params) => (params.expiry === '2026-09-25' ? missing : SURFACE);
-    sock = await pushExpiries(page, ['2026-09-11', '2026-09-18', '2026-09-25'], undefined, panels);
+    let missing = MISSING_SURFACE;   // the chain lists no such expiry at first
+    panels.surface = (key, params) => (params.expiry === MISSING ? missing : SURFACE);
+    sock = await pushExpiries(page, EXPIRIES.concat(MISSING), undefined, panels);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
 
-    await page.locator('#expSel').selectOption('2026-09-25');
-    await expect(page.locator('#heatBody')).toContainText('Expiry 2026-09-25 unavailable');
+    await page.locator('#expSel').selectOption(MISSING);
+    await expect(page.locator('#heatBody')).toContainText('Expiry ' + MISSING + ' unavailable');
 
-    // The surface now genuinely includes the requested expiry: the server serves its one column.
+    // induced: the surface now includes the requested expiry: its one column, each real cell cut
+    // to one column
     missing = Object.assign({}, SURFACE, {
-      expirations: [{ expiry: '2026-09-25', dte: 16 }],
-      cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [777000] })), surface_seq: 2,
+      expirations: [{ expiry: MISSING, dte: 2, expired: false, front: false }],
+      cells: SURFACE.cells.map((c) => Object.assign(cut(c, 1), { gex: [777000] })), surface_seq: 2,
     });
     sock.changed('surface');
     await expect(page.locator('#heatBody .hexp')).toHaveCount(1);
     await expect(page.locator('#heatBody')).not.toContainText('unavailable');
-    await expect(page.locator('#heatBody .hexp .d')).toHaveText('09-25');
+    await expect(page.locator('#heatBody .hexp .d')).toHaveText(MISSING.slice(5));
   });
 
   // ---------------------------------------------------------------------------
@@ -1172,7 +1153,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const requests = watchRequests(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
-    await expect(page.locator('#sdCtx')).toContainText('583');
+    await expect(page.locator('#sdCtx')).toContainText('270');
     // Any accidental second trigger (a stray immediate self-call racing the deferred
     // dispatch) has made its ask by the time the page's work has all landed.
     await requests.settled();
@@ -1214,7 +1195,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const requests = watchRequests(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
-    await expect(page.locator('#sdCtx')).toContainText('583');   // the auto-selected strike
+    await expect(page.locator('#sdCtx')).toContainText('270');   // the auto-selected strike
     await requests.settled();   // cold-start hydration (including auto-select) has landed
     await watchPanels(page);
     const before = { subscribes: sock.subscribes.length };
@@ -1225,7 +1206,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // socket: the push asks for nothing there
     expect(sock.subscribes.length - before.subscribes).toBe(0);
     await expect(page.locator('.hcell').first()).toBeVisible();
-    await expect(page.locator('#klFlip')).toHaveText('582.90');
+    await expect(page.locator('#klFlip')).toHaveText('243.91');
     await expect(page.locator('#gbsBody .gbs-row')).toHaveCount(STRIKES.today.all.length);
   });
 
@@ -1263,8 +1244,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#kl0Abs')).toHaveText('572.50');
     await expect(page.locator('#kl0NetCall')).toHaveText('575.00');
     await expect(page.locator('#kl0NetPut')).toHaveText('565.00');
-    await expect(page.locator('#klNetCall')).toHaveText('590.00');   // the whole book's two peaks
-    await expect(page.locator('#klNetPut')).toHaveText('560.00');
+    await expect(page.locator('#klNetCall')).toHaveText('275.00');   // the whole book's two peaks (AMZN's lvp, hvp)
+    await expect(page.locator('#klNetPut')).toHaveText('240.00');
     await expect(page.locator('#klBody')).not.toContainText('Net GEX peak');
     await expect(page.locator('#klNet')).toBeVisible();
   });
@@ -1285,7 +1266,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klFlip')).toHaveText('582.90');
+    await expect(page.locator('#klFlip')).toHaveText('243.91');
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     await expect(page.locator('#klFlip')).toHaveText('-');
     await expect(page.locator('#klSrc')).toHaveText('-');
@@ -1298,7 +1279,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('the Key Levels rail updates on a levels push', async ({ page }) => {
     // the program sends the terrain panel again when the levels change (_levels_changed)
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klFlip')).toHaveText('582.90');
+    await expect(page.locator('#klFlip')).toHaveText('243.91');
     panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 590.00 });
     sock.changed('terrain');
     await expect(page.locator('#klFlip')).toHaveText('590.00');
