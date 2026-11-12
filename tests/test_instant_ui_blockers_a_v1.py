@@ -191,3 +191,53 @@ def test_a_tick_queues_a_reprice_only_for_a_ticker_a_page_shows():
         "ZZVIEW": (srv.REPRICE, None, None, None),
         "ZZOTHERPAGE": (srv.REPRICE, None, None, None),
     }
+
+
+def test_a_tickers_ticks_queue_one_reprice_a_second_and_the_last_tick_is_not_lost():
+    """The ticker on a page is repriced from its ticks at most once a second.
+
+    Operator 2026-11-12: "Yes, once a second". Fifty ticks in a burst queue one reprice at
+    once; the ticks that came inside the second queue one more when it ends, so the newest
+    values are priced; and ticks whose page has left by then queue nothing.
+    """
+    queued: list[float] = []
+
+    def taken(tk: str) -> bool:
+        """Take the ticker's waiting reprice off the queue, as the pricing thread would."""
+        with srv._chains_waiting_lock:
+            if tk not in srv._chains_waiting:
+                return False
+            del srv._chains_waiting[tk]
+        queued.append(time_et.elapsed())
+        return True
+
+    def wait_for(tk: str, seconds: float) -> bool:
+        deadline = time_et.elapsed() + seconds
+        while time_et.elapsed() < deadline:
+            if taken(tk):
+                return True
+            gate.wait(0.005)
+        return False
+
+    served = Pages()
+    page = served.open("ZZSEC")
+    gate = threading.Event()
+    srv._chain_pricing.submit(gate.wait, 30)  # the pricing thread held: the queue is read here
+    try:
+        started = time_et.elapsed()
+        srv._on_stream_tick("ZZSEC")
+        first = taken("ZZSEC")
+        for _ in range(49):
+            srv._on_stream_tick("ZZSEC")
+        inside = taken("ZZSEC")
+        later = wait_for("ZZSEC", 3 * srv.REPRICE_EVERY_SEC)
+        srv._on_stream_tick("ZZSEC")  # inside the next second: its timer is set
+        served.close(page)
+        after_the_page = wait_for("ZZSEC", 2 * srv.REPRICE_EVERY_SEC)
+    finally:
+        gate.set()
+        srv._chain_pricing.submit(lambda: None).result(timeout=10)
+        served.stop()
+    assert (first, inside, later, after_the_page) == (True, False, True, False)
+    assert queued[1] - started >= srv.REPRICE_EVERY_SEC, "the second reprice waits out the second"
+    assert queued[1] - started < 2 * srv.REPRICE_EVERY_SEC, "and is not left for a later tick"

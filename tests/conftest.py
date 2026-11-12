@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -97,9 +98,18 @@ def _live_feed_starts_down():
     one test marks can never make another test's price live. A down feed keeps that set and that
     list for the screen (record_feed_down); this fixture clears them. Tests that need a live
     price mark it (tests/feed_live_helper.py). The day's first streamed trade (time_et.record_trade)
-    is process-global too: every test starts with none.
+    is process-global too: every test starts with none. So is when each ticker's ticks last
+    queued a reprice (server._repriced_at, once a second): every test starts with none, and
+    with no timer of an earlier test's.
     """
     time_et._first_trade = {}
+    server = sys.modules.get("server")
+    if server is not None:
+        with server._reprice_lock:
+            for timer in server._reprice_timers.values():
+                timer.cancel()
+            server._reprice_timers.clear()
+            server._repriced_at.clear()
     live_market_plane.record_feed_down()
     with live_market_plane._lock:
         live_market_plane._feed["held"] = {}

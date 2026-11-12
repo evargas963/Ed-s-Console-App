@@ -31,6 +31,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
+import time_et
 from option_contract import read_chain
 from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
@@ -116,6 +117,8 @@ def _repriced(answer: dict, received: float) -> server.PublishedLevels:
     """Return the levels once the reprice the ticks of `answer` queued has run, at `received`.
 
     The pricing job runs at its own instant (server._price_waiting_chain): here, `received`.
+    A second answer inside a second of the first is queued when that second ends
+    (server._reprice_from_tick), while the page still shows the ticker: waited for here.
     """
     gate = threading.Event()
     server._chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
@@ -124,6 +127,9 @@ def _repriced(answer: dict, received: float) -> server.PublishedLevels:
         with pages() as served:
             served.open(TK)  # a page shows SPY, so its ticks reprice it
             _answered(answer, received)
+            deadline = time_et.elapsed() + 5 * server.REPRICE_EVERY_SEC
+            while TK not in server._chains_waiting and time_et.elapsed() < deadline:
+                gate.wait(0.01)
         with server._chains_waiting_lock:
             job = server._chains_waiting.pop(TK)
     finally:
