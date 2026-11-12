@@ -147,24 +147,20 @@ SPOT_SOURCE_NONE = "none"  # Schwab has sent no price
 
 
 def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict:
-    """Whether the live price is live at `now` (price_state), its word, why not, its time and age.
+    """The live price's trade time and, while it is not live at `now` (price_state), its mark.
 
-    The time is its trade time. Served beside every value computed from that price, so a value
-    from a price that has stopped stands marked not live (AGENTS rule 5): `spot_not_live_text` is
-    the mark the page prints beside each such value, None while the price is live.
+    Served beside every value computed from that price, so a value from a price that has stopped
+    stands marked not live (AGENTS rule 5): `spot_not_live_text` is the mark the page prints
+    beside each such value, with the trade's time and age, None while the price is live.
     """
-    label, outage = price_state(ticker, now)
-    live = label == lmp.LIVE
     mark = ["not live"]
     if spot_ts is not None:
         mark.append(f"last trade {ct_label(spot_ts)}, {age_text(now - spot_ts)} old")
     return {
-        "spot_feed_live": live,
-        "spot_feed_label": label,
-        "spot_outage": outage,
         "spot_time_ct": None if spot_ts is None else ct_label(spot_ts),
-        "spot_age_sec": None if spot_ts is None else now - spot_ts,
-        "spot_not_live_text": None if live else " · ".join(mark),
+        "spot_not_live_text": (
+            None if price_state(ticker, now)[0] == lmp.LIVE else " · ".join(mark)
+        ),
     }
 
 
@@ -710,12 +706,8 @@ def terrain_staleness(
     return {
         "levels_state": state,
         "levels_stale_reason": reason,
-        "levels_age_sec": age,
         "levels_age_text": None if age is None else age_text(age),
         "levels_time_ct": None if levels_ts_utc is None else ct_label(levels_ts_utc),
-        # actively FAILING is a different action (the chain fetch is erroring, the levels
-        # will not come back on their own)
-        "levels_failing": bool(state == LEVELS_STALE and failure),
     }
 
 
@@ -792,10 +784,10 @@ def _levels_state(
 LEVELS_CLOSE, LEVELS_STALE = "CLOSE", "STALE"
 
 
-def levels_mark(levels: dict) -> dict:
+def levels_mark(levels: dict, ticker: str, now: float) -> dict:
     """Return the one word the Key Levels line shows, from the levels' verdict and their price's.
 
-    From terrain_staleness and price_mark: the levels' state while it is not LIVE, else the
+    From terrain_staleness and price_state: the levels' state while it is not LIVE, else the
     price's state (the walls stand and are LIVE only while the price they are measured from is
     live), with why.
     """
@@ -804,7 +796,8 @@ def levels_mark(levels: dict) -> dict:
             "levels_mark": levels["levels_state"],
             "levels_mark_reason": levels["levels_stale_reason"],
         }
-    return {"levels_mark": levels["spot_feed_label"], "levels_mark_reason": levels["spot_outage"]}
+    label, outage = price_state(ticker, now)
+    return {"levels_mark": label, "levels_mark_reason": outage}
 
 
 def levels_verdict(staleness: dict) -> dict:
@@ -817,7 +810,6 @@ def levels_verdict(staleness: dict) -> dict:
         for k in (
             "levels_state",
             "levels_time_ct",
-            "levels_age_sec",
             "levels_age_text",
             "levels_stale_reason",
         )
@@ -2744,7 +2736,7 @@ def terrain(tk: str, now: float) -> dict:
         # the chain's verdict is levels_state, above. The live price the relations are computed from
         # is a separate fact: the numbers stay, marked with whether that price is live
         out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
-        return out | levels_mark(out)
+        return out | levels_mark(out, tk, now)
     spot, spot_source, spot_ts = resolve_spot(tk, now=now)
     _why = _terrain_refresh_last_error.get(tk)
     empty = compute_terrain(tk, None, spot, now=at).to_dict()
@@ -2753,7 +2745,7 @@ def terrain(tk: str, now: float) -> dict:
         empty
         | price_relations(empty, spot).to_dict()
         | mark
-        | levels_mark(staleness | mark)
+        | levels_mark(staleness, tk, now)
         | {
             "spot_source": spot_source,
             "spot_as_of_ts_utc": spot_ts,

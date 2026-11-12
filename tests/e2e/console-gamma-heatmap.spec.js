@@ -36,7 +36,7 @@ function view(over = {}) {
 }
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, front_expiry: '2026-09-11',
-  source: 'terrain_live_cache', levels_age_sec: 3, chain_basis: 'full',
+  source: 'terrain_live_cache', chain_basis: 'full',
   levels_state: 'LIVE', levels_age_text: '3s', levels_stale_reason: '',
   complete: false,
   spot_as_of_ts_utc: 1757000200, spot_source: 'last',
@@ -702,8 +702,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('a level built from a price that has stopped stays, and the rail says OFFLINE', async ({ page }) => {
     panels.terrain = Object.assign({}, TERRAIN, {
-      call_wall: 586, spot_feed_live: false, spot_feed_label: 'OFFLINE', levels_mark: 'OFFLINE',
-      spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+      call_wall: 586, levels_mark: 'OFFLINE',
       levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
@@ -715,8 +714,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('key levels rail keeps the chain time when the price has stopped', async ({ page }) => {
     const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
     panels.terrain = Object.assign({}, TERRAIN, {
-      levels_age_sec: 4, levels_age_text: '4s', levels_time_ct: CHAIN_TIME, call_wall: 586,
-      spot_feed_live: false, spot_feed_label: 'OFFLINE', spot_outage: 'Schwab LEVELONE_EQUITIES feed down during RTH',
+      levels_age_text: '4s', levels_time_ct: CHAIN_TIME, call_wall: 586,
       levels_mark: 'OFFLINE', levels_mark_reason: 'Schwab LEVELONE_EQUITIES feed down during RTH' });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klCall')).toHaveText('586.00');
@@ -1042,7 +1040,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
     const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', warming: false, spot: 583.41,
-      complete: false, spot_as_of_ts_utc: 1000, chain_basis: 'full', levels_age_sec: age,
+      complete: false, spot_as_of_ts_utc: 1000, chain_basis: 'full',
       levels_state: stale ? 'STALE' : 'LIVE', levels_age_text: age + 's', levels_stale_reason: stale ? 'chain overdue' : '',
       expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], spot: true }],
       view: view({ coverage: served.cov }) });

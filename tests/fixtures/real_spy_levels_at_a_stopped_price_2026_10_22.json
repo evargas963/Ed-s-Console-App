@@ -246,7 +246,6 @@
    }
   }
  ],
- "levels_age_sec": 6176.727853059769,
  "levels_age_text": "2h",
  "levels_stale_reason": "",
  "levels_state": "CLOSE",
@@ -257,12 +256,8 @@
  "snapshot_as_of_ts_utc": null,
  "snapshot_time_ct": null,
  "spot": 773.1269,
- "spot_age_sec": 4859.43825507164,
  "spot_as_of_ts_utc": 1792701541.652,
- "spot_feed_label": "OFFLINE",
- "spot_feed_live": false,
  "spot_not_live_text": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",
- "spot_outage": "Schwab LEVELONE_EQUITIES feed down during After-Hours",
  "spot_source": "streaming_plane",
  "spot_time_ct": "Thu 10/22 03:39 PM CT",
  "tf": "1",

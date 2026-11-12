@@ -40,9 +40,7 @@ def test_a_levels_verdict_opens_no_file_and_serves_no_token_age():
     out = json.loads(done.stdout.strip().splitlines()[-1])
     assert out["opened"] == []
     assert out["keys"] == [
-        "levels_age_sec",
         "levels_age_text",
-        "levels_failing",
         "levels_stale_reason",
         "levels_state",
         "levels_time_ct",

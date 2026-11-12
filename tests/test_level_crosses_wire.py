@@ -34,7 +34,7 @@ from tests.real_chains import (
     SPY_PRINT_A_STRIKE_AWAY,
     SPY_PRINT_ON_A_STRIKE,
 )
-from time_et import ET, ct_label
+from time_et import ET, age_text, ct_label
 
 ON_A_STRIKE = SPY_PRINT_ON_A_STRIKE["native"]["LAST_PRICE"]
 STRIKE_AWAY = SPY_PRINT_A_STRIKE_AWAY["native"]["LAST_PRICE"]
@@ -248,11 +248,7 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
         )
     finally:
         _forget()
-    assert (
-        live["spot_feed_live"] is True
-        and down["spot_feed_live"] is False
-        and levels["spot_feed_live"] is False
-    )
+    assert (live["levels_mark"], down["levels_mark"]) == (down["levels_state"], "CLOSE")
     assert live["spot_not_live_text"] is None
     for body in (down, levels, matrix):
         assert body["spot_not_live_text"].startswith(
@@ -261,8 +257,10 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     assert live["call_wall_lean"] == down["call_wall_lean"] == "BREACHED — spot above"
     for body in (down, levels):
         assert body["spot"] == STRIKE_AWAY and body["spot_time_ct"] == ct_label(trade_ts)
-    assert down["spot_age_sec"] >= at - trade_ts > 0  # served after `at`
-    assert levels["spot_age_sec"] == levels["served_ts_utc"] - trade_ts  # at its own served time
+    assert at > trade_ts and down["spot_not_live_text"].endswith(f", {age_text(at - trade_ts)} old")
+    assert levels["spot_not_live_text"].endswith(  # at its own served time
+        f", {age_text(levels['served_ts_utc'] - trade_ts)} old"
+    )
     call = next(r for r in levels["levels"] if r["id"] == "call_wall")
     assert call["from_spot_text"] == f"{STRIKE_AWAY - 765.0:.2f} below spot"
 
@@ -383,7 +381,7 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
         fx = json.loads((Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8"))
         assert fx == served[route], route
     for route in PRICE_MARKED:
-        assert served[route]["spot_feed_live"] is False
+        assert served[route]["spot_time_ct"] is not None
         assert served[route]["spot_not_live_text"].startswith("not live · last trade ")
     assert (served["terrain"]["levels_state"], served["terrain"]["levels_mark"]) == (
         "CLOSE",

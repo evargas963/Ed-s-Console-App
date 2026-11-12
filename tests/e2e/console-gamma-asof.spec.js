@@ -12,16 +12,16 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 const { mockPriceSocket, chainAt } = require('./fixtures/price_socket');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
-  levels_state: 'LIVE', levels_age_sec: 6, chain_basis: 'full', complete: false,
+  levels_state: 'LIVE', chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [98, 100, 102],
   cells: [{ strike: 98, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
     { strike: 102, gex: [-264500], spot: false }],
   view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
   absolute_gamma_strike: 100, lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
-  levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 21 };
+  levels_state: 'LIVE', levels_mark: 'LIVE' };
 const STRIKES = { ticker: 'SPY', spot: 100, spot_strike: 100, spot_source: 'schwab_quote_last',
-  levels_state: 'LIVE', levels_age_sec: 21, levels_age_text: '21s', levels_stale_reason: '',
+  levels_state: 'LIVE', levels_age_text: '21s', levels_stale_reason: '',
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
   views: { all: { centre: 100, note: null, max_abs: 958600 } } };
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {

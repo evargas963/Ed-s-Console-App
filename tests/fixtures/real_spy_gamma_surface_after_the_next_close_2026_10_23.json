@@ -553,7 +553,6 @@
    "front": false
   }
  ],
- "levels_age_sec": 87175.63759803772,
  "levels_age_text": "24h",
  "levels_stale_reason": "this ticker's options are closed and its close values have not been fetched",
  "levels_state": "STALE",

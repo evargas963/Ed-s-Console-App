@@ -18,7 +18,7 @@ function surfaceFor(tk, spot, expiry) {
   const gex = [-90000, 958600, -264500];
   const cols = EXPS.map(function (e, i) { return i; }).filter(function (i) { return !expiry || EXPS[i] === expiry; });
   return { ticker: tk, symbol: tk, available: true, spot: spot, source: 'terrain_live_cache',
-    levels_state: 'LIVE', levels_age_sec: 5, chain_basis: 'full', complete: false,
+    levels_state: 'LIVE', chain_basis: 'full', complete: false,
     expirations: cols.map(function (i) { return { expiry: EXPS[i], dte: [2, 3, 9][i], front: i === 0 }; }),
     strikes: [spot - 2, spot, spot + 2],
     cells: [spot - 2, spot, spot + 2].map(function (k) {
@@ -26,7 +26,7 @@ function surfaceFor(tk, spot, expiry) {
     view: { centre: spot, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 }
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
-  lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE', levels_age_sec: 10,
+  lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE',
   // every terrain answer carries these TerrainSnapshot fields; no ratio known here
   pcr_by_expiry: {}, pcr_volume_by_expiry: {}, pcr_all: null, pcr_volume_all: null };
 const STRIKES = { spot: 100, levels_state: 'LIVE',

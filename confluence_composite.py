@@ -457,7 +457,6 @@ def build_matrix(
     return {
         "preset": name,
         "scale_text": "0–" + f"{cap:g}",
-        "weights_in_score": weights,
         "ceiling": cap,
         "notes": notes,
         "ranked": {strike: RankedStrike(mags[strike], scored[strike]) for strike in mags},

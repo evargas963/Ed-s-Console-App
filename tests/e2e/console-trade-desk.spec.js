@@ -265,7 +265,7 @@ test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
   const CHAIN_TIME = 'Fri 09/25 06:59 PM CT';
   await intercept(page);
   deskPanels().terrain = Object.assign({}, TERRAIN, {
-    levels_age_sec: 4, levels_age_text: '4s', levels_state: 'LIVE', levels_time_ct: CHAIN_TIME,
+    levels_age_text: '4s', levels_state: 'LIVE', levels_time_ct: CHAIN_TIME,
   });
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); });
@@ -571,7 +571,7 @@ test.describe('Trade Desk renders served values', () => {
   // (tests/test_level_crosses_wire.py keeps this file equal to the panel's answer)
   const STOPPED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_levels_at_a_stopped_price_2026_10_22.json'));
   async function routeStopped(page) {
-    const terrain = Object.assign({}, TERRAIN, { spot_feed_live: false, spot_not_live_text: STOPPED.spot_not_live_text });
+    const terrain = Object.assign({}, TERRAIN, { spot_not_live_text: STOPPED.spot_not_live_text });
     await intercept(page);   // every route answered in its real shape, then the stopped price's two
     deskPanels().terrain = terrain;
     deskPanels().levels = levelsAt(STOPPED);
