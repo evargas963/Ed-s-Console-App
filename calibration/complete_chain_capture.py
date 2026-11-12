@@ -659,17 +659,17 @@ class ChainSweep:
 
         Schwab's /chains answers (the listed contracts, their terms and open interest, which
         Schwab says is the prior trading day's: docs/schwab/schwab_support_emails_2026_10_12.txt,
-        item 5) are taken again, as sent, by each chain begun in their capture window
-        (capture_slot) within CHAINS_AGAIN_SEC of their request: that chain asks only for what
-        moves, its Greeks and quotes. Outside those windows every chain asks for them. A series
-        an exchange adds during the trading day (it may: docs/SOURCES.md, sec-34-60365) is seen
-        within CHAINS_AGAIN_SEC.
+        item 5) are taken again, as sent, by each chain begun within CHAINS_AGAIN_SEC of their
+        request, at any hour: that chain asks only for what moves, its Greeks and quotes. A
+        chain that begins a capture window (capture_slot: the one the history stores, the
+        close's among them) asks for them. A series an exchange adds during the trading day
+        (it may: docs/SOURCES.md, sec-34-60365) is seen within CHAINS_AGAIN_SEC.
         """
         chain = _Chain(ticker, self.clock())
         window = capture_slot(chain.started)
         held = self._answers.get(ticker)
         fresh = held is not None and chain.started - held[1] < CHAINS_AGAIN_SEC
-        if window is not None and fresh and held[0] == window:
+        if fresh and held[0] == window:
             chain.answers_age, chain.spots = chain.started - held[1], dict(held[2])
             chain.by_expiry = {e: [dict(ct) for ct in cts] for e, cts in held[3].items()}
             return self.take_greeks(chain)
@@ -704,9 +704,9 @@ class ChainSweep:
         except Exception as e:  # that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
-        if window is not None:  # as sent: take_greeks writes each chain's own Greeks and quote
-            sent = {e: [dict(ct) for ct in cts] for e, cts in chain.by_expiry.items()}
-            self._answers[ticker] = (window, chain.started, dict(chain.spots), sent)
+        # as sent: take_greeks writes each chain's own Greeks and quote
+        sent = {e: [dict(ct) for ct in cts] for e, cts in chain.by_expiry.items()}
+        self._answers[ticker] = (window, chain.started, dict(chain.spots), sent)
         return self.take_greeks(chain)
 
     def take_greeks(self, chain: _Chain) -> None:

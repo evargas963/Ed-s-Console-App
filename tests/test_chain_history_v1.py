@@ -267,6 +267,29 @@ def test_schwabs_chains_answers_are_asked_every_five_minutes_and_its_quotes_ever
     )
 
 
+def test_before_the_open_the_chains_answers_are_asked_every_five_minutes_too(tmp_path, schwab):
+    """Before the option session (2026-09-30 08:00 ET) the same five minutes hold.
+
+    Production asked /chains for every pre-market chain (about 11,000 requests on 2026-11-11).
+    Three chains of SPY at 08:00, 08:03 and 08:07: the first and the third ask /chains, the
+    second takes the first's answers; each asks its own quotes.
+    """
+    clock = {"now": 0.0}
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
+    asked = []
+    for at in ("2026-09-30 08:00", "2026-09-30 08:03", "2026-09-30 08:07"):
+        clock["now"] = _ts(at)
+        sweep.fetch_chain(client, "SPY", threading.Event())
+        while sweep._queue:
+            sweep.send_quotes(client)
+        asked.append((len(schwab.asked(CHAIN)), len(schwab.asked(QUOTES))))
+    (one, quotes), (two, quotes_two), (three, quotes_three) = asked
+    assert one >= 1 and (two, three) == (one, 2 * one), "/chains: once in five minutes"
+    assert (quotes_two, quotes_three) == (2 * quotes, 3 * quotes), "/quotes: every chain"
+    delivered = [_et(m["ts_recv"]) for _t, m in published if "contracts" in m and m["part"] == 0]
+    assert delivered == ["2026-09-30 08:00", "2026-09-30 08:03", "2026-09-30 08:07"]
+
+
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
     """One rotation; while no page shows a ticker, none comes first (operator 2026-11-11).
 

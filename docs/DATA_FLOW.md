@@ -463,10 +463,11 @@ the program.
   interest, which Schwab says is the prior trading day's:
   `docs/schwab/schwab_support_emails_2026_10_12.txt`, item 5; measured 2026-11-11, it changed
   on 0 of 62,181 contracts between the day's first and last capture) are asked for at most every
-  five minutes in the regular session (`CHAINS_AGAIN_SEC`; operator 2026-11-12: "every five
+  five minutes, at any hour (`CHAINS_AGAIN_SEC`; operator 2026-11-12: "every five
   minutes should do"), and each chain begun within that time takes them
   again as sent and asks only for its Greeks and quotes (`ChainSweep.fetch_chain`,
-  `tests/test_chain_history_v1.py`); outside those windows every chain asks for them. An
+  `tests/test_chain_history_v1.py`); a chain that begins a capture window, the close's among
+  them, asks for them, so each stored capture is a new answer. An
   exchange may add an option series during the trading day (`docs/SOURCES.md`,
   occ-listing-procedures-plan), so a contract listed during the session is seen within five
   minutes. After that market's close (and on a weekend, a holiday, and when the
