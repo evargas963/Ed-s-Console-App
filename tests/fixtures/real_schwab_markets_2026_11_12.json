@@ -1,0 +1,86 @@
+{
+ "source": "production stream_capture.db stream_markets_raw, read-only, 2026-11-12: Schwab's GET /markets answer, native_json as stored",
+ "date": "2026-11-12",
+ "status": 200,
+ "body": {
+  "equity": {
+   "EQ": {
+    "date": "2026-11-12",
+    "marketType": "EQUITY",
+    "product": "EQ",
+    "productName": "equity",
+    "isOpen": true,
+    "sessionHours": {
+     "preMarket": [
+      {
+       "start": "2026-11-12T07:00:00-05:00",
+       "end": "2026-11-12T09:30:00-05:00"
+      }
+     ],
+     "regularMarket": [
+      {
+       "start": "2026-11-12T09:30:00-05:00",
+       "end": "2026-11-12T16:00:00-05:00"
+      }
+     ],
+     "postMarket": [
+      {
+       "start": "2026-11-12T16:00:00-05:00",
+       "end": "2026-11-12T20:00:00-05:00"
+      }
+     ]
+    }
+   }
+  },
+  "option": {
+   "EQO": {
+    "date": "2026-11-12",
+    "marketType": "OPTION",
+    "product": "EQO",
+    "productName": "equity option",
+    "isOpen": true,
+    "sessionHours": {
+     "preMarket": [
+      {
+       "start": "2026-11-12T07:30:00-05:00",
+       "end": "2026-11-12T09:25:00-05:00"
+      }
+     ],
+     "regularMarket": [
+      {
+       "start": "2026-11-12T09:30:00-05:00",
+       "end": "2026-11-12T16:00:00-05:00"
+      }
+     ],
+     "postMarket": [
+      {
+       "start": "2026-11-12T16:00:00-05:00",
+       "end": "2026-11-12T16:15:00-05:00"
+      }
+     ]
+    }
+   },
+   "IND": {
+    "date": "2026-11-12",
+    "marketType": "OPTION",
+    "product": "IND",
+    "productName": "index option",
+    "isOpen": true,
+    "sessionHours": {
+     "preMarket": [
+      {
+       "start": "2026-11-12T07:30:00-05:00",
+       "end": "2026-11-12T09:25:00-05:00"
+      }
+     ],
+     "regularMarket": [
+      {
+       "start": "2026-11-12T09:30:00-05:00",
+       "end": "2026-11-12T16:15:00-05:00"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

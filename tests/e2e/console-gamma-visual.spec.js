@@ -4,8 +4,8 @@
  * approved reference hierarchy: dominant strike x expiry HEATMAP (hero), compact left nav rail,
  * narrow right KEY LEVELS rail, subordinate bottom strip (Strike Detail / GEX by Strike / Flow).
  *
- * Uses a DENSE, representative synthetic surface (SPX-scale: ~25 strikes x 6 expiries) so the
- * screenshots show the heatmap as the hero the way real data would — clearly synthetic, offline.
+ * Draws the server's own answers on AMZN's real chain (11 strikes x 24 expiries, levels LIVE), so
+ * the screenshots show the heatmap as the hero on real data, offline.
  * Captures DARK and LIGHT at 2560x1440 and 1920x1080 (full viewport, not cropped).
  */
 const { test, expect } = require('@playwright/test');
@@ -13,52 +13,20 @@ const { pushExpiries } = require('./fixtures/expiries');
 const { chainAt } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
-const SPOT = 5000;
-const EXPS = [
-  { expiry: '2026-09-11', dte: 0 }, { expiry: '2026-09-12', dte: 1 }, { expiry: '2026-09-15', dte: 4 },
-  { expiry: '2026-09-18', dte: 7 }, { expiry: '2026-09-22', dte: 11 }, { expiry: '2026-09-30', dte: 19 },
-  { expiry: '2026-10-17', dte: 36 }, { expiry: '2026-11-21', dte: 71 }, { expiry: '2026-12-19', dte: 99 },
-  { expiry: '2027-01-15', dte: 126 }, { expiry: '2027-03-19', dte: 189 },
-];
-const STRIKE_LIST = (function () { const a = []; for (let k = SPOT + 100; k >= SPOT - 100; k -= 20) a.push(k); return a; })();
-function gexAt(k, ci) {
-  // signed net GEX$ — magnitude peaks near spot / at round strikes, decays with distance and DTE, so
-  // the grid has real K-to-M texture (presentation only, synthetic — clearly not live data).
-  const d = Math.abs(k - SPOT) / 20;
-  const sign = (k % 100 === 0) ? 1 : ((k > SPOT) ? -1 : 1);
-  const base = 7.6e6 / (1 + d * d * 0.35) / (1 + ci * 0.55);
-  const jitter = 0.6 + ((k / 20 + ci * 7) % 5) * 0.16;
-  return Math.round(sign * base * jitter);
-}
-const SURFACE = {
-  ticker: '$SPX', symbol: '$SPX', available: true, spot: SPOT, source: 'terrain_live_cache',
-  levels_state: 'LIVE', chain_basis: 'full', complete: false,
-  spot_as_of_ts_utc: 1757000200, spot_source: 'last',
-  expirations: EXPS, strikes: STRIKE_LIST,
-  cells: STRIKE_LIST.map(function (k) {
-    return { strike: k, gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }), spot: k === SPOT }; }),
-  // the served view; the colour scale is a stand-in at least every |gexAt| (peak 7.6e6 x 1.24)
-  view: { centre: SPOT, scope: 'auto', coverage: null, max_abs: { gex: 1e7 }, missing_expiry: null },
-  provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
-};
-const TERRAIN = { ticker: '$SPX', spot: SPOT, gamma_flip: 4992.4, call_wall: 5100, put_wall: 4900,
-  absolute_gamma_strike: 5000, lvp: 5000, net_gex_at_spot: 3.14e9, regime: 'LONG_GAMMA_CHOP',
-  levels_state: 'LIVE', levels_mark: 'LIVE' };
-const STRIKES = { ticker: '$SPX', spot: SPOT,
-  levels_state: 'LIVE',
-  today: { all: STRIKE_LIST.map(function (k) { return [k, gexAt(k, 0), 1000 + (k % 500)]; }) },
-  views: { all: { centre: SPOT, note: null, max_abs: 1e7 } } };   // scale: a stand-in at least every |gexAt|
-const BARS = { ticker: '$SPX', bars: Array.from({ length: 80 }, function (_v, i) {
-  const c = SPOT - 12 + Math.sin(i / 6) * 9 + i * 0.12;
-  return { t: 1757000000 + i * 60, o: c - 1, h: c + 2, l: c - 2, c: c, v: 1000 + i }; }) };
-const CHAIN = { ticker: '$SPX', spot: SPOT, expiry: '2026-09-11', status: 'ok',
-  scope: { kind: 'complete_single_expiry' }, net_gex_by_strike: [], adjusted_deliverable_symbols: [],
-  contracts: [
-    { putCall: 'CALL', strikePrice: 5000, openInterest: 12400, totalVolume: 5400, gamma: 0.0021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
-    { putCall: 'PUT', strikePrice: 5000, openInterest: 9800, totalVolume: 4100, gamma: 0.0019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' } ] };
+// the heatmap, the levels, the strikes and the front expiry's chain as the server sends them on
+// AMZN's real chain of 2026-11-12 10:39 ET, 24 expiries, with the prior day's close compared
+// (held to the server by tests/test_e2e_panels_two_day_v1.py)
+const REAL = require('./fixtures/panels_amzn_two_day.json');
+const SURFACE = REAL.surface, TERRAIN = REAL.terrain, STRIKES = REAL.strikes, CHAIN = REAL.chain;
+const SPOT = TERRAIN.spot;
+const EXPS = SURFACE.expirations;
+// price bars around the real price (the set holds no bars)
+const BARS = { ticker: 'AMZN', bars: Array.from({ length: 80 }, function (_v, i) {
+  const c = SPOT - 1.2 + Math.sin(i / 6) * 0.9 + i * 0.012;
+  return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
 
 async function intercept(page) {
-  await routeWatchlist(page, ['SPY']);
+  await routeWatchlist(page, ['AMZN']);
   await pushExpiries(page, EXPS.map((e) => e.expiry), Object.fromEntries(EXPS.map((e) => [e.expiry, e.dte])), { bars: BARS, terrain: TERRAIN, strikes: STRIKES, surface: SURFACE,
     chain: chainAt(CHAIN) });
 }
@@ -71,7 +39,7 @@ for (const theme of THEMES) {
     test(`hero composition ${theme} ${vp.w}x${vp.h}`, async ({ page }) => {
       await intercept(page);
       await page.addInitScript((t) => {
-        localStorage.setItem('ed_ticker', '$SPX'); localStorage.setItem('ed_theme', t);
+        localStorage.setItem('ed_ticker', 'AMZN'); localStorage.setItem('ed_theme', t);
           localStorage.setItem('ed_ws', 'options'); localStorage.setItem('ed_sub', 'gamma');
           localStorage.setItem('ed_view', 'heatmap'); localStorage.setItem('ed_rail_open', '1');      }, theme);
       await page.setViewportSize({ width: vp.w, height: vp.h });
