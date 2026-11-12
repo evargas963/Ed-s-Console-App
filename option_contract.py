@@ -168,6 +168,17 @@ def quote_values(quote: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def open_interest_moved(contract: Mapping[str, Any], quote: Mapping[str, Any]) -> bool:
+    """Tell whether Schwab's /quotes answer for a contract holds another open interest.
+
+    Another than the contract's /chains answer does: Schwab has posted the day's open interest
+    since that answer was asked for (measured 2026-11-11: the two agree on every contract of
+    ten tickers' chains asked seconds apart). An answer with no open interest tells nothing.
+    """
+    newest = schwab_count(quote.get("openInterest"))
+    return newest is not None and newest != schwab_count(contract.get("openInterest"))
+
+
 def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     """Return the record of one contract as the chain sweep delivers it."""
     put_call = raw.get("putCall")

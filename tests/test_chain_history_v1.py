@@ -30,7 +30,13 @@ from json_blob_codec import decode_json_blob
 from option_contract import read_chain
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
-from tests.schwab_rest_standin import CHAIN, QUOTES, SPY_QUOTES, LocalSchwab
+from tests.schwab_rest_standin import (
+    CHAIN,
+    QUOTES,
+    SPY_OPEN_INTEREST_MOVED,
+    SPY_QUOTES,
+    LocalSchwab,
+)
 from time_et import ET
 
 _QUOTED = {s: e["quote"] for s, e in SPY_QUOTES.items()}
@@ -223,46 +229,56 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     )
 
 
-def test_schwabs_chains_answers_are_asked_once_a_capture_window_and_its_quotes_every_chain(
+def test_schwabs_chains_answers_are_asked_once_an_option_session_and_its_quotes_every_chain(
     tmp_path, schwab
 ):
-    """Open interest is the prior trading day's (Schwab support, 2026-10-12): asked once a window.
+    """Operator 2026-11-12: the contract list and open interest once a day, not again and again.
 
-    Three chains of SPY: 10:01 and 10:20 (one capture window, 10:00) and 10:31 (the next).
-    The first asks /chains; the second asks /chains for nothing and takes those answers again,
-    as sent, with its own /quotes for every contract, and is delivered at its own time; the
-    third, in a new window, asks /chains again. Each chain carries every contract with the
-    same open interest and its quote's gamma, and no chain's quote reaches another's contracts.
+    Four chains of SPY inside Schwab's option session of 2026-09-30 (09:30 to 16:15 ET). INDUCED
+    for the first two: the quotes answer leaves out the 159 contracts whose captured quote was
+    asked the next morning and holds another open interest. The first chain (10:01) asks
+    /chains; the second (10:20) asks /chains for nothing and takes those answers again, as
+    sent, with its own /quotes for every contract. The third (10:40) is answered every quote:
+    it too asks /chains for nothing, and its quotes hold another open interest than the answers
+    it took, so the fourth (10:50) asks /chains again. Every chain is delivered at its own time
+    with every contract, the same open interest and its own quote's gamma; the history holds
+    each capture window's first chain.
     """
     clock = {"now": 0.0}
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
+    schwab.withheld = set(SPY_OPEN_INTEREST_MOVED)
+    times = ("2026-09-30 10:01", "2026-09-30 10:20", "2026-09-30 10:40", "2026-09-30 10:50")
     asked = []
-    for at in ("2026-09-30 10:01", "2026-09-30 10:20", "2026-09-30 10:31"):
+    for at in times:
+        if at == times[2]:
+            schwab.withheld = set()
         clock["now"] = _ts(at)
         assert _rotate(sweep, client) == {"SPY"}
         asked.append((len(schwab.asked(CHAIN)), len(schwab.asked(QUOTES))))
-    (one, quotes), (two, quotes_two), (three, quotes_three) = asked
-    assert one >= 1 and two == one and three == 2 * one, "/chains: once a window"
-    assert (quotes_two, quotes_three) == (2 * quotes, 3 * quotes), "/quotes: every chain"
+    one, quotes = asked[0]
+    assert one >= 1 and [n for n, _q in asked] == [one, one, one, 2 * one], (
+        "/chains: once, until a quote holds another open interest"
+    )
+    assert [q for _n, q in asked] == [quotes * n for n in (1, 2, 3, 4)], "/quotes: every chain"
     chains = [msg for _t, msg in published if "contracts" in msg]
-    assert [_et(m["ts_recv"]) for m in chains if m["part"] == 0] == [
-        "2026-09-30 10:01",
-        "2026-09-30 10:20",
-        "2026-09-30 10:31",
-    ]
+    assert [_et(m["ts_recv"]) for m in chains if m["part"] == 0] == list(times)
     by_time: dict[float, dict] = {}
     for m in chains:
         by_time.setdefault(m["ts_recv"], {}).update({c.symbol: c for c in m["contracts"]})
-    first, again, later = by_time.values()
-    assert len(first) == 442 and set(first) == set(again) == set(later)
+    first, again, moved, asked_again = by_time.values()
+    assert len(first) == 442 and set(first) == set(again) == set(moved) == set(asked_again)
     assert all(first[s].open_interest == again[s].open_interest for s in first)
-    assert all(again[s].gamma == q["gamma"] for s, q in _QUOTED.items())
+    assert all(
+        (again[s].gamma is None) if s in SPY_OPEN_INTEREST_MOVED else (again[s].gamma == q["gamma"])
+        for s, q in _QUOTED.items()
+    ), "a contract left out of one chain's quotes takes no other chain's"
+    assert all(moved[s].gamma == q["gamma"] for s, q in _QUOTED.items())
     with sqlite3.connect(tmp_path / "ed_console.db") as c:
         written = c.execute(
             "SELECT DISTINCT ts_utc FROM complete_chain_captures ORDER BY ts_utc"
         ).fetchall()
-    assert [_et(r[0]) for r in written] == ["2026-09-30 10:01", "2026-09-30 10:31"], (
-        "the history holds each window's first chain, the one whose /chains answers were asked"
+    assert [_et(r[0]) for r in written] == ["2026-09-30 10:01", "2026-09-30 10:40"], (
+        "the history holds each capture window's first chain"
     )
 
 

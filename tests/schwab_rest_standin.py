@@ -42,6 +42,14 @@ import time_et
 FX = Path(__file__).resolve().parent / "fixtures"
 SPY = json.loads((FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
 SPY_QUOTES = {s: e for q in SPY["quotes"] for s, e in q["reply"].items()}
+#: the SPY contracts whose captured quote (asked 2026-10-01 04:52 ET) holds another open interest
+#: than the captured chain (2026-09-30 15:31 ET): 159 of the 442, each sent as 0 the next morning
+SPY_OPEN_INTEREST_MOVED = frozenset(
+    c["symbol"]
+    for c in SPY["chain"]
+    if c["symbol"] in SPY_QUOTES
+    and SPY_QUOTES[c["symbol"]]["quote"]["openInterest"] != c["openInterest"]
+)
 _TSLA_ANSWER = json.loads(
     (FX / "real_schwab_chain_tsla_2026_10_09.json").read_text(encoding="utf-8")
 )["answer"]

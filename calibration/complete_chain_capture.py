@@ -36,6 +36,7 @@ from live_price_rows import price_row
 from numeric_contract import schwab_number
 from option_contract import (
     GREEK_FIELDS,
+    open_interest_moved,
     read_chain,
     streamed_greek_set,
     streamed_greeks,
@@ -54,6 +55,7 @@ from time_et import (
     ET,
     options_closed_at,
     options_open,
+    options_window,
     record_markets,
     session,
     session_label,
@@ -341,6 +343,7 @@ class _Chain:
     pushed: int = 0  # contracts whose Greeks the stream pushed (LEVELONE_OPTIONS)
     requested: int = 0  # contracts asked for on /quotes for their Greeks
     answers_age: float = 0.0  # seconds from its /chains answers' request to its own (fetch_chain)
+    moved: int = 0  # contracts whose quote holds another open interest than its /chains answer
 
     def contracts(self) -> list[dict]:
         return [ct for cts in self.by_expiry.values() for ct in cts]
@@ -656,12 +659,15 @@ class ChainSweep:
 
         Schwab's /chains answers (the listed contracts, their terms and open interest, which
         Schwab says is the prior trading day's: docs/schwab/schwab_support_emails_2026_10_12.txt,
-        item 5) are asked for once per capture window (capture_slot) and taken again, as sent,
-        by each later chain of the window: that chain asks only for what moves, its Greeks and
-        quotes. Outside those windows every chain asks for them.
+        item 5) are asked for once per option window Schwab sent (time_et.options_window) and
+        taken again, as sent, by each later chain of the window: that chain asks only for what
+        moves, its Greeks and quotes. They are asked for again once a quote holds another open
+        interest than they do (deliver), and outside those windows by every chain. A ticker
+        added to the watchlist holds none, so its first chain asks for them.
         """
         chain = _Chain(ticker, self.clock())
-        window = capture_slot(chain.started)
+        began = options_window(datetime.fromtimestamp(chain.started, ET))
+        window = None if began is None else began.timestamp()
         held = self._answers.get(ticker)
         if window is not None and held is not None and held[0] == window:
             chain.answers_age, chain.spots = chain.started - held[1], dict(held[2])
@@ -789,6 +795,7 @@ class ChainSweep:
             if quote is not None:
                 # Schwab's /quotes answer for the contract, as sent: its values are read from it
                 ct["quote"] = quote
+                chain.moved += open_interest_moved(ct, quote)
             elif ct["symbol"] in named:
                 chain.named_invalid.add(ct["symbol"])
             chain.unquoted.discard(ct["symbol"])
@@ -847,6 +854,14 @@ class ChainSweep:
             self.publish(topic, msg)
         self._delivered.add(chain.ticker)
         self._fetched[chain.ticker] = chain.started
+        if chain.moved:  # Schwab posted the day's open interest: the next chain asks /chains again
+            self._answers.pop(chain.ticker, None)
+            log.info(
+                "open interest of %s: /quotes holds another than /chains on %d contracts; "
+                "the next chain asks /chains again",
+                chain.ticker,
+                chain.moved,
+            )
         log.info(
             "CHAIN %s: %d contracts in %d expiries, /chains answers (open interest) asked %.0f s "
             "before | Greeks: %d "

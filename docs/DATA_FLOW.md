@@ -462,10 +462,17 @@ the program.
   queued quotes included. Schwab's /chains answers (the listed contracts, their terms and open
   interest, which Schwab says is the prior trading day's:
   `docs/schwab/schwab_support_emails_2026_10_12.txt`, item 5; measured 2026-11-11, it changed
-  on 0 of 62,181 contracts between the day's first and last capture) are asked for once per
-  capture window, the chain the history stores, and each later chain of the window takes them
-  again as sent and asks only for its Greeks and quotes (`ChainSweep.fetch_chain`,
-  `tests/test_chain_history_v1.py`); outside those windows every chain asks for them. After that market's close (and on a weekend, a holiday, and when the
+  on 0 of 62,181 contracts between the day's first and last capture; on Schwab's stream it
+  changed in one batch at 05:30:01 CT on 2026-11-10 and 2026-11-11) are asked for once per
+  option window Schwab sent (`time_et.options_window`; operator 2026-11-12, approving the
+  one-source table: "approved"; "if OI is on the screen then no need to ask for it again"), and
+  each later chain of the window takes them again as sent and asks only for its Greeks and
+  quotes (`ChainSweep.fetch_chain`, `tests/test_chain_history_v1.py`). They are asked for again
+  once a /quotes answer holds another open interest than they do
+  (`option_contract.open_interest_moved`: measured 2026-11-11, the two endpoints agree on every
+  contract asked seconds apart), for a ticker added to the watchlist, and outside those windows
+  by every chain. A stored capture holds its chain's /chains answers as they were asked for and
+  that chain's own quotes. After that market's close (and on a weekend, a holiday, and when the
   daemon starts while it is closed) the ticker is fetched once more, its close values (one added
   then too); a fetch that fails is tried again in the next pass. A ticker whose expiration chain
   lists nothing has no option market: its chain is asked once per ET date, only to learn whether

@@ -52,7 +52,7 @@ from tests.feed_live_helper import (
     price_history,
     stream_daemon_bars,
 )
-from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
+from tests.schwab_rest_standin import SPY_OPEN_INTEREST_MOVED, SPY_QUOTES, TOKEN, LocalSchwab
 from time_et import ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -617,6 +617,9 @@ def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until
         )
 
     swept = _Swept(tmp_path, "2026-10-02 16:14", ["SPY"])
+    # INDUCED: no quote for the contracts whose captured quote holds another open interest, so
+    # no chain here is asked again for that
+    swept.schwab.withheld = set(SPY_OPEN_INTEREST_MOVED)
     try:
         swept.until(2)
         closed = swept.move("2026-10-02 16:15:30")
@@ -744,6 +747,9 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
     """
     chains = "/marketdata/v1/chains"
     swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
+    # INDUCED: no quote for the contracts whose captured quote holds another open interest, so
+    # no chain here is asked again for that
+    swept.schwab.withheld = set(SPY_OPEN_INTEREST_MOVED)
     try:
         open_chains = swept.until(3)  # delivered again and again at 16:10
         closed = swept.move("2026-10-07 16:20")
