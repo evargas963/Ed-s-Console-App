@@ -2307,7 +2307,6 @@ def strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, now: f
         "ticker": tk,
         "available": bool(rows),
         "spot": spot,
-        "priced_at_spot": levels.snap.spot,
         "spot_strike": spot_strike,
         "rows": win,
         "view": view,
@@ -2680,14 +2679,11 @@ def gamma_surface_payload(
             **window,
             "view": view,
             # one spot on every screen: the live price, the header's own rule, after the surface's
-            # own keys so its stamp cannot overwrite it. The price this surface's cells were
-            # computed at is named on its own (the cells and their stamp travel together).
+            # own keys so its stamp cannot overwrite it.
             "spot": _surface_live_spot[0],
             "spot_source": _surface_live_spot[1],
             "spot_as_of_ts_utc": _surface_live_spot[2],
-            "priced_at_spot": surf["spot"],
             "spot_strike": spot_strike,
-            "priced_at_spot_as_of_ts_utc": surf["spot_as_of_ts_utc"],
         }
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
@@ -2732,16 +2728,10 @@ def terrain(tk: str, now: float) -> dict:
     at = datetime.fromtimestamp(now, ET)
     cached, staleness = terrain_cache_get(tk, now)
     if cached is not None:
-        # the levels as the producer published them, at the publication's price (priced_at_spot);
-        # `spot` is the live price, and every relation of the price to the levels is at it
-        # (price_relations); internal fields (the kept chain, the heatmap grid, per-strike rows)
-        # are their own panels
+        # the levels as the producer published them; `spot` is the live price, and every relation
+        # of the price to the levels is at it (price_relations); internal fields (the kept chain,
+        # the heatmap grid, per-strike rows) are their own panels
         out = cached.served() | staleness
-        out.update(
-            priced_at_spot=cached.snap.spot,
-            priced_at_spot_source=cached.spot_source,
-            priced_at_spot_as_of_ts_utc=cached.spot_as_of_ts_utc,
-        )
         out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
         out.update(price_relations(out, out["spot"]).to_dict())
         out.update(_atr_fields(tk, at))  # live: today's candle from the bars held now
@@ -3308,7 +3298,6 @@ def chain(ticker: str, now: float, params: dict) -> dict:
     return {
         "ticker": t,
         "spot": live_spot,
-        "priced_at_spot": held.snap.spot,
         "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
         "net_gex_by_strike": net_gex_by_strike,
@@ -3825,7 +3814,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict:
             "spot_as_of_ts_utc": live_ts,
             # the distances, the spot line and the pin candidate are from the live price: its mark
             **price_mark(tk, live_ts, now.timestamp()),
-            "priced_at_spot": float(live.spot),
             "status_text": "Chain as of " + ct_label(fetched),
             "levels": levels,
             "regime": live.regime,
@@ -3985,7 +3973,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
         **mark,  # each level's distance and side are from that price
-        "priced_at_spot": None if published is None else published.snap.spot,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
         "snapshot_time_ct": ct_label(snap.as_of_ts_utc)

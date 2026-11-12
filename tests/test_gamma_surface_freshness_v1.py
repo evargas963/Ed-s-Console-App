@@ -87,18 +87,18 @@ def published():
 
 
 @pytest.mark.usefixtures("published")
-def test_the_live_surface_is_served_with_the_live_price_and_its_own_price_named():
+def test_the_live_surface_is_served_with_the_live_price():
     _daemon(206.0, _AT.timestamp(), _ON)  # the price has moved since
     d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
     surface = server.published_levels(_ON).gamma_surface
     # 2026-09-02 has no /markets answer held: the levels, and so the surface, are not live
     assert d["source"] == "terrain_live_cache" and d["levels_state"] == "NOT LIVE"
     assert [c["gex"] for c in d["cells"]] == [c["gex"] for c in surface["cells"]]  # served verbatim
-    assert d["spot"] == 206.0 and d["priced_at_spot"] == _CRWD["spot"]
+    assert d["spot"] == 206.0 and surface["spot"] == _CRWD["spot"]
     assert [c["strike"] for c in d["cells"] if c["spot"]] == [
         min(surface["strikes"], key=lambda k: abs(k - 206.0))
     ]
-    assert d["priced_at_spot_as_of_ts_utc"] == surface["spot_as_of_ts_utc"]
+    assert not [k for k in d if k.startswith("priced_at_spot")]
 
 
 @pytest.mark.usefixtures("published")

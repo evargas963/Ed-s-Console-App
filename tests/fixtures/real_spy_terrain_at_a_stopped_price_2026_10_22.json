@@ -77,9 +77,6 @@
   "liquidity"
  ],
  "posture": "FOLLOW_BREAKS",
- "priced_at_spot": 764.04,
- "priced_at_spot_as_of_ts_utc": null,
- "priced_at_spot_source": "streaming_plane",
  "put_charm_wall": 765.0,
  "put_delta_wall": 772.0,
  "put_wall": 764.0,

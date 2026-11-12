@@ -558,8 +558,6 @@
  "levels_stale_reason": "",
  "levels_state": "CLOSE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",
- "priced_at_spot": 764.04,
- "priced_at_spot_as_of_ts_utc": null,
  "reason": null,
  "source": "terrain_live_cache",
  "spot": 773.1269,

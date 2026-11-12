@@ -483,10 +483,9 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time():
 def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_no_levels():
     """The terrain panel sends the levels exactly as the producer published them.
 
-    None recomputed per request, the price they were computed at named `priced_at_spot` with its
-    source and time, and `spot` the live price. Every relation of the price to the levels is at
-    the live price: with none, each is unknown, never the publication's. A chain the daemon
-    delivered with no spot has no levels, with its reason.
+    None recomputed per request, and `spot` the live price. Every relation of the price to the
+    levels is at the live price: with none, each is unknown, never the publication's. A chain
+    the daemon delivered with no spot has no levels, with its reason.
     """
     _daemon()
     _put_chain()
@@ -497,8 +496,8 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
         assert out[k] == published[k], k
     for k in ("call_wall_state", "call_wall_lean", "flip_relation", "pin_candidate"):
         assert out[k] is None, k
-    assert out["priced_at_spot"] == published["spot"] and out["priced_at_spot_as_of_ts_utc"] == _T
-    assert out["priced_at_spot_source"] == server.SPOT_SOURCE_PLANE
+    assert _cached().snap.spot == published["spot"] and _cached().spot_as_of_ts_utc == _T
+    assert _cached().spot_source == server.SPOT_SOURCE_PLANE
     assert out["spot"] is None and "spot_state" not in out
     _publish(_RECORDS, _T, chain_spot=(None, None))  # the next chain: no spot
     out = server.terrain(TK, time_et.now())
@@ -507,11 +506,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
         and out["call_wall"] is None
         and out["error"] == "no spot price"
     )
-    assert (
-        out["priced_at_spot"],
-        out["priced_at_spot_source"],
-        out["priced_at_spot_as_of_ts_utc"],
-    ) == (None, "none", None)
+    assert not [k for k in out if k.startswith("priced_at_spot")]
 
 
 def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():

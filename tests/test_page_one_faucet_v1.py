@@ -3,9 +3,8 @@
 Question 2: the screen shows it correctly; question 3: each value the one computation's.
 
 One spot on every screen: each route that serves `spot` serves the live price at response time
-(resolve_spot, the rule the header's price row uses); a value computed at another price names that
-price `priced_at_spot`. Strike Detail's Net GEX is the heatmap's own cell, and OI/volume cell
-totals are served, not summed in the browser.
+(resolve_spot, the rule the header's price row uses), and no other price. Strike Detail's Net
+GEX is the heatmap's own cell, and OI/volume cell totals are served, not summed in the browser.
 
 Through the real code: the daemon's status and price row as the console holds them, the levels
 producer (server._publish_levels), the routes. Real data: CRWD's 2026-10-16 expiry, every strike,
@@ -111,12 +110,12 @@ ASKED = {**AUTO, "cols": None, "expiry": EXPIRY, "tf": "1", "limit": 1500, "minu
 ASKED["venue"] = "NYSE_BOOK"
 
 
-def test_every_route_and_panel_serves_the_live_spot_and_names_the_computed_one(held):
+def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held):
     """Every page panel, found from the app (no GET route answers a ticker).
 
-    A panel that serves a price serves `spot`, the live price, and `priced_at_spot`, the price the
-    payload was computed at. The strikes panel serves neither: its pages take the price from the
-    header row.
+    A panel that serves a price serves `spot`, the live price, and not the price the payload was
+    computed at, which no page reads (operator 2026-11-12: "Yes, remove it"). The strikes panel
+    serves neither: its pages take the price from the header row.
     """
     now = time_et.now()
     served = {}
@@ -124,11 +123,11 @@ def test_every_route_and_panel_serves_the_live_spot_and_names_the_computed_one(h
         contract = next(iter(held.contracts))
         body = panel(Asked(TK, now, {**ASKED, "contract": contract}))
         if {"spot", "priced_at_spot"} & set(body):
-            served[kind] = (body.get("spot"), body.get("priced_at_spot"))
+            served[kind] = (body.get("spot"), "priced_at_spot" in body)
     assert {"terrain", "surface", "chain", "levels"} <= set(served) and "strikes" not in served
     routes = [r for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods]
     assert [r.path for r in routes if "ticker" in inspect.signature(r.endpoint).parameters] == []
-    assert {p: s for p, s in served.items() if s != (LIVE, PUBLISHED)} == {}
+    assert {p: s for p, s in served.items() if s != (LIVE, False)} == {}
 
 
 def test_strike_side_sums_split_at_the_live_spot(held):

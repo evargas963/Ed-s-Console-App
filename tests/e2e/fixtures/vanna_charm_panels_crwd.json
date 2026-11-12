@@ -3,7 +3,6 @@
   "ticker": "CRWD",
   "available": true,
   "spot": 269.395,
-  "priced_at_spot": 269.04,
   "spot_strike": 270.0,
   "rows": [
    [
@@ -64,7 +63,6 @@
   "ticker": "CRWD",
   "available": true,
   "spot": 269.395,
-  "priced_at_spot": 269.04,
   "spot_strike": 270.0,
   "rows": [
    [

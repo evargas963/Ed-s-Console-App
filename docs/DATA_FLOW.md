@@ -420,7 +420,7 @@ the program.
   every other ticker), so the close numbers stay for the rest of it. On a day Schwab says is closed
   and before the next open it is valued at the clock: a closed day has no same-day close, so no
   0DTE level is made from a later expiry (operator 2026-10-25). A later
-  equity print keeps the price that publication was priced at (`priced_at_spot`); the matrix's
+  equity print keeps the price that publication was priced at; the matrix's
   window (every per-strike panel's, Auto; "Strike windows" below), its spot, each row's distance
   from it and the row it sits under are the live price's (`confluence_composite.at_price`). The
   chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the rail. An expiry dated before today is not offered. A request that names a date before
@@ -665,9 +665,8 @@ the program.
   while Schwab has sent this program none; a capture stored without the chain's spot has no
   price (the underlyingPrice of its /chains answers is recorded with it and read by nothing:
   the stream's LAST_PRICE is the price's one source, operator 2026-11-10: "we only have one
-  producer, one source"; `tests/test_data_path_chain_spot_v1.py`). Every route names that price `priced_at_spot` (with
-  `priced_at_spot_source`, `priced_at_spot_as_of_ts_utc` where it serves them) and serves `spot`
-  as the live price (`resolve_spot`), one meaning on every route (`tests/test_page_one_faucet_v1.py`
+  producer, one source"; `tests/test_data_path_chain_spot_v1.py`). No panel serves that price, which no page read (operator 2026-11-12: "Yes, remove it"); every panel serves `spot`
+  as the live price (`resolve_spot`), one meaning on every panel (`tests/test_page_one_faucet_v1.py`
   checks every GET route that answers a ticker and every page panel that serves a price). Every relation of the price to the levels is at
   that live price, computed when served, never stored with the publication: each wall's state
   and lean, the price's side of the flip, the pin candidate and the read's lines
