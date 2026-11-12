@@ -4096,9 +4096,9 @@
    "At the lower edge \u2014 wait for the reaction at the put wall, do not anticipate.",
    "Fade rallies into call wall 270.00 (+0.21%) and buy dips toward put wall 270.00 (+0.21%); target the middle, stop beyond the wall."
   ],
-  "atr_daily": null,
-  "atr_weekly": null,
-  "atr_monthly": null,
+  "atr_daily": 9.452408341900341,
+  "atr_weekly": 17.39414267906555,
+  "atr_monthly": 32.792381399428905,
   "spot_time_ct": "Thu 11/12 09:39 AM CT",
   "spot_not_live_text": null,
   "levels_mark": "LIVE",
@@ -18524,5 +18524,7260 @@
   "scope": {
    "kind": "complete_single_expiry"
   }
+ },
+ "book": {
+  "status": "ok",
+  "top_of_book": {
+   "bid": 269.39,
+   "ask": null,
+   "bid_size": 440.0,
+   "ask_size": null
+  },
+  "crossed": null,
+  "mark": 269.425,
+  "microprice": null,
+  "spread_pts": null,
+  "depth": {
+   "1": {
+    "bid_total": 20.0,
+    "ask_total": 220.0,
+    "imbalance": -0.8333333333333334
+   },
+   "3": {
+    "bid_total": 1060.0,
+    "ask_total": 540.0,
+    "imbalance": 0.325
+   },
+   "5": {
+    "bid_total": 1300.0,
+    "ask_total": 780.0,
+    "imbalance": 0.25
+   }
+  },
+  "depth_pressure": {
+   "bid": [
+    {
+     "price": 269.4,
+     "volume": 20.0,
+     "cum": 20.0
+    },
+    {
+     "price": 269.39,
+     "volume": 1000.0,
+     "cum": 1020.0
+    },
+    {
+     "price": 269.33,
+     "volume": 40.0,
+     "cum": 1060.0
+    },
+    {
+     "price": 268.95,
+     "volume": 200.0,
+     "cum": 1260.0
+    },
+    {
+     "price": 268.86,
+     "volume": 40.0,
+     "cum": 1300.0
+    }
+   ],
+   "ask": [
+    {
+     "price": 269.46,
+     "volume": 220.0,
+     "cum": 220.0
+    },
+    {
+     "price": 269.47,
+     "volume": 120.0,
+     "cum": 340.0
+    },
+    {
+     "price": 269.48,
+     "volume": 200.0,
+     "cum": 540.0
+    },
+    {
+     "price": 269.5,
+     "volume": 40.0,
+     "cum": 580.0
+    },
+    {
+     "price": 269.54,
+     "volume": 200.0,
+     "cum": 780.0
+    }
+   ]
+  },
+  "wall_candidates": [
+   {
+    "side": "bid",
+    "price": 269.39,
+    "volume": 1000.0,
+    "median_mult": 25.0
+   },
+   {
+    "side": "bid",
+    "price": 268.95,
+    "volume": 200.0,
+    "median_mult": 5.0
+   }
+  ],
+  "classification": {
+   "top_of_book.bid": "NATIVE",
+   "top_of_book.ask": "NATIVE",
+   "top_of_book.bid_size": "NATIVE",
+   "top_of_book.ask_size": "NATIVE",
+   "mark": "NATIVE",
+   "microprice": "DERIVED",
+   "crossed": "DERIVED",
+   "spread_pts": "DERIVED",
+   "depth.*.bid_total": "DERIVED",
+   "depth.*.ask_total": "DERIVED",
+   "depth.*.imbalance": "DERIVED",
+   "depth_pressure": "DERIVED",
+   "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention)",
+   "ages.book_age_sec": "DERIVED",
+   "ages.quote_age_sec": "DERIVED",
+   "ages.book_stale": "DERIVED",
+   "provenance.book_time_ms": "NATIVE",
+   "provenance.exchange_quote_ts": "NATIVE",
+   "provenance.server_received_ts": "DERIVED"
+  },
+  "deferred": [
+   "aggressor_side (PROXY: needs trade-vs-quote classification history)",
+   "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+   "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
+   "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)"
+  ],
+  "provenance": {
+   "book_time_ms": 1794497956502.0,
+   "n_bid_levels": 10,
+   "n_ask_levels": 12,
+   "book_source": "NASDAQ_BOOK",
+   "exchange_quote_ts": 1794497956.422,
+   "server_received_ts": 1794497958.223641
+  },
+  "ages": {
+   "book_age_sec": 1.7216408252716064,
+   "quote_age_sec": 1.8016409873962402,
+   "book_stale": false
+  },
+  "top_outage": null,
+  "top_feed_label": "LIVE",
+  "book_feed_label": "LIVE",
+  "ticker": "AMZN",
+  "venue": "NASDAQ_BOOK",
+  "quote_time_ct": "Thu 11/12 09:39 AM CT",
+  "book_time_ct": "Thu 11/12 09:39 AM CT",
+  "book_age_text": "2s",
+  "book_when_age_text": "Thu 11/12 09:39 AM CT \u00b7 2s",
+  "quote_when_age_text": "Thu 11/12 09:39 AM CT \u00b7 2s",
+  "readout": {
+   "venues": {
+    "NYSE_BOOK": {
+     "status": "no_book",
+     "book_time_ms": null,
+     "touch_state": null,
+     "one_sided_text": null,
+     "books": null,
+     "dedup_partial": null,
+     "touch_pct": null,
+     "touch_text": null,
+     "touch_flag": null,
+     "levels_text": null,
+     "views": {
+      "weighted": {
+       "bid_total": null,
+       "ask_total": null,
+       "difference": null,
+       "total_depth": null,
+       "pct": null,
+       "pct_text": null,
+       "live_pct": null,
+       "live_text": null,
+       "zone": null,
+       "side_word": null,
+       "held_sec": null,
+       "held_open": false,
+       "held_text": null,
+       "sentence": null,
+       "divergence": null,
+       "flips_2m": 0,
+       "flips_word": "STEADY",
+       "bid_text": null,
+       "ask_text": null,
+       "difference_text": null,
+       "total_text": null,
+       "span_bid_text": null,
+       "span_ask_text": null,
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": null,
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": null,
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+         ]
+        }
+       }
+      },
+      "1": {
+       "bid_total": null,
+       "ask_total": null,
+       "difference": null,
+       "total_depth": null,
+       "pct": null,
+       "pct_text": null,
+       "live_pct": null,
+       "live_text": null,
+       "zone": null,
+       "side_word": null,
+       "held_sec": null,
+       "held_open": false,
+       "held_text": null,
+       "sentence": null,
+       "divergence": null,
+       "flips_2m": 0,
+       "flips_word": "STEADY",
+       "bid_text": null,
+       "ask_text": null,
+       "difference_text": null,
+       "total_text": null,
+       "span_bid_text": null,
+       "span_ask_text": null,
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": null,
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": null,
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+         ]
+        }
+       }
+      },
+      "3": {
+       "bid_total": null,
+       "ask_total": null,
+       "difference": null,
+       "total_depth": null,
+       "pct": null,
+       "pct_text": null,
+       "live_pct": null,
+       "live_text": null,
+       "zone": null,
+       "side_word": null,
+       "held_sec": null,
+       "held_open": false,
+       "held_text": null,
+       "sentence": null,
+       "divergence": null,
+       "flips_2m": 0,
+       "flips_word": "STEADY",
+       "bid_text": null,
+       "ask_text": null,
+       "difference_text": null,
+       "total_text": null,
+       "span_bid_text": null,
+       "span_ask_text": null,
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": null,
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": null,
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+         ]
+        }
+       }
+      },
+      "5": {
+       "bid_total": null,
+       "ask_total": null,
+       "difference": null,
+       "total_depth": null,
+       "pct": null,
+       "pct_text": null,
+       "live_pct": null,
+       "live_text": null,
+       "zone": null,
+       "side_word": null,
+       "held_sec": null,
+       "held_open": false,
+       "held_text": null,
+       "sentence": null,
+       "divergence": null,
+       "flips_2m": 0,
+       "flips_word": "STEADY",
+       "bid_text": null,
+       "ask_text": null,
+       "difference_text": null,
+       "total_text": null,
+       "span_bid_text": null,
+       "span_ask_text": null,
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": null,
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": null,
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+         ]
+        }
+       }
+      }
+     },
+     "feed_label": "NOT LIVE",
+     "live": false,
+     "book_time_ct": null,
+     "book_age_text": null,
+     "source_text": "Schwab NYSE_BOOK \u00b7 no book for this symbol right now",
+     "no_number_text": "No book for this symbol right now",
+     "no_number_head": "NO BOOK",
+     "dedup_partial_text": null
+    },
+    "NASDAQ_BOOK": {
+     "status": "ok",
+     "book_time_ms": 1794497956502.0,
+     "touch_state": null,
+     "one_sided_text": null,
+     "books": null,
+     "dedup_partial": null,
+     "touch_pct": -83.33333333333334,
+     "touch_text": "-83%",
+     "touch_flag": null,
+     "levels_text": null,
+     "views": {
+      "weighted": {
+       "bid_total": 1300.0,
+       "ask_total": 780.0,
+       "difference": 520.0,
+       "total_depth": 2080.0,
+       "pct": 26.419499422072327,
+       "pct_text": "+26%",
+       "live_pct": 26.419499422072327,
+       "live_text": "+26%",
+       "zone": "BID_HEAVY",
+       "side_word": "BID HEAVY",
+       "held_sec": 39,
+       "held_open": false,
+       "held_text": "HELD 39s",
+       "sentence": "To balance, market makers sell 520 shares.",
+       "divergence": null,
+       "flips_2m": 4,
+       "flips_word": "STEADY",
+       "bid_text": "1,300",
+       "ask_text": "780",
+       "difference_text": "520",
+       "total_text": "2,080",
+       "span_bid_text": "0.54",
+       "span_ask_text": "0.08",
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          74.80764723106303,
+          1.6730931677383438,
+          -71.46146089558634,
+          -72.86056316313056,
+          -71.46146089558634,
+          -71.46146089558634,
+          -66.11731864138594,
+          -65.25614787720718,
+          -52.47497745385744,
+          -47.802727667330814,
+          13.6980711214406,
+          13.6980711214406,
+          13.6980711214406,
+          -7.653802071943446,
+          -15.08663194468782,
+          -15.08663194468782,
+          -15.08663194468782,
+          -15.08663194468782,
+          -15.08663194468782,
+          -15.08663194468782,
+          29.636580380307446,
+          29.636580380307446,
+          36.47718564714863,
+          36.47718564714863,
+          36.47718564714863,
+          36.47718564714863,
+          42.91104006608006,
+          42.91104006608006,
+          42.91104006608006,
+          49.417322368173714,
+          49.5982042558065,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          34.72151285342678,
+          34.72151285342678,
+          34.72151285342678,
+          34.72151285342678,
+          34.72151285342678,
+          15.701106479800384,
+          15.701106479800384,
+          15.701106479800384,
+          29.74519147425531,
+          32.564069287799704,
+          32.564069287799704,
+          29.74519147425531,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432,
+          26.419499422072327
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          -71.46146089558634,
+          -47.802727667330814,
+          -15.08663194468782,
+          -15.08663194468782,
+          36.47718564714863,
+          49.417322368173714,
+          55.848423320679565,
+          55.848423320679565,
+          34.72151285342678,
+          32.564069287799704,
+          26.255329824799432,
+          26.419499422072327
+         ]
+        }
+       }
+      },
+      "1": {
+       "bid_total": 20.0,
+       "ask_total": 220.0,
+       "difference": 200.0,
+       "total_depth": 240.0,
+       "pct": -83.33333333333334,
+       "pct_text": "-83%",
+       "live_pct": -83.33333333333334,
+       "live_text": "-83%",
+       "zone": "VERY_OFFER",
+       "side_word": "VERY ONE-SIDED \u00b7 OFFER HEAVY",
+       "held_sec": 7,
+       "held_open": false,
+       "held_text": "HELD 7s",
+       "sentence": "To balance, market makers buy 200 shares.",
+       "divergence": null,
+       "flips_2m": 5,
+       "flips_word": "CHOPPY",
+       "bid_text": "20",
+       "ask_text": "220",
+       "difference_text": "200",
+       "total_text": "240",
+       "span_bid_text": "0.00",
+       "span_ask_text": "0.00",
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          84.16107382550335,
+          -5.480438697004423,
+          -72.63157894736842,
+          -81.90900981266725,
+          -72.63157894736842,
+          -72.63157894736842,
+          -60.0,
+          -60.0,
+          -36.19834710743802,
+          -32.273449920508746,
+          -32.273449920508746,
+          -5.88235294117647,
+          -5.88235294117647,
+          -32.35294117647059,
+          -85.07462686567165,
+          -85.07462686567165,
+          -85.07462686567165,
+          -85.07462686567165,
+          -85.07462686567165,
+          -85.07462686567165,
+          -36.440677966101696,
+          -36.440677966101696,
+          5.263157894736842,
+          7.954545454545454,
+          56.41025641025641,
+          56.41025641025641,
+          56.41025641025641,
+          -21.21212121212121,
+          -50.943396226415096,
+          -60.0,
+          -52.38095238095239,
+          -52.38095238095239,
+          -52.38095238095239,
+          65.95744680851064,
+          65.95744680851064,
+          65.95744680851064,
+          65.95744680851064,
+          65.95744680851064,
+          65.95744680851064,
+          50.0,
+          15.942028985507244,
+          15.942028985507244,
+          15.942028985507244,
+          15.942028985507244,
+          48.148148148148145,
+          48.148148148148145,
+          48.148148148148145,
+          -14.893617021276595,
+          -33.60995850622407,
+          -33.60995850622407,
+          -33.60995850622407,
+          -33.60995850622407,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785,
+          -83.33333333333334
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          -72.63157894736842,
+          -32.273449920508746,
+          -85.07462686567165,
+          -85.07462686567165,
+          56.41025641025641,
+          -60.0,
+          65.95744680851064,
+          50.0,
+          48.148148148148145,
+          -33.60995850622407,
+          -77.90055248618785,
+          -83.33333333333334
+         ]
+        }
+       }
+      },
+      "3": {
+       "bid_total": 1060.0,
+       "ask_total": 540.0,
+       "difference": 520.0,
+       "total_depth": 1600.0,
+       "pct": 32.5,
+       "pct_text": "+33%",
+       "live_pct": 32.5,
+       "live_text": "+33%",
+       "zone": "BID_HEAVY",
+       "side_word": "BID HEAVY",
+       "held_sec": 11,
+       "held_open": false,
+       "held_text": "HELD 11s",
+       "sentence": "To balance, market makers sell 520 shares.",
+       "divergence": null,
+       "flips_2m": 2,
+       "flips_word": "STEADY",
+       "bid_text": "1,060",
+       "ask_text": "540",
+       "difference_text": "520",
+       "total_text": "1,600",
+       "span_bid_text": "0.07",
+       "span_ask_text": "0.02",
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          72.3659305993691,
+          4.070633187352435,
+          -64.22466422466422,
+          -66.55677655677655,
+          -66.32411067193675,
+          -66.32411067193675,
+          -66.32411067193675,
+          -66.32411067193675,
+          -55.44483985765124,
+          -49.21715452688904,
+          24.267100977198698,
+          24.267100977198698,
+          24.267100977198698,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          40.85545722713864,
+          40.85545722713864,
+          45.958083832335326,
+          40.85545722713864,
+          37.37980769230769,
+          37.37980769230769,
+          37.37980769230769,
+          37.37980769230769,
+          37.37980769230769,
+          25.274725274725274,
+          69.57123098201936,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          54.83870967741935,
+          23.64760432766615,
+          23.64760432766615,
+          23.64760432766615,
+          23.64760432766615,
+          23.64760432766615,
+          0.9573542210617928,
+          0.9573542210617928,
+          0.9573542210617928,
+          52.828802351212346,
+          54.17558886509636,
+          54.17558886509636,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          32.5
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          -66.32411067193675,
+          -49.21715452688904,
+          16.049382716049383,
+          16.049382716049383,
+          37.37980769230769,
+          25.274725274725274,
+          64.83516483516483,
+          54.83870967741935,
+          23.64760432766615,
+          54.17558886509636,
+          53.51194786386676,
+          32.5
+         ]
+        }
+       }
+      },
+      "5": {
+       "bid_total": 1300.0,
+       "ask_total": 780.0,
+       "difference": 520.0,
+       "total_depth": 2080.0,
+       "pct": 25.0,
+       "pct_text": "+25%",
+       "live_pct": 25.0,
+       "live_text": "+25%",
+       "zone": "BID_HEAVY",
+       "side_word": "BID HEAVY",
+       "held_sec": 11,
+       "held_open": false,
+       "held_text": "HELD 11s",
+       "sentence": "To balance, market makers sell 520 shares.",
+       "divergence": null,
+       "flips_2m": 2,
+       "flips_word": "STEADY",
+       "bid_text": "1,300",
+       "ask_text": "780",
+       "difference_text": "520",
+       "total_text": "2,080",
+       "span_bid_text": "0.54",
+       "span_ask_text": "0.08",
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          56.3895486935867,
+          -1.134554982535981,
+          -58.65865865865866,
+          -64.69015407159738,
+          -65.03937007874015,
+          -65.03937007874015,
+          -65.03937007874015,
+          -61.6452442159383,
+          -54.62829736211031,
+          -53.247984826932196,
+          5.811051693404635,
+          5.811051693404635,
+          10.911602209944752,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          23.50835322195704,
+          23.50835322195704,
+          23.50835322195704,
+          23.002958579881657,
+          23.002958579881657,
+          13.836477987421384,
+          23.002958579881657,
+          23.002958579881657,
+          45.23809523809524,
+          49.44567627494457,
+          55.96755504055619,
+          49.44567627494457,
+          45.23809523809524,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          44.70284237726098,
+          47.82982380747744,
+          47.82982380747744,
+          47.82982380747744,
+          47.82982380747744,
+          0.5025125628140703,
+          0.5025125628140703,
+          0.5025125628140703,
+          47.171121138493575,
+          47.89455665867853,
+          47.89455665867853,
+          47.171121138493575,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248,
+          25.0
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          -65.03937007874015,
+          -53.247984826932196,
+          11.610486891385769,
+          11.610486891385769,
+          23.002958579881657,
+          49.44567627494457,
+          28.749999999999996,
+          28.749999999999996,
+          47.82982380747744,
+          47.89455665867853,
+          46.80181754631248,
+          25.0
+         ]
+        }
+       }
+      }
+     },
+     "feed_label": "LIVE",
+     "live": true,
+     "book_time_ct": "Thu 11/12 09:39 AM CT",
+     "book_age_text": "2s",
+     "source_text": "Schwab NASDAQ_BOOK \u00b7 live book",
+     "no_number_text": null,
+     "no_number_head": null,
+     "dedup_partial_text": null
+    },
+    "COMPOSITE": {
+     "status": "ok",
+     "book_time_ms": 1794497956502.0,
+     "touch_state": null,
+     "one_sided_text": null,
+     "books": [
+      "NASDAQ_BOOK"
+     ],
+     "dedup_partial": false,
+     "touch_pct": -83.33333333333334,
+     "touch_text": "-83%",
+     "touch_flag": null,
+     "levels_text": null,
+     "views": {
+      "weighted": {
+       "bid_total": 1300.0,
+       "ask_total": 780.0,
+       "difference": 520.0,
+       "total_depth": 2080.0,
+       "pct": 26.255329824799432,
+       "pct_text": "+26%",
+       "live_pct": 26.419499422072327,
+       "live_text": "+26%",
+       "zone": "BID_HEAVY",
+       "side_word": "BID HEAVY",
+       "held_sec": 37,
+       "held_open": false,
+       "held_text": "HELD 37s",
+       "sentence": "To balance, market makers sell 520 shares.",
+       "divergence": null,
+       "flips_2m": 4,
+       "flips_word": "STEADY",
+       "bid_text": "1,300",
+       "ask_text": "780",
+       "difference_text": "520",
+       "total_text": "2,080",
+       "span_bid_text": "0.54",
+       "span_ask_text": "0.08",
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          74.80764723106303,
+          1.6730931677383438,
+          -71.46146089558634,
+          -72.86056316313056,
+          -71.46146089558634,
+          -71.46146089558634,
+          -66.11731864138594,
+          -65.25614787720718,
+          -52.47497745385744,
+          -47.802727667330814,
+          13.6980711214406,
+          13.6980711214406,
+          13.6980711214406,
+          -7.653802071943446,
+          -15.08663194468782,
+          -15.08663194468782,
+          -15.08663194468782,
+          -15.08663194468782,
+          -15.08663194468782,
+          -15.08663194468782,
+          29.636580380307446,
+          29.636580380307446,
+          36.47718564714863,
+          36.47718564714863,
+          36.47718564714863,
+          36.47718564714863,
+          42.91104006608006,
+          42.91104006608006,
+          42.91104006608006,
+          49.417322368173714,
+          49.5982042558065,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          55.848423320679565,
+          34.72151285342678,
+          34.72151285342678,
+          34.72151285342678,
+          34.72151285342678,
+          34.72151285342678,
+          15.701106479800384,
+          15.701106479800384,
+          15.701106479800384,
+          29.74519147425531,
+          32.564069287799704,
+          32.564069287799704,
+          29.74519147425531,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432,
+          26.255329824799432
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          -71.46146089558634,
+          -65.25614787720718,
+          13.6980711214406,
+          -15.08663194468782,
+          36.47718564714863,
+          42.91104006608006,
+          55.848423320679565,
+          55.848423320679565,
+          34.72151285342678,
+          15.701106479800384,
+          26.255329824799432,
+          26.255329824799432
+         ]
+        }
+       }
+      },
+      "1": {
+       "bid_total": 20.0,
+       "ask_total": 220.0,
+       "difference": 200.0,
+       "total_depth": 240.0,
+       "pct": -77.90055248618785,
+       "pct_text": "-78%",
+       "live_pct": -83.33333333333334,
+       "live_text": "-83%",
+       "zone": "VERY_OFFER",
+       "side_word": "VERY ONE-SIDED \u00b7 OFFER HEAVY",
+       "held_sec": 5,
+       "held_open": false,
+       "held_text": "HELD 5s",
+       "sentence": "To balance, market makers buy 200 shares.",
+       "divergence": null,
+       "flips_2m": 5,
+       "flips_word": "CHOPPY",
+       "bid_text": "20",
+       "ask_text": "220",
+       "difference_text": "200",
+       "total_text": "240",
+       "span_bid_text": "0.00",
+       "span_ask_text": "0.00",
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          84.16107382550335,
+          -5.480438697004423,
+          -72.63157894736842,
+          -81.90900981266725,
+          -72.63157894736842,
+          -72.63157894736842,
+          -60.0,
+          -60.0,
+          -36.19834710743802,
+          -32.273449920508746,
+          -32.273449920508746,
+          -5.88235294117647,
+          -5.88235294117647,
+          -32.35294117647059,
+          -85.07462686567165,
+          -85.07462686567165,
+          -85.07462686567165,
+          -85.07462686567165,
+          -85.07462686567165,
+          -85.07462686567165,
+          -36.440677966101696,
+          -36.440677966101696,
+          5.263157894736842,
+          7.954545454545454,
+          56.41025641025641,
+          56.41025641025641,
+          56.41025641025641,
+          -21.21212121212121,
+          -50.943396226415096,
+          -60.0,
+          -52.38095238095239,
+          -52.38095238095239,
+          -52.38095238095239,
+          65.95744680851064,
+          65.95744680851064,
+          65.95744680851064,
+          65.95744680851064,
+          65.95744680851064,
+          65.95744680851064,
+          50.0,
+          15.942028985507244,
+          15.942028985507244,
+          15.942028985507244,
+          15.942028985507244,
+          48.148148148148145,
+          48.148148148148145,
+          48.148148148148145,
+          -14.893617021276595,
+          -33.60995850622407,
+          -33.60995850622407,
+          -33.60995850622407,
+          -33.60995850622407,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785,
+          -77.90055248618785
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          -72.63157894736842,
+          -60.0,
+          -5.88235294117647,
+          -85.07462686567165,
+          5.263157894736842,
+          -21.21212121212121,
+          -52.38095238095239,
+          65.95744680851064,
+          15.942028985507244,
+          -14.893617021276595,
+          -77.90055248618785,
+          -77.90055248618785
+         ]
+        }
+       }
+      },
+      "3": {
+       "bid_total": 1060.0,
+       "ask_total": 540.0,
+       "difference": 520.0,
+       "total_depth": 1600.0,
+       "pct": 53.51194786386676,
+       "pct_text": "+54%",
+       "live_pct": 32.5,
+       "live_text": "+33%",
+       "zone": "BID_HEAVY",
+       "side_word": "BID HEAVY",
+       "held_sec": 9,
+       "held_open": false,
+       "held_text": "HELD 9s",
+       "sentence": "To balance, market makers sell 520 shares.",
+       "divergence": null,
+       "flips_2m": 2,
+       "flips_word": "STEADY",
+       "bid_text": "1,060",
+       "ask_text": "540",
+       "difference_text": "520",
+       "total_text": "1,600",
+       "span_bid_text": "0.07",
+       "span_ask_text": "0.02",
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          72.3659305993691,
+          4.070633187352435,
+          -64.22466422466422,
+          -66.55677655677655,
+          -66.32411067193675,
+          -66.32411067193675,
+          -66.32411067193675,
+          -66.32411067193675,
+          -55.44483985765124,
+          -49.21715452688904,
+          24.267100977198698,
+          24.267100977198698,
+          24.267100977198698,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          16.049382716049383,
+          40.85545722713864,
+          40.85545722713864,
+          45.958083832335326,
+          40.85545722713864,
+          37.37980769230769,
+          37.37980769230769,
+          37.37980769230769,
+          37.37980769230769,
+          37.37980769230769,
+          25.274725274725274,
+          69.57123098201936,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          64.83516483516483,
+          54.83870967741935,
+          23.64760432766615,
+          23.64760432766615,
+          23.64760432766615,
+          23.64760432766615,
+          23.64760432766615,
+          0.9573542210617928,
+          0.9573542210617928,
+          0.9573542210617928,
+          52.828802351212346,
+          54.17558886509636,
+          54.17558886509636,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676,
+          53.51194786386676
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          -64.22466422466422,
+          -66.32411067193675,
+          24.267100977198698,
+          16.049382716049383,
+          45.958083832335326,
+          37.37980769230769,
+          64.83516483516483,
+          64.83516483516483,
+          23.64760432766615,
+          0.9573542210617928,
+          53.51194786386676,
+          53.51194786386676
+         ]
+        }
+       }
+      },
+      "5": {
+       "bid_total": 1300.0,
+       "ask_total": 780.0,
+       "difference": 520.0,
+       "total_depth": 2080.0,
+       "pct": 46.80181754631248,
+       "pct_text": "+47%",
+       "live_pct": 25.0,
+       "live_text": "+25%",
+       "zone": "BID_HEAVY",
+       "side_word": "BID HEAVY",
+       "held_sec": 9,
+       "held_open": false,
+       "held_text": "HELD 9s",
+       "sentence": "To balance, market makers sell 520 shares.",
+       "divergence": null,
+       "flips_2m": 2,
+       "flips_word": "STEADY",
+       "bid_text": "1,300",
+       "ask_text": "780",
+       "difference_text": "520",
+       "total_text": "2,080",
+       "span_bid_text": "0.54",
+       "span_ask_text": "0.08",
+       "lean": {
+        "2m": {
+         "seconds": 120,
+         "step": 1,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          56.3895486935867,
+          -1.134554982535981,
+          -58.65865865865866,
+          -64.69015407159738,
+          -65.03937007874015,
+          -65.03937007874015,
+          -65.03937007874015,
+          -61.6452442159383,
+          -54.62829736211031,
+          -53.247984826932196,
+          5.811051693404635,
+          5.811051693404635,
+          10.911602209944752,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          11.610486891385769,
+          23.50835322195704,
+          23.50835322195704,
+          23.50835322195704,
+          23.002958579881657,
+          23.002958579881657,
+          13.836477987421384,
+          23.002958579881657,
+          23.002958579881657,
+          45.23809523809524,
+          49.44567627494457,
+          55.96755504055619,
+          49.44567627494457,
+          45.23809523809524,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          28.749999999999996,
+          44.70284237726098,
+          47.82982380747744,
+          47.82982380747744,
+          47.82982380747744,
+          47.82982380747744,
+          0.5025125628140703,
+          0.5025125628140703,
+          0.5025125628140703,
+          47.171121138493575,
+          47.89455665867853,
+          47.89455665867853,
+          47.171121138493575,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248,
+          46.80181754631248
+         ]
+        },
+        "5m": {
+         "seconds": 300,
+         "step": 5,
+         "lean": "MIXED",
+         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          -58.65865865865866,
+          -61.6452442159383,
+          10.911602209944752,
+          11.610486891385769,
+          23.50835322195704,
+          23.002958579881657,
+          45.23809523809524,
+          28.749999999999996,
+          47.82982380747744,
+          0.5025125628140703,
+          46.80181754631248,
+          46.80181754631248
+         ]
+        }
+       }
+      }
+     },
+     "feed_label": "NOT LIVE",
+     "live": false,
+     "book_time_ct": "Thu 11/12 09:39 AM CT",
+     "book_age_text": "2s",
+     "source_text": "Schwab NASDAQ_BOOK \u00b7 composite, newest quote of each exchange \u00b7 book Thu 11/12 09:39 AM CT \u00b7 2s old \u00b7 not live",
+     "no_number_text": null,
+     "no_number_head": null,
+     "dedup_partial_text": null
+    }
+   },
+   "disagree": {
+    "weighted": false,
+    "1": false,
+    "3": false,
+    "5": false
+   },
+   "detail": {
+    "weights": "Headline weights by price level from the touch: 0.43, 0.26, 0.16, 0.10, 0.06 (exp(-0.5\u00b7(k-1)), normalized; renormalized over the levels a thin side has). Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
+    "zones": "Zones, a provisional guide and not a research finding: BALANCED under 10% (Bookmap's colour-switch line); BID or OFFER HEAVY from 10% to under 70%; VERY ONE-SIDED from 70% (a VisualHFT vendor study, not a peer-reviewed paper). The middle range grades direction only, not strength. The headline is the median of the last 5 seconds; a zone changes after 3 seconds across its line; a flip is a change of side, bid to offer or back, held that long; 5 or more flips in 2 minutes read CHOPPY.",
+    "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
+    "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
+    "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth. NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes."
+   },
+   "auction": "NONE",
+   "auction_text": null
+  }
+ },
+ "liquidity": {
+  "ticker": "AMZN",
+  "snapshot_type": "live",
+  "zones": [
+   {
+    "zone_type": "pivot_value",
+    "zone_label": "Pivot / value",
+    "zone_side": "value",
+    "zone_low": 269.425,
+    "zone_high": 270.1575,
+    "anchor": 269.79125,
+    "source_levels": [
+     {
+      "label": "SPOT_LIVE",
+      "value": 269.425
+     },
+     {
+      "label": "VWAP_M1",
+      "value": 269.6149373906041
+     },
+     {
+      "label": "TODAY_VAL",
+      "value": 269.83
+     },
+     {
+      "label": "GAMMA_CALL_WALL",
+      "value": 270.0
+     },
+     {
+      "label": "GAMMA_PUT_WALL",
+      "value": 270.0
+     },
+     {
+      "label": "DELTA_PUT_WALL",
+      "value": 270.0
+     },
+     {
+      "label": "ABS_GAMMA",
+      "value": 270.0
+     },
+     {
+      "label": "ORB_MID",
+      "value": 270.1575
+     }
+    ],
+    "source_tags": [
+     "SPOT_LIVE",
+     "VWAP_M1",
+     "TODAY_VAL",
+     "GAMMA_CALL_WALL",
+     "GAMMA_PUT_WALL",
+     "DELTA_PUT_WALL",
+     "ABS_GAMMA",
+     "ORB_MID"
+    ],
+    "confluence_score": 8,
+    "interpretation_notes": "Live spot (from console cache)",
+    "distance_to_spot": 0.0,
+    "spot_inside_zone": true
+   },
+   {
+    "zone_type": "resistance_liquidity",
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
+    "zone_low": 270.8822,
+    "zone_high": 271.02180563918836,
+    "anchor": 270.9520028195942,
+    "source_levels": [
+     {
+      "label": "OVERNIGHT_HIGH",
+      "value": 270.8822
+     },
+     {
+      "label": "VWAP",
+      "value": 271.02180563918836
+     }
+    ],
+    "source_tags": [
+     "OVERNIGHT_HIGH",
+     "VWAP"
+    ],
+    "confluence_score": 2,
+    "interpretation_notes": "Resistance / upper structure",
+    "distance_to_spot": 1.4572000000000003,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "resistance_liquidity",
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
+    "zone_low": 267.37,
+    "zone_high": 267.835,
+    "anchor": 267.60249999999996,
+    "source_levels": [
+     {
+      "label": "PD_VAH",
+      "value": 267.37
+     },
+     {
+      "label": "ORB_LOW",
+      "value": 267.835
+     }
+    ],
+    "source_tags": [
+     "PD_VAH",
+     "ORB_LOW"
+    ],
+    "confluence_score": 2,
+    "interpretation_notes": "Resistance / upper structure",
+    "distance_to_spot": 1.5900000000000318,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "pivot_value",
+    "zone_label": "Pivot / value",
+    "zone_side": "value",
+    "zone_low": 271.74,
+    "zone_high": 271.74,
+    "anchor": 271.74,
+    "source_levels": [
+     {
+      "label": "TODAY_POC",
+      "value": 271.74
+     }
+    ],
+    "source_tags": [
+     "TODAY_POC"
+    ],
+    "confluence_score": 1,
+    "interpretation_notes": "Fair value / pivot",
+    "distance_to_spot": 2.3149999999999977,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "pivot_value",
+    "zone_label": "Pivot / value",
+    "zone_side": "value",
+    "zone_low": 266.54,
+    "zone_high": 266.54,
+    "anchor": 266.54,
+    "source_levels": [
+     {
+      "label": "PD_POC",
+      "value": 266.54
+     }
+    ],
+    "source_tags": [
+     "PD_POC"
+    ],
+    "confluence_score": 1,
+    "interpretation_notes": "Fair value / pivot",
+    "distance_to_spot": 2.884999999999991,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "resistance_liquidity",
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
+    "zone_low": 272.4286738877726,
+    "zone_high": 272.48,
+    "anchor": 272.45433694388635,
+    "source_levels": [
+     {
+      "label": "VWAP_P1",
+      "value": 272.4286738877726
+     },
+     {
+      "label": "ORB_HIGH",
+      "value": 272.48
+     }
+    ],
+    "source_tags": [
+     "VWAP_P1",
+     "ORB_HIGH"
+    ],
+    "confluence_score": 2,
+    "interpretation_notes": "Resistance / upper structure",
+    "distance_to_spot": 3.0036738877726066,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "support_liquidity",
+    "zone_label": "Support",
+    "zone_side": "support",
+    "zone_low": 265.62,
+    "zone_high": 265.77,
+    "anchor": 265.695,
+    "source_levels": [
+     {
+      "label": "PDL",
+      "value": 265.62
+     },
+     {
+      "label": "PD_VAL",
+      "value": 265.77
+     }
+    ],
+    "source_tags": [
+     "PDL",
+     "PD_VAL"
+    ],
+    "confluence_score": 2,
+    "interpretation_notes": "Support / lower structure",
+    "distance_to_spot": 3.6550000000000296,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "resistance_liquidity",
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
+    "zone_low": 273.44,
+    "zone_high": 273.44,
+    "anchor": 273.44,
+    "source_levels": [
+     {
+      "label": "TODAY_VAH",
+      "value": 273.44
+     }
+    ],
+    "source_tags": [
+     "TODAY_VAH"
+    ],
+    "confluence_score": 1,
+    "interpretation_notes": "Resistance / upper structure",
+    "distance_to_spot": 4.014999999999986,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "pivot_value",
+    "zone_label": "Pivot / value",
+    "zone_side": "value",
+    "zone_low": 274.87,
+    "zone_high": 275.0,
+    "anchor": 274.935,
+    "source_levels": [
+     {
+      "label": "PDH",
+      "value": 274.87
+     },
+     {
+      "label": "NET_CALL_PEAK",
+      "value": 275.0
+     }
+    ],
+    "source_tags": [
+     "PDH",
+     "NET_CALL_PEAK"
+    ],
+    "confluence_score": 2,
+    "interpretation_notes": "Confluence: mixed positioning + session levels",
+    "distance_to_spot": 5.444999999999993,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "support_liquidity",
+    "zone_label": "Support",
+    "zone_side": "support",
+    "zone_low": 263.16,
+    "zone_high": 263.16,
+    "anchor": 263.16,
+    "source_levels": [
+     {
+      "label": "OVERNIGHT_LOW",
+      "value": 263.16
+     }
+    ],
+    "source_tags": [
+     "OVERNIGHT_LOW"
+    ],
+    "confluence_score": 1,
+    "interpretation_notes": "Support / lower structure",
+    "distance_to_spot": 6.264999999999986,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "pivot_value",
+    "zone_label": "Pivot / value",
+    "zone_side": "value",
+    "zone_low": 260.0,
+    "zone_high": 260.0,
+    "anchor": 260.0,
+    "source_levels": [
+     {
+      "label": "MAX_PAIN",
+      "value": 260.0
+     }
+    ],
+    "source_tags": [
+     "MAX_PAIN"
+    ],
+    "confluence_score": 1,
+    "interpretation_notes": "Confluence: mixed positioning + session levels",
+    "distance_to_spot": 9.425000000000011,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "resistance_liquidity",
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
+    "zone_low": 250.0,
+    "zone_high": 250.0,
+    "anchor": 250.0,
+    "source_levels": [
+     {
+      "label": "DELTA_CALL_WALL",
+      "value": 250.0
+     }
+    ],
+    "source_tags": [
+     "DELTA_CALL_WALL"
+    ],
+    "confluence_score": 1,
+    "interpretation_notes": "Confluence: overhead positioning / supply",
+    "distance_to_spot": 19.42500000000001,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "pivot_value",
+    "zone_label": "Pivot / value",
+    "zone_side": "value",
+    "zone_low": 243.91350359265536,
+    "zone_high": 243.91350359265536,
+    "anchor": 243.91350359265536,
+    "source_levels": [
+     {
+      "label": "GAMMA_FLIP",
+      "value": 243.91350359265536
+     }
+    ],
+    "source_tags": [
+     "GAMMA_FLIP"
+    ],
+    "confluence_score": 1,
+    "interpretation_notes": "Confluence: mixed positioning + session levels",
+    "distance_to_spot": 25.51149640734465,
+    "spot_inside_zone": false
+   },
+   {
+    "zone_type": "pivot_value",
+    "zone_label": "Pivot / value",
+    "zone_side": "value",
+    "zone_low": 240.0,
+    "zone_high": 240.0,
+    "anchor": 240.0,
+    "source_levels": [
+     {
+      "label": "NET_PUT_PEAK",
+      "value": 240.0
+     }
+    ],
+    "source_tags": [
+     "NET_PUT_PEAK"
+    ],
+    "confluence_score": 1,
+    "interpretation_notes": "Confluence: mixed positioning + session levels",
+    "distance_to_spot": 29.42500000000001,
+    "spot_inside_zone": false
+   }
+  ],
+  "summary": {
+   "value_state": "higher",
+   "vwap_relation": "inside_value"
+  },
+  "spot_used_for_scoring": 269.425,
+  "spot_location": {
+   "inside": 0,
+   "above": null,
+   "below": null
+  }
+ },
+ "levels": {
+  "ticker": "AMZN",
+  "schema_version": 1,
+  "served_ts_utc": 1794497958.223641,
+  "spot": 269.425,
+  "spot_source": "streaming_plane",
+  "spot_as_of_ts_utc": 1794497956.43,
+  "spot_time_ct": "Thu 11/12 09:39 AM CT",
+  "spot_not_live_text": null,
+  "generation": 1,
+  "snapshot_as_of_ts_utc": 1794497880.0,
+  "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
+  "snapshot_age_text": "78s",
+  "levels_state": "LIVE",
+  "levels_time_ct": "Thu 11/12 09:39 AM CT",
+  "levels_age_text": "0s",
+  "levels_stale_reason": "",
+  "bar_source": "Schwab /pricehistory 1-minute bars and CHART_EQUITY",
+  "levels": [
+   {
+    "id": "em_up",
+    "price": 276.2680765669552,
+    "family": "expected_move",
+    "label": "+1\u03c3 move",
+    "short": "+1\u03c3 move",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "server.expected_move",
+     "carried": false
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": 6.843076566955176,
+    "side": "ABOVE",
+    "from_spot_text": "6.84 above spot"
+   },
+   {
+    "id": "lvp",
+    "price": 275.0,
+    "family": "gamma",
+    "label": "Net call \u0393 peak",
+    "short": "Net call \u0393 peak",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": 5.574999999999989,
+    "side": "ABOVE",
+    "from_spot_text": "5.57 above spot"
+   },
+   {
+    "id": "call_charm_wall",
+    "price": 275.0,
+    "family": "gamma",
+    "label": "Call charm wall",
+    "short": "Call charm wall",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": 5.574999999999989,
+    "side": "ABOVE",
+    "from_spot_text": "5.57 above spot"
+   },
+   {
+    "id": "PDH",
+    "price": 274.87,
+    "family": "prior_day",
+    "label": "Prior day high",
+    "short": "PDH",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "price_fact",
+    "semantic_scope": "prior_rth_session",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.get_previous_day_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "prior_rth_session",
+     "window": "2026-11-11 RTH (most recent prior RTH session)",
+     "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 5.444999999999993,
+    "from_spot_text": "5.44 above spot"
+   },
+   {
+    "id": "VWAP_P2",
+    "price": 273.83554213635693,
+    "family": "vwap",
+    "label": "VWAP_P2",
+    "short": "VWAP_P2",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_session_vwap_series",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 4.4105421363569235,
+    "from_spot_text": "4.41 above spot"
+   },
+   {
+    "id": "TODAY_VAH",
+    "price": 273.44,
+    "family": "value_area",
+    "label": "Value area high (est. from 1-min bars)",
+    "short": "VAH est",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_volume_profile_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 4.014999999999986,
+    "from_spot_text": "4.01 above spot"
+   },
+   {
+    "id": "ORB_HIGH",
+    "price": 272.48,
+    "family": "opening_range",
+    "label": "Opening range high",
+    "short": "ORH",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "price_fact",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_opening_range",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 first 15m RTH",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 3.055000000000007,
+    "from_spot_text": "3.06 above spot"
+   },
+   {
+    "id": "VWAP_P1",
+    "price": 272.4286738877726,
+    "family": "vwap",
+    "label": "VWAP_P1",
+    "short": "VWAP_P1",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_session_vwap_series",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 3.0036738877726066,
+    "from_spot_text": "3.00 above spot"
+   },
+   {
+    "id": "TODAY_POC",
+    "price": 271.74,
+    "family": "value_area",
+    "label": "Point of control (est. from 1-min bars)",
+    "short": "POC est",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_volume_profile_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 2.3149999999999977,
+    "from_spot_text": "2.31 above spot"
+   },
+   {
+    "id": "VWAP",
+    "price": 271.02180563918836,
+    "family": "vwap",
+    "label": "VWAP",
+    "short": "VWAP",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_session_vwap_series",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 1.5968056391883465,
+    "from_spot_text": "1.60 above spot"
+   },
+   {
+    "id": "OVERNIGHT_HIGH",
+    "price": 270.8822,
+    "family": "overnight",
+    "label": "Overnight high",
+    "short": "ONH",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "price_fact",
+    "semantic_scope": "overnight_window",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.get_overnight_levels",
+     "session_scope": "extended",
+     "semantic_scope": "overnight_window",
+     "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 1.4572000000000003,
+    "from_spot_text": "1.46 above spot"
+   },
+   {
+    "id": "ORB_MID",
+    "price": 270.1575,
+    "family": "opening_range",
+    "label": "Opening range mid",
+    "short": "ORM",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "price_fact",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_opening_range",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 first 15m RTH",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 0.7325000000000159,
+    "from_spot_text": "0.73 above spot"
+   },
+   {
+    "id": "call_wall",
+    "price": 270.0,
+    "family": "gamma",
+    "label": "Call wall",
+    "short": "Call wall",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": 0.5749999999999886,
+    "side": "ABOVE",
+    "from_spot_text": "0.57 above spot"
+   },
+   {
+    "id": "put_wall",
+    "price": 270.0,
+    "family": "gamma",
+    "label": "Put wall",
+    "short": "Put wall",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": 0.5749999999999886,
+    "side": "ABOVE",
+    "from_spot_text": "0.57 above spot"
+   },
+   {
+    "id": "absolute_gamma_strike",
+    "price": 270.0,
+    "family": "gamma",
+    "label": "Abs \u0393",
+    "short": "Abs \u0393",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": 0.5749999999999886,
+    "side": "ABOVE",
+    "from_spot_text": "0.57 above spot"
+   },
+   {
+    "id": "TODAY_VAL",
+    "price": 269.83,
+    "family": "value_area",
+    "label": "Value area low (est. from 1-min bars)",
+    "short": "VAL est",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_volume_profile_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 0.4049999999999727,
+    "from_spot_text": "0.40 above spot"
+   },
+   {
+    "id": "VWAP_M1",
+    "price": 269.6149373906041,
+    "family": "vwap",
+    "label": "VWAP_M1",
+    "short": "VWAP_M1",
+    "side": "ABOVE",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_session_vwap_series",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": 0.18993739060408643,
+    "from_spot_text": "0.19 above spot"
+   },
+   {
+    "id": "VWAP_M2",
+    "price": 268.2080691420198,
+    "family": "vwap",
+    "label": "VWAP_M2",
+    "short": "VWAP_M2",
+    "side": "BELOW",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_session_vwap_series",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": -1.2169308579802305,
+    "from_spot_text": "1.22 below spot"
+   },
+   {
+    "id": "ORB_LOW",
+    "price": 267.835,
+    "family": "opening_range",
+    "label": "Opening range low",
+    "short": "ORL",
+    "side": "BELOW",
+    "strength": null,
+    "evidence_tier": "price_fact",
+    "semantic_scope": "session_rth",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.compute_opening_range",
+     "session_scope": "RTH",
+     "semantic_scope": "session_rth",
+     "window": "2026-11-12 first 15m RTH",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": -1.5900000000000318,
+    "from_spot_text": "1.59 below spot"
+   },
+   {
+    "id": "PD_VAH",
+    "price": 267.37,
+    "family": "prior_day",
+    "label": "Prior day VAH (est. from 1-min bars)",
+    "short": "pVAH est",
+    "side": "BELOW",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "prior_rth_session",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.get_previous_day_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "prior_rth_session",
+     "window": "2026-11-11 RTH (most recent prior RTH session)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": -2.055000000000007,
+    "from_spot_text": "2.06 below spot"
+   },
+   {
+    "id": "PD_POC",
+    "price": 266.54,
+    "family": "prior_day",
+    "label": "Prior day POC (est. from 1-min bars)",
+    "short": "pPOC est",
+    "side": "BELOW",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "prior_rth_session",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.get_previous_day_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "prior_rth_session",
+     "window": "2026-11-11 RTH (most recent prior RTH session)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": -2.884999999999991,
+    "from_spot_text": "2.88 below spot"
+   },
+   {
+    "id": "PDC",
+    "price": 266.17,
+    "family": "prior_day",
+    "label": "Prior day close",
+    "short": "PDC",
+    "side": "BELOW",
+    "strength": null,
+    "evidence_tier": "price_fact",
+    "semantic_scope": "prior_rth_session",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.get_previous_day_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "prior_rth_session",
+     "window": "2026-11-11 RTH (most recent prior RTH session)",
+     "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": -3.2549999999999955,
+    "from_spot_text": "3.25 below spot"
+   },
+   {
+    "id": "PD_VAL",
+    "price": 265.77,
+    "family": "prior_day",
+    "label": "Prior day VAL (est. from 1-min bars)",
+    "short": "pVAL est",
+    "side": "BELOW",
+    "strength": null,
+    "evidence_tier": "derived_certified",
+    "semantic_scope": "prior_rth_session",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.get_previous_day_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "prior_rth_session",
+     "window": "2026-11-11 RTH (most recent prior RTH session)",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": -3.6550000000000296,
+    "from_spot_text": "3.66 below spot"
+   },
+   {
+    "id": "PDL",
+    "price": 265.62,
+    "family": "prior_day",
+    "label": "Prior day low",
+    "short": "PDL",
+    "side": "BELOW",
+    "strength": null,
+    "evidence_tier": "price_fact",
+    "semantic_scope": "prior_rth_session",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.get_previous_day_levels",
+     "session_scope": "RTH",
+     "semantic_scope": "prior_rth_session",
+     "window": "2026-11-11 RTH (most recent prior RTH session)",
+     "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": -3.805000000000007,
+    "from_spot_text": "3.81 below spot"
+   },
+   {
+    "id": "OVERNIGHT_LOW",
+    "price": 263.16,
+    "family": "overnight",
+    "label": "Overnight low",
+    "short": "ONL",
+    "side": "BELOW",
+    "strength": null,
+    "evidence_tier": "price_fact",
+    "semantic_scope": "overnight_window",
+    "generation": 1,
+    "provenance": {
+     "producer": "liquidity_value_engine.get_overnight_levels",
+     "session_scope": "extended",
+     "semantic_scope": "overnight_window",
+     "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
+     "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497880.0,
+     "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+     "age_sec": 78.22364091873169,
+     "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+    },
+    "distance": -6.264999999999986,
+    "from_spot_text": "6.26 below spot"
+   },
+   {
+    "id": "em_dn",
+    "price": 262.58192343304484,
+    "family": "expected_move",
+    "label": "\u22121\u03c3 move",
+    "short": "\u22121\u03c3 move",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "server.expected_move",
+     "carried": false
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": -6.843076566955176,
+    "side": "BELOW",
+    "from_spot_text": "6.84 below spot"
+   },
+   {
+    "id": "max_pain",
+    "price": 260.0,
+    "family": "gamma",
+    "label": "Max pain",
+    "short": "Max pain",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": -9.425000000000011,
+    "side": "BELOW",
+    "from_spot_text": "9.43 below spot"
+   },
+   {
+    "id": "put_charm_wall",
+    "price": 260.0,
+    "family": "gamma",
+    "label": "Put charm wall",
+    "short": "Put charm wall",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": -9.425000000000011,
+    "side": "BELOW",
+    "from_spot_text": "9.43 below spot"
+   },
+   {
+    "id": "gsf",
+    "price": 259.3467510620916,
+    "family": "gamma",
+    "label": "GSF",
+    "short": "GSF",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": -10.078248937908427,
+    "side": "BELOW",
+    "from_spot_text": "10.08 below spot"
+   },
+   {
+    "id": "key_delta_strike",
+    "price": 250.0,
+    "family": "gamma",
+    "label": "Key \u0394 strike",
+    "short": "Key \u0394 strike",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": -19.42500000000001,
+    "side": "BELOW",
+    "from_spot_text": "19.43 below spot"
+   },
+   {
+    "id": "gamma_flip",
+    "price": 243.91350359265536,
+    "family": "gamma",
+    "label": "Gamma flip",
+    "short": "Gamma flip",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": -25.51149640734465,
+    "side": "BELOW",
+    "from_spot_text": "25.51 below spot"
+   },
+   {
+    "id": "hvp",
+    "price": 240.0,
+    "family": "gamma",
+    "label": "Net put \u0393 peak",
+    "short": "Net put \u0393 peak",
+    "evidence_tier": "DERIVED",
+    "provenance": {
+     "producer": "terrain_engine.compute_terrain",
+     "carried": true
+    },
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    },
+    "not_live_text": null,
+    "distance": -29.42500000000001,
+    "side": "BELOW",
+    "from_spot_text": "29.43 below spot"
+   }
+  ],
+  "by_distance": [
+   "VWAP_M1",
+   "TODAY_VAL",
+   "call_wall",
+   "put_wall",
+   "absolute_gamma_strike",
+   "ORB_MID",
+   "VWAP_M2",
+   "OVERNIGHT_HIGH",
+   "ORB_LOW",
+   "VWAP",
+   "PD_VAH",
+   "TODAY_POC",
+   "PD_POC",
+   "VWAP_P1",
+   "ORB_HIGH",
+   "PDC",
+   "PD_VAL",
+   "PDL",
+   "TODAY_VAH",
+   "VWAP_P2",
+   "PDH",
+   "lvp",
+   "call_charm_wall",
+   "OVERNIGHT_LOW",
+   "em_up",
+   "em_dn",
+   "max_pain",
+   "put_charm_wall",
+   "gsf",
+   "key_delta_strike",
+   "gamma_flip",
+   "hvp"
+  ],
+  "zero_dte": [
+   {
+    "id": "call_wall",
+    "label": "Call wall",
+    "price": 270.0,
+    "carried": 270.0,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "put_wall",
+    "label": "Put wall",
+    "price": 270.0,
+    "carried": 270.0,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "gamma_flip",
+    "label": "Gamma flip",
+    "price": 258.4958123306377,
+    "carried": 243.91350359265536,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "absolute_gamma_strike",
+    "label": "Abs \u0393",
+    "price": 270.0,
+    "carried": 270.0,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "gsf",
+    "label": "GSF",
+    "price": 265.54717580558076,
+    "carried": 259.3467510620916,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "grc",
+    "label": "GRC",
+    "price": 290.917127344853,
+    "carried": null,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "hvp",
+    "label": "Net put \u0393 peak",
+    "price": 262.5,
+    "carried": 240.0,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "lvp",
+    "label": "Net call \u0393 peak",
+    "price": 270.0,
+    "carried": 275.0,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "key_delta_strike",
+    "label": "Key \u0394 strike",
+    "price": 260.0,
+    "carried": 250.0,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "call_charm_wall",
+    "label": "Call charm wall",
+    "price": 267.5,
+    "carried": 275.0,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   },
+   {
+    "id": "put_charm_wall",
+    "label": "Put charm wall",
+    "price": 265.0,
+    "carried": 260.0,
+    "staleness": {
+     "as_of_ts_utc": 1794497958.2236412,
+     "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+     "age_sec": -2.384185791015625e-07,
+     "reason": "carried from the terrain"
+    }
+   }
+  ],
+  "vwap_series": [
+   [
+    1794493800.0,
+    271.0683941615127,
+    272.5850554286384,
+    269.551732894387,
+    274.1017166957641,
+    268.0350716272613
+   ],
+   [
+    1794495600.0,
+    271.10143134668044,
+    272.5009085618246,
+    269.7019541315363,
+    273.9003857769688,
+    268.3024769163921
+   ],
+   [
+    1794497400.0,
+    271.02180563918836,
+    272.4286738877726,
+    269.6149373906041,
+    273.83554213635693,
+    268.2080691420198
+   ]
+  ],
+  "volume_profile": {
+   "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
+   "bars": 69,
+   "bars_without_volume": 0,
+   "tick_size": 0.01,
+   "bins": [
+    [
+     267.83,
+     1094.2525498655461,
+     false
+    ],
+    [
+     267.84,
+     1094.2525498655461,
+     false
+    ],
+    [
+     267.85,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.86,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.87,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.88,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.89,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.9,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.91,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.92,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.93,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.94,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.95,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.96,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.97,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.98,
+     5544.166373858365,
+     false
+    ],
+    [
+     267.99,
+     5544.166373858365,
+     false
+    ],
+    [
+     268.0,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.01,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.02,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.03,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.04,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.05,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.06,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.07,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.08,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.09,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.1,
+     7104.49973307947,
+     false
+    ],
+    [
+     268.11,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.12,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.13,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.14,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.15,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.16,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.17,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.18,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.19,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.2,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.21,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.22,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.23,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.24,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.25,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.26,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.27,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.28,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.29,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.3,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.31,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.32,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.33,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.34,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.35,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.36,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.37,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.38,
+     8352.209532412804,
+     false
+    ],
+    [
+     268.39,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.4,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.41,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.42,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.43,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.44,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.45,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.46,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.47,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.48,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.49,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.5,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.51,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.52,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.53,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.54,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.55,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.56,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.57,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.58,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.59,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.6,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.61,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.62,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.63,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.64,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.65,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.66,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.67,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.68,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.69,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.7,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.71,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.72,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.73,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.74,
+     10053.73288855234,
+     false
+    ],
+    [
+     268.75,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.76,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.77,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.78,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.79,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.8,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.81,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.82,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.83,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.84,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.85,
+     11684.732007645674,
+     false
+    ],
+    [
+     268.86,
+     12820.673950114808,
+     false
+    ],
+    [
+     268.87,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.88,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.89,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.9,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.91,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.92,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.93,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.94,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.95,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.96,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.97,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.98,
+     14103.840905938338,
+     false
+    ],
+    [
+     268.99,
+     14103.840905938338,
+     false
+    ],
+    [
+     269.0,
+     14103.840905938338,
+     false
+    ],
+    [
+     269.01,
+     14103.840905938338,
+     false
+    ],
+    [
+     269.02,
+     13009.588356072793,
+     false
+    ],
+    [
+     269.03,
+     13009.588356072793,
+     false
+    ],
+    [
+     269.04,
+     13009.588356072793,
+     false
+    ],
+    [
+     269.05,
+     13009.588356072793,
+     false
+    ],
+    [
+     269.06,
+     14128.613997098433,
+     false
+    ],
+    [
+     269.07,
+     14128.613997098433,
+     false
+    ],
+    [
+     269.08,
+     14128.613997098433,
+     false
+    ],
+    [
+     269.09,
+     14128.613997098433,
+     false
+    ],
+    [
+     269.1,
+     14128.613997098433,
+     false
+    ],
+    [
+     269.11,
+     14128.613997098433,
+     false
+    ],
+    [
+     269.12,
+     14128.613997098433,
+     false
+    ],
+    [
+     269.13,
+     15299.747330431766,
+     false
+    ],
+    [
+     269.14,
+     16253.939282064419,
+     false
+    ],
+    [
+     269.15,
+     16253.939282064419,
+     false
+    ],
+    [
+     269.16,
+     15006.229482731085,
+     false
+    ],
+    [
+     269.17,
+     13939.512724117447,
+     false
+    ],
+    [
+     269.18,
+     13939.512724117447,
+     false
+    ],
+    [
+     269.19,
+     13939.512724117447,
+     false
+    ],
+    [
+     269.2,
+     13939.512724117447,
+     false
+    ],
+    [
+     269.21,
+     13939.512724117447,
+     false
+    ],
+    [
+     269.22,
+     13939.512724117447,
+     false
+    ],
+    [
+     269.23,
+     13939.512724117447,
+     false
+    ],
+    [
+     269.24,
+     13939.512724117447,
+     false
+    ],
+    [
+     269.25,
+     14662.303421791865,
+     false
+    ],
+    [
+     269.26,
+     14662.303421791865,
+     false
+    ],
+    [
+     269.27,
+     14662.303421791865,
+     false
+    ],
+    [
+     269.28,
+     14662.303421791865,
+     false
+    ],
+    [
+     269.29,
+     14662.303421791865,
+     false
+    ],
+    [
+     269.3,
+     14662.303421791865,
+     false
+    ],
+    [
+     269.31,
+     14662.303421791865,
+     false
+    ],
+    [
+     269.32,
+     17280.45676493893,
+     false
+    ],
+    [
+     269.33,
+     17280.45676493893,
+     false
+    ],
+    [
+     269.34,
+     19408.123431605596,
+     false
+    ],
+    [
+     269.35,
+     19408.123431605596,
+     false
+    ],
+    [
+     269.36,
+     20348.008268678765,
+     false
+    ],
+    [
+     269.37,
+     20348.008268678765,
+     false
+    ],
+    [
+     269.38,
+     20348.008268678765,
+     false
+    ],
+    [
+     269.39,
+     21500.841561282934,
+     false
+    ],
+    [
+     269.4,
+     21500.841561282934,
+     false
+    ],
+    [
+     269.41,
+     23950.008227949602,
+     false
+    ],
+    [
+     269.42,
+     23950.008227949602,
+     false
+    ],
+    [
+     269.43,
+     23950.008227949602,
+     false
+    ],
+    [
+     269.44,
+     23950.008227949602,
+     false
+    ],
+    [
+     269.45,
+     22830.98258692396,
+     false
+    ],
+    [
+     269.46,
+     23984.80757897274,
+     false
+    ],
+    [
+     269.47,
+     23984.80757897274,
+     false
+    ],
+    [
+     269.48,
+     23984.80757897274,
+     false
+    ],
+    [
+     269.49,
+     23984.80757897274,
+     false
+    ],
+    [
+     269.5,
+     22353.808459879405,
+     false
+    ],
+    [
+     269.51,
+     22353.808459879405,
+     false
+    ],
+    [
+     269.52,
+     22353.808459879405,
+     false
+    ],
+    [
+     269.53,
+     22353.808459879405,
+     false
+    ],
+    [
+     269.54,
+     22353.808459879405,
+     false
+    ],
+    [
+     269.55,
+     23672.08970987941,
+     false
+    ],
+    [
+     269.56,
+     24728.640178853766,
+     false
+    ],
+    [
+     269.57,
+     24728.640178853766,
+     false
+    ],
+    [
+     269.58,
+     21429.840178853763,
+     false
+    ],
+    [
+     269.59,
+     21429.840178853763,
+     false
+    ],
+    [
+     269.6,
+     21429.840178853763,
+     false
+    ],
+    [
+     269.61,
+     21429.840178853763,
+     false
+    ],
+    [
+     269.62,
+     22567.389164053762,
+     false
+    ],
+    [
+     269.63,
+     21613.19721242111,
+     false
+    ],
+    [
+     269.64,
+     21613.19721242111,
+     false
+    ],
+    [
+     269.65,
+     21613.19721242111,
+     false
+    ],
+    [
+     269.66,
+     22777.228414768935,
+     false
+    ],
+    [
+     269.67,
+     24004.391735457695,
+     false
+    ],
+    [
+     269.68,
+     21580.07768164374,
+     false
+    ],
+    [
+     269.69,
+     23223.99993823948,
+     false
+    ],
+    [
+     269.7,
+     23223.99993823948,
+     false
+    ],
+    [
+     269.71,
+     23223.99993823948,
+     false
+    ],
+    [
+     269.72,
+     23223.99993823948,
+     false
+    ],
+    [
+     269.73,
+     23223.99993823948,
+     false
+    ],
+    [
+     269.74,
+     23223.99993823948,
+     false
+    ],
+    [
+     269.75,
+     23223.99993823948,
+     false
+    ],
+    [
+     269.76,
+     23223.99993823948,
+     false
+    ],
+    [
+     269.77,
+     22284.115101166313,
+     false
+    ],
+    [
+     269.78,
+     22284.115101166313,
+     false
+    ],
+    [
+     269.79,
+     22284.115101166313,
+     false
+    ],
+    [
+     269.8,
+     23247.00966301997,
+     false
+    ],
+    [
+     269.81,
+     23247.00966301997,
+     false
+    ],
+    [
+     269.82,
+     23247.00966301997,
+     false
+    ],
+    [
+     269.83,
+     19238.08005170624,
+     true
+    ],
+    [
+     269.84,
+     19238.08005170624,
+     true
+    ],
+    [
+     269.85,
+     19238.08005170624,
+     true
+    ],
+    [
+     269.86,
+     19238.08005170624,
+     true
+    ],
+    [
+     269.87,
+     17396.083864133296,
+     true
+    ],
+    [
+     269.88,
+     17396.083864133296,
+     true
+    ],
+    [
+     269.89,
+     17758.066077720025,
+     true
+    ],
+    [
+     269.9,
+     17758.066077720025,
+     true
+    ],
+    [
+     269.91,
+     17758.066077720025,
+     true
+    ],
+    [
+     269.92,
+     17758.066077720025,
+     true
+    ],
+    [
+     269.93,
+     17758.066077720025,
+     true
+    ],
+    [
+     269.94,
+     17758.066077720025,
+     true
+    ],
+    [
+     269.95,
+     16701.515608745667,
+     true
+    ],
+    [
+     269.96,
+     16701.515608745667,
+     true
+    ],
+    [
+     269.97,
+     16701.515608745667,
+     true
+    ],
+    [
+     269.98,
+     16701.515608745667,
+     true
+    ],
+    [
+     269.99,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.0,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.01,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.02,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.03,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.04,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.05,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.06,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.07,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.08,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.09,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.1,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.11,
+     15141.182249524561,
+     true
+    ],
+    [
+     270.12,
+     12194.207700096737,
+     true
+    ],
+    [
+     270.13,
+     12194.207700096737,
+     true
+    ],
+    [
+     270.14,
+     12194.207700096737,
+     true
+    ],
+    [
+     270.15,
+     12194.207700096737,
+     true
+    ],
+    [
+     270.16,
+     10550.285443500992,
+     true
+    ],
+    [
+     270.17,
+     10550.285443500992,
+     true
+    ],
+    [
+     270.18,
+     10550.285443500992,
+     true
+    ],
+    [
+     270.19,
+     10550.285443500992,
+     true
+    ],
+    [
+     270.2,
+     10550.285443500992,
+     true
+    ],
+    [
+     270.21,
+     9587.390881647334,
+     true
+    ],
+    [
+     270.22,
+     9587.390881647334,
+     true
+    ],
+    [
+     270.23,
+     9587.390881647334,
+     true
+    ],
+    [
+     270.24,
+     9587.390881647334,
+     true
+    ],
+    [
+     270.25,
+     9587.390881647334,
+     true
+    ],
+    [
+     270.26,
+     9587.390881647334,
+     true
+    ],
+    [
+     270.27,
+     8449.841896447333,
+     true
+    ],
+    [
+     270.28,
+     8449.841896447333,
+     true
+    ],
+    [
+     270.29,
+     8449.841896447333,
+     true
+    ],
+    [
+     270.3,
+     8449.841896447333,
+     true
+    ],
+    [
+     270.31,
+     8449.841896447333,
+     true
+    ],
+    [
+     270.32,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.33,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.34,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.35,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.36,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.37,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.38,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.39,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.4,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.41,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.42,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.43,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.44,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.45,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.46,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.47,
+     7391.451497947332,
+     true
+    ],
+    [
+     270.48,
+     11157.104831280667,
+     true
+    ],
+    [
+     270.49,
+     11157.104831280667,
+     true
+    ],
+    [
+     270.5,
+     11157.104831280667,
+     true
+    ],
+    [
+     270.51,
+     11157.104831280667,
+     true
+    ],
+    [
+     270.52,
+     11157.104831280667,
+     true
+    ],
+    [
+     270.53,
+     11157.104831280667,
+     true
+    ],
+    [
+     270.54,
+     9404.801342038985,
+     true
+    ],
+    [
+     270.55,
+     9404.801342038985,
+     true
+    ],
+    [
+     270.56,
+     9404.801342038985,
+     true
+    ],
+    [
+     270.57,
+     9404.801342038985,
+     true
+    ],
+    [
+     270.58,
+     9404.801342038985,
+     true
+    ],
+    [
+     270.59,
+     9404.801342038985,
+     true
+    ],
+    [
+     270.6,
+     9404.801342038985,
+     true
+    ],
+    [
+     270.61,
+     9404.801342038985,
+     true
+    ],
+    [
+     270.62,
+     7041.696078881089,
+     true
+    ],
+    [
+     270.63,
+     7041.696078881089,
+     true
+    ],
+    [
+     270.64,
+     7041.696078881089,
+     true
+    ],
+    [
+     270.65,
+     7041.696078881089,
+     true
+    ],
+    [
+     270.66,
+     7041.696078881089,
+     true
+    ],
+    [
+     270.67,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.68,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.69,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.7,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.71,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.72,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.73,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.74,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.75,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.76,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.77,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.78,
+     5396.546909470833,
+     true
+    ],
+    [
+     270.79,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.8,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.81,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.82,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.83,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.84,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.85,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.86,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.87,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.88,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.89,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.9,
+     7786.131046599865,
+     true
+    ],
+    [
+     270.91,
+     11012.158447078125,
+     true
+    ],
+    [
+     270.92,
+     15232.011126540587,
+     true
+    ],
+    [
+     270.93,
+     15232.011126540587,
+     true
+    ],
+    [
+     270.94,
+     15232.011126540587,
+     true
+    ],
+    [
+     270.95,
+     15232.011126540587,
+     true
+    ],
+    [
+     270.96,
+     15232.011126540587,
+     true
+    ],
+    [
+     270.97,
+     15232.011126540587,
+     true
+    ],
+    [
+     270.98,
+     15232.011126540587,
+     true
+    ],
+    [
+     270.99,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.0,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.01,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.02,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.03,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.04,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.05,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.06,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.07,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.08,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.09,
+     15232.011126540587,
+     true
+    ],
+    [
+     271.1,
+     16498.245694441823,
+     true
+    ],
+    [
+     271.11,
+     16498.245694441823,
+     true
+    ],
+    [
+     271.12,
+     16498.245694441823,
+     true
+    ],
+    [
+     271.13,
+     16498.245694441823,
+     true
+    ],
+    [
+     271.14,
+     16498.245694441823,
+     true
+    ],
+    [
+     271.15,
+     16498.245694441823,
+     true
+    ],
+    [
+     271.16,
+     17878.23855990849,
+     true
+    ],
+    [
+     271.17,
+     17878.23855990849,
+     true
+    ],
+    [
+     271.18,
+     17878.23855990849,
+     true
+    ],
+    [
+     271.19,
+     17878.23855990849,
+     true
+    ],
+    [
+     271.2,
+     17878.23855990849,
+     true
+    ],
+    [
+     271.21,
+     17878.23855990849,
+     true
+    ],
+    [
+     271.22,
+     17878.23855990849,
+     true
+    ],
+    [
+     271.23,
+     14112.585226575156,
+     true
+    ],
+    [
+     271.24,
+     14112.585226575156,
+     true
+    ],
+    [
+     271.25,
+     14112.585226575156,
+     true
+    ],
+    [
+     271.26,
+     14112.585226575156,
+     true
+    ],
+    [
+     271.27,
+     14112.585226575156,
+     true
+    ],
+    [
+     271.28,
+     14112.585226575156,
+     true
+    ],
+    [
+     271.29,
+     14112.585226575156,
+     true
+    ],
+    [
+     271.3,
+     15776.1764264323,
+     true
+    ],
+    [
+     271.31,
+     17473.016652322924,
+     true
+    ],
+    [
+     271.32,
+     17473.016652322924,
+     true
+    ],
+    [
+     271.33,
+     20272.434169182572,
+     true
+    ],
+    [
+     271.34,
+     20886.995633378407,
+     true
+    ],
+    [
+     271.35,
+     20886.995633378407,
+     true
+    ],
+    [
+     271.36,
+     22392.163874519712,
+     true
+    ],
+    [
+     271.37,
+     19166.13647404145,
+     true
+    ],
+    [
+     271.38,
+     19166.13647404145,
+     true
+    ],
+    [
+     271.39,
+     21520.501858656837,
+     true
+    ],
+    [
+     271.4,
+     21520.501858656837,
+     true
+    ],
+    [
+     271.41,
+     19130.917721527803,
+     true
+    ],
+    [
+     271.42,
+     22348.00047125508,
+     true
+    ],
+    [
+     271.43,
+     25659.508581229762,
+     true
+    ],
+    [
+     271.44,
+     25659.508581229762,
+     true
+    ],
+    [
+     271.45,
+     25659.508581229762,
+     true
+    ],
+    [
+     271.46,
+     25659.508581229762,
+     true
+    ],
+    [
+     271.47,
+     25659.508581229762,
+     true
+    ],
+    [
+     271.48,
+     27692.594003729762,
+     true
+    ],
+    [
+     271.49,
+     27692.594003729762,
+     true
+    ],
+    [
+     271.5,
+     27692.594003729762,
+     true
+    ],
+    [
+     271.51,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.52,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.53,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.54,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.55,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.56,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.57,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.58,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.59,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.6,
+     29983.741731229762,
+     true
+    ],
+    [
+     271.61,
+     28603.748865763097,
+     true
+    ],
+    [
+     271.62,
+     28603.748865763097,
+     true
+    ],
+    [
+     271.63,
+     28603.748865763097,
+     true
+    ],
+    [
+     271.64,
+     29918.33009909643,
+     true
+    ],
+    [
+     271.65,
+     29918.33009909643,
+     true
+    ],
+    [
+     271.66,
+     29918.33009909643,
+     true
+    ],
+    [
+     271.67,
+     29918.33009909643,
+     true
+    ],
+    [
+     271.68,
+     30967.88087297574,
+     true
+    ],
+    [
+     271.69,
+     33451.89540039365,
+     true
+    ],
+    [
+     271.7,
+     39347.216229667305,
+     true
+    ],
+    [
+     271.71,
+     39347.216229667305,
+     true
+    ],
+    [
+     271.72,
+     39347.216229667305,
+     true
+    ],
+    [
+     271.73,
+     39347.216229667305,
+     true
+    ],
+    [
+     271.74,
+     42690.925932278406,
+     true
+    ],
+    [
+     271.75,
+     39473.843182551136,
+     true
+    ],
+    [
+     271.76,
+     37228.3881422178,
+     true
+    ],
+    [
+     271.77,
+     37228.3881422178,
+     true
+    ],
+    [
+     271.78,
+     37228.3881422178,
+     true
+    ],
+    [
+     271.79,
+     37228.3881422178,
+     true
+    ],
+    [
+     271.8,
+     37228.3881422178,
+     true
+    ],
+    [
+     271.81,
+     37228.3881422178,
+     true
+    ],
+    [
+     271.82,
+     35786.53166444003,
+     true
+    ],
+    [
+     271.83,
+     35786.53166444003,
+     true
+    ],
+    [
+     271.84,
+     35786.53166444003,
+     true
+    ],
+    [
+     271.85,
+     35786.53166444003,
+     true
+    ],
+    [
+     271.86,
+     34122.94046458288,
+     true
+    ],
+    [
+     271.87,
+     34122.94046458288,
+     true
+    ],
+    [
+     271.88,
+     34122.94046458288,
+     true
+    ],
+    [
+     271.89,
+     34122.94046458288,
+     true
+    ],
+    [
+     271.9,
+     32932.62024103493,
+     true
+    ],
+    [
+     271.91,
+     27020.872561018303,
+     true
+    ],
+    [
+     271.92,
+     27020.872561018303,
+     true
+    ],
+    [
+     271.93,
+     27020.872561018303,
+     true
+    ],
+    [
+     271.94,
+     27020.872561018303,
+     true
+    ],
+    [
+     271.95,
+     27226.728063627674,
+     true
+    ],
+    [
+     271.96,
+     27226.728063627674,
+     true
+    ],
+    [
+     271.97,
+     27226.728063627674,
+     true
+    ],
+    [
+     271.98,
+     30673.289576000225,
+     true
+    ],
+    [
+     271.99,
+     30673.289576000225,
+     true
+    ],
+    [
+     272.0,
+     30673.289576000225,
+     true
+    ],
+    [
+     272.01,
+     30673.289576000225,
+     true
+    ],
+    [
+     272.02,
+     30673.289576000225,
+     true
+    ],
+    [
+     272.03,
+     27895.29337431554,
+     true
+    ],
+    [
+     272.04,
+     27895.29337431554,
+     true
+    ],
+    [
+     272.05,
+     27895.29337431554,
+     true
+    ],
+    [
+     272.06,
+     27895.29337431554,
+     true
+    ],
+    [
+     272.07,
+     27895.29337431554,
+     true
+    ],
+    [
+     272.08,
+     27895.29337431554,
+     true
+    ],
+    [
+     272.09,
+     27895.29337431554,
+     true
+    ],
+    [
+     272.1,
+     27895.29337431554,
+     true
+    ],
+    [
+     272.11,
+     28813.77602420443,
+     true
+    ],
+    [
+     272.12,
+     28813.77602420443,
+     true
+    ],
+    [
+     272.13,
+     28813.77602420443,
+     true
+    ],
+    [
+     272.14,
+     31631.132689726823,
+     true
+    ],
+    [
+     272.15,
+     31631.132689726823,
+     true
+    ],
+    [
+     272.16,
+     31631.132689726823,
+     true
+    ],
+    [
+     272.17,
+     31631.132689726823,
+     true
+    ],
+    [
+     272.18,
+     30316.551456393485,
+     true
+    ],
+    [
+     272.19,
+     30316.551456393485,
+     true
+    ],
+    [
+     272.2,
+     28283.466033893485,
+     true
+    ],
+    [
+     272.21,
+     28283.466033893485,
+     true
+    ],
+    [
+     272.22,
+     24971.957923918802,
+     true
+    ],
+    [
+     272.23,
+     24971.957923918802,
+     true
+    ],
+    [
+     272.24,
+     24971.957923918802,
+     true
+    ],
+    [
+     272.25,
+     24971.957923918802,
+     true
+    ],
+    [
+     272.26,
+     23922.407150039493,
+     true
+    ],
+    [
+     272.27,
+     23922.407150039493,
+     true
+    ],
+    [
+     272.28,
+     19073.529206287076,
+     true
+    ],
+    [
+     272.29,
+     19073.529206287076,
+     true
+    ],
+    [
+     272.3,
+     22394.268336721856,
+     true
+    ],
+    [
+     272.31,
+     22394.268336721856,
+     true
+    ],
+    [
+     272.32,
+     22394.268336721856,
+     true
+    ],
+    [
+     272.33,
+     20541.439897261538,
+     true
+    ],
+    [
+     272.34,
+     20541.439897261538,
+     true
+    ],
+    [
+     272.35,
+     18638.74416876154,
+     true
+    ],
+    [
+     272.36,
+     16154.729641343629,
+     true
+    ],
+    [
+     272.37,
+     17901.884603876966,
+     true
+    ],
+    [
+     272.38,
+     17901.884603876966,
+     true
+    ],
+    [
+     272.39,
+     17901.884603876966,
+     true
+    ],
+    [
+     272.4,
+     17901.884603876966,
+     true
+    ],
+    [
+     272.41,
+     17901.884603876966,
+     true
+    ],
+    [
+     272.42,
+     17901.884603876966,
+     true
+    ],
+    [
+     272.43,
+     19305.037560206863,
+     true
+    ],
+    [
+     272.44,
+     19305.037560206863,
+     true
+    ],
+    [
+     272.45,
+     15262.545170393527,
+     true
+    ],
+    [
+     272.46,
+     16887.532015923647,
+     true
+    ],
+    [
+     272.47,
+     16887.532015923647,
+     true
+    ],
+    [
+     272.48,
+     16887.532015923647,
+     true
+    ],
+    [
+     272.49,
+     13440.970503551098,
+     true
+    ],
+    [
+     272.5,
+     15507.435239866887,
+     true
+    ],
+    [
+     272.51,
+     15507.435239866887,
+     true
+    ],
+    [
+     272.52,
+     17195.592102611987,
+     true
+    ],
+    [
+     272.53,
+     17195.592102611987,
+     true
+    ],
+    [
+     272.54,
+     17195.592102611987,
+     true
+    ],
+    [
+     272.55,
+     17195.592102611987,
+     true
+    ],
+    [
+     272.56,
+     17195.592102611987,
+     true
+    ],
+    [
+     272.57,
+     21177.12322212481,
+     true
+    ],
+    [
+     272.58,
+     21177.12322212481,
+     true
+    ],
+    [
+     272.59,
+     21177.12322212481,
+     true
+    ],
+    [
+     272.6,
+     21177.12322212481,
+     true
+    ],
+    [
+     272.61,
+     21177.12322212481,
+     true
+    ],
+    [
+     272.62,
+     21177.12322212481,
+     true
+    ],
+    [
+     272.63,
+     21177.12322212481,
+     true
+    ],
+    [
+     272.64,
+     21177.12322212481,
+     true
+    ],
+    [
+     272.65,
+     23306.8406466146,
+     true
+    ],
+    [
+     272.66,
+     23306.8406466146,
+     true
+    ],
+    [
+     272.67,
+     21697.743353302914,
+     true
+    ],
+    [
+     272.68,
+     21697.743353302914,
+     true
+    ],
+    [
+     272.69,
+     21697.743353302914,
+     true
+    ],
+    [
+     272.7,
+     21697.743353302914,
+     true
+    ],
+    [
+     272.71,
+     21697.743353302914,
+     true
+    ],
+    [
+     272.72,
+     21697.743353302914,
+     true
+    ],
+    [
+     272.73,
+     25272.180060352912,
+     true
+    ],
+    [
+     272.74,
+     25272.180060352912,
+     true
+    ],
+    [
+     272.75,
+     25272.180060352912,
+     true
+    ],
+    [
+     272.76,
+     21951.44092991813,
+     true
+    ],
+    [
+     272.77,
+     21951.44092991813,
+     true
+    ],
+    [
+     272.78,
+     21951.44092991813,
+     true
+    ],
+    [
+     272.79,
+     21951.44092991813,
+     true
+    ],
+    [
+     272.8,
+     21951.44092991813,
+     true
+    ],
+    [
+     272.81,
+     19134.084264395744,
+     true
+    ],
+    [
+     272.82,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.83,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.84,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.85,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.86,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.87,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.88,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.89,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.9,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.91,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.92,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.93,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.94,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.95,
+     17386.929301862412,
+     true
+    ],
+    [
+     272.96,
+     13405.39818234959,
+     true
+    ],
+    [
+     272.97,
+     13405.39818234959,
+     true
+    ],
+    [
+     272.98,
+     13405.39818234959,
+     true
+    ],
+    [
+     272.99,
+     13405.39818234959,
+     true
+    ],
+    [
+     273.0,
+     13405.39818234959,
+     true
+    ],
+    [
+     273.01,
+     12486.915532460702,
+     true
+    ],
+    [
+     273.02,
+     12486.915532460702,
+     true
+    ],
+    [
+     273.03,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.04,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.05,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.06,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.07,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.08,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.09,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.1,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.11,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.12,
+     10798.758669715604,
+     true
+    ],
+    [
+     273.13,
+     15326.649393048936,
+     true
+    ],
+    [
+     273.14,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.15,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.16,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.17,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.18,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.19,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.2,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.21,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.22,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.23,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.24,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.25,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.26,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.27,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.28,
+     13196.93196855914,
+     true
+    ],
+    [
+     273.29,
+     11571.94512302902,
+     true
+    ],
+    [
+     273.3,
+     11571.94512302902,
+     true
+    ],
+    [
+     273.31,
+     11571.94512302902,
+     true
+    ],
+    [
+     273.32,
+     11571.94512302902,
+     true
+    ],
+    [
+     273.33,
+     7997.508415979019,
+     true
+    ],
+    [
+     273.34,
+     7997.508415979019,
+     true
+    ],
+    [
+     273.35,
+     7997.508415979019,
+     true
+    ],
+    [
+     273.36,
+     7997.508415979019,
+     true
+    ],
+    [
+     273.37,
+     7997.508415979019,
+     true
+    ],
+    [
+     273.38,
+     7997.508415979019,
+     true
+    ],
+    [
+     273.39,
+     7997.508415979019,
+     true
+    ],
+    [
+     273.4,
+     6594.355459649122,
+     true
+    ],
+    [
+     273.41,
+     6594.355459649122,
+     true
+    ],
+    [
+     273.42,
+     6594.355459649122,
+     true
+    ],
+    [
+     273.43,
+     6594.355459649122,
+     true
+    ],
+    [
+     273.44,
+     6594.355459649122,
+     true
+    ],
+    [
+     273.45,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.46,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.47,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.48,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.49,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.5,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.51,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.52,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.53,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.54,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.55,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.56,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.57,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.58,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.59,
+     4527.890723333333,
+     false
+    ],
+    [
+     273.6,
+     4527.890723333333,
+     false
+    ]
+   ],
+   "max_volume": 42690.925932278406,
+   "poc": 271.74,
+   "vah": 273.44,
+   "val": 269.83
+  },
+  "tf": "30",
+  "families_absent": [],
+  "degraded": []
+ },
+ "desk": {
+  "ticker": "AMZN",
+  "tf": "30",
+  "window_start_ts_utc": 1794493800.0,
+  "window_label": "this session",
+  "items": [
+   {
+    "key": "wall0",
+    "ts": 1794497956.502,
+    "dom": "LIQUIDITY",
+    "dir": "up",
+    "warn": false,
+    "title": "NASDAQ_BOOK size wall \u00b7 bid 269.39",
+    "detail": "1000.0 shown \u00b7 25.0\u00d7 the median level",
+    "src": "equity book"
+   },
+   {
+    "key": "wall1",
+    "ts": 1794497956.502,
+    "dom": "LIQUIDITY",
+    "dir": "up",
+    "warn": false,
+    "title": "NASDAQ_BOOK size wall \u00b7 bid 268.95",
+    "detail": "200.0 shown \u00b7 5.0\u00d7 the median level",
+    "src": "equity book"
+   },
+   {
+    "key": "pw",
+    "ts": 1794497956.43,
+    "dom": "OPTIONS",
+    "dir": "down",
+    "title": "Spot through the put wall",
+    "detail": "put wall 270.00 \u00b7 spot 269.43",
+    "src": "gamma levels"
+   }
+  ],
+  "cross_counts": {
+   "up": 0,
+   "down": 0
+  }
+ },
+ "forces": {
+  "ticker": "AMZN",
+  "available": true,
+  "doi_below": -4843.0,
+  "doi_above": -630.0,
+  "dex_below_dollars": 23568297631.1182,
+  "dex_above_dollars": 15799845432.710629,
+  "charm_below": -141842.03141486074,
+  "charm_above": -808866.8428477115,
+  "older_et_date": "2026-11-11",
+  "method": "OI side totals of the two captures, each side by the newer capture's spot; DEX = net_dex_dollars side sums on the newer capture; CHARM = dealer-signed net_charm side sums on the newer capture"
  }
 }
