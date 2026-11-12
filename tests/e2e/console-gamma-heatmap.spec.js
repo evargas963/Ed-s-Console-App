@@ -780,8 +780,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // The chart's spot is the header's price row (audit of #280 removed the terrain's copy,
     // a second producer): the daemon's price socket delivers it.
     // induced: the real levels with the flip moved from 243.91 into the chart's price range (the
-    // chart draws only the levels inside it), clear of the walls at 270 so it keeps its own label
-    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 268.7 });
+    // profile's strikes, 257.5 to 282.5; the chart draws only the levels inside it), far enough
+    // from the walls at 270 that it keeps its own label
+    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 262.5 });
     await socketWith(page, [priceRow('SPY', 269.43, { trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
