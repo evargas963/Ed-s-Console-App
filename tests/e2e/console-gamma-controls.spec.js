@@ -29,9 +29,9 @@ const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, abs
   lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE',
   // every terrain answer carries these TerrainSnapshot fields; no ratio known here
   pcr_by_expiry: {}, pcr_volume_by_expiry: {}, pcr_all: null, pcr_volume_all: null };
-const STRIKES = { spot: 100, levels_state: 'LIVE',
-  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
-  views: { all: { centre: 100, note: null, max_abs: 958600 } } };
+// the strikes panel as the server sends it on CRWD's real chain (held to the server by
+// tests/test_vanna_charm_by_strike_v1.py)
+const STRIKES = require('./fixtures/vanna_charm_panels_crwd.json').strikes;
 const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1000 }] };
 
 async function intercept(page) {
