@@ -64,7 +64,7 @@ def test_a_console_row_is_counted_and_the_sqlite_clock_column_shows_its_default(
                 ticker="SPY",
                 ts_utc=SPY_PRINT_A_STRIKE_AWAY["ts_recv"],
                 ts_et="2026-10-22 16:39:03 ET",
-                level_name="Call g-Wall",
+                level_name="Call wall",
                 level_value=765.0,
                 direction=CROSSED_UP,
                 spot_at_cross=SPY_PRINT_A_STRIKE_AWAY["native"]["LAST_PRICE"],

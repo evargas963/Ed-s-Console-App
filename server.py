@@ -1484,16 +1484,13 @@ def _publish_levels(
     return snap
 
 
-#: the levels whose crossing by spot is recorded, with their display names
-CROSS_LEVELS = (
-    ("call_wall", "Call g-Wall"),
-    ("put_wall", "Put g-Wall"),
-    ("gamma_flip", "Gamma Flip"),
-    ("lvp", "Net call Γ peak"),
-    ("hvp", "Net put Γ peak"),
-    ("max_pain", "Max Pain"),
-    ("call_delta_wall", "Call d-Wall"),
-    ("put_delta_wall", "Put d-Wall"),
+#: the levels whose crossing by the price is recorded, each under its name in the one list
+#: (OPTION_LEVELS): the gamma flip, where the regime changes; the call and put walls, the range
+#: the industry reads; and the largest gamma strike, the pin (docs/DATA_FLOW.md, level crosses)
+CROSS_LEVELS = tuple(
+    level
+    for level in OPTION_LEVELS
+    if level[0] in ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike")
 )
 
 
