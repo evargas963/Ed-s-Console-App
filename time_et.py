@@ -102,17 +102,25 @@ PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = (
 )
 #: Schwab's option markets in /markets: stock and ETF options, index options
 EQUITY_OPTIONS, INDEX_OPTIONS = "EQO", "IND"
-#: Underlyings whose listed options run to the index close: ETFs the exchanges designate to
-#: trade to 4:15 p.m. ET (docs/SOURCES.md: cboe-rule-5-1, nasdaq-options-hours). Schwab's
-#: equity-option window ends earlier and Schwab marks no contract as one of them.
-_INDEX_CLOSE_UNDERLYINGS = frozenset({"SPY", "QQQ", "IWM"})
+#: Underlyings whose listed options run to the index close: the symbols the exchanges list as
+#: trading to 4:15 p.m. ET, as that list has them (docs/SOURCES.md: cboe-rule-5-1,
+#: nasdaq-options-hours). Schwab's equity-option window ends earlier and Schwab marks no
+#: contract as one of them.
+_INDEX_CLOSE_UNDERLYINGS = frozenset(
+    ("DBA", "DBB", "DBC", "DBO", "DIA", "DRAM", "EEM", "EFA", "EWY", "EWZ", "FXI", "GLD", "HYG")
+    + ("IBIT", "IEF", "IVV", "IWM", "IWN", "IWO", "IYR", "KBE", "KRE", "KWEB", "LQD", "MDY", "MOO")
+    + ("NDX", "NDXP", "OEF", "QQQ", "RSP", "SLV", "SMH", "SOXL", "SOXX", "SPY", "SVIX", "SVXY")
+    + ("TIP", "TLT", "UNG", "UUP", "UVIX", "UVXY", "VIXM", "VIXY", "VOO", "VXX", "VXZ", "XHB")
+    + ("XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY", "XME", "XND")
+    + ("XOP", "XRT")
+)
 
 
 def option_close_product(ticker: str) -> str:
     """Return the option market whose regular close is this ticker's option close.
 
-    An index Schwab names with "$", and SPY, QQQ and IWM, stop at the index close.
-    Every other ticker stops at the equity-option close.
+    An index Schwab names with "$", and a symbol on the exchanges' 4:15 p.m. ET list, stop at
+    the index close. Every other ticker stops at the equity-option close.
     """
     t = ticker.strip().upper()
     if t.startswith("$") or t in _INDEX_CLOSE_UNDERLYINGS:

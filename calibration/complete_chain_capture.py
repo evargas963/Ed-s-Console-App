@@ -381,7 +381,8 @@ class ChainSweep:
     once per ET date, whatever the number of tickers.
 
     A ticker's chain is asked for (chain_due) inside the option windows of Schwab's answer for
-    today, pre-market included, to the last close (16:15 ET, when SPY's, QQQ's and IWM's stop too),
+    today, pre-market included, to the last close (16:15 ET, when the options on the exchanges'
+    4:15 p.m. list stop too),
     while that answer is not known yet, and once more after the newest close it has not been
     fetched since (its close values; a failed one again in the next pass); otherwise not, until
     the next session. A ticker whose expiration chain lists no option (or none asked yet) has

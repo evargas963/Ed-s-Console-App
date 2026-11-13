@@ -420,8 +420,8 @@ the program.
   (`confluence_composite.window_rows`). Vanna
   is the book's `net_vanna`. After that ticker's option market has closed for the day
   (`time_et.option_market_open`), the publication is valued at that day's close
-  (`time_et.valuation_instant`, the index close for SPY, QQQ, and IWM, the equity-option close for
-  every other ticker), so the close numbers stay for the rest of it. On a day Schwab says is closed
+  (`time_et.valuation_instant`, the index close for a symbol on the exchanges' 4:15 p.m. ET list,
+  SPY, QQQ and IWM among its 65, the equity-option close for every other ticker), so the close numbers stay for the rest of it. On a day Schwab says is closed
   and before the next open it is valued at the clock: a closed day has no same-day close, so no
   0DTE level is made from a later expiry (operator 2026-10-25). A later
   equity print keeps the price that publication was priced at; the matrix's
@@ -456,7 +456,7 @@ the program.
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
   one thread on the daemon's one Schwab client (§1), one request at a time, by the option markets
   Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.options_open`; a day Schwab says is
-  closed is outside every window): inside its option windows, to the last close (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too; Schwab's EQO
+  closed is outside every window): inside its option windows, to the last close (IND, 16:15 ET, when the options on the exchanges' 4:15 p.m. list, SPY's, QQQ's and IWM's among them, stop too; Schwab's EQO
   window ends at 16:00 and has no window of its own for them; the exchanges' rule, not a
   decision of ours: `docs/SOURCES.md` cboe-rule-5-1 and nasdaq-options-hours). While one is
   open (and while today's answer, or a ticker before its first chain, is not known) the
@@ -1006,9 +1006,11 @@ behavior (AGENTS.md).
     the same rule, in both books, and a strike whose contracts all have open interest 0 is 0 on
     the charm map (`math_levels.compute_charm_by_strike`, its one producer; operator 2026-11-11:
     "Yes, move it"). The close is the regular window Schwab's /markets sent: the
-    index window for an index it names with "$" and for SPY, QQQ and IWM, the equity-option window
-    for every other ticker (the exchanges keep designated ETF options open to 4:15 p.m. ET:
-    `docs/SOURCES.md` cboe-rule-5-1, and nasdaq-options-hours for the symbols). After that close the levels stand as priced at it, a later expiry's at
+    index window for an index it names with "$" and for every symbol on the exchanges' 4:15 p.m.
+    ET list, the equity-option window for every other ticker (the exchanges keep designated ETF
+    options open to 4:15 p.m. ET: `docs/SOURCES.md` cboe-rule-5-1, and nasdaq-options-hours for
+    the 65 symbols, which `time_et._INDEX_CLOSE_UNDERLYINGS` holds; operator 2026-11-13: "yes
+    you should bring the program 4:15 list to the exchanges full list"). After that close the levels stand as priced at it, a later expiry's at
     the 10-minute floor, until the next open (the close values, §3.4). A later expiry's levels are
     absent where a chain is priced on a day with no option window held (a weekend or a holiday
     with no close values held, or Schwab's /markets answer for today not held); every ticker's are

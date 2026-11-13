@@ -43,6 +43,20 @@ def test_every_source_is_listed_whole_and_its_file_exists():
             assert linked, r["id"]
 
 
+def test_the_options_that_close_at_the_index_close_are_the_sources_list():
+    """The program's 4:15 p.m. ET list is the exchange's, symbol for symbol.
+
+    Failure this catches (2026-11-13): the program held SPY, QQQ and IWM where the source lists
+    65 symbols, so DIA's, GLD's and the others' options were closed at 16:00 ET. Checked: the
+    symbols the register's nasdaq-options-hours row lists are the program's set, no more, no
+    fewer.
+    """
+    row = next(r for r in _rows() if r["id"] == "nasdaq-options-hours")
+    listed = row["settles"].split("(", 1)[1].split(")", 1)[0].split(", ")
+    assert len(listed) == len(set(listed)) == 65
+    assert set(listed) == time_et._INDEX_CLOSE_UNDERLYINGS
+
+
 def test_no_source_is_past_the_date_it_is_read_again_by():
     today = datetime.fromtimestamp(time_et.now(), ET).date()
     overdue = [r["id"] for r in _rows() if date.fromisoformat(r["again by"]) < today]
