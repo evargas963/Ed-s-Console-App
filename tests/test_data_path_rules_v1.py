@@ -551,6 +551,33 @@ def test_d5_the_ticker_a_page_shows_is_asked_before_each_other_ticker(tmp_path):
     ]
 
 
+def test_d5_at_a_start_the_shown_tickers_chain_is_asked_before_the_others_price_history(tmp_path):
+    """Operator 2026-11-13: the wait for levels after a start "needs investigation and repair".
+
+    A start with a page on TSLA: its price history and its chain are asked before anything of
+    SPY's, so its levels do not wait for the other tickers' candles. Each ticker's price history
+    is still asked once, before its own chain.
+    """
+    swept = _Swept(tmp_path, "2026-10-01 10:00", ["SPY", "TSLA"])
+    swept.sweep.shown = lambda: ["TSLA"]
+    try:
+        assert swept.sweep.step(lambda: swept.client, swept.stop)
+        asked = [
+            (path.rsplit("/", 1)[-1], query["symbol"])
+            for path, query, *_ in swept.schwab.requests
+            if path.endswith(("/pricehistory", "/chains"))
+        ]
+    finally:
+        swept.close()
+    first_of_spy = next(i for i, (_kind, symbol) in enumerate(asked) if symbol == "SPY")
+    before_spy = asked[:first_of_spy]
+    assert {kind for kind, _symbol in before_spy} == {"pricehistory", "chains"}
+    for symbol in ("SPY", "TSLA"):
+        kinds = [kind for kind, s in asked if s == symbol]
+        assert kinds.index("chains") == kinds.count("pricehistory") == len(PRICE_HISTORY)
+    assert swept.chains[:2] == ["TSLA", "SPY"]
+
+
 def test_d5_the_quotes_of_the_ticker_a_page_shows_are_asked_two_requests_together(tmp_path):
     """Operator 2026-11-12: "lets go up in step": the shown ticker's quotes, two requests at once.
 

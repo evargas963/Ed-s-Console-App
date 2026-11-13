@@ -433,9 +433,10 @@ class ChainSweep:
         """Run the thread's life, until `stop`.
 
         On the daemon's client (`schwab_client()`), the market's sessions for today and the days
-        before it, then the price history of the watchlist tickers whose candles are due (the
-        price-built levels wait for it, a rotation takes minutes) and a rotation of those whose
-        chain is due; with none due, it looks again each second. With the watchlist empty, or no
+        before it, then a rotation of the watchlist tickers whose chain is due, with their due
+        price history (the ticker on a page first: its own candles, then its chain, before the
+        other tickers' candles), and the price history of those whose chain is not due; with
+        none due, it looks again each second. With the watchlist empty, or no
         sign-in held (waits), it asks Schwab for nothing and looks again each second: a sign-in
         Schwab refused fails every request at once, and a round of them would only log each
         failure.
@@ -456,11 +457,11 @@ class ChainSweep:
         now = datetime.fromtimestamp(self.clock(), ET)
         chains = [t for t in sorted(self.watchlist) if self.chain_due(t, now)]
         candles = {t: due for t in sorted(self.watchlist) if (due := self.candles_due(t, now))}
-        if candles:
-            self.candles(schwab_client, candles, stop)
+        asked = bool(chains or candles)
         if chains:
-            self.rotation(schwab_client, chains, stop)
-        return bool(chains or candles)
+            self.rotation(schwab_client, chains, stop, candles)
+        self.candles(schwab_client, candles, stop)  # of the tickers whose chain is not due
+        return asked
 
     def waits(self, schwab_client) -> str | None:
         """Why the daemon holds no Schwab sign-in to ask with, kept as `waiting` for its status.
@@ -571,8 +572,19 @@ class ChainSweep:
                 self._markets_day[day] = today
             self.publish(*markets_message(day, resp.status_code, answer, self.clock()))
 
-    def rotation(self, schwab_client, tickers: list[str], stop: threading.Event) -> set[str]:
+    def rotation(
+        self,
+        schwab_client,
+        tickers: list[str],
+        stop: threading.Event,
+        candles: dict[str, list[str]] | None = None,
+    ) -> set[str]:
         """Each ticker's chain in turn, a ticker on a page before each other one.
+
+        The due price history (`candles`, taken from it as asked): a ticker on a page has its
+        own just before its chain, so its levels do not wait for another's candles; every other
+        ticker's is asked before the first other chain (the price-built levels wait for it, a
+        rotation takes minutes).
 
         Before each ticker's chain, the chain of every ticker a page has selected (`shown`, read
         then: operator 2026-11-11, the ticker on the screen first) with all its quotes, so it is
@@ -594,6 +606,10 @@ class ChainSweep:
                     continue
                 if not self.chain_due(asked, datetime.fromtimestamp(self.clock(), ET)):
                     continue
+                if candles:
+                    mine = [asked] if asked in shown else list(candles)
+                    due = {t: candles.pop(t) for t in mine if t in candles}
+                    self.candles(schwab_client, due, stop)
                 self.fetch_chain(schwab_client, asked, stop)
                 last = asked
                 whole, at_once = (1, QUOTES_AT_ONCE) if asked in shown else (QUOTES_BATCH_MAX, 1)
