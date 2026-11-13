@@ -293,6 +293,16 @@ def options_opened(now: datetime) -> datetime | None:
     return min((start for start, _end in s.option_hours), default=None) if s else None
 
 
+def option_window_began(now: datetime) -> datetime | None:
+    """Return the start of the option window Schwab sent that `now` is inside.
+
+    None outside every window, and when Schwab's answer for today is not held.
+    """
+    s = session(now.astimezone(ET).date().isoformat())
+    windows = s.option_hours if s else ()
+    return next((start for start, end in windows if start <= now < end), None)
+
+
 def options_open(now: datetime) -> bool | None:
     """Tell whether `now` is inside a window Schwab sent for any option market, as sent.
 

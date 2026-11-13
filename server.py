@@ -124,6 +124,7 @@ from time_et import (
     now_et,
     option_close_product,
     option_market_open,
+    option_window_began,
     options_closed_at,
     options_open,
     options_opened,
@@ -769,6 +770,13 @@ def _levels_state(
         return (
             LEVELS_STALE,
             f"levels are {age:.0f}s old and every chain since has failed — {failure}",
+        )
+    began = option_window_began(at).timestamp()
+    if float(computed_ts_utc) < began and now - began <= stale_after:
+        # no chain is asked for between two of Schwab's option windows: the first since is due
+        return LEVELS_STALE, (
+            f"levels are {age:.0f}s old: Schwab's option session reopened {ct_label(began)} and "
+            "its first chain since has not arrived"
         )
     return LEVELS_STALE, (
         f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
