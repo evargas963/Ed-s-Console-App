@@ -33,6 +33,7 @@
   "gamma_at_spot": -2718991225.452607,
   "unpriced": {}
  },
+ "flip_note": null,
  "flip_relation": "ABOVE",
  "gamma_flip": 770.7687850382462,
  "grc": null,
@@ -49,13 +50,6 @@
  "levels_state": "CLOSE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",
  "levels_ts_utc": 1792700224.362402,
- "lines": [
-  "Dealers are modelled net short gamma (from OI, not observed positioning): they buy strength and sell weakness, amplifying every move.",
-  "Spot 773.13 vs flip 770.77 (-0.31%) \u2014 0.31% above the regime line.",
-  "Box: put wall 764.00 (-1.18%) \u00b7 call wall 765.00 (-1.05%)",
-  "Mid-box \u2014 no edge here. Stand aside; act at the walls, not in the middle.",
-  "Trade with a break of put wall 764.00 (-1.18%) or call wall 765.00 (-1.05%); fading here gets run over."
- ],
  "lvp": 776.0,
  "max_pain": 771.0,
  "max_pain_dte": 0.0,

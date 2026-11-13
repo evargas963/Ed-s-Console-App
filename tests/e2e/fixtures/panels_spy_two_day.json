@@ -15170,6 +15170,7 @@
    "gamma_at_spot": -7628715215.013743,
    "curve_agrees_with_schwab_at_spot": true
   },
+  "flip_note": null,
   "error": "",
   "pcr_by_expiry": {
    "2026-11-12": 1.4238172267762046,
@@ -15371,13 +15372,6 @@
   "pin_candidate_blockers": [
    "regime",
    "liquidity"
-  ],
-  "lines": [
-   "Dealers are modelled net short gamma (from OI, not observed positioning): they buy strength and sell weakness, amplifying every move.",
-   "Spot 757.08 vs flip 761.22 (+0.55%) \u2014 0.55% below the regime line.",
-   "Box: put wall 760.00 (+0.39%) \u00b7 call wall 775.00 (+2.37%)",
-   "At the lower edge \u2014 wait for the reaction at the put wall, do not anticipate.",
-   "Trade with a break of put wall 760.00 (+0.39%) or call wall 775.00 (+2.37%); fading here gets run over."
   ],
   "atr_daily": 11.064105444079996,
   "atr_weekly": 19.863970115131707,

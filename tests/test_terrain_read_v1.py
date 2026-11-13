@@ -1,13 +1,12 @@
 """Deterministic terrain read — regime/posture rules and fail-closed behaviour.
 
-These are pure-function tests over scalar levels (spot/flip/walls), not option contracts,
-so no chain fixture is involved. The rule under test is the read logic itself.
+The rule tests give the read a price, a confidence and a gamma at spot; the last test reads
+real Schwab chains through the levels producer.
 """
 
 from __future__ import annotations
 
 from math_levels import GAMMA_FLIP_NARROW, GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
-from numeric_contract import price_text
 from option_contract import read_chain
 from terrain_engine import compute_terrain
 from terrain_read import (
@@ -25,28 +24,14 @@ TRUSTED = GAMMA_FLIP_TRUSTED
 
 
 def test_above_flip_is_long_gamma_and_fades() -> None:
-    r = build_terrain_read(
-        spot=750.0,
-        flip=740.0,
-        flip_confidence=TRUSTED,
-        put_wall=735.0,
-        call_wall=760.0,
-        gamma_at_spot=2.5e8,
-    )
+    r = build_terrain_read(spot=750.0, flip_confidence=TRUSTED, gamma_at_spot=2.5e8)
     assert r.regime == REGIME_LONG_GAMMA
     assert r.posture == POSTURE_FADE
     assert "do not chase" in r.headline.lower()
 
 
 def test_below_flip_is_short_gamma_and_follows() -> None:
-    r = build_terrain_read(
-        spot=743.29,
-        flip=745.61,
-        flip_confidence=TRUSTED,
-        put_wall=740.0,
-        call_wall=745.0,
-        gamma_at_spot=-1.1e8,
-    )
+    r = build_terrain_read(spot=743.29, flip_confidence=TRUSTED, gamma_at_spot=-1.1e8)
     assert r.regime == REGIME_SHORT_GAMMA
     assert r.posture == POSTURE_FOLLOW
     assert "do not fade" in r.headline.lower()
@@ -59,48 +44,19 @@ def test_regime_is_the_signed_gamma_at_spot_only() -> None:
     the flip.
     """
     for g in (None, 0.0):
-        r = build_terrain_read(
-            spot=750.0,
-            flip=740.0,
-            flip_confidence=TRUSTED,
-            put_wall=735.0,
-            call_wall=760.0,
-            gamma_at_spot=g,
-        )
+        r = build_terrain_read(spot=750.0, flip_confidence=TRUSTED, gamma_at_spot=g)
         assert r.regime not in (REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA), g
 
 
 def test_missing_inputs_fail_closed() -> None:
-    for spot, flip, conf in (
-        (None, 740.0, TRUSTED),
-        (0.0, 740.0, TRUSTED),
-        (750.0, None, GAMMA_FLIP_UNAVAILABLE),
+    for spot, conf in (
+        (None, TRUSTED),
+        (0.0, TRUSTED),
+        (750.0, GAMMA_FLIP_UNAVAILABLE),
     ):
-        r = build_terrain_read(spot=spot, flip=flip, flip_confidence=conf)
+        r = build_terrain_read(spot=spot, flip_confidence=conf, gamma_at_spot=2.5e8)
         assert r.regime == REGIME_UNAVAILABLE
         assert r.posture == POSTURE_STAND_ASIDE
-
-
-def test_a_missing_wall_reads_as_a_dash_and_a_known_one_as_its_price():
-    """CRWD's chain captured 2026-10-07 (tests/real_chains.py), valued at its capture.
-
-    Its flip, put wall and gamma at spot as the levels producer computed them. Induced: the
-    call wall withheld. The box line shows the put wall at two decimals and the missing call
-    wall as "-", no word.
-    """
-    snap = compute_terrain(CRWD.ticker, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
-    r = build_terrain_read(
-        spot=CRWD.spot,
-        flip=snap.gamma_flip,
-        flip_confidence=snap.confidence,
-        put_wall=snap.put_wall,
-        call_wall=None,
-        gamma_at_spot=snap.flip_diag.get("gamma_at_spot"),
-    )
-    box = next(line for line in r.lines if line.startswith("Box: "))
-    assert snap.put_wall is not None
-    assert box.startswith(f"Box: put wall {price_text(snap.put_wall)} (")
-    assert box.endswith(" · call wall -") and "unavailable" not in box
 
 
 def test_the_regime_is_read_by_one_rule_for_every_instrument():

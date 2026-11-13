@@ -46,7 +46,14 @@ from math_levels import (
 from math_probabilities import compute_pin_score
 from numeric_contract import float_finite_or_none
 from option_contract import OptionContract
-from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, build_terrain_read, level_side, price_side
+from terrain_read import (
+    LEVEL_ABOVE,
+    LEVEL_BELOW,
+    build_terrain_read,
+    flip_note,
+    level_side,
+    price_side,
+)
 from time_et import ET, option_close_product, time_to_expiry_years
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
@@ -136,6 +143,8 @@ class TerrainSnapshot:
     strikes_used: int = 0
     dollarized: bool = False
     flip_diag: dict[str, Any] = field(default_factory=dict)
+    #: the note shown beside the gamma flip (terrain_read.flip_note), None for none
+    flip_note: str | None = None
     error: str = ""
 
     #: (price, net dealer gamma) samples; kept OUT of to_dict() (~240 pairs).
@@ -196,7 +205,7 @@ _HEAVY_FIELDS = (
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
-    read = build_terrain_read(spot=spot, flip=None, flip_confidence="UNAVAILABLE")
+    read = build_terrain_read(spot=spot, flip_confidence="UNAVAILABLE")
     return TerrainSnapshot(
         ticker=ticker,
         spot=spot,
@@ -545,7 +554,6 @@ class PriceRelations:
     flip_relation: str | None
     pin_candidate: float | None
     pin_candidate_blockers: list[str]
-    lines: list[str]
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -558,21 +566,12 @@ PRICE_RELATIONS = frozenset(f.name for f in fields(PriceRelations))
 def price_relations(terrain: dict, price: float | None) -> PriceRelations:
     """Return every relation of `price` to the published levels (`terrain`, a snapshot's to_dict).
 
-    Each wall's state and lean, the price's side of the flip, the pin candidate and the read's
-    lines. The levels are the publication's; the price is the one given, the live price on
-    every panel. A level's distance from the price is served with the level (the levels panel).
+    Each wall's state and lean, the price's side of the flip and the pin candidate. The levels
+    are the publication's; the price is the one given, the live price on every panel. A
+    level's distance from the price is served with the level (the levels panel).
     """
     call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
     call_lean, put_lean = wall_lean(call, put, price, terrain["regime"], terrain["confidence"])
-    read = build_terrain_read(
-        spot=price,
-        flip=flip,
-        flip_confidence=terrain["confidence"],
-        put_wall=put,
-        call_wall=call,
-        gamma_at_spot=terrain["net_gex_at_spot"],
-        flip_curve_agrees=terrain["flip_diag"].get("curve_agrees_with_schwab_at_spot"),
-    )
     pin, pin_blockers = qualify_pin_candidate(
         spot=price,
         absolute_gamma_strike=terrain["absolute_gamma_strike"],
@@ -591,7 +590,6 @@ def price_relations(terrain: dict, price: float | None) -> PriceRelations:
         flip_relation=price_side(flip, price),
         pin_candidate=pin,
         pin_candidate_blockers=list(pin_blockers),
-        lines=read.lines,
     )
 
 
@@ -881,13 +879,7 @@ def compute_terrain(
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
     read = build_terrain_read(
-        spot=spot,
-        flip=flip,
-        flip_confidence=confidence,
-        put_wall=put_wall,
-        call_wall=call_wall,
-        gamma_at_spot=flip_diag.get("gamma_at_spot"),
-        flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
+        spot=spot, flip_confidence=confidence, gamma_at_spot=flip_diag["gamma_at_spot"]
     )
 
     return TerrainSnapshot(
@@ -932,6 +924,7 @@ def compute_terrain(
         strikes_used=len(exposures),
         dollarized=exposures_have_dollar_gex(exposures),
         flip_diag=dict(flip_diag),
+        flip_note=flip_note(flip_diag["curve_agrees_with_schwab_at_spot"]),
         profile=profile,
         # the LIVE per-strike map, computed from THIS chain; session volume is carried alongside.
         per_strike=per_strike_view(books, exposures),

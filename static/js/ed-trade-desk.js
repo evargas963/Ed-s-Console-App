@@ -123,6 +123,7 @@
       // the heatmap's own dollar formatter: a value under $50K reads as itself, never "0.0M"
       ['Net GEX @ spot', d.net_gex_at_spot != null ? window.EdGamma.formatUsd(d.net_gex_at_spot) : '-'],
     ];
+    if (d.flip_note != null) rows.push(['Flip note', d.flip_note]);   // served: the flip's note
     return stage(3, 'td-accent-amber', 'Confirm — options regime', orDash(d.regime), '', 0, rows, d.confidence,
       d.confidence === 'TRUSTED' ? 'live' : 'warn');
   }

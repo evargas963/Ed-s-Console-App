@@ -14,8 +14,8 @@ from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from option_contract import read_chain
 from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
-from terrain_read import FLIP_CURVE_DISAGREES, GAMMA_FLIP_TRUSTED, build_terrain_read
-from tests.real_chains import SPY_0DTE
+from terrain_read import FLIP_CURVE_DISAGREES
+from tests.real_chains import CRWD, SPY_0DTE, SPY_FULL
 
 
 def test_gamma_at_spot_is_schwabs_gamma_summed_over_the_book():
@@ -51,6 +51,15 @@ def test_the_option_stream_keeps_iv_beside_gamma():
 
 
 def test_a_flip_whose_curve_disagrees_with_schwab_says_so():
-    kw = dict(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=-5.0)
-    assert FLIP_CURVE_DISAGREES in build_terrain_read(**kw, flip_curve_agrees=False).lines
-    assert FLIP_CURVE_DISAGREES not in build_terrain_read(**kw, flip_curve_agrees=True).lines
+    """The flip's note is served with the levels, where a page draws it beside the flip.
+
+    Failure this catches (2026-11-13): the note was added only to sentences no page read, so
+    it never reached a screen. SPY's full chain (tests/real_chains.py): the curve's sign at
+    its price differs from Schwab's gamma, so the note is served; CRWD's agree, so none is.
+    """
+    spy = compute_terrain("SPY", read_chain(SPY_FULL.chain), SPY_FULL.spot, now=SPY_FULL.now)
+    assert spy.flip_diag["curve_agrees_with_schwab_at_spot"] is False
+    assert spy.flip_note == spy.to_dict()["flip_note"] == FLIP_CURVE_DISAGREES
+    crwd = compute_terrain("CRWD", read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
+    assert crwd.flip_diag["curve_agrees_with_schwab_at_spot"] is True
+    assert crwd.flip_note is None

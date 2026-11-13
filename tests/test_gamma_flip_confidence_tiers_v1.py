@@ -39,7 +39,13 @@ from math_levels import (
     contract_inputs,
 )
 from option_contract import read_chain
-from terrain_read import POSTURE_STAND_ASIDE, REGIME_UNAVAILABLE, build_terrain_read
+from terrain_read import (
+    POSTURE_FADE,
+    POSTURE_STAND_ASIDE,
+    REGIME_LONG_GAMMA,
+    REGIME_UNAVAILABLE,
+    build_terrain_read,
+)
 from time_et import EQUITY_OPTIONS, ET
 
 #: the chain here expires 2027-07-16 (a date Schwab's /markets answers); valued a month before
@@ -102,32 +108,19 @@ def test_three_tiers_are_ordered_by_span():
 def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
     """SPY/QQQ class (~8-9% span): the regime must STILL be issued.
 
-    Its basis is the sign of gamma at spot, independent of flip-level precision — while the flip
-    LEVEL says it is approximate.
+    Its basis is the sign of gamma at spot, independent of flip-level precision — while the
+    confidence served beside it says the flip LEVEL is approximate.
     """
     read = build_terrain_read(
-        spot=100.0,
-        flip=99.0,
-        flip_confidence=GAMMA_FLIP_LEVEL_APPROX,
-        put_wall=95.0,
-        call_wall=105.0,
-        gamma_at_spot=5.0e9,
+        spot=100.0, flip_confidence=GAMMA_FLIP_LEVEL_APPROX, gamma_at_spot=5.0e9
     )
-    assert read.regime, "the regime must survive the middle tier (its basis is the at-spot sign)"
-    assert read.posture, "posture accompanies a resolved regime"
-    joined = " ".join(read.lines)
-    assert "APPROXIMATE" in joined, f"the flip level must be disclosed as approximate: {read.lines}"
+    assert read.regime == REGIME_LONG_GAMMA, "the regime survives the middle tier"
+    assert read.posture == POSTURE_FADE, "posture accompanies a resolved regime"
+    assert read.confidence == GAMMA_FLIP_LEVEL_APPROX, "the level is disclosed as approximate"
 
 
 def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside():
-    read = build_terrain_read(
-        spot=100.0,
-        flip=99.0,
-        flip_confidence=GAMMA_FLIP_NARROW,
-        put_wall=95.0,
-        call_wall=105.0,
-        gamma_at_spot=5.0e9,
-    )
+    read = build_terrain_read(spot=100.0, flip_confidence=GAMMA_FLIP_NARROW, gamma_at_spot=5.0e9)
     # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 5): was a 3-way
     # `or` in which the first two disjuncts are DEAD (measured: regime is the truthy
     # string 'UNAVAILABLE', so `not read.regime` and `read.regime in ("", None)` are
@@ -145,20 +138,4 @@ def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside()
     assert read.posture == POSTURE_STAND_ASIDE, (
         f"a NARROW chain must stand aside, got {read.posture!r}"
     )
-    assert "not trustworthy" in " ".join(read.lines), (
-        f"the operator must be told why it was withheld: {read.lines}"
-    )
-
-
-def test_regime_wording_discloses_the_modeled_dealer_sign():
-    """Operator requirement: modeled dealer positioning must not read as observed fact."""
-    read = build_terrain_read(
-        spot=100.0,
-        flip=99.0,
-        flip_confidence=GAMMA_FLIP_TRUSTED,
-        put_wall=95.0,
-        call_wall=105.0,
-        gamma_at_spot=5.0e9,
-    )
-    mech = " ".join(read.lines)
-    assert "modelled" in mech.lower(), f"the mechanism line must disclose the modeled sign: {mech}"
+    assert read.confidence == GAMMA_FLIP_NARROW, "the confidence served says why it is withheld"

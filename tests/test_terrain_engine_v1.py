@@ -65,7 +65,7 @@ def test_real_chain_produces_a_complete_payload() -> None:
     assert snap.contracts_used > 0
     assert snap.strikes_used > 0
     assert snap.headline, "the operator always gets a sentence"
-    assert price_relations(snap.to_dict(), spot).lines
+    assert "lines" not in price_relations(snap.to_dict(), spot).to_dict(), "no page reads them"
 
 
 def test_levels_are_real_strikes_or_absent() -> None:
