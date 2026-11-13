@@ -881,7 +881,7 @@ for key, f in sorted(served):
     uses = len(
         re.findall(
             rf"""["']{re.escape(key)}["']|\.{re.escape(key)}\b|"""
-            rf"""\b{re.escape(key)}=""",
+            rf"""\b{re.escape(key)}=|\b{re.escape(key)}: """,
             all_product_py,
         )
     )
