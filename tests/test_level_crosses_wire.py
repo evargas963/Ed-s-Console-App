@@ -181,31 +181,31 @@ def test_only_the_four_watched_levels_are_crossed_each_under_its_listed_name():
         assert crossed_names <= {named[k] for k in watched if getattr(snap, k) == level}, key
 
 
-def test_a_restart_holds_back_the_cross_its_last_minute_stored():
-    """Induced condition: the console restarts a moment after storing the 16:39 crosses.
+def test_a_level_crossed_again_is_stored_again():
+    """Induced condition: the price returns to 764.00 and rises to 773.1269 a second time.
 
-    Its held crosses and last price are forgotten, and the same prints arrive again. The
-    crosses stored in the last minute are read from the database before the hold-back decides,
-    so none is stored twice. The ticker ZZRESTART carries SPY's chain and prints, so no other
-    test's SPY rows count.
+    The two real prints are sent again, at their own receive times. Every cross is stored as it
+    happens: each level between them is crossed up, down and up again, three stored rows. The
+    ticker ZZAGAIN carries SPY's chain and prints, so no other test's SPY rows count.
     """
-    tk = "ZZRESTART"
+    tk = "ZZAGAIN"
     _forget(tk)
     _publish_close(tk)
     try:
         _print(SPY_PRINT_ON_A_STRIKE, tk)
         first = _print(SPY_PRINT_A_STRIKE_AWAY, tk)
-        with server._crosses_lock:
-            server._crosses.pop(tk, None)
-        server._last_tick_spot.pop(tk, None)
-        _print(SPY_PRINT_ON_A_STRIKE, tk)
+        back = _print(SPY_PRINT_ON_A_STRIKE, tk)
         again = _print(SPY_PRINT_A_STRIKE_AWAY, tk)
         with server._crosses_lock:
             held = {c["cross_id"] for c in server._crosses[tk]}
     finally:
         _forget(tk)
-    assert set(_named(first)) == BETWEEN and again == []
-    assert {c["cross_id"] for c in first} <= held  # read back after the restart
+    assert set(_named(first)) == BETWEEN
+    assert set(_named(back)) >= BETWEEN
+    assert {c["direction"] for c in back} == {CROSSED_DOWN}
+    assert _named(again) == _named(first)
+    ids = [c["cross_id"] for c in first + back + again]
+    assert len(set(ids)) == len(ids) and set(ids) <= held
 
 
 def test_a_price_that_reaches_a_level_crosses_it_and_one_that_leaves_it_does_not():
