@@ -1484,7 +1484,7 @@
     {
      "lane": "options",
      "abbrev": "Flip",
-     "price": 249.97114358731145,
+     "price": 249.97153629136815,
      "price_text": "249.97",
      "title": "Gamma flip"
     },
@@ -1505,9 +1505,16 @@
     {
      "lane": "options",
      "abbrev": "GSF",
-     "price": 267.8428157204602,
+     "price": 267.8408795429012,
      "price_text": "267.84",
      "title": "GSF"
+    },
+    {
+     "lane": "options",
+     "abbrev": "GRC",
+     "price": 464.1238672971819,
+     "price_text": "464.12",
+     "title": "GRC"
     },
     {
      "lane": "options",
@@ -1561,7 +1568,7 @@
     {
      "lane": "options",
      "abbrev": "0D Flip",
-     "price": 267.44658781862216,
+     "price": 267.44689374750476,
      "price_text": "267.45",
      "title": "0DTE Gamma flip"
     },
@@ -1575,9 +1582,16 @@
     {
      "lane": "options",
      "abbrev": "0D GSF",
-     "price": 274.3755396453466,
+     "price": 274.3766856566115,
      "price_text": "274.38",
      "title": "0DTE GSF"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D GRC",
+     "price": 331.0487147181457,
+     "price_text": "331.05",
+     "title": "0DTE GRC"
     },
     {
      "lane": "options",
@@ -3103,7 +3117,7 @@
     {
      "lane": "options",
      "abbrev": "Flip",
-     "price": 249.97114358731145,
+     "price": 249.97153629136815,
      "price_text": "249.97",
      "title": "Gamma flip"
     },
@@ -3124,9 +3138,16 @@
     {
      "lane": "options",
      "abbrev": "GSF",
-     "price": 267.8428157204602,
+     "price": 267.8408795429012,
      "price_text": "267.84",
      "title": "GSF"
+    },
+    {
+     "lane": "options",
+     "abbrev": "GRC",
+     "price": 464.1238672971819,
+     "price_text": "464.12",
+     "title": "GRC"
     },
     {
      "lane": "options",
@@ -3180,7 +3201,7 @@
     {
      "lane": "options",
      "abbrev": "0D Flip",
-     "price": 267.44658781862216,
+     "price": 267.44689374750476,
      "price_text": "267.45",
      "title": "0DTE Gamma flip"
     },
@@ -3194,9 +3215,16 @@
     {
      "lane": "options",
      "abbrev": "0D GSF",
-     "price": 274.3755396453466,
+     "price": 274.3766856566115,
      "price_text": "274.38",
      "title": "0DTE GSF"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D GRC",
+     "price": 331.0487147181457,
+     "price_text": "331.05",
+     "title": "0DTE GRC"
     },
     {
      "lane": "options",
@@ -4718,7 +4746,7 @@
    {
     "lane": "options",
     "abbrev": "Flip",
-    "price": 249.97114358731145,
+    "price": 249.97153629136815,
     "price_text": "249.97",
     "title": "Gamma flip"
    },
@@ -4739,9 +4767,16 @@
    {
     "lane": "options",
     "abbrev": "GSF",
-    "price": 267.8428157204602,
+    "price": 267.8408795429012,
     "price_text": "267.84",
     "title": "GSF"
+   },
+   {
+    "lane": "options",
+    "abbrev": "GRC",
+    "price": 464.1238672971819,
+    "price_text": "464.12",
+    "title": "GRC"
    },
    {
     "lane": "options",
@@ -4795,7 +4830,7 @@
    {
     "lane": "options",
     "abbrev": "0D Flip",
-    "price": 267.44658781862216,
+    "price": 267.44689374750476,
     "price_text": "267.45",
     "title": "0DTE Gamma flip"
    },
@@ -4809,9 +4844,16 @@
    {
     "lane": "options",
     "abbrev": "0D GSF",
-    "price": 274.3755396453466,
+    "price": 274.3766856566115,
     "price_text": "274.38",
     "title": "0DTE GSF"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D GRC",
+    "price": 331.0487147181457,
+    "price_text": "331.05",
+    "title": "0DTE GRC"
    },
    {
     "lane": "options",

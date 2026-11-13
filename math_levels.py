@@ -7,6 +7,7 @@ Walls, pins, inflections, support/resistance derived from options exposure struc
 from __future__ import annotations
 
 import functools
+import itertools
 from dataclasses import replace
 from datetime import datetime
 
@@ -247,25 +248,35 @@ def _contract_inputs(
     return strike, oi, mult, t_years, sigma, (1 if c.side == "CALL" else -1)
 
 
-#: The gamma profile's candidate prices: spot +/- 15%, in 240 equal steps.
-GAMMA_PROFILE_SPAN_PCT = 0.15
-GAMMA_PROFILE_STEPS = 240
+#: the equal steps the curve is computed at between two candidate prices where it changes sign
+FLIP_CUTS = 32
 
 
 def compute_gamma_profile(parsed: list, spot: float) -> list[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
     `parsed`: the contracts' priced rows (contract_inputs', or repriced_to_close's). One dealer
-    convention for every instrument: +call / -put. Returns [(price, total_gex)] ascending. The
-    zero crossing of this curve is the gamma flip.
+    convention for every instrument: +call / -put. The candidate prices are Schwab's own: every
+    strike that holds one of those contracts, and the price itself, so the curve reaches as far
+    as the chain does. Between two of them where the curve changes sign it is computed again at
+    FLIP_CUTS equal steps, twice, so a crossing is placed to a thousandth of the gap between
+    two strikes and not read off a straight line across it. Returns [(price, total_gex)]
+    ascending. The zero crossing of this curve is the gamma flip.
     """
     if not parsed or spot is None or spot <= 0:
         return []
-    lo, hi = spot * (1.0 - GAMMA_PROFILE_SPAN_PCT), spot * (1.0 + GAMMA_PROFILE_SPAN_PCT)
-    steps = GAMMA_PROFILE_STEPS
-    grid = [lo + (hi - lo) * i / steps for i in range(steps + 1)]
-    totals = _gamma_profile_totals(parsed, grid)
-    return list(zip(grid, totals))
+    grid = sorted({row[0] for row in parsed} | {float(spot)})
+    curve = dict(zip(grid, _gamma_profile_totals(parsed, grid), strict=True))
+    for _ in range(2):
+        prices = sorted(curve)
+        inner = [
+            p0 + (p1 - p0) * i / FLIP_CUTS
+            for p0, p1 in itertools.pairwise(prices)
+            if curve[p0] * curve[p1] < 0
+            for i in range(1, FLIP_CUTS)
+        ]
+        curve.update(zip(inner, _gamma_profile_totals(parsed, inner), strict=True))
+    return sorted(curve.items())
 
 
 #: Candidate prices evaluated per numpy block in _gamma_profile_totals (bounds memory: a

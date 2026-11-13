@@ -1901,7 +1901,7 @@
    {
     "level": "gamma_flip",
     "prior": null,
-    "today": 238.11785108703387,
+    "today": 238.1179647277906,
     "change": null
    }
   ],
@@ -3908,7 +3908,7 @@
    {
     "level": "gamma_flip",
     "prior": null,
-    "today": 238.11785108703387,
+    "today": 238.1179647277906,
     "change": null
    }
   ],
@@ -7697,7 +7697,7 @@
    {
     "level": "gamma_flip",
     "prior": null,
-    "today": 238.11785108703387,
+    "today": 238.1179647277906,
     "change": null
    }
   ],
@@ -7714,7 +7714,7 @@
   "posture": "FADE_EDGES",
   "confidence": "TRUSTED",
   "headline": "Long gamma \u2014 chop regime. Fade the edges, do not chase breakouts.",
-  "gamma_flip": 238.11785108703387,
+  "gamma_flip": 238.1179647277906,
   "call_wall": 260.0,
   "put_wall": 250.0,
   "absolute_gamma_strike": 260.0,
@@ -7730,16 +7730,16 @@
   "hvp": 250.0,
   "lvp": 300.0,
   "net_gex_at_spot": 20726373.52466494,
-  "gsf": 255.1727907114394,
-  "grc": null,
+  "gsf": 255.17064744143184,
+  "grc": 337.684139037975,
   "gsf_state": "OK",
   "same_day": {
    "call_wall": 270.0,
    "put_wall": 270.0,
-   "gamma_flip": 254.60893676474663,
+   "gamma_flip": 254.60950915627382,
    "absolute_gamma_strike": 270.0,
-   "gsf": 256.53683950779254,
-   "grc": null,
+   "gsf": 256.5669956742846,
+   "grc": 314.1557464895934,
    "hvp": 262.5,
    "lvp": 270.0,
    "key_delta_strike": 117.5,

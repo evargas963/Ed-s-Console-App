@@ -98,8 +98,8 @@ def test_the_flip_reprices_with_schwabs_rate_and_dividend_yield(book):
     snap = compute_terrain(book.ticker, read_chain(book.chain), book.spot, now=book.now)
     expected = _expected_flip(book)
     assert expected is not None
-    # the program's curve is 240 straight steps across +/-15%: its crossing is within a few
-    # hundred-thousandths of the price of the true one
+    # the program's curve is computed again between the two strikes it changes sign between:
+    # its crossing is within a few hundred-thousandths of the price of the true one
     assert snap.gamma_flip == pytest.approx(expected, rel=5e-5)
 
 

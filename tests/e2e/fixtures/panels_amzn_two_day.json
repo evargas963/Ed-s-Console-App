@@ -1792,9 +1792,9 @@
    },
    {
     "level": "gamma_flip",
-    "prior": 243.2372553307148,
-    "today": 243.91350359265536,
-    "change": 0.6762482619405716
+    "prior": 243.23779388064705,
+    "today": 243.91411813739333,
+    "change": 0.6763242567462839
    }
   ],
   "levels_state": "LIVE",
@@ -3871,9 +3871,9 @@
    },
    {
     "level": "gamma_flip",
-    "prior": 243.2372553307148,
-    "today": 243.91350359265536,
-    "change": 0.6762482619405716
+    "prior": 243.23779388064705,
+    "today": 243.91411813739333,
+    "change": 0.6763242567462839
    }
   ],
   "levels_state": "LIVE",
@@ -3889,7 +3889,7 @@
   "posture": "FADE_EDGES",
   "confidence": "TRUSTED",
   "headline": "Long gamma \u2014 chop regime. Fade the edges, do not chase breakouts.",
-  "gamma_flip": 243.91350359265536,
+  "gamma_flip": 243.91411813739333,
   "call_wall": 270.0,
   "put_wall": 270.0,
   "absolute_gamma_strike": 270.0,
@@ -3905,16 +3905,16 @@
   "hvp": 240.0,
   "lvp": 275.0,
   "net_gex_at_spot": 937341251.0262462,
-  "gsf": 259.3467510620916,
-  "grc": null,
+  "gsf": 259.325308455338,
+  "grc": 380.60114725715437,
   "gsf_state": "OK",
   "same_day": {
    "call_wall": 270.0,
    "put_wall": 270.0,
-   "gamma_flip": 258.4958123306377,
+   "gamma_flip": 258.49264280576534,
    "absolute_gamma_strike": 270.0,
-   "gsf": 265.54717580558076,
-   "grc": 290.917127344853,
+   "gsf": 265.4998340068834,
+   "grc": 292.1097422685329,
    "hvp": 262.5,
    "lvp": 270.0,
    "key_delta_strike": 260.0,
@@ -71024,13 +71024,13 @@
     "zone_type": "pivot_value",
     "zone_label": "Pivot / value",
     "zone_side": "value",
-    "zone_low": 243.91350359265536,
-    "zone_high": 243.91350359265536,
-    "anchor": 243.91350359265536,
+    "zone_low": 243.91411813739333,
+    "zone_high": 243.91411813739333,
+    "anchor": 243.91411813739333,
     "source_levels": [
      {
       "label": "GAMMA_FLIP",
-      "value": 243.91350359265536
+      "value": 243.91411813739333
      }
     ],
     "source_tags": [
@@ -71038,7 +71038,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Confluence: mixed positioning + session levels",
-    "distance_to_spot": 25.51149640734465,
+    "distance_to_spot": 25.51088186260668,
     "spot_inside_zone": false
    },
    {
@@ -71106,6 +71106,28 @@
    "levels_stale_reason": "",
    "bar_source": "Schwab /pricehistory 1-minute bars and CHART_EQUITY",
    "levels": [
+    {
+     "id": "grc",
+     "price": 380.60114725715437,
+     "family": "gamma",
+     "label": "GRC",
+     "short": "GRC",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 111.17614725715435,
+     "side": "ABOVE",
+     "from_spot_text": "111.18 above spot"
+    },
     {
      "id": "em_up",
      "price": 276.2680765669552,
@@ -71819,7 +71841,7 @@
     },
     {
      "id": "gsf",
-     "price": 259.3467510620916,
+     "price": 259.325308455338,
      "family": "gamma",
      "label": "GSF",
      "short": "GSF",
@@ -71835,9 +71857,9 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": -10.078248937908427,
+     "distance": -10.099691544661994,
      "side": "BELOW",
-     "from_spot_text": "10.08 below spot"
+     "from_spot_text": "10.10 below spot"
     },
     {
      "id": "key_delta_strike",
@@ -71863,7 +71885,7 @@
     },
     {
      "id": "gamma_flip",
-     "price": 243.91350359265536,
+     "price": 243.91411813739333,
      "family": "gamma",
      "label": "Gamma flip",
      "short": "Gamma flip",
@@ -71879,7 +71901,7 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": -25.51149640734465,
+     "distance": -25.51088186260668,
      "side": "BELOW",
      "from_spot_text": "25.51 below spot"
     },
@@ -71938,7 +71960,8 @@
     "gsf",
     "key_delta_strike",
     "gamma_flip",
-    "hvp"
+    "hvp",
+    "grc"
    ],
    "zero_dte": [
     {
@@ -71968,8 +71991,8 @@
     {
      "id": "gamma_flip",
      "label": "Gamma flip",
-     "price": 258.4958123306377,
-     "carried": 243.91350359265536,
+     "price": 258.49264280576534,
+     "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",
@@ -71992,8 +72015,8 @@
     {
      "id": "gsf",
      "label": "GSF",
-     "price": 265.54717580558076,
-     "carried": 259.3467510620916,
+     "price": 265.4998340068834,
+     "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",
@@ -72004,8 +72027,8 @@
     {
      "id": "grc",
      "label": "GRC",
-     "price": 290.917127344853,
-     "carried": null,
+     "price": 292.1097422685329,
+     "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",
@@ -75554,6 +75577,28 @@
    "bar_source": "Schwab /pricehistory 1-minute bars and CHART_EQUITY",
    "levels": [
     {
+     "id": "grc",
+     "price": 380.60114725715437,
+     "family": "gamma",
+     "label": "GRC",
+     "short": "GRC",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 111.17614725715435,
+     "side": "ABOVE",
+     "from_spot_text": "111.18 above spot"
+    },
+    {
      "id": "em_up",
      "price": 276.2680765669552,
      "family": "expected_move",
@@ -76266,7 +76311,7 @@
     },
     {
      "id": "gsf",
-     "price": 259.3467510620916,
+     "price": 259.325308455338,
      "family": "gamma",
      "label": "GSF",
      "short": "GSF",
@@ -76282,9 +76327,9 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": -10.078248937908427,
+     "distance": -10.099691544661994,
      "side": "BELOW",
-     "from_spot_text": "10.08 below spot"
+     "from_spot_text": "10.10 below spot"
     },
     {
      "id": "key_delta_strike",
@@ -76310,7 +76355,7 @@
     },
     {
      "id": "gamma_flip",
-     "price": 243.91350359265536,
+     "price": 243.91411813739333,
      "family": "gamma",
      "label": "Gamma flip",
      "short": "Gamma flip",
@@ -76326,7 +76371,7 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": -25.51149640734465,
+     "distance": -25.51088186260668,
      "side": "BELOW",
      "from_spot_text": "25.51 below spot"
     },
@@ -76385,7 +76430,8 @@
     "gsf",
     "key_delta_strike",
     "gamma_flip",
-    "hvp"
+    "hvp",
+    "grc"
    ],
    "zero_dte": [
     {
@@ -76415,8 +76461,8 @@
     {
      "id": "gamma_flip",
      "label": "Gamma flip",
-     "price": 258.4958123306377,
-     "carried": 243.91350359265536,
+     "price": 258.49264280576534,
+     "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",
@@ -76439,8 +76485,8 @@
     {
      "id": "gsf",
      "label": "GSF",
-     "price": 265.54717580558076,
-     "carried": 259.3467510620916,
+     "price": 265.4998340068834,
+     "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",
@@ -76451,8 +76497,8 @@
     {
      "id": "grc",
      "label": "GRC",
-     "price": 290.917127344853,
-     "carried": null,
+     "price": 292.1097422685329,
+     "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",
@@ -79561,6 +79607,28 @@
    "bar_source": "Schwab /pricehistory 1-minute bars and CHART_EQUITY",
    "levels": [
     {
+     "id": "grc",
+     "price": 380.60114725715437,
+     "family": "gamma",
+     "label": "GRC",
+     "short": "GRC",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 111.17614725715435,
+     "side": "ABOVE",
+     "from_spot_text": "111.18 above spot"
+    },
+    {
      "id": "em_up",
      "price": 276.2680765669552,
      "family": "expected_move",
@@ -80273,7 +80341,7 @@
     },
     {
      "id": "gsf",
-     "price": 259.3467510620916,
+     "price": 259.325308455338,
      "family": "gamma",
      "label": "GSF",
      "short": "GSF",
@@ -80289,9 +80357,9 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": -10.078248937908427,
+     "distance": -10.099691544661994,
      "side": "BELOW",
-     "from_spot_text": "10.08 below spot"
+     "from_spot_text": "10.10 below spot"
     },
     {
      "id": "key_delta_strike",
@@ -80317,7 +80385,7 @@
     },
     {
      "id": "gamma_flip",
-     "price": 243.91350359265536,
+     "price": 243.91411813739333,
      "family": "gamma",
      "label": "Gamma flip",
      "short": "Gamma flip",
@@ -80333,7 +80401,7 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": -25.51149640734465,
+     "distance": -25.51088186260668,
      "side": "BELOW",
      "from_spot_text": "25.51 below spot"
     },
@@ -80392,7 +80460,8 @@
     "gsf",
     "key_delta_strike",
     "gamma_flip",
-    "hvp"
+    "hvp",
+    "grc"
    ],
    "zero_dte": [
     {
@@ -80422,8 +80491,8 @@
     {
      "id": "gamma_flip",
      "label": "Gamma flip",
-     "price": 258.4958123306377,
-     "carried": 243.91350359265536,
+     "price": 258.49264280576534,
+     "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",
@@ -80446,8 +80515,8 @@
     {
      "id": "gsf",
      "label": "GSF",
-     "price": 265.54717580558076,
-     "carried": 259.3467510620916,
+     "price": 265.4998340068834,
+     "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",
@@ -80458,8 +80527,8 @@
     {
      "id": "grc",
      "label": "GRC",
-     "price": 290.917127344853,
-     "carried": null,
+     "price": 292.1097422685329,
+     "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT",

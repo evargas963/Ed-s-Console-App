@@ -28,7 +28,7 @@
   {
    "abbrev": "Flip",
    "lane": "options",
-   "price": 770.7687850382462,
+   "price": 770.7699684126369,
    "price_text": "770.77",
    "title": "Gamma flip"
   },
@@ -98,7 +98,7 @@
   {
    "abbrev": "0D Flip",
    "lane": "options",
-   "price": 770.7687850382462,
+   "price": 770.7699684126369,
    "price_text": "770.77",
    "title": "0DTE Gamma flip"
   },
