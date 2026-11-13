@@ -1023,8 +1023,21 @@ behavior (AGENTS.md).
     The 0DTE pin is `same_day.absolute_gamma_strike` only. The listed-expiry pin
     (`zero_dte_abs_gamma_strike`) is not produced: it was a second pin.
     The key levels rail draws each strike once, the regular price beside the same-day
-    price. Spot has no same-day cell. Exposure (net GEX, the two put/call ratios, the
-    dealer regime) stays under those rows. Zero Gamma, Volatility Trigger, Vanna Support
+    price. Spot has no same-day cell. Its lines are chosen by what published work supports
+    (operator 2026-11-13: "only include those that are most important", "what is included is
+    based on your research"; "include the delta and charm walls"; `docs/SOURCES.md`): the
+    gamma flip, as the line where the regime changes (baltussen-2021); the call and put
+    walls (the industry's convention, modelled: squeezemetrics-gex-2017); the largest gamma
+    strike, the pin (ni-pearson-poteshman-2005, at expiration); the call and put delta
+    walls and the call and put charm walls, on his order (charm at expiration:
+    golez-jackwerth-2012); then the price levels, each the `levels` panel's own row
+    (`levels:kl`): the expected move up and down, the prior day's high, low and close
+    (osler-2000) and VWAP. The net call and net put gamma peaks are off the rail: no source
+    was found for either. A support or resistance line is not on it: on 88 ticker-days of
+    Schwab's one-minute candles none of the program's levels stopped the price clearly more
+    often than an arbitrary price (osler-2000's test; 7 days a ticker is too few), so none
+    is proven. Exposure (net GEX, the two put/call ratios, the dealer regime) stays under
+    those rows. Zero Gamma, Volatility Trigger, Vanna Support
     and Charm Resistance are not on the rail: nothing is served for them.
     The levels list is one table, Level, Regular, 0DTE, same-day rows first, then the
     other served levels. Family, evidence and source are not drawn. Each price is shown

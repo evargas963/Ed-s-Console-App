@@ -129,7 +129,7 @@ async function intercept(page) {
     body: JSON.stringify({ ok: true, contract: route.request().postDataJSON().contract }) }));
   await routeWatchlist(page, ['SPY']);
   panels = { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE, chain: chainAt(CHAIN),
-    bars: BARS, tape: REAL.tape };
+    bars: BARS, tape: REAL.tape, levels: REAL.levels['1'] };
   sock = await pushExpiries(page, EXPIRIES, undefined, panels);
 }
 
@@ -645,6 +645,19 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPut')).toHaveText('270.00');
     await expect(page.locator('#klNet')).toHaveText('$937.3M');
     await expect(page.locator('#klRegime')).toContainText('Long γ');
+    // the price levels are the levels panel's own rows (AMZN's real set): the expected move from
+    // Schwab's implied volatility, the prior day's high, low and close, and VWAP
+    await expect(page.locator('#klEmUp')).toHaveText('276.27');
+    await expect(page.locator('#klEmDn')).toHaveText('262.58');
+    await expect(page.locator('#klPdh')).toHaveText('274.87');
+    await expect(page.locator('#klPdl')).toHaveText('265.62');
+    await expect(page.locator('#klPdc')).toHaveText('266.17');
+    await expect(page.locator('#klVwap')).toHaveText('271.02');
+    // a level the panel does not send reads '-': induced, the same rows without VWAP
+    panels.levels = Object.assign({}, REAL.levels['1'], { levels: REAL.levels['1'].levels.filter((r) => r.id !== 'VWAP') });
+    sock.changed('levels');
+    await expect(page.locator('#klVwap')).toHaveText('-');
+    await expect(page.locator('#klPdh')).toHaveText('274.87');
     // a label with no served number is not on the rail
     await expect(page.locator('#klBody')).not.toContainText('NOT PROVEN');
     await expect(page.locator('#klAbs0')).toHaveCount(0);
@@ -1201,7 +1214,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('the Key Levels rail shows regular and 0DTE in the same row', async ({ page }) => {
     panels.terrain = Object.assign({}, TERRAIN, {
       same_day: { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
-        absolute_gamma_strike: 572.5, lvp: 575, hvp: 565 },
+        absolute_gamma_strike: 572.5, call_charm_wall: 572.5, put_charm_wall: 567.5 },
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klBody .kl-pairs .h').nth(0)).toHaveText('Regular');
@@ -1213,10 +1226,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#kl0Call')).toHaveText('575.00');
     await expect(page.locator('#kl0Put')).toHaveText('570.00');
     await expect(page.locator('#kl0Abs')).toHaveText('572.50');
-    await expect(page.locator('#kl0NetCall')).toHaveText('575.00');
-    await expect(page.locator('#kl0NetPut')).toHaveText('565.00');
-    await expect(page.locator('#klNetCall')).toHaveText('275.00');   // the whole book's two peaks (AMZN's lvp, hvp)
-    await expect(page.locator('#klNetPut')).toHaveText('240.00');
+    await expect(page.locator('#kl0CallCharm')).toHaveText('572.50');
+    await expect(page.locator('#kl0PutCharm')).toHaveText('567.50');
+    await expect(page.locator('#klCallCharm')).toHaveText('275.00');   // the whole book's charm walls (AMZN's)
+    await expect(page.locator('#klPutCharm')).toHaveText('260.00');
+    await expect(page.locator('#klCallDelta')).toHaveText('250.00');   // and its delta walls
+    await expect(page.locator('#klPutDelta')).toHaveText('270.00');
+    await expect(page.locator('#klBody')).not.toContainText('γ peak');   // the two net peaks are off the card
     await expect(page.locator('#klBody')).not.toContainText('Net GEX peak');
     await expect(page.locator('#klNet')).toBeVisible();
   });

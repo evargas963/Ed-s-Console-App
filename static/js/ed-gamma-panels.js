@@ -44,20 +44,32 @@
   // ---------- Key Levels rail: the `terrain:levels` panel (server.terrain), sent on the page's
   // socket while a Gamma tab is on, at once and each time the levels change ----------
   var _levels, _levelsTicker = null;   // the panel as last sent for the ticker on screen
+  var _price;   // the `levels:kl` panel as last sent for the ticker on screen
   function loadLevels() {
-    if (!isGamma()) { window.EdShell.showPanel('terrain:levels', null); return; }
-    if (_levelsTicker !== ticker()) { _levelsTicker = ticker(); _levels = undefined; }
+    if (!isGamma()) { window.EdShell.showPanel('terrain:levels', null); window.EdShell.showPanel('levels:kl', null); return; }
+    if (_levelsTicker !== ticker()) { _levelsTicker = ticker(); _levels = undefined; _price = undefined; }
     renderLevels(_levels);
+    renderPriceLevels(_price);
     window.EdShell.showPanel('terrain:levels', {});
+    window.EdShell.showPanel('levels:kl', { tf: '1' });
   }
   document.addEventListener('ed:panel', function (e) {
+    if (e.detail.type === 'levels:kl') { _price = e.detail; if (isGamma()) renderPriceLevels(_price); }
     if (e.detail.type !== 'terrain:levels') return;
     _levels = e.detail;
     if (isGamma()) renderLevels(_levels);
   });
+  // the card's price levels: each is the `levels` panel's own row of that id (server.levels_payload),
+  // its price as served; a row not sent, or a panel not sent or failed, reads '-'
+  var PRICE_LEVELS = { em_up: 'klEmUp', em_dn: 'klEmDn', PDH: 'klPdh', PDL: 'klPdl', PDC: 'klPdc', VWAP: 'klVwap' };
+  function renderPriceLevels(d) {   // d: the panel as sent; undefined: none yet for this ticker
+    var sent = {};
+    if (d !== undefined && d.failed == null) d.levels.forEach(function (r) { sent[r.id] = r.price; });
+    Object.keys(PRICE_LEVELS).forEach(function (id) { txt(PRICE_LEVELS[id], px(sent[id])); });
+  }
   function renderLevels(d) {   // d: the panel as sent; undefined: none yet for this ticker
-    var ids = ['klFlip', 'klCall', 'klPut', 'klAbs', 'klNetCall', 'klNetPut', 'klNet', 'klRegime',   // terrain's (Spot is the price row's)
-      'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0NetCall', 'kl0NetPut'];
+    var ids = ['klFlip', 'klCall', 'klPut', 'klAbs', 'klCallDelta', 'klPutDelta', 'klCallCharm', 'klPutCharm', 'klNet', 'klRegime',   // terrain's (Spot is the price row's)
+      'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0CallCharm', 'kl0PutCharm'];
     // nothing to draw: none sent yet ('-'), the program could not produce it, or no levels yet
     var why = d === undefined ? '-' : d.failed != null ? d.failed : d.error ? 'terrain not ready' : null;
     paintPcr(why == null ? d : null);
@@ -73,15 +85,17 @@
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));
-    txt('klNetCall', px(d.lvp));
-    txt('klNetPut', px(d.hvp));
+    txt('klCallDelta', px(d.call_delta_wall));
+    txt('klPutDelta', px(d.put_delta_wall));
+    txt('klCallCharm', px(d.call_charm_wall));
+    txt('klPutCharm', px(d.put_charm_wall));
     var z = d.same_day != null ? d.same_day : null;
     txt('kl0Flip', px(z ? z.gamma_flip : null));
     txt('kl0Call', px(z ? z.call_wall : null));
     txt('kl0Put', px(z ? z.put_wall : null));
     txt('kl0Abs', px(z ? z.absolute_gamma_strike : null));
-    txt('kl0NetCall', px(z ? z.lvp : null));
-    txt('kl0NetPut', px(z ? z.hvp : null));
+    txt('kl0CallCharm', px(z ? z.call_charm_wall : null));
+    txt('kl0PutCharm', px(z ? z.put_charm_wall : null));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)
     var net = document.getElementById('klNet');
     if (net) {
