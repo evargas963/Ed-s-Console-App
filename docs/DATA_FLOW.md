@@ -470,7 +470,12 @@ the program.
   a ticker a page has selected is fetched, with all its quotes, before each other ticker's chain,
   never twice in a row (`ChainSweep.rotation`; operator 2026-11-11: the ticker on the screen
   first, replacing his 2026-10-06 "no priority: every ticker is treated the same, in one
-  rotation"; `tests/test_data_path_rules_v1.py`); a ticker added is in the next rotation, and one removed is not asked for again, its
+  rotation"; `tests/test_data_path_rules_v1.py`). At a start the ticker on a page has its own
+  price history and then its chain before the other tickers' candles; every other ticker's
+  price history is still asked before the first other chain (operator 2026-11-13, on the wait
+  for levels after a start: "this is too long and needs investigation and repair end to end";
+  measured that day: 40 s of price history and /markets requests went before the first
+  chain); a ticker added is in the next rotation, and one removed is not asked for again, its
   queued quotes included. Schwab's /chains answers (the listed contracts, their terms and open
   interest, which Schwab says is the prior trading day's:
   `docs/schwab/schwab_support_emails_2026_10_12.txt`, item 5; measured 2026-11-11, it changed
