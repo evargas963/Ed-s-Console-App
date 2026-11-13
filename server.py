@@ -762,6 +762,20 @@ def _levels_state(
                 "this ticker's options are closed and its close values have not been fetched" + sep,
             )
         return LEVELS_CLOSE, ""
+    # Before LIVE: a chain from before this option window (Schwab's mid-morning break) is not
+    # live until the first chain since arrives — even while age is still inside stale_after
+    # (a slow sweep's two-round budget can exceed the break, so age alone would read LIVE).
+    began = option_window_began(at)
+    began_ts = None if began is None else began.timestamp()
+    if (
+        began_ts is not None
+        and float(computed_ts_utc) < began_ts
+        and now - began_ts <= stale_after
+    ):
+        return LEVELS_STALE, (
+            f"levels are {age:.0f}s old: Schwab's option session reopened {ct_label(began_ts)} and "
+            "its first chain since has not arrived"
+        )
     if age <= stale_after:
         return lmp.LIVE, ""
     if waiting:
@@ -770,13 +784,6 @@ def _levels_state(
         return (
             LEVELS_STALE,
             f"levels are {age:.0f}s old and every chain since has failed — {failure}",
-        )
-    began = option_window_began(at).timestamp()
-    if float(computed_ts_utc) < began and now - began <= stale_after:
-        # no chain is asked for between two of Schwab's option windows: the first since is due
-        return LEVELS_STALE, (
-            f"levels are {age:.0f}s old: Schwab's option session reopened {ct_label(began)} and "
-            "its first chain since has not arrived"
         )
     return LEVELS_STALE, (
         f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "

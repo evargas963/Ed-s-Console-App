@@ -267,16 +267,17 @@ def test_after_schwabs_break_the_levels_are_not_live_and_say_why():
 
     No chain is asked for between them, so at 09:30 the levels are from before the break. They
     stand, not live, with their age, and the reason is the break, until the first chain since
-    arrives. Past two of the sweep's rounds with none, the reason is the sweep's.
+    arrives. Past two of the sweep's rounds with none, the reason is the sweep's. A slow sweep
+    (round ≥ 150 s) still marks them STALE: age alone would fit inside two rounds at reopen.
     """
     fx = json.loads((FX / "real_schwab_markets_2026_11_02.json").read_text(encoding="utf-8"))
     time_et.record_markets(fx["body"])
     before_break = _et("2026-11-02 09:23").timestamp()
 
-    def verdict(clock: str, chain: float) -> tuple[str, str, str]:
+    def verdict(clock: str, chain: float, round_sec: float = 137.0) -> tuple[str, str, str]:
         now = _et(f"2026-11-02 {clock}").timestamp()
         lmp.record_feed_heartbeat(
-            daemon_status(now, schwab_socket_open=True, chain_round_sec=137.0)
+            daemon_status(now, schwab_socket_open=True, chain_round_sec=round_sec)
         )
         v = server.terrain_staleness(chain, "SPY", now=now, levels_ts_utc=chain)
         return v["levels_state"], v["levels_stale_reason"], v["levels_age_text"]
@@ -288,6 +289,17 @@ def test_after_schwabs_break_the_levels_are_not_live_and_say_why():
     )
     assert verdict("09:31", before_break) == ("STALE", "levels are 480s old" + reopened, "8m")
     assert verdict("09:34", before_break) == ("STALE", "levels are 660s old" + reopened, "11m")
+    # 300 s round: two-round budget (600 s) still covers a chain from 09:23 at 09:31 — must not LIVE
+    assert verdict("09:31", before_break, round_sec=300.0) == (
+        "STALE",
+        "levels are 480s old" + reopened,
+        "8m",
+    )
+    assert verdict("09:30", _et("2026-11-02 09:25").timestamp(), round_sec=150.0) == (
+        "STALE",
+        "levels are 300s old" + reopened,
+        "5m",
+    )
     assert verdict("09:31", _et("2026-11-02 09:30:20").timestamp()) == ("LIVE", "", "40s")
     # 274 s (two rounds of 137 s) after the reopening with no chain: the sweep is late
     late = verdict("09:36", before_break)
