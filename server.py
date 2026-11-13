@@ -2409,9 +2409,12 @@ def tape(ticker: str, now: float) -> dict:
     The prints the console builds from Schwab's LEVELONE_OPTIONS as the daemon pushes them
     (the live state's prints, history.recent_prints), of every contract of `ticker` the daemon
     streams
-    (_held_option_symbols_for_ticker), merged newest first and capped at TAPE_ROWS across the
-    merge, each with its contract's terms and open interest from the chain record and its
-    premium (history.tape_row). No aggressor side. `ticker` is the levels' own key.
+    (_held_option_symbols_for_ticker), merged newest trade first by Schwab's own trade time
+    (TRADE_TIME_MILLIS; operator 2026-11-12: "yes we should use schwab's data"), prints of one
+    trade time in the order received, a print Schwab sent no trade time with after every one
+    that has one; capped at TAPE_ROWS across the merge, each with its contract's terms and open
+    interest from the chain record and its premium (history.tape_row). No aggressor side.
+    `ticker` is the levels' own key.
     """
     held = published_levels(ticker)
     if held is None:
@@ -2420,7 +2423,7 @@ def tape(ticker: str, now: float) -> dict:
     if not symbols:
         return unavailable(ticker, "the daemon streams no option contract of this ticker", rows=[])
     # the newest TAPE_ROWS of all the contracts' kept prints are picked first, and only those are
-    # made rows: a contract's prints are in receive order, so its newest are its last
+    # made rows: each contract's last TAPE_ROWS received are the ones looked at
     newest = heapq.nlargest(
         TAPE_ROWS,
         (
@@ -2428,7 +2431,11 @@ def tape(ticker: str, now: float) -> dict:
             for sym in symbols
             for p in reversed(canonical_tape_prints(get_content_for_symbol(sym))[-TAPE_ROWS:])
         ),
-        key=lambda kept: kept[0]["server_received_ts"],
+        key=lambda kept: (
+            kept[0]["time_millis"] is not None,
+            kept[0]["time_millis"],
+            kept[0]["server_received_ts"],
+        ),
     )
     rows = [tape_row(recent_prints(sym, [p], 1)[0], held.contracts[sym]) for p, sym in newest]
     return {

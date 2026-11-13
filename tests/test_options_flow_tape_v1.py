@@ -236,20 +236,22 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
     assert unlisted[1] == [None, None]
     assert sides == ["CALL", "PUT"]
     assert body["available"] is True
-    # newest received first, each with Schwab's own trade time of its message (none sent: None)
-    newest_first = sorted(
-        (
-            (ts, sym, item)
-            for sym, rows in sent.items()
-            for ts, item in rows
-            if "LAST_PRICE" in item
-        ),
-        key=lambda m: m[0],
+    # newest trade first, by Schwab's own trade time of each message (operator 2026-11-12: "yes
+    # we should use schwab's data"). The put's two messages were received after calls that
+    # traded later (3.04 at ...3027 after the call's ...4664; 3.00 at ...5691 after ...5726):
+    # the tape orders them by when they traded, not by when they arrived.
+    traded = [
+        (sym, item) for sym, rows in sent.items() for ts, item in rows if "LAST_PRICE" in item
+    ]
+    newest_first = sorted(traded, key=lambda m: m[1]["TRADE_TIME_MILLIS"], reverse=True)
+    received_first = sorted(
+        ((ts, sym) for sym, rows in sent.items() for ts, item in rows if "LAST_PRICE" in item),
         reverse=True,
     )
+    assert [sym for sym, _ in newest_first] != [sym for _, sym in received_first]
     assert len(body["rows"]) == 6 and [
         (r["symbol"], r["trade"], r["trade_time_ms"]) for r in body["rows"]
-    ] == [(sym, item["LAST_PRICE"], item.get("TRADE_TIME_MILLIS")) for _, sym, item in newest_first]
+    ] == [(sym, item["LAST_PRICE"], item["TRADE_TIME_MILLIS"]) for sym, item in newest_first]
     assert all("ts_recv" not in r for r in body["rows"])
     terms = {(r["symbol"], r["expiry"], r["type"], r["strike"], r["oi"]) for r in body["rows"]}
     assert terms == {
