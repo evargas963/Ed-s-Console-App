@@ -29,7 +29,7 @@ from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import markets_message
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
-from tests.feed_live_helper import mark_feed_live
+from tests.feed_live_helper import daemon_status, mark_feed_live
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab
 from time_et import ET
 
@@ -260,6 +260,41 @@ def test_the_option_sessions_are_the_windows_schwab_sent():
     assert {t: time_et.options_open(_et(f"2026-11-02 {t}")) for t in expected} == expected
     assert time_et.options_opened(_et("2026-11-02 12:00")) == _et("2026-11-02 07:30")
     assert time_et.option_market_open(_et("2026-11-02 08:00")) is False  # the close values' window
+
+
+def test_after_schwabs_break_the_levels_are_not_live_and_say_why():
+    """Schwab's option windows of 2026-11-02 stop at 09:25 ET and start again at 09:30.
+
+    No chain is asked for between them, so at 09:30 the levels are from before the break. They
+    stand, not live, with their age, and the reason is the break, until the first chain since
+    arrives. Past two of the sweep's rounds with none, the reason is the sweep's.
+    """
+    fx = json.loads((FX / "real_schwab_markets_2026_11_02.json").read_text(encoding="utf-8"))
+    time_et.record_markets(fx["body"])
+    before_break = _et("2026-11-02 09:23").timestamp()
+
+    def verdict(clock: str, chain: float) -> tuple[str, str, str]:
+        now = _et(f"2026-11-02 {clock}").timestamp()
+        lmp.record_feed_heartbeat(
+            daemon_status(now, schwab_socket_open=True, chain_round_sec=137.0)
+        )
+        v = server.terrain_staleness(chain, "SPY", now=now, levels_ts_utc=chain)
+        return v["levels_state"], v["levels_stale_reason"], v["levels_age_text"]
+
+    assert verdict("09:24", before_break) == ("LIVE", "", "60s")
+    reopened = (
+        ": Schwab's option session reopened Mon 11/02 08:30 AM CT and its first chain since "
+        "has not arrived"
+    )
+    assert verdict("09:31", before_break) == ("STALE", "levels are 480s old" + reopened, "8m")
+    assert verdict("09:34", before_break) == ("STALE", "levels are 660s old" + reopened, "11m")
+    assert verdict("09:31", _et("2026-11-02 09:30:20").timestamp()) == ("LIVE", "", "40s")
+    # 274 s (two rounds of 137 s) after the reopening with no chain: the sweep is late
+    late = verdict("09:36", before_break)
+    assert late[0] == "STALE" and late[1] == (
+        "levels are 780s old; the daemon's chain sweep has not delivered this ticker in two of "
+        "its rounds (137s each)"
+    )
 
 
 def test_no_market_time_is_typed_in_the_product():
