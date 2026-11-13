@@ -80,6 +80,26 @@ def test_an_assertion_lost_while_the_function_it_names_lives_is_refused(repo):
     assert _found(repo) == ["test_x: assertion lost: product.old() == 1"]
 
 
+def test_an_assertion_gone_with_the_value_it_reads_passes(repo):
+    _write(repo, "product.py", "def row():\n    return {'kept': 1, 'unread': 2}\n")
+    _write(repo, "tests/test_a.py", SURVIVES + "    assert product.row()['unread'] == 2\n")
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    _write(repo, "product.py", "def row():\n    return {'kept': 1}\n")
+    _write(repo, "tests/test_a.py", SURVIVES)
+    assert _found(repo) == []
+
+
+def test_an_assertion_lost_while_the_value_it_reads_is_still_built_is_refused(repo):
+    _write(repo, "product.py", "def row():\n    return {'kept': 1, 'unread': 2}\n")
+    _write(repo, "tests/test_a.py", SURVIVES + "    assert product.row()['unread'] == 2\n")
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    _write(repo, "product.py", "def row():\n    return {'kept': 3, 'unread': 2}\n")
+    _write(repo, "tests/test_a.py", SURVIVES)
+    assert _found(repo) == ["test_x: assertion lost: product.row()['unread'] == 2"]
+
+
 def test_an_assertion_taken_from_a_surviving_test_is_refused(repo):
     _write(repo, "tests/test_a.py", "def test_x():\n    assert 1 == 1\n")
     assert _found(repo) == ["test_x: assertion lost: 2 == 2"]

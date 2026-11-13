@@ -6,7 +6,9 @@ Test integrity, every pull request:
    - an assertion of a test that survives is not lost. A test is its function name in Python and
      its title in a Playwright spec, across every changed test file, so a moved test is the same
      test and a rewritten one may restate its assertions. An assertion gone with its test, or
-     with a function it calls that this change deleted, is not judged, nor a test renamed or
+     with a function it calls or a value it reads by its key that this change deleted from the
+     product (the function's definition, the key of the record built), is not judged: what is
+     deleted is no longer tested. Nor is a test renamed or
      disabled with its assertions kept: a test renamed and one deleted beside a new one read the
      same to a machine;
    - no test is another test again: the same code, arguments and decorators, in a file whose
@@ -35,7 +37,8 @@ MARKERS = re.compile(
     r"pytest\.mark\.skip|skipif|\bskip\(|unittest\.skip|importorskip|xfail"
     r"|\b(?:test|describe|it)\.(?:skip|fixme|fail)\b|\bx(?:it|describe)\b|\bTODO\b|\bFIXME\b"
 )
-CALLED = re.compile(r"(\w+)\(")
+#: what an assertion names: a function it calls, a value it reads by its key
+NAMED = re.compile(r"""(\w+)\(|['"](\w+)['"]""")
 JS_TEST = re.compile(r"""\btest(?:\.\w+)?\(\s*(['"`])(.*?)(?<!\\)\1""", re.S)
 JS_EXPECT = re.compile(r"\bexpect(?:\.\w+)?\([^;]*;")
 #: the head's own attributes and drivers do not decide what the diff shows
@@ -134,11 +137,11 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
             tree = ast.parse(source)
         except SyntaxError as e:
             raise ToolError(f"{rev}:{name}", e) from e
-        found.update(
-            node.name
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        )
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                found.add(node.name)
+            elif isinstance(node, ast.Dict):  # the values a record is built with, by their keys
+                found.update(k.value for k in node.keys if isinstance(k, ast.Constant))
     return found
 
 
@@ -153,7 +156,7 @@ def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
         lost = [
             a
             for a in sorted(before[test] - after[test])
-            if not deleted.intersection(CALLED.findall(a))
+            if not deleted.intersection(name for pair in NAMED.findall(a) for name in pair)
         ]
         # an assertion corrected or strengthened is one for one; only a net loss is a loss
         if len(lost) > len(after[test] - before[test]):
