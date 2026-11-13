@@ -130,7 +130,7 @@
     exps.forEach(function (e, j) {
       var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = e.expired ? 'expired: a prior-session column, not current structure'
-        : (words.column[surface.stream_by_expiry[e.expiry]] || '');
+        : words.column[surface.stream_by_expiry[e.expiry]];   // the served words cover every state
       tbl += '<th class="hexp' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') + '" data-col="' + j +
         '" title="' + escapeHtml(title) + '"><span class="d">' + escapeHtml((e.expiry || '').slice(5)) +
         '</span><span class="dte">' + dte + '</span></th>';
