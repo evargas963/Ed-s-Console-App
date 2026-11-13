@@ -402,7 +402,7 @@ test.describe('Trade Desk renders served values', () => {
     // the window's words are the server's (a page copy of the lookback table: register P-15)
     await expect(page.locator('#tdmCardFlow')).toContainText('Crosses (' + EVENTS.window_label + ')');
     await expect(page.locator('#tdmLookback')).toHaveText(EVENTS.window_label);
-    await expect(page.locator('#tdmAgree')).toContainText('Below flip');   // 757.08 against the flip at 761.22
+    await expect(page.locator('#tdmAgree')).toContainText('Below Γ flip');   // 757.08 against the flip at 761.22
     // the served session volume profile, every bin drawn at the chart's left edge, with its basis
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     // each card draws its served series (2026-09-28): the Liquidity card's 2m and 5m lean lines,
@@ -618,7 +618,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // the flip side is the terrain's (SPY's real one: below the flip), marked with the stopped price's words
-    await expect(page.locator('#tdmAgree')).toContainText('Below flip · ' + STOPPED.spot_not_live_text);
+    await expect(page.locator('#tdmAgree')).toContainText('Below Γ flip · ' + STOPPED.spot_not_live_text);
     expect(errs).toEqual([]);
   });
 
@@ -662,7 +662,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('Inside a Pivot / value zone (757.00–758.01, confluence 6)');
     expect([INSIDE.zone_low, INSIDE.zone_high, INSIDE.confluence_score]).toEqual([757.0, 758.01, 6]);
     // the walls' and the flip's own moves since the prior close, as served (no drift word)
-    await expect(body).toContainText('Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Gamma flip 760.77 → 761.22 (+0.45)');
+    await expect(body).toContainText('Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Γ flip 760.77 → 761.22 (+0.45)');
     await expect(body).toContainText('Gamma grew most at 775/770');
     await expect(body).toContainText('inside the wall range');
     expect(errs).toEqual([]);
@@ -713,12 +713,12 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('Max pain 757.00');
     deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771 });
     sock.changed('terrain');
-    await expect(body).toContainText('Gamma flip761.22Max pain (0DTE)771.00');   // CONFIRM's rows
-    await expect(body).not.toContainText('Flip note');                    // this set's flip carries no note
+    await expect(body).toContainText('Γ flip761.22Max pain (0DTE)771.00');   // CONFIRM's rows
+    await expect(body).not.toContainText('Γ flip note');                    // this set's flip carries no note
     // induced: the flip's note as the server words it (terrain_read.FLIP_CURVE_DISAGREES)
     deskPanels().terrain = Object.assign({}, TERRAIN, { flip_note: 'The gamma flip is placed by a modelled curve that disagrees with Schwab\'s gamma at today\'s price.' });
     sock.changed('terrain');
-    await expect(body).toContainText('Flip noteThe gamma flip is placed by a modelled curve that disagrees with Schwab\'s gamma at today\'s price.');
+    await expect(body).toContainText('Γ flip noteThe gamma flip is placed by a modelled curve that disagrees with Schwab\'s gamma at today\'s price.');
     deskPanels().levels = levelsAt(Object.assign({}, LEVELS, { levels: LEVELS.levels.map((r) =>
       (r.id === 'max_pain' ? Object.assign({}, r, { from_spot_text: '0.30 below spot' }) : r)) }));
     sock.changed('levels');
@@ -864,7 +864,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('GRC 837.58');
     await expect(page.locator('#tdmCardOpt')).toContainText('GEX below / above');
-    await expect(page.locator('#tdmCardOpt')).toContainText('Flip note the flip\'s note, as served');   // induced
+    await expect(page.locator('#tdmCardOpt')).toContainText('Γ flip note the flip\'s note, as served');   // induced
     await expect(page.locator('#tdmCardOpt')).toContainText('−$1.20B / -');          // GEX, one side not known
     await expect(page.locator('#tdmCardOpt')).toContainText('ΔOI since 2026-10-07 below / above 1200 / -');   // from its served day
     await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / -');           // charm, one side not known

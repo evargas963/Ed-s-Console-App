@@ -117,13 +117,13 @@
     var rows = [
       ['Posture', orDash(d.posture)], ['Confidence', orDash(d.confidence)],
       ['Call wall', num(d.call_wall)], ['Put wall', num(d.put_wall)],
-      ['Gamma flip', num(d.gamma_flip)],
+      ['Γ flip', num(d.gamma_flip)],
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       ['Max pain' + (d.max_pain_dte != null ? ' (' + d.max_pain_dte + 'DTE)' : ''), num(d.max_pain)],
       // the heatmap's own dollar formatter: a value under $50K reads as itself, never "0.0M"
       ['Net GEX @ spot', d.net_gex_at_spot != null ? window.EdGamma.formatUsd(d.net_gex_at_spot) : '-'],
     ];
-    if (d.flip_note != null) rows.push(['Flip note', d.flip_note]);   // served: the flip's note
+    if (d.flip_note != null) rows.push(['Γ flip note', d.flip_note]);   // served: the flip's note
     return stage(3, 'td-accent-amber', 'Confirm — options regime', orDash(d.regime), '', 0, rows, d.confidence,
       d.confidence === 'TRUSTED' ? 'live' : 'warn');
   }
@@ -176,7 +176,7 @@
   // position label, not a provenance claim, and reusing them would misread as one.
   function migTag(txt, cls) { return '<span class="mig-mark ' + cls + '">' + esc(txt) + '</span>'; }
 
-  var LEVEL_WORDS = { call_wall: 'Call wall', put_wall: 'Put wall', gamma_flip: 'Gamma flip' };
+  var LEVEL_WORDS = { call_wall: 'Call wall', put_wall: 'Put wall', gamma_flip: 'Γ flip' };
   // one served level move {level, prior, today, change}: 'Call wall 755 → 760 (+5)'; a side not
   // known is '-', and a change is said only when both days are known
   function levelMove(v) {
@@ -289,8 +289,8 @@
         : '<div class="mig-vol-note">no option volume yet this session — the counter resets at the new session and fills from the open</div>';
     }
     return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume ' +
-      '<span class="mig-legend"><i class="sw" style="background:var(--ed-pos)"></i>+γ today ' +
-      '<i class="sw" style="background:var(--ed-neg)"></i>-γ today ' +
+      '<span class="mig-legend"><i class="sw" style="background:var(--ed-pos)"></i>+Γ today ' +
+      '<i class="sw" style="background:var(--ed-neg)"></i>-Γ today ' +
       '<i class="sw ghostsw"></i>yesterday (ghost)</span></h4>' +
       scopeChips + '<div class="mig-top">' + note + volNote + '</div>' +
       '<div class="gbs-scroll"><div class="gbs">' + rows + '</div></div>' +

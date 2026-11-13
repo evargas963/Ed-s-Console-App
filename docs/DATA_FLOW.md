@@ -1032,6 +1032,13 @@ behavior (AGENTS.md).
     when the chain lists no expiry from today on. The whole-book levels are unchanged.
     The 0DTE pin is `same_day.absolute_gamma_strike` only. The listed-expiry pin
     (`zero_dte_abs_gamma_strike`) is not produced: it was a second pin.
+    One name for each level on every screen (operator 2026-11-13: "make sure they all follow
+    the same nomenclature. if you are going to use the greek symbols then do that where
+    applicable"): the name `terrain_engine.OPTION_LEVELS` gives it, in sentence case, with Γ
+    for gamma and Δ for delta wherever a level's name holds one (Γ flip, Abs Γ, Net call Γ
+    peak, Key Δ strike, Call Δ wall); charm has no letter, and the call and put walls keep the
+    industry's name. The Key Levels card, the Levels tab, the Gamma chart, Right Now, the desk
+    map, the chart markers and the cross alerts print that name.
     The key levels rail draws each strike once, the regular price beside the same-day
     price. Spot has no same-day cell. Its lines are chosen by what published work supports
     (operator 2026-11-13: "only include those that are most important", "what is included is

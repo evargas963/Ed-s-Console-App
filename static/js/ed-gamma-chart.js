@@ -93,9 +93,9 @@
     c.selectProfile(window.EdShell.getState().selStrike == null ? null : Number(window.EdShell.getState().selStrike));
     var lv = [];
     if (t && !t.error && t.failed == null) {
-      if (t.gamma_flip != null) lv.push({ id: 'gamma_flip', price: Number(t.gamma_flip), label: 'flip', color: P.accent, style: 2, width: 1 });
-      if (t.call_wall != null) lv.push({ id: 'call_wall', price: Number(t.call_wall), label: 'call wall', color: P.down, style: 0, width: 1 });
-      if (t.put_wall != null) lv.push({ id: 'put_wall', price: Number(t.put_wall), label: 'put wall', color: P.up, style: 0, width: 1 });
+      if (t.gamma_flip != null) lv.push({ id: 'gamma_flip', price: Number(t.gamma_flip), label: 'Γ flip', color: P.accent, style: 2, width: 1 });
+      if (t.call_wall != null) lv.push({ id: 'call_wall', price: Number(t.call_wall), label: 'Call wall', color: P.down, style: 0, width: 1 });
+      if (t.put_wall != null) lv.push({ id: 'put_wall', price: Number(t.put_wall), label: 'Put wall', color: P.up, style: 0, width: 1 });
     }
     c.setLevels(lv);
     var spot = liveSpot();

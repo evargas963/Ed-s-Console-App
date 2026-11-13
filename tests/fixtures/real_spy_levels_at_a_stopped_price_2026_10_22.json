@@ -121,14 +121,14 @@
    "family": "gamma",
    "from_spot_text": "2.36 below spot",
    "id": "gamma_flip",
-   "label": "Gamma flip",
+   "label": "\u0393 flip",
    "not_live_text": null,
    "price": 770.7699684126369,
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
    },
-   "short": "Gamma flip",
+   "short": "\u0393 flip",
    "side": "BELOW",
    "staleness": {
     "age_sec": 6176.727853059769,
@@ -338,7 +338,7 @@
   {
    "carried": 770.7699684126369,
    "id": "gamma_flip",
-   "label": "Gamma flip",
+   "label": "\u0393 flip",
    "price": 770.7699684126369,
    "staleness": {
     "age_sec": 6176.727853059769,

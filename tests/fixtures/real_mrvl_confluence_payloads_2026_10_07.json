@@ -1486,7 +1486,7 @@
      "abbrev": "Flip",
      "price": 249.97153629136815,
      "price_text": "249.97",
-     "title": "Gamma flip"
+     "title": "\u0393 flip"
     },
     {
      "lane": "options",
@@ -1584,7 +1584,7 @@
      "abbrev": "0D Flip",
      "price": 267.44689374750476,
      "price_text": "267.45",
-     "title": "0DTE Gamma flip"
+     "title": "0DTE \u0393 flip"
     },
     {
      "lane": "options",
@@ -3147,7 +3147,7 @@
      "abbrev": "Flip",
      "price": 249.97153629136815,
      "price_text": "249.97",
-     "title": "Gamma flip"
+     "title": "\u0393 flip"
     },
     {
      "lane": "options",
@@ -3245,7 +3245,7 @@
      "abbrev": "0D Flip",
      "price": 267.44689374750476,
      "price_text": "267.45",
-     "title": "0DTE Gamma flip"
+     "title": "0DTE \u0393 flip"
     },
     {
      "lane": "options",
@@ -4804,7 +4804,7 @@
     "abbrev": "Flip",
     "price": 249.97153629136815,
     "price_text": "249.97",
-    "title": "Gamma flip"
+    "title": "\u0393 flip"
    },
    {
     "lane": "options",
@@ -4902,7 +4902,7 @@
     "abbrev": "0D Flip",
     "price": 267.44689374750476,
     "price_text": "267.45",
-    "title": "0DTE Gamma flip"
+    "title": "0DTE \u0393 flip"
    },
    {
     "lane": "options",

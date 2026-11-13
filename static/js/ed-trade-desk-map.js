@@ -234,7 +234,7 @@
     var style = { value_area: [P.warn, 2, 1], prior_day: [P.stale, 2, 1], opening_range: [P.stale, 2, 1], overnight: [P.stale, 2, 1],
       expected_move: [P.stale, 3, 1], gamma: [P.stale, 2, 1] };
     var gamma = { call_wall: ['Call wall', P.up, 0, 2], put_wall: ['Put wall', P.down, 0, 2],
-      gamma_flip: ['γ flip', P.accent, 0, 2], max_pain: ['Max pain', P.ink3, 3, 1] };
+      gamma_flip: ['Γ flip', P.accent, 0, 2], max_pain: ['Max pain', P.ink3, 3, 1] };
     var byId = {}; (S.levels ? S.levels.levels : []).forEach(function (l) { byId[l.id] = l; });
     // served order: nearest the live price first (by_distance); the chart keeps the first N on screen
     (S.levels ? S.levels.by_distance : []).forEach(function (id) {
@@ -408,7 +408,7 @@
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
         src(c, 'Schwab option chain · ' + esc(chainAgeLabel(t)));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
-          row('Flip', num(t.gamma_flip)) + (t.flip_note != null ? row('Flip note', esc(t.flip_note)) : '') + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
+          row('Γ flip', num(t.gamma_flip)) + (t.flip_note != null ? row('Γ flip note', esc(t.flip_note)) : '') + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
           row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '-') + forcesRows();
       }
     }
@@ -582,7 +582,7 @@
       ['VALUE', l && l.summary ? String(orDash(l.summary.value_state)).replace(/_/g, ' ') : '-', ''],
       ['VWAP', l && l.summary ? String(orDash(l.summary.vwap_relation)).replace(/_/g, ' ') : '-', ''],
       ['OPTIONS', t && !why(t) && t.posture ? String(t.posture).replace(/_/g, ' ') : '-', ''],
-      ['GAMMA', t && t.flip_relation ? ({ ABOVE: 'Above flip', AT: 'At flip', BELOW: 'Below flip' })[t.flip_relation] + notLive(t) : '-',
+      ['GAMMA', t && t.flip_relation ? ({ ABOVE: 'Above Γ flip', AT: 'At Γ flip', BELOW: 'Below Γ flip' })[t.flip_relation] + notLive(t) : '-',
         t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
     host.innerHTML = cells.map(function (c) {
