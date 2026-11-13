@@ -27,9 +27,9 @@ const SPY_CALL = 'SPY   261023C00761000';
 const SPY_PUT = 'SPY   261023P00762000';
 const { served } = require('./fixtures/served_chain');
 const { routeWatchlist } = require('./fixtures/watchlist');
-// the strikes panel as the server sends it on CRWD's real chain (held to the server by
-// tests/test_vanna_charm_by_strike_v1.py)
-const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
+// the Gamma page's levels, strikes and heatmap as the server sends them on CRWD's real chain
+// (held to the server by tests/test_vanna_charm_by_strike_v1.py)
+const REAL =require('./fixtures/vanna_charm_panels_crwd.json');
 
 const SELECTED = FIXTURE.contract;                         // 'TSLA  260831C00367500'
 const OTHER = 'TSLA  260831P00367500';
@@ -85,11 +85,7 @@ async function setup(page, ctx) {
       return ctx.sides ? SIDES[params.contract] : microFor(ctx.plane, ctx.mutate);
     },
     chain: () => served(chain(ctx)),
-    terrain: { spot: 367, gamma_flip: 366, levels_state: 'LIVE', levels_mark: 'LIVE' },
-    strikes: REAL.strikes,
-    surface: { ticker: 'TSLA', available: true, spot: 367, source: 'terrain_live_cache', levels_state: 'LIVE',
-      expirations: [{ expiry: '2026-08-31', dte: 2 }], strikes: [367.5], cells: [{ strike: 367.5, gex: [1] }],
-      view: { centre: 367.5, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } },
+    terrain: REAL.terrain, strikes: REAL.strikes, surface: REAL.surface,
   });
 }
 
