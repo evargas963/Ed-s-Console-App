@@ -31,6 +31,7 @@ import time_et
 from app.market_data.schwab.streaming.capture import stored_watchlist, streaming_fields
 from config import build_config, load_dotenv_file
 from db_authority import canonical_stream_db_path
+from option_contract import listed_expiries
 from runtime_layout import runtime_root
 from schwab_client import build_client_from_token
 
@@ -121,11 +122,6 @@ def _option_symbols(c) -> list[str]:
     return out
 
 
-def _expirations(c, symbol: str) -> list[dt.date]:
-    body = c.get_option_expiration_chain(symbol).json()
-    return [dt.date.fromisoformat(e["expirationDate"][:10]) for e in body["expirationList"]]
-
-
 def _paced(call):
     """Schwab allows 120 requests a minute."""
     time.sleep(0.55)
@@ -162,7 +158,7 @@ def rest_rows(
                 ),
             )
             for s in CHAIN_SYMBOLS
-            for d in _expirations(c, s)
+            for d in listed_expiries(c.get_option_expiration_chain(s).json(), today)
         ],
         *[
             (
@@ -179,7 +175,7 @@ def rest_rows(
                     )
                 ),
             )
-            for d in _expirations(c, "SPY")
+            for d in listed_expiries(c.get_option_expiration_chain("SPY").json(), today)
         ],
         # the spread strategies answer with monthlyStrategyList instead of the expiry maps
         *[

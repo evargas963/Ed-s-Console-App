@@ -9,6 +9,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import option_contract
+from tools import schwab_field_inventory as inventory
+from tools.check_one_reader import fields_read
 from tools.schwab_field_inventory import chain_paths
 
 ANSWER = json.loads(
@@ -54,3 +57,13 @@ def test_every_contract_field_of_a_real_chain_is_one_path_under_its_side():
             assert f"chains.{k}" in found
             if not isinstance(v, (dict, list)):
                 assert found[f"chains.{k}"] == _json_type(v)
+
+
+def test_the_expiration_list_is_read_by_the_programs_one_reader():
+    listing = {"expirationDate", "expirationList"}
+    root = Path(__file__).parent.parent
+    tool = (root / "tools" / "schwab_field_inventory.py").read_text(encoding="utf-8")
+    reader = (root / "option_contract.py").read_text(encoding="utf-8")
+    assert fields_read(tool, listing) == set()
+    assert fields_read(reader, listing) == listing
+    assert inventory.listed_expiries is option_contract.listed_expiries
