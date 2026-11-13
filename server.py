@@ -1190,7 +1190,6 @@ def _stream_coverage(cells: list, cols: list[int], expired_only: bool) -> dict:
     return {
         "cells": cells_n,
         **counts,
-        "live_pct": live_pct,
         "state": state,
         "label": label,
         "title": title,

@@ -8402,7 +8402,6 @@
     "stale": 0,
     "pending": 0,
     "unavailable": 11,
-    "live_pct": 0,
     "state": "partial",
     "label": "0% STREAMING",
     "title": "0 of 11 cells streaming \u00b7 11 unavailable"

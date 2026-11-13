@@ -18,11 +18,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
 
 from runtime_layout import data_dir
-
-PermanentDatabaseIdentity = Literal["ed_console", "stream_capture"]
 
 
 def canonical_console_db_path() -> Path:
@@ -37,16 +34,6 @@ def canonical_console_db_path() -> Path:
 def canonical_stream_db_path() -> Path:
     """Return the one permanent raw receive-time market-event database."""
     return (data_dir() / "stream_capture.db").resolve()
-
-
-def permanent_database_identity(p: Path | str) -> PermanentDatabaseIdentity | None:
-    """Return the approved permanent identity for an exact canonical path."""
-    resolved = Path(p).resolve()
-    if resolved == canonical_console_db_path():
-        return "ed_console"
-    if resolved == canonical_stream_db_path():
-        return "stream_capture"
-    return None
 
 
 def default_console_db_path() -> Path:
