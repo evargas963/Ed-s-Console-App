@@ -323,10 +323,10 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
     // the nearest six of SPY's levels (756.59 to 757.88) are drawn under three labels (a label
-    // closer than its height to a nearer one is counted on that one); the call wall (775) is above
-    // the bars' price range, pinned at the edge
+    // closer than its height to a nearer one is counted on that one); the put wall (760, the price
+    // is through it) is the nearest level above the bars' price range, pinned at the edge
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(3);
-    await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('775.00');
+    await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('Put wall · BREACHED — spot below 760.00');
     // the profile is drawn after the close too (the session's served profile) and names its basis
     await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     expect(errs).toEqual([]);
