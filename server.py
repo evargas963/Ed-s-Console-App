@@ -3669,6 +3669,8 @@ _OPTION_SHORT = {
     "Net put Γ peak": "Net PΓ",
     "Net call Γ peak": "Net CΓ",
     "Key Δ strike": "Key Δ",
+    "Call Δ wall": "CΔW",
+    "Put Δ wall": "PΔW",
     "Call charm wall": "CCh",
     "Put charm wall": "PCh",
 }

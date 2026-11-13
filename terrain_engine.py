@@ -710,6 +710,8 @@ OPTION_LEVELS = (
     ("hvp", "Net put Γ peak"),
     ("lvp", "Net call Γ peak"),
     ("key_delta_strike", "Key Δ strike"),
+    ("call_delta_wall", "Call Δ wall"),
+    ("put_delta_wall", "Put Δ wall"),
     ("call_charm_wall", "Call charm wall"),
     ("put_charm_wall", "Put charm wall"),
 )
@@ -765,6 +767,7 @@ def same_day_levels(
     flip, _confidence, _flip_diag = compute_gamma_flip_v2(rows, spot, profile=profile)
     support = compute_gamma_support_levels(profile, spot)
     call_charm, put_charm = pick_charm_wall_strikes(charm)
+    (call_delta_wall, _), (put_delta_wall, _) = pick_delta_wall_strikes(exposures)
     return {
         "call_wall": call_wall,
         "put_wall": put_wall,
@@ -775,6 +778,8 @@ def same_day_levels(
         "hvp": hvp,
         "lvp": lvp,
         "key_delta_strike": pick_key_delta_strike(exposures),
+        "call_delta_wall": call_delta_wall,
+        "put_delta_wall": put_delta_wall,
         "call_charm_wall": call_charm,
         "put_charm_wall": put_charm,
     }

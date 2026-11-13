@@ -69,7 +69,7 @@
   }
   function renderLevels(d) {   // d: the panel as sent; undefined: none yet for this ticker
     var ids = ['klFlip', 'klCall', 'klPut', 'klAbs', 'klCallDelta', 'klPutDelta', 'klCallCharm', 'klPutCharm', 'klNet', 'klRegime',   // terrain's (Spot is the price row's)
-      'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0CallCharm', 'kl0PutCharm'];
+      'kl0Flip', 'kl0Call', 'kl0Put', 'kl0Abs', 'kl0CallDelta', 'kl0PutDelta', 'kl0CallCharm', 'kl0PutCharm'];
     // nothing to draw: none sent yet ('-'), the program could not produce it, or no levels yet
     var why = d === undefined ? '-' : d.failed != null ? d.failed : d.error ? 'terrain not ready' : null;
     paintPcr(why == null ? d : null);
@@ -94,6 +94,8 @@
     txt('kl0Call', px(z ? z.call_wall : null));
     txt('kl0Put', px(z ? z.put_wall : null));
     txt('kl0Abs', px(z ? z.absolute_gamma_strike : null));
+    txt('kl0CallDelta', px(z ? z.call_delta_wall : null));
+    txt('kl0PutDelta', px(z ? z.put_delta_wall : null));
     txt('kl0CallCharm', px(z ? z.call_charm_wall : null));
     txt('kl0PutCharm', px(z ? z.put_charm_wall : null));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)

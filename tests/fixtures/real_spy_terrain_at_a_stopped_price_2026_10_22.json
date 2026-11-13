@@ -78,6 +78,7 @@
  "same_day": {
   "absolute_gamma_strike": 765.0,
   "call_charm_wall": 765.0,
+  "call_delta_wall": 763.0,
   "call_wall": 765.0,
   "gamma_flip": 770.7699684126369,
   "grc": null,
@@ -86,6 +87,7 @@
   "key_delta_strike": 772.0,
   "lvp": 776.0,
   "put_charm_wall": 765.0,
+  "put_delta_wall": 772.0,
   "put_wall": 764.0
  },
  "schema_version": 5,

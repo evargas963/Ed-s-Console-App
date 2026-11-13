@@ -7743,6 +7743,8 @@
    "hvp": 262.5,
    "lvp": 270.0,
    "key_delta_strike": 117.5,
+   "call_delta_wall": 117.5,
+   "put_delta_wall": 270.0,
    "call_charm_wall": 270.0,
    "put_charm_wall": 265.0
   },

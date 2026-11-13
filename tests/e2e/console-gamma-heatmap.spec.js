@@ -1214,7 +1214,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('the Key Levels rail shows regular and 0DTE in the same row', async ({ page }) => {
     panels.terrain = Object.assign({}, TERRAIN, {
       same_day: { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
-        absolute_gamma_strike: 572.5, call_charm_wall: 572.5, put_charm_wall: 567.5 },
+        absolute_gamma_strike: 572.5, call_charm_wall: 572.5, put_charm_wall: 567.5,
+        call_delta_wall: 577.5, put_delta_wall: 562.5 },
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klBody .kl-pairs .h').nth(0)).toHaveText('Regular');
@@ -1232,6 +1233,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPutCharm')).toHaveText('260.00');
     await expect(page.locator('#klCallDelta')).toHaveText('250.00');   // and its delta walls
     await expect(page.locator('#klPutDelta')).toHaveText('270.00');
+    await expect(page.locator('#kl0CallDelta')).toHaveText('577.50');   // and the same-day delta walls
+    await expect(page.locator('#kl0PutDelta')).toHaveText('562.50');
     await expect(page.locator('#klBody')).not.toContainText('γ peak');   // the two net peaks are off the card
     await expect(page.locator('#klBody')).not.toContainText('Net GEX peak');
     await expect(page.locator('#klNet')).toBeVisible();
