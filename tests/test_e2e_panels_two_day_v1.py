@@ -53,7 +53,7 @@ MISSING_EXPIRY = "2026-11-14"
 #: the liquidity map at 5; the tests switch to 15), each with the bars a chart asks for at it
 #: (static/js/ed-tv-chart.js BARS_LIMIT), and the flow card's ask (ed-trade-desk-map.js FLOW_BARS)
 CHART_TFS = {"1": 1200, "5": 3000, "15": 6000}
-#: the desk's own two: its levels and its queue are asked at the chart's timeframe
+#: the desk's own two: its queue is asked at the chart's timeframe and the book venue shown
 DESK_TFS = ("5", "15")
 FLOW_BARS = {"tf": "1", "limit": 60}
 
@@ -206,10 +206,13 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "book": {venue: server.book(tk, at, {"venue": venue}) for venue in real.venues},
                     "liquidity": server.liquidity_snapshot(tk, now),
                     "forces": server.forces(tk),
-                    "levels": {tf: server.levels_payload(tk, tf, now) for tf in DESK_TFS},
+                    # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
+                    "levels": {tf: server.levels_payload(tk, tf, now) for tf in CHART_TFS},
                     "desk": {
-                        tf: server.desk_events_payload(tk, real.venues[0], tf, now)
-                        for tf in DESK_TFS
+                        venue: {
+                            tf: server.desk_events_payload(tk, venue, tf, now) for tf in DESK_TFS
+                        }
+                        for venue in real.venues
                     },
                     "bars": {
                         tf: server.bars(tk, at, {"tf": tf, "limit": limit})
@@ -258,7 +261,7 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     assert all(bars["bars"] for bars in panels["bars"].values()) and panels["bars_flow"]["bars"]
     # the queue's crosses are the day's recorded ones, inside the timeframe's window
     recorded = {f"x{row['cross_id']}" for row in real.desk["crosses"]}
-    for queue in panels["desk"].values():
+    for queue in (q for by_tf in panels["desk"].values() for q in by_tf.values()):
         crossed = {item["key"] for item in queue["items"] if item["src"] == "level_crosses"}
         assert crossed and crossed <= recorded
     assert panels["forces"]["older_et_date"] == "2026-11-11"

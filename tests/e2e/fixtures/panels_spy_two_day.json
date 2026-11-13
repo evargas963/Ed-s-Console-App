@@ -46957,6 +46957,4083 @@
   "method": "OI side totals of the two captures, each side by the newer capture's spot; DEX = net_dex_dollars side sums on the newer capture; CHARM = dealer-signed net_charm side sums on the newer capture"
  },
  "levels": {
+  "1": {
+   "ticker": "SPY",
+   "schema_version": 1,
+   "served_ts_utc": 1794497441.934527,
+   "spot": 757.075,
+   "spot_source": "streaming_plane",
+   "spot_as_of_ts_utc": 1794497439.851,
+   "spot_time_ct": "Thu 11/12 09:30 AM CT",
+   "spot_not_live_text": null,
+   "generation": 1,
+   "snapshot_as_of_ts_utc": 1794497340.0,
+   "snapshot_time_ct": "Thu 11/12 09:29 AM CT",
+   "snapshot_age_text": "2m",
+   "levels_state": "LIVE",
+   "levels_time_ct": "Thu 11/12 09:30 AM CT",
+   "levels_age_text": "0s",
+   "levels_stale_reason": "",
+   "bar_source": "Schwab /pricehistory 1-minute bars and CHART_EQUITY",
+   "levels": [
+    {
+     "id": "call_wall",
+     "price": 775.0,
+     "family": "gamma",
+     "label": "Call wall",
+     "short": "Call wall",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 17.924999999999955,
+     "side": "ABOVE",
+     "from_spot_text": "17.92 above spot"
+    },
+    {
+     "id": "lvp",
+     "price": 775.0,
+     "family": "gamma",
+     "label": "Net call \u0393 peak",
+     "short": "Net call \u0393 peak",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 17.924999999999955,
+     "side": "ABOVE",
+     "from_spot_text": "17.92 above spot"
+    },
+    {
+     "id": "em_up",
+     "price": 765.4665202129712,
+     "family": "expected_move",
+     "label": "+1\u03c3 move",
+     "short": "+1\u03c3 move",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "server.expected_move",
+      "carried": false
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 8.391520212971159,
+     "side": "ABOVE",
+     "from_spot_text": "8.39 above spot"
+    },
+    {
+     "id": "call_charm_wall",
+     "price": 765.0,
+     "family": "gamma",
+     "label": "Call charm wall",
+     "short": "Call charm wall",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 7.9249999999999545,
+     "side": "ABOVE",
+     "from_spot_text": "7.92 above spot"
+    },
+    {
+     "id": "PDH",
+     "price": 762.51,
+     "family": "prior_day",
+     "label": "Prior day high",
+     "short": "PDH",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 5.434999999999945,
+     "from_spot_text": "5.43 above spot"
+    },
+    {
+     "id": "PD_VAH",
+     "price": 761.62,
+     "family": "prior_day",
+     "label": "Prior day VAH (est. from 1-min bars)",
+     "short": "pVAH est",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 4.544999999999959,
+     "from_spot_text": "4.54 above spot"
+    },
+    {
+     "id": "gamma_flip",
+     "price": 761.2225262530864,
+     "family": "gamma",
+     "label": "Gamma flip",
+     "short": "Gamma flip",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 4.147526253086312,
+     "side": "ABOVE",
+     "from_spot_text": "4.15 above spot"
+    },
+    {
+     "id": "OVERNIGHT_HIGH",
+     "price": 760.51,
+     "family": "overnight",
+     "label": "Overnight high",
+     "short": "ONH",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "overnight_window",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_overnight_levels",
+      "session_scope": "extended",
+      "semantic_scope": "overnight_window",
+      "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 3.4349999999999454,
+     "from_spot_text": "3.43 above spot"
+    },
+    {
+     "id": "PD_POC",
+     "price": 760.4,
+     "family": "prior_day",
+     "label": "Prior day POC (est. from 1-min bars)",
+     "short": "pPOC est",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 3.324999999999932,
+     "from_spot_text": "3.32 above spot"
+    },
+    {
+     "id": "put_wall",
+     "price": 760.0,
+     "family": "gamma",
+     "label": "Put wall",
+     "short": "Put wall",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 2.9249999999999545,
+     "side": "ABOVE",
+     "from_spot_text": "2.92 above spot"
+    },
+    {
+     "id": "absolute_gamma_strike",
+     "price": 760.0,
+     "family": "gamma",
+     "label": "Abs \u0393",
+     "short": "Abs \u0393",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 2.9249999999999545,
+     "side": "ABOVE",
+     "from_spot_text": "2.92 above spot"
+    },
+    {
+     "id": "PDC",
+     "price": 759.81,
+     "family": "prior_day",
+     "label": "Prior day close",
+     "short": "PDC",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 2.7349999999999,
+     "from_spot_text": "2.73 above spot"
+    },
+    {
+     "id": "VWAP_P2",
+     "price": 758.8220164232343,
+     "family": "vwap",
+     "label": "VWAP_P2",
+     "short": "VWAP_P2",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 1.7470164232342995,
+     "from_spot_text": "1.75 above spot"
+    },
+    {
+     "id": "PD_VAL",
+     "price": 758.01,
+     "family": "prior_day",
+     "label": "Prior day VAL (est. from 1-min bars)",
+     "short": "pVAL est",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 0.9349999999999454,
+     "from_spot_text": "0.93 above spot"
+    },
+    {
+     "id": "ORB_HIGH",
+     "price": 757.88,
+     "family": "opening_range",
+     "label": "Opening range high",
+     "short": "ORH",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_opening_range",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 first 15m RTH",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 0.80499999999995,
+     "from_spot_text": "0.80 above spot"
+    },
+    {
+     "id": "TODAY_VAH",
+     "price": 757.84,
+     "family": "value_area",
+     "label": "Value area high (est. from 1-min bars)",
+     "short": "VAH est",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 0.7649999999999864,
+     "from_spot_text": "0.76 above spot"
+    },
+    {
+     "id": "VWAP_P1",
+     "price": 757.7035241802233,
+     "family": "vwap",
+     "label": "VWAP_P1",
+     "short": "VWAP_P1",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 0.6285241802232804,
+     "from_spot_text": "0.63 above spot"
+    },
+    {
+     "id": "max_pain",
+     "price": 757.0,
+     "family": "gamma",
+     "label": "Max pain",
+     "short": "Max pain",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -0.07500000000004547,
+     "side": "BELOW",
+     "from_spot_text": "0.08 below spot"
+    },
+    {
+     "id": "TODAY_POC",
+     "price": 756.7,
+     "family": "value_area",
+     "label": "Point of control (est. from 1-min bars)",
+     "short": "POC est",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -0.375,
+     "from_spot_text": "0.38 below spot"
+    },
+    {
+     "id": "VWAP",
+     "price": 756.5850319372122,
+     "family": "vwap",
+     "label": "VWAP",
+     "short": "VWAP",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -0.48996806278785243,
+     "from_spot_text": "0.49 below spot"
+    },
+    {
+     "id": "TODAY_VAL",
+     "price": 756.0,
+     "family": "value_area",
+     "label": "Value area low (est. from 1-min bars)",
+     "short": "VAL est",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -1.0750000000000455,
+     "from_spot_text": "1.08 below spot"
+    },
+    {
+     "id": "ORB_MID",
+     "price": 755.775,
+     "family": "opening_range",
+     "label": "Opening range mid",
+     "short": "ORM",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_opening_range",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 first 15m RTH",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -1.3000000000000682,
+     "from_spot_text": "1.30 below spot"
+    },
+    {
+     "id": "VWAP_M1",
+     "price": 755.4665396942011,
+     "family": "vwap",
+     "label": "VWAP_M1",
+     "short": "VWAP_M1",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -1.6084603057989852,
+     "from_spot_text": "1.61 below spot"
+    },
+    {
+     "id": "PDL",
+     "price": 754.9,
+     "family": "prior_day",
+     "label": "Prior day low",
+     "short": "PDL",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -2.175000000000068,
+     "from_spot_text": "2.18 below spot"
+    },
+    {
+     "id": "VWAP_M2",
+     "price": 754.34804745119,
+     "family": "vwap",
+     "label": "VWAP_M2",
+     "short": "VWAP_M2",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -2.7269525488100044,
+     "from_spot_text": "2.73 below spot"
+    },
+    {
+     "id": "ORB_LOW",
+     "price": 753.67,
+     "family": "opening_range",
+     "label": "Opening range low",
+     "short": "ORL",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_opening_range",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 first 15m RTH",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -3.4050000000000864,
+     "from_spot_text": "3.41 below spot"
+    },
+    {
+     "id": "OVERNIGHT_LOW",
+     "price": 752.82,
+     "family": "overnight",
+     "label": "Overnight low",
+     "short": "ONL",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "overnight_window",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_overnight_levels",
+      "session_scope": "extended",
+      "semantic_scope": "overnight_window",
+      "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497340.0,
+      "as_of_time_ct": "Thu 11/12 09:29 AM CT",
+      "age_sec": 101.9345269203186,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -4.2549999999999955,
+     "from_spot_text": "4.25 below spot"
+    },
+    {
+     "id": "hvp",
+     "price": 750.0,
+     "family": "gamma",
+     "label": "Net put \u0393 peak",
+     "short": "Net put \u0393 peak",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -7.0750000000000455,
+     "side": "BELOW",
+     "from_spot_text": "7.08 below spot"
+    },
+    {
+     "id": "key_delta_strike",
+     "price": 750.0,
+     "family": "gamma",
+     "label": "Key \u0394 strike",
+     "short": "Key \u0394 strike",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -7.0750000000000455,
+     "side": "BELOW",
+     "from_spot_text": "7.08 below spot"
+    },
+    {
+     "id": "put_charm_wall",
+     "price": 750.0,
+     "family": "gamma",
+     "label": "Put charm wall",
+     "short": "Put charm wall",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -7.0750000000000455,
+     "side": "BELOW",
+     "from_spot_text": "7.08 below spot"
+    },
+    {
+     "id": "em_dn",
+     "price": 748.6834797870289,
+     "family": "expected_move",
+     "label": "\u22121\u03c3 move",
+     "short": "\u22121\u03c3 move",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "server.expected_move",
+      "carried": false
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -8.391520212971159,
+     "side": "BELOW",
+     "from_spot_text": "8.39 below spot"
+    }
+   ],
+   "by_distance": [
+    "max_pain",
+    "TODAY_POC",
+    "VWAP",
+    "VWAP_P1",
+    "TODAY_VAH",
+    "ORB_HIGH",
+    "PD_VAL",
+    "TODAY_VAL",
+    "ORB_MID",
+    "VWAP_M1",
+    "VWAP_P2",
+    "PDL",
+    "VWAP_M2",
+    "PDC",
+    "put_wall",
+    "absolute_gamma_strike",
+    "PD_POC",
+    "ORB_LOW",
+    "OVERNIGHT_HIGH",
+    "gamma_flip",
+    "OVERNIGHT_LOW",
+    "PD_VAH",
+    "PDH",
+    "hvp",
+    "key_delta_strike",
+    "put_charm_wall",
+    "call_charm_wall",
+    "em_up",
+    "em_dn",
+    "call_wall",
+    "lvp"
+   ],
+   "zero_dte": [
+    {
+     "id": "call_wall",
+     "label": "Call wall",
+     "price": 759.0,
+     "carried": 775.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "put_wall",
+     "label": "Put wall",
+     "price": 756.0,
+     "carried": 760.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "gamma_flip",
+     "label": "Gamma flip",
+     "price": 759.8693145593056,
+     "carried": 761.2225262530864,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "absolute_gamma_strike",
+     "label": "Abs \u0393",
+     "price": 756.0,
+     "carried": 760.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "gsf",
+     "label": "GSF",
+     "price": null,
+     "carried": null,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "grc",
+     "label": "GRC",
+     "price": null,
+     "carried": null,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "hvp",
+     "label": "Net put \u0393 peak",
+     "price": 756.0,
+     "carried": 750.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "lvp",
+     "label": "Net call \u0393 peak",
+     "price": 761.0,
+     "carried": 775.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "key_delta_strike",
+     "label": "Key \u0394 strike",
+     "price": 756.0,
+     "carried": 750.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "call_charm_wall",
+     "label": "Call charm wall",
+     "price": 765.0,
+     "carried": 765.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "put_charm_wall",
+     "label": "Put charm wall",
+     "price": 756.0,
+     "carried": 750.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT",
+      "age_sec": 2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    }
+   ],
+   "vwap_series": [
+    [
+     1794493800.0,
+     754.3858333333334,
+     754.3858333333334,
+     754.3858333333334,
+     754.3858333333334,
+     754.3858333333334
+    ],
+    [
+     1794493860.0,
+     754.4049697191838,
+     754.4393304014692,
+     754.3706090368984,
+     754.4736910837547,
+     754.3362483546128
+    ],
+    [
+     1794493920.0,
+     754.4159807120697,
+     754.4550709734989,
+     754.3768904506404,
+     754.494161234928,
+     754.3378001892113
+    ],
+    [
+     1794493980.0,
+     754.4754202596308,
+     754.620281246572,
+     754.3305592726897,
+     754.7651422335131,
+     754.1856982857486
+    ],
+    [
+     1794494040.0,
+     754.5720945209049,
+     754.8400881672601,
+     754.3041008745497,
+     755.1080818136154,
+     754.0361072281944
+    ],
+    [
+     1794494100.0,
+     754.6619707856946,
+     755.0337667920908,
+     754.2901747792985,
+     755.4055627984868,
+     753.9183787729024
+    ],
+    [
+     1794494160.0,
+     754.9394092615573,
+     755.6998016017487,
+     754.1790169213659,
+     756.4601939419402,
+     753.4186245811744
+    ],
+    [
+     1794494220.0,
+     755.1795304898063,
+     756.1394390097446,
+     754.2196219698681,
+     757.099347529683,
+     753.2597134499297
+    ],
+    [
+     1794494280.0,
+     755.3034489277521,
+     756.3135243391685,
+     754.2933735163358,
+     757.3235997505849,
+     753.2832981049194
+    ],
+    [
+     1794494340.0,
+     755.4274834306548,
+     756.5022313338279,
+     754.3527355274816,
+     757.5769792370012,
+     753.2779876243084
+    ],
+    [
+     1794494400.0,
+     755.595170517372,
+     756.7526451875622,
+     754.4376958471819,
+     757.9101198577523,
+     753.2802211769917
+    ],
+    [
+     1794494460.0,
+     755.69595075714,
+     756.8955489607044,
+     754.4963525535757,
+     758.0951471642688,
+     753.2967543500113
+    ],
+    [
+     1794494520.0,
+     755.7524915237773,
+     756.9737112232451,
+     754.5312718243094,
+     758.1949309227128,
+     753.3100521248417
+    ],
+    [
+     1794494580.0,
+     755.7963474966105,
+     757.0290257774385,
+     754.5636692157824,
+     758.2617040582667,
+     753.3309909349542
+    ],
+    [
+     1794494640.0,
+     755.8199180673083,
+     757.057394234615,
+     754.5824419000016,
+     758.2948704019218,
+     753.3449657326948
+    ],
+    [
+     1794494700.0,
+     755.9203282508195,
+     757.1705801744995,
+     754.6700763271394,
+     758.4208320981796,
+     753.4198244034593
+    ],
+    [
+     1794494760.0,
+     755.9557994431351,
+     757.2137420197516,
+     754.6978568665186,
+     758.4716845963683,
+     753.4399142899019
+    ],
+    [
+     1794494820.0,
+     756.0392735852764,
+     757.3134016085202,
+     754.7651455620327,
+     758.5875296317638,
+     753.491017538789
+    ],
+    [
+     1794494880.0,
+     756.0933261733231,
+     757.38100764395,
+     754.8056447026962,
+     758.668689114577,
+     753.5179632320693
+    ],
+    [
+     1794494940.0,
+     756.1469912043965,
+     757.4380434576894,
+     754.8559389511036,
+     758.7290957109825,
+     753.5648866978105
+    ],
+    [
+     1794495000.0,
+     756.2113317461915,
+     757.5073447064632,
+     754.9153187859198,
+     758.8033576667349,
+     753.6193058256481
+    ],
+    [
+     1794495060.0,
+     756.2829579235371,
+     757.6066330351022,
+     754.959282811972,
+     758.9303081466672,
+     753.6356077004069
+    ],
+    [
+     1794495120.0,
+     756.3341979934859,
+     757.6816252104962,
+     754.9867707764755,
+     759.0290524275066,
+     753.6393435594651
+    ],
+    [
+     1794495180.0,
+     756.3920100850885,
+     757.766454700329,
+     755.017565469848,
+     759.1408993155694,
+     753.6431208546076
+    ],
+    [
+     1794495240.0,
+     756.4294939132903,
+     757.8111652251708,
+     755.0478226014098,
+     759.1928365370514,
+     753.6661512895292
+    ],
+    [
+     1794495300.0,
+     756.4514864619646,
+     757.832371858868,
+     755.0706010650612,
+     759.2132572557714,
+     753.6897156681578
+    ],
+    [
+     1794495360.0,
+     756.4712303776311,
+     757.8496046012406,
+     755.0928561540215,
+     759.2279788248501,
+     753.714481930412
+    ],
+    [
+     1794495420.0,
+     756.4892196859489,
+     757.860238274979,
+     755.1182010969188,
+     759.231256864009,
+     753.7471825078889
+    ],
+    [
+     1794495480.0,
+     756.5164986306215,
+     757.8844412978568,
+     755.1485559633862,
+     759.2523839650922,
+     753.7806132961508
+    ],
+    [
+     1794495540.0,
+     756.537814804132,
+     757.9017448886374,
+     755.1738847196267,
+     759.2656749731427,
+     753.8099546351214
+    ],
+    [
+     1794495600.0,
+     756.5564186830786,
+     757.9007077330605,
+     755.2121296330968,
+     759.2449967830423,
+     753.8678405831149
+    ],
+    [
+     1794495660.0,
+     756.560717559373,
+     757.892192029805,
+     755.229243088941,
+     759.2236665002368,
+     753.8977686185091
+    ],
+    [
+     1794495720.0,
+     756.5575968091339,
+     757.8738311929995,
+     755.2413624252682,
+     759.1900655768652,
+     753.9251280414026
+    ],
+    [
+     1794495780.0,
+     756.5444125556191,
+     757.8416660056483,
+     755.24715910559,
+     759.1389194556775,
+     753.9499056555608
+    ],
+    [
+     1794495840.0,
+     756.5442930600686,
+     757.8287338524177,
+     755.2598522677196,
+     759.1131746447669,
+     753.9754114753704
+    ],
+    [
+     1794495900.0,
+     756.5492004254436,
+     757.8204452784089,
+     755.2779555724783,
+     759.0916901313743,
+     754.0067107195129
+    ],
+    [
+     1794495960.0,
+     756.5450095979539,
+     757.8070944427145,
+     755.2829247531934,
+     759.0691792874752,
+     754.0208399084327
+    ],
+    [
+     1794496020.0,
+     756.5439638379902,
+     757.7979765838309,
+     755.2899510921495,
+     759.0519893296714,
+     754.035938346309
+    ],
+    [
+     1794496080.0,
+     756.5393148742655,
+     757.7848934488571,
+     755.2937362996739,
+     759.0304720234487,
+     754.0481577250823
+    ],
+    [
+     1794496140.0,
+     756.5314065870473,
+     757.7688802909089,
+     755.2939328831857,
+     759.0063539947705,
+     754.0564591793241
+    ],
+    [
+     1794496200.0,
+     756.5262839958621,
+     757.7571132310044,
+     755.2954547607197,
+     758.9879424661466,
+     754.0646255255775
+    ],
+    [
+     1794496260.0,
+     756.5306132070493,
+     757.7468960592166,
+     755.314330354882,
+     758.9631789113839,
+     754.0980475027147
+    ],
+    [
+     1794496320.0,
+     756.5331904831042,
+     757.7437697326333,
+     755.3226112335752,
+     758.9543489821623,
+     754.1120319840462
+    ],
+    [
+     1794496380.0,
+     756.5359352372968,
+     757.7398590143928,
+     755.3320114602009,
+     758.9437827914886,
+     754.128087683105
+    ],
+    [
+     1794496440.0,
+     756.5376795761268,
+     757.7374866858298,
+     755.3378724664238,
+     758.9372937955329,
+     754.1380653567207
+    ],
+    [
+     1794496500.0,
+     756.5405809706018,
+     757.7322813352238,
+     755.3488806059798,
+     758.9239816998459,
+     754.1571802413578
+    ],
+    [
+     1794496560.0,
+     756.5492928193429,
+     757.7326828750229,
+     755.3659027636629,
+     758.916072930703,
+     754.1825127079828
+    ],
+    [
+     1794496620.0,
+     756.5500024587436,
+     757.7284107318629,
+     755.3715941856243,
+     758.9068190049824,
+     754.1931859125049
+    ],
+    [
+     1794496680.0,
+     756.5526968927715,
+     757.7248392821308,
+     755.3805545034121,
+     758.89698167149,
+     754.2084121140529
+    ],
+    [
+     1794496740.0,
+     756.5561267369493,
+     757.7241295473176,
+     755.388123926581,
+     758.8921323576859,
+     754.2201211162127
+    ],
+    [
+     1794496800.0,
+     756.555172493964,
+     757.7132205623293,
+     755.3971244255988,
+     758.8712686306944,
+     754.2390763572337
+    ],
+    [
+     1794496860.0,
+     756.5593494278503,
+     757.7064677339887,
+     755.4122311217119,
+     758.853586040127,
+     754.2651128155736
+    ],
+    [
+     1794496920.0,
+     756.5616567667238,
+     757.7047635151093,
+     755.4185500183382,
+     758.847870263495,
+     754.2754432699526
+    ],
+    [
+     1794496980.0,
+     756.5622839895173,
+     757.702389843671,
+     755.4221781353635,
+     758.8424956978247,
+     754.2820722812098
+    ],
+    [
+     1794497040.0,
+     756.5629090078822,
+     757.6993894965264,
+     755.4264285192381,
+     758.8358699851706,
+     754.2899480305939
+    ],
+    [
+     1794497100.0,
+     756.566885057828,
+     757.699208094303,
+     755.434562021353,
+     758.8315311307779,
+     754.3022389848782
+    ],
+    [
+     1794497160.0,
+     756.5682274771283,
+     757.6979386784296,
+     755.4385162758269,
+     758.827649879731,
+     754.3088050745256
+    ],
+    [
+     1794497220.0,
+     756.5710172686604,
+     757.6968090630553,
+     755.4452254742655,
+     758.8226008574502,
+     754.3194336798706
+    ],
+    [
+     1794497280.0,
+     756.5748139563187,
+     757.696993925165,
+     755.4526339874725,
+     758.8191738940113,
+     754.3304540186261
+    ],
+    [
+     1794497340.0,
+     756.5850319372122,
+     757.7035241802233,
+     755.4665396942011,
+     758.8220164232343,
+     754.34804745119
+    ]
+   ],
+   "volume_profile": {
+    "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
+    "bars": 60,
+    "bars_without_volume": 0,
+    "tick_size": 0.01,
+    "bins": [
+     [
+      753.67,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.68,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.69,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.7,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.71,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.72,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.73,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.74,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.75,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.76,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.77,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.78,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.79,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.8,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.81,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.82,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.83,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.84,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.85,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.86,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.87,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.88,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.89,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.9,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.91,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.92,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.93,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.94,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.95,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.96,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.97,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.98,
+      3752.3153846153846,
+      false
+     ],
+     [
+      753.99,
+      5620.216619183286,
+      false
+     ],
+     [
+      754.0,
+      5620.216619183286,
+      false
+     ],
+     [
+      754.01,
+      5620.216619183286,
+      false
+     ],
+     [
+      754.02,
+      5620.216619183286,
+      false
+     ],
+     [
+      754.03,
+      5620.216619183286,
+      false
+     ],
+     [
+      754.04,
+      5620.216619183286,
+      false
+     ],
+     [
+      754.05,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.06,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.07,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.08,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.09,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.1,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.11,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.12,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.13,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.14,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.15,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.16,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.17,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.18,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.19,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.2,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.21,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.22,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.23,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.24,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.25,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.26,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.27,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.28,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.29,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.3,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.31,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.32,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.33,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.34,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.35,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.36,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.37,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.38,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.39,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.4,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.41,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.42,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.43,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.44,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.45,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.46,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.47,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.48,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.49,
+      7632.361546719518,
+      false
+     ],
+     [
+      754.5,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.51,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.52,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.53,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.54,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.55,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.56,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.57,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.58,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.59,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.6,
+      9626.575832433804,
+      false
+     ],
+     [
+      754.61,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.62,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.63,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.64,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.65,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.66,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.67,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.68,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.69,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.7,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.71,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.72,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.73,
+      11542.129436361514,
+      false
+     ],
+     [
+      754.74,
+      9529.984508825282,
+      false
+     ],
+     [
+      754.75,
+      9529.984508825282,
+      false
+     ],
+     [
+      754.76,
+      9529.984508825282,
+      false
+     ],
+     [
+      754.77,
+      9529.984508825282,
+      false
+     ],
+     [
+      754.78,
+      9529.984508825282,
+      false
+     ],
+     [
+      754.79,
+      9529.984508825282,
+      false
+     ],
+     [
+      754.8,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.81,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.82,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.83,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.84,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.85,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.86,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.87,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.88,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.89,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.9,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.91,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.92,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.93,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.94,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.95,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.96,
+      7662.08327425738,
+      false
+     ],
+     [
+      754.97,
+      3909.7678896419966,
+      false
+     ],
+     [
+      754.98,
+      3909.7678896419966,
+      false
+     ],
+     [
+      754.99,
+      3909.7678896419966,
+      false
+     ],
+     [
+      755.0,
+      3909.7678896419966,
+      false
+     ],
+     [
+      755.01,
+      3909.7678896419966,
+      false
+     ],
+     [
+      755.02,
+      3909.7678896419966,
+      false
+     ],
+     [
+      755.03,
+      3909.7678896419966,
+      false
+     ],
+     [
+      755.04,
+      3909.7678896419966,
+      false
+     ],
+     [
+      755.05,
+      3909.7678896419966,
+      false
+     ],
+     [
+      755.06,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.07,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.08,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.09,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.1,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.11,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.12,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.13,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.14,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.15,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.16,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.17,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.18,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.19,
+      5599.439318213425,
+      false
+     ],
+     [
+      755.2,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.21,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.22,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.23,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.24,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.25,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.26,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.27,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.28,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.29,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.3,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.31,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.32,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.33,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.34,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.35,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.36,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.37,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.38,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.39,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.4,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.41,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.42,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.43,
+      3605.225032499139,
+      false
+     ],
+     [
+      755.44,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.45,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.46,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.47,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.48,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.49,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.5,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.51,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.52,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.53,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.54,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.55,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.56,
+      1689.6714285714286,
+      false
+     ],
+     [
+      755.57,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.58,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.59,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.6,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.61,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.62,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.63,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.64,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.65,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.66,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.67,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.68,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.69,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.7,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.71,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.72,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.73,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.74,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.75,
+      2980.120727326267,
+      false
+     ],
+     [
+      755.76,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.77,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.78,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.79,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.8,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.81,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.82,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.83,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.84,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.85,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.86,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.87,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.88,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.89,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.9,
+      1290.4492987548388,
+      false
+     ],
+     [
+      755.91,
+      3454.0888384821114,
+      false
+     ],
+     [
+      755.92,
+      3454.0888384821114,
+      false
+     ],
+     [
+      755.93,
+      4937.234679613691,
+      false
+     ],
+     [
+      755.94,
+      7869.945790724802,
+      false
+     ],
+     [
+      755.95,
+      7869.945790724802,
+      false
+     ],
+     [
+      755.96,
+      8720.958611237622,
+      false
+     ],
+     [
+      755.97,
+      8720.958611237622,
+      false
+     ],
+     [
+      755.98,
+      8720.958611237622,
+      false
+     ],
+     [
+      755.99,
+      8720.958611237622,
+      false
+     ],
+     [
+      756.0,
+      10764.06197729653,
+      true
+     ],
+     [
+      756.01,
+      10764.06197729653,
+      true
+     ],
+     [
+      756.02,
+      10764.06197729653,
+      true
+     ],
+     [
+      756.03,
+      11712.675613660165,
+      true
+     ],
+     [
+      756.04,
+      11712.675613660165,
+      true
+     ],
+     [
+      756.05,
+      11712.675613660165,
+      true
+     ],
+     [
+      756.06,
+      11712.675613660165,
+      true
+     ],
+     [
+      756.07,
+      11712.675613660165,
+      true
+     ],
+     [
+      756.08,
+      12591.600681660166,
+      true
+     ],
+     [
+      756.09,
+      12591.600681660166,
+      true
+     ],
+     [
+      756.1,
+      12591.600681660166,
+      true
+     ],
+     [
+      756.11,
+      12591.600681660166,
+      true
+     ],
+     [
+      756.12,
+      12591.600681660166,
+      true
+     ],
+     [
+      756.13,
+      13652.045126104611,
+      true
+     ],
+     [
+      756.14,
+      13652.045126104611,
+      true
+     ],
+     [
+      756.15,
+      13652.045126104611,
+      true
+     ],
+     [
+      756.16,
+      14687.320988173575,
+      true
+     ],
+     [
+      756.17,
+      14687.320988173575,
+      true
+     ],
+     [
+      756.18,
+      14687.320988173575,
+      true
+     ],
+     [
+      756.19,
+      14687.320988173575,
+      true
+     ],
+     [
+      756.2,
+      14687.320988173575,
+      true
+     ],
+     [
+      756.21,
+      14687.320988173575,
+      true
+     ],
+     [
+      756.22,
+      14687.320988173575,
+      true
+     ],
+     [
+      756.23,
+      14687.320988173575,
+      true
+     ],
+     [
+      756.24,
+      12523.681448446303,
+      true
+     ],
+     [
+      756.25,
+      12523.681448446303,
+      true
+     ],
+     [
+      756.26,
+      12523.681448446303,
+      true
+     ],
+     [
+      756.27,
+      12523.681448446303,
+      true
+     ],
+     [
+      756.28,
+      12523.681448446303,
+      true
+     ],
+     [
+      756.29,
+      14067.660386578173,
+      true
+     ],
+     [
+      756.3,
+      16573.069289821415,
+      true
+     ],
+     [
+      756.31,
+      15089.923448689835,
+      true
+     ],
+     [
+      756.32,
+      15089.923448689835,
+      true
+     ],
+     [
+      756.33,
+      15832.30007206646,
+      true
+     ],
+     [
+      756.34,
+      15832.30007206646,
+      true
+     ],
+     [
+      756.35,
+      15832.30007206646,
+      true
+     ],
+     [
+      756.36,
+      15832.30007206646,
+      true
+     ],
+     [
+      756.37,
+      15832.30007206646,
+      true
+     ],
+     [
+      756.38,
+      16466.241248537048,
+      true
+     ],
+     [
+      756.39,
+      13533.530137425936,
+      true
+     ],
+     [
+      756.4,
+      13533.530137425936,
+      true
+     ],
+     [
+      756.41,
+      13533.530137425936,
+      true
+     ],
+     [
+      756.42,
+      13533.530137425936,
+      true
+     ],
+     [
+      756.43,
+      13533.530137425936,
+      true
+     ],
+     [
+      756.44,
+      14511.557915203713,
+      true
+     ],
+     [
+      756.45,
+      14511.557915203713,
+      true
+     ],
+     [
+      756.46,
+      14511.557915203713,
+      true
+     ],
+     [
+      756.47,
+      14511.557915203713,
+      true
+     ],
+     [
+      756.48,
+      14511.557915203713,
+      true
+     ],
+     [
+      756.49,
+      16081.626097021897,
+      true
+     ],
+     [
+      756.5,
+      16081.626097021897,
+      true
+     ],
+     [
+      756.51,
+      16081.626097021897,
+      true
+     ],
+     [
+      756.52,
+      16673.21793375659,
+      true
+     ],
+     [
+      756.53,
+      16673.21793375659,
+      true
+     ],
+     [
+      756.54,
+      16673.21793375659,
+      true
+     ],
+     [
+      756.55,
+      17569.027695910434,
+      true
+     ],
+     [
+      756.56,
+      17569.027695910434,
+      true
+     ],
+     [
+      756.57,
+      18574.32556825086,
+      true
+     ],
+     [
+      756.58,
+      18574.32556825086,
+      true
+     ],
+     [
+      756.59,
+      19945.057711108002,
+      true
+     ],
+     [
+      756.6,
+      19945.057711108002,
+      true
+     ],
+     [
+      756.61,
+      19945.057711108002,
+      true
+     ],
+     [
+      756.62,
+      21131.950315356626,
+      true
+     ],
+     [
+      756.63,
+      22903.18319206895,
+      true
+     ],
+     [
+      756.64,
+      25266.08853810184,
+      true
+     ],
+     [
+      756.65,
+      27465.248699067637,
+      true
+     ],
+     [
+      756.66,
+      28489.12965144859,
+      true
+     ],
+     [
+      756.67,
+      29117.511070785997,
+      true
+     ],
+     [
+      756.68,
+      30564.6742080409,
+      true
+     ],
+     [
+      756.69,
+      31391.203619805605,
+      true
+     ],
+     [
+      756.7,
+      32592.164337622115,
+      true
+     ],
+     [
+      756.71,
+      32592.164337622115,
+      true
+     ],
+     [
+      756.72,
+      32592.164337622115,
+      true
+     ],
+     [
+      756.73,
+      31713.239269622118,
+      true
+     ],
+     [
+      756.74,
+      30862.226449109297,
+      true
+     ],
+     [
+      756.75,
+      31808.269002300785,
+      true
+     ],
+     [
+      756.76,
+      31808.269002300785,
+      true
+     ],
+     [
+      756.77,
+      31808.269002300785,
+      true
+     ],
+     [
+      756.78,
+      31808.269002300785,
+      true
+     ],
+     [
+      756.79,
+      31808.269002300785,
+      true
+     ],
+     [
+      756.8,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.81,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.82,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.83,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.84,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.85,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.86,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.87,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.88,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.89,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.9,
+      30830.241224523008,
+      true
+     ],
+     [
+      756.91,
+      29881.62758815937,
+      true
+     ],
+     [
+      756.92,
+      29881.62758815937,
+      true
+     ],
+     [
+      756.93,
+      28311.559406341185,
+      true
+     ],
+     [
+      756.94,
+      27415.749644187337,
+      true
+     ],
+     [
+      756.95,
+      30521.742801902015,
+      true
+     ],
+     [
+      756.96,
+      30521.742801902015,
+      true
+     ],
+     [
+      756.97,
+      30521.742801902015,
+      true
+     ],
+     [
+      756.98,
+      30521.742801902015,
+      true
+     ],
+     [
+      756.99,
+      32205.13814080342,
+      true
+     ],
+     [
+      757.0,
+      30616.766712231998,
+      true
+     ],
+     [
+      757.01,
+      30025.174875497305,
+      true
+     ],
+     [
+      757.02,
+      31008.841954559066,
+      true
+     ],
+     [
+      757.03,
+      27738.883165660834,
+      true
+     ],
+     [
+      757.04,
+      26733.585293320408,
+      true
+     ],
+     [
+      757.05,
+      27591.51386474898,
+      true
+     ],
+     [
+      757.06,
+      26957.572688278393,
+      true
+     ],
+     [
+      757.07,
+      26957.572688278393,
+      true
+     ],
+     [
+      757.08,
+      27687.889143974593,
+      true
+     ],
+     [
+      757.09,
+      26779.200255085703,
+      true
+     ],
+     [
+      757.1,
+      26036.82363170908,
+      true
+     ],
+     [
+      757.11,
+      27759.986422406757,
+      true
+     ],
+     [
+      757.12,
+      28505.29630444288,
+      true
+     ],
+     [
+      757.13,
+      28505.29630444288,
+      true
+     ],
+     [
+      757.14,
+      28505.29630444288,
+      true
+     ],
+     [
+      757.15,
+      26139.251118107477,
+      true
+     ],
+     [
+      757.16,
+      26139.251118107477,
+      true
+     ],
+     [
+      757.17,
+      26139.251118107477,
+      true
+     ],
+     [
+      757.18,
+      26139.251118107477,
+      true
+     ],
+     [
+      757.19,
+      26139.251118107477,
+      true
+     ],
+     [
+      757.2,
+      23768.7427682109,
+      true
+     ],
+     [
+      757.21,
+      25097.125746934307,
+      true
+     ],
+     [
+      757.22,
+      24151.08319374282,
+      true
+     ],
+     [
+      757.23,
+      24151.08319374282,
+      true
+     ],
+     [
+      757.24,
+      24151.08319374282,
+      true
+     ],
+     [
+      757.25,
+      24151.08319374282,
+      true
+     ],
+     [
+      757.26,
+      24151.08319374282,
+      true
+     ],
+     [
+      757.27,
+      24151.08319374282,
+      true
+     ],
+     [
+      757.28,
+      24151.08319374282,
+      true
+     ],
+     [
+      757.29,
+      21017.29287116217,
+      true
+     ],
+     [
+      757.3,
+      21017.29287116217,
+      true
+     ],
+     [
+      757.31,
+      21017.29287116217,
+      true
+     ],
+     [
+      757.32,
+      23157.389025008328,
+      true
+     ],
+     [
+      757.33,
+      23157.389025008328,
+      true
+     ],
+     [
+      757.34,
+      23157.389025008328,
+      true
+     ],
+     [
+      757.35,
+      23157.389025008328,
+      true
+     ],
+     [
+      757.36,
+      20775.367415901634,
+      true
+     ],
+     [
+      757.37,
+      20775.367415901634,
+      true
+     ],
+     [
+      757.38,
+      20775.367415901634,
+      true
+     ],
+     [
+      757.39,
+      20775.367415901634,
+      true
+     ],
+     [
+      757.4,
+      20775.367415901634,
+      true
+     ],
+     [
+      757.41,
+      22167.022588315427,
+      true
+     ],
+     [
+      757.42,
+      22167.022588315427,
+      true
+     ],
+     [
+      757.43,
+      21523.03592164876,
+      true
+     ],
+     [
+      757.44,
+      21523.03592164876,
+      true
+     ],
+     [
+      757.45,
+      21523.03592164876,
+      true
+     ],
+     [
+      757.46,
+      22380.475315588155,
+      true
+     ],
+     [
+      757.47,
+      23402.303500916336,
+      true
+     ],
+     [
+      757.48,
+      23402.303500916336,
+      true
+     ],
+     [
+      757.49,
+      25046.230773643612,
+      true
+     ],
+     [
+      757.5,
+      24022.34982126266,
+      true
+     ],
+     [
+      757.51,
+      24022.34982126266,
+      true
+     ],
+     [
+      757.52,
+      24022.34982126266,
+      true
+     ],
+     [
+      757.53,
+      24022.34982126266,
+      true
+     ],
+     [
+      757.54,
+      22299.187030564983,
+      true
+     ],
+     [
+      757.55,
+      22299.187030564983,
+      true
+     ],
+     [
+      757.56,
+      23548.090256371437,
+      true
+     ],
+     [
+      757.57,
+      23548.090256371437,
+      true
+     ],
+     [
+      757.58,
+      23548.090256371437,
+      true
+     ],
+     [
+      757.59,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.6,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.61,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.62,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.63,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.64,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.65,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.66,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.67,
+      24678.970256371435,
+      true
+     ],
+     [
+      757.68,
+      23350.58727764803,
+      true
+     ],
+     [
+      757.69,
+      22416.695385756135,
+      true
+     ],
+     [
+      757.7,
+      20733.30004685473,
+      true
+     ],
+     [
+      757.71,
+      19537.249199397098,
+      true
+     ],
+     [
+      757.72,
+      19537.249199397098,
+      true
+     ],
+     [
+      757.73,
+      19537.249199397098,
+      true
+     ],
+     [
+      757.74,
+      17365.147933574317,
+      true
+     ],
+     [
+      757.75,
+      17365.147933574317,
+      true
+     ],
+     [
+      757.76,
+      18443.270569902885,
+      true
+     ],
+     [
+      757.77,
+      18443.270569902885,
+      true
+     ],
+     [
+      757.78,
+      18443.270569902885,
+      true
+     ],
+     [
+      757.79,
+      17242.30985208637,
+      true
+     ],
+     [
+      757.8,
+      17242.30985208637,
+      true
+     ],
+     [
+      757.81,
+      17242.30985208637,
+      true
+     ],
+     [
+      757.82,
+      15455.466302436374,
+      true
+     ],
+     [
+      757.83,
+      15455.466302436374,
+      true
+     ],
+     [
+      757.84,
+      9535.460614055686,
+      true
+     ],
+     [
+      757.85,
+      9535.460614055686,
+      false
+     ],
+     [
+      757.86,
+      9535.460614055686,
+      false
+     ],
+     [
+      757.87,
+      8805.144158359482,
+      false
+     ],
+     [
+      757.88,
+      8805.144158359482,
+      false
+     ],
+     [
+      757.89,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.9,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.91,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.92,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.93,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.94,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.95,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.96,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.97,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.98,
+      7350.9277012154835,
+      false
+     ],
+     [
+      757.99,
+      5959.27252880169,
+      false
+     ],
+     [
+      758.0,
+      5959.27252880169,
+      false
+     ],
+     [
+      758.01,
+      5959.27252880169,
+      false
+     ],
+     [
+      758.02,
+      5959.27252880169,
+      false
+     ],
+     [
+      758.03,
+      5959.27252880169,
+      false
+     ],
+     [
+      758.04,
+      4315.345256074417,
+      false
+     ],
+     [
+      758.05,
+      4315.345256074417,
+      false
+     ],
+     [
+      758.06,
+      4315.345256074417,
+      false
+     ],
+     [
+      758.07,
+      4315.345256074417,
+      false
+     ],
+     [
+      758.08,
+      4315.345256074417,
+      false
+     ],
+     [
+      758.09,
+      3184.465256074417,
+      false
+     ],
+     [
+      758.1,
+      3184.465256074417,
+      false
+     ],
+     [
+      758.11,
+      3184.465256074417,
+      false
+     ],
+     [
+      758.12,
+      2327.025862135023,
+      false
+     ],
+     [
+      758.13,
+      2327.025862135023,
+      false
+     ],
+     [
+      758.14,
+      2327.025862135023,
+      false
+     ],
+     [
+      758.15,
+      2327.025862135023,
+      false
+     ],
+     [
+      758.16,
+      2327.025862135023,
+      false
+     ],
+     [
+      758.17,
+      2327.025862135023,
+      false
+     ],
+     [
+      758.18,
+      2327.025862135023,
+      false
+     ],
+     [
+      758.19,
+      2327.025862135023,
+      false
+     ],
+     [
+      758.2,
+      4387.157441082391,
+      false
+     ],
+     [
+      758.21,
+      4387.157441082391,
+      false
+     ],
+     [
+      758.22,
+      4387.157441082391,
+      false
+     ],
+     [
+      758.23,
+      4387.157441082391,
+      false
+     ],
+     [
+      758.24,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.25,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.26,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.27,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.28,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.29,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.3,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.31,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.32,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.33,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.34,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.35,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.36,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.37,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.38,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.39,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.4,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.41,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.42,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.43,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.44,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.45,
+      5730.1119865369365,
+      false
+     ],
+     [
+      758.46,
+      4651.989350208365,
+      false
+     ],
+     [
+      758.47,
+      4651.989350208365,
+      false
+     ],
+     [
+      758.48,
+      4651.989350208365,
+      false
+     ],
+     [
+      758.49,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.5,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.51,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.52,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.53,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.54,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.55,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.56,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.57,
+      3403.086124401914,
+      false
+     ],
+     [
+      758.58,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.59,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.6,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.61,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.62,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.63,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.64,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.65,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.66,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.67,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.68,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.69,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.7,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.71,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.72,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.73,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.74,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.75,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.76,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.77,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.78,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.79,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.8,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.81,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.82,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.83,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.84,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.85,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.86,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.87,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.88,
+      1342.9545454545455,
+      false
+     ],
+     [
+      758.89,
+      1342.9545454545455,
+      false
+     ]
+    ],
+    "max_volume": 32592.164337622115,
+    "poc": 756.7,
+    "vah": 757.84,
+    "val": 756.0
+   },
+   "tf": "1",
+   "families_absent": [],
+   "degraded": []
+  },
   "5": {
    "ticker": "SPY",
    "schema_version": 1,
@@ -54281,1158 +58358,2356 @@
   }
  },
  "desk": {
-  "5": {
-   "ticker": "SPY",
-   "tf": "5",
-   "window_start_ts_utc": 1794493800.0,
-   "window_label": "this session",
-   "items": [
-    {
-     "key": "x41914",
-     "n": 27,
-     "ts": 1794497441.4881577,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": true,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.08 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "wall0",
-     "ts": 1794497440.943,
-     "dom": "LIQUIDITY",
-     "dir": "up",
-     "warn": false,
-     "title": "NASDAQ_BOOK size wall \u00b7 bid 757.06",
-     "detail": "125.0 shown \u00b7 3.1\u00d7 the median level",
-     "src": "equity book"
-    },
-    {
-     "key": "pw",
-     "ts": 1794497439.851,
-     "dom": "OPTIONS",
-     "dir": "down",
-     "title": "Spot through the put wall",
-     "detail": "put wall 760.00 \u00b7 spot 757.08",
-     "src": "gamma levels"
-    },
-    {
-     "key": "x41913",
-     "n": 26,
-     "ts": 1794497420.121338,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.94 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41904",
-     "n": 25,
-     "ts": 1794497295.8145125,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41902",
-     "n": 24,
-     "ts": 1794497259.4563353,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.90 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41895",
-     "n": 23,
-     "ts": 1794497231.8430533,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41892",
-     "n": 22,
-     "ts": 1794497120.3212173,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.88 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41891",
-     "n": 21,
-     "ts": 1794497115.8663905,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.05 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41886",
-     "n": 20,
-     "ts": 1794496930.1333094,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41885",
-     "n": 19,
-     "ts": 1794496916.4691591,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41877",
-     "n": 18,
-     "ts": 1794496802.6880965,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 757.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41876",
-     "n": 17,
-     "ts": 1794496784.513868,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.04 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41871",
-     "n": 16,
-     "ts": 1794496615.6179922,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.90 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41870",
-     "n": 15,
-     "ts": 1794496581.9935322,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41865",
-     "n": 14,
-     "ts": 1794496316.8522117,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.89 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41864",
-     "n": 13,
-     "ts": 1794496315.6999006,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.08 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41857",
-     "n": 12,
-     "ts": 1794495669.2290735,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.01 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41856",
-     "n": 11,
-     "ts": 1794495649.4883432,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.89 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41841",
-     "n": 10,
-     "ts": 1794494711.2967591,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41840",
-     "n": 9,
-     "ts": 1794494708.1251445,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.99 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41835",
-     "n": 8,
-     "ts": 1794494436.8142967,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41834",
-     "n": 7,
-     "ts": 1794494435.2832503,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.01 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41832",
-     "n": 6,
-     "ts": 1794494360.8117473,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.03 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41830",
-     "n": 5,
-     "ts": 1794494359.5066679,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.95 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41827",
-     "n": 4,
-     "ts": 1794494297.7683234,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.98 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41825",
-     "n": 3,
-     "ts": 1794494295.4871762,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.03 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41822",
-     "n": 2,
-     "ts": 1794494226.0006518,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.99 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41820",
-     "n": 1,
-     "ts": 1794494219.9182777,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.07 at the cross",
-     "src": "level_crosses"
+  "NASDAQ_BOOK": {
+   "5": {
+    "ticker": "SPY",
+    "tf": "5",
+    "window_start_ts_utc": 1794493800.0,
+    "window_label": "this session",
+    "items": [
+     {
+      "key": "x41914",
+      "n": 27,
+      "ts": 1794497441.4881577,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": true,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.08 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "wall0",
+      "ts": 1794497440.943,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NASDAQ_BOOK size wall \u00b7 bid 757.06",
+      "detail": "125.0 shown \u00b7 3.1\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "pw",
+      "ts": 1794497439.851,
+      "dom": "OPTIONS",
+      "dir": "down",
+      "title": "Spot through the put wall",
+      "detail": "put wall 760.00 \u00b7 spot 757.08",
+      "src": "gamma levels"
+     },
+     {
+      "key": "x41913",
+      "n": 26,
+      "ts": 1794497420.121338,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.94 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41904",
+      "n": 25,
+      "ts": 1794497295.8145125,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41902",
+      "n": 24,
+      "ts": 1794497259.4563353,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.90 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41895",
+      "n": 23,
+      "ts": 1794497231.8430533,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41892",
+      "n": 22,
+      "ts": 1794497120.3212173,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.88 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41891",
+      "n": 21,
+      "ts": 1794497115.8663905,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.05 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41886",
+      "n": 20,
+      "ts": 1794496930.1333094,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41885",
+      "n": 19,
+      "ts": 1794496916.4691591,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41877",
+      "n": 18,
+      "ts": 1794496802.6880965,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41876",
+      "n": 17,
+      "ts": 1794496784.513868,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.04 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41871",
+      "n": 16,
+      "ts": 1794496615.6179922,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.90 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41870",
+      "n": 15,
+      "ts": 1794496581.9935322,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41865",
+      "n": 14,
+      "ts": 1794496316.8522117,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.89 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41864",
+      "n": 13,
+      "ts": 1794496315.6999006,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.08 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41857",
+      "n": 12,
+      "ts": 1794495669.2290735,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41856",
+      "n": 11,
+      "ts": 1794495649.4883432,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.89 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41841",
+      "n": 10,
+      "ts": 1794494711.2967591,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41840",
+      "n": 9,
+      "ts": 1794494708.1251445,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41835",
+      "n": 8,
+      "ts": 1794494436.8142967,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41834",
+      "n": 7,
+      "ts": 1794494435.2832503,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41832",
+      "n": 6,
+      "ts": 1794494360.8117473,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.03 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41830",
+      "n": 5,
+      "ts": 1794494359.5066679,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.95 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41827",
+      "n": 4,
+      "ts": 1794494297.7683234,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.98 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41825",
+      "n": 3,
+      "ts": 1794494295.4871762,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.03 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41822",
+      "n": 2,
+      "ts": 1794494226.0006518,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41820",
+      "n": 1,
+      "ts": 1794494219.9182777,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.07 at the cross",
+      "src": "level_crosses"
+     }
+    ],
+    "cross_counts": {
+     "up": 14,
+     "down": 13
     }
-   ],
-   "cross_counts": {
-    "up": 14,
-    "down": 13
+   },
+   "15": {
+    "ticker": "SPY",
+    "tf": "15",
+    "window_start_ts_utc": 1794483041.934527,
+    "window_label": "last 4 h",
+    "items": [
+     {
+      "key": "x41914",
+      "n": 64,
+      "ts": 1794497441.4881577,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": true,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.08 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "wall0",
+      "ts": 1794497440.943,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NASDAQ_BOOK size wall \u00b7 bid 757.06",
+      "detail": "125.0 shown \u00b7 3.1\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "pw",
+      "ts": 1794497439.851,
+      "dom": "OPTIONS",
+      "dir": "down",
+      "title": "Spot through the put wall",
+      "detail": "put wall 760.00 \u00b7 spot 757.08",
+      "src": "gamma levels"
+     },
+     {
+      "key": "x41913",
+      "n": 63,
+      "ts": 1794497420.121338,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.94 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41904",
+      "n": 62,
+      "ts": 1794497295.8145125,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41902",
+      "n": 61,
+      "ts": 1794497259.4563353,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.90 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41895",
+      "n": 60,
+      "ts": 1794497231.8430533,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41892",
+      "n": 59,
+      "ts": 1794497120.3212173,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.88 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41891",
+      "n": 58,
+      "ts": 1794497115.8663905,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.05 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41886",
+      "n": 57,
+      "ts": 1794496930.1333094,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41885",
+      "n": 56,
+      "ts": 1794496916.4691591,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41877",
+      "n": 55,
+      "ts": 1794496802.6880965,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41876",
+      "n": 54,
+      "ts": 1794496784.513868,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.04 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41871",
+      "n": 53,
+      "ts": 1794496615.6179922,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.90 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41870",
+      "n": 52,
+      "ts": 1794496581.9935322,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41865",
+      "n": 51,
+      "ts": 1794496316.8522117,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.89 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41864",
+      "n": 50,
+      "ts": 1794496315.6999006,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.08 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41857",
+      "n": 49,
+      "ts": 1794495669.2290735,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41856",
+      "n": 48,
+      "ts": 1794495649.4883432,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.89 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41841",
+      "n": 47,
+      "ts": 1794494711.2967591,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41840",
+      "n": 46,
+      "ts": 1794494708.1251445,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41835",
+      "n": 45,
+      "ts": 1794494436.8142967,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41834",
+      "n": 44,
+      "ts": 1794494435.2832503,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41832",
+      "n": 43,
+      "ts": 1794494360.8117473,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.03 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41830",
+      "n": 42,
+      "ts": 1794494359.5066679,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.95 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41827",
+      "n": 41,
+      "ts": 1794494297.7683234,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.98 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41825",
+      "n": 40,
+      "ts": 1794494295.4871762,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.03 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41822",
+      "n": 39,
+      "ts": 1794494226.0006518,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41820",
+      "n": 38,
+      "ts": 1794494219.9182777,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.07 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41695",
+      "n": 37,
+      "ts": 1794488823.5598404,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": true,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 755.63 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41694",
+      "n": 36,
+      "ts": 1794488821.4482646,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 759.81 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41675",
+      "n": 35,
+      "ts": 1794488671.7454448,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41674",
+      "n": 34,
+      "ts": 1794488670.6663928,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 759.81 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41669",
+      "n": 33,
+      "ts": 1794488556.073081,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.15 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41668",
+      "n": 32,
+      "ts": 1794488553.9276521,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 759.81 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41659",
+      "n": 31,
+      "ts": 1794488287.2044606,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.21 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41592",
+      "n": 30,
+      "ts": 1794486862.860725,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.24 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41591",
+      "n": 29,
+      "ts": 1794486855.5316885,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.22 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41580",
+      "n": 28,
+      "ts": 1794486570.9009337,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.21 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41579",
+      "n": 27,
+      "ts": 1794486559.8646545,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.27 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41576",
+      "n": 26,
+      "ts": 1794486490.5005279,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.26 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41575",
+      "n": 25,
+      "ts": 1794486488.478674,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.17 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41506",
+      "n": 24,
+      "ts": 1794485180.1504984,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.26 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41505",
+      "n": 23,
+      "ts": 1794485177.1419759,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.22 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41504",
+      "n": 21,
+      "ts": 1794485018.6127462,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "up",
+      "marker": true,
+      "title": "Crossed above Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 756.64 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41502",
+      "n": 22,
+      "ts": 1794485018.6127462,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.64 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41500",
+      "n": 19,
+      "ts": 1794485015.6027606,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41498",
+      "n": 20,
+      "ts": 1794485015.6027606,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41490",
+      "n": 17,
+      "ts": 1794484954.1396265,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 756.42 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41488",
+      "n": 18,
+      "ts": 1794484954.1396265,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.42 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41487",
+      "n": 15,
+      "ts": 1794484951.1290452,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41485",
+      "n": 16,
+      "ts": 1794484951.1290452,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41452",
+      "n": 13,
+      "ts": 1794484894.0338907,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 756.36 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41450",
+      "n": 14,
+      "ts": 1794484894.0338907,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.36 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41449",
+      "n": 11,
+      "ts": 1794484890.978507,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41447",
+      "n": 12,
+      "ts": 1794484890.978507,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41438",
+      "n": 10,
+      "ts": 1794484830.6100879,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 756.32 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41436",
+      "n": 9,
+      "ts": 1794484829.5627196,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41434",
+      "n": 8,
+      "ts": 1794484808.9737067,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.28 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41433",
+      "n": 7,
+      "ts": 1794484804.7858725,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.18 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41432",
+      "n": 6,
+      "ts": 1794484691.1892517,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.29 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41431",
+      "n": 5,
+      "ts": 1794484653.039495,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.21 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41430",
+      "n": 4,
+      "ts": 1794484585.7314866,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.23 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41429",
+      "n": 3,
+      "ts": 1794484579.6555607,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.19 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41428",
+      "n": 2,
+      "ts": 1794484518.4264698,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.24 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41427",
+      "n": 1,
+      "ts": 1794484517.4208007,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.20 at the cross",
+      "src": "level_crosses"
+     }
+    ],
+    "cross_counts": {
+     "up": 32,
+     "down": 32
+    }
    }
   },
-  "15": {
-   "ticker": "SPY",
-   "tf": "15",
-   "window_start_ts_utc": 1794483041.934527,
-   "window_label": "last 4 h",
-   "items": [
-    {
-     "key": "x41914",
-     "n": 64,
-     "ts": 1794497441.4881577,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": true,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.08 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "wall0",
-     "ts": 1794497440.943,
-     "dom": "LIQUIDITY",
-     "dir": "up",
-     "warn": false,
-     "title": "NASDAQ_BOOK size wall \u00b7 bid 757.06",
-     "detail": "125.0 shown \u00b7 3.1\u00d7 the median level",
-     "src": "equity book"
-    },
-    {
-     "key": "pw",
-     "ts": 1794497439.851,
-     "dom": "OPTIONS",
-     "dir": "down",
-     "title": "Spot through the put wall",
-     "detail": "put wall 760.00 \u00b7 spot 757.08",
-     "src": "gamma levels"
-    },
-    {
-     "key": "x41913",
-     "n": 63,
-     "ts": 1794497420.121338,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.94 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41904",
-     "n": 62,
-     "ts": 1794497295.8145125,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41902",
-     "n": 61,
-     "ts": 1794497259.4563353,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.90 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41895",
-     "n": 60,
-     "ts": 1794497231.8430533,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41892",
-     "n": 59,
-     "ts": 1794497120.3212173,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.88 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41891",
-     "n": 58,
-     "ts": 1794497115.8663905,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.05 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41886",
-     "n": 57,
-     "ts": 1794496930.1333094,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41885",
-     "n": 56,
-     "ts": 1794496916.4691591,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41877",
-     "n": 55,
-     "ts": 1794496802.6880965,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 757.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41876",
-     "n": 54,
-     "ts": 1794496784.513868,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.04 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41871",
-     "n": 53,
-     "ts": 1794496615.6179922,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.90 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41870",
-     "n": 52,
-     "ts": 1794496581.9935322,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41865",
-     "n": 51,
-     "ts": 1794496316.8522117,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.89 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41864",
-     "n": 50,
-     "ts": 1794496315.6999006,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.08 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41857",
-     "n": 49,
-     "ts": 1794495669.2290735,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.01 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41856",
-     "n": 48,
-     "ts": 1794495649.4883432,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.89 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41841",
-     "n": 47,
-     "ts": 1794494711.2967591,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41840",
-     "n": 46,
-     "ts": 1794494708.1251445,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.99 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41835",
-     "n": 45,
-     "ts": 1794494436.8142967,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41834",
-     "n": 44,
-     "ts": 1794494435.2832503,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.01 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41832",
-     "n": 43,
-     "ts": 1794494360.8117473,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.03 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41830",
-     "n": 42,
-     "ts": 1794494359.5066679,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.95 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41827",
-     "n": 41,
-     "ts": 1794494297.7683234,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.98 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41825",
-     "n": 40,
-     "ts": 1794494295.4871762,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.03 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41822",
-     "n": 39,
-     "ts": 1794494226.0006518,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain",
-     "detail": "757.00 \u00b7 spot 756.99 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41820",
-     "n": 38,
-     "ts": 1794494219.9182777,
-     "dom": "LEVELS",
-     "price": 757.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain",
-     "detail": "757.00 \u00b7 spot 757.07 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41695",
-     "n": 37,
-     "ts": 1794488823.5598404,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": true,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 755.63 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41694",
-     "n": 36,
-     "ts": 1794488821.4482646,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 759.81 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41675",
-     "n": 35,
-     "ts": 1794488671.7454448,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41674",
-     "n": 34,
-     "ts": 1794488670.6663928,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 759.81 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41669",
-     "n": 33,
-     "ts": 1794488556.073081,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.15 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41668",
-     "n": 32,
-     "ts": 1794488553.9276521,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 759.81 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41659",
-     "n": 31,
-     "ts": 1794488287.2044606,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.21 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41592",
-     "n": 30,
-     "ts": 1794486862.860725,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.24 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41591",
-     "n": 29,
-     "ts": 1794486855.5316885,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.22 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41580",
-     "n": 28,
-     "ts": 1794486570.9009337,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.21 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41579",
-     "n": 27,
-     "ts": 1794486559.8646545,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.27 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41576",
-     "n": 26,
-     "ts": 1794486490.5005279,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.26 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41575",
-     "n": 25,
-     "ts": 1794486488.478674,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.17 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41506",
-     "n": 24,
-     "ts": 1794485180.1504984,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.26 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41505",
-     "n": 23,
-     "ts": 1794485177.1419759,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.22 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41504",
-     "n": 21,
-     "ts": 1794485018.6127462,
-     "dom": "LEVELS",
-     "price": 750.0,
-     "dir": "up",
-     "marker": true,
-     "title": "Crossed above Put d-Wall + Call d-Wall",
-     "detail": "750.00 \u00b7 spot 756.64 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41502",
-     "n": 22,
-     "ts": 1794485018.6127462,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.64 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41500",
-     "n": 19,
-     "ts": 1794485015.6027606,
-     "dom": "LEVELS",
-     "price": 750.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call d-Wall",
-     "detail": "750.00 \u00b7 spot 749.92 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41498",
-     "n": 20,
-     "ts": 1794485015.6027606,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 749.92 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41490",
-     "n": 17,
-     "ts": 1794484954.1396265,
-     "dom": "LEVELS",
-     "price": 750.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call d-Wall",
-     "detail": "750.00 \u00b7 spot 756.42 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41488",
-     "n": 18,
-     "ts": 1794484954.1396265,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.42 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41487",
-     "n": 15,
-     "ts": 1794484951.1290452,
-     "dom": "LEVELS",
-     "price": 750.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call d-Wall",
-     "detail": "750.00 \u00b7 spot 749.92 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41485",
-     "n": 16,
-     "ts": 1794484951.1290452,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 749.92 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41452",
-     "n": 13,
-     "ts": 1794484894.0338907,
-     "dom": "LEVELS",
-     "price": 750.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call d-Wall",
-     "detail": "750.00 \u00b7 spot 756.36 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41450",
-     "n": 14,
-     "ts": 1794484894.0338907,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.36 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41449",
-     "n": 11,
-     "ts": 1794484890.978507,
-     "dom": "LEVELS",
-     "price": 750.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call d-Wall",
-     "detail": "750.00 \u00b7 spot 749.92 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41447",
-     "n": 12,
-     "ts": 1794484890.978507,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 749.92 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41438",
-     "n": 10,
-     "ts": 1794484830.6100879,
-     "dom": "LEVELS",
-     "price": 750.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call d-Wall",
-     "detail": "750.00 \u00b7 spot 756.32 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41436",
-     "n": 9,
-     "ts": 1794484829.5627196,
-     "dom": "LEVELS",
-     "price": 750.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call d-Wall",
-     "detail": "750.00 \u00b7 spot 749.92 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41434",
-     "n": 8,
-     "ts": 1794484808.9737067,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.28 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41433",
-     "n": 7,
-     "ts": 1794484804.7858725,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.18 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41432",
-     "n": 6,
-     "ts": 1794484691.1892517,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.29 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41431",
-     "n": 5,
-     "ts": 1794484653.039495,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.21 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41430",
-     "n": 4,
-     "ts": 1794484585.7314866,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.23 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41429",
-     "n": 3,
-     "ts": 1794484579.6555607,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.19 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41428",
-     "n": 2,
-     "ts": 1794484518.4264698,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.24 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41427",
-     "n": 1,
-     "ts": 1794484517.4208007,
-     "dom": "LEVELS",
-     "price": 756.2299737692855,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Gamma Flip",
-     "detail": "756.23 \u00b7 spot 756.20 at the cross",
-     "src": "level_crosses"
+  "NYSE_BOOK": {
+   "5": {
+    "ticker": "SPY",
+    "tf": "5",
+    "window_start_ts_utc": 1794493800.0,
+    "window_label": "this session",
+    "items": [
+     {
+      "key": "x41914",
+      "n": 27,
+      "ts": 1794497441.4881577,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": true,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.08 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "wall0",
+      "ts": 1794497440.942,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NYSE_BOOK size wall \u00b7 bid 757.06",
+      "detail": "400.0 shown \u00b7 5.0\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "wall1",
+      "ts": 1794497440.942,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NYSE_BOOK size wall \u00b7 bid 757.01",
+      "detail": "1080.0 shown \u00b7 13.5\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "wall2",
+      "ts": 1794497440.942,
+      "dom": "LIQUIDITY",
+      "dir": "down",
+      "warn": false,
+      "title": "NYSE_BOOK size wall \u00b7 ask 757.09",
+      "detail": "560.0 shown \u00b7 4.7\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "pw",
+      "ts": 1794497439.851,
+      "dom": "OPTIONS",
+      "dir": "down",
+      "title": "Spot through the put wall",
+      "detail": "put wall 760.00 \u00b7 spot 757.08",
+      "src": "gamma levels"
+     },
+     {
+      "key": "x41913",
+      "n": 26,
+      "ts": 1794497420.121338,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.94 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41904",
+      "n": 25,
+      "ts": 1794497295.8145125,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41902",
+      "n": 24,
+      "ts": 1794497259.4563353,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.90 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41895",
+      "n": 23,
+      "ts": 1794497231.8430533,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41892",
+      "n": 22,
+      "ts": 1794497120.3212173,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.88 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41891",
+      "n": 21,
+      "ts": 1794497115.8663905,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.05 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41886",
+      "n": 20,
+      "ts": 1794496930.1333094,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41885",
+      "n": 19,
+      "ts": 1794496916.4691591,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41877",
+      "n": 18,
+      "ts": 1794496802.6880965,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41876",
+      "n": 17,
+      "ts": 1794496784.513868,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.04 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41871",
+      "n": 16,
+      "ts": 1794496615.6179922,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.90 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41870",
+      "n": 15,
+      "ts": 1794496581.9935322,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41865",
+      "n": 14,
+      "ts": 1794496316.8522117,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.89 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41864",
+      "n": 13,
+      "ts": 1794496315.6999006,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.08 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41857",
+      "n": 12,
+      "ts": 1794495669.2290735,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41856",
+      "n": 11,
+      "ts": 1794495649.4883432,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.89 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41841",
+      "n": 10,
+      "ts": 1794494711.2967591,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41840",
+      "n": 9,
+      "ts": 1794494708.1251445,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41835",
+      "n": 8,
+      "ts": 1794494436.8142967,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41834",
+      "n": 7,
+      "ts": 1794494435.2832503,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41832",
+      "n": 6,
+      "ts": 1794494360.8117473,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.03 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41830",
+      "n": 5,
+      "ts": 1794494359.5066679,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.95 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41827",
+      "n": 4,
+      "ts": 1794494297.7683234,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.98 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41825",
+      "n": 3,
+      "ts": 1794494295.4871762,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.03 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41822",
+      "n": 2,
+      "ts": 1794494226.0006518,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41820",
+      "n": 1,
+      "ts": 1794494219.9182777,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.07 at the cross",
+      "src": "level_crosses"
+     }
+    ],
+    "cross_counts": {
+     "up": 14,
+     "down": 13
     }
-   ],
-   "cross_counts": {
-    "up": 32,
-    "down": 32
+   },
+   "15": {
+    "ticker": "SPY",
+    "tf": "15",
+    "window_start_ts_utc": 1794483041.934527,
+    "window_label": "last 4 h",
+    "items": [
+     {
+      "key": "x41914",
+      "n": 64,
+      "ts": 1794497441.4881577,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": true,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.08 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "wall0",
+      "ts": 1794497440.942,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NYSE_BOOK size wall \u00b7 bid 757.06",
+      "detail": "400.0 shown \u00b7 5.0\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "wall1",
+      "ts": 1794497440.942,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NYSE_BOOK size wall \u00b7 bid 757.01",
+      "detail": "1080.0 shown \u00b7 13.5\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "wall2",
+      "ts": 1794497440.942,
+      "dom": "LIQUIDITY",
+      "dir": "down",
+      "warn": false,
+      "title": "NYSE_BOOK size wall \u00b7 ask 757.09",
+      "detail": "560.0 shown \u00b7 4.7\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "pw",
+      "ts": 1794497439.851,
+      "dom": "OPTIONS",
+      "dir": "down",
+      "title": "Spot through the put wall",
+      "detail": "put wall 760.00 \u00b7 spot 757.08",
+      "src": "gamma levels"
+     },
+     {
+      "key": "x41913",
+      "n": 63,
+      "ts": 1794497420.121338,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.94 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41904",
+      "n": 62,
+      "ts": 1794497295.8145125,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41902",
+      "n": 61,
+      "ts": 1794497259.4563353,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.90 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41895",
+      "n": 60,
+      "ts": 1794497231.8430533,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41892",
+      "n": 59,
+      "ts": 1794497120.3212173,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.88 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41891",
+      "n": 58,
+      "ts": 1794497115.8663905,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.05 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41886",
+      "n": 57,
+      "ts": 1794496930.1333094,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41885",
+      "n": 56,
+      "ts": 1794496916.4691591,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41877",
+      "n": 55,
+      "ts": 1794496802.6880965,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41876",
+      "n": 54,
+      "ts": 1794496784.513868,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.04 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41871",
+      "n": 53,
+      "ts": 1794496615.6179922,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.90 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41870",
+      "n": 52,
+      "ts": 1794496581.9935322,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41865",
+      "n": 51,
+      "ts": 1794496316.8522117,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.89 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41864",
+      "n": 50,
+      "ts": 1794496315.6999006,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.08 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41857",
+      "n": 49,
+      "ts": 1794495669.2290735,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41856",
+      "n": 48,
+      "ts": 1794495649.4883432,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.89 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41841",
+      "n": 47,
+      "ts": 1794494711.2967591,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41840",
+      "n": 46,
+      "ts": 1794494708.1251445,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41835",
+      "n": 45,
+      "ts": 1794494436.8142967,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41834",
+      "n": 44,
+      "ts": 1794494435.2832503,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41832",
+      "n": 43,
+      "ts": 1794494360.8117473,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.03 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41830",
+      "n": 42,
+      "ts": 1794494359.5066679,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.95 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41827",
+      "n": 41,
+      "ts": 1794494297.7683234,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.98 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41825",
+      "n": 40,
+      "ts": 1794494295.4871762,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.03 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41822",
+      "n": 39,
+      "ts": 1794494226.0006518,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain",
+      "detail": "757.00 \u00b7 spot 756.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41820",
+      "n": 38,
+      "ts": 1794494219.9182777,
+      "dom": "LEVELS",
+      "price": 757.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain",
+      "detail": "757.00 \u00b7 spot 757.07 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41695",
+      "n": 37,
+      "ts": 1794488823.5598404,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": true,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 755.63 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41694",
+      "n": 36,
+      "ts": 1794488821.4482646,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 759.81 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41675",
+      "n": 35,
+      "ts": 1794488671.7454448,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41674",
+      "n": 34,
+      "ts": 1794488670.6663928,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 759.81 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41669",
+      "n": 33,
+      "ts": 1794488556.073081,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.15 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41668",
+      "n": 32,
+      "ts": 1794488553.9276521,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 759.81 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41659",
+      "n": 31,
+      "ts": 1794488287.2044606,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.21 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41592",
+      "n": 30,
+      "ts": 1794486862.860725,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.24 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41591",
+      "n": 29,
+      "ts": 1794486855.5316885,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.22 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41580",
+      "n": 28,
+      "ts": 1794486570.9009337,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.21 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41579",
+      "n": 27,
+      "ts": 1794486559.8646545,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.27 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41576",
+      "n": 26,
+      "ts": 1794486490.5005279,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.26 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41575",
+      "n": 25,
+      "ts": 1794486488.478674,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.17 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41506",
+      "n": 24,
+      "ts": 1794485180.1504984,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.26 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41505",
+      "n": 23,
+      "ts": 1794485177.1419759,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.22 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41504",
+      "n": 21,
+      "ts": 1794485018.6127462,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "up",
+      "marker": true,
+      "title": "Crossed above Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 756.64 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41502",
+      "n": 22,
+      "ts": 1794485018.6127462,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.64 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41500",
+      "n": 19,
+      "ts": 1794485015.6027606,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41498",
+      "n": 20,
+      "ts": 1794485015.6027606,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41490",
+      "n": 17,
+      "ts": 1794484954.1396265,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 756.42 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41488",
+      "n": 18,
+      "ts": 1794484954.1396265,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.42 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41487",
+      "n": 15,
+      "ts": 1794484951.1290452,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41485",
+      "n": 16,
+      "ts": 1794484951.1290452,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41452",
+      "n": 13,
+      "ts": 1794484894.0338907,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 756.36 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41450",
+      "n": 14,
+      "ts": 1794484894.0338907,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.36 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41449",
+      "n": 11,
+      "ts": 1794484890.978507,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41447",
+      "n": 12,
+      "ts": 1794484890.978507,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41438",
+      "n": 10,
+      "ts": 1794484830.6100879,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 756.32 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41436",
+      "n": 9,
+      "ts": 1794484829.5627196,
+      "dom": "LEVELS",
+      "price": 750.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call d-Wall",
+      "detail": "750.00 \u00b7 spot 749.92 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41434",
+      "n": 8,
+      "ts": 1794484808.9737067,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.28 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41433",
+      "n": 7,
+      "ts": 1794484804.7858725,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.18 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41432",
+      "n": 6,
+      "ts": 1794484691.1892517,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.29 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41431",
+      "n": 5,
+      "ts": 1794484653.039495,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.21 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41430",
+      "n": 4,
+      "ts": 1794484585.7314866,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.23 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41429",
+      "n": 3,
+      "ts": 1794484579.6555607,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.19 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41428",
+      "n": 2,
+      "ts": 1794484518.4264698,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.24 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41427",
+      "n": 1,
+      "ts": 1794484517.4208007,
+      "dom": "LEVELS",
+      "price": 756.2299737692855,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Gamma Flip",
+      "detail": "756.23 \u00b7 spot 756.20 at the cross",
+      "src": "level_crosses"
+     }
+    ],
+    "cross_counts": {
+     "up": 32,
+     "down": 32
+    }
    }
   }
  },

@@ -21823,6 +21823,4453 @@
   "method": "OI side totals of the two captures, each side by the newer capture's spot; DEX = net_dex_dollars side sums on the newer capture; CHARM = dealer-signed net_charm side sums on the newer capture"
  },
  "levels": {
+  "1": {
+   "ticker": "AMZN",
+   "schema_version": 1,
+   "served_ts_utc": 1794497958.223641,
+   "spot": 269.425,
+   "spot_source": "streaming_plane",
+   "spot_as_of_ts_utc": 1794497956.43,
+   "spot_time_ct": "Thu 11/12 09:39 AM CT",
+   "spot_not_live_text": null,
+   "generation": 1,
+   "snapshot_as_of_ts_utc": 1794497880.0,
+   "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
+   "snapshot_age_text": "78s",
+   "levels_state": "LIVE",
+   "levels_time_ct": "Thu 11/12 09:39 AM CT",
+   "levels_age_text": "0s",
+   "levels_stale_reason": "",
+   "bar_source": "Schwab /pricehistory 1-minute bars and CHART_EQUITY",
+   "levels": [
+    {
+     "id": "em_up",
+     "price": 276.2680765669552,
+     "family": "expected_move",
+     "label": "+1\u03c3 move",
+     "short": "+1\u03c3 move",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "server.expected_move",
+      "carried": false
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 6.843076566955176,
+     "side": "ABOVE",
+     "from_spot_text": "6.84 above spot"
+    },
+    {
+     "id": "lvp",
+     "price": 275.0,
+     "family": "gamma",
+     "label": "Net call \u0393 peak",
+     "short": "Net call \u0393 peak",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 5.574999999999989,
+     "side": "ABOVE",
+     "from_spot_text": "5.57 above spot"
+    },
+    {
+     "id": "call_charm_wall",
+     "price": 275.0,
+     "family": "gamma",
+     "label": "Call charm wall",
+     "short": "Call charm wall",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 5.574999999999989,
+     "side": "ABOVE",
+     "from_spot_text": "5.57 above spot"
+    },
+    {
+     "id": "PDH",
+     "price": 274.87,
+     "family": "prior_day",
+     "label": "Prior day high",
+     "short": "PDH",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 5.444999999999993,
+     "from_spot_text": "5.44 above spot"
+    },
+    {
+     "id": "VWAP_P2",
+     "price": 273.83554213635693,
+     "family": "vwap",
+     "label": "VWAP_P2",
+     "short": "VWAP_P2",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 4.4105421363569235,
+     "from_spot_text": "4.41 above spot"
+    },
+    {
+     "id": "TODAY_VAH",
+     "price": 273.44,
+     "family": "value_area",
+     "label": "Value area high (est. from 1-min bars)",
+     "short": "VAH est",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 4.014999999999986,
+     "from_spot_text": "4.01 above spot"
+    },
+    {
+     "id": "ORB_HIGH",
+     "price": 272.48,
+     "family": "opening_range",
+     "label": "Opening range high",
+     "short": "ORH",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_opening_range",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 first 15m RTH",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 3.055000000000007,
+     "from_spot_text": "3.06 above spot"
+    },
+    {
+     "id": "VWAP_P1",
+     "price": 272.4286738877726,
+     "family": "vwap",
+     "label": "VWAP_P1",
+     "short": "VWAP_P1",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 3.0036738877726066,
+     "from_spot_text": "3.00 above spot"
+    },
+    {
+     "id": "TODAY_POC",
+     "price": 271.74,
+     "family": "value_area",
+     "label": "Point of control (est. from 1-min bars)",
+     "short": "POC est",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 2.3149999999999977,
+     "from_spot_text": "2.31 above spot"
+    },
+    {
+     "id": "VWAP",
+     "price": 271.02180563918836,
+     "family": "vwap",
+     "label": "VWAP",
+     "short": "VWAP",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 1.5968056391883465,
+     "from_spot_text": "1.60 above spot"
+    },
+    {
+     "id": "OVERNIGHT_HIGH",
+     "price": 270.8822,
+     "family": "overnight",
+     "label": "Overnight high",
+     "short": "ONH",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "overnight_window",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_overnight_levels",
+      "session_scope": "extended",
+      "semantic_scope": "overnight_window",
+      "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 1.4572000000000003,
+     "from_spot_text": "1.46 above spot"
+    },
+    {
+     "id": "ORB_MID",
+     "price": 270.1575,
+     "family": "opening_range",
+     "label": "Opening range mid",
+     "short": "ORM",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_opening_range",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 first 15m RTH",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 0.7325000000000159,
+     "from_spot_text": "0.73 above spot"
+    },
+    {
+     "id": "call_wall",
+     "price": 270.0,
+     "family": "gamma",
+     "label": "Call wall",
+     "short": "Call wall",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 0.5749999999999886,
+     "side": "ABOVE",
+     "from_spot_text": "0.57 above spot"
+    },
+    {
+     "id": "put_wall",
+     "price": 270.0,
+     "family": "gamma",
+     "label": "Put wall",
+     "short": "Put wall",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 0.5749999999999886,
+     "side": "ABOVE",
+     "from_spot_text": "0.57 above spot"
+    },
+    {
+     "id": "absolute_gamma_strike",
+     "price": 270.0,
+     "family": "gamma",
+     "label": "Abs \u0393",
+     "short": "Abs \u0393",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": 0.5749999999999886,
+     "side": "ABOVE",
+     "from_spot_text": "0.57 above spot"
+    },
+    {
+     "id": "TODAY_VAL",
+     "price": 269.83,
+     "family": "value_area",
+     "label": "Value area low (est. from 1-min bars)",
+     "short": "VAL est",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 0.4049999999999727,
+     "from_spot_text": "0.40 above spot"
+    },
+    {
+     "id": "VWAP_M1",
+     "price": 269.6149373906041,
+     "family": "vwap",
+     "label": "VWAP_M1",
+     "short": "VWAP_M1",
+     "side": "ABOVE",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": 0.18993739060408643,
+     "from_spot_text": "0.19 above spot"
+    },
+    {
+     "id": "VWAP_M2",
+     "price": 268.2080691420198,
+     "family": "vwap",
+     "label": "VWAP_M2",
+     "short": "VWAP_M2",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -1.2169308579802305,
+     "from_spot_text": "1.22 below spot"
+    },
+    {
+     "id": "ORB_LOW",
+     "price": 267.835,
+     "family": "opening_range",
+     "label": "Opening range low",
+     "short": "ORL",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "session_rth",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.compute_opening_range",
+      "session_scope": "RTH",
+      "semantic_scope": "session_rth",
+      "window": "2026-11-12 first 15m RTH",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -1.5900000000000318,
+     "from_spot_text": "1.59 below spot"
+    },
+    {
+     "id": "PD_VAH",
+     "price": 267.37,
+     "family": "prior_day",
+     "label": "Prior day VAH (est. from 1-min bars)",
+     "short": "pVAH est",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -2.055000000000007,
+     "from_spot_text": "2.06 below spot"
+    },
+    {
+     "id": "PD_POC",
+     "price": 266.54,
+     "family": "prior_day",
+     "label": "Prior day POC (est. from 1-min bars)",
+     "short": "pPOC est",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -2.884999999999991,
+     "from_spot_text": "2.88 below spot"
+    },
+    {
+     "id": "PDC",
+     "price": 266.17,
+     "family": "prior_day",
+     "label": "Prior day close",
+     "short": "PDC",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -3.2549999999999955,
+     "from_spot_text": "3.25 below spot"
+    },
+    {
+     "id": "PD_VAL",
+     "price": 265.77,
+     "family": "prior_day",
+     "label": "Prior day VAL (est. from 1-min bars)",
+     "short": "pVAL est",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "derived_certified",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -3.6550000000000296,
+     "from_spot_text": "3.66 below spot"
+    },
+    {
+     "id": "PDL",
+     "price": 265.62,
+     "family": "prior_day",
+     "label": "Prior day low",
+     "short": "PDL",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "prior_rth_session",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "session_scope": "RTH",
+      "semantic_scope": "prior_rth_session",
+      "window": "2026-11-11 RTH (most recent prior RTH session)",
+      "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -3.805000000000007,
+     "from_spot_text": "3.81 below spot"
+    },
+    {
+     "id": "OVERNIGHT_LOW",
+     "price": 263.16,
+     "family": "overnight",
+     "label": "Overnight low",
+     "short": "ONL",
+     "side": "BELOW",
+     "strength": null,
+     "evidence_tier": "price_fact",
+     "semantic_scope": "overnight_window",
+     "generation": 1,
+     "provenance": {
+      "producer": "liquidity_value_engine.get_overnight_levels",
+      "session_scope": "extended",
+      "semantic_scope": "overnight_window",
+      "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
+      "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497880.0,
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
+      "age_sec": 78.22364091873169,
+      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+     },
+     "distance": -6.264999999999986,
+     "from_spot_text": "6.26 below spot"
+    },
+    {
+     "id": "em_dn",
+     "price": 262.58192343304484,
+     "family": "expected_move",
+     "label": "\u22121\u03c3 move",
+     "short": "\u22121\u03c3 move",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "server.expected_move",
+      "carried": false
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -6.843076566955176,
+     "side": "BELOW",
+     "from_spot_text": "6.84 below spot"
+    },
+    {
+     "id": "max_pain",
+     "price": 260.0,
+     "family": "gamma",
+     "label": "Max pain",
+     "short": "Max pain",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -9.425000000000011,
+     "side": "BELOW",
+     "from_spot_text": "9.43 below spot"
+    },
+    {
+     "id": "put_charm_wall",
+     "price": 260.0,
+     "family": "gamma",
+     "label": "Put charm wall",
+     "short": "Put charm wall",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -9.425000000000011,
+     "side": "BELOW",
+     "from_spot_text": "9.43 below spot"
+    },
+    {
+     "id": "gsf",
+     "price": 259.3467510620916,
+     "family": "gamma",
+     "label": "GSF",
+     "short": "GSF",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -10.078248937908427,
+     "side": "BELOW",
+     "from_spot_text": "10.08 below spot"
+    },
+    {
+     "id": "key_delta_strike",
+     "price": 250.0,
+     "family": "gamma",
+     "label": "Key \u0394 strike",
+     "short": "Key \u0394 strike",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -19.42500000000001,
+     "side": "BELOW",
+     "from_spot_text": "19.43 below spot"
+    },
+    {
+     "id": "gamma_flip",
+     "price": 243.91350359265536,
+     "family": "gamma",
+     "label": "Gamma flip",
+     "short": "Gamma flip",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -25.51149640734465,
+     "side": "BELOW",
+     "from_spot_text": "25.51 below spot"
+    },
+    {
+     "id": "hvp",
+     "price": 240.0,
+     "family": "gamma",
+     "label": "Net put \u0393 peak",
+     "short": "Net put \u0393 peak",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     },
+     "not_live_text": null,
+     "distance": -29.42500000000001,
+     "side": "BELOW",
+     "from_spot_text": "29.43 below spot"
+    }
+   ],
+   "by_distance": [
+    "VWAP_M1",
+    "TODAY_VAL",
+    "call_wall",
+    "put_wall",
+    "absolute_gamma_strike",
+    "ORB_MID",
+    "VWAP_M2",
+    "OVERNIGHT_HIGH",
+    "ORB_LOW",
+    "VWAP",
+    "PD_VAH",
+    "TODAY_POC",
+    "PD_POC",
+    "VWAP_P1",
+    "ORB_HIGH",
+    "PDC",
+    "PD_VAL",
+    "PDL",
+    "TODAY_VAH",
+    "VWAP_P2",
+    "PDH",
+    "lvp",
+    "call_charm_wall",
+    "OVERNIGHT_LOW",
+    "em_up",
+    "em_dn",
+    "max_pain",
+    "put_charm_wall",
+    "gsf",
+    "key_delta_strike",
+    "gamma_flip",
+    "hvp"
+   ],
+   "zero_dte": [
+    {
+     "id": "call_wall",
+     "label": "Call wall",
+     "price": 270.0,
+     "carried": 270.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "put_wall",
+     "label": "Put wall",
+     "price": 270.0,
+     "carried": 270.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "gamma_flip",
+     "label": "Gamma flip",
+     "price": 258.4958123306377,
+     "carried": 243.91350359265536,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "absolute_gamma_strike",
+     "label": "Abs \u0393",
+     "price": 270.0,
+     "carried": 270.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "gsf",
+     "label": "GSF",
+     "price": 265.54717580558076,
+     "carried": 259.3467510620916,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "grc",
+     "label": "GRC",
+     "price": 290.917127344853,
+     "carried": null,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "hvp",
+     "label": "Net put \u0393 peak",
+     "price": 262.5,
+     "carried": 240.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "lvp",
+     "label": "Net call \u0393 peak",
+     "price": 270.0,
+     "carried": 275.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "key_delta_strike",
+     "label": "Key \u0394 strike",
+     "price": 260.0,
+     "carried": 250.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "call_charm_wall",
+     "label": "Call charm wall",
+     "price": 267.5,
+     "carried": 275.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    },
+    {
+     "id": "put_charm_wall",
+     "label": "Put charm wall",
+     "price": 265.0,
+     "carried": 260.0,
+     "staleness": {
+      "as_of_ts_utc": 1794497958.2236412,
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
+      "age_sec": -2.384185791015625e-07,
+      "reason": "carried from the terrain"
+     }
+    }
+   ],
+   "vwap_series": [
+    [
+     1794493800.0,
+     269.419,
+     269.419,
+     269.419,
+     269.419,
+     269.419
+    ],
+    [
+     1794493860.0,
+     269.32358636749217,
+     269.48693480437515,
+     269.1602379306092,
+     269.6502832412581,
+     268.99688949372626
+    ],
+    [
+     1794493920.0,
+     269.27731392664936,
+     269.46311568481985,
+     269.09151216847886,
+     269.64891744299035,
+     268.90571041030836
+    ],
+    [
+     1794493980.0,
+     269.20330017425897,
+     269.499059230157,
+     268.90754111836094,
+     269.794818286055,
+     268.61178206246296
+    ],
+    [
+     1794494040.0,
+     269.1585302137325,
+     269.4827993473537,
+     268.8342610801113,
+     269.80706848097486,
+     268.5099919464901
+    ],
+    [
+     1794494100.0,
+     269.1278330698309,
+     269.45946504410784,
+     268.79620109555395,
+     269.79109701838473,
+     268.46456912127707
+    ],
+    [
+     1794494160.0,
+     269.15528560272713,
+     269.4918731295329,
+     268.81869807592136,
+     269.8284606563386,
+     268.48211054911565
+    ],
+    [
+     1794494220.0,
+     269.2678022443144,
+     269.72930098523216,
+     268.80630350339663,
+     270.1907997261499,
+     268.3448047624789
+    ],
+    [
+     1794494280.0,
+     269.45102688846964,
+     270.12180121287975,
+     268.78025256405954,
+     270.79257553728985,
+     268.10947823964943
+    ],
+    [
+     1794494340.0,
+     269.5494896315196,
+     270.3155537567255,
+     268.7834255063137,
+     271.08161788193144,
+     268.0173613811077
+    ],
+    [
+     1794494400.0,
+     269.7662160948099,
+     270.7282697473108,
+     268.80416244230906,
+     271.69032339981163,
+     267.8421087898082
+    ],
+    [
+     1794494460.0,
+     269.9409023822506,
+     271.03285170025504,
+     268.8489530642462,
+     272.1248010182594,
+     267.7570037462418
+    ],
+    [
+     1794494520.0,
+     270.05211762130267,
+     271.2130244410018,
+     268.89121080160356,
+     272.3739312607009,
+     267.73030398190446
+    ],
+    [
+     1794494580.0,
+     270.1622882874463,
+     271.39287969488305,
+     268.93169688000955,
+     272.6234711023198,
+     267.7011054725728
+    ],
+    [
+     1794494640.0,
+     270.2486626358409,
+     271.5159239939113,
+     268.9814012777705,
+     272.7831853519817,
+     267.71413991970013
+    ],
+    [
+     1794494700.0,
+     270.30319023332726,
+     271.57920693879885,
+     269.02717352785567,
+     272.8552236442704,
+     267.75115682238413
+    ],
+    [
+     1794494760.0,
+     270.3550877040165,
+     271.6356054790357,
+     269.07456992899733,
+     272.91612325405487,
+     267.79405215397816
+    ],
+    [
+     1794494820.0,
+     270.3906312944418,
+     271.672443814635,
+     269.10881877424856,
+     272.9542563348283,
+     267.8270062540553
+    ],
+    [
+     1794494880.0,
+     270.41289945810905,
+     271.69201721604,
+     269.1337817001781,
+     272.97113497397106,
+     267.85466394224704
+    ],
+    [
+     1794494940.0,
+     270.4489179408432,
+     271.727282993957,
+     269.17055288772946,
+     273.0056480470708,
+     267.89218783461564
+    ],
+    [
+     1794495000.0,
+     270.4740723885464,
+     271.7504086549244,
+     269.1977361221684,
+     273.0267449213024,
+     267.9213998557904
+    ],
+    [
+     1794495060.0,
+     270.51615842145605,
+     271.8022292540923,
+     269.2300875888198,
+     273.0883000867285,
+     267.9440167561836
+    ],
+    [
+     1794495120.0,
+     270.5830742699429,
+     271.8994087197243,
+     269.26673982016155,
+     273.21574316950563,
+     267.9504053703802
+    ],
+    [
+     1794495180.0,
+     270.6550050281879,
+     272.00891447147285,
+     269.3010955849029,
+     273.3628239147578,
+     267.9471861416179
+    ],
+    [
+     1794495240.0,
+     270.7586865467784,
+     272.1720645903482,
+     269.34530850320857,
+     273.585442633918,
+     267.9319304596388
+    ],
+    [
+     1794495300.0,
+     270.86579960326713,
+     272.3429048515328,
+     269.38869435500146,
+     273.8200100997985,
+     267.9115891067358
+    ],
+    [
+     1794495360.0,
+     270.9360081353225,
+     272.4312423255686,
+     269.4407739450764,
+     273.9264765158147,
+     267.94553975483024
+    ],
+    [
+     1794495420.0,
+     270.9890113643588,
+     272.486474217828,
+     269.49154851088963,
+     273.98393707129713,
+     267.9940856574205
+    ],
+    [
+     1794495480.0,
+     271.0347078452911,
+     272.543900701865,
+     269.5255149887172,
+     274.05309355843895,
+     268.0163221321433
+    ],
+    [
+     1794495540.0,
+     271.0683941615127,
+     272.5850554286384,
+     269.551732894387,
+     274.1017166957641,
+     268.0350716272613
+    ],
+    [
+     1794495600.0,
+     271.1080338202392,
+     272.6299902091866,
+     269.5860774312918,
+     274.1519465981339,
+     268.0641210423445
+    ],
+    [
+     1794495660.0,
+     271.1263339600876,
+     272.64692870504643,
+     269.6057392151288,
+     274.1675234500053,
+     268.0851444701699
+    ],
+    [
+     1794495720.0,
+     271.1660010743564,
+     272.6608388037529,
+     269.67116334495995,
+     274.15567653314935,
+     268.1763256155635
+    ],
+    [
+     1794495780.0,
+     271.1740952578017,
+     272.6627124740479,
+     269.6854780415555,
+     274.1513296902941,
+     268.1968608253093
+    ],
+    [
+     1794495840.0,
+     271.19668490045353,
+     272.68029733439283,
+     269.71307246651423,
+     274.16390976833213,
+     268.22946003257493
+    ],
+    [
+     1794495900.0,
+     271.2174007863927,
+     272.70256304461617,
+     269.73223852816926,
+     274.1877253028396,
+     268.2470762699458
+    ],
+    [
+     1794495960.0,
+     271.2319952205274,
+     272.71389629257567,
+     269.7500941484791,
+     274.1957973646239,
+     268.26819307643086
+    ],
+    [
+     1794496020.0,
+     271.2426605001349,
+     272.71973703936175,
+     269.76558396090803,
+     274.19681357858855,
+     268.28850742168123
+    ],
+    [
+     1794496080.0,
+     271.2486415507177,
+     272.7205662874499,
+     269.7767168139855,
+     274.1924910241822,
+     268.30479207725324
+    ],
+    [
+     1794496140.0,
+     271.2517829432724,
+     272.71576504118434,
+     269.7878008453605,
+     274.1797471390962,
+     268.3238187474486
+    ],
+    [
+     1794496200.0,
+     271.2483054886829,
+     272.69718462916614,
+     269.79942634819963,
+     274.1460637696494,
+     268.3505472077164
+    ],
+    [
+     1794496260.0,
+     271.2527482247279,
+     272.68901071053773,
+     269.81648573891806,
+     274.1252731963476,
+     268.38022325310817
+    ],
+    [
+     1794496320.0,
+     271.2567978785091,
+     272.6830763185953,
+     269.83051943842287,
+     274.1093547586815,
+     268.40424099833666
+    ],
+    [
+     1794496380.0,
+     271.2605054557504,
+     272.6781279023165,
+     269.8428830091843,
+     274.09575034888263,
+     268.4252605626181
+    ],
+    [
+     1794496440.0,
+     271.26666230861366,
+     272.6767606331792,
+     269.85656398404814,
+     274.08685895774477,
+     268.44646565948256
+    ],
+    [
+     1794496500.0,
+     271.268983183855,
+     272.66975309843974,
+     269.8682132692703,
+     274.07052301302446,
+     268.4674433546856
+    ],
+    [
+     1794496560.0,
+     271.2695541637012,
+     272.6646959885164,
+     269.8744123388859,
+     274.0598378133316,
+     268.4792705140707
+    ],
+    [
+     1794496620.0,
+     271.2619756151658,
+     272.6467093969902,
+     269.8772418333414,
+     274.0314431788147,
+     268.4925080515169
+    ],
+    [
+     1794496680.0,
+     271.24498449288416,
+     272.6249606166647,
+     269.86500836910363,
+     274.0049367404452,
+     268.4850322453231
+    ],
+    [
+     1794496740.0,
+     271.2357750169004,
+     272.6157349808161,
+     269.85581505298467,
+     273.9956949447318,
+     268.475855089069
+    ],
+    [
+     1794496800.0,
+     271.2189282987638,
+     272.6025089544556,
+     269.835347643072,
+     273.98608961014736,
+     268.4517669873802
+    ],
+    [
+     1794496860.0,
+     271.20261428066624,
+     272.58466342710904,
+     269.82056513422344,
+     273.96671257355183,
+     268.43851598778065
+    ],
+    [
+     1794496920.0,
+     271.1904093197846,
+     272.57229128227704,
+     269.8085273572921,
+     273.95417324476944,
+     268.4266453947997
+    ],
+    [
+     1794496980.0,
+     271.1677541145613,
+     272.5587692081557,
+     269.77673902096694,
+     273.9497843017501,
+     268.3857239273725
+    ],
+    [
+     1794497040.0,
+     271.13910901352307,
+     272.54031252895356,
+     269.7379054980926,
+     273.94151604438406,
+     268.3367019826621
+    ],
+    [
+     1794497100.0,
+     271.129706193497,
+     272.53282222202324,
+     269.72659016497073,
+     273.93593825054944,
+     268.32347413644453
+    ],
+    [
+     1794497160.0,
+     271.12282666282107,
+     272.52654202899663,
+     269.7191112966455,
+     273.9302573951722,
+     268.31539593046995
+    ],
+    [
+     1794497220.0,
+     271.1122214009641,
+     272.51413916713153,
+     269.7103036347966,
+     273.91605693329905,
+     268.3083858686291
+    ],
+    [
+     1794497280.0,
+     271.10667045790876,
+     272.5071413073041,
+     269.70619960851343,
+     273.90761215669943,
+     268.3057287591181
+    ],
+    [
+     1794497340.0,
+     271.10143134668044,
+     272.5009085618246,
+     269.7019541315363,
+     273.9003857769688,
+     268.3024769163921
+    ],
+    [
+     1794497400.0,
+     271.0947680813976,
+     272.4941830269861,
+     269.6953531358091,
+     273.8935979725746,
+     268.2959381902206
+    ],
+    [
+     1794497460.0,
+     271.0851238597092,
+     272.4854494051188,
+     269.6847983142996,
+     273.8857749505284,
+     268.28447276889
+    ],
+    [
+     1794497520.0,
+     271.07443256574464,
+     272.47746931737794,
+     269.67139581411135,
+     273.8805060690113,
+     268.268359062478
+    ],
+    [
+     1794497580.0,
+     271.06577219209316,
+     272.4708416622973,
+     269.66070272188904,
+     273.87591113250136,
+     268.25563325168497
+    ],
+    [
+     1794497640.0,
+     271.0602302793543,
+     272.4660157932096,
+     269.654444765499,
+     273.87180130706486,
+     268.24865925164374
+    ],
+    [
+     1794497700.0,
+     271.0527887824163,
+     272.45863067365923,
+     269.6469468911734,
+     273.86447256490214,
+     268.2411049999305
+    ],
+    [
+     1794497760.0,
+     271.0469306202984,
+     272.4522533389265,
+     269.6416079016703,
+     273.8575760575546,
+     268.2362851830422
+    ],
+    [
+     1794497820.0,
+     271.0306856960924,
+     272.4364072294283,
+     269.6249641627565,
+     273.8421287627642,
+     268.2192426294206
+    ],
+    [
+     1794497880.0,
+     271.02180563918836,
+     272.4286738877726,
+     269.6149373906041,
+     273.83554213635693,
+     268.2080691420198
+    ]
+   ],
+   "volume_profile": {
+    "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
+    "bars": 69,
+    "bars_without_volume": 0,
+    "tick_size": 0.01,
+    "bins": [
+     [
+      267.83,
+      1094.2525498655461,
+      false
+     ],
+     [
+      267.84,
+      1094.2525498655461,
+      false
+     ],
+     [
+      267.85,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.86,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.87,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.88,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.89,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.9,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.91,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.92,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.93,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.94,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.95,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.96,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.97,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.98,
+      5544.166373858365,
+      false
+     ],
+     [
+      267.99,
+      5544.166373858365,
+      false
+     ],
+     [
+      268.0,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.01,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.02,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.03,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.04,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.05,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.06,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.07,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.08,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.09,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.1,
+      7104.49973307947,
+      false
+     ],
+     [
+      268.11,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.12,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.13,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.14,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.15,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.16,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.17,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.18,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.19,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.2,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.21,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.22,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.23,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.24,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.25,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.26,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.27,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.28,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.29,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.3,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.31,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.32,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.33,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.34,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.35,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.36,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.37,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.38,
+      8352.209532412804,
+      false
+     ],
+     [
+      268.39,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.4,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.41,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.42,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.43,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.44,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.45,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.46,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.47,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.48,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.49,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.5,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.51,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.52,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.53,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.54,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.55,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.56,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.57,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.58,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.59,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.6,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.61,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.62,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.63,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.64,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.65,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.66,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.67,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.68,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.69,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.7,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.71,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.72,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.73,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.74,
+      10053.73288855234,
+      false
+     ],
+     [
+      268.75,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.76,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.77,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.78,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.79,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.8,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.81,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.82,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.83,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.84,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.85,
+      11684.732007645674,
+      false
+     ],
+     [
+      268.86,
+      12820.673950114808,
+      false
+     ],
+     [
+      268.87,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.88,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.89,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.9,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.91,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.92,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.93,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.94,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.95,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.96,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.97,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.98,
+      14103.840905938338,
+      false
+     ],
+     [
+      268.99,
+      14103.840905938338,
+      false
+     ],
+     [
+      269.0,
+      14103.840905938338,
+      false
+     ],
+     [
+      269.01,
+      14103.840905938338,
+      false
+     ],
+     [
+      269.02,
+      13009.588356072793,
+      false
+     ],
+     [
+      269.03,
+      13009.588356072793,
+      false
+     ],
+     [
+      269.04,
+      13009.588356072793,
+      false
+     ],
+     [
+      269.05,
+      13009.588356072793,
+      false
+     ],
+     [
+      269.06,
+      14128.613997098433,
+      false
+     ],
+     [
+      269.07,
+      14128.613997098433,
+      false
+     ],
+     [
+      269.08,
+      14128.613997098433,
+      false
+     ],
+     [
+      269.09,
+      14128.613997098433,
+      false
+     ],
+     [
+      269.1,
+      14128.613997098433,
+      false
+     ],
+     [
+      269.11,
+      14128.613997098433,
+      false
+     ],
+     [
+      269.12,
+      14128.613997098433,
+      false
+     ],
+     [
+      269.13,
+      15299.747330431766,
+      false
+     ],
+     [
+      269.14,
+      16253.939282064419,
+      false
+     ],
+     [
+      269.15,
+      16253.939282064419,
+      false
+     ],
+     [
+      269.16,
+      15006.229482731085,
+      false
+     ],
+     [
+      269.17,
+      13939.512724117447,
+      false
+     ],
+     [
+      269.18,
+      13939.512724117447,
+      false
+     ],
+     [
+      269.19,
+      13939.512724117447,
+      false
+     ],
+     [
+      269.2,
+      13939.512724117447,
+      false
+     ],
+     [
+      269.21,
+      13939.512724117447,
+      false
+     ],
+     [
+      269.22,
+      13939.512724117447,
+      false
+     ],
+     [
+      269.23,
+      13939.512724117447,
+      false
+     ],
+     [
+      269.24,
+      13939.512724117447,
+      false
+     ],
+     [
+      269.25,
+      14662.303421791865,
+      false
+     ],
+     [
+      269.26,
+      14662.303421791865,
+      false
+     ],
+     [
+      269.27,
+      14662.303421791865,
+      false
+     ],
+     [
+      269.28,
+      14662.303421791865,
+      false
+     ],
+     [
+      269.29,
+      14662.303421791865,
+      false
+     ],
+     [
+      269.3,
+      14662.303421791865,
+      false
+     ],
+     [
+      269.31,
+      14662.303421791865,
+      false
+     ],
+     [
+      269.32,
+      17280.45676493893,
+      false
+     ],
+     [
+      269.33,
+      17280.45676493893,
+      false
+     ],
+     [
+      269.34,
+      19408.123431605596,
+      false
+     ],
+     [
+      269.35,
+      19408.123431605596,
+      false
+     ],
+     [
+      269.36,
+      20348.008268678765,
+      false
+     ],
+     [
+      269.37,
+      20348.008268678765,
+      false
+     ],
+     [
+      269.38,
+      20348.008268678765,
+      false
+     ],
+     [
+      269.39,
+      21500.841561282934,
+      false
+     ],
+     [
+      269.4,
+      21500.841561282934,
+      false
+     ],
+     [
+      269.41,
+      23950.008227949602,
+      false
+     ],
+     [
+      269.42,
+      23950.008227949602,
+      false
+     ],
+     [
+      269.43,
+      23950.008227949602,
+      false
+     ],
+     [
+      269.44,
+      23950.008227949602,
+      false
+     ],
+     [
+      269.45,
+      22830.98258692396,
+      false
+     ],
+     [
+      269.46,
+      23984.80757897274,
+      false
+     ],
+     [
+      269.47,
+      23984.80757897274,
+      false
+     ],
+     [
+      269.48,
+      23984.80757897274,
+      false
+     ],
+     [
+      269.49,
+      23984.80757897274,
+      false
+     ],
+     [
+      269.5,
+      22353.808459879405,
+      false
+     ],
+     [
+      269.51,
+      22353.808459879405,
+      false
+     ],
+     [
+      269.52,
+      22353.808459879405,
+      false
+     ],
+     [
+      269.53,
+      22353.808459879405,
+      false
+     ],
+     [
+      269.54,
+      22353.808459879405,
+      false
+     ],
+     [
+      269.55,
+      23672.08970987941,
+      false
+     ],
+     [
+      269.56,
+      24728.640178853766,
+      false
+     ],
+     [
+      269.57,
+      24728.640178853766,
+      false
+     ],
+     [
+      269.58,
+      21429.840178853763,
+      false
+     ],
+     [
+      269.59,
+      21429.840178853763,
+      false
+     ],
+     [
+      269.6,
+      21429.840178853763,
+      false
+     ],
+     [
+      269.61,
+      21429.840178853763,
+      false
+     ],
+     [
+      269.62,
+      22567.389164053762,
+      false
+     ],
+     [
+      269.63,
+      21613.19721242111,
+      false
+     ],
+     [
+      269.64,
+      21613.19721242111,
+      false
+     ],
+     [
+      269.65,
+      21613.19721242111,
+      false
+     ],
+     [
+      269.66,
+      22777.228414768935,
+      false
+     ],
+     [
+      269.67,
+      24004.391735457695,
+      false
+     ],
+     [
+      269.68,
+      21580.07768164374,
+      false
+     ],
+     [
+      269.69,
+      23223.99993823948,
+      false
+     ],
+     [
+      269.7,
+      23223.99993823948,
+      false
+     ],
+     [
+      269.71,
+      23223.99993823948,
+      false
+     ],
+     [
+      269.72,
+      23223.99993823948,
+      false
+     ],
+     [
+      269.73,
+      23223.99993823948,
+      false
+     ],
+     [
+      269.74,
+      23223.99993823948,
+      false
+     ],
+     [
+      269.75,
+      23223.99993823948,
+      false
+     ],
+     [
+      269.76,
+      23223.99993823948,
+      false
+     ],
+     [
+      269.77,
+      22284.115101166313,
+      false
+     ],
+     [
+      269.78,
+      22284.115101166313,
+      false
+     ],
+     [
+      269.79,
+      22284.115101166313,
+      false
+     ],
+     [
+      269.8,
+      23247.00966301997,
+      false
+     ],
+     [
+      269.81,
+      23247.00966301997,
+      false
+     ],
+     [
+      269.82,
+      23247.00966301997,
+      false
+     ],
+     [
+      269.83,
+      19238.08005170624,
+      true
+     ],
+     [
+      269.84,
+      19238.08005170624,
+      true
+     ],
+     [
+      269.85,
+      19238.08005170624,
+      true
+     ],
+     [
+      269.86,
+      19238.08005170624,
+      true
+     ],
+     [
+      269.87,
+      17396.083864133296,
+      true
+     ],
+     [
+      269.88,
+      17396.083864133296,
+      true
+     ],
+     [
+      269.89,
+      17758.066077720025,
+      true
+     ],
+     [
+      269.9,
+      17758.066077720025,
+      true
+     ],
+     [
+      269.91,
+      17758.066077720025,
+      true
+     ],
+     [
+      269.92,
+      17758.066077720025,
+      true
+     ],
+     [
+      269.93,
+      17758.066077720025,
+      true
+     ],
+     [
+      269.94,
+      17758.066077720025,
+      true
+     ],
+     [
+      269.95,
+      16701.515608745667,
+      true
+     ],
+     [
+      269.96,
+      16701.515608745667,
+      true
+     ],
+     [
+      269.97,
+      16701.515608745667,
+      true
+     ],
+     [
+      269.98,
+      16701.515608745667,
+      true
+     ],
+     [
+      269.99,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.0,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.01,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.02,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.03,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.04,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.05,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.06,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.07,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.08,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.09,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.1,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.11,
+      15141.182249524561,
+      true
+     ],
+     [
+      270.12,
+      12194.207700096737,
+      true
+     ],
+     [
+      270.13,
+      12194.207700096737,
+      true
+     ],
+     [
+      270.14,
+      12194.207700096737,
+      true
+     ],
+     [
+      270.15,
+      12194.207700096737,
+      true
+     ],
+     [
+      270.16,
+      10550.285443500992,
+      true
+     ],
+     [
+      270.17,
+      10550.285443500992,
+      true
+     ],
+     [
+      270.18,
+      10550.285443500992,
+      true
+     ],
+     [
+      270.19,
+      10550.285443500992,
+      true
+     ],
+     [
+      270.2,
+      10550.285443500992,
+      true
+     ],
+     [
+      270.21,
+      9587.390881647334,
+      true
+     ],
+     [
+      270.22,
+      9587.390881647334,
+      true
+     ],
+     [
+      270.23,
+      9587.390881647334,
+      true
+     ],
+     [
+      270.24,
+      9587.390881647334,
+      true
+     ],
+     [
+      270.25,
+      9587.390881647334,
+      true
+     ],
+     [
+      270.26,
+      9587.390881647334,
+      true
+     ],
+     [
+      270.27,
+      8449.841896447333,
+      true
+     ],
+     [
+      270.28,
+      8449.841896447333,
+      true
+     ],
+     [
+      270.29,
+      8449.841896447333,
+      true
+     ],
+     [
+      270.3,
+      8449.841896447333,
+      true
+     ],
+     [
+      270.31,
+      8449.841896447333,
+      true
+     ],
+     [
+      270.32,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.33,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.34,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.35,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.36,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.37,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.38,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.39,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.4,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.41,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.42,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.43,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.44,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.45,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.46,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.47,
+      7391.451497947332,
+      true
+     ],
+     [
+      270.48,
+      11157.104831280667,
+      true
+     ],
+     [
+      270.49,
+      11157.104831280667,
+      true
+     ],
+     [
+      270.5,
+      11157.104831280667,
+      true
+     ],
+     [
+      270.51,
+      11157.104831280667,
+      true
+     ],
+     [
+      270.52,
+      11157.104831280667,
+      true
+     ],
+     [
+      270.53,
+      11157.104831280667,
+      true
+     ],
+     [
+      270.54,
+      9404.801342038985,
+      true
+     ],
+     [
+      270.55,
+      9404.801342038985,
+      true
+     ],
+     [
+      270.56,
+      9404.801342038985,
+      true
+     ],
+     [
+      270.57,
+      9404.801342038985,
+      true
+     ],
+     [
+      270.58,
+      9404.801342038985,
+      true
+     ],
+     [
+      270.59,
+      9404.801342038985,
+      true
+     ],
+     [
+      270.6,
+      9404.801342038985,
+      true
+     ],
+     [
+      270.61,
+      9404.801342038985,
+      true
+     ],
+     [
+      270.62,
+      7041.696078881089,
+      true
+     ],
+     [
+      270.63,
+      7041.696078881089,
+      true
+     ],
+     [
+      270.64,
+      7041.696078881089,
+      true
+     ],
+     [
+      270.65,
+      7041.696078881089,
+      true
+     ],
+     [
+      270.66,
+      7041.696078881089,
+      true
+     ],
+     [
+      270.67,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.68,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.69,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.7,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.71,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.72,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.73,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.74,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.75,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.76,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.77,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.78,
+      5396.546909470833,
+      true
+     ],
+     [
+      270.79,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.8,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.81,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.82,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.83,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.84,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.85,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.86,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.87,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.88,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.89,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.9,
+      7786.131046599865,
+      true
+     ],
+     [
+      270.91,
+      11012.158447078125,
+      true
+     ],
+     [
+      270.92,
+      15232.011126540587,
+      true
+     ],
+     [
+      270.93,
+      15232.011126540587,
+      true
+     ],
+     [
+      270.94,
+      15232.011126540587,
+      true
+     ],
+     [
+      270.95,
+      15232.011126540587,
+      true
+     ],
+     [
+      270.96,
+      15232.011126540587,
+      true
+     ],
+     [
+      270.97,
+      15232.011126540587,
+      true
+     ],
+     [
+      270.98,
+      15232.011126540587,
+      true
+     ],
+     [
+      270.99,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.0,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.01,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.02,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.03,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.04,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.05,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.06,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.07,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.08,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.09,
+      15232.011126540587,
+      true
+     ],
+     [
+      271.1,
+      16498.245694441823,
+      true
+     ],
+     [
+      271.11,
+      16498.245694441823,
+      true
+     ],
+     [
+      271.12,
+      16498.245694441823,
+      true
+     ],
+     [
+      271.13,
+      16498.245694441823,
+      true
+     ],
+     [
+      271.14,
+      16498.245694441823,
+      true
+     ],
+     [
+      271.15,
+      16498.245694441823,
+      true
+     ],
+     [
+      271.16,
+      17878.23855990849,
+      true
+     ],
+     [
+      271.17,
+      17878.23855990849,
+      true
+     ],
+     [
+      271.18,
+      17878.23855990849,
+      true
+     ],
+     [
+      271.19,
+      17878.23855990849,
+      true
+     ],
+     [
+      271.2,
+      17878.23855990849,
+      true
+     ],
+     [
+      271.21,
+      17878.23855990849,
+      true
+     ],
+     [
+      271.22,
+      17878.23855990849,
+      true
+     ],
+     [
+      271.23,
+      14112.585226575156,
+      true
+     ],
+     [
+      271.24,
+      14112.585226575156,
+      true
+     ],
+     [
+      271.25,
+      14112.585226575156,
+      true
+     ],
+     [
+      271.26,
+      14112.585226575156,
+      true
+     ],
+     [
+      271.27,
+      14112.585226575156,
+      true
+     ],
+     [
+      271.28,
+      14112.585226575156,
+      true
+     ],
+     [
+      271.29,
+      14112.585226575156,
+      true
+     ],
+     [
+      271.3,
+      15776.1764264323,
+      true
+     ],
+     [
+      271.31,
+      17473.016652322924,
+      true
+     ],
+     [
+      271.32,
+      17473.016652322924,
+      true
+     ],
+     [
+      271.33,
+      20272.434169182572,
+      true
+     ],
+     [
+      271.34,
+      20886.995633378407,
+      true
+     ],
+     [
+      271.35,
+      20886.995633378407,
+      true
+     ],
+     [
+      271.36,
+      22392.163874519712,
+      true
+     ],
+     [
+      271.37,
+      19166.13647404145,
+      true
+     ],
+     [
+      271.38,
+      19166.13647404145,
+      true
+     ],
+     [
+      271.39,
+      21520.501858656837,
+      true
+     ],
+     [
+      271.4,
+      21520.501858656837,
+      true
+     ],
+     [
+      271.41,
+      19130.917721527803,
+      true
+     ],
+     [
+      271.42,
+      22348.00047125508,
+      true
+     ],
+     [
+      271.43,
+      25659.508581229762,
+      true
+     ],
+     [
+      271.44,
+      25659.508581229762,
+      true
+     ],
+     [
+      271.45,
+      25659.508581229762,
+      true
+     ],
+     [
+      271.46,
+      25659.508581229762,
+      true
+     ],
+     [
+      271.47,
+      25659.508581229762,
+      true
+     ],
+     [
+      271.48,
+      27692.594003729762,
+      true
+     ],
+     [
+      271.49,
+      27692.594003729762,
+      true
+     ],
+     [
+      271.5,
+      27692.594003729762,
+      true
+     ],
+     [
+      271.51,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.52,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.53,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.54,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.55,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.56,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.57,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.58,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.59,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.6,
+      29983.741731229762,
+      true
+     ],
+     [
+      271.61,
+      28603.748865763097,
+      true
+     ],
+     [
+      271.62,
+      28603.748865763097,
+      true
+     ],
+     [
+      271.63,
+      28603.748865763097,
+      true
+     ],
+     [
+      271.64,
+      29918.33009909643,
+      true
+     ],
+     [
+      271.65,
+      29918.33009909643,
+      true
+     ],
+     [
+      271.66,
+      29918.33009909643,
+      true
+     ],
+     [
+      271.67,
+      29918.33009909643,
+      true
+     ],
+     [
+      271.68,
+      30967.88087297574,
+      true
+     ],
+     [
+      271.69,
+      33451.89540039365,
+      true
+     ],
+     [
+      271.7,
+      39347.216229667305,
+      true
+     ],
+     [
+      271.71,
+      39347.216229667305,
+      true
+     ],
+     [
+      271.72,
+      39347.216229667305,
+      true
+     ],
+     [
+      271.73,
+      39347.216229667305,
+      true
+     ],
+     [
+      271.74,
+      42690.925932278406,
+      true
+     ],
+     [
+      271.75,
+      39473.843182551136,
+      true
+     ],
+     [
+      271.76,
+      37228.3881422178,
+      true
+     ],
+     [
+      271.77,
+      37228.3881422178,
+      true
+     ],
+     [
+      271.78,
+      37228.3881422178,
+      true
+     ],
+     [
+      271.79,
+      37228.3881422178,
+      true
+     ],
+     [
+      271.8,
+      37228.3881422178,
+      true
+     ],
+     [
+      271.81,
+      37228.3881422178,
+      true
+     ],
+     [
+      271.82,
+      35786.53166444003,
+      true
+     ],
+     [
+      271.83,
+      35786.53166444003,
+      true
+     ],
+     [
+      271.84,
+      35786.53166444003,
+      true
+     ],
+     [
+      271.85,
+      35786.53166444003,
+      true
+     ],
+     [
+      271.86,
+      34122.94046458288,
+      true
+     ],
+     [
+      271.87,
+      34122.94046458288,
+      true
+     ],
+     [
+      271.88,
+      34122.94046458288,
+      true
+     ],
+     [
+      271.89,
+      34122.94046458288,
+      true
+     ],
+     [
+      271.9,
+      32932.62024103493,
+      true
+     ],
+     [
+      271.91,
+      27020.872561018303,
+      true
+     ],
+     [
+      271.92,
+      27020.872561018303,
+      true
+     ],
+     [
+      271.93,
+      27020.872561018303,
+      true
+     ],
+     [
+      271.94,
+      27020.872561018303,
+      true
+     ],
+     [
+      271.95,
+      27226.728063627674,
+      true
+     ],
+     [
+      271.96,
+      27226.728063627674,
+      true
+     ],
+     [
+      271.97,
+      27226.728063627674,
+      true
+     ],
+     [
+      271.98,
+      30673.289576000225,
+      true
+     ],
+     [
+      271.99,
+      30673.289576000225,
+      true
+     ],
+     [
+      272.0,
+      30673.289576000225,
+      true
+     ],
+     [
+      272.01,
+      30673.289576000225,
+      true
+     ],
+     [
+      272.02,
+      30673.289576000225,
+      true
+     ],
+     [
+      272.03,
+      27895.29337431554,
+      true
+     ],
+     [
+      272.04,
+      27895.29337431554,
+      true
+     ],
+     [
+      272.05,
+      27895.29337431554,
+      true
+     ],
+     [
+      272.06,
+      27895.29337431554,
+      true
+     ],
+     [
+      272.07,
+      27895.29337431554,
+      true
+     ],
+     [
+      272.08,
+      27895.29337431554,
+      true
+     ],
+     [
+      272.09,
+      27895.29337431554,
+      true
+     ],
+     [
+      272.1,
+      27895.29337431554,
+      true
+     ],
+     [
+      272.11,
+      28813.77602420443,
+      true
+     ],
+     [
+      272.12,
+      28813.77602420443,
+      true
+     ],
+     [
+      272.13,
+      28813.77602420443,
+      true
+     ],
+     [
+      272.14,
+      31631.132689726823,
+      true
+     ],
+     [
+      272.15,
+      31631.132689726823,
+      true
+     ],
+     [
+      272.16,
+      31631.132689726823,
+      true
+     ],
+     [
+      272.17,
+      31631.132689726823,
+      true
+     ],
+     [
+      272.18,
+      30316.551456393485,
+      true
+     ],
+     [
+      272.19,
+      30316.551456393485,
+      true
+     ],
+     [
+      272.2,
+      28283.466033893485,
+      true
+     ],
+     [
+      272.21,
+      28283.466033893485,
+      true
+     ],
+     [
+      272.22,
+      24971.957923918802,
+      true
+     ],
+     [
+      272.23,
+      24971.957923918802,
+      true
+     ],
+     [
+      272.24,
+      24971.957923918802,
+      true
+     ],
+     [
+      272.25,
+      24971.957923918802,
+      true
+     ],
+     [
+      272.26,
+      23922.407150039493,
+      true
+     ],
+     [
+      272.27,
+      23922.407150039493,
+      true
+     ],
+     [
+      272.28,
+      19073.529206287076,
+      true
+     ],
+     [
+      272.29,
+      19073.529206287076,
+      true
+     ],
+     [
+      272.3,
+      22394.268336721856,
+      true
+     ],
+     [
+      272.31,
+      22394.268336721856,
+      true
+     ],
+     [
+      272.32,
+      22394.268336721856,
+      true
+     ],
+     [
+      272.33,
+      20541.439897261538,
+      true
+     ],
+     [
+      272.34,
+      20541.439897261538,
+      true
+     ],
+     [
+      272.35,
+      18638.74416876154,
+      true
+     ],
+     [
+      272.36,
+      16154.729641343629,
+      true
+     ],
+     [
+      272.37,
+      17901.884603876966,
+      true
+     ],
+     [
+      272.38,
+      17901.884603876966,
+      true
+     ],
+     [
+      272.39,
+      17901.884603876966,
+      true
+     ],
+     [
+      272.4,
+      17901.884603876966,
+      true
+     ],
+     [
+      272.41,
+      17901.884603876966,
+      true
+     ],
+     [
+      272.42,
+      17901.884603876966,
+      true
+     ],
+     [
+      272.43,
+      19305.037560206863,
+      true
+     ],
+     [
+      272.44,
+      19305.037560206863,
+      true
+     ],
+     [
+      272.45,
+      15262.545170393527,
+      true
+     ],
+     [
+      272.46,
+      16887.532015923647,
+      true
+     ],
+     [
+      272.47,
+      16887.532015923647,
+      true
+     ],
+     [
+      272.48,
+      16887.532015923647,
+      true
+     ],
+     [
+      272.49,
+      13440.970503551098,
+      true
+     ],
+     [
+      272.5,
+      15507.435239866887,
+      true
+     ],
+     [
+      272.51,
+      15507.435239866887,
+      true
+     ],
+     [
+      272.52,
+      17195.592102611987,
+      true
+     ],
+     [
+      272.53,
+      17195.592102611987,
+      true
+     ],
+     [
+      272.54,
+      17195.592102611987,
+      true
+     ],
+     [
+      272.55,
+      17195.592102611987,
+      true
+     ],
+     [
+      272.56,
+      17195.592102611987,
+      true
+     ],
+     [
+      272.57,
+      21177.12322212481,
+      true
+     ],
+     [
+      272.58,
+      21177.12322212481,
+      true
+     ],
+     [
+      272.59,
+      21177.12322212481,
+      true
+     ],
+     [
+      272.6,
+      21177.12322212481,
+      true
+     ],
+     [
+      272.61,
+      21177.12322212481,
+      true
+     ],
+     [
+      272.62,
+      21177.12322212481,
+      true
+     ],
+     [
+      272.63,
+      21177.12322212481,
+      true
+     ],
+     [
+      272.64,
+      21177.12322212481,
+      true
+     ],
+     [
+      272.65,
+      23306.8406466146,
+      true
+     ],
+     [
+      272.66,
+      23306.8406466146,
+      true
+     ],
+     [
+      272.67,
+      21697.743353302914,
+      true
+     ],
+     [
+      272.68,
+      21697.743353302914,
+      true
+     ],
+     [
+      272.69,
+      21697.743353302914,
+      true
+     ],
+     [
+      272.7,
+      21697.743353302914,
+      true
+     ],
+     [
+      272.71,
+      21697.743353302914,
+      true
+     ],
+     [
+      272.72,
+      21697.743353302914,
+      true
+     ],
+     [
+      272.73,
+      25272.180060352912,
+      true
+     ],
+     [
+      272.74,
+      25272.180060352912,
+      true
+     ],
+     [
+      272.75,
+      25272.180060352912,
+      true
+     ],
+     [
+      272.76,
+      21951.44092991813,
+      true
+     ],
+     [
+      272.77,
+      21951.44092991813,
+      true
+     ],
+     [
+      272.78,
+      21951.44092991813,
+      true
+     ],
+     [
+      272.79,
+      21951.44092991813,
+      true
+     ],
+     [
+      272.8,
+      21951.44092991813,
+      true
+     ],
+     [
+      272.81,
+      19134.084264395744,
+      true
+     ],
+     [
+      272.82,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.83,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.84,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.85,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.86,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.87,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.88,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.89,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.9,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.91,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.92,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.93,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.94,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.95,
+      17386.929301862412,
+      true
+     ],
+     [
+      272.96,
+      13405.39818234959,
+      true
+     ],
+     [
+      272.97,
+      13405.39818234959,
+      true
+     ],
+     [
+      272.98,
+      13405.39818234959,
+      true
+     ],
+     [
+      272.99,
+      13405.39818234959,
+      true
+     ],
+     [
+      273.0,
+      13405.39818234959,
+      true
+     ],
+     [
+      273.01,
+      12486.915532460702,
+      true
+     ],
+     [
+      273.02,
+      12486.915532460702,
+      true
+     ],
+     [
+      273.03,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.04,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.05,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.06,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.07,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.08,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.09,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.1,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.11,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.12,
+      10798.758669715604,
+      true
+     ],
+     [
+      273.13,
+      15326.649393048936,
+      true
+     ],
+     [
+      273.14,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.15,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.16,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.17,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.18,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.19,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.2,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.21,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.22,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.23,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.24,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.25,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.26,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.27,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.28,
+      13196.93196855914,
+      true
+     ],
+     [
+      273.29,
+      11571.94512302902,
+      true
+     ],
+     [
+      273.3,
+      11571.94512302902,
+      true
+     ],
+     [
+      273.31,
+      11571.94512302902,
+      true
+     ],
+     [
+      273.32,
+      11571.94512302902,
+      true
+     ],
+     [
+      273.33,
+      7997.508415979019,
+      true
+     ],
+     [
+      273.34,
+      7997.508415979019,
+      true
+     ],
+     [
+      273.35,
+      7997.508415979019,
+      true
+     ],
+     [
+      273.36,
+      7997.508415979019,
+      true
+     ],
+     [
+      273.37,
+      7997.508415979019,
+      true
+     ],
+     [
+      273.38,
+      7997.508415979019,
+      true
+     ],
+     [
+      273.39,
+      7997.508415979019,
+      true
+     ],
+     [
+      273.4,
+      6594.355459649122,
+      true
+     ],
+     [
+      273.41,
+      6594.355459649122,
+      true
+     ],
+     [
+      273.42,
+      6594.355459649122,
+      true
+     ],
+     [
+      273.43,
+      6594.355459649122,
+      true
+     ],
+     [
+      273.44,
+      6594.355459649122,
+      true
+     ],
+     [
+      273.45,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.46,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.47,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.48,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.49,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.5,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.51,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.52,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.53,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.54,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.55,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.56,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.57,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.58,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.59,
+      4527.890723333333,
+      false
+     ],
+     [
+      273.6,
+      4527.890723333333,
+      false
+     ]
+    ],
+    "max_volume": 42690.925932278406,
+    "poc": 271.74,
+    "vah": 273.44,
+    "val": 269.83
+   },
+   "tf": "1",
+   "families_absent": [],
+   "degraded": []
+  },
   "5": {
    "ticker": "AMZN",
    "schema_version": 1,
@@ -29767,662 +34214,664 @@
   }
  },
  "desk": {
-  "5": {
-   "ticker": "AMZN",
-   "tf": "5",
-   "window_start_ts_utc": 1794493800.0,
-   "window_label": "this session",
-   "items": [
-    {
-     "key": "wall0",
-     "ts": 1794497956.502,
-     "dom": "LIQUIDITY",
-     "dir": "up",
-     "warn": false,
-     "title": "NASDAQ_BOOK size wall \u00b7 bid 269.39",
-     "detail": "1000.0 shown \u00b7 25.0\u00d7 the median level",
-     "src": "equity book"
-    },
-    {
-     "key": "wall1",
-     "ts": 1794497956.502,
-     "dom": "LIQUIDITY",
-     "dir": "up",
-     "warn": false,
-     "title": "NASDAQ_BOOK size wall \u00b7 bid 268.95",
-     "detail": "200.0 shown \u00b7 5.0\u00d7 the median level",
-     "src": "equity book"
-    },
-    {
-     "key": "pw",
-     "ts": 1794497956.43,
-     "dom": "OPTIONS",
-     "dir": "down",
-     "title": "Spot through the put wall",
-     "detail": "put wall 270.00 \u00b7 spot 269.43",
-     "src": "gamma levels"
-    },
-    {
-     "key": "x41910",
-     "n": 11,
-     "ts": 1794497316.622052,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": true,
-     "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.99 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41907",
-     "n": 10,
-     "ts": 1794497313.705883,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41901",
-     "n": 9,
-     "ts": 1794497254.429677,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41898",
-     "n": 8,
-     "ts": 1794497248.3891263,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.01 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41884",
-     "n": 7,
-     "ts": 1794496898.2108688,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41881",
-     "n": 6,
-     "ts": 1794496888.9454207,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.10 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41875",
-     "n": 5,
-     "ts": 1794496726.9288695,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Put g-Wall",
-     "detail": "270.00 \u00b7 spot 270.09 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41873",
-     "n": 4,
-     "ts": 1794496723.2410872,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Put g-Wall",
-     "detail": "270.00 \u00b7 spot 269.94 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41821",
-     "n": 3,
-     "ts": 1794494223.8817232,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall",
-     "detail": "270.00 \u00b7 spot 270.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41800",
-     "n": 2,
-     "ts": 1794493839.5704474,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.86 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41798",
-     "n": 1,
-     "ts": 1794493838.6845555,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.10 at the cross",
-     "src": "level_crosses"
+  "NASDAQ_BOOK": {
+   "5": {
+    "ticker": "AMZN",
+    "tf": "5",
+    "window_start_ts_utc": 1794493800.0,
+    "window_label": "this session",
+    "items": [
+     {
+      "key": "wall0",
+      "ts": 1794497956.502,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NASDAQ_BOOK size wall \u00b7 bid 269.39",
+      "detail": "1000.0 shown \u00b7 25.0\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "wall1",
+      "ts": 1794497956.502,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NASDAQ_BOOK size wall \u00b7 bid 268.95",
+      "detail": "200.0 shown \u00b7 5.0\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "pw",
+      "ts": 1794497956.43,
+      "dom": "OPTIONS",
+      "dir": "down",
+      "title": "Spot through the put wall",
+      "detail": "put wall 270.00 \u00b7 spot 269.43",
+      "src": "gamma levels"
+     },
+     {
+      "key": "x41910",
+      "n": 11,
+      "ts": 1794497316.622052,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": true,
+      "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41907",
+      "n": 10,
+      "ts": 1794497313.705883,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41901",
+      "n": 9,
+      "ts": 1794497254.429677,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41898",
+      "n": 8,
+      "ts": 1794497248.3891263,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41884",
+      "n": 7,
+      "ts": 1794496898.2108688,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41881",
+      "n": 6,
+      "ts": 1794496888.9454207,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.10 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41875",
+      "n": 5,
+      "ts": 1794496726.9288695,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Put g-Wall",
+      "detail": "270.00 \u00b7 spot 270.09 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41873",
+      "n": 4,
+      "ts": 1794496723.2410872,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Put g-Wall",
+      "detail": "270.00 \u00b7 spot 269.94 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41821",
+      "n": 3,
+      "ts": 1794494223.8817232,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall",
+      "detail": "270.00 \u00b7 spot 270.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41800",
+      "n": 2,
+      "ts": 1794493839.5704474,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.86 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41798",
+      "n": 1,
+      "ts": 1794493838.6845555,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.10 at the cross",
+      "src": "level_crosses"
+     }
+    ],
+    "cross_counts": {
+     "up": 6,
+     "down": 5
     }
-   ],
-   "cross_counts": {
-    "up": 6,
-    "down": 5
-   }
-  },
-  "15": {
-   "ticker": "AMZN",
-   "tf": "15",
-   "window_start_ts_utc": 1794483558.223641,
-   "window_label": "last 4 h",
-   "items": [
-    {
-     "key": "wall0",
-     "ts": 1794497956.502,
-     "dom": "LIQUIDITY",
-     "dir": "up",
-     "warn": false,
-     "title": "NASDAQ_BOOK size wall \u00b7 bid 269.39",
-     "detail": "1000.0 shown \u00b7 25.0\u00d7 the median level",
-     "src": "equity book"
-    },
-    {
-     "key": "wall1",
-     "ts": 1794497956.502,
-     "dom": "LIQUIDITY",
-     "dir": "up",
-     "warn": false,
-     "title": "NASDAQ_BOOK size wall \u00b7 bid 268.95",
-     "detail": "200.0 shown \u00b7 5.0\u00d7 the median level",
-     "src": "equity book"
-    },
-    {
-     "key": "pw",
-     "ts": 1794497956.43,
-     "dom": "OPTIONS",
-     "dir": "down",
-     "title": "Spot through the put wall",
-     "detail": "put wall 270.00 \u00b7 spot 269.43",
-     "src": "gamma levels"
-    },
-    {
-     "key": "x41910",
-     "n": 37,
-     "ts": 1794497316.622052,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": true,
-     "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.99 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41907",
-     "n": 36,
-     "ts": 1794497313.705883,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.02 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41901",
-     "n": 35,
-     "ts": 1794497254.429677,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41898",
-     "n": 34,
-     "ts": 1794497248.3891263,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.01 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41884",
-     "n": 33,
-     "ts": 1794496898.2108688,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41881",
-     "n": 32,
-     "ts": 1794496888.9454207,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.10 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41875",
-     "n": 31,
-     "ts": 1794496726.9288695,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Put g-Wall",
-     "detail": "270.00 \u00b7 spot 270.09 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41873",
-     "n": 30,
-     "ts": 1794496723.2410872,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Put g-Wall",
-     "detail": "270.00 \u00b7 spot 269.94 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41821",
-     "n": 29,
-     "ts": 1794494223.8817232,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall",
-     "detail": "270.00 \u00b7 spot 270.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41800",
-     "n": 28,
-     "ts": 1794493839.5704474,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.86 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41798",
-     "n": 27,
-     "ts": 1794493838.6845555,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.10 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41783",
-     "n": 26,
-     "ts": 1794493596.553574,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.94 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41781",
-     "n": 25,
-     "ts": 1794493585.3768673,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.17 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41779",
-     "n": 24,
-     "ts": 1794493529.1375084,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41777",
-     "n": 23,
-     "ts": 1794493525.0473802,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41775",
-     "n": 22,
-     "ts": 1794493439.1601028,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.09 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41773",
-     "n": 21,
-     "ts": 1794493392.4410791,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41771",
-     "n": 20,
-     "ts": 1794493377.4819887,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41769",
-     "n": 19,
-     "ts": 1794493310.4478507,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.01 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41767",
-     "n": 18,
-     "ts": 1794493307.2430234,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 269.72 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41763",
-     "n": 17,
-     "ts": 1794492969.0571077,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41761",
-     "n": 16,
-     "ts": 1794492744.7500792,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 270.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41739",
-     "n": 15,
-     "ts": 1794491517.395982,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "up",
-     "marker": true,
-     "title": "Crossed above Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 265.09 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41737",
-     "n": 14,
-     "ts": 1794491465.4261303,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 264.94 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41735",
-     "n": 13,
-     "ts": 1794491456.909304,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 265.07 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41733",
-     "n": 12,
-     "ts": 1794491401.42639,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 264.99 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41731",
-     "n": 11,
-     "ts": 1794491338.5445533,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 264.76 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41729",
-     "n": 10,
-     "ts": 1794491337.5159242,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 265.18 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41727",
-     "n": 9,
-     "ts": 1794491267.780874,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 264.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41725",
-     "n": 8,
-     "ts": 1794491229.2621586,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 265.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41723",
-     "n": 7,
-     "ts": 1794491190.4083517,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 265.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41721",
-     "n": 6,
-     "ts": 1794489729.706021,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 264.96 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41719",
-     "n": 5,
-     "ts": 1794489728.7468507,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 265.50 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41709",
-     "n": 4,
-     "ts": 1794488991.6867557,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 265.00 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41707",
-     "n": 3,
-     "ts": 1794488977.0433023,
-     "dom": "LEVELS",
-     "price": 265.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Max Pain + Put g-Wall",
-     "detail": "265.00 \u00b7 spot 264.60 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41693",
-     "n": 2,
-     "ts": 1794488719.150149,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "down",
-     "marker": false,
-     "title": "Crossed below Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 266.62 at the cross",
-     "src": "level_crosses"
-    },
-    {
-     "key": "x41691",
-     "n": 1,
-     "ts": 1794488714.917598,
-     "dom": "LEVELS",
-     "price": 270.0,
-     "dir": "up",
-     "marker": false,
-     "title": "Crossed above Put d-Wall + Call g-Wall",
-     "detail": "270.00 \u00b7 spot 273.26 at the cross",
-     "src": "level_crosses"
+   },
+   "15": {
+    "ticker": "AMZN",
+    "tf": "15",
+    "window_start_ts_utc": 1794483558.223641,
+    "window_label": "last 4 h",
+    "items": [
+     {
+      "key": "wall0",
+      "ts": 1794497956.502,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NASDAQ_BOOK size wall \u00b7 bid 269.39",
+      "detail": "1000.0 shown \u00b7 25.0\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "wall1",
+      "ts": 1794497956.502,
+      "dom": "LIQUIDITY",
+      "dir": "up",
+      "warn": false,
+      "title": "NASDAQ_BOOK size wall \u00b7 bid 268.95",
+      "detail": "200.0 shown \u00b7 5.0\u00d7 the median level",
+      "src": "equity book"
+     },
+     {
+      "key": "pw",
+      "ts": 1794497956.43,
+      "dom": "OPTIONS",
+      "dir": "down",
+      "title": "Spot through the put wall",
+      "detail": "put wall 270.00 \u00b7 spot 269.43",
+      "src": "gamma levels"
+     },
+     {
+      "key": "x41910",
+      "n": 37,
+      "ts": 1794497316.622052,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": true,
+      "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41907",
+      "n": 36,
+      "ts": 1794497313.705883,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.02 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41901",
+      "n": 35,
+      "ts": 1794497254.429677,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41898",
+      "n": 34,
+      "ts": 1794497248.3891263,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41884",
+      "n": 33,
+      "ts": 1794496898.2108688,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41881",
+      "n": 32,
+      "ts": 1794496888.9454207,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.10 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41875",
+      "n": 31,
+      "ts": 1794496726.9288695,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Put g-Wall",
+      "detail": "270.00 \u00b7 spot 270.09 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41873",
+      "n": 30,
+      "ts": 1794496723.2410872,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Put g-Wall",
+      "detail": "270.00 \u00b7 spot 269.94 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41821",
+      "n": 29,
+      "ts": 1794494223.8817232,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall",
+      "detail": "270.00 \u00b7 spot 270.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41800",
+      "n": 28,
+      "ts": 1794493839.5704474,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.86 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41798",
+      "n": 27,
+      "ts": 1794493838.6845555,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.10 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41783",
+      "n": 26,
+      "ts": 1794493596.553574,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.94 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41781",
+      "n": 25,
+      "ts": 1794493585.3768673,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.17 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41779",
+      "n": 24,
+      "ts": 1794493529.1375084,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41777",
+      "n": 23,
+      "ts": 1794493525.0473802,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41775",
+      "n": 22,
+      "ts": 1794493439.1601028,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.09 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41773",
+      "n": 21,
+      "ts": 1794493392.4410791,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41771",
+      "n": 20,
+      "ts": 1794493377.4819887,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41769",
+      "n": 19,
+      "ts": 1794493310.4478507,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.01 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41767",
+      "n": 18,
+      "ts": 1794493307.2430234,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 269.72 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41763",
+      "n": 17,
+      "ts": 1794492969.0571077,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41761",
+      "n": 16,
+      "ts": 1794492744.7500792,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 270.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41739",
+      "n": 15,
+      "ts": 1794491517.395982,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "up",
+      "marker": true,
+      "title": "Crossed above Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 265.09 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41737",
+      "n": 14,
+      "ts": 1794491465.4261303,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 264.94 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41735",
+      "n": 13,
+      "ts": 1794491456.909304,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 265.07 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41733",
+      "n": 12,
+      "ts": 1794491401.42639,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 264.99 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41731",
+      "n": 11,
+      "ts": 1794491338.5445533,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 264.76 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41729",
+      "n": 10,
+      "ts": 1794491337.5159242,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 265.18 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41727",
+      "n": 9,
+      "ts": 1794491267.780874,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 264.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41725",
+      "n": 8,
+      "ts": 1794491229.2621586,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 265.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41723",
+      "n": 7,
+      "ts": 1794491190.4083517,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 265.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41721",
+      "n": 6,
+      "ts": 1794489729.706021,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 264.96 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41719",
+      "n": 5,
+      "ts": 1794489728.7468507,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 265.50 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41709",
+      "n": 4,
+      "ts": 1794488991.6867557,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 265.00 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41707",
+      "n": 3,
+      "ts": 1794488977.0433023,
+      "dom": "LEVELS",
+      "price": 265.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Max Pain + Put g-Wall",
+      "detail": "265.00 \u00b7 spot 264.60 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41693",
+      "n": 2,
+      "ts": 1794488719.150149,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "down",
+      "marker": false,
+      "title": "Crossed below Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 266.62 at the cross",
+      "src": "level_crosses"
+     },
+     {
+      "key": "x41691",
+      "n": 1,
+      "ts": 1794488714.917598,
+      "dom": "LEVELS",
+      "price": 270.0,
+      "dir": "up",
+      "marker": false,
+      "title": "Crossed above Put d-Wall + Call g-Wall",
+      "detail": "270.00 \u00b7 spot 273.26 at the cross",
+      "src": "level_crosses"
+     }
+    ],
+    "cross_counts": {
+     "up": 19,
+     "down": 18
     }
-   ],
-   "cross_counts": {
-    "up": 19,
-    "down": 18
    }
   }
  },
