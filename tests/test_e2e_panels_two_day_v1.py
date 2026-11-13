@@ -49,9 +49,12 @@ _MARKETS = [
 AUTO = {"scope": "auto", "centre": None, "shift": 0}
 #: a date Schwab lists no expiry on in those chains (a Saturday)
 MISSING_EXPIRY = "2026-11-14"
-#: the Trade Desk's timeframes the browser tests draw, each with the bars the chart asks for at it
+#: the timeframes the browser tests' charts draw (the Gamma chart opens at 1 minute, the desk and
+#: the liquidity map at 5; the tests switch to 15), each with the bars a chart asks for at it
 #: (static/js/ed-tv-chart.js BARS_LIMIT), and the flow card's ask (ed-trade-desk-map.js FLOW_BARS)
-DESK_TFS = {"5": 3000, "15": 6000, "30": 9000}
+CHART_TFS = {"1": 1200, "5": 3000, "15": 6000}
+#: the desk's own two: its levels and its queue are asked at the chart's timeframe
+DESK_TFS = ("5", "15")
 FLOW_BARS = {"tf": "1", "limit": 60}
 
 
@@ -210,7 +213,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     },
                     "bars": {
                         tf: server.bars(tk, at, {"tf": tf, "limit": limit})
-                        for tf, limit in DESK_TFS.items()
+                        for tf, limit in CHART_TFS.items()
                     },
                     "bars_flow": server.bars(tk, at, FLOW_BARS),
                 }
