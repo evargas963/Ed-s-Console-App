@@ -144,7 +144,8 @@ test('the liquidity map fits its price scale to the candles; a far zone does not
   // and the candles (765) were a flat line
   const errs = watchErrors(page);
   await intercept(page);
-  const far = { zone_low: 800, zone_high: 801, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 1 };
+  // induced: SPY's real resistance zone at 775 moved to 800-801, far above the candles
+  const far = Object.assign({}, LIQ.zones.find((z) => z.zone_side === 'resistance' && z.zone_low === 775), { zone_low: 800, zone_high: 801 });
   deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.concat([far]) });
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
