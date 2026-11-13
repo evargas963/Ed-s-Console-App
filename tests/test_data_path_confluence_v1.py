@@ -47,6 +47,7 @@ from tests.real_chains import (
     SPY_PRINT_A_STRIKE_AWAY,
     TSLA,
 )
+from tests.test_order_flow_book_payload_v1 import _same
 from time_et import ET, INDEX_OPTIONS, ct_label, record_markets, valuation_instant
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -610,10 +611,12 @@ def write_mrvl_e2e_fixture() -> None:
 def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
     """The confluence browser test's answers are the route's on MRVL's captured chain.
 
-    Each column's shading number and peak served beside its text.
+    Each column's shading number and peak served beside its text. Every key and text equal; a
+    number to its last digits (MRVL's GRC, a level of the gamma curve, differs in its 17th
+    digit between Windows and Linux).
     """
     served = mrvl_answers()
-    assert json.loads(_MRVL_ANSWERS.read_text(encoding="utf-8")) == served, (
+    assert _same(json.loads(_MRVL_ANSWERS.read_text(encoding="utf-8")), served), (
         "drifted from the route; regenerate with write_mrvl_e2e_fixture()"
     )
     front = served["by_expiry"]["2026-10-09"]

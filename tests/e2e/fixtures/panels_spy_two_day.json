@@ -7408,9 +7408,9 @@
    },
    {
     "level": "gamma_flip",
-    "prior": 760.7701067133402,
-    "today": 761.2225262530864,
-    "change": 0.4524195397461881
+    "prior": 760.7703771219186,
+    "today": 761.2225055632189,
+    "change": 0.4521284413002604
    }
   ],
   "levels_state": "LIVE",
@@ -15103,9 +15103,9 @@
    },
    {
     "level": "gamma_flip",
-    "prior": 760.7701067133402,
-    "today": 761.2225262530864,
-    "change": 0.4524195397461881
+    "prior": 760.7703771219186,
+    "today": 761.2225055632189,
+    "change": 0.4521284413002604
    }
   ],
   "levels_state": "LIVE",
@@ -15121,7 +15121,7 @@
   "posture": "FOLLOW_BREAKS",
   "confidence": "TRUSTED",
   "headline": "Short gamma \u2014 trend regime. Follow breaks, do not fade.",
-  "gamma_flip": 761.2225262530864,
+  "gamma_flip": 761.2225055632189,
   "call_wall": 775.0,
   "put_wall": 760.0,
   "absolute_gamma_strike": 760.0,
@@ -15143,7 +15143,7 @@
   "same_day": {
    "call_wall": 759.0,
    "put_wall": 756.0,
-   "gamma_flip": 759.8693145593056,
+   "gamma_flip": 759.8723887322883,
    "absolute_gamma_strike": 756.0,
    "gsf": null,
    "grc": null,
@@ -15165,7 +15165,7 @@
   "strikes_used": 491,
   "dollarized": true,
   "flip_diag": {
-   "curve_gamma_at_spot": -6304160946.885533,
+   "curve_gamma_at_spot": -6304160946.885559,
    "unpriced": {},
    "gamma_at_spot": -7628715215.013743,
    "curve_agrees_with_schwab_at_spot": true
@@ -47451,7 +47451,7 @@
      },
      {
       "label": "GAMMA_FLIP",
-      "value": 761.2225262530864
+      "value": 761.2225055632189
      },
      {
       "label": "PD_VAH",
@@ -47759,7 +47759,7 @@
     },
     {
      "id": "gamma_flip",
-     "price": 761.2225262530864,
+     "price": 761.2225055632189,
      "family": "gamma",
      "label": "Gamma flip",
      "short": "Gamma flip",
@@ -47775,7 +47775,7 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": 4.147526253086312,
+     "distance": 4.147505563218829,
      "side": "ABOVE",
      "from_spot_text": "4.15 above spot"
     },
@@ -48454,8 +48454,8 @@
     {
      "id": "gamma_flip",
      "label": "Gamma flip",
-     "price": 759.8693145593056,
-     "carried": 761.2225262530864,
+     "price": 759.8723887322883,
+     "carried": 761.2225055632189,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT",
@@ -51836,7 +51836,7 @@
     },
     {
      "id": "gamma_flip",
-     "price": 761.2225262530864,
+     "price": 761.2225055632189,
      "family": "gamma",
      "label": "Gamma flip",
      "short": "Gamma flip",
@@ -51852,7 +51852,7 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": 4.147526253086312,
+     "distance": 4.147505563218829,
      "side": "ABOVE",
      "from_spot_text": "4.15 above spot"
     },
@@ -52531,8 +52531,8 @@
     {
      "id": "gamma_flip",
      "label": "Gamma flip",
-     "price": 759.8693145593056,
-     "carried": 761.2225262530864,
+     "price": 759.8723887322883,
+     "carried": 761.2225055632189,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT",
@@ -55529,7 +55529,7 @@
     },
     {
      "id": "gamma_flip",
-     "price": 761.2225262530864,
+     "price": 761.2225055632189,
      "family": "gamma",
      "label": "Gamma flip",
      "short": "Gamma flip",
@@ -55545,7 +55545,7 @@
       "reason": "carried from the terrain"
      },
      "not_live_text": null,
-     "distance": 4.147526253086312,
+     "distance": 4.147505563218829,
      "side": "ABOVE",
      "from_spot_text": "4.15 above spot"
     },
@@ -56224,8 +56224,8 @@
     {
      "id": "gamma_flip",
      "label": "Gamma flip",
-     "price": 759.8693145593056,
-     "carried": 761.2225262530864,
+     "price": 759.8723887322883,
+     "carried": 761.2225055632189,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT",

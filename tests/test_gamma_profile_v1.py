@@ -19,6 +19,7 @@ from math_levels import (
     GSF_STATE_BELOW_SUPPORT,
     GSF_STATE_OK,
     GSF_STATE_UNAVAILABLE,
+    _gamma_profile_totals,
     compute_gamma_flip_v2,
     compute_gamma_profile,
     compute_gamma_support_levels,
@@ -28,6 +29,7 @@ from math_levels import (
 )
 from option_contract import OptionContract, read_chain, read_contract
 from terrain_engine import compute_terrain
+from tests.real_chains import CRWD
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
 #: own capture time (a live 0DTE, ~3.7 h to SPY's 16:15 option close)
@@ -48,9 +50,16 @@ def _profile(contracts: list[OptionContract], spot: float) -> list[tuple[float, 
 
 
 def _one(symbol: str) -> list[tuple[float, float]]:
-    """The profile of one contract of the real chain alone, on the chain's own grid."""
+    """One contract of the real chain alone, its curve at 241 prices within 15% of the price.
+
+    Wide enough that the same-day contract's gamma is exactly 0.0 at both ends.
+    """
     chain, spot = _load_real_chain()
-    return _profile([c for c in chain if c.symbol == symbol], spot)
+    priced, _unpriced = contract_inputs(
+        [c for c in chain if c.symbol == symbol], NOW, product=time_et.option_close_product("SPY")
+    )
+    grid = [spot * (0.85 + 0.30 * i / 240) for i in range(241)]
+    return list(zip(grid, _gamma_profile_totals(priced, grid), strict=True))
 
 
 def _crossings(prof: list[tuple[float, float]], sign: int) -> list[tuple[float, float]]:
@@ -69,13 +78,30 @@ def _tsla() -> tuple[list[tuple[float, float]], float]:
 
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
+    """The candidate prices are Schwab's: every strike holding a priced contract, and the price."""
     chain, spot = _load_real_chain()
     prof = _profile(chain, spot)
-    assert len(prof) == 241
-    assert all(math.isfinite(v) for _, v in prof)
+    priced, _unpriced = contract_inputs(chain, NOW, product=time_et.option_close_product("SPY"))
     prices = [p for p, _ in prof]
+    assert prices == sorted(prices) and {row[0] for row in priced} <= set(prices)
+    assert all(math.isfinite(v) for _, v in prof)
     assert prices[0] < spot < prices[-1]
-    assert prices == sorted(prices)
+    assert spot in prices, "the curve is computed at the price itself, not read between strikes"
+
+
+def test_the_curve_reaches_as_far_as_the_chain_does() -> None:
+    """A level more than 15% from the price is found (operator 2026-11-13: "search every strike").
+
+    Failure this catches: the curve was computed only from 15% under the price to 15% over it,
+    a range of the program's own, so a level beyond it read as none. CRWD's whole chain of
+    2026-10-07 (tests/real_chains.py), price 269.04: the curve falls to half its value at the
+    price at 337.68, 25.5% above it, and the flip stays where the old range also found it.
+    """
+    snap = compute_terrain(CRWD.ticker, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
+    assert snap.profile[0][0] == 45.0 and snap.profile[-1][0] == 350.0  # the chain's strikes
+    assert snap.grc is not None and snap.grc > CRWD.spot * 1.15
+    assert round(snap.grc, 2) == 337.68
+    assert round(snap.gamma_flip, 1) == 238.1
 
 
 def test_profile_uses_dealer_sign_convention() -> None:
@@ -92,7 +118,7 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
 
     The old `if flip is not None` guard let a flip-always-None regression pass silently while
     asserting nothing. MEASURED on this
-    fixture at its capture time: 241 profile points, 1 sign crossing, flip = 779.02, inside
+    fixture at its capture time: 1 sign crossing, flip = 779.02, inside
     the span. Existence is pinned; the exact value is not (it moves with vol/time inputs) -
     span containment is the invariant.
     """
@@ -141,7 +167,7 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     # a strictly one-signed profile (the chain's calls alone) yields no flip but still reports a
     # usable value, halfway between two of its points their mean
     calls = _profile([c for c in chain if c.side == "CALL"], spot)
-    (p0, v0), (p1, v1) = calls[150], calls[151]
+    (p0, v0), (p1, v1) = calls[len(calls) // 2 : len(calls) // 2 + 2]
     assert gamma_flip_from_profile(calls, spot) is None
     assert math.isclose(gamma_at_price(calls, (p0 + p1) / 2), (v0 + v1) / 2, rel_tol=1e-9)
 
@@ -171,12 +197,17 @@ def test_flip_detects_positive_to_negative_crossing():
 
 
 def test_flip_still_detects_negative_to_positive():
-    """The whole real chain crosses once, upward, between 778.55 and 779.52."""
+    """The whole real chain crosses once, upward, between its 779 and 780 strikes.
+
+    The curve is computed again between those two strikes, so the two prices the crossing lies
+    between are under a cent apart.
+    """
     chain, spot = _load_real_chain()
     prof = _profile(chain, spot)
     ((below, above),) = _crossings(prof, -1)
     flip = gamma_flip_from_profile(prof, spot)
-    assert flip is not None and 778.55 < below < flip < above < 779.53, flip
+    assert flip is not None and 779.0 <= below < flip < above <= 780.0, flip
+    assert above - below < 0.01, (below, above)
 
 
 def test_flip_picks_the_crossing_nearest_spot():

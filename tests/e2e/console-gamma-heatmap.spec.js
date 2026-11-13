@@ -640,7 +640,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('key levels rail reflects the terrain panel', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('243.91');
-    // AMZN's real levels: flip 243.9135, both walls at 270, net GEX at the price 937,341,251
+    // AMZN's real levels: flip 243.9141, both walls at 270, net GEX at the price 937,341,251
     await expect(page.locator('#klCall')).toHaveText('270.00');
     await expect(page.locator('#klPut')).toHaveText('270.00');
     await expect(page.locator('#klNet')).toHaveText('$937.3M');
