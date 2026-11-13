@@ -691,7 +691,8 @@ the program.
   Right Now, the desk map's Options card and Key Levels (`tests/test_gamma_as_sent_v1.py`); each level's distance (level minus price), side and the words for
   both (`from_spot_text`, "1.30 below spot") on the levels panel, sent again with each price row
   of its ticker, the one distance the desk's nearest
-  level and its Box line print; the price inside, above or below each liquidity zone
+  level and its Walls line print (each wall with its own side of the price; the line was
+  labelled "Box", which a put wall above the price or both walls on one strike is not); the price inside, above or below each liquidity zone
   (`terrain_read.within`); and the level crosses (below). One side rule, exact values:
   `terrain_read.level_side` (ABOVE, AT, BELOW), with `price_side` (the price's side of a level),
   `within` and `crossed` built on it (`tests/test_level_crosses_wire.py`,
@@ -701,7 +702,7 @@ the program.
   `spot_not_live_text`, "not live · last trade Thu 10/22 03:39 PM CT, 81m old", from the one age
   formatter `time_et.age_text`); the levels panel puts it on the pin candidate's row too
   (`not_live_text`). When the price stops, every relation stands, marked with it: the desk's wall
-  labels, GAMMA cell, pin candidate, nearest level and Box line, and the confluence screen's spot.
+  labels, GAMMA cell, pin candidate, nearest level and Walls line, and the confluence screen's spot.
   While the price stays stopped, the levels loop tells each open page on that ticker to read
   again every minute (`server.refresh_not_live_pages`, its owner `server._terrain_loop`; when that
   loop stops, the age stays as of the page's last read and the trade time beside it stays true),
