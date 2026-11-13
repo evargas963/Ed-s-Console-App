@@ -38,12 +38,7 @@ async function intercept(page) {
   panels = {
     levels: LEVELS,
     bars: { available: false }, tape: { available: false },
-    terrain: { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' },
-    strikes: REAL.strikes,
-    surface: { ticker: 'SPY', available: true, spot: 100,
-      source: 'terrain_live_cache', levels_state: 'LIVE', expirations: [{ expiry: '2026-09-11', dte: 2 }],
-      strikes: [100], cells: [{ strike: 100, gex: [1] }],
-      view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } },
+    terrain: REAL.terrain, strikes: REAL.strikes, surface: REAL.surface,
   };
   sock = await pushExpiries(page, ['2026-09-11'], undefined, panels);
 }

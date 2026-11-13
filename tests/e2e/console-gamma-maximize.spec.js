@@ -10,31 +10,24 @@ const { pushExpiries } = require('./fixtures/expiries');
 const { chainAt } = require('./fixtures/price_socket');
 const { routeWatchlist } = require('./fixtures/watchlist');
 
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
-  levels_state: 'LIVE', chain_basis: 'full', complete: false,
-  expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
-  strikes: [98, 100, 102], cells: [98, 100, 102].map(function (k) { return { strike: k, gex: [-90000, 120000], spot: k === 100 }; }),
-  view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 120000 }, missing_expiry: null } };
-const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
-  lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
-// the strikes panel as the server sends it on CRWD's real chain (held to the server by
-// tests/test_vanna_charm_by_strike_v1.py)
-const STRIKES = require('./fixtures/vanna_charm_panels_crwd.json').strikes;
-const CHAIN = { spot: 100, expiry: '2026-09-11', status: 'ok', scope: { kind: 'complete_single_expiry' },
-  contracts: [{ putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12, expirationDate: '2026-09-11' },
-    { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12, expirationDate: '2026-09-11' }] };
+// every panel is the server's own answer on AMZN's real chain of 2026-11-12 10:39 ET, 24 expiries
+// (held to the server by tests/test_e2e_panels_two_day_v1.py)
+const REAL = require('./fixtures/panels_amzn_two_day.json');
+const EXPS = REAL.surface.expirations;
+const E2 = EXPS[1].expiry;                 // 2026-11-16, the second expiry
+const K = 272.5;                           // the strike above the one at the price
 
 async function intercept(page) {
-  await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-11', '2026-09-18'], { '2026-09-11': 2, '2026-09-18': 9 }, {
-    bars: { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] }, terrain: TERRAIN, strikes: STRIKES, surface: SURFACE,
-    chain: chainAt(CHAIN) });
+  await routeWatchlist(page, ['AMZN']);
+  await pushExpiries(page, EXPS.map((e) => e.expiry), Object.fromEntries(EXPS.map((e) => [e.expiry, e.dte])), {
+    bars: REAL.bars['1'], terrain: REAL.terrain, strikes: REAL.strikes, surface: REAL.surface,
+    chain: chainAt(REAL.chain) });
 }
 
 test.describe('#8 Gamma panel maximize', () => {
   test.beforeEach(async ({ page }) => {
     await intercept(page);
-    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'AMZN'); });
   });
 
   test('maximize hides the rail + bottom and lets the heatmap fill; Esc restores', async ({ page }) => {
@@ -57,17 +50,17 @@ test.describe('#8 Gamma panel maximize', () => {
 
   test('maximize preserves the shared ticker / strike / expiry context', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('#expSel').selectOption('2026-09-18');                    // pick a single expiry
-    await page.locator('#view-heatmap .hcell[data-strike="102"]').first().click(); // pick a strike
+    await page.locator('#expSel').selectOption(E2);                              // pick a single expiry
+    await page.locator('#view-heatmap .hcell[data-strike="' + K + '"]').first().click(); // pick a strike
     const before = await page.evaluate(() => window.EdShell.getState());
     await page.locator('#maxBtn').click();
     await page.locator('#maxBtn').click();                                        // maximize then restore
     const after = await page.evaluate(() => window.EdShell.getState());
     expect(after.ticker).toBe(before.ticker);
-    expect(after.selStrike).toBe(102);
-    expect(after.expiryFilter).toBe('2026-09-18');
-    await expect(page.locator('#expSel')).toHaveValue('2026-09-18');
-    await expect(page.locator('#sdCtx')).toContainText('102');                    // Strike Detail context intact
+    expect(after.selStrike).toBe(K);
+    expect(after.expiryFilter).toBe(E2);
+    await expect(page.locator('#expSel')).toHaveValue(E2);
+    await expect(page.locator('#sdCtx')).toContainText('272.50');                 // Strike Detail context intact
   });
 
   test('the maximize choice persists across reload', async ({ page }) => {
