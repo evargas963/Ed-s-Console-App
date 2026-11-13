@@ -272,8 +272,8 @@
         (_migGhost ? deltaHtml : '') +
         '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span>' +
         (k === spotStrike ? migTag('SPOT', 'spot') : '') +
-        (cw != null && k === cw ? migTag('CALL WALL', 'call') : '') +
-        (pw != null && k === pw ? migTag('PUT WALL', 'put') : '') +
+        (cw != null && k === cw ? migTag('Call wall', 'call') : '') +
+        (pw != null && k === pw ? migTag('Put wall', 'put') : '') +
         '</div>';
     });
     var scopeChips = '<div class="mig-chips">' + MIG_SCOPES.map(function (s) {
