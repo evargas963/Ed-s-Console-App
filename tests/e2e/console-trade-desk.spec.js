@@ -295,7 +295,7 @@ test('Desk: the levels pill keeps the snapshot time', async ({ page }) => {
   page.on('pageerror', (e) => errs.push(String(e)));
   await intercept(page);
   deskPanels().levels = levelsAt(Object.assign({}, LEVELS, {
-    snapshot_as_of_ts_utc: 1790380799.830, snapshot_time_ct: SNAP_TIME, snapshot_age_text: '2d',
+    snapshot_time_ct: SNAP_TIME, snapshot_age_text: '2d',
   }));
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); });

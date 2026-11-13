@@ -24,7 +24,7 @@ from tests.feed_live_helper import (
 )
 from tests.page_on_socket import pages
 from tests.real_chains import SPY_0DTE as C
-from time_et import ET
+from time_et import ET, ct_label
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
 #: (sessions Schwab's /markets answers; tests/conftest.py)
@@ -287,7 +287,7 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         assert told == {tk: {"liquidity", "levels"}, other: {"liquidity", "levels"}}
         served = srv.levels_payload(tk, "1", now)
         assert served["generation"] is not None
-        assert served["snapshot_as_of_ts_utc"] == pushed[tk]["bar_start_ms"] / 1000.0
+        assert served["snapshot_time_ct"] == ct_label(pushed[tk]["bar_start_ms"] / 1000.0)
         assert (
             srv.canonical_price_level_snapshot(other, now).as_of_ts_utc
             == pushed[other]["bar_start_ms"] / 1000.0
