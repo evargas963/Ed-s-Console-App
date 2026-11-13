@@ -36,6 +36,7 @@ from calibration.complete_chain_capture import last_capture_per_day
 from stream_spine import book_msg
 from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
+from tests.test_order_flow_book_payload_v1 import _same
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _E2E = Path(__file__).resolve().parent / "e2e" / "fixtures"
@@ -218,7 +219,11 @@ def write_e2e_panels() -> None:
 @SETS
 def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     panels = build_e2e_panels(real, tmp_path)
-    assert json.loads(real.panels.read_text(encoding="utf-8")) == panels
+    # every key and value; a float to 1e-9 relative (a sum over 13,000 contracts differs in its
+    # last digit between Windows, where the file is written, and Linux)
+    assert _same(json.loads(real.panels.read_text(encoding="utf-8")), panels), (
+        "the browser tests' file drifted from the server; regenerate with write_e2e_panels()"
+    )
     # what the set is for: a live screen, several expiries, a prior day compared
     gamma = ("strikes", "strikes_wider", "terrain", "surface", "surface_missing_expiry", "chain")
     assert {panels[name]["levels_state"] for name in gamma} == {"LIVE"}
