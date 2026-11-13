@@ -48,9 +48,9 @@
   // the selected measure's value per column: GEX/DEX a value, OI/volume the server's total
   function _measureRow(row, measure) {
     if (measure === 'oi' || measure === 'volume') {
-      return (row[measure] || []).map(function (cp) { return cp ? cp.total : null; });
+      return row[measure].map(function (cp) { return cp ? cp.total : null; });
     }
-    return row[measure] || [];
+    return row[measure];
   }
 
   // the words for each cell's and column's streaming state, served in the page (meta
@@ -130,7 +130,7 @@
     exps.forEach(function (e, j) {
       var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = e.expired ? 'expired: a prior-session column, not current structure'
-        : (words.column[(surface.stream_by_expiry || {})[e.expiry]] || '');
+        : (words.column[surface.stream_by_expiry[e.expiry]] || '');
       tbl += '<th class="hexp' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') + '" data-col="' + j +
         '" title="' + escapeHtml(title) + '"><span class="d">' + escapeHtml((e.expiry || '').slice(5)) +
         '</span><span class="dte">' + dte + '</span></th>';
@@ -142,7 +142,7 @@
         fmtStrike(row.strike) + '</th>';
       exps.forEach(function (e, j) {
         var v = mrow[j], st = cellStyle(v, maxAbs, heat);
-        var cellState = (row.stream || [])[j], liveState = cellState ? cellState.state : null;
+        var cellState = row.stream[j], liveState = cellState ? cellState.state : null;
         var stateTitle = (cellState && cellState.title) || words.cell[liveState];
         tbl += '<td class="hcell' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') +
           (liveState ? ' state-' + liveState : '') +
