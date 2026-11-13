@@ -61,33 +61,18 @@ function realSpySurface() {
     view: view({ centre: 764, scope: 'all', max_abs: { gex: 1e9 } }),
   });
 }
-// A surface WITH real per-cell vendor contract identity (server.py's project_gamma_surface
-// always carries this in production).
+// The real surface cut to its first `nExps` expiries and `nStrikes` strikes: each cell with
+// Schwab's own contracts and its stream state, as the server sends them.
 function surfaceWithContracts(nExps, nStrikes) {
-  var expirations = [];
-  for (var e = 0; e < nExps; e++) {
-    var d = new Date(Date.UTC(2026, 8, 11 + e));
-    expirations.push({ expiry: d.toISOString().slice(0, 10), dte: e + 1 });
-  }
-  var strikes = [];
-  for (var s = 0; s < nStrikes; s++) strikes.push(580 + s);
-  var cells = strikes.map(function (k) {
-    return {
-      strike: k,
-      gex: expirations.map(function () { return 1000; }),
-      contracts: expirations.map(function (exp) {
-        return { call: 'C' + k + 'X' + exp.expiry, put: 'P' + k + 'X' + exp.expiry };
-      }),
-    };
-  });
-  return Object.assign({}, SURFACE, { expirations: expirations, strikes: strikes, cells: cells,
-    view: view({ centre: strikes[0], max_abs: { gex: 1000 } }) });
+  var cells = SURFACE.cells.slice(0, nStrikes).map(function (c) { return cut(c, nExps); });
+  return Object.assign({}, SURFACE, { expirations: SURFACE.expirations.slice(0, nExps),
+    strikes: cells.map(function (c) { return c.strike; }), cells: cells, view: view({ centre: cells[0].strike }) });
 }
-// Always-live heatmap mandate (2026-09-15): a surface carrying the real per-cell `stream`
-// field server.py's _stamp_gamma_surface_cell_stream_state now stamps unconditionally on
-// every real surface panel. `perCol` is one entry per expiry column
-// for a single strike, each `{call, put}` naming that leg's state ('live'|'stale'|
-// 'unavailable', or omitted entirely for "no contract on this leg").
+// Always-live heatmap mandate (2026-09-15). Induced: the real cell at the price, cut to one
+// column per `perCol` entry, its value 12345 and its `stream` (the field server.py's
+// _stamp_gamma_surface_cell_stream_state stamps on every cell) set to the named states: each
+// `{call, put}` names that leg's state ('live'|'stale'|'unavailable', or omitted entirely for
+// "no contract on this leg").
 function surfaceWithStreamState(perCol) {
   var strike = K;
   var expirations = perCol.map(function (_, i) { return SURFACE.expirations[i]; });
@@ -111,8 +96,8 @@ function surfaceWithStreamState(perCol) {
   });
   return Object.assign({}, SURFACE, {
     expirations: expirations, strikes: [strike],
-    cells: [{ strike: strike, gex: perCol.map(function () { return 12345; }), spot: true,
-              contracts: contracts, stream: stream }],
+    cells: [Object.assign(cut(CELL_K, perCol.length), { gex: perCol.map(function () { return 12345; }),
+      contracts: contracts, stream: stream })],
     view: view({ max_abs: { gex: 12345 } }),
   });
 }
