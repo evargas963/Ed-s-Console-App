@@ -1069,14 +1069,14 @@ def test_a_page_that_drops_and_returns_gets_its_terrain_again():
 def test_a_terrain_producer_that_raises_fails_its_panel_alone_in_words():
     """The panel says why; the socket stays open and the other panels keep coming.
 
-    Induced condition: CRWD's published snapshot holds a lock where its flip diagnostics go, so
+    Induced condition: CRWD's published snapshot holds a lock where its flip's note goes, so
     the terrain raises copying it, as a defect in its producer would.
     """
     _publish(CRWD)
     with server._terrain_cache_lock:
         held = server._terrain_cache[A]
         server._terrain_cache[A] = replace(
-            held, snap=replace(held.snap, flip_diag={"lock": threading.Lock()})
+            held, snap=replace(held.snap, flip_note=threading.Lock())
         )
 
     async def body(url):

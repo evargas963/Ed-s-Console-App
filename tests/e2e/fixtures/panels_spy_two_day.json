@@ -15166,12 +15166,6 @@
   "contracts_used": 12996,
   "strikes_used": 491,
   "dollarized": true,
-  "flip_diag": {
-   "curve_gamma_at_spot": -6304160946.885559,
-   "unpriced": {},
-   "gamma_at_spot": -7628715215.013743,
-   "curve_agrees_with_schwab_at_spot": true
-  },
   "flip_note": null,
   "error": "",
   "pcr_by_expiry": {

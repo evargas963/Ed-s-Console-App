@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from math_levels import contract_inputs
 from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_FULL, TSLA, RealChain
@@ -134,8 +135,7 @@ def test_a_contract_schwab_sent_without_its_rate_is_not_priced():
     )
     chain = read_chain(held["chain"])
     assert all(c.interest_rate is None and c.dividend_yield is None for c in chain)
-    snap = compute_terrain(
-        "SPY", chain, float(held["spot"]), now=datetime.fromtimestamp(held["ts_utc"], ET)
-    )
-    assert snap.flip_diag["unpriced"]["no_rate"] > 0
+    now = datetime.fromtimestamp(held["ts_utc"], ET)
+    snap = compute_terrain("SPY", chain, float(held["spot"]), now=now)
+    assert contract_inputs(chain, now)[1]["no_rate"] > 0
     assert snap.gamma_flip is None and snap.profile == []

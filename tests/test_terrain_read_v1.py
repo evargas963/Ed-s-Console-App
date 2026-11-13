@@ -73,7 +73,7 @@ def test_the_regime_is_read_by_one_rule_for_every_instrument():
     for real in (SPY_0DTE, CRWD):
         tk = real.ticker
         snap = compute_terrain(tk, read_chain(real.chain), real.spot, now=real.now)
-        g = snap.flip_diag.get("gamma_at_spot")
+        g = snap.net_gex_at_spot
         got[tk] = (snap.confidence, snap.regime)
         if snap.confidence in (GAMMA_FLIP_NARROW, GAMMA_FLIP_UNAVAILABLE) or not g:
             assert snap.regime == REGIME_UNAVAILABLE, tk
