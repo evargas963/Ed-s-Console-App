@@ -11,18 +11,11 @@ const { test, expect } = require('@playwright/test');
 const { routeWatchlist } = require('./fixtures/watchlist');
 const { mockPriceSocket, chainAt } = require('./fixtures/price_socket');
 
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
-  levels_state: 'LIVE', chain_basis: 'full', complete: false,
-  expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [98, 100, 102],
-  cells: [{ strike: 98, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
-    { strike: 102, gex: [-264500], spot: false }],
-  view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
-const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
-  absolute_gamma_strike: 100, lvp: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
-  levels_state: 'LIVE', levels_mark: 'LIVE' };
-// the strikes panel as the server sends it on CRWD's real chain (held to the server by
-// tests/test_vanna_charm_by_strike_v1.py): LIVE, with the chain's own time and age
-const STRIKES = require('./fixtures/vanna_charm_panels_crwd.json').strikes;
+// the heatmap, the levels and the strikes panel as the server sends them on CRWD's real chain
+// (held to the server by tests/test_vanna_charm_by_strike_v1.py): LIVE, with the chain's own
+// time and age
+const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
+const SURFACE = REAL.surface, TERRAIN = REAL.terrain, STRIKES = REAL.strikes;
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
 const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
