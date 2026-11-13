@@ -57,7 +57,7 @@ let panels, sock;
 function chainPanels(chainOf) {
   return {
     chain: (key, params) => served(chainOf(params.expiry)),
-    bars: { available: false }, tape: { available: false },
+    bars: { available: false }, tape: REAL.tape,
     terrain: REAL.terrain, strikes: REAL.strikes, surface: REAL.surface,
   };
 }

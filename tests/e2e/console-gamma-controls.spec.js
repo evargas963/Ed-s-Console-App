@@ -28,7 +28,7 @@ function surfaceFor(set, expiry) {
 async function intercept(page) {
   const of = (key, part) => (SETS[key] ? part(SETS[key]) : undefined);
   return pushExpiries(page, EXPS, DTE,
-    { tape: { available: false }, bars: (key) => of(key, (s) => s.bars['1']),
+    { tape: (key) => of(key, (s) => s.tape), bars: (key) => of(key, (s) => s.bars['1']),
       terrain: (key) => of(key, (s) => s.terrain), strikes: (key) => of(key, (s) => s.strikes),
       surface: (key, params) => of(key, (s) => surfaceFor(s, params.expiry)),
       chain: (key, params) => of(key, (s) => chainAt(s.chain)(key, params)) });

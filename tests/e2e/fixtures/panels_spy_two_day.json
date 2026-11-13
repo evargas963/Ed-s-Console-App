@@ -84323,5 +84323,11 @@
    "t": 1794497340.0,
    "label": "Thu 11/12 09:29 AM CT"
   }
+ },
+ "tape": {
+  "ticker": "SPY",
+  "available": false,
+  "rows": [],
+  "reason": "the daemon streams no option contract of this ticker"
  }
 }

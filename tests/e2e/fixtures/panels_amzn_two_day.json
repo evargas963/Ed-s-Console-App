@@ -107292,5 +107292,11 @@
    "t": 1794497880.0,
    "label": "Thu 11/12 09:38 AM CT"
   }
+ },
+ "tape": {
+  "ticker": "AMZN",
+  "available": false,
+  "rows": [],
+  "reason": "the daemon streams no option contract of this ticker"
  }
 }

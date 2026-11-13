@@ -8427,5 +8427,11 @@
    "missing_expiry": null
   },
   "spot_strike": 270.0
+ },
+ "tape": {
+  "ticker": "CRWD",
+  "available": false,
+  "rows": [],
+  "reason": "the daemon streams no option contract of this ticker"
  }
 }
