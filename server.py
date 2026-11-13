@@ -3935,9 +3935,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         row["staleness"] = {
             "as_of_ts_utc": as_of,
             "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
-            "age_sec": None if as_of is None else served_ts - as_of,
-            "reason": f"carried from canonical snapshot generation {snap.generation}; a session "
-            "price level has no staleness rule, its age is shown",
         }
         levels.append(row)
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values),
@@ -3976,8 +3973,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                     "staleness": {
                         "as_of_ts_utc": as_of,
                         "as_of_time_ct": ct_label(as_of),
-                        "age_sec": served_ts - as_of,
-                        "reason": "carried from the terrain",
                     },
                     # a level placed at the live price (the pin candidate) is marked with it
                     "not_live_text": mark["spot_not_live_text"] if gid in PRICE_RELATIONS else None,
@@ -4056,8 +4051,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                     "as_of_time_ct": None
                     if published is None
                     else ct_label(published.levels_ts_utc),
-                    "age_sec": None if published is None else served_ts - published.levels_ts_utc,
-                    "reason": "carried from the terrain",
                 },
             }
             for gid, label in SAME_DAY_LEVELS

@@ -71094,9 +71094,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 111.17614725715435,
@@ -71116,9 +71114,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 6.843076566955176,
@@ -71138,9 +71134,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 5.574999999999989,
@@ -71160,9 +71154,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 5.574999999999989,
@@ -71189,9 +71181,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 5.444999999999993,
      "from_spot_text": "5.44 above spot"
@@ -71216,9 +71206,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 4.4105421363569235,
      "from_spot_text": "4.41 above spot"
@@ -71243,9 +71231,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 4.014999999999986,
      "from_spot_text": "4.01 above spot"
@@ -71270,9 +71256,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 3.055000000000007,
      "from_spot_text": "3.06 above spot"
@@ -71297,9 +71281,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 3.0036738877726066,
      "from_spot_text": "3.00 above spot"
@@ -71324,9 +71306,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 2.3149999999999977,
      "from_spot_text": "2.31 above spot"
@@ -71351,9 +71331,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 1.5968056391883465,
      "from_spot_text": "1.60 above spot"
@@ -71378,9 +71356,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 1.4572000000000003,
      "from_spot_text": "1.46 above spot"
@@ -71405,9 +71381,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.7325000000000159,
      "from_spot_text": "0.73 above spot"
@@ -71425,9 +71399,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -71447,9 +71419,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -71469,9 +71439,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -71491,9 +71459,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -71520,9 +71486,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.4049999999999727,
      "from_spot_text": "0.40 above spot"
@@ -71547,9 +71511,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.18993739060408643,
      "from_spot_text": "0.19 above spot"
@@ -71574,9 +71536,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -1.2169308579802305,
      "from_spot_text": "1.22 below spot"
@@ -71601,9 +71561,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -1.5900000000000318,
      "from_spot_text": "1.59 below spot"
@@ -71628,9 +71586,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -2.055000000000007,
      "from_spot_text": "2.06 below spot"
@@ -71655,9 +71611,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -2.884999999999991,
      "from_spot_text": "2.88 below spot"
@@ -71682,9 +71636,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.2549999999999955,
      "from_spot_text": "3.25 below spot"
@@ -71709,9 +71661,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.6550000000000296,
      "from_spot_text": "3.66 below spot"
@@ -71736,9 +71686,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.805000000000007,
      "from_spot_text": "3.81 below spot"
@@ -71763,9 +71711,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -6.264999999999986,
      "from_spot_text": "6.26 below spot"
@@ -71783,9 +71729,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -6.843076566955176,
@@ -71805,9 +71749,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -9.425000000000011,
@@ -71827,9 +71769,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -9.425000000000011,
@@ -71849,9 +71789,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -10.099691544661994,
@@ -71871,9 +71809,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -19.42500000000001,
@@ -71893,9 +71829,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -19.42500000000001,
@@ -71915,9 +71849,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -25.51088186260668,
@@ -71937,9 +71869,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -29.42500000000001,
@@ -71992,9 +71922,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72004,9 +71932,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72016,9 +71942,7 @@
      "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72028,9 +71952,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72040,9 +71962,7 @@
      "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72052,9 +71972,7 @@
      "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72064,9 +71982,7 @@
      "carried": 240.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72076,9 +71992,7 @@
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72088,9 +72002,7 @@
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72100,9 +72012,7 @@
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72112,9 +72022,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72124,9 +72032,7 @@
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -72136,9 +72042,7 @@
      "carried": 260.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     }
    ],
@@ -75632,9 +75536,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 111.17614725715435,
@@ -75654,9 +75556,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 6.843076566955176,
@@ -75676,9 +75576,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 5.574999999999989,
@@ -75698,9 +75596,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 5.574999999999989,
@@ -75727,9 +75623,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 5.444999999999993,
      "from_spot_text": "5.44 above spot"
@@ -75754,9 +75648,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 4.4105421363569235,
      "from_spot_text": "4.41 above spot"
@@ -75781,9 +75673,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 4.014999999999986,
      "from_spot_text": "4.01 above spot"
@@ -75808,9 +75698,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 3.055000000000007,
      "from_spot_text": "3.06 above spot"
@@ -75835,9 +75723,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 3.0036738877726066,
      "from_spot_text": "3.00 above spot"
@@ -75862,9 +75748,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 2.3149999999999977,
      "from_spot_text": "2.31 above spot"
@@ -75889,9 +75773,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 1.5968056391883465,
      "from_spot_text": "1.60 above spot"
@@ -75916,9 +75798,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 1.4572000000000003,
      "from_spot_text": "1.46 above spot"
@@ -75943,9 +75823,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.7325000000000159,
      "from_spot_text": "0.73 above spot"
@@ -75963,9 +75841,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -75985,9 +75861,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -76007,9 +75881,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -76029,9 +75901,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -76058,9 +75928,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.4049999999999727,
      "from_spot_text": "0.40 above spot"
@@ -76085,9 +75953,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.18993739060408643,
      "from_spot_text": "0.19 above spot"
@@ -76112,9 +75978,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -1.2169308579802305,
      "from_spot_text": "1.22 below spot"
@@ -76139,9 +76003,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -1.5900000000000318,
      "from_spot_text": "1.59 below spot"
@@ -76166,9 +76028,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -2.055000000000007,
      "from_spot_text": "2.06 below spot"
@@ -76193,9 +76053,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -2.884999999999991,
      "from_spot_text": "2.88 below spot"
@@ -76220,9 +76078,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.2549999999999955,
      "from_spot_text": "3.25 below spot"
@@ -76247,9 +76103,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.6550000000000296,
      "from_spot_text": "3.66 below spot"
@@ -76274,9 +76128,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.805000000000007,
      "from_spot_text": "3.81 below spot"
@@ -76301,9 +76153,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -6.264999999999986,
      "from_spot_text": "6.26 below spot"
@@ -76321,9 +76171,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -6.843076566955176,
@@ -76343,9 +76191,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -9.425000000000011,
@@ -76365,9 +76211,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -9.425000000000011,
@@ -76387,9 +76231,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -10.099691544661994,
@@ -76409,9 +76251,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -19.42500000000001,
@@ -76431,9 +76271,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -19.42500000000001,
@@ -76453,9 +76291,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -25.51088186260668,
@@ -76475,9 +76311,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -29.42500000000001,
@@ -76530,9 +76364,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76542,9 +76374,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76554,9 +76384,7 @@
      "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76566,9 +76394,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76578,9 +76404,7 @@
      "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76590,9 +76414,7 @@
      "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76602,9 +76424,7 @@
      "carried": 240.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76614,9 +76434,7 @@
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76626,9 +76444,7 @@
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76638,9 +76454,7 @@
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76650,9 +76464,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76662,9 +76474,7 @@
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -76674,9 +76484,7 @@
      "carried": 260.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     }
    ],
@@ -79730,9 +79538,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 111.17614725715435,
@@ -79752,9 +79558,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 6.843076566955176,
@@ -79774,9 +79578,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 5.574999999999989,
@@ -79796,9 +79598,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 5.574999999999989,
@@ -79825,9 +79625,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 5.444999999999993,
      "from_spot_text": "5.44 above spot"
@@ -79852,9 +79650,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 4.4105421363569235,
      "from_spot_text": "4.41 above spot"
@@ -79879,9 +79675,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 4.014999999999986,
      "from_spot_text": "4.01 above spot"
@@ -79906,9 +79700,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 3.055000000000007,
      "from_spot_text": "3.06 above spot"
@@ -79933,9 +79725,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 3.0036738877726066,
      "from_spot_text": "3.00 above spot"
@@ -79960,9 +79750,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 2.3149999999999977,
      "from_spot_text": "2.31 above spot"
@@ -79987,9 +79775,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 1.5968056391883465,
      "from_spot_text": "1.60 above spot"
@@ -80014,9 +79800,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 1.4572000000000003,
      "from_spot_text": "1.46 above spot"
@@ -80041,9 +79825,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.7325000000000159,
      "from_spot_text": "0.73 above spot"
@@ -80061,9 +79843,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -80083,9 +79863,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -80105,9 +79883,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -80127,9 +79903,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": 0.5749999999999886,
@@ -80156,9 +79930,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.4049999999999727,
      "from_spot_text": "0.40 above spot"
@@ -80183,9 +79955,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": 0.18993739060408643,
      "from_spot_text": "0.19 above spot"
@@ -80210,9 +79980,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -1.2169308579802305,
      "from_spot_text": "1.22 below spot"
@@ -80237,9 +80005,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -1.5900000000000318,
      "from_spot_text": "1.59 below spot"
@@ -80264,9 +80030,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -2.055000000000007,
      "from_spot_text": "2.06 below spot"
@@ -80291,9 +80055,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -2.884999999999991,
      "from_spot_text": "2.88 below spot"
@@ -80318,9 +80080,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.2549999999999955,
      "from_spot_text": "3.25 below spot"
@@ -80345,9 +80105,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.6550000000000296,
      "from_spot_text": "3.66 below spot"
@@ -80372,9 +80130,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -3.805000000000007,
      "from_spot_text": "3.81 below spot"
@@ -80399,9 +80155,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497880.0,
-      "as_of_time_ct": "Thu 11/12 09:38 AM CT",
-      "age_sec": 78.22364091873169,
-      "reason": "carried from canonical snapshot generation 1; a session price level has no staleness rule, its age is shown"
+      "as_of_time_ct": "Thu 11/12 09:38 AM CT"
      },
      "distance": -6.264999999999986,
      "from_spot_text": "6.26 below spot"
@@ -80419,9 +80173,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -6.843076566955176,
@@ -80441,9 +80193,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -9.425000000000011,
@@ -80463,9 +80213,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -9.425000000000011,
@@ -80485,9 +80233,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -10.099691544661994,
@@ -80507,9 +80253,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -19.42500000000001,
@@ -80529,9 +80273,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -19.42500000000001,
@@ -80551,9 +80293,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -25.51088186260668,
@@ -80573,9 +80313,7 @@
      },
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
      "not_live_text": null,
      "distance": -29.42500000000001,
@@ -80628,9 +80366,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80640,9 +80376,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80652,9 +80386,7 @@
      "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80664,9 +80396,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80676,9 +80406,7 @@
      "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80688,9 +80416,7 @@
      "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80700,9 +80426,7 @@
      "carried": 240.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80712,9 +80436,7 @@
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80724,9 +80446,7 @@
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80736,9 +80456,7 @@
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80748,9 +80466,7 @@
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80760,9 +80476,7 @@
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     },
     {
@@ -80772,9 +80486,7 @@
      "carried": 260.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
-      "as_of_time_ct": "Thu 11/12 09:39 AM CT",
-      "age_sec": -2.384185791015625e-07,
-      "reason": "carried from the terrain"
+      "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      }
     }
    ],

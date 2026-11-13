@@ -18,11 +18,11 @@ const LEVELS = {
   // served in ladder order (price, highest first) with distance (server.py get_levels)
   levels: [
     { id: 'PDH', price: 101.5, family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED', distance: 1.5,
-      provenance: { producer: 'session_levels' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12 } },
+      provenance: { producer: 'session_levels' }, staleness: { as_of_ts_utc: 1757000000 } },
     { id: 'VWAP', price: 100.02, family: 'vwap', label: 'VWAP', evidence_tier: 'MEASURED', distance: 0.02,
-      provenance: { producer: 'liquidity_value_engine' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12 } },
+      provenance: { producer: 'liquidity_value_engine' }, staleness: { as_of_ts_utc: 1757000000 } },
     { id: 'POC', price: 99.4, family: 'value', label: 'Point of Control', evidence_tier: 'DERIVED', distance: -0.6,
-      provenance: { producer: 'value_area' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12 } },
+      provenance: { producer: 'value_area' }, staleness: { as_of_ts_utc: 1757000000 } },
   ],
   by_distance: ['VWAP', 'POC', 'PDH'],
   vwap_series: [[1757000000, 100.0, 100.5, 99.5, 101.0, 99.0]],
@@ -105,7 +105,7 @@ test.describe('D — Gamma Levels view', () => {
   test('the 0DTE table shows the served same-day price beside the level it reprices', async ({ page }) => {
     panels.levels = Object.assign({}, LEVELS, {
       zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
-        staleness: { as_of_time_ct: '12:32:07 CT', age_sec: 4 } }],
+        staleness: { as_of_time_ct: '12:32:07 CT' } }],
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const row = page.locator('#levelsBody .zd-row', { hasText: 'Call wall' });
