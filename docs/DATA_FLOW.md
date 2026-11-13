@@ -899,7 +899,12 @@ the program.
    (`server.terrain_strikes_payload`), and so does the book's top size
    (`app.options.order_flow.engine._extract_canonical_book`), and so does a tape print's
    size (`l1_trade_observation.extract_vendor_print`); the screen rounds those counts
-   for display. Still
+   for display. The last trade Schwab streams (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) has
+   one reader, `l1_trade_observation.last_print`: the price row (`live_market_plane`) and the
+   tape both take the three fields from it, a stock's and an option contract's alike
+   (operator 2026-11-13: "this currently violates the one producer, one faucet rule",
+   "whatever faucet we get water from then we need to keep getting from that faucet";
+   `tests/test_last_print_one_reader_v1.py`). Still
    blank: levels fetched before the option close are marked apart from a feed stop
    (`server.terrain_staleness`); some calculations still drop
    contracts. The §3 descriptions of these are today's behavior. Each remaining place is

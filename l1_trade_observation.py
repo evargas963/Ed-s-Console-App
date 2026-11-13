@@ -50,19 +50,36 @@ def is_adjacent_restatement(
     return prev is not None and prev == curr
 
 
-def extract_vendor_print(item: dict[str, Any]) -> dict[str, Any] | None:
-    """Read a LEVELONE message's last print; the one reader of it.
+#: how each field of the last print is read, as Schwab sends it (AGENTS.md rule 2)
+_PRINT_READERS = {
+    VENDOR_LAST_PRICE: schwab_number,
+    VENDOR_LAST_SIZE: schwab_count,
+    VENDOR_TRADE_TIME: _schwab_int,
+}
 
-    The print is LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS, each by rule 2: {price, size,
-    time_millis}. Missing LAST_PRICE is not a trade observation (None).
+
+def last_print(item: dict[str, Any]) -> dict[str, Any]:
+    """Read a LEVELONE message's last print; the one reader of its three fields.
+
+    Each of LAST_PRICE, LAST_SIZE and TRADE_TIME_MILLIS (epoch ms) the message carries, by its
+    Schwab name; one sent as no number is None. A field the message does not carry is not in it.
     """
-    price = schwab_number(item.get(VENDOR_LAST_PRICE))
+    return {name: read(item[name]) for name, read in _PRINT_READERS.items() if name in item}
+
+
+def extract_vendor_print(item: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a LEVELONE message's last print as a trade: {price, size, time_millis}.
+
+    A message with no LAST_PRICE is not a trade observation (None).
+    """
+    sent = last_print(item)
+    price = sent.get(VENDOR_LAST_PRICE)
     if price is None:
         return None
     return {
         "price": price,
-        "size": schwab_count(item.get(VENDOR_LAST_SIZE)),
-        "time_millis": _schwab_int(item.get(VENDOR_TRADE_TIME)),
+        "size": sent.get(VENDOR_LAST_SIZE),
+        "time_millis": sent.get(VENDOR_TRADE_TIME),
     }
 
 

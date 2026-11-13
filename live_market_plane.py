@@ -13,6 +13,12 @@ from datetime import datetime
 from typing import Any
 
 from instrument_identity import ticker_storage_key
+from l1_trade_observation import (
+    VENDOR_LAST_PRICE,
+    VENDOR_LAST_SIZE,
+    VENDOR_TRADE_TIME,
+    last_print,
+)
 from numeric_contract import schwab_count, schwab_number
 from time_et import CLOSED, ET, UNKNOWN, options_open, record_trade, session_label
 
@@ -36,7 +42,6 @@ _by_ticker: dict[str, dict[str, Any]] = {}
 #: field is the last one Schwab sent, and its age is the age of THAT message. This table holds
 #: exactly that, per ticker, per field: {field: (value, received_ts)}.
 _PRICE_FIELDS = (
-    "LAST_PRICE",
     "BID_PRICE",
     "ASK_PRICE",
     "MARK",
@@ -46,8 +51,8 @@ _PRICE_FIELDS = (
     "LOW_PRICE",
     "REGULAR_MARKET_LAST_PRICE",
 )
-_COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
-_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
+_COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "TOTAL_VOLUME")
+_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS",)
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
 #: Measured: NET_CHANGE_PERCENT arrives with every LAST_PRICE; REGULAR_MARKET_CHANGE_PERCENT
 #: with every LAST_PRICE in the regular session (SPY 113/113, MU 112/112, PCG 17/17)
@@ -99,26 +104,25 @@ def record_from_level_one_equity(
     if not t:
         return False
     rts = float(received_ts)
-    seen = False
+    own = _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS + _TEXT_FIELDS
+    sent = {name: _read_stream_field(name, item[name]) for name in own if name in item}
+    sent.update(last_print(item))  # the last trade's three fields: their one reader's
+    if not sent:
+        return False
     with _lock:
         fs = _fields_by_ticker.setdefault(t, {})
-        for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS + _TEXT_FIELDS:
-            if name not in item:
-                continue
-            seen = True
-            v = _read_stream_field(name, item.get(name))
+        for name, v in sent.items():
             if v is None:
                 fs.pop(name, None)  # not a number (-999, text, NaN): cleared
             else:
                 fs[name] = (v, rts if field_received is None else float(field_received[name]))
         snapshot = dict(fs)
-    if not seen:
-        return False
 
     def val(name: str) -> float | str | None:
         return snapshot[name][0] if name in snapshot else None
 
-    spot_f = val("LAST_PRICE")
+    spot_f = val(VENDOR_LAST_PRICE)
+    trade_ms = val(VENDOR_TRADE_TIME)
     bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
     quote_ts = val("QUOTE_TIME_MILLIS")  # exchange quote clock; TRADE_TIME never stands in
     out = {
@@ -129,7 +133,7 @@ def record_from_level_one_equity(
         "mark": mark,
         "bid_size": val("BID_SIZE"),
         "ask_size": val("ASK_SIZE"),
-        "last_size": val("LAST_SIZE"),
+        "last_size": val(VENDOR_LAST_SIZE),
         "total_volume": val("TOTAL_VOLUME"),
         "open_price": val("OPEN_PRICE"),
         "high_price": val("HIGH_PRICE"),
@@ -146,10 +150,12 @@ def record_from_level_one_equity(
         "exchange_quote_ts": quote_ts,
         #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a
         #: LAST_PRICE tick belongs to (candles); never used as the quote time.
-        "trade_ts": val("TRADE_TIME_MILLIS"),
+        "trade_ts": None if trade_ms is None else trade_ms / 1000.0,
         "security_status": val("SECURITY_STATUS"),
         "server_received_ts": rts,
-        "spot_received_ts": snapshot["LAST_PRICE"][1] if "LAST_PRICE" in snapshot else None,
+        "spot_received_ts": (
+            snapshot[VENDOR_LAST_PRICE][1] if VENDOR_LAST_PRICE in snapshot else None
+        ),
     }
     with _lock:
         _by_ticker[t] = out
