@@ -39,9 +39,9 @@ from time_et import ET, age_text, ct_label
 ON_A_STRIKE = SPY_PRINT_ON_A_STRIKE["native"]["LAST_PRICE"]
 STRIKE_AWAY = SPY_PRINT_A_STRIKE_AWAY["native"]["LAST_PRICE"]
 AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
-#: the levels between 764.00 and 773.1269: the call wall 765, the gamma flip 770.77, max pain 771
-#: and the put delta wall 772 (the put wall is at 764.00 itself)
-BETWEEN = {"Call g-Wall", "Gamma Flip", "Max Pain", "Put d-Wall"}
+#: the watched levels between 764.00 and 773.1269: the call wall and the largest gamma strike,
+#: both 765, and the gamma flip 770.77 (the put wall is at 764.00 itself)
+BETWEEN = {"Call wall", "Abs Γ", "Gamma flip"}
 
 
 def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
@@ -144,13 +144,17 @@ def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prin
     assert _named(up) == {n: (CROSSED_UP, levels[n], STRIKE_AWAY) for n in BETWEEN}
     assert _named(down) == {n: (CROSSED_DOWN, levels[n], AFTER_HOURS) for n in BETWEEN}
     # each stored cross is held for the live readers, newest last
-    assert sorted(c["cross_id"] for c in held[-8:]) == sorted(c["cross_id"] for c in up + down)
+    assert sorted(c["cross_id"] for c in held[-6:]) == sorted(c["cross_id"] for c in up + down)
 
 
-def test_a_price_through_each_net_gamma_peak_is_a_cross_under_its_own_name():
-    """The two net gamma peaks are crossed as levels of their own, on the published close.
+def test_only_the_four_watched_levels_are_crossed_each_under_its_listed_name():
+    """A cross is recorded for the gamma flip, the two walls and the largest gamma strike alone.
 
-    The level that named whichever of the two was larger is gone from the crossings.
+    Operator 2026-11-13: "if we have all kinds of levels and we consider all levels important
+    then no level is really important". On SPY's published close the price is run through every
+    option level the program lists: the four watched ones are crossed under the name the one
+    list gives them, and no other level (the net gamma peaks, max pain, the delta and charm
+    walls, the key delta strike) names a cross.
     """
     _forget()
     levels = _publish_close()
@@ -158,16 +162,23 @@ def test_a_price_through_each_net_gamma_peak_is_a_cross_under_its_own_name():
         snap = server.published_levels("SPY").snap
     finally:
         _forget()
-    assert "Net Γ peak" not in levels
-    assert (levels["Net call Γ peak"], levels["Net put Γ peak"]) == (snap.lvp, snap.hvp)
-    for name in ("Net call Γ peak", "Net put Γ peak"):
-        level = levels[name]
-        assert level is not None, name
+    named = dict(server.OPTION_LEVELS)
+    watched = ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike")
+    assert set(levels) == {named[k] for k in watched} == {n for _k, n in server.CROSS_LEVELS}
+    for key in watched:
+        level, name = getattr(snap, key), named[key]
+        assert level is not None, key
         assert (level, name, CROSSED_UP) in server._level_crosses_at(snap, level - 0.5, level + 0.5)
         assert (level, name, CROSSED_DOWN) in server._level_crosses_at(
             snap, level + 0.5, level - 0.5
         )
-        assert name not in {n for _v, n, _s in server._level_crosses_at(snap, level + 1, level + 2)}
+    for key in ("lvp", "hvp", "max_pain", "call_delta_wall", "put_delta_wall", "key_delta_strike"):
+        level = getattr(snap, key)
+        assert level is not None, key
+        crossed_names = {
+            n for _v, n, _s in server._level_crosses_at(snap, level - 0.01, level + 0.01)
+        }
+        assert crossed_names <= {named[k] for k in watched if getattr(snap, k) == level}, key
 
 
 def test_a_restart_holds_back_the_cross_its_last_minute_stored():
@@ -403,7 +414,7 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
         ticker="SPY",
         ts_utc=SPY_PRINT_A_STRIKE_AWAY["ts_recv"],
         ts_et="2026-10-22 16:39:03 ET",
-        level_name="Call g-Wall",
+        level_name="Call wall",
         level_value=765.0,
         direction=CROSSED_UP,
         spot_at_cross=STRIKE_AWAY,
@@ -414,7 +425,7 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
     stored = edb.record_level_crosses([event])
     assert [
         (c["level_name"], c["level_value"], c["direction"], c["spot_at_cross"]) for c in stored
-    ] == [("Call g-Wall", 765.0, CROSSED_UP, STRIKE_AWAY)]
+    ] == [("Call wall", 765.0, CROSSED_UP, STRIKE_AWAY)]
     # a cross recorded live and the same cross loaded at startup are the same row, cross_id included
     assert edb.get_recent_crosses("SPY", n=10) == stored
 
@@ -443,7 +454,7 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
         )
 
     with pytest.raises(sqlite3.IntegrityError):
-        edb.record_level_crosses([cross("Call g-Wall", 765.0), cross("Gamma Flip", None)])
+        edb.record_level_crosses([cross("Call wall", 765.0), cross("Gamma flip", None)])
     assert edb.get_recent_crosses("SPY", n=10) == []
 
 

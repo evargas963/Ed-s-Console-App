@@ -783,8 +783,18 @@ the program.
   2026-11-12, asked whether to keep or drop it: "your recommendation.", which was to keep it).
   Enforced by: `tests/test_options_flow_tape_v1.py` (the put's messages received after calls
   that traded later; the call's first message, traded before it was received, is one row).
-- **Level crosses.** Found by the console at the live price on each streamed equity quote
-  (`server._on_stream_tick`, on the event loop, the owner): each published level the price
+- **Level crosses.** Four levels are watched, each under its name in the one list of option
+  levels (`server.CROSS_LEVELS`, drawn from `terrain_engine.OPTION_LEVELS`; operator 2026-11-13:
+  "if we have all kinds of levels and we consider all levels important then no level is really
+  important", the choice left to the research): the gamma flip, where the regime changes
+  (`docs/SOURCES.md` baltussen-2021); the call and put walls, the range the industry reads
+  (modelled: squeezemetrics-gex-2017); and the largest gamma strike, the pin
+  (ni-pearson-poteshman-2005). The net gamma peaks and max pain (no source, or one not
+  verified) and the delta walls (no study of a price reaction; a wall can sit on a strike far
+  in the money) are not watched; the charm walls matter on an expiration day, where the
+  same-day pin already stands. A cross stored before this keeps the name it was written with.
+  Found by the console at the live price on each streamed equity quote
+  (`server._on_stream_tick`, on the event loop, the owner): each of those levels the price
   reached or passed going from the ticker's previous streamed price to this one
   (`server._last_tick_spot`, kept on every equity quote, since the price row holds only the
   newest; `terrain_read.crossed`, the one side rule). No quote, no check; a new publication moves
