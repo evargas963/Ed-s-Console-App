@@ -236,6 +236,8 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         for tf, limit in CHART_TFS.items()
                     },
                     "bars_flow": server.bars(tk, at, FLOW_BARS),
+                    # the option tape: the daemon streams none of these contracts, and says so
+                    "tape": server.tape(tk, at),
                 }
             )
         )

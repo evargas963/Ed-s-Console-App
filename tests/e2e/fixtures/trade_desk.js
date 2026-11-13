@@ -50,7 +50,7 @@ async function intercept(page) {
   // each reader is answered what the server answers its ask: the strikes window of its scope, the
   // levels and the bars of its timeframe (the flow card's are its own 60 one-minute bars), the
   // queue of its venue and timeframe, the book of its venue
-  panels = { terrain: TERRAIN, liquidity: LIQ, forces: REAL.forces, bookmap: HEAT, tape: { available: false },
+  panels = { terrain: TERRAIN, liquidity: LIQ, forces: REAL.forces, bookmap: HEAT, tape: REAL.tape,
     strikes: (key, params) => (params.scope === 'wider' ? REAL.strikes_wider : STRIKES),
     levels: (key, params) => REAL.levels[params.tf],
     desk: (key, params) => REAL.desk[params.venue][params.tf],

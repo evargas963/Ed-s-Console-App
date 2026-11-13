@@ -436,7 +436,7 @@
         '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
         '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>' +
         '<tbody><tr class="of-empty"><td colspan="14"><div class="oe-sub">' +
-        esc(d.reason || 'the console sent no reason') + '</div></td></tr></tbody></table>';
+        esc(d.reason) + '</div></td></tr></tbody></table>';   // the server says why with every empty tape
       return;
     }
     var body = d.rows.map(function (r) {

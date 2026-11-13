@@ -129,7 +129,7 @@ async function intercept(page) {
     body: JSON.stringify({ ok: true, contract: route.request().postDataJSON().contract }) }));
   await routeWatchlist(page, ['SPY']);
   panels = { terrain: TERRAIN, strikes: STRIKES, surface: SURFACE, chain: chainAt(CHAIN),
-    bars: BARS, tape: { available: false } };
+    bars: BARS, tape: REAL.tape };
   sock = await pushExpiries(page, EXPIRIES, undefined, panels);
 }
 

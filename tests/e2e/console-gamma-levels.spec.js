@@ -37,7 +37,7 @@ async function intercept(page) {
   await routeWatchlist(page, ['SPY']);
   panels = {
     levels: LEVELS,
-    bars: { available: false }, tape: { available: false },
+    bars: { available: false }, tape: REAL.tape,
     terrain: REAL.terrain, strikes: REAL.strikes, surface: REAL.surface,
   };
   sock = await pushExpiries(page, ['2026-09-11'], undefined, panels);

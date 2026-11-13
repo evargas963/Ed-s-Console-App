@@ -173,6 +173,7 @@ def build_e2e_panels() -> dict:
                     "surface": server.gamma_surface(
                         TK, chain_at, {**AUTO, "cols": None, "expiry": None}
                     ),
+                    "tape": server.tape(TK, chain_at),
                 }
             )
         )
