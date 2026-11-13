@@ -152,7 +152,7 @@
     var walls = {};   // served: the levels panel's own rows
     if (levelsD && levelsD.levels) levelsD.levels.forEach(function (r) { walls[r.id] = r; });
     if (walls.put_wall && walls.call_wall && walls.put_wall.from_spot_text && walls.call_wall.from_spot_text) {
-      lines.push(['Box', 'Put wall ' + walls.put_wall.from_spot_text + ', call wall ' + walls.call_wall.from_spot_text +
+      lines.push(['Walls', 'Put wall ' + walls.put_wall.from_spot_text + ', call wall ' + walls.call_wall.from_spot_text +
         notLive(levelsD)]);
     }
     if (!lines.length) return '';

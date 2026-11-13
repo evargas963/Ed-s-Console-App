@@ -693,6 +693,10 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
     await expect(body).toContainText('Max pain 757.00');
+    // Schwab's SPY set: both walls are above the price, so the line names each wall's own side
+    const side = (id) => LEVELS.levels.find((r) => r.id === id).from_spot_text;
+    expect([side('put_wall'), side('call_wall')]).toEqual(['2.92 above spot', '17.92 above spot']);
+    await expect(body).toContainText('WallsPut wall 2.92 above spot, call wall 17.92 above spot');
     const asked = sock.subscribes.length;
     // DETECT's book and FRAME's zones, FRAME's levels (each with its distance from the live
     // price), CONFIRM's levels and the migration's rows are the book, liquidity, levels, terrain
