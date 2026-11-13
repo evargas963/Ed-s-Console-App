@@ -158,10 +158,6 @@
       "item": "gross gamma (confluence) same as Abs gamma metric"
     },
     {
-      "category": "one value, several names",
-      "item": "net_gex_at_spot and flip_diag.gamma_at_spot"
-    },
-    {
       "category": "one value, several producers",
       "item": "distance to spot: 4 producers"
     },

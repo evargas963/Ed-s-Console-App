@@ -340,8 +340,6 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
         == (datetime.fromisoformat(far["expirationDate"]).timestamp() - now.timestamp())
         / time_et.YEAR_SECONDS
     )
-    snap = compute_terrain("NFLX", nflx_chain, nflx["spot"], now=now)
-    assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8}
     at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)
     spx_close = time_et.option_close_product("$SPX")
     assert contract_inputs(read_chain(spx["chain"]), at, product=spx_close)[1] == {}

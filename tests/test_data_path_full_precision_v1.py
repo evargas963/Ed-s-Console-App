@@ -26,9 +26,8 @@ def test_the_flip_is_the_profiles_full_zero_crossing():
     """
     chain, spot = read_chain(SPY_0DTE.chain), SPY_0DTE.spot
     snap = compute_terrain(SPY_0DTE.ticker, chain, spot, now=SPY_0DTE.now)
-    flip, confidence, diag = snap.gamma_flip, snap.confidence, snap.flip_diag
+    flip, confidence = snap.gamma_flip, snap.confidence
     assert confidence == GAMMA_FLIP_NARROW
     assert flip == 779.015982542143
     assert 767.0 < flip < 786.0
-    assert diag["unpriced"] == {}
-    assert diag["curve_gamma_at_spot"] < 0 and diag["gamma_at_spot"] < 0
+    assert snap.net_gex_at_spot < 0 and snap.flip_note is None

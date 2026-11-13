@@ -142,7 +142,6 @@ class TerrainSnapshot:
     contracts_used: int = 0
     strikes_used: int = 0
     dollarized: bool = False
-    flip_diag: dict[str, Any] = field(default_factory=dict)
     #: the note shown beside the gamma flip (terrain_read.flip_note), None for none
     flip_note: str | None = None
     error: str = ""
@@ -839,24 +838,19 @@ def compute_terrain(
     # every operator surface until this producer computes them.
     (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(exposures)
     # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
-    parsed, unpriced = contract_inputs(contracts, _terrain_now, product=product)
+    parsed, _unpriced = contract_inputs(contracts, _terrain_now, product=product)
     profile = compute_gamma_profile(parsed, spot)
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot, profile=profile)
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
     # The model curve places the flip only (Schwab sends gamma at its own price, never at
     # other prices); where the curve's sign at spot disagrees with Schwab's, the flip says so.
-    _curve_at_spot = flip_diag.get("curve_gamma_at_spot")
+    _curve_at_spot = flip_diag["curve_gamma_at_spot"]
     _gamma_at_spot = book_net_gex(exposures)
-    flip_diag = {
-        **flip_diag,
-        "unpriced": unpriced,
-        "gamma_at_spot": _gamma_at_spot,
-        "curve_agrees_with_schwab_at_spot": (
-            None
-            if _gamma_at_spot is None or _curve_at_spot is None
-            else (_gamma_at_spot > 0) == (_curve_at_spot > 0)
-        ),
-    }
+    _curve_agrees = (
+        None
+        if _gamma_at_spot is None or _curve_at_spot is None
+        else (_gamma_at_spot > 0) == (_curve_at_spot > 0)
+    )
     # GSF/GRC from the SAME materialized profile — no second materialization.
     _gsl = compute_gamma_support_levels(profile, spot)
     # Max pain on the FRONT expiry only.
@@ -883,9 +877,7 @@ def compute_terrain(
     charm_by_strike = merge_charm_maps(charm_by_expiry)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
-    read = build_terrain_read(
-        spot=spot, flip_confidence=confidence, gamma_at_spot=flip_diag["gamma_at_spot"]
-    )
+    read = build_terrain_read(spot=spot, flip_confidence=confidence, gamma_at_spot=_gamma_at_spot)
 
     return TerrainSnapshot(
         ticker=ticker,
@@ -905,7 +897,7 @@ def compute_terrain(
         key_delta_strike=pick_key_delta_strike(exposures),
         hvp=hvp,
         lvp=lvp,
-        net_gex_at_spot=flip_diag.get("gamma_at_spot"),
+        net_gex_at_spot=_gamma_at_spot,
         gsf=_gsl["gsf"],
         grc=_gsl["grc"],
         gsf_state=_gsl["state"],
@@ -928,8 +920,7 @@ def compute_terrain(
         contracts_used=diag.contracts_used,
         strikes_used=len(exposures),
         dollarized=exposures_have_dollar_gex(exposures),
-        flip_diag=dict(flip_diag),
-        flip_note=flip_note(flip_diag["curve_agrees_with_schwab_at_spot"]),
+        flip_note=flip_note(_curve_agrees),
         profile=profile,
         # the LIVE per-strike map, computed from THIS chain; session volume is carried alongside.
         per_strike=per_strike_view(books, exposures),

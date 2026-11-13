@@ -27,12 +27,6 @@
  "expiry_dte": {
   "2026-10-22": 0.0
  },
- "flip_diag": {
-  "curve_agrees_with_schwab_at_spot": true,
-  "curve_gamma_at_spot": -2861517682.8475194,
-  "gamma_at_spot": -2718991225.452607,
-  "unpriced": {}
- },
  "flip_note": null,
  "flip_relation": "ABOVE",
  "gamma_flip": 770.7699684126369,

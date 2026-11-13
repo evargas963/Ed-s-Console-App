@@ -25,10 +25,7 @@ def test_gamma_at_spot_is_schwabs_gamma_summed_over_the_book():
     per, _ = compute_exposures_by_strike(chain, spot=spot, now=now)
     schwab = sum(v for b in per.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None)
     assert snap.net_gex_at_spot == pytest.approx(schwab, rel=1e-9)
-    assert snap.flip_diag["gamma_at_spot"] == snap.net_gex_at_spot
-    assert snap.flip_diag["curve_gamma_at_spot"] is not None, (
-        "the flip's own curve is still reported"
-    )
+    assert snap.flip_note is None, "the flip's own curve has that gamma's sign at the price"
 
 
 def test_each_contract_carries_the_chains_rate_and_dividend_as_sent():
@@ -58,8 +55,6 @@ def test_a_flip_whose_curve_disagrees_with_schwab_says_so():
     its price differs from Schwab's gamma, so the note is served; CRWD's agree, so none is.
     """
     spy = compute_terrain("SPY", read_chain(SPY_FULL.chain), SPY_FULL.spot, now=SPY_FULL.now)
-    assert spy.flip_diag["curve_agrees_with_schwab_at_spot"] is False
     assert spy.flip_note == spy.to_dict()["flip_note"] == FLIP_CURVE_DISAGREES
     crwd = compute_terrain("CRWD", read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
-    assert crwd.flip_diag["curve_agrees_with_schwab_at_spot"] is True
     assert crwd.flip_note is None

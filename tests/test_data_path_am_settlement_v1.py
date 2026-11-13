@@ -24,12 +24,12 @@ _SPX = json.loads(
 def test_every_contract_is_priced_to_schwabs_expiration_date_through_the_terrain():
     at = datetime.fromtimestamp(_SPX["ts_utc"], time_et.ET)
     chain = read_chain(_SPX["chain"])
-    priced, _unpriced = contract_inputs(chain, at)
+    priced, unpriced = contract_inputs(chain, at)
     settles = datetime.fromisoformat(_SPX["chain"][0]["expirationDate"])
     assert len(priced) == 288
     assert {row[3] for row in priced} == {
         (settles.timestamp() - at.timestamp()) / time_et.YEAR_SECONDS
     }
     snap = compute_terrain("$SPX", chain, _SPX["spot"], now=at)
-    assert snap.to_dict()["flip_diag"]["unpriced"] == {}
+    assert unpriced == {}
     assert snap.call_charm_wall is not None
