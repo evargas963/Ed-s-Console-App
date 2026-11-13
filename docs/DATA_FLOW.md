@@ -768,6 +768,12 @@ the program.
 - **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
   resets it, and the window it sums (its first and last print's Schwab trade time,
   `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
+  The options tape (`server.tape`) lists the newest trade first by Schwab's own trade time
+  (`TRADE_TIME_MILLIS`), not by when a message arrived (operator 2026-11-12: "yes we should use
+  schwab's data", after SPY's tape showed trades of 08:55 and 08:30 above trades of 15:14); a
+  print Schwab sent no trade time with comes after every one that has one. Enforced by:
+  `tests/test_options_flow_tape_v1.py` (the put's messages received after calls that traded
+  later).
 - **Level crosses.** Found by the console at the live price on each streamed equity quote
   (`server._on_stream_tick`, on the event loop, the owner): each published level the price
   reached or passed going from the ticker's previous streamed price to this one

@@ -58,7 +58,8 @@ def recent_prints(contract: str, content: list, limit: int) -> list[dict[str, An
     `content` is the live state's for the contract (state.get_content_for_symbol): each print it
     kept, a genuinely new (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE), with what it held then.
     `trade_time_ms` is Schwab's TRADE_TIME_MILLIS as sent (None: the message carried none);
-    `ts_recv`, when the message arrived, orders prints of several contracts and is not shown.
+    `ts_recv`, when the message arrived, is not shown; the tape orders prints by Schwab's trade
+    time (server.tape).
     The contract's terms are not here: the tape shows them from its chain record (tape_row).
     """
     sym = ticker_storage_key(contract)
