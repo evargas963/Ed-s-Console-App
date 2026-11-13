@@ -1521,27 +1521,14 @@ def _level_crosses_at(
     ]
 
 
-#: seconds a level's cross in one direction holds back the next in that direction (a price
-#: wavering on a level); a reversal is stored at once
-LEVEL_CROSS_HOLD_S = 60.0
-
-
 def _log_level_crosses(
     tk: str, spot: float, crosses: list[tuple], now: float, now_text: str
 ) -> None:
     """Store the crosses _level_crosses_at found, hold them for live readers, tell the open pages.
 
-    Each is stored unless the ticker's held crosses have the same level's cross in the same
-    direction from the last LEVEL_CROSS_HOLD_S. Runs on the pricing thread; a failed store is
-    logged.
+    Every cross is stored, as it happened. Runs on the pricing thread; a failed store is logged.
     """
     try:
-        with _crosses_lock:
-            recent = {
-                (c["level_name"], c["direction"])
-                for c in _held_crosses(tk)
-                if c["ts_utc"] >= now - LEVEL_CROSS_HOLD_S
-            }
         logged = get_db().record_level_crosses(
             [
                 LevelCrossEvent(
@@ -1557,7 +1544,6 @@ def _log_level_crosses(
                     timeframe="1m",
                 )
                 for value, name, side in crosses
-                if (name, side) not in recent
             ]
         )
     except Exception:

@@ -805,10 +805,12 @@ the program.
   (`server._last_tick_spot`, kept on every equity quote, since the price row holds only the
   newest; `terrain_read.crossed`, the one side rule). No quote, no check; a new publication moves
   the levels, not the price, and is not a cross. Stored on the pricing thread as `LevelCrossEvent`
-  records (`server._log_level_crosses`, `EdDB.record_level_crosses`): a level's cross in the
-  direction the ticker's held crosses have one for from the last minute is not stored again
-  (`server.LEVEL_CROSS_HOLD_S`); a ticker's held crosses are read from `ed_console.db` once, the
-  first time they are needed, so a restart holds back what the last minute stored. A failed store
+  records (`server._log_level_crosses`, `EdDB.record_level_crosses`): every cross of every
+  watched level, one row per level, as it happened, with nothing held back (operator
+  2026-11-13: "we take what we get from schwab, and we record what happens", "why put in an
+  interpreter when one is not needed"; the 60-second hold that left a repeated cross out of the
+  record is deleted; `tests/test_level_crosses_wire.py`); a ticker's held crosses are read from
+  `ed_console.db` once, the first time they are needed. A failed store
   is logged, and that cross is not held or stored. Written to `ed_console.db`
   and kept in the console's memory (§3.3) → the desk panel (`server.desk`), sent after the cross is
   held, which serves
