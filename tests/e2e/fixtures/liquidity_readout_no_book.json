@@ -77,7 +77,7 @@
    "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
    "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
    "weights": "Headline weights by price level from the touch: 0.43, 0.26, 0.16, 0.10, 0.06 (exp(-0.5\u00b7(k-1)), normalized; renormalized over the levels a thin side has). Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
-   "zones": "Zones, a provisional guide and not a research finding: BALANCED under 10% (Bookmap's colour-switch line); BID or OFFER HEAVY from 10% to under 70%; VERY ONE-SIDED from 70% (a VisualHFT vendor study, not a peer-reviewed paper). The middle range grades direction only, not strength. The headline is the median of the last 5 seconds; a zone changes after 3 seconds across its line; a flip is a change of side, bid to offer or back, held that long; 5 or more flips in 2 minutes read CHOPPY."
+   "zones": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back."
   },
   "disagree": {
    "1": false,
@@ -110,22 +110,18 @@
     "touch_text": null,
     "views": {
      "1": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "3": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "5": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "weighted": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      }
@@ -152,22 +148,18 @@
     "touch_text": null,
     "views": {
      "1": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "3": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "5": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "weighted": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      }
@@ -194,22 +186,18 @@
     "touch_text": null,
     "views": {
      "1": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "3": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "5": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      },
      "weighted": {
-      "live_pct": null,
       "pct": null,
       "zone": null
      }

@@ -103,14 +103,14 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
       'Bids', w.bid_text, 'Asks', w.ask_text,
       w.sentence, 'Difference: ' + w.difference_text + ' shares · Total depth: ' + w.total_text + ' shares',
       'VENUES', 'AT THE TOUCH', LIVE_COMP.touch_text,
-      'LEAN', w.held_text, w.flips_word + ' · ' + w.flips_2m + ' flips in 2 min',
+      'LEAN', w.held_text, w.flips_2m + ' flips in 2 min',
       'Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue',
       'Top-5 spans, bid / ask: NYSE ' + span('NYSE_BOOK', 'bid') + ' / ' + span('NYSE_BOOK', 'ask') +
         ' · Nasdaq ' + span('NASDAQ_BOOK', 'bid') + ' / ' + span('NASDAQ_BOOK', 'ask'),
       'NYSE + Nasdaq only — not the whole market · Book ' + LIVE_COMP.book_time_ct];
     let at = -1;
     for (const s of order) { const i = text.indexOf(s, at + 1); expect(i, s).toBeGreaterThan(at); at = i; }
-    await expect(card(page).locator('.liq-live')).toHaveText(w.live_text + ' live');
+    await expect(card(page).locator('.liq-live')).toHaveCount(0);
     // the served flag: NYSE and Nasdaq lean opposite ways at this depth
     expect(READOUT_LIVE.readout.disagree.weighted).toBe(true);
     await expect(card(page).locator('.liq-body')).toContainText('VENUES DISAGREE');

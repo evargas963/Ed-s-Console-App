@@ -129,7 +129,7 @@
    "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
    "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
    "weights": "Headline weights by price level from the touch: 0.43, 0.26, 0.16, 0.10, 0.06 (exp(-0.5\u00b7(k-1)), normalized; renormalized over the levels a thin side has). Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
-   "zones": "Zones, a provisional guide and not a research finding: BALANCED under 10% (Bookmap's colour-switch line); BID or OFFER HEAVY from 10% to under 70%; VERY ONE-SIDED from 70% (a VisualHFT vendor study, not a peer-reviewed paper). The middle range grades direction only, not strength. The headline is the median of the last 5 seconds; a zone changes after 3 seconds across its line; a flip is a change of side, bid to offer or back, held that long; 5 or more flips in 2 minutes read CHOPPY."
+   "zones": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back."
   },
   "disagree": {
    "1": true,
@@ -170,10 +170,9 @@
       "difference_text": "30",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "SELLERS",
@@ -372,8 +371,6 @@
         ]
        }
       },
-      "live_pct": -23.076923076923077,
-      "live_text": "-23%",
       "pct": -23.076923076923077,
       "pct_text": "-23%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
@@ -393,10 +390,9 @@
       "difference_text": "330",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "BUYERS",
@@ -595,8 +591,6 @@
         ]
        }
       },
-      "live_pct": 27.27272727272727,
-      "live_text": "+27%",
       "pct": 27.27272727272727,
       "pct_text": "+27%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
@@ -616,10 +610,9 @@
       "difference_text": "410",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "BUYERS",
@@ -818,8 +811,6 @@
         ]
        }
       },
-      "live_pct": 23.163841807909606,
-      "live_text": "+23%",
       "pct": 23.163841807909606,
       "pct_text": "+23%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
@@ -839,10 +830,9 @@
       "difference_text": "410",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "BUYERS",
@@ -1041,8 +1031,6 @@
         ]
        }
       },
-      "live_pct": 14.50333631857019,
-      "live_text": "+15%",
       "pct": 14.50333631857019,
       "pct_text": "+15%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
@@ -1084,10 +1072,9 @@
       "difference_text": "40",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "SELLERS",
@@ -1286,8 +1273,6 @@
         ]
        }
       },
-      "live_pct": -28.57142857142857,
-      "live_text": "-29%",
       "pct": -28.57142857142857,
       "pct_text": "-29%",
       "sentence": "To balance, market makers buy 40 shares.",
@@ -1307,10 +1292,9 @@
       "difference_text": "40",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "SELLERS",
@@ -1509,8 +1493,6 @@
         ]
        }
       },
-      "live_pct": -13.333333333333334,
-      "live_text": "-13%",
       "pct": -13.333333333333334,
       "pct_text": "-13%",
       "sentence": "To balance, market makers buy 40 shares.",
@@ -1530,10 +1512,9 @@
       "difference_text": "100",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "SELLERS",
@@ -1732,8 +1713,6 @@
         ]
        }
       },
-      "live_pct": -19.230769230769234,
-      "live_text": "-19%",
       "pct": -19.230769230769234,
       "pct_text": "-19%",
       "sentence": "To balance, market makers buy 100 shares.",
@@ -1753,10 +1732,9 @@
       "difference_text": "100",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "SELLERS",
@@ -1955,8 +1933,6 @@
         ]
        }
       },
-      "live_pct": -20.53236305201623,
-      "live_text": "-21%",
       "pct": -20.53236305201623,
       "pct_text": "-21%",
       "sentence": "To balance, market makers buy 100 shares.",
@@ -1998,10 +1974,9 @@
       "difference_text": "240",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "BUYERS",
@@ -2200,8 +2175,6 @@
         ]
        }
       },
-      "live_pct": 60.0,
-      "live_text": "+60%",
       "pct": 60.0,
       "pct_text": "+60%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
@@ -2221,10 +2194,9 @@
       "difference_text": "440",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "BUYERS",
@@ -2423,8 +2395,6 @@
         ]
        }
       },
-      "live_pct": 33.33333333333333,
-      "live_text": "+33%",
       "pct": 33.33333333333333,
       "pct_text": "+33%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
@@ -2444,10 +2414,9 @@
       "difference_text": "760",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "BUYERS",
@@ -2646,8 +2615,6 @@
         ]
        }
       },
-      "live_pct": 35.84905660377358,
-      "live_text": "+36%",
       "pct": 35.84905660377358,
       "pct_text": "+36%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
@@ -2667,10 +2634,9 @@
       "difference_text": "760",
       "divergence": null,
       "flips_2m": 0,
-      "flips_word": "STEADY",
       "held_open": true,
-      "held_sec": 308,
-      "held_text": "HELD \u2265308s",
+      "held_sec": 300,
+      "held_text": "HELD \u2265300s",
       "lean": {
        "2m": {
         "lean": "BUYERS",
@@ -2869,8 +2835,6 @@
         ]
        }
       },
-      "live_pct": 42.11152564043665,
-      "live_text": "+42%",
       "pct": 42.11152564043665,
       "pct_text": "+42%",
       "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",

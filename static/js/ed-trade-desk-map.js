@@ -505,8 +505,7 @@
       (r.live ? '' : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + '</span>') + '</div>' +
       (one ? '<div class="liq-hl"><span class="liq-word">ONE-SIDED</span><span class="liq-pct">-</span></div>'
         : '<div class="liq-hl" data-liqdetail title="Open the detail"><span class="liq-word ' + tone + '">' + esc(orDash(v.side_word)) + '</span>' +
-          '<span class="liq-pct ' + tone + '">' + esc(orDash(v.pct_text)) + '</span>' +
-          '<span class="liq-live">' + esc(orDash(v.live_text)) + ' live</span></div>' +
+          '<span class="liq-pct ' + tone + '">' + esc(orDash(v.pct_text)) + '</span></div>' +
           (v.divergence ? '<div class="liq-flag">' + esc(v.divergence) + '</div>' : '')) + '</div>' +
       // the side Schwab sent levels for fills its track; a missing side draws no bar and "-"
       '<figure class="tdm-chartbox"><div class="liq-bars">' +
@@ -526,7 +525,7 @@
       '<div class="liq-gauge">' + (r.touch_pct == null ? '' : '<i style="left:' + liqLeft(r.touch_pct) + '"></i>') + '</div></div>' +
       '<div><div class="liq-lbl"><span>LEAN</span><span class="liq-pill plain">◷ ' + esc(v.held_text || 'HELD -') + '</span></div>' +
       (v.lean ? '<div class="liq-lean"><span>2m</span>' + liqSpark(v.lean['2m']) + '<span>5m</span>' + liqSpark(v.lean['5m']) + '</div>' : '') +
-      (v.flips_word ? '<span class="liq-pill">' + esc(v.flips_word) + ' · ' + v.flips_2m + ' flips in 2 min</span>' : '') + '</div></div>' +
+      (v.flips_2m != null ? '<span class="liq-pill">' + v.flips_2m + ' flips in 2 min</span>' : '') + '</div></div>' +
       '<div class="tdm-rows liq-facts liq-keep">' +
       (r.levels_text ? '<span class="tdm-r">' + esc(r.levels_text) + '</span>' : '') +
       (r.dedup_partial_text && !one ? '<span class="tdm-r">' + esc(r.dedup_partial_text) + '</span>' : '') +

@@ -9,7 +9,6 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 from __future__ import annotations
 
 import math
-import statistics
 from dataclasses import dataclass
 
 import numpy as np
@@ -509,46 +508,30 @@ READOUT_VIEWS: tuple[str, ...] = ("weighted", "1", "3", "5")
 OF_LEVEL_DECAY: float = 0.5
 _RAW_WEIGHTS = tuple(math.exp(-OF_LEVEL_DECAY * k) for k in range(OF_BOOK_DEPTH_DEEP))
 OF_LEVEL_WEIGHTS: tuple[float, ...] = tuple(w / sum(_RAW_WEIGHTS) for w in _RAW_WEIGHTS)
-#: the zones of the headline percentage, a guide: BALANCED under 10, leaning under 70, very
-#: one-sided from 70
+#: the headline percentage reads BALANCED under this, else the side it leans to (Bookmap's
+#: Imbalance indicator shows the ratio in the buyer's or seller's colour from 10%;
+#: docs/SOURCES.md bookmap-imbalance)
 OF_ZONE_LEANING_PCT: float = 10.0
-OF_ZONE_ONE_SIDED_PCT: float = 70.0
-#: the headline is the median of the last OF_SMOOTH_SEC one-second values
-OF_SMOOTH_SEC: int = 5
-#: a zone changes once the smoothed value has stood in another zone this many seconds
-OF_ZONE_DWELL_SEC: int = 3
-#: this many flips in two minutes read CHOPPY, fewer STEADY
-OF_CHOPPY_FLIPS: int = 5
 #: the lean sparklines: (name, window in seconds, one point every this many seconds)
 OF_LEAN_WINDOWS: tuple[tuple[str, int, int], ...] = (
     ("2m", int(OF_TAPE_WINDOW_2M_SEC), 1),
     ("5m", int(OF_TAPE_WINDOW_5M_SEC), 5),
 )
-#: the one-second values kept: the longest window, with its smoothing and dwell before it
-OF_LEAN_KEPT_SEC: int = int(OF_TAPE_WINDOW_5M_SEC) + OF_SMOOTH_SEC + OF_ZONE_DWELL_SEC
-ZONE_WORDS = {
-    "VERY_BID": "VERY ONE-SIDED · BID HEAVY",
-    "BID_HEAVY": "BID HEAVY",
-    "BALANCED": "BALANCED",
-    "OFFER_HEAVY": "OFFER HEAVY",
-    "VERY_OFFER": "VERY ONE-SIDED · OFFER HEAVY",
-}
+#: the one-second values kept: the longest window
+OF_LEAN_KEPT_SEC: int = int(OF_TAPE_WINDOW_5M_SEC)
+ZONE_WORDS = {"BID_HEAVY": "BID HEAVY", "BALANCED": "BALANCED", "OFFER_HEAVY": "OFFER HEAVY"}
 #: a zone's side, for flips: BALANCED is none
-_SIDE = {"VERY_BID": "BID", "BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER", "VERY_OFFER": "OFFER"}
+_SIDE = {"BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER"}
 #: the detail panel's words
 READOUT_DETAIL = {
     "weights": "Headline weights by price level from the touch: "
     + ", ".join(f"{w:.2f}" for w in OF_LEVEL_WEIGHTS)
     + f" (exp(-{OF_LEVEL_DECAY}·(k-1)), normalized; renormalized over the levels a thin side has)."
     " Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
-    "zones": "Zones, a provisional guide and not a research finding: BALANCED under"
-    f" {OF_ZONE_LEANING_PCT:.0f}% (Bookmap's colour-switch line); BID or OFFER HEAVY from"
-    f" {OF_ZONE_LEANING_PCT:.0f}% to under {OF_ZONE_ONE_SIDED_PCT:.0f}%; VERY ONE-SIDED from"
-    f" {OF_ZONE_ONE_SIDED_PCT:.0f}% (a VisualHFT vendor study, not a peer-reviewed paper). The"
-    " middle range grades direction only, not strength. The headline is the median of the last"
-    f" {OF_SMOOTH_SEC} seconds; a zone changes after {OF_ZONE_DWELL_SEC} seconds across its line;"
-    " a flip is a change of side, bid to offer or back, held that long; "
-    f"{OF_CHOPPY_FLIPS} or more flips in 2 minutes read CHOPPY.",
+    "zones": f"The headline is the book's percentage each second, as it is. BALANCED under"
+    f" {OF_ZONE_LEANING_PCT:.0f}%; BID or OFFER HEAVY from {OF_ZONE_LEANING_PCT:.0f}%"
+    " (Bookmap's colour-switch line): direction only, not strength. A flip is a change of"
+    " side, bid to offer or back.",
     "construction": "Composite: every exchange's and market maker's quote from the books Schwab"
     " sends for this symbol, one per contributor by side; where a contributor quotes in both"
     " books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent;"
@@ -730,54 +713,22 @@ def _standing(points: list[tuple[float, dict]], venue: str, view: str, first: in
     return out
 
 
-def _smoothed(values: list) -> list:
-    """Each second's median of the last OF_SMOOTH_SEC values; unknown while the value is."""
-    return [
-        None
-        if values[i] is None
-        else statistics.median(
-            v for v in values[max(0, i - OF_SMOOTH_SEC + 1) : i + 1] if v is not None
-        )
-        for i in range(len(values))
-    ]
-
-
 def _zone(pct: float | None) -> str | None:
     if pct is None:
         return None
     if abs(pct) < OF_ZONE_LEANING_PCT:
         return "BALANCED"
-    if abs(pct) < OF_ZONE_ONE_SIDED_PCT:
-        return "BID_HEAVY" if pct > 0 else "OFFER_HEAVY"
-    return "VERY_BID" if pct > 0 else "VERY_OFFER"
+    return "BID_HEAVY" if pct > 0 else "OFFER_HEAVY"
 
 
-def _dwelled(smoothed: list, first: int) -> list[tuple[str | None, int | None]]:
-    """Return each second's zone shown.
-
-    Once the smoothed values have stood outside the shown zone
-    OF_ZONE_DWELL_SEC seconds in a row, whichever zones they crossed, the zone they stand in
-    then, dated from the second they entered it. Each second's zone and that second; (None, None)
-    while the value is unknown.
-    """
-    shown = []
-    zone = since = left = entered = prev = None
-    for k, s in enumerate(smoothed):
-        z = _zone(s)
-        if z != prev:
-            entered = first + k
-        prev = z
-        if z is None:
-            zone = since = left = None
-        elif zone is None:
-            zone, since = z, entered
-        elif z == zone:
-            left = None
-        else:
-            if left is None:
-                left = first + k
-            if first + k - left + 1 >= OF_ZONE_DWELL_SEC:
-                zone, since, left = z, entered, None
+def _zones(values: list, first: int) -> list[tuple[str | None, int | None]]:
+    """Return each second's zone and the second the value entered it; (None, None) while unknown."""
+    shown, since, prev = [], None, None
+    for k, value in enumerate(values):
+        zone = _zone(value)
+        if zone != prev:
+            since = None if zone is None else first + k
+        prev = zone
         shown.append((zone, since))
     return shown
 
@@ -785,7 +736,7 @@ def _dwelled(smoothed: list, first: int) -> list[tuple[str | None, int | None]]:
 def _flips(shown: list[tuple[str | None, int | None]], first: int, last: int) -> int:
     """Count the flips arriving in the two minutes to second `last`.
 
-    A flip is the zone shown (`_dwelled`, from
+    A flip is the zone (`_zones`, from
     second `first`) reaching the side opposite the one it last held, bid to offer or back.
     BALANCED is no side, so bid, BALANCED, offer is one flip, on arrival; the first lean is none;
     after an unknown value the count of sides starts over.
@@ -840,9 +791,9 @@ def _opposite(a: float | None, b: float | None) -> bool:
 def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], ends: dict) -> dict:
     """Return the Liquidity card's values, every venue and view.
 
-    The headline (the smoothed percentage at
-    the venue's end second: now while its book is live, else its last value's), its live value,
-    zone and side word held OF_ZONE_DWELL_SEC, the seconds the zone has held (held_open: at
+    The headline (the percentage standing at
+    the venue's end second: now while its book is live, else its last value's), its
+    zone and side word, the seconds the zone has held (held_open: at
     least that long, the zone standing since the first value known), the flat totals, the
     sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
     in two minutes, and the 2m and 5m lean series. `readout`: the newest; `points`: the readouts
@@ -856,24 +807,20 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
         for view in READOUT_VIEWS:
             snap = r["views"][view] if "views" in r else {}
             if end is None:
-                views[view] = {"pct": None, "live_pct": snap.get("pct"), "zone": None}
+                views[view] = {"pct": None, "zone": None}
                 continue
             last = int(end)
             first = last - OF_LEAN_KEPT_SEC
-            sm = _smoothed(_standing(points, v, view, first, last))
-            shown = _dwelled(sm, first)
+            sm = _standing(points, v, view, first, last)
+            shown = _zones(sm, first)
             zone, since = shown[-1]
             known_from = next((first + k for k, s in enumerate(sm) if s is not None), None)
-            flips = _flips(shown, first, last)
             bid, ask = snap.get("bid_total"), snap.get("ask_total")
-            live = snap.get("pct")
             held = None if since is None else last - since
             views[view] = {
                 **{k: snap.get(k) for k in ("bid_total", "ask_total", "difference", "total_depth")},
                 "pct": sm[-1],
                 "pct_text": percent_text(sm[-1]),
-                "live_pct": live,
-                "live_text": percent_text(live),
                 "zone": zone,
                 "side_word": ZONE_WORDS.get(zone) if zone else None,
                 "held_sec": held,
@@ -885,10 +832,9 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
                 if r.get("touch_state") == "CROSSED"
                 else _sentence(zone, bid, ask),
                 "divergence": _DIVERGENCE
-                if view == "weighted" and _opposite(live, snap.get("imbalance"))
+                if view == "weighted" and _opposite(sm[-1], snap.get("imbalance"))
                 else None,
-                "flips_2m": flips,
-                "flips_word": "CHOPPY" if flips >= OF_CHOPPY_FLIPS else "STEADY",
+                "flips_2m": _flips(shown, first, last),
                 "bid_text": shares_text(bid),
                 "ask_text": shares_text(ask),
                 "difference_text": shares_text(snap.get("difference")),
