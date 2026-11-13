@@ -88,7 +88,7 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
     old = time_et.now() - 100.0
     assert _rec("RQD", {"key": "RQD", "LAST_PRICE": 1.0}, received_ts=old)
     row = lmp.get_quote("RQD")
-    assert row["server_received_ts"] == old and row["spot_received_ts"] == old
+    assert row["server_received_ts"] == old
 
 
 def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
@@ -107,7 +107,7 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     )
     _rec("CARRY", {"key": "CARRY", "BID_PRICE": 9.95, "ASK_PRICE": 10.05}, received_ts=now)
     row = lmp.get_quote("CARRY")
-    assert row["spot"] == 10.0 and row["spot_received_ts"] == t_trade
+    assert row["spot"] == 10.0
     mark_feed_live("CARRY", now=now)
     try:
         price = live_price_rows.price_row("CARRY", now)
@@ -194,7 +194,6 @@ def test_unchanged_bid_ask_stand_with_their_own_age():
     assert _rec("NOCARRY", {"key": "NOCARRY", "LAST_PRICE": 11.0}) is True
     row = lmp.get_quote("NOCARRY")
     assert row["spot"] == 11.0 and row["bid"] == 9.9 and row["ask"] == 10.1
-    assert row["spot_received_ts"] > t0
 
 
 def test_a_zero_price_is_taken_as_sent():
@@ -234,21 +233,6 @@ def test_record_from_level_one_rejects_midpoint_spot_fabrication():
 
     assert ok is True
     assert lmp.get_quote("MIDONLY")["spot"] is None
-
-
-def test_a_resent_identical_last_price_refreshes_its_age():
-    """A LAST_PRICE message is a trade report: the same price resent is a NEW trade at that price.
-
-    So its age refreshes (it used to be suppressed as a duplicate, aging the spot).
-    """
-    t0 = time_et.now() - 20.0
-    _rec(
-        "AAA",
-        {"key": "AAA", "LAST_PRICE": 50.0, "BID_PRICE": 49.9, "ASK_PRICE": 50.1},
-        received_ts=t0,
-    )
-    assert _rec("AAA", {"key": "AAA", "LAST_PRICE": 50.0}) is True
-    assert lmp.get_quote("AAA")["spot_received_ts"] > t0
 
 
 def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():

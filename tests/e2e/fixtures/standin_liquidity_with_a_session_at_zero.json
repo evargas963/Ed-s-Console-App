@@ -20,8 +20,7 @@
    ],
    "confluence_score": 1,
    "interpretation_notes": "Fair value / pivot",
-   "distance_to_spot": null,
-   "spot_inside_zone": null
+   "distance_to_spot": null
   },
   {
    "zone_type": "resistance_liquidity",
@@ -71,8 +70,7 @@
    ],
    "confluence_score": 7,
    "interpretation_notes": "Resistance / upper structure",
-   "distance_to_spot": null,
-   "spot_inside_zone": null
+   "distance_to_spot": null
   },
   {
    "zone_type": "pivot_value",
@@ -92,8 +90,7 @@
    ],
    "confluence_score": 1,
    "interpretation_notes": "Fair value / pivot",
-   "distance_to_spot": null,
-   "spot_inside_zone": null
+   "distance_to_spot": null
   },
   {
    "zone_type": "pivot_value",
@@ -113,8 +110,7 @@
    ],
    "confluence_score": 1,
    "interpretation_notes": "Fair value / pivot",
-   "distance_to_spot": null,
-   "spot_inside_zone": null
+   "distance_to_spot": null
   },
   {
    "zone_type": "support_liquidity",
@@ -134,8 +130,7 @@
    ],
    "confluence_score": 1,
    "interpretation_notes": "Support / lower structure",
-   "distance_to_spot": null,
-   "spot_inside_zone": null
+   "distance_to_spot": null
   },
   {
    "zone_type": "support_liquidity",
@@ -155,8 +150,7 @@
    ],
    "confluence_score": 1,
    "interpretation_notes": "Support / lower structure",
-   "distance_to_spot": null,
-   "spot_inside_zone": null
+   "distance_to_spot": null
   },
   {
    "zone_type": "resistance_liquidity",
@@ -191,14 +185,12 @@
    ],
    "confluence_score": 4,
    "interpretation_notes": "Resistance / upper structure",
-   "distance_to_spot": null,
-   "spot_inside_zone": null
+   "distance_to_spot": null
   }
  ],
  "summary": {
   "value_state": "lower",
   "vwap_relation": "above_value"
  },
- "spot_used_for_scoring": null,
  "spot_location": null
 }

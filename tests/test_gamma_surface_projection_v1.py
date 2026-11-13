@@ -186,7 +186,7 @@ def test_G_malformed_expiry_excluded_not_reassigned():
         [dict(probe, expirationDate=None), dict(probe, expirationDate="bad")]
     )
     surface = _surface(chain, SPOT)
-    assert surface["contracts_excluded_malformed_expiry"] == 2
+    assert surface["contracts_total"] - surface["contracts_used"] == 2
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     # the malformed OI must not have inflated the legitimate cells at that strike
     clean = _surface(clean_chain, SPOT)

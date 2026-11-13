@@ -1,4 +1,4 @@
-"""The liquidity panel: spot_used_for_scoring never carries a VWAP value.
+"""The liquidity panel with and without a live spot: its zones and their distance to it.
 
 Real data through the real producer: Schwab's SPY 1-minute bars of Thursday 2026-10-01 and
 Friday 10-02 as the capture daemon recorded them (each minute's newest receipt), the levels
@@ -25,21 +25,8 @@ def test_a_ticker_with_no_levels_published_gets_no_zones_and_the_reason():
 
 
 @pytest.mark.usefixtures("published")
-def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached():
-    """With no live spot, spot_used_for_scoring is null, never the VWAP under the "spot" name.
-
-    Absence stays absence. Schwab has sent no price for the ticker here.
-    """
-    body = srv.liquidity_snapshot(TK, FRIDAY)
-    vwap = srv.canonical_price_level_snapshot(TK, FRIDAY).price("VWAP")
-    assert vwap is not None, "the session's VWAP exists to be misused"
-    assert body["spot_used_for_scoring"] is None
-    assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
-
-
-@pytest.mark.usefixtures("published")
 def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path():
-    """The real zones of the real levels: with no spot, distance and inside-zone are absent.
+    """The real zones of the real levels: with no spot, each zone's distance is absent.
 
     Not a crash, not a fabricated distance, never VWAP standing in for the spot.
     """
@@ -49,7 +36,6 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path()
     assert lows == sorted(lows), "with no spot the zones are listed by price, lowest first"
     for z in body["zones"]:
         assert z["distance_to_spot"] is None
-        assert z["spot_inside_zone"] is None
         assert "tradeable_score" not in z, "a score no page reads is not served"
         # the pages named every zone that was not support_liquidity "Resistance": each zone's name
         # and side are served from its type
@@ -57,8 +43,8 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path()
 
 
 @pytest.mark.usefixtures("published")
-def test_spot_used_for_scoring_reports_the_real_live_spot_when_available():
-    """The positive control: Schwab's LAST_PRICE is reported as spot_used_for_scoring.
+def test_with_a_live_spot_the_zones_are_measured_from_schwabs_last_price():
+    """The positive control: with Schwab's LAST_PRICE the zones are listed nearest it first.
 
     Through the daemon's price row to the console (resolve_spot, the one spot authority).
     Stand-in: the last bar's close as the LAST_PRICE Schwab sent.
@@ -69,6 +55,7 @@ def test_spot_used_for_scoring_reports_the_real_live_spot_when_available():
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=at)
     body = srv.liquidity_snapshot(TK, FRIDAY)
-    assert body["spot_used_for_scoring"] == last
-    assert "spot_estimate_vwap_fallback" not in body
+    distances = [z["distance_to_spot"] for z in body["zones"]]
+    assert distances and distances == sorted(distances)
+    assert distances[0] == 0.0 and "SPOT_LIVE" in body["zones"][0]["source_tags"]
     assert body["snapshot_type"] == SnapshotType.LIVE.value

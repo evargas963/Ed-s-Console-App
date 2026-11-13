@@ -153,9 +153,6 @@ def record_from_level_one_equity(
         "trade_ts": None if trade_ms is None else trade_ms / 1000.0,
         "security_status": val("SECURITY_STATUS"),
         "server_received_ts": rts,
-        "spot_received_ts": (
-            snapshot[VENDOR_LAST_PRICE][1] if VENDOR_LAST_PRICE in snapshot else None
-        ),
     }
     with _lock:
         _by_ticker[t] = out
