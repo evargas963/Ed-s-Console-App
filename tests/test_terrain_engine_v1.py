@@ -118,6 +118,7 @@ def test_payload_is_json_serialisable() -> None:
     round_tripped = json.loads(json.dumps(payload))
     assert round_tripped["ticker"] == "SPY"
     assert "spot" in round_tripped and "confidence" in round_tripped
+    assert "flip_note" in round_tripped
 
 
 # ── RC-113: the institutional sigma band (SpotGamma-on-Bloomberg standard) ───────────────────

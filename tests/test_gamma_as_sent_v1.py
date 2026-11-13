@@ -25,6 +25,7 @@ def test_gamma_at_spot_is_schwabs_gamma_summed_over_the_book():
     per, _ = compute_exposures_by_strike(chain, spot=spot, now=now)
     schwab = sum(v for b in per.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None)
     assert snap.net_gex_at_spot == pytest.approx(schwab, rel=1e-9)
+    assert snap.flip_note is None, "the flip's own curve has that gamma's sign at the price"
 
 
 def test_each_contract_carries_the_chains_rate_and_dividend_as_sent():
