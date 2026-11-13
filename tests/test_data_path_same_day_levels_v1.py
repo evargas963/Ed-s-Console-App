@@ -22,10 +22,16 @@ from time_et import EQUITY_OPTIONS, ET, INDEX_OPTIONS, option_close_product, tim
 
 
 def test_the_option_close_follows_the_ticker():
-    """SPY, QQQ, IWM and an index stop at the index close. A stock stops at the equity close."""
+    """A symbol on the exchanges' 4:15 p.m. list and an index stop at the index close.
+
+    A stock stops at the equity close. The list is the source's (docs/SOURCES.md,
+    nasdaq-options-hours), held to it by tests/test_source_register_v1.py.
+    """
     assert option_close_product("SPY") == INDEX_OPTIONS
     assert option_close_product("QQQ") == INDEX_OPTIONS
     assert option_close_product("IWM") == INDEX_OPTIONS
+    assert option_close_product("DIA") == INDEX_OPTIONS
+    assert option_close_product("GLD") == INDEX_OPTIONS
     assert option_close_product("$SPX") == INDEX_OPTIONS
     assert option_close_product("DELL") == EQUITY_OPTIONS
     assert option_close_product("MRVL") == EQUITY_OPTIONS
