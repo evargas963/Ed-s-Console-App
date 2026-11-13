@@ -67,6 +67,8 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     ("terrain", "same_day.key_delta_strike"): ("max_total_delta", TODAY),
     ("terrain", "same_day.call_charm_wall"): ("max_call_charm", TODAY),
     ("terrain", "same_day.put_charm_wall"): ("max_put_charm", TODAY),
+    ("terrain", "same_day.call_delta_wall"): ("max_call_delta", TODAY),
+    ("terrain", "same_day.put_delta_wall"): ("max_put_delta", TODAY),
     ("terrain", "same_day.hvp"): ("most_negative_net_gex", TODAY),
     ("terrain", "same_day.lvp"): ("most_positive_net_gex", TODAY),
     ("terrain", "same_day.gsf"): ("gamma_support_floor", TODAY),

@@ -160,6 +160,8 @@ def _front_walls(book, greeks) -> dict[str, float]:
         "put_wall": max(strikes, key=lambda k: gex["PUT", k]),
         "absolute_gamma_strike": max(strikes, key=lambda k: gex["CALL", k] + gex["PUT", k]),
         "key_delta_strike": max(strikes, key=lambda k: dex["CALL", k] + dex["PUT", k]),
+        "call_delta_wall": max(strikes, key=lambda k: dex["CALL", k]),
+        "put_delta_wall": max(strikes, key=lambda k: dex["PUT", k]),
     }
 
 

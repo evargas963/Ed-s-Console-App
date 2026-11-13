@@ -1030,7 +1030,13 @@ behavior (AGENTS.md).
     walls (the industry's convention, modelled: squeezemetrics-gex-2017); the largest gamma
     strike, the pin (ni-pearson-poteshman-2005, at expiration); the call and put delta
     walls and the call and put charm walls, on his order (charm at expiration:
-    golez-jackwerth-2012); then the price levels, each the `levels` panel's own row
+    golez-jackwerth-2012; the delta walls are the strikes with the most call and the most put
+    delta exposure, a published measure, flashalpha-dex, under a name of the program's own;
+    a strike far in the money holds a delta near 1, so one can be the wall: AMD's and TSLA's
+    call delta wall read 5.00 on 2026-11-13, AMD's $5 strike holding $2.6 billion of delta),
+    each on the same-day basis too, as every level of the one list is
+    (`terrain_engine.OPTION_LEVELS`; operator 2026-11-13: "we need to ensure that we have 0dte
+    levels as well just as we have on the key levels card an the levels tab"); then the price levels, each the `levels` panel's own row
     (`levels:kl`): the expected move up and down, the prior day's high, low and close
     (osler-2000) and VWAP. The net call and net put gamma peaks are off the rail: no source
     was found for either. A support or resistance line is not on it: on 88 ticker-days of

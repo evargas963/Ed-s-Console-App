@@ -2,6 +2,7 @@
  "bar_source": null,
  "by_distance": [
   "key_delta_strike",
+  "put_delta_wall",
   "max_pain",
   "gamma_flip",
   "lvp",
@@ -10,7 +11,8 @@
   "call_charm_wall",
   "put_charm_wall",
   "put_wall",
-  "hvp"
+  "hvp",
+  "call_delta_wall"
  ],
  "degraded": [],
  "families_absent": [
@@ -61,6 +63,28 @@
     "producer": "terrain_engine.compute_terrain"
    },
    "short": "Key \u0394 strike",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain"
+   }
+  },
+  {
+   "distance": -1.1268999999999778,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "1.13 below spot",
+   "id": "put_delta_wall",
+   "label": "Put \u0394 wall",
+   "not_live_text": null,
+   "price": 772.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Put \u0394 wall",
    "side": "BELOW",
    "staleness": {
     "age_sec": 6176.727853059769,
@@ -244,6 +268,28 @@
     "as_of_ts_utc": 1792700224.362402,
     "reason": "carried from the terrain"
    }
+  },
+  {
+   "distance": -10.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "10.13 below spot",
+   "id": "call_delta_wall",
+   "label": "Call \u0394 wall",
+   "not_live_text": null,
+   "price": 763.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Call \u0394 wall",
+   "side": "BELOW",
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain"
+   }
   }
  ],
  "levels_age_text": "2h",
@@ -365,6 +411,30 @@
    "carried": 772.0,
    "id": "key_delta_strike",
    "label": "Key \u0394 strike",
+   "price": 772.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain"
+   }
+  },
+  {
+   "carried": 763.0,
+   "id": "call_delta_wall",
+   "label": "Call \u0394 wall",
+   "price": 763.0,
+   "staleness": {
+    "age_sec": 6176.727853059769,
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402,
+    "reason": "carried from the terrain"
+   }
+  },
+  {
+   "carried": 772.0,
+   "id": "put_delta_wall",
+   "label": "Put \u0394 wall",
    "price": 772.0,
    "staleness": {
     "age_sec": 6176.727853059769,
