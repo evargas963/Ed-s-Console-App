@@ -771,9 +771,12 @@ the program.
   The options tape (`server.tape`) lists the newest trade first by Schwab's own trade time
   (`TRADE_TIME_MILLIS`), not by when a message arrived (operator 2026-11-12: "yes we should use
   schwab's data", after SPY's tape showed trades of 08:55 and 08:30 above trades of 15:14); a
-  print Schwab sent no trade time with comes after every one that has one. Enforced by:
-  `tests/test_options_flow_tape_v1.py` (the put's messages received after calls that traded
-  later).
+  print Schwab sent no trade time with comes after every one that has one. A contract's first
+  streamed message carries its last trade, made before the program was watching; it is a tape
+  row with Schwab's trade time, so after a restart the tape shows the last trades (operator
+  2026-11-12, asked whether to keep or drop it: "your recommendation.", which was to keep it).
+  Enforced by: `tests/test_options_flow_tape_v1.py` (the put's messages received after calls
+  that traded later; the call's first message, traded before it was received, is one row).
 - **Level crosses.** Found by the console at the live price on each streamed equity quote
   (`server._on_stream_tick`, on the event loop, the owner): each published level the price
   reached or passed going from the ticker's previous streamed price to this one

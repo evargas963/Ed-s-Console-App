@@ -80,11 +80,13 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     """The print is the stream's; the contract's terms and open interest are its chain record's.
 
     The stream's own message carries OPEN_INTEREST 1888 where the chain record holds 843: the
-    tape shows the chain's, as every other screen does.
+    tape shows the chain's, as every other screen does. This is the contract's first streamed
+    message: its trade was made before the message was received, and it is a tape row.
     """
     sent = _sent(CALL)[:1]
     rows = _tape(CALL, sent)
     assert len(rows) == 1
+    assert sent[0][1]["TRADE_TIME_MILLIS"] < sent[0][0] * 1000
     assert sent[0][1]["OPEN_INTEREST"] == 1888
     r = tape_row(rows[0], LISTED[CALL])
     assert r["symbol"] == CALL
