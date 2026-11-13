@@ -40,9 +40,9 @@ def test_only_the_one_reader_takes_the_last_trades_fields_out_of_a_message():
 
 
 def test_the_price_row_and_the_tape_hold_the_same_last_trade_as_schwab_sent_it():
-    sent: dict[str, dict] = {}
-    prints: dict[str, list] = {}
     tickers = sorted({m["item"]["key"] for m in MESSAGES})
+    sent: dict[str, dict] = {tk: {} for tk in tickers}
+    prints: dict[str, list] = {tk: [] for tk in tickers}
     assert len(MESSAGES) > 100
     live = state.OrderFlowState()
     try:
@@ -50,19 +50,19 @@ def test_the_price_row_and_the_tape_hold_the_same_last_trade_as_schwab_sent_it()
             item, tk = m["item"], m["item"]["key"]
             lmp.record_from_level_one_equity(tk, item, received_ts=m["ts_recv"])
             live.push_level_one(tk, item, ts_recv=m["ts_recv"])
-            sent.setdefault(tk, {}).update({f: item[f] for f in PRINT_FIELDS if f in item})
+            sent[tk].update({f: item[f] for f in PRINT_FIELDS if f in item})
             if "LAST_PRICE" in item:
                 triple = (item.get("TRADE_TIME_MILLIS"), item["LAST_PRICE"], item.get("LAST_SIZE"))
-                if not prints.get(tk) or prints[tk][-1] != triple:
-                    prints.setdefault(tk, []).append(triple)
+                if prints[tk][-1:] != [triple]:
+                    prints[tk].append(triple)
         for tk in tickers:
-            row, last = lmp.get_quote(tk), sent.get(tk, {})
+            row, last = lmp.get_quote(tk), sent[tk]
             millis = last.get("TRADE_TIME_MILLIS")
             assert row["spot"] == last.get("LAST_PRICE")
             assert row["last_size"] == last.get("LAST_SIZE")
             assert row["trade_ts"] == (None if millis is None else millis / 1000)
             tape = live.get_content_for_symbol(tk)
-            assert [(p["time_millis"], p["price"], p["size"]) for p in tape] == prints.get(tk, [])
+            assert [(p["time_millis"], p["price"], p["size"]) for p in tape] == prints[tk]
         assert any(prints.values())
     finally:
         for tk in tickers:
