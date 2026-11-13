@@ -50,16 +50,12 @@ function view(over = {}) { return Object.assign({}, SURFACE.view, over); }
 // negative cell, 262.5 on 2026-11-20 (-3,907,027.65)
 const CELL = '.hcell[data-strike="' + K + '"][data-expiry="' + E1 + '"]';
 const CELL_NEG = '.hcell[data-strike="262.5"][data-expiry="' + EXPIRIES[3] + '"]';
-// SPY's surface as captured 2026-09-10 pre-market, with the served window the route adds
-function realSpySurface() {
-  const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
-  return Object.assign({}, REAL, {
-    source: 'terrain_live_cache', levels_state: 'LIVE',
-    session_date_et: '2026-09-10', prior_session: false,
-    expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10', front: e.expiry === '2026-09-10' })),
-    cells: REAL.cells.map((c) => Object.assign({}, c, { spot: c.strike === 764 })),
-    view: view({ centre: 764, scope: 'all', max_abs: { gex: 1e9 } }),
-  });
+// AMZN's real All window as the server sends it: every strike (88) by every expiry (24).
+// Induced: its first expiry marked expired, as a prior session's column is.
+function allWindow() {
+  const all = REAL.surface_all;
+  return Object.assign({}, all, { expirations: all.expirations.map((e, i) =>
+    (i === 0 ? Object.assign({}, e, { expired: true, front: false }) : e)) });
 }
 // The real surface cut to its first `nExps` expiries and `nStrikes` strikes: each cell with
 // Schwab's own contracts and its stream state, as the server sends them.
@@ -396,7 +392,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('a ticker switched on another view leaves no old surface for a theme change to redraw', async ({ page }) => {
     // SPY's captured surface is drawn; AAPL's is never sent.
-    panels.surface = (key) => (key === 'SPY' ? realSpySurface() : undefined);
+    panels.surface = (key) => (key === 'SPY' ? allWindow() : undefined);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await page.locator('#viewbar .vtab[data-view="chart"]').click();
@@ -408,7 +404,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('a theme change while a new ticker\'s surface is on its way never redraws the old ticker\'s grid', async ({ page }) => {
     // SPY's captured surface is drawn; AAPL's is never sent.
-    panels.surface = (key) => (key === 'SPY' ? realSpySurface() : undefined);
+    panels.surface = (key) => (key === 'SPY' ? allWindow() : undefined);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await page.locator('#symInput').fill('AAPL');
@@ -712,32 +708,31 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPcr')).toHaveText('-');
   });
 
-  // A real 116-strike x 16-expiration surface (SPY, captured 2026-09-10 06:35 CDT; 2026-09-09
-  // expired), served whole as the All window (a stand-in for the server's window, which
-  // tests/test_heatmap_window_v1.py proves): every cell is drawn at a legible size, the grid
-  // scrolls rather than shrinks, and the expired column is labelled.
-  test('REAL-DATA: the 116x16 All window is drawn whole, legible, EXPIRED labelled; the page asks for the columns it fits', async ({ page }) => {
-    const stamped = realSpySurface();
-    expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
+  // AMZN's real All window, 88 strikes x 24 expirations, as the server sends it (its first expiry
+  // marked expired): every cell is drawn at a legible size, the grid scrolls rather than
+  // shrinks, and the expired column is labelled.
+  test('REAL-DATA: the 88x24 All window is drawn whole, legible, EXPIRED labelled; the page asks for the columns it fits', async ({ page }) => {
+    const stamped = allWindow();
+    expect(stamped.strikes.length).toBe(88); expect(stamped.expirations.length).toBe(24);
     const asked = [];
     panels.surface = (key, params) => { asked.push(params); return stamped; };
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#heatBody .heat tbody tr');
     const cols = page.locator('#heatBody .heat thead .hexp');
-    await expect(rows).toHaveCount(116);
+    await expect(rows).toHaveCount(88);
     const fits = asked[0].cols;
     expect(fits).toBeGreaterThanOrEqual(3); expect(fits).toBeLessThanOrEqual(11);
     // highest strike at the top, the price row marked
     await expect(rows.first().locator('.hstrike')).toHaveText(String(stamped.strikes[stamped.strikes.length - 1]));
-    await expect(page.locator('#heatBody tr.spotrow .hstrike')).toHaveText('764');
+    await expect(page.locator('#heatBody tr.spotrow .hstrike')).toHaveText('270');
     const cellFont = await page.locator('#heatBody .hcell').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(cellFont).toBeGreaterThanOrEqual(13);
     await expect(page.locator('#heatBody')).not.toContainText('REFERENCE');   // no reference surface exists
-    await expect(cols).toHaveCount(16);
+    await expect(cols).toHaveCount(24);
     await expect(page.locator('#heatBody .heat thead .hexp.expired')).toHaveCount(1);
     await expect(page.locator('#heatBody .heat thead .hexp.expired .dte')).toHaveText('EXPIRED');
-    expect(await page.locator('#heatBody .hcell').count()).toBe(116 * 16);                  // no data loss
+    expect(await page.locator('#heatBody .hcell').count()).toBe(88 * 24);                   // no data loss
     const allRowH = await rows.first().evaluate((el) => el.getBoundingClientRect().height);
     expect(allRowH).toBeGreaterThanOrEqual(30);                                              // never shrunk to fit
     // columns are never crushed either: every expiration column keeps a legible width and the grid
@@ -748,7 +743,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(scrolls).toBe(true);
     const scrollsX = await page.locator('#heatBody .heat-wrap').evaluate((el) => el.scrollWidth > el.clientWidth + 40);
     expect(scrollsX).toBe(true);
-    await page.screenshot({ path: 'test-results/gamma-real-116x16-all.png', fullPage: false });
+    await page.screenshot({ path: 'test-results/gamma-real-88x24-all.png', fullPage: false });
   });
 
   test('workspace switching + editable watchlist foundation', async ({ page }) => {
@@ -974,20 +969,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('#1 perf: a large heatmap surface renders without pathological jank', async ({ page }) => {
-    const exps = [], strikes = [], cells = [];
-    for (let i = 0; i < 20; i++) exps.push({ expiry: '2026-' + (i < 4 ? '09' : '12') + '-' + String(10 + (i % 20)).padStart(2, '0'), dte: i * 3 });
-    for (let s = 0; s < 200; s++) strikes.push(500 + s);
-    for (let si = 0; si < strikes.length; si++) {
-      const row = [];
-      for (let j = 0; j < exps.length; j++) row.push((j % 2 ? 1 : -1) * 1000 * ((si % 50) + 1));
-      cells.push({ strike: strikes[si], gex: row });
-    }
     await page.addInitScript(() => { localStorage.setItem('ed_scope', 'all'); });   // every strike on screen
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
-    const big = { type: 'surface', ticker: 'SPY', available: true, source: 'terrain_live_cache', levels_state: 'LIVE',
-      spot: 600, complete: false, expirations: exps, strikes, cells,
-      view: view({ centre: 600, scope: 'all', max_abs: { gex: 50000 } }) };   // 200 strikes x 20 expiries
+    // AMZN's real All window, 88 strikes x 24 expiries (2,112 cells), as a frame for the ticker on screen
+    const big = Object.assign({}, REAL.surface_all, { type: 'surface', ticker: 'SPY', surface_seq: REAL.surface_all.surface_seq + 1 });
     // the page's own drawing of the frame as the socket delivers it: from the frame to the drawn table
     const before = await page.locator('#heatBody .hcell').count();
     const r = await page.evaluate(([n0, frame]) => new Promise((resolve) => {
