@@ -1043,7 +1043,10 @@ behavior (AGENTS.md).
     for gamma and Δ for delta wherever a level's name holds one (Γ flip, Abs Γ, Net call Γ
     peak, Key Δ strike, Call Δ wall); charm has no letter, and the call and put walls keep the
     industry's name. The Key Levels card, the Levels tab, the Gamma chart, Right Now, the desk
-    map, the chart markers and the cross alerts print that name.
+    map, the chart markers and the cross alerts print that name; a tag in capitals is that
+    name, capitalised by its style. Enforced by: `tests/test_level_names_one_list_v1.py`,
+    which reads every page file and refuses a level name typed differently from the list's
+    (operator 2026-11-13, asked whether to add that check: "Yes, add it").
     The key levels rail draws each strike once, the regular price beside the same-day
     price. Spot has no same-day cell. Its lines are chosen by what published work supports
     (operator 2026-11-13: "only include those that are most important", "what is included is
