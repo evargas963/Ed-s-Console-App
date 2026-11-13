@@ -644,7 +644,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klCall')).toHaveText('270.00');
     await expect(page.locator('#klPut')).toHaveText('270.00');
     await expect(page.locator('#klNet')).toHaveText('$937.3M');
-    await expect(page.locator('#klRegime')).toContainText('Long γ');
+    await expect(page.locator('#klRegime')).toContainText('Long Γ');
     // the price levels are the levels panel's own rows (AMZN's real set): the expected move from
     // Schwab's implied volatility, the prior day's high, low and close, and VWAP
     await expect(page.locator('#klEmUp')).toHaveText('276.27');
@@ -794,7 +794,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
     await expect(page.locator('#chartBody .gchart-head')).toContainText('last trade 14:00:01 CT');
     await expect.poll(async () => (await cs()).liveTitle).toBe('LAST · last trade 14:00:01 CT');
-    await expect.poll(async () => (await cs()).levels).toContain('flip');
+    await expect.poll(async () => (await cs()).levels).toContain('Γ flip');
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.screenshot({ path: require('path').join('test-results', 'console-gamma-chart-2560x1440.png') });
     // dot map mode: per-strike dots
@@ -1235,7 +1235,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPutDelta')).toHaveText('270.00');
     await expect(page.locator('#kl0CallDelta')).toHaveText('577.50');   // and the same-day delta walls
     await expect(page.locator('#kl0PutDelta')).toHaveText('562.50');
-    await expect(page.locator('#klBody')).not.toContainText('γ peak');   // the two net peaks are off the card
+    await expect(page.locator('#klBody')).not.toContainText('Γ peak');   // the two net peaks are off the card
     await expect(page.locator('#klBody')).not.toContainText('Net GEX peak');
     await expect(page.locator('#klNet')).toBeVisible();
   });

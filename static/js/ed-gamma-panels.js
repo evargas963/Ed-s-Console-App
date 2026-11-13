@@ -35,8 +35,8 @@
   function ticker() { return window.EdShell.getState().ticker; }
 
   var REGIME = {
-    LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)', tone: 'up' },
-    SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)', tone: 'dn' },
+    LONG_GAMMA_CHOP: { t: 'Long Γ · chop', c: 'var(--ed-pos-ink)', tone: 'up' },
+    SHORT_GAMMA_TREND: { t: 'Short Γ · trend', c: 'var(--ed-warn)', tone: 'dn' },
     UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)', tone: '' },
   };
   window.EdGammaRegime = REGIME;

@@ -701,7 +701,7 @@ def qualify_pin_candidate(
 OPTION_LEVELS = (
     ("call_wall", "Call wall"),
     ("put_wall", "Put wall"),
-    ("gamma_flip", "Gamma flip"),
+    ("gamma_flip", "Γ flip"),
     ("max_pain", "Max pain"),
     ("absolute_gamma_strike", "Abs Γ"),
     ("pin_candidate", "Pin candidate"),

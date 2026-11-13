@@ -71933,8 +71933,8 @@
      "id": "gamma_flip",
      "price": 243.91411813739333,
      "family": "gamma",
-     "label": "Gamma flip",
-     "short": "Gamma flip",
+     "label": "\u0393 flip",
+     "short": "\u0393 flip",
      "evidence_tier": "DERIVED",
      "provenance": {
       "producer": "terrain_engine.compute_terrain",
@@ -72038,7 +72038,7 @@
     },
     {
      "id": "gamma_flip",
-     "label": "Gamma flip",
+     "label": "\u0393 flip",
      "price": 258.49264280576534,
      "carried": 243.91411813739333,
      "staleness": {
@@ -76473,8 +76473,8 @@
      "id": "gamma_flip",
      "price": 243.91411813739333,
      "family": "gamma",
-     "label": "Gamma flip",
-     "short": "Gamma flip",
+     "label": "\u0393 flip",
+     "short": "\u0393 flip",
      "evidence_tier": "DERIVED",
      "provenance": {
       "producer": "terrain_engine.compute_terrain",
@@ -76578,7 +76578,7 @@
     },
     {
      "id": "gamma_flip",
-     "label": "Gamma flip",
+     "label": "\u0393 flip",
      "price": 258.49264280576534,
      "carried": 243.91411813739333,
      "staleness": {
@@ -80573,8 +80573,8 @@
      "id": "gamma_flip",
      "price": 243.91411813739333,
      "family": "gamma",
-     "label": "Gamma flip",
-     "short": "Gamma flip",
+     "label": "\u0393 flip",
+     "short": "\u0393 flip",
      "evidence_tier": "DERIVED",
      "provenance": {
       "producer": "terrain_engine.compute_terrain",
@@ -80678,7 +80678,7 @@
     },
     {
      "id": "gamma_flip",
-     "label": "Gamma flip",
+     "label": "\u0393 flip",
      "price": 258.49264280576534,
      "carried": 243.91411813739333,
      "staleness": {

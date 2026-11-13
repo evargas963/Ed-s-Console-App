@@ -3657,7 +3657,7 @@ def _confluence_expiries(books: dict, expiry_dte: dict) -> list[dict]:
 _OPTION_SHORT = {
     "Call wall": "CW",
     "Put wall": "PW",
-    "Gamma flip": "Flip",
+    "Γ flip": "Flip",
     "Max pain": "Pain",
     "Abs Γ": "Abs Γ",
     "Pin candidate": "Pin",

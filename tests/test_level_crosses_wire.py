@@ -41,7 +41,7 @@ STRIKE_AWAY = SPY_PRINT_A_STRIKE_AWAY["native"]["LAST_PRICE"]
 AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
 #: the watched levels between 764.00 and 773.1269: the call wall and the largest gamma strike,
 #: both 765, and the gamma flip 770.77 (the put wall is at 764.00 itself)
-BETWEEN = {"Call wall", "Abs Γ", "Gamma flip"}
+BETWEEN = {"Call wall", "Abs Γ", "Γ flip"}
 
 
 def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
@@ -454,7 +454,7 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
         )
 
     with pytest.raises(sqlite3.IntegrityError):
-        edb.record_level_crosses([cross("Call wall", 765.0), cross("Gamma flip", None)])
+        edb.record_level_crosses([cross("Call wall", 765.0), cross("Γ flip", None)])
     assert edb.get_recent_crosses("SPY", n=10) == []
 
 
