@@ -13,8 +13,8 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
 
 const LEVELS = {
-  ticker: 'SPY', schema_version: 1, served_ts_utc: 1757000100, spot: 100.0, spot_source: 'schwab_quote_last',
-  generation: 7, snapshot_as_of_ts_utc: 1757000000, bar_source: 'price_bars_1m',
+  ticker: 'SPY', schema_version: 1, spot: 100.0, spot_source: 'schwab_quote_last',
+  generation: 7, bar_source: 'price_bars_1m',
   // served in ladder order (price, highest first) with distance (server.py get_levels)
   levels: [
     { id: 'PDH', price: 101.5, family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED', distance: 1.5,

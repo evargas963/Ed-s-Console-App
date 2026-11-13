@@ -58,7 +58,7 @@ from tests.feed_live_helper import (
     stream_daemon_bars,
 )
 from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
-from time_et import ET, now_et
+from time_et import ET, ct_label, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -1005,9 +1005,8 @@ def test_d5_while_closed_the_price_levels_are_the_last_sessions():
             assert not {"vwap", "value_area", "opening_range"} & {
                 f["family"] for f in body["families_absent"]
             }, tk
-            assert (
-                body["snapshot_as_of_ts_utc"]
-                == _newest(_DAEMON_BARS, tk)[-1]["bar_start_ms"] / 1000
+            assert body["snapshot_time_ct"] == ct_label(
+                _newest(_DAEMON_BARS, tk)[-1]["bar_start_ms"] / 1000
             ), tk
             assert served["PDH"] == max(r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-01")), tk
     finally:

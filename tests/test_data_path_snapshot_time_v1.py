@@ -40,7 +40,6 @@ def test_the_levels_pill_carries_the_snapshots_time():
         server._publish_price_levels("SPY", closed)
         body = server.levels_payload("SPY", "1", closed)
         as_of = _newest(_BARS, "SPY")[-1]["bar_start_ms"] / 1000
-        assert body["snapshot_as_of_ts_utc"] == as_of
         assert body["snapshot_time_ct"] == ct_label(as_of)
     finally:
         _forget("SPY", "TSLA")

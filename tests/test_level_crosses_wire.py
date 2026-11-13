@@ -270,7 +270,7 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
         assert body["spot"] == STRIKE_AWAY and body["spot_time_ct"] == ct_label(trade_ts)
     assert at > trade_ts and down["spot_not_live_text"].endswith(f", {age_text(at - trade_ts)} old")
     assert levels["spot_not_live_text"].endswith(  # at its own served time
-        f", {age_text(levels['served_ts_utc'] - trade_ts)} old"
+        f", {age_text(at - trade_ts)} old"
     )
     call = next(r for r in levels["levels"] if r["id"] == "call_wall")
     assert call["from_spot_text"] == f"{STRIKE_AWAY - 765.0:.2f} below spot"
