@@ -49,8 +49,10 @@ _MARKETS = [
 AUTO = {"scope": "auto", "centre": None, "shift": 0}
 #: a date Schwab lists no expiry on in those chains (a Saturday)
 MISSING_EXPIRY = "2026-11-14"
-#: the Trade Desk's timeframe
-TF = "30"
+#: the Trade Desk's timeframes the browser tests draw, each with the bars the chart asks for at it
+#: (static/js/ed-tv-chart.js BARS_LIMIT), and the flow card's ask (ed-trade-desk-map.js FLOW_BARS)
+DESK_TFS = {"5": 3000, "15": 6000, "30": 9000}
+FLOW_BARS = {"tf": "1", "limit": 60}
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,8 @@ def _clear(tk: str) -> None:
     lmp.record_feed_down()
     ofls.clear_all_live_state()
     history.LEAN.forget(tk)
+    with server._crosses_lock:
+        server._crosses.pop(tk, None)
 
 
 def build_e2e_panels(real: RealSet, folder: Path) -> dict:
@@ -114,8 +118,10 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
     `folder` holds the database the two captures are stored in. At the newer capture's instant:
     the strikes in the Auto and Wider windows, the levels (terrain), the heatmap (surface, Auto,
     every column and expiry; and asked for an expiry the chain does not list), the front
-    expiry's chain, and the Trade Desk's book of each venue, liquidity zones, price levels,
-    attention queue and forces. Regenerate the browser tests' files with write_e2e_panels.
+    expiry's chain, and the Trade Desk's book of each venue, liquidity zones and forces, and at
+    each of its timeframes the bars, the price levels and the attention queue (the day's level
+    crosses held as a start loads them). Regenerate the browser tests' files with
+    write_e2e_panels.
     """
     tk = real.ticker
     db = folder / "ed_console.db"
@@ -179,6 +185,9 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
             + real.desk["bars"],
             now,
         )
+        # the day's level crosses as recorded, oldest first, as a start loads them (_load_crosses)
+        with server._crosses_lock:
+            server._crosses[tk] = list(real.desk["crosses"])
         server._publish_levels(tk, captures=captures, now=now)
         return json.loads(
             json.dumps(
@@ -193,9 +202,17 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "chain": server.chain(tk, at, {"expiry": None}),
                     "book": {venue: server.book(tk, at, {"venue": venue}) for venue in real.venues},
                     "liquidity": server.liquidity_snapshot(tk, now),
-                    "levels": server.levels_payload(tk, TF, now),
-                    "desk": server.desk_events_payload(tk, real.venues[0], TF, now),
                     "forces": server.forces(tk),
+                    "levels": {tf: server.levels_payload(tk, tf, now) for tf in DESK_TFS},
+                    "desk": {
+                        tf: server.desk_events_payload(tk, real.venues[0], tf, now)
+                        for tf in DESK_TFS
+                    },
+                    "bars": {
+                        tf: server.bars(tk, at, {"tf": tf, "limit": limit})
+                        for tf, limit in DESK_TFS.items()
+                    },
+                    "bars_flow": server.bars(tk, at, FLOW_BARS),
                 }
             )
         )
@@ -234,5 +251,11 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     # the desk: Schwab's books at the price, zones and session levels built from its bars
     assert {book["status"] for book in panels["book"].values()} == {"ok"}
     assert panels["liquidity"]["zones"]
-    assert panels["levels"]["generation"] is not None
+    assert {levels["generation"] for levels in panels["levels"].values()} == {1}
+    assert all(bars["bars"] for bars in panels["bars"].values()) and panels["bars_flow"]["bars"]
+    # the queue's crosses are the day's recorded ones, inside the timeframe's window
+    recorded = {f"x{row['cross_id']}" for row in real.desk["crosses"]}
+    for queue in panels["desk"].values():
+        crossed = {item["key"] for item in queue["items"] if item["src"] == "level_crosses"}
+        assert crossed and crossed <= recorded
     assert panels["forces"]["older_et_date"] == "2026-11-11"
