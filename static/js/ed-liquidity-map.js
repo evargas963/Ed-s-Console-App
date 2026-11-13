@@ -30,7 +30,7 @@
   }
 
   function zoneRow(z) {
-    var tags = (z.source_levels || []).map(function (l) { return esc(l.label) + ' ' + num(l.value); }).join(' · ');
+    var tags = z.source_levels.map(function (l) { return esc(l.label) + ' ' + num(l.value); }).join(' · ');
     return '<div class="fl-row"><span class="k">' + esc(z.zone_label) + ' ' + num(z.zone_low) + '–' + num(z.zone_high) + '</span>' +
       '<span class="v">confluence ' + esc(z.confluence_score) + '</span></div>' +
       '<div class="sm liqm-tags">' + orDash(tags) +(z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
