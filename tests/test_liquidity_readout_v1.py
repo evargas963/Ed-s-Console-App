@@ -587,18 +587,18 @@ def _steady(readout: dict, venue: str, view: str) -> dict:
         (2, "NYSE_BOOK", "5", -10.0, "OFFER_HEAVY"),
         (69, "NASDAQ_BOOK", "1", 69.231, "BID_HEAVY"),
         (123, "NASDAQ_BOOK", "1", -69.231, "OFFER_HEAVY"),
-        (82, "NYSE_BOOK", "1", 70.0, "VERY_BID"),
-        (18, "NYSE_BOOK", "1", -76.190, "VERY_OFFER"),
+        (82, "NYSE_BOOK", "1", 70.0, "BID_HEAVY"),
+        (18, "NYSE_BOOK", "1", -76.190, "OFFER_HEAVY"),
     ],
 )
-def test_the_zones_turn_at_10_and_70_percent(row, venue, view, pct, zone):
-    """Schwab's readouts of 2026-11-02 10:00-10:02:30 ET on each side of the zone lines.
+def test_the_zone_turns_at_10_percent(row, venue, view, pct, zone):
+    """Schwab's readouts of 2026-11-02 10:00-10:02:30 ET on each side of the 10% line.
 
-    Held ten seconds: 10% and 70% exactly (NYSE_BOOK's 1,760 / 1,440 and 680 / 120 shares) are
-    the next zone.
+    Held ten seconds: 10% exactly (NYSE_BOOK's 1,760 / 1,440 shares) is the side's zone, and
+    so is every value past it.
     """
     w = _steady(_replayed()[1][row][1], venue, view)
-    assert w["live_pct"] == pytest.approx(pct, abs=5e-4)
+    assert w["pct"] == pytest.approx(pct, abs=5e-4)
     assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
 
 
@@ -610,25 +610,21 @@ _LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text
 @pytest.mark.parametrize(
     ("case", "line", "zone"),
     [
-        ("at -70", -70.0, "VERY_OFFER"),
         ("under 10", 10.0, "BALANCED"),
         ("under -10", -10.0, "BALANCED"),
-        ("under 70", 70.0, "BID_HEAVY"),
-        ("under -70", -70.0, "OFFER_HEAVY"),
     ],
 )
-def test_the_zones_on_the_books_nearest_each_line(case, line, zone):
-    """The two books held, over SPY's whole 2026-11-02 session, nearest each zone line.
+def test_the_zones_on_the_books_nearest_the_line(case, line, zone):
+    """The two books held, over SPY's whole 2026-11-02 session, nearest the 10% line.
 
-    When a venue and view read exactly -70% and when one read nearest inside each line (9.996%,
-    -9.989%, 69.999%, -69.999%), held ten seconds: -70% is very one-sided, just inside a line is
-    not past it.
+    When a venue and view read nearest inside it (9.996%, -9.989%), held ten seconds: just
+    inside the line is not past it.
     """
     c = _LINES[case]
     readout = _readout({svc: content for _ts, svc, content in c["books"]})
     w = _steady(readout, c["venue"], c["view"])
-    assert w["live_pct"] == pytest.approx(line, abs=0.02)
-    assert abs(w["live_pct"]) <= abs(line) and (case.startswith("at") or w["live_pct"] != line)
+    assert w["pct"] == pytest.approx(line, abs=0.02)
+    assert abs(w["pct"]) < abs(line)
     assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
 
 
@@ -661,34 +657,26 @@ def test_the_sentence_four_cases_from_the_flat_shares():
     assert _steady(_NO_BOOK, "NYSE_BOOK", "1")["sentence"] is None
 
 
-# ── over time: smoothing, the zone's hold, flips, the lean windows ───────────────────────────
+# ── over time: the zone's hold, flips, the lean windows ──────────────────────────────────────
 
 
 @pytest.mark.parametrize(
     ("runs", "zone", "held"),
     [
-        # two seconds of bid heavy books never move the 5-second median: no change
-        ((("bal", 10), ("bid", 2), ("bal", 10)), "BALANCED", 21),
-        # bid heavy from second 1010: the median turns at 1012, the zone 3 seconds later, dated
-        # from 1012; at 1019 it has held 7 seconds
-        ((("bal", 10), ("bid", 10)), "BID_HEAVY", 7),
-        # through BALANCED (the median 1012-1014) to offer heavy (1015 on): the zone changes at
-        # 1017, dated from the second the value entered it, 1015
-        ((("bid", 10), ("bal", 3), ("offer", 10)), "OFFER_HEAVY", 7),
-        # out of bid heavy across two zones within the three seconds (BALANCED at 1012, offer
-        # heavy from 1013): at 1014 the zone it stands in then, dated from 1013, held 5 at 1018
-        ((("bid", 10), ("offer", 2), ("bal", 1), ("offer", 6)), "OFFER_HEAVY", 5),
-        # the median offer heavy 1012-1014, BALANCED 1015-1017, offer heavy 1018-1020, BALANCED
-        # 1021: each stretch of three changes the zone, the last single second does not
-        ((("bid", 10), ("offer", 3), ("bal", 3), ("offer", 3), ("bal", 3)), "OFFER_HEAVY", 3),
-        # crossing the 70% line every three seconds: very one-sided from 1018, BID HEAVY 1021
-        ((("bal", 10), ("very_bid", 3), ("bid", 3), ("very_bid", 3), ("bid", 3)), "VERY_BID", 3),
-        # a steady rise through two lines: bid heavy 1012-1014, very one-sided from 1015; it
-        # changes to bid heavy at 1014 and to very one-sided at 1017, dated 1015
-        ((("bal", 10), ("bid", 3), ("very_bid", 10)), "VERY_BID", 7),
+        # two seconds of bid heavy books are shown as they are; BALANCED again from 1012: at
+        # 1021 it has held 9 seconds
+        ((("bal", 10), ("bid", 2), ("bal", 10)), "BALANCED", 9),
+        # bid heavy from second 1010: the zone changes that second; at 1019 it has held 9
+        ((("bal", 10), ("bid", 10)), "BID_HEAVY", 9),
+        # through BALANCED (1010-1012) to offer heavy from 1013: held 9 at 1022
+        ((("bid", 10), ("bal", 3), ("offer", 10)), "OFFER_HEAVY", 9),
+        # a single second across and back is shown: bid heavy again from 1011, held 9 at 1020
+        ((("bid", 10), ("offer", 1), ("bid", 10)), "BID_HEAVY", 9),
+        # past 70% is still its side's zone, dated from when the value entered the side (1010)
+        ((("bal", 10), ("bid", 3), ("very_bid", 10)), "BID_HEAVY", 12),
     ],
 )
-def test_a_zone_changes_only_after_it_has_stood_three_seconds(runs, zone, held):
+def test_a_zone_is_the_values_own_dated_from_the_second_it_entered(runs, zone, held):
     """INDUCED times: Schwab's readouts of 2026-11-02 by the zone of NYSE_BOOK's touch.
 
     One a second from second 1000.
@@ -707,25 +695,21 @@ def test_an_unknown_value_starts_the_zone_over():
 
 
 def _zone_of(pct: float | None) -> str | None:
-    """Return a percentage's zone by its definition (the register's lines, OF_ZONE_*_PCT)."""
+    """Return a percentage's zone by its definition (the register's line, OF_ZONE_LEANING_PCT)."""
     if pct is None:
         return None
     if abs(pct) < e.OF_ZONE_LEANING_PCT:
         return "BALANCED"
-    side = "BID" if pct > 0 else "OFFER"
-    return f"{side}_HEAVY" if abs(pct) < e.OF_ZONE_ONE_SIDED_PCT else f"VERY_{side}"
+    return "BID_HEAVY" if pct > 0 else "OFFER_HEAVY"
 
 
-def test_on_schwabs_books_the_zone_changes_three_seconds_after_the_value_leaves_it():
+def test_on_schwabs_books_the_zone_is_the_headlines_own_dated_from_when_it_entered():
     """Every venue and view of the captured books, read at each second.
 
-    The zone shown never stands while the headline (the 2-minute series' last value) has been
-    out of it three seconds or more, never changes sooner, and is dated from the second the
-    headline entered it.
+    The zone shown is the zone of the headline (the 2-minute series' last value) that second,
+    and is dated from the second the headline entered it.
     """
     readout, points = _replayed()
-    dwell = e.OF_ZONE_DWELL_SEC
-    before: dict = {}
     for s in range(int(points[0][0]), int(points[-1][0]) + 1):
         card = e.readout_card(readout, points, dict.fromkeys(readout, float(s)))
         for v in (*e.BOOK_VENUES, e.COMPOSITE):
@@ -733,16 +717,11 @@ def test_on_schwabs_books_the_zone_changes_three_seconds_after_the_value_leaves_
                 w = card["venues"][v]["views"][view]
                 series, zone = w["lean"]["2m"]["values"], w["zone"]
                 assert series[-1] == w["pct"]
-                last = [_zone_of(x) for x in series[-dwell:]]
-                assert zone is None or not all(z != zone for z in last), (v, view, s)
-                was = before.get((v, view))
-                if was is not None and zone is not None and zone != was:
-                    assert all(z != was for z in last), (v, view, s)
-                    since = s - w["held_sec"]
-                    at = len(series) - 1 - (s - since)
+                assert zone == _zone_of(w["pct"]), (v, view, s)
+                at = None if zone is None else len(series) - 1 - w["held_sec"]
+                if at is not None and at >= 0:
                     assert _zone_of(series[at]) == zone, (v, view, s)
                     assert at == 0 or _zone_of(series[at - 1]) != zone, (v, view, s)
-                before[(v, view)] = zone
 
 
 def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
@@ -783,21 +762,16 @@ def test_held_is_at_least_when_the_values_began_inside_the_window():
         assert w["held_text"] == f"HELD {'≥' if w['held_open'] else ''}{w['held_sec']}s"
 
 
-def test_the_headline_is_the_median_of_the_last_five_seconds():
+def test_the_headline_is_the_value_standing_at_the_last_second():
     """The composite's weighted headline at the last captured second.
 
-    It is the median of the five one-second values standing then, each the newest readout
-    received by that second's end.
+    It is the newest readout's own value received by that second's end, as it is.
     """
     readout, points = _replayed()
-    last = int(points[-1][0])
-    standing = [
-        [r for ts, r in points if ts < sec + 1][-1][e.COMPOSITE]["views"]["weighted"]["pct"]
-        for sec in range(last - 4, last + 1)
-    ]
     card = e.readout_card(readout, points, dict.fromkeys(readout, points[-1][0]))
-    assert card["venues"][e.COMPOSITE]["views"]["weighted"]["pct"] == pytest.approx(
-        sorted(standing)[2]
+    assert (
+        card["venues"][e.COMPOSITE]["views"]["weighted"]["pct"]
+        == points[-1][1][e.COMPOSITE]["views"]["weighted"]["pct"]
     )
 
 
@@ -838,13 +812,13 @@ def _touch_card(*runs: tuple[str, int]) -> dict:
     [
         # the first lean from BALANCED is no flip
         ((("bal", 10), ("bid", 10)), 0),
-        # bid to offer, held: one flip; a single print across is none
+        # bid to offer: one flip; a single second across and back is two
         ((("bid", 10), ("offer", 10)), 1),
-        ((("bid", 10), ("offer", 1), ("bid", 10)), 0),
+        ((("bid", 10), ("offer", 1), ("bid", 10)), 2),
         # bid, BALANCED, offer: one flip, counted on arrival at the offer side
         ((("bid", 10), ("bal", 10)), 0),
         ((("bid", 10), ("bal", 10), ("offer", 10)), 1),
-        # VERY ONE-SIDED counts as its side
+        # past 70% is still its side
         ((("bid", 10), ("very_bid", 10)), 0),
         ((("very_bid", 10), ("offer", 10), ("very_offer", 10), ("bid", 10)), 2),
         # an unknown value starts the count of sides over
@@ -852,17 +826,13 @@ def _touch_card(*runs: tuple[str, int]) -> dict:
         # only flips arriving in the last two minutes count
         ((("bid", 10), ("offer", 140)), 0),
         ((("bid", 10), ("offer", 100)), 1),
+        # six runs, side to side: five flips
+        (tuple((side, 10) for side in ("bid", "offer") * 3), 5),
     ],
 )
-def test_a_flip_is_a_change_of_side_held_three_seconds(runs, flips):
+def test_a_flip_is_a_change_of_side(runs, flips):
     w = _touch_card(*runs)
     assert w["flips_2m"] == flips
-    assert w["flips_word"] == "STEADY"
-
-
-def test_five_flips_in_two_minutes_read_choppy():
-    w = _touch_card(*[(side, 10) for side in ("bid", "offer") * 3])
-    assert (w["flips_2m"], w["flips_word"]) == (5, "CHOPPY")
 
 
 @pytest.mark.parametrize(

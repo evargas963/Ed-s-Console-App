@@ -129,7 +129,7 @@
       "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
       "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
       "weights": "Headline weights by price level from the touch: 0.43, 0.26, 0.16, 0.10, 0.06 (exp(-0.5\u00b7(k-1)), normalized; renormalized over the levels a thin side has). Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
-      "zones": "Zones, a provisional guide and not a research finding: BALANCED under 10% (Bookmap's colour-switch line); BID or OFFER HEAVY from 10% to under 70%; VERY ONE-SIDED from 70% (a VisualHFT vendor study, not a peer-reviewed paper). The middle range grades direction only, not strength. The headline is the median of the last 5 seconds; a zone changes after 3 seconds across its line; a flip is a change of side, bid to offer or back, held that long; 5 or more flips in 2 minutes read CHOPPY."
+      "zones": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back."
     },
     "disagree": {
       "1": false,
@@ -169,7 +169,6 @@
             "difference_text": "40",
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": true,
             "held_sec": 0,
             "held_text": "HELD \u22650s",
@@ -371,8 +370,6 @@
                 ]
               }
             },
-            "live_pct": -11.11111111111111,
-            "live_text": "-11%",
             "pct": -11.11111111111111,
             "pct_text": "-11%",
             "sentence": "To balance, market makers buy 40 shares.",
@@ -392,7 +389,6 @@
             "difference_text": "1,680",
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": true,
             "held_sec": 0,
             "held_text": "HELD \u22650s",
@@ -594,8 +590,6 @@
                 ]
               }
             },
-            "live_pct": -67.74193548387096,
-            "live_text": "-68%",
             "pct": -67.74193548387096,
             "pct_text": "-68%",
             "sentence": "To balance, market makers buy 1,680 shares.",
@@ -615,7 +609,6 @@
             "difference_text": "1,360",
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": true,
             "held_sec": 0,
             "held_text": "HELD \u22650s",
@@ -817,8 +810,6 @@
                 ]
               }
             },
-            "live_pct": -45.94594594594595,
-            "live_text": "-46%",
             "pct": -45.94594594594595,
             "pct_text": "-46%",
             "sentence": "To balance, market makers buy 1,360 shares.",
@@ -838,7 +829,6 @@
             "difference_text": "1,360",
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": true,
             "held_sec": 0,
             "held_text": "HELD \u22650s",
@@ -1040,8 +1030,6 @@
                 ]
               }
             },
-            "live_pct": -46.071045178279356,
-            "live_text": "-46%",
             "pct": -46.071045178279356,
             "pct_text": "-46%",
             "sentence": "To balance, market makers buy 1,360 shares.",
@@ -1083,7 +1071,6 @@
             "difference_text": null,
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": false,
             "held_sec": null,
             "held_text": null,
@@ -1285,8 +1272,6 @@
                 ]
               }
             },
-            "live_pct": null,
-            "live_text": null,
             "pct": null,
             "pct_text": null,
             "sentence": null,
@@ -1306,7 +1291,6 @@
             "difference_text": null,
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": false,
             "held_sec": null,
             "held_text": null,
@@ -1508,8 +1492,6 @@
                 ]
               }
             },
-            "live_pct": null,
-            "live_text": null,
             "pct": null,
             "pct_text": null,
             "sentence": null,
@@ -1529,7 +1511,6 @@
             "difference_text": null,
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": false,
             "held_sec": null,
             "held_text": null,
@@ -1731,8 +1712,6 @@
                 ]
               }
             },
-            "live_pct": null,
-            "live_text": null,
             "pct": null,
             "pct_text": null,
             "sentence": null,
@@ -1752,7 +1731,6 @@
             "difference_text": null,
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": false,
             "held_sec": null,
             "held_text": null,
@@ -1954,8 +1932,6 @@
                 ]
               }
             },
-            "live_pct": null,
-            "live_text": null,
             "pct": null,
             "pct_text": null,
             "sentence": null,
@@ -1997,7 +1973,6 @@
             "difference_text": "40",
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": true,
             "held_sec": 0,
             "held_text": "HELD \u22650s",
@@ -2199,8 +2174,6 @@
                 ]
               }
             },
-            "live_pct": -11.11111111111111,
-            "live_text": "-11%",
             "pct": -11.11111111111111,
             "pct_text": "-11%",
             "sentence": "To balance, market makers buy 40 shares.",
@@ -2220,7 +2193,6 @@
             "difference_text": "1,680",
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": true,
             "held_sec": 0,
             "held_text": "HELD \u22650s",
@@ -2422,8 +2394,6 @@
                 ]
               }
             },
-            "live_pct": -67.74193548387096,
-            "live_text": "-68%",
             "pct": -67.74193548387096,
             "pct_text": "-68%",
             "sentence": "To balance, market makers buy 1,680 shares.",
@@ -2443,7 +2413,6 @@
             "difference_text": "1,360",
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": true,
             "held_sec": 0,
             "held_text": "HELD \u22650s",
@@ -2645,8 +2614,6 @@
                 ]
               }
             },
-            "live_pct": -45.94594594594595,
-            "live_text": "-46%",
             "pct": -45.94594594594595,
             "pct_text": "-46%",
             "sentence": "To balance, market makers buy 1,360 shares.",
@@ -2666,7 +2633,6 @@
             "difference_text": "1,360",
             "divergence": null,
             "flips_2m": 0,
-            "flips_word": "STEADY",
             "held_open": true,
             "held_sec": 0,
             "held_text": "HELD \u22650s",
@@ -2868,8 +2834,6 @@
                 ]
               }
             },
-            "live_pct": -46.071045178279356,
-            "live_text": "-46%",
             "pct": -46.071045178279356,
             "pct_text": "-46%",
             "sentence": "To balance, market makers buy 1,360 shares.",

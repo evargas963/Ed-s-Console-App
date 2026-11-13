@@ -199,7 +199,7 @@ class RecentLean:
 
     The readout is engine.book_readout's, computed once as each book arrives, one per second
     (the newest in that second), as (receive time, readout): the Liquidity card's newest
-    readout, and its smoothing, zone hold and lean series. Kept for engine.OF_LEAN_KEPT_SEC
+    readout, and its zone hold and lean series. Kept for engine.OF_LEAN_KEPT_SEC
     before the newest, and the one before that, which still stands then. Owner: the console's
     intake (streaming._ingest_pushed); while it receives no book, the last readout stands and the
     live rule marks it not live. It is per ticker over both venues, where RecentBooks is per
