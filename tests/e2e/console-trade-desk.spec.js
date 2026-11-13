@@ -2,8 +2,9 @@
  * Trade Desk (Desk + Right Now) renders what the server serves and computes nothing (P1-3, PR B,
  * 2026-09-27): the attention queue is the desk panel (numbered, ordered, window-counted on the
  * server); book side, tape side, flip relation, wall distances, spot-vs-zones, levels by distance
- * and the positioning migration are served fields. Level crosses are real SPY rows
- * (tests/fixtures/real_spy_level_crosses.json). Any page error fails the test.
+ * and the positioning migration are served fields. The panels are the server's own answers for
+ * SPY at 2026-11-12 10:30:41 ET (tests/e2e/fixtures/trade_desk.js); a test's induced condition is
+ * that answer with the named part changed. Any page error fails the test.
  */
 const { test, expect } = require('@playwright/test');
 const path = require('path');
@@ -12,9 +13,15 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 const { watchRequests, holdClock } = require('./fixtures/settled');
 
 const {
-  EVENTS, SPOT, TERRAIN, LEVELS, READOUT_LIVE, LIVE_COMP, MICRO, LIQ, STRIKES, BARS, intercept, watchErrors,
+  REAL, EVENTS, SPOT, TERRAIN, LEVELS, MICRO, LIQ, STRIKES, BARS, intercept, watchErrors,
   deskPanels, deskSocket, levelsAt, tfAt,
 } = require('./fixtures/trade_desk');
+// the composite of Schwab's two books, as the book panel's readout answers it
+const COMP = MICRO.readout.venues.COMPOSITE;
+// a strikes window as GEX by Strike lists it: highest strike first
+const listed = (strikes) => strikes.today.all.map((r) => String(r[0])).reverse();
+// the zone the price is inside (the liquidity panel's own spot_location)
+const INSIDE = LIQ.zones[LIQ.spot_location.inside];
 
 test('every chart is the one TradingView-style chart, with its controls', async ({ page }) => {
   // operator 2026-09-28: "each and every chart in the app needs to use the same TV controls" --
@@ -32,8 +39,8 @@ test('every chart is the one TradingView-style chart, with its controls', async 
     await expect(page.locator(host + ' .tvc-log'), ws + '/' + sub).toBeVisible();
   }
   // the liquidity map draws the served zones and shows the prior-day level from the levels panel: a line
-  // when it is inside the candles' price range, else named at the pane's edge (PDH 773.50 is above
-  // this fixture's one bar, 769-772; the scale fits the candles, 2026-09-29)
+  // when it is inside the candles' price range, else named at the pane's edge (the scale fits the
+  // candles, 2026-09-29)
   await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(LIQ.zones.length);
   await expect.poll(() => page.evaluate(() => ((window.EdLiquidityMap.state() || { levels: [] }).levels.join(' ') + ' ' +
     document.querySelector('#liqmBody .tvc-edge-top').textContent))).toContain('PDH');
@@ -53,7 +60,8 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
     .filter((p, i, a) => i === 0 || JSON.stringify(p) !== JSON.stringify(a[i - 1]));
   const levelsAsks = () => asks('levels:map').map((p) => p.tf);
   let barsHeld = true;   // the 15m bars are not sent until the test says
-  deskPanels().bars = (key, params) => (barsHeld && params.tf === '15' ? undefined : Object.assign({}, BARS, { tf: params.tf }));
+  deskPanels().bars = (key, params, name) => (barsHeld && params.tf === '15' ? undefined
+    : name === 'bars:flow' ? REAL.bars_flow : REAL.bars[params.tf]);
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '5'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -142,7 +150,7 @@ test('the liquidity map fits its price scale to the candles; a far zone does not
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(LIQ.zones.length + 1);
   const st = await page.evaluate(() => window.EdLiquidityMap.state());
-  expect(st.priceTop).toBeLessThan(far.zone_low);          // the bar's range (769-772) sets the scale
+  expect(st.priceTop).toBeLessThan(far.zone_low);          // the bars' range (near 757) sets the scale
   expect(errs).toEqual([]);
 });
 
@@ -253,10 +261,10 @@ test('Desk: the book age keeps Schwab\'s book time', async ({ page }) => {
     localStorage.setItem('ed_sub', 'desk'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   // the card's footnote keeps the served composite's book time; its side word and totals are served
-  await expect(page.locator('#tdmCardLiq')).toContainText('Book ' + LIVE_COMP.book_time_ct);
-  await expect(page.locator('#tdmCardLiq .liq-word')).toHaveText(LIVE_COMP.views.weighted.side_word);
-  await expect(page.locator('#tdmCardLiq .liq-body')).toContainText(LIVE_COMP.views.weighted.ask_text);
-  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · 1s');
+  await expect(page.locator('#tdmCardLiq')).toContainText('Book ' + COMP.book_time_ct);
+  await expect(page.locator('#tdmCardLiq .liq-word')).toHaveText(COMP.views.weighted.side_word);
+  await expect(page.locator('#tdmCardLiq .liq-body')).toContainText(COMP.views.weighted.ask_text);
+  await expect(page.locator('#tdmTrust')).toContainText('BOOK ' + BOOK_TIME + ' · ' + MICRO.book_age_text);
   expect(errs).toEqual([]);
 });
 
@@ -271,10 +279,10 @@ test('Desk: the chain age keeps the chain\'s time', async ({ page }) => {
     localStorage.setItem('ed_sub', 'desk'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#tdmCardOpt .tdm-src')).toContainText('Schwab option chain · ' + CHAIN_TIME + ' · LIVE · 4s');
-  await expect(page.locator('#tdmCardOpt')).toContainText('775.00');
-  // the served regime word, toned from the one regime table
-  await expect(page.locator('#tdmCardOpt .tdm-state')).toHaveText('LONG GAMMA CHOP');
-  await expect(page.locator('#tdmCardOpt .tdm-state')).toHaveClass('tdm-state up');
+  await expect(page.locator('#tdmCardOpt')).toContainText('775.00');   // SPY's real call wall
+  // the served regime word (SPY's: SHORT_GAMMA_TREND), toned from the one regime table
+  await expect(page.locator('#tdmCardOpt .tdm-state')).toHaveText('SHORT GAMMA TREND');
+  await expect(page.locator('#tdmCardOpt .tdm-state')).toHaveClass('tdm-state dn');
   await expect(page.locator('#tdmCardVol .tdm-src')).toContainText(CHAIN_TIME + ' · LIVE · 4s');
   await expect(page.locator('#tdmTrust')).toContainText('GAMMA ' + CHAIN_TIME + ' · LIVE · 4s');
   expect(errs).toEqual([]);
@@ -301,7 +309,7 @@ test('Right Now: the spot keeps its last trade time', async ({ page }) => {
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
     localStorage.setItem('ed_sub', 'right-now'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#tdBody .fl-meta')).toHaveText('spot 771.30 · last trade Fri 10/02 10:00 AM CT');
+  await expect(page.locator('#tdBody .fl-meta')).toHaveText('spot ' + SPOT.toFixed(2) + ' · last trade Fri 10/02 10:00 AM CT');
 });
 
 test.describe('Trade Desk renders served values', () => {
@@ -314,9 +322,10 @@ test.describe('Trade Desk renders served values', () => {
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
-    // max pain (770) is inside the one bar's price range; PDH (773.50) is above it, pinned at the edge
-    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(1);
-    await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('PDH 773.50');
+    // the nearest six of SPY's levels inside the bars' price range are drawn; the call wall (775) is
+    // above it, pinned at the edge
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(6);
+    await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('775.00');
     // the profile is drawn after the close too (the session's served profile) and names its basis
     await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     expect(errs).toEqual([]);
@@ -330,7 +339,7 @@ test.describe('Trade Desk renders served values', () => {
     const words = 'the program could not produce this panel: RuntimeError: chain lock timed out';
     await intercept(page);   // every panel sent in its real shape, then the two that fail
     deskPanels().terrain = { failed: words };
-    deskPanels().bars = (key, params, name) => (name === 'bars:flow' ? { failed: words } : tfAt(BARS)(key, params));
+    deskPanels().bars = (key, params, name) => (name === 'bars:flow' ? { failed: words } : REAL.bars[params.tf]);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmCardOpt .tdm-plot-none')).toHaveText(words);
@@ -377,46 +386,51 @@ test.describe('Trade Desk renders served values', () => {
     await intercept(page);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(3);
-    await expect(page.locator('#tdmQueueCount')).toHaveText('3');
-    await expect(page.locator('#tdmCardLiq .liq-word')).toHaveText(LIVE_COMP.views.weighted.side_word);
+    // the queue as served: the day's recorded crosses in the window, the book's size wall, the put wall
+    await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(EVENTS.items.length);
+    await expect(page.locator('#tdmQueueCount')).toHaveText(String(EVENTS.items.length));
+    await expect(page.locator('#tdmCardLiq .liq-word')).toHaveText(COMP.views.weighted.side_word);
     // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
     await expect(page.locator('#tdmCardFlow')).not.toContainText(/NET BUYING|NET SELLING|tick rule|PROXY|delta/i);
     await expect(page.locator('#tdmCardFlow')).toContainText(EVENTS.cross_counts.up + ' up · ' + EVENTS.cross_counts.down + ' down');
     // the window's words are the server's (a page copy of the lookback table: register P-15)
-    await expect(page.locator('#tdmCardFlow')).toContainText('Crosses (this session (served))');
-    await expect(page.locator('#tdmLookback')).toHaveText('this session (served)');
-    await expect(page.locator('#tdmAgree')).toContainText('Above flip');
+    await expect(page.locator('#tdmCardFlow')).toContainText('Crosses (' + EVENTS.window_label + ')');
+    await expect(page.locator('#tdmLookback')).toHaveText(EVENTS.window_label);
+    await expect(page.locator('#tdmAgree')).toContainText('Below flip');   // 757.08 against the flip at 761.22
     // the served session volume profile, every bin drawn at the chart's left edge, with its basis
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     // each card draws its served series (2026-09-28): the Liquidity card's 2m and 5m lean lines,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator('#tdmCardLiq .liq-lean svg path')).toHaveCount(2);
-    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(BARS.bars.length);
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(REAL.bars_flow.bars.length);
     await expect(page.locator('#tdmCardOpt .tdm-plot svg path')).toHaveCount(2);
     await expect(page.locator('#tdmCardVol .tdm-plot svg path')).toHaveCount(1);
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');
-    await expect(page.locator('#tdmAgree')).toContainText(LIVE_COMP.views.weighted.side_word.toLowerCase());
+    await expect(page.locator('#tdmAgree')).toContainText(COMP.views.weighted.side_word.toLowerCase());
     expect(errs).toEqual([]);
   });
 
   test('Desk: each chart marker is its queue entry, and selecting the entry selects that marker', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
-    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
+    // at 15 minutes the queue's window is the last 4 hours: SPY crossed three levels in it (max
+    // pain, the flip, the two delta walls at 750), and the chart marks the newest cross at each
+    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '15'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const want = EVENTS.items.filter((it) => it.marker).map((it) => it.key).sort();
-    await expect.poll(async () => (await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers)).slice().sort()).toEqual(want);
-    const key = EVENTS.items[1].key;
+    const marked = REAL.desk[MICRO.venue]['15'].items.filter((it) => it.marker).map((it) => it.key);
+    expect(marked).toHaveLength(3);
+    await expect.poll(async () => (await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers)).slice().sort()).toEqual(marked.slice().sort());
+    const key = marked[0];
     await page.locator('#tdmQueue [data-q="' + key + '"]').click();
     await expect(page.locator('#tdmQueue [data-q="' + key + '"]')).toHaveClass(/sel/);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(key);
     // and the other way: a click on a callout's number on the chart selects its queue entry
-    const other = EVENTS.items[2].key;
+    const other = marked[1];
     const all = await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts);
     const c = all.filter((x) => x.id === other)[0];
     expect(c).toBeTruthy();
-    // the three crosses share one bar here; no callout's number covers another's
+    // no callout's number covers another's, crosses of one bar included
     for (const a of all) for (const b of all) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(22);
     // the chart may still be settling its opening view: read the number where it is drawn now, click it
     const box = await page.locator('#tdmChart .tvc-plot').boundingBox();
@@ -501,7 +515,7 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
     const legend = page.locator('#tdmChart .tvc-legend');
-    await expect(legend).toContainText('Last completed bar Fri 09/25 09:21 AM CT');
+    await expect(legend).toContainText('Last completed bar ' + BARS.last_bar.label);
     const before = barReads.length;
     await page.evaluate((spot) => {
       for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: spot + i / 100,
@@ -520,7 +534,7 @@ test.describe('Trade Desk renders served values', () => {
     expect(barReads.length).toBe(before);
     // a bar completes: the program sends the bars again, whole, and the chart shows the new bar
     const last = BARS.bars[BARS.bars.length - 1];
-    deskPanels().bars = tfAt(Object.assign({}, BARS, { bars: BARS.bars.concat([Object.assign({}, last, { t: last.t + 1800 })]) }));
+    deskPanels().bars = tfAt(Object.assign({}, BARS, { bars: BARS.bars.concat([Object.assign({}, last, { t: last.t + 300 })]) }));
     sock.changed('bars');
     await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length + 1);
     expect(barReads.length).toBe(before);
@@ -532,9 +546,9 @@ test.describe('Trade Desk renders served values', () => {
     // readout's "Bar change" always read "—" while the legend recomputed close - open.
     const errs = watchErrors(page);
     await intercept(page);
-    // 60 served 30-minute bars, each with its served change (0.25 each), so a click lands on one
-    const bars = Array.from({ length: 60 }, (_v, i) => ({ t: 1790343000 - (59 - i) * 1800, o: 770 + i * 0.1,
-      h: 771 + i * 0.1, l: 769 + i * 0.1, c: 770.25 + i * 0.1, v: 1000, chg: 0.25, chg_pct: 0.0325 }));
+    // induced: SPY's last 60 real 5-minute bars, each with its served change set to 0.25, so a
+    // click lands on one whose change is known
+    const bars = BARS.bars.slice(-60).map((b) => Object.assign({}, b, { chg: 0.25, chg_pct: 0.0325 }));
     deskPanels().bars = tfAt(Object.assign({}, BARS, { bars: bars }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -597,7 +611,8 @@ test.describe('Trade Desk renders served values', () => {
     await routeStopped(page);
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#tdmAgree')).toContainText('Above flip · ' + STOPPED.spot_not_live_text);
+    // the flip side is the terrain's (SPY's real one: below the flip), marked with the stopped price's words
+    await expect(page.locator('#tdmAgree')).toContainText('Below flip · ' + STOPPED.spot_not_live_text);
     expect(errs).toEqual([]);
   });
 
@@ -628,16 +643,21 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
     // the book's lean is the Liquidity readout's, served (one producer for the desk)
-    const nq5 = READOUT_LIVE.readout.venues.NASDAQ_BOOK.views['5'];
+    const nq5 = MICRO.readout.venues.NASDAQ_BOOK.views['5'];
     await expect(body).toContainText(nq5.pct_text + nq5.side_word.toLowerCase() + ' (NASDAQ_BOOK, depth 5)');
-    await expect(body).toContainText('Max pain 770.00');           // nearest by the served by_distance
-    await expect(body).toContainText('1.30 below spot');
-    await expect(body).toContainText('Put wall 6.30 below spot, call wall 3.70 above spot');   // the levels panel's own rows
-    await expect(body).toContainText('Resistance zone above at 772.00');
-    await expect(body).toContainText('Pivot / value zone below at 769.00');
+    // SPY's real levels (Right Now asks them at 1 minute): max pain is the nearest, 0.08 below
+    // the price; the price is through the put wall, so both walls are above it
+    const level = (id) => REAL.levels['1'].levels.find((r) => r.id === id);
+    await expect(body).toContainText('Max pain 757.00');           // nearest by the served by_distance
+    await expect(body).toContainText('0.08 below spot');
+    await expect(body).toContainText('Put wall ' + level('put_wall').from_spot_text + ', call wall ' +
+      level('call_wall').from_spot_text);                         // the levels panel's own rows
+    // the price is inside the pivot zone 757.00-758.01 (the liquidity panel's own spot_location)
+    await expect(body).toContainText('Inside a Pivot / value zone (757.00–758.01, confluence 6)');
+    expect([INSIDE.zone_low, INSIDE.zone_high, INSIDE.confluence_score]).toEqual([757.0, 758.01, 6]);
     // the walls' and the flip's own moves since the prior close, as served (no drift word)
-    await expect(body).toContainText('Call wall 774 → 775 (+1) · Put wall 765 → 765 (unchanged) · Gamma flip 768.25 → 767.50 (-0.75)');
-    await expect(body).toContainText('Gamma grew most at 771/770');
+    await expect(body).toContainText('Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Gamma flip 760.77 → 761.22 (+0.45)');
+    await expect(body).toContainText('Gamma grew most at 775/770');
     await expect(body).toContainText('inside the wall range');
     expect(errs).toEqual([]);
   });
@@ -656,8 +676,8 @@ test.describe('Trade Desk renders served values', () => {
     const body = page.locator('#tdBody');
     await expect(body).toContainText('OFFLINE');
     await expect(body).toContainText(BOOK_TIME + ' · 1s');
-    await expect(body).toContainText('771.29 × 771.31');
-    await expect(body).toContainText(READOUT_LIVE.readout.venues.NASDAQ_BOOK.views['5'].side_word.toLowerCase() + ' (NASDAQ_BOOK, depth 5)');
+    await expect(body).toContainText('757.05 × 757.07');           // Schwab's best bid and ask
+    await expect(body).toContainText(MICRO.readout.venues.NASDAQ_BOOK.views['5'].side_word.toLowerCase() + ' (NASDAQ_BOOK, depth 5)');
     expect(errs).toEqual([]);
   });
 
@@ -666,23 +686,24 @@ test.describe('Trade Desk renders served values', () => {
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
-    await expect(body).toContainText('Max pain 770.00');
+    await expect(body).toContainText('Max pain 757.00');
     const asked = sock.subscribes.length;
     // DETECT's book and FRAME's zones, FRAME's levels (each with its distance from the live
     // price), CONFIRM's levels and the migration's rows are the book, liquidity, levels, terrain
     // and strikes panels the program sends on the socket when they change, the levels with each
     // price row too
-    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book, { bid: 771.2 }) });
+    // induced: each panel again with one value changed
+    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book, { bid: 757.0 }) });
     sock.changed('book');
-    await expect(body).toContainText('771.20 × 771.31');                  // DETECT's book
+    await expect(body).toContainText('757.00 × 757.07');                  // DETECT's book
     deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.map((z) =>
-      (z.zone_side === 'resistance' ? Object.assign({}, z, { zone_low: 772.5 }) : z)) });
+      (z === INSIDE ? Object.assign({}, z, { zone_high: 758.5 }) : z)) });
     sock.changed('liquidity');
-    await expect(body).toContainText('Resistance zone above at 772.50');  // FRAME's zones
-    await expect(body).toContainText('Max pain 770.00');
+    await expect(body).toContainText('Inside a Pivot / value zone (757.00–758.50');  // FRAME's zones
+    await expect(body).toContainText('Max pain 757.00');
     deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771 });
     sock.changed('terrain');
-    await expect(body).toContainText('Gamma flip768.00Max pain771.00');   // CONFIRM's rows
+    await expect(body).toContainText('Gamma flip761.22Max pain771.00');   // CONFIRM's rows
     deskPanels().levels = levelsAt(Object.assign({}, LEVELS, { levels: LEVELS.levels.map((r) =>
       (r.id === 'max_pain' ? Object.assign({}, r, { from_spot_text: '0.30 below spot' }) : r)) }));
     sock.changed('levels');
@@ -692,22 +713,20 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Right Now: a new scope\'s strike window stays drawn through the next push', async ({ page }) => {
     const sock = await intercept(page);
-    const wider = Object.assign({}, STRIKES, { spot_strike: 791,
-      today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
-      views: { all: { centre: 791, max_abs: 900000, max_abs_with_prior: 900000 } } });
-    deskPanels().strikes = (key, params) => (params.scope === 'wider' ? wider : STRIKES);
+    // the server's own windows: Auto (11 strikes, 752 to 762) and Wider (23), each as its scope is asked
+    const wider = REAL.strikes_wider;
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_scope', 'auto'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const strikes = page.locator('#tdMigration .gbs-k');
-    await expect(strikes).toHaveText(['772', '771', '770']);
+    await expect(strikes).toHaveText(listed(STRIKES));
     await page.evaluate(() => window.EdShell.setScope('wider'));
-    await expect(strikes).toHaveText(['792', '791', '790']);
+    await expect(strikes).toHaveText(listed(wider));
     for (const kind of ['strikes', 'liquidity']) sock.changed(kind);  // the program sends the panels again
-    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book, { bid: 771.2 }) });
+    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book, { bid: 757.0 }) });
     sock.changed('book');
-    await expect(page.locator('#tdBody')).toContainText('771.20 × 771.31');   // the push has been drawn
-    await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
+    await expect(page.locator('#tdBody')).toContainText('757.00 × 757.07');   // the push has been drawn
+    await expect(strikes).toHaveText(listed(wider));                  // the window asked for, not the old one
   });
 
   test('no panel stays marked busy once its panel has landed', async ({ page }) => {
@@ -762,14 +781,17 @@ test.describe('Trade Desk renders served values', () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     await intercept(page);
-    const today = [[770, 500000, 1000], [771, null, null], [772, -200000, 3000]];
-    deskPanels().strikes = Object.assign({}, STRIKES, { today: { all: today }, migration: { all: Object.assign({}, STRIKES.migration.all,
-      { rows: [[770, 500000, 400000, 100000], [771, null, 700000, null], [772, -200000, -100000, -100000]] }) } });
+    // induced: SPY's real rows with today's GEX and volume of the strike at the price (757) not known
+    const K = STRIKES.spot_strike;
+    const today = STRIKES.today.all.map((r) => (r[0] === K ? [K, null, null] : r));
+    deskPanels().strikes = Object.assign({}, STRIKES, { today: Object.assign({}, STRIKES.today, { all: today }),
+      migration: Object.assign({}, STRIKES.migration, { all: Object.assign({}, STRIKES.migration.all,
+        { rows: STRIKES.migration.all.rows.map((r) => (r[0] === K ? [K, null, r[2], null] : r)) }) }) });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['772', '771', '770']);
-    const row = page.locator('#tdMigration .mig-row', { hasText: '771' });
+    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(listed(STRIKES));
+    const row = page.locator('#tdMigration .mig-row').filter({ has: page.locator('.gbs-k', { hasText: new RegExp('^' + K + '$') }) });
     await expect(row.locator('.gbs-v')).toHaveText('-');
     await expect(row.locator('.mig-delta')).toHaveText('-');
     await expect(row.locator('.gbs-vol')).toHaveText('-');
@@ -780,14 +802,12 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Right Now: a panel landing after a scope change draws only the new window',async ({ page }) => {
     const sock = await intercept(page);
-    const wider = Object.assign({}, STRIKES, { spot_strike: 791,
-      today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
-      views: { all: { centre: 791, max_abs: 900000, max_abs_with_prior: 900000 } } });
-    deskPanels().strikes = (key, params) => (params.scope === 'wider' ? wider : STRIKES);
+    // the server's own windows: Auto, then Wider as its scope is asked
+    const wide = listed(REAL.strikes_wider).join(',') + ' | spot ' + SPOT.toFixed(2) + ' · last trade ' + REAL.levels['1'].spot_time_ct;
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_scope', 'auto'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['772', '771', '770']);
+    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(listed(STRIKES));
     await page.evaluate(() => {          // every draw of the page from here on: its strikes and its spot
       window.__draws = [];
       new MutationObserver(() => {
@@ -797,17 +817,18 @@ test.describe('Trade Desk renders served values', () => {
       }).observe(document.getElementById('tdBody'), { childList: true });
     });
     await page.evaluate(() => window.EdShell.setScope('wider'));     // the scope changes ...
-    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['792', '791', '790']);
+    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(listed(REAL.strikes_wider));
+    // induced: the zone the price is inside, its top moved
     deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.map((z) =>
-      (z.zone_side === 'resistance' ? Object.assign({}, z, { zone_low: 772.5 }) : z)) });
+      (z === INSIDE ? Object.assign({}, z, { zone_high: 758.5 }) : z)) });
     sock.changed('liquidity');                                       // ... and a panel of another kind lands after it
-    await expect(page.locator('#tdBody')).toContainText('Resistance zone above at 772.50');
+    await expect(page.locator('#tdBody')).toContainText('Inside a Pivot / value zone (757.00–758.50');
     // once the new window is drawn, every later draw is the new window: none goes back to the
     // old one, the later panel's included
     const draws = await page.evaluate(() => window.__draws);
-    const first = draws.indexOf('792,791,790 | spot 771.30');
+    const first = draws.indexOf(wide);
     expect(first).toBeGreaterThan(-1);
-    expect(draws.slice(first).filter((d) => d !== '792,791,790 | spot 771.30')).toEqual([]);
+    expect(draws.slice(first).filter((d) => d !== wide)).toEqual([]);
   });
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
