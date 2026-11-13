@@ -3938,6 +3938,7 @@
    "gamma_at_spot": 937341251.0262462,
    "curve_agrees_with_schwab_at_spot": true
   },
+  "flip_note": null,
   "error": "",
   "pcr_by_expiry": {
    "2026-11-13": 0.7317307767498964,
@@ -4088,13 +4089,6 @@
   "pin_candidate": null,
   "pin_candidate_blockers": [
    "liquidity"
-  ],
-  "lines": [
-   "Dealers are modelled net long gamma (from OI, not observed positioning): they sell into strength and buy into weakness, damping every move.",
-   "Spot 269.43 vs flip 243.91 (-9.47%) \u2014 9.47% above the regime line.",
-   "Box: put wall 270.00 (+0.21%) \u00b7 call wall 270.00 (+0.21%)",
-   "At the lower edge \u2014 wait for the reaction at the put wall, do not anticipate.",
-   "Fade rallies into call wall 270.00 (+0.21%) and buy dips toward put wall 270.00 (+0.21%); target the middle, stop beyond the wall."
   ],
   "atr_daily": 9.452408341900341,
   "atr_weekly": 17.39414267906555,

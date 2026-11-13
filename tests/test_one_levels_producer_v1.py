@@ -514,9 +514,7 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
 
     Meanwhile the headline said "Short gamma -- trend regime. Follow breaks" -- advice from nothing.
     """
-    r = build_terrain_read(
-        spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=None
-    )
+    r = build_terrain_read(spot=100.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=None)
     assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
 

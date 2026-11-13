@@ -1,35 +1,20 @@
-"""Deterministic terrain read — plain-English regime summary from computed levels.
+"""The regime read and the relations of a price to a level.
 
-Rules-based, never generative: identical inputs always produce identical output, so the
-read can be tested, diffed, and trusted. There is no model in this path and nothing here
-can hallucinate a level.
+Rules, never generative: identical inputs give identical output.
 
-Two institutional invariants:
-
-1. **Fail-closed — on the SIGN, which is what a posture rests on.**
-   The regime is the SIGN of dealer gamma AT SPOT, which needs strikes NEAR spot; the flip LEVEL
-   is what needs a wide chain. So:
-     * confidence TRUSTED or LEVEL_APPROX -> regime and posture are issued; at LEVEL_APPROX the
-       flip LEVEL is explicitly disclosed as approximate on the line that prints it.
-     * confidence NARROW or UNAVAILABLE -> everything is withheld, with the reason stated. This is a
-       conservative DECLINE-TO-SPEAK bound, not a finding about the sign: measured against sign
-       reliability, span shows no cliff at the floor (see math_levels.GAMMA_FLIP_MIN_SPAN_PCT).
-       Passing this bound means we are willing to speak; it does not mean the sign is verified.
-     * missing spot, or dealer gamma at spot absent or exactly zero -> withheld, with the reason.
-   It never presents a posture derived from a level we know is unreliable (a 40-contract chain
-   placed the flip at 770.35 against a full-chain 745.61), and it never presents a coverage
-   verdict as proof the level is right.
-2. **Absence reads as absence.** A missing level is reported missing, never defaulted to a
-   neutral-looking number.
-
-The vocabulary mirrors how the terrain is actually traded: regime first (the master
-switch), then the box, then position within it. The middle of the box is an explicit
-stand-aside — no edge exists there.
+The regime is the sign of dealer gamma at spot, which needs strikes near spot; the flip level is
+what needs a wide chain. So:
+  * confidence TRUSTED or LEVEL_APPROX: the regime and its posture are issued; the confidence is
+    served beside them and says when the flip level is approximate.
+  * confidence NARROW or UNAVAILABLE, a missing spot, or dealer gamma at spot absent or exactly
+    zero: no regime (UNAVAILABLE) and the posture is to stand aside. The coverage floor is a
+    bound below which the read declines to speak, not proof the sign is right above it
+    (math_levels.GAMMA_FLIP_MIN_SPAN_PCT).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
 from numeric_contract import price_text
@@ -37,15 +22,10 @@ from numeric_contract import price_text
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
 REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
 REGIME_UNAVAILABLE = "UNAVAILABLE"
-#: The regime and posture are read the same way for every ticker. The +call/-put dealer-sign
-#: convention is MODELLED, not observed -- the mechanism line below says so on every ticker.
 
 POSTURE_FADE = "FADE_EDGES"
 POSTURE_FOLLOW = "FOLLOW_BREAKS"
 POSTURE_STAND_ASIDE = "STAND_ASIDE"
-
-#: Within this fraction of a wall, price is "at the edge" and the reaction is tradeable.
-EDGE_PROXIMITY_PCT = 0.004
 
 #: where a level sits against a price (level_side)
 LEVEL_ABOVE, LEVEL_AT, LEVEL_BELOW = "ABOVE", "AT", "BELOW"
@@ -118,243 +98,77 @@ def crossed(level: float | None, before: float | None, after: float | None) -> s
     return None
 
 
-#: the one wording, shown whenever the flip's modelled curve and Schwab's gamma disagree on the
-#: sign at today's price (the flip is placed by the curve; the regime is Schwab's gamma)
+#: the flip's note (flip_note): the flip is placed by a modelled curve, the regime is Schwab's
+#: gamma, and at the chain's price the two disagree on the sign
 FLIP_CURVE_DISAGREES = (
     "The gamma flip is placed by a modelled curve that disagrees with Schwab's "
     "gamma at today's price."
 )
 
 
+def flip_note(curve_agrees: bool | None) -> str | None:
+    """Return the note shown beside the gamma flip, or None when there is nothing to say.
+
+    FLIP_CURVE_DISAGREES when the flip's curve and Schwab's gamma are both known at the chain's
+    price and their signs differ (`curve_agrees` False); None when they agree or one is unknown.
+    """
+    return FLIP_CURVE_DISAGREES if curve_agrees is False else None
+
+
 @dataclass(frozen=True)
 class TerrainRead:
-    """Structured, renderable terrain read. `lines` is ordered for display."""
+    """The regime, its posture, the flip's confidence and the headline."""
 
     regime: str
     posture: str
     confidence: str
     headline: str
-    lines: list[str] = field(default_factory=list)
-    spot: float | None = None
-    flip: float | None = None
-    put_wall: float | None = None
-    call_wall: float | None = None
-
-
-def _pct_from(spot: float, level: float) -> float:
-    return (level - spot) / spot
-
-
-def _fmt(label: str, level: float | None, spot: float) -> str:
-    if level is None:
-        return f"{label} -"
-    return f"{label} {price_text(level)} ({_pct_from(spot, level) * 100:+.2f}%)"
 
 
 def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
-    """Return the regime: THE authority for the gamma-regime SIGN THRESHOLD.
+    """Return the regime: the one rule for the sign of dealer gamma.
 
     Positive dealer gamma is LONG_GAMMA_CHOP (dealers damp moves); negative is
-    SHORT_GAMMA_TREND (dealers amplify). Returns None when the sign is absent or exactly zero,
-    so every caller shares one threshold instead of re-deriving `> 0` locally.
-    build_terrain_read and institutional_behavior both consume this — there is no second sign
-    authority.
+    SHORT_GAMMA_TREND (dealers amplify). None when the sign is absent or exactly zero.
     """
     if signed_gamma is None or signed_gamma == 0:
         return None
     return REGIME_LONG_GAMMA if signed_gamma > 0 else REGIME_SHORT_GAMMA
 
 
-def _posture_for(regime: str) -> str:
-    if regime == REGIME_LONG_GAMMA:
-        return POSTURE_FADE
-    if regime == REGIME_SHORT_GAMMA:
-        return POSTURE_FOLLOW
-    return POSTURE_STAND_ASIDE
-
-
-def _near(spot: float, level: float | None) -> bool:
-    return level is not None and abs(_pct_from(spot, level)) <= EDGE_PROXIMITY_PCT
-
-
-def _position_line(spot: float, put_wall: float | None, call_wall: float | None) -> str:
-    if _near(spot, put_wall):
-        return "At the lower edge — wait for the reaction at the put wall, do not anticipate."
-    if _near(spot, call_wall):
-        return "At the upper edge — wait for the reaction at the call wall, do not anticipate."
-    if put_wall is not None and call_wall is not None:
-        return "Mid-box — no edge here. Stand aside; act at the walls, not in the middle."
-    return "Box incomplete — at least one wall is unavailable."
-
-
-def _unavailable(
-    reason: str,
-    spot: float | None,
-    confidence: str,
-    put_wall: float | None,
-    call_wall: float | None,
-) -> TerrainRead:
-    lines = [reason, "No regime and no posture are issued while the levels are unreliable."]
-    if spot is not None and (put_wall is not None or call_wall is not None):
-        lines.append(
-            f"Levels seen (untrusted): {_fmt('put wall', put_wall, spot)} · "
-            f"{_fmt('call wall', call_wall, spot)}"
-        )
-    return TerrainRead(
-        regime=REGIME_UNAVAILABLE,
-        posture=POSTURE_STAND_ASIDE,
-        confidence=confidence,
-        headline="Terrain unavailable — stand aside.",
-        lines=lines,
-        spot=spot,
-        put_wall=put_wall,
-        call_wall=call_wall,
-    )
+#: each regime's posture and headline
+_READS = {
+    REGIME_LONG_GAMMA: (
+        POSTURE_FADE,
+        "Long gamma — chop regime. Fade the edges, do not chase breakouts.",
+    ),
+    REGIME_SHORT_GAMMA: (
+        POSTURE_FOLLOW,
+        "Short gamma — trend regime. Follow breaks, do not fade.",
+    ),
+    REGIME_UNAVAILABLE: (POSTURE_STAND_ASIDE, "Terrain unavailable — stand aside."),
+}
 
 
 def build_terrain_read(
-    *,
-    spot: float | None,
-    flip: float | None,
-    flip_confidence: str,
-    put_wall: float | None = None,
-    call_wall: float | None = None,
-    gamma_at_spot: float | None = None,
-    flip_curve_agrees: bool | None = None,
+    *, spot: float | None, flip_confidence: str, gamma_at_spot: float | None = None
 ) -> TerrainRead:
-    """Deterministic terrain read.
+    """Return the regime read at `spot` for a flip of `flip_confidence`.
 
-    Fail-closed on missing spot, or on coverage below the conservative floor at which this repo
-    declines to speak at all (NARROW / UNAVAILABLE).
-
-    That floor is NOT evidence that the sign is otherwise sound — see
-    math_levels.GAMMA_FLIP_MIN_SPAN_PCT for the measurement.
-
-    NOT "fail-closed on untrusted levels". LEVEL_APPROX is untrusted by
-    construction (it is named so no surface can print it as TRUSTED) and it deliberately PASSES:
-    its regime and posture are issued, and the flip LEVEL it prints carries an explicit
-    APPROXIMATE disclosure. What fails closed is the SIGN being unsupportable, not the level
-    being uncertified.
-
-    The regime comes from the SIGN OF DEALER GAMMA AT SPOT (`gamma_at_spot`), not from
-    comparing spot to the flip, so a chain whose profile never crosses zero still has a
-    regime, unambiguous at every price. The flip is a landmark to display when it exists.
+    The regime is the sign of dealer gamma at spot (`gamma_at_spot`), not the side of the flip
+    the price is on, so a chain whose profile never crosses zero still has one. It is issued
+    with a spot above 0 and a confidence of TRUSTED or LEVEL_APPROX; otherwise it is
+    UNAVAILABLE.
     """
-    if spot is None or spot <= 0:
-        return _unavailable("Spot price is unavailable.", None, flip_confidence, None, None)
-    if flip is None and gamma_at_spot is None:
-        return _unavailable(
-            "Dealer gamma is unavailable, so the regime cannot be determined.",
-            spot,
-            flip_confidence,
-            put_wall,
-            call_wall,
-        )
-    # The REGIME is the sign of dealer gamma AT SPOT (see this function's
-    # docstring) — it does NOT depend on how precisely the flip LEVEL is placed. Gating it on the
-    # level-trust verdict conflates two different questions: coverage wide enough to PLACE the flip
-    # level, versus enough strikes near spot to know its SIGN. The split does not depend on any
-    # ticker's current span.
-    # So the middle tier LEVEL_APPROX keeps the regime and posture, and discloses the LEVEL below.
-    # Only a chain below the conservative decline-to-speak floor (NARROW/UNAVAILABLE) stands aside.
-    # NOTE: clearing that floor does NOT mean the at-spot sign is verified.
-    # What was measured is agreement between the MODELLED +call/-put sign on a truncated window and
-    # the MODELLED sign on the full delivered chain — both sides modelled, so this bounds truncation
-    # sensitivity, not correctness against real dealer positioning. Agreement improves with width
-    # (79.8% at +/-1% up to 92.7% at +/-15%), but that trend is SUPPORTED, NOT PROVEN: adjacent
-    # rungs overlap, the rungs re-window largely the same chains (paired observations), and no
-    # paired test or power analysis was run. There is no visible threshold effect at the floor, so
-    # passing it certifies nothing. Separately, AT THE FLOOR ONLY, a nearly balanced book
-    # (net/gross < 10%) sat near 50%; whether width rescues such a book is UNMEASURED. It is
-    # deliberately NOT gated on here — changing when advice is withheld is the operator's call,
-    # not a silent threshold edit from one study.
-    if flip_confidence not in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX):
-        return _unavailable(
-            f"Gamma flip is not trustworthy ({flip_confidence}) — the option chain is too "
-            "narrow to place it reliably.",
-            spot,
-            flip_confidence,
-            put_wall,
-            call_wall,
-        )
-
-    # the regime is the sign of dealer gamma at spot; absent or exactly zero -> unavailable
-    regime = regime_from_signed_gamma(gamma_at_spot) or REGIME_UNAVAILABLE
-    if regime == REGIME_UNAVAILABLE:
-        return _unavailable(
-            "Dealer gamma at spot is zero or unknown, so the regime cannot be determined.",
-            spot,
-            flip_confidence,
-            put_wall,
-            call_wall,
-        )
-    posture = _posture_for(regime)
-
-    # Dealer positioning is MODELLED from public OI under the
-    # +call/-put convention — OI does not reveal who owns the contracts — so the mechanism line says
-    # "modelled net long/short", never a bare "Dealers ARE" -- on every ticker alike, which keeps
-    # the claim honest rather than certain.
-    if regime == REGIME_LONG_GAMMA:
-        headline = "Long gamma — chop regime. Fade the edges, do not chase breakouts."
-        mechanism = (
-            "Dealers are modelled net long gamma (from OI, not observed positioning): "
-            "they sell into strength and buy into weakness, damping every move."
-        )
-        action = (
-            f"Fade rallies into {_fmt('call wall', call_wall, spot)} and buy dips toward "
-            f"{_fmt('put wall', put_wall, spot)}; target the middle, stop beyond the wall."
-        )
-    else:
-        headline = "Short gamma — trend regime. Follow breaks, do not fade."
-        mechanism = (
-            "Dealers are modelled net short gamma (from OI, not observed positioning): "
-            "they buy strength and sell weakness, amplifying every move."
-        )
-        action = (
-            f"Trade with a break of {_fmt('put wall', put_wall, spot)} or "
-            f"{_fmt('call wall', call_wall, spot)}; fading here gets run over."
-        )
-
-    if flip is not None:
-        distance_pct = _pct_from(spot, flip) * 100.0
-        where = price_side(flip, spot).lower()
-        flip_line = (
-            f"Spot {price_text(spot)} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
-            f"{where} the regime line."
-        )
-        # At the middle tier the chain does not reach the measured flip-LEVEL
-        # convergence span, so the LEVEL is approximate (~1.4% of spot in the study); the regime
-        # still stands on the at-spot sign, which no span verifies. Say so on the same line the
-        # operator reads the number from — a precise
-        # "-0.42%" beside an unqualified level is exactly the overstatement this tier exists to end.
-        if flip_confidence == GAMMA_FLIP_LEVEL_APPROX:
-            flip_line += (
-                " APPROXIMATE: the chain is too narrow to place this level precisely "
-                "(~1.4% of spot); the regime above does not depend on it."
-            )
-    else:
-        flip_line = (
-            f"Spot {price_text(spot)} — dealer gamma holds one sign across the whole chain, "
-            f"so there is no flip nearby to cross. The regime is unambiguous."
-        )
-
-    lines = [
-        mechanism,
-        flip_line,
-        f"Box: {_fmt('put wall', put_wall, spot)} · {_fmt('call wall', call_wall, spot)}",
-        _position_line(spot, put_wall, call_wall),
-        action,
-    ]
-    if flip_curve_agrees is False:
-        lines.append(FLIP_CURVE_DISAGREES)
+    speaks = (
+        spot is not None
+        and spot > 0
+        and flip_confidence in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX)
+    )
+    regime = regime_from_signed_gamma(gamma_at_spot) if speaks else None
+    if regime is None:
+        regime = REGIME_UNAVAILABLE
+    posture, headline = _READS[regime]
     return TerrainRead(
-        regime=regime,
-        posture=posture,
-        confidence=flip_confidence,
-        headline=headline,
-        lines=lines,
-        spot=spot,
-        flip=flip,
-        put_wall=put_wall,
-        call_wall=call_wall,
+        regime=regime, posture=posture, confidence=flip_confidence, headline=headline
     )

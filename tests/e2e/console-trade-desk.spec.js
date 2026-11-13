@@ -710,6 +710,11 @@ test.describe('Trade Desk renders served values', () => {
     deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771 });
     sock.changed('terrain');
     await expect(body).toContainText('Gamma flip761.22Max pain (0DTE)771.00');   // CONFIRM's rows
+    await expect(body).not.toContainText('Flip note');                    // this set's flip carries no note
+    // induced: the flip's note as the server words it (terrain_read.FLIP_CURVE_DISAGREES)
+    deskPanels().terrain = Object.assign({}, TERRAIN, { flip_note: 'The gamma flip is placed by a modelled curve that disagrees with Schwab\'s gamma at today\'s price.' });
+    sock.changed('terrain');
+    await expect(body).toContainText('Flip noteThe gamma flip is placed by a modelled curve that disagrees with Schwab\'s gamma at today\'s price.');
     deskPanels().levels = levelsAt(Object.assign({}, LEVELS, { levels: LEVELS.levels.map((r) =>
       (r.id === 'max_pain' ? Object.assign({}, r, { from_spot_text: '0.30 below spot' }) : r)) }));
     sock.changed('levels');
@@ -846,7 +851,7 @@ test.describe('Trade Desk renders served values', () => {
       { desk: tfAt(EVENTS), book: MICRO, liquidity: LIQ, bars: tfAt(BARS),
         forces: { ticker: 'SPY', available: true, doi_below: 1200, doi_above: null,
           dex_below_dollars: 5e8, dex_above_dollars: null, charm_below: 0.0123, charm_above: null, older_et_date: '2026-10-07' },
-        terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' }),
+        terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL', flip_note: 'the flip\'s note, as served' }),
         strikes: Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: null } }),
         levels: levelsAt(Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),
           by_distance: ['call_wall', 'max_pain', 'PDH', 'grc'] })) });
@@ -855,6 +860,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('GRC 837.58');
     await expect(page.locator('#tdmCardOpt')).toContainText('GEX below / above');
+    await expect(page.locator('#tdmCardOpt')).toContainText('Flip note the flip\'s note, as served');   // induced
     await expect(page.locator('#tdmCardOpt')).toContainText('−$1.20B / -');          // GEX, one side not known
     await expect(page.locator('#tdmCardOpt')).toContainText('ΔOI since 2026-10-07 below / above 1200 / -');   // from its served day
     await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / -');           // charm, one side not known

@@ -63,12 +63,13 @@
     paintPcr(why == null ? d : null);
     if (why != null) {   // nothing current: no tooltip or colour of the last answer stays
       ids.forEach(function (id) { txt(id, '-'); var el = document.getElementById(id); if (el) el.style.color = ''; });
-      txt('klSrc', why);
+      txt('klSrc', why); txt('klFlipNote', '');
       var src0 = document.getElementById('klSrc'); if (src0) { src0.title = ''; src0.style.color = ''; }
       var klb0 = document.getElementById('klBody'); if (klb0) klb0.classList.add('recede');
       return;
     }
     txt('klFlip', px(d.gamma_flip));
+    txt('klFlipNote', d.flip_note != null ? d.flip_note : '');   // served: the flip's note
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));

@@ -682,9 +682,13 @@ the program.
   as the live price (`resolve_spot`), one meaning on every panel (`tests/test_page_one_faucet_v1.py`
   checks every GET route that answers a ticker and every page panel that serves a price). Every relation of the price to the levels is at
   that live price, computed when served, never stored with the publication: each wall's state
-  and lean, the price's side of the flip, the pin candidate and the read's lines
+  and lean, the price's side of the flip and the pin candidate
   (`terrain_engine.price_relations`, a `PriceRelations` record, on the terrain panel, the levels panel
-  and the chart's markers); each level's distance (level minus price), side and the words for
+  and the chart's markers; the read's advice sentences, which no page read, are no longer made:
+  operator 2026-11-13, "if they do not then proceed with your recommendation"). The flip's note
+  (`flip_note`, `terrain_read.flip_note`: the flip's modelled curve and Schwab's gamma disagree
+  on the sign at the chain's price) is published with the levels and drawn beside the flip on
+  Right Now, the desk map's Options card and Key Levels (`tests/test_gamma_as_sent_v1.py`); each level's distance (level minus price), side and the words for
   both (`from_spot_text`, "1.30 below spot") on the levels panel, sent again with each price row
   of its ticker, the one distance the desk's nearest
   level and its Box line print; the price inside, above or below each liquidity zone
