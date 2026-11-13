@@ -43,10 +43,8 @@
    "short": "Net call \u0393 peak",
    "side": "ABOVE",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -65,10 +63,8 @@
    "short": "Key \u0394 strike",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -87,10 +83,8 @@
    "short": "Put \u0394 wall",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -109,10 +103,8 @@
    "short": "Max pain",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -131,10 +123,8 @@
    "short": "\u0393 flip",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -153,10 +143,8 @@
    "short": "Call wall",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -175,10 +163,8 @@
    "short": "Abs \u0393",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -197,10 +183,8 @@
    "short": "Call charm wall",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -219,10 +203,8 @@
    "short": "Put charm wall",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -241,10 +223,8 @@
    "short": "Put wall",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -263,10 +243,8 @@
    "short": "Net put \u0393 peak",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -285,10 +263,8 @@
    "short": "Call \u0394 wall",
    "side": "BELOW",
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   }
  ],
@@ -315,10 +291,8 @@
    "label": "Call wall",
    "price": 765.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -327,10 +301,8 @@
    "label": "Put wall",
    "price": 764.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -339,10 +311,8 @@
    "label": "\u0393 flip",
    "price": 770.7699684126369,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -351,10 +321,8 @@
    "label": "Abs \u0393",
    "price": 765.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -363,10 +331,8 @@
    "label": "GSF",
    "price": null,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -375,10 +341,8 @@
    "label": "GRC",
    "price": null,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -387,10 +351,8 @@
    "label": "Net put \u0393 peak",
    "price": 764.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -399,10 +361,8 @@
    "label": "Net call \u0393 peak",
    "price": 776.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -411,10 +371,8 @@
    "label": "Key \u0394 strike",
    "price": 772.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -423,10 +381,8 @@
    "label": "Call \u0394 wall",
    "price": 763.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -435,10 +391,8 @@
    "label": "Put \u0394 wall",
    "price": 772.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -447,10 +401,8 @@
    "label": "Call charm wall",
    "price": 765.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   },
   {
@@ -459,10 +411,8 @@
    "label": "Put charm wall",
    "price": 765.0,
    "staleness": {
-    "age_sec": 6176.727853059769,
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402,
-    "reason": "carried from the terrain"
+    "as_of_ts_utc": 1792700224.362402
    }
   }
  ]
