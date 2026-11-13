@@ -102,8 +102,9 @@ PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = (
 )
 #: Schwab's option markets in /markets: stock and ETF options, index options
 EQUITY_OPTIONS, INDEX_OPTIONS = "EQO", "IND"
-#: Underlyings whose listed options run to the index close. Schwab's equity-option
-#: window ends earlier and names no separate window for them (docs/DATA_FLOW.md).
+#: Underlyings whose listed options run to the index close: ETFs the exchanges designate to
+#: trade to 4:15 p.m. ET (docs/SOURCES.md: cboe-rule-5-1, nasdaq-options-hours). Schwab's
+#: equity-option window ends earlier and Schwab marks no contract as one of them.
 _INDEX_CLOSE_UNDERLYINGS = frozenset({"SPY", "QQQ", "IWM"})
 
 

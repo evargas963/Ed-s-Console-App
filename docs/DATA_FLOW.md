@@ -457,7 +457,8 @@ the program.
   one thread on the daemon's one Schwab client (§1), one request at a time, by the option markets
   Schwab's /markets sends (`ChainSweep.chain_due`, `time_et.options_open`; a day Schwab says is
   closed is outside every window): inside its option windows, to the last close (IND, 16:15 ET, when SPY's, QQQ's and IWM's options stop too; Schwab's EQO
-  window ends at 16:00 and has no window of its own for them; operator 2026-10-09). While one is
+  window ends at 16:00 and has no window of its own for them; the exchanges' rule, not a
+  decision of ours: `docs/SOURCES.md` cboe-rule-5-1 and nasdaq-options-hours). While one is
   open (and while today's answer, or a ticker before its first chain, is not known) the
   ticker is fetched in one rotation with every other such watchlist ticker, sorted, without end;
   a ticker a page has selected is fetched, with all its quotes, before each other ticker's chain,
@@ -1006,7 +1007,8 @@ behavior (AGENTS.md).
     the charm map (`math_levels.compute_charm_by_strike`, its one producer; operator 2026-11-11:
     "Yes, move it"). The close is the regular window Schwab's /markets sent: the
     index window for an index it names with "$" and for SPY, QQQ and IWM, the equity-option window
-    for every other ticker. After that close the levels stand as priced at it, a later expiry's at
+    for every other ticker (the exchanges keep designated ETF options open to 4:15 p.m. ET:
+    `docs/SOURCES.md` cboe-rule-5-1, and nasdaq-options-hours for the symbols). After that close the levels stand as priced at it, a later expiry's at
     the 10-minute floor, until the next open (the close values, §3.4). A later expiry's levels are
     absent where a chain is priced on a day with no option window held (a weekend or a holiday
     with no close values held, or Schwab's /markets answer for today not held); every ticker's are
