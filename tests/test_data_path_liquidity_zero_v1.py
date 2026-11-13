@@ -73,8 +73,6 @@ def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones():
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": 0}, received_ts=at)
     resp = srv.liquidity_snapshot(TK, FRIDAY)
     body = json.loads(resp.body) if hasattr(resp, "body") else resp
-    assert "spot_used_for_scoring" in body, body
-    assert body["spot_used_for_scoring"] == 0
     tags = [t for z in body["zones"] for t in z["source_tags"]]
     assert "SPOT_LIVE" in tags, tags
 

@@ -10346,7 +10346,6 @@
   ],
   "contracts_total": 2440,
   "contracts_used": 2440,
-  "contracts_excluded_malformed_expiry": 0,
   "spot": 269.425,
   "spot_source": "streaming_plane",
   "spot_as_of_ts_utc": 1794497956.43,
@@ -10556,7 +10555,6 @@
   ],
   "contracts_total": 2440,
   "contracts_used": 2440,
-  "contracts_excluded_malformed_expiry": 0,
   "spot": 269.425,
   "spot_source": "streaming_plane",
   "spot_as_of_ts_utc": 1794497956.43,
@@ -11191,7 +11189,6 @@
   ],
   "contracts_total": 2440,
   "contracts_used": 2440,
-  "contracts_excluded_malformed_expiry": 0,
   "spot": 269.425,
   "spot_source": "streaming_plane",
   "spot_as_of_ts_utc": 1794497956.43,
@@ -59826,7 +59823,6 @@
   ],
   "contracts_total": 2440,
   "contracts_used": 2440,
-  "contracts_excluded_malformed_expiry": 0,
   "spot": 269.425,
   "spot_source": "streaming_plane",
   "spot_as_of_ts_utc": 1794497956.43,
@@ -70763,8 +70759,7 @@
     ],
     "confluence_score": 8,
     "interpretation_notes": "Live spot (from console cache)",
-    "distance_to_spot": 0.0,
-    "spot_inside_zone": true
+    "distance_to_spot": 0.0
    },
    {
     "zone_type": "resistance_liquidity",
@@ -70789,8 +70784,7 @@
     ],
     "confluence_score": 2,
     "interpretation_notes": "Resistance / upper structure",
-    "distance_to_spot": 1.4572000000000003,
-    "spot_inside_zone": false
+    "distance_to_spot": 1.4572000000000003
    },
    {
     "zone_type": "resistance_liquidity",
@@ -70815,8 +70809,7 @@
     ],
     "confluence_score": 2,
     "interpretation_notes": "Resistance / upper structure",
-    "distance_to_spot": 1.5900000000000318,
-    "spot_inside_zone": false
+    "distance_to_spot": 1.5900000000000318
    },
    {
     "zone_type": "pivot_value",
@@ -70836,8 +70829,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Fair value / pivot",
-    "distance_to_spot": 2.3149999999999977,
-    "spot_inside_zone": false
+    "distance_to_spot": 2.3149999999999977
    },
    {
     "zone_type": "pivot_value",
@@ -70857,8 +70849,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Fair value / pivot",
-    "distance_to_spot": 2.884999999999991,
-    "spot_inside_zone": false
+    "distance_to_spot": 2.884999999999991
    },
    {
     "zone_type": "resistance_liquidity",
@@ -70883,8 +70874,7 @@
     ],
     "confluence_score": 2,
     "interpretation_notes": "Resistance / upper structure",
-    "distance_to_spot": 3.0036738877726066,
-    "spot_inside_zone": false
+    "distance_to_spot": 3.0036738877726066
    },
    {
     "zone_type": "support_liquidity",
@@ -70909,8 +70899,7 @@
     ],
     "confluence_score": 2,
     "interpretation_notes": "Support / lower structure",
-    "distance_to_spot": 3.6550000000000296,
-    "spot_inside_zone": false
+    "distance_to_spot": 3.6550000000000296
    },
    {
     "zone_type": "resistance_liquidity",
@@ -70930,8 +70919,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Resistance / upper structure",
-    "distance_to_spot": 4.014999999999986,
-    "spot_inside_zone": false
+    "distance_to_spot": 4.014999999999986
    },
    {
     "zone_type": "pivot_value",
@@ -70956,8 +70944,7 @@
     ],
     "confluence_score": 2,
     "interpretation_notes": "Confluence: mixed positioning + session levels",
-    "distance_to_spot": 5.444999999999993,
-    "spot_inside_zone": false
+    "distance_to_spot": 5.444999999999993
    },
    {
     "zone_type": "support_liquidity",
@@ -70977,8 +70964,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Support / lower structure",
-    "distance_to_spot": 6.264999999999986,
-    "spot_inside_zone": false
+    "distance_to_spot": 6.264999999999986
    },
    {
     "zone_type": "pivot_value",
@@ -70998,8 +70984,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Confluence: mixed positioning + session levels",
-    "distance_to_spot": 9.425000000000011,
-    "spot_inside_zone": false
+    "distance_to_spot": 9.425000000000011
    },
    {
     "zone_type": "resistance_liquidity",
@@ -71019,8 +71004,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Confluence: overhead positioning / supply",
-    "distance_to_spot": 19.42500000000001,
-    "spot_inside_zone": false
+    "distance_to_spot": 19.42500000000001
    },
    {
     "zone_type": "pivot_value",
@@ -71040,8 +71024,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Confluence: mixed positioning + session levels",
-    "distance_to_spot": 25.51088186260668,
-    "spot_inside_zone": false
+    "distance_to_spot": 25.51088186260668
    },
    {
     "zone_type": "pivot_value",
@@ -71061,15 +71044,13 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Confluence: mixed positioning + session levels",
-    "distance_to_spot": 29.42500000000001,
-    "spot_inside_zone": false
+    "distance_to_spot": 29.42500000000001
    }
   ],
   "summary": {
    "value_state": "higher",
    "vwap_relation": "inside_value"
   },
-  "spot_used_for_scoring": 269.425,
   "spot_location": {
    "inside": 0,
    "above": null,

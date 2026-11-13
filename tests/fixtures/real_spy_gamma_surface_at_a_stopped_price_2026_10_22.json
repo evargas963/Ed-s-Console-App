@@ -542,7 +542,6 @@
   }
  ],
  "chain_basis": "every_expiry_strike_range_ALL",
- "contracts_excluded_malformed_expiry": 0,
  "contracts_total": 292,
  "contracts_used": 292,
  "expirations": [

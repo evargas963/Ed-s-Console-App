@@ -25141,7 +25141,6 @@
   ],
   "contracts_total": 12996,
   "contracts_used": 12996,
-  "contracts_excluded_malformed_expiry": 0,
   "spot": 757.075,
   "spot_source": "streaming_plane",
   "spot_as_of_ts_utc": 1794497439.851,
@@ -25361,7 +25360,6 @@
   ],
   "contracts_total": 12996,
   "contracts_used": 12996,
-  "contracts_excluded_malformed_expiry": 0,
   "spot": 757.075,
   "spot_source": "streaming_plane",
   "spot_as_of_ts_utc": 1794497439.851,
@@ -26006,7 +26004,6 @@
   ],
   "contracts_total": 12996,
   "contracts_used": 12996,
-  "contracts_excluded_malformed_expiry": 0,
   "spot": 757.075,
   "spot_source": "streaming_plane",
   "spot_as_of_ts_utc": 1794497439.851,
@@ -47374,8 +47371,7 @@
     ],
     "confluence_score": 6,
     "interpretation_notes": "Live spot (from console cache)",
-    "distance_to_spot": 0.0,
-    "spot_inside_zone": true
+    "distance_to_spot": 0.0
    },
    {
     "zone_type": "support_liquidity",
@@ -47420,8 +47416,7 @@
     ],
     "confluence_score": 6,
     "interpretation_notes": "Support / lower structure",
-    "distance_to_spot": 0.375,
-    "spot_inside_zone": false
+    "distance_to_spot": 0.375
    },
    {
     "zone_type": "support_liquidity",
@@ -47471,8 +47466,7 @@
     ],
     "confluence_score": 7,
     "interpretation_notes": "Confluence: downside positioning / demand",
-    "distance_to_spot": 2.9249999999999545,
-    "spot_inside_zone": false
+    "distance_to_spot": 2.9249999999999545
    },
    {
     "zone_type": "support_liquidity",
@@ -47497,8 +47491,7 @@
     ],
     "confluence_score": 2,
     "interpretation_notes": "Support / lower structure",
-    "distance_to_spot": 3.4050000000000864,
-    "spot_inside_zone": false
+    "distance_to_spot": 3.4050000000000864
    },
    {
     "zone_type": "resistance_liquidity",
@@ -47518,8 +47511,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Resistance / upper structure",
-    "distance_to_spot": 5.434999999999945,
-    "spot_inside_zone": false
+    "distance_to_spot": 5.434999999999945
    },
    {
     "zone_type": "pivot_value",
@@ -47539,8 +47531,7 @@
     ],
     "confluence_score": 1,
     "interpretation_notes": "Confluence: mixed positioning + session levels",
-    "distance_to_spot": 7.0750000000000455,
-    "spot_inside_zone": false
+    "distance_to_spot": 7.0750000000000455
    },
    {
     "zone_type": "resistance_liquidity",
@@ -47570,15 +47561,13 @@
     ],
     "confluence_score": 3,
     "interpretation_notes": "Confluence: overhead positioning / supply",
-    "distance_to_spot": 17.924999999999955,
-    "spot_inside_zone": false
+    "distance_to_spot": 17.924999999999955
    }
   ],
   "summary": {
    "value_state": "lower",
    "vwap_relation": "inside_value"
   },
-  "spot_used_for_scoring": 757.075,
   "spot_location": {
    "inside": 0,
    "above": null,

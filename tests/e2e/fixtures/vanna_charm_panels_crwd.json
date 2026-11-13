@@ -8387,7 +8387,6 @@
   ],
   "contracts_total": 244,
   "contracts_used": 244,
-  "contracts_excluded_malformed_expiry": 0,
   "spot": 269.395,
   "spot_source": "streaming_plane",
   "spot_as_of_ts_utc": 1791383880.289,

@@ -2625,7 +2625,6 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
         if c.symbol and c.side is not None and c.strike is not None:
             leg_symbol[(e, c.strike, c.side.lower())] = str(c.symbol)
     total_contracts = len(chain)
-    excluded_malformed = total_contracts - contracts_used
     strike_set = {float(k) for ex in per_expiry.values() for k in ex}
     expiries = sorted(per_expiry)
     strikes = sorted(strike_set)
@@ -2664,7 +2663,6 @@ def project_gamma_surface(chain: list[OptionContract], books: dict) -> dict:
         "cells": cells,
         "contracts_total": total_contracts,
         "contracts_used": contracts_used,
-        "contracts_excluded_malformed_expiry": excluded_malformed,
     }
 
 
@@ -4105,12 +4103,11 @@ def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
     ]
 
 
-def _zone_against_spot(lo: float, hi: float, spot: float | None) -> dict:
-    """Return the zone's distance_to_spot and spot_inside_zone, each None without a spot."""
-    known = spot is not None
-    inside = within(lo, hi, spot) if known else None
-    outside_by = min(abs(spot - lo), abs(spot - hi)) if known else None
-    return {"distance_to_spot": 0.0 if inside else outside_by, "spot_inside_zone": inside}
+def _distance_to_spot(lo: float, hi: float, spot: float | None) -> float | None:
+    """Return how far the spot is outside the zone, 0.0 inside it; None without a spot."""
+    if spot is None:
+        return None
+    return 0.0 if within(lo, hi, spot) else min(abs(spot - lo), abs(spot - hi))
 
 
 def _spot_location(zones: list, spot) -> dict | None:
@@ -4162,7 +4159,7 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict:
             "source_tags": z.source_tags,
             "confluence_score": z.confluence_score,
             "interpretation_notes": z.interpretation_notes,
-            **_zone_against_spot(z.zone_low, z.zone_high, spot_for_zones),
+            "distance_to_spot": _distance_to_spot(z.zone_low, z.zone_high, spot_for_zones),
         }
         for z in out.zones
     ]
@@ -4178,6 +4175,5 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict:
             "value_state": out.summary.value_state,
             "vwap_relation": out.summary.vwap_relation,
         },
-        "spot_used_for_scoring": spot_for_zones,
         "spot_location": _spot_location(zones_payload, spot_for_zones),
     }
