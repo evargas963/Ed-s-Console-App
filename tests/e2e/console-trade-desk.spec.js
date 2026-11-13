@@ -322,9 +322,10 @@ test.describe('Trade Desk renders served values', () => {
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
-    // the nearest six of SPY's levels inside the bars' price range are drawn; the call wall (775) is
-    // above it, pinned at the edge
-    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(6);
+    // the nearest six of SPY's levels (756.59 to 757.88) are drawn under three labels (a label
+    // closer than its height to a nearer one is counted on that one); the call wall (775) is above
+    // the bars' price range, pinned at the edge
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(3);
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('775.00');
     // the profile is drawn after the close too (the session's served profile) and names its basis
     await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
@@ -384,6 +385,10 @@ test.describe('Trade Desk renders served values', () => {
   test('Desk: the served queue, counts, book side, tape side and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
+    // induced: SPY's real levels with the second expiry's put/call ratio not known (SPY's 34
+    // expiries each have one), so the card's line has a gap to draw
+    const second = Object.keys(TERRAIN.pcr_by_expiry)[1];
+    deskPanels().terrain = Object.assign({}, TERRAIN, { pcr_by_expiry: Object.assign({}, TERRAIN.pcr_by_expiry, { [second]: null }) });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // the queue as served: the day's recorded crosses in the window, the book's size wall, the put wall
@@ -703,7 +708,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('Max pain 757.00');
     deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771 });
     sock.changed('terrain');
-    await expect(body).toContainText('Gamma flip761.22Max pain771.00');   // CONFIRM's rows
+    await expect(body).toContainText('Gamma flip761.22Max pain (0DTE)771.00');   // CONFIRM's rows
     deskPanels().levels = levelsAt(Object.assign({}, LEVELS, { levels: LEVELS.levels.map((r) =>
       (r.id === 'max_pain' ? Object.assign({}, r, { from_spot_text: '0.30 below spot' }) : r)) }));
     sock.changed('levels');
