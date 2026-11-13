@@ -25435,6 +25435,651 @@
   },
   "spot_strike": 757.0
  },
+ "surface_second_expiry": {
+  "ticker": "SPY",
+  "symbol": "SPY",
+  "available": true,
+  "reason": null,
+  "source": "terrain_live_cache",
+  "levels_state": "LIVE",
+  "levels_time_ct": "Thu 11/12 09:30 AM CT",
+  "levels_age_text": "0s",
+  "levels_stale_reason": "",
+  "chain_basis": "every_expiry_strike_range_ALL",
+  "expirations": [
+   {
+    "expiry": "2026-11-13",
+    "dte": 1,
+    "expired": false,
+    "front": false
+   }
+  ],
+  "strikes": [
+   752.0,
+   753.0,
+   754.0,
+   755.0,
+   756.0,
+   757.0,
+   758.0,
+   759.0,
+   760.0,
+   761.0,
+   762.0
+  ],
+  "cells": [
+   {
+    "strike": 752.0,
+    "gex": [
+     -47564422.83793801
+    ],
+    "dex": [
+     182895718.94879973
+    ],
+    "vanna": [
+     2313.415588924819
+    ],
+    "oi": [
+     {
+      "call": 1839.0,
+      "put": 4070.0,
+      "total": 5909.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 486.0,
+      "put": 4686.0,
+      "total": 5172.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00752000",
+      "put": "SPY   261113P00752000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00752000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00752000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 753.0,
+    "gex": [
+     -169904291.29198775
+    ],
+    "dex": [
+     272862705.98159856
+    ],
+    "vanna": [
+     6899.068408888355
+    ],
+    "oi": [
+     {
+      "call": 1459.0,
+      "put": 8787.0,
+      "total": 10246.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 1015.0,
+      "put": 4949.0,
+      "total": 5964.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00753000",
+      "put": "SPY   261113P00753000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00753000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00753000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 754.0,
+    "gex": [
+     47011763.30032177
+    ],
+    "dex": [
+     294110087.8031997
+    ],
+    "vanna": [
+     -1523.6657979416154
+    ],
+    "oi": [
+     {
+      "call": 4505.0,
+      "put": 2617.0,
+      "total": 7122.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 1851.0,
+      "put": 7549.0,
+      "total": 9400.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00754000",
+      "put": "SPY   261113P00754000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00754000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00754000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 755.0,
+    "gex": [
+     -525046914.9646573
+    ],
+    "dex": [
+     902160194.7882679
+    ],
+    "vanna": [
+     12315.411304423471
+    ],
+    "oi": [
+     {
+      "call": 4616.0,
+      "put": 24184.0,
+      "total": 28800.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 5610.0,
+      "put": 13834.0,
+      "total": 19444.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00755000",
+      "put": "SPY   261113P00755000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00755000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00755000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 756.0,
+    "gex": [
+     7102332.125531703
+    ],
+    "dex": [
+     342574956.6551477
+    ],
+    "vanna": [
+     -107.81340396617406
+    ],
+    "oi": [
+     {
+      "call": 4631.0,
+      "put": 4364.0,
+      "total": 8995.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 8353.0,
+      "put": 13780.0,
+      "total": 22133.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00756000",
+      "put": "SPY   261113P00756000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00756000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00756000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 757.0,
+    "gex": [
+     -116146688.22816335
+    ],
+    "dex": [
+     281292470.88877994
+    ],
+    "vanna": [
+     539.8637114481799
+    ],
+    "oi": [
+     {
+      "call": 1876.0,
+      "put": 5799.0,
+      "total": 7675.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 11871.0,
+      "put": 9635.0,
+      "total": 21506.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00757000",
+      "put": "SPY   261113P00757000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00757000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00757000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": true
+   },
+   {
+    "strike": 758.0,
+    "gex": [
+     -48441245.65248084
+    ],
+    "dex": [
+     346890609.7530991
+    ],
+    "vanna": [
+     -248.2183617716155
+    ],
+    "oi": [
+     {
+      "call": 3729.0,
+      "put": 5357.0,
+      "total": 9086.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 10575.0,
+      "put": 6138.0,
+      "total": 16713.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00758000",
+      "put": "SPY   261113P00758000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00758000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00758000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 759.0,
+    "gex": [
+     -3535367.5323397964
+    ],
+    "dex": [
+     273219075.4635218
+    ],
+    "vanna": [
+     -40.17373245106387
+    ],
+    "oi": [
+     {
+      "call": 3550.0,
+      "put": 3639.0,
+      "total": 7189.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 6147.0,
+      "put": 2726.0,
+      "total": 8873.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00759000",
+      "put": "SPY   261113P00759000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00759000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00759000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 760.0,
+    "gex": [
+     -656248588.0282998
+    ],
+    "dex": [
+     2019897061.9506452
+    ],
+    "vanna": [
+     -16685.17864741074
+    ],
+    "oi": [
+     {
+      "call": 12801.0,
+      "put": 34901.0,
+      "total": 47702.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 15619.0,
+      "put": 4019.0,
+      "total": 19638.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00760000",
+      "put": "SPY   261113P00760000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00760000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00760000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 761.0,
+    "gex": [
+     62963067.45762968
+    ],
+    "dex": [
+     446618118.52286077
+    ],
+    "vanna": [
+     2402.8728675981474
+    ],
+    "oi": [
+     {
+      "call": 7452.0,
+      "put": 5128.0,
+      "total": 12580.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 9031.0,
+      "put": 1265.0,
+      "total": 10296.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00761000",
+      "put": "SPY   261113P00761000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00761000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00761000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   },
+   {
+    "strike": 762.0,
+    "gex": [
+     119126107.81920847
+    ],
+    "dex": [
+     438175628.64473796
+    ],
+    "vanna": [
+     5856.931829528951
+    ],
+    "oi": [
+     {
+      "call": 9105.0,
+      "put": 4518.0,
+      "total": 13623.0
+     }
+    ],
+    "volume": [
+     {
+      "call": 8372.0,
+      "put": 547.0,
+      "total": 8919.0
+     }
+    ],
+    "contracts": [
+     {
+      "call": "SPY   261113C00762000",
+      "put": "SPY   261113P00762000"
+     }
+    ],
+    "stream": [
+     {
+      "call": {
+       "symbol": "SPY   261113C00762000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "put": {
+       "symbol": "SPY   261113P00762000",
+       "state": "unavailable",
+       "ts_recv": null
+      },
+      "state": "unavailable",
+      "title": "not streaming"
+     }
+    ],
+    "spot": false
+   }
+  ],
+  "contracts_total": 12996,
+  "contracts_used": 12996,
+  "contracts_excluded_malformed_expiry": 0,
+  "spot": 757.075,
+  "spot_source": "streaming_plane",
+  "spot_as_of_ts_utc": 1794497439.851,
+  "stream_overlay_contracts": 0,
+  "stream_overlay_symbols": [],
+  "stream_overlay_computed_ts_utc": 1794497441.934527,
+  "stream_by_expiry": {
+   "2026-11-12": "unavailable",
+   "2026-11-13": "unavailable",
+   "2026-11-16": "unavailable",
+   "2026-11-17": "unavailable",
+   "2026-11-18": "unavailable",
+   "2026-11-19": "unavailable",
+   "2026-11-20": "unavailable",
+   "2026-11-23": "unavailable",
+   "2026-11-24": "unavailable",
+   "2026-11-25": "unavailable",
+   "2026-11-27": "unavailable",
+   "2026-11-30": "unavailable",
+   "2026-12-04": "unavailable",
+   "2026-12-11": "unavailable",
+   "2026-12-18": "unavailable",
+   "2026-12-24": "unavailable",
+   "2026-12-31": "unavailable",
+   "2027-01-15": "unavailable",
+   "2027-01-29": "unavailable",
+   "2027-02-19": "unavailable",
+   "2027-02-26": "unavailable",
+   "2027-03-19": "unavailable",
+   "2027-03-31": "unavailable",
+   "2027-04-16": "unavailable",
+   "2027-04-30": "unavailable",
+   "2027-06-17": "unavailable",
+   "2027-06-30": "unavailable",
+   "2027-09-17": "unavailable",
+   "2027-09-30": "unavailable",
+   "2027-12-17": "unavailable",
+   "2028-01-21": "unavailable",
+   "2028-06-16": "unavailable",
+   "2028-12-15": "unavailable",
+   "2029-01-19": "unavailable"
+  },
+  "surface_seq": 1794497441935,
+  "view": {
+   "centre": 757.0,
+   "note": null,
+   "scope": "auto",
+   "coverage": {
+    "cells": 11,
+    "live": 0,
+    "partial": 0,
+    "stale": 0,
+    "pending": 0,
+    "unavailable": 11,
+    "live_pct": 0,
+    "state": "partial",
+    "label": "0% STREAMING",
+    "title": "0 of 11 cells streaming \u00b7 11 unavailable"
+   },
+   "max_abs": {
+    "gex": 656248588.0282998,
+    "dex": 2019897061.9506452,
+    "oi": 47702.0,
+    "volume": 22133.0
+   },
+   "missing_expiry": null
+  },
+  "spot_strike": 757.0
+ },
  "chain": {
   "ticker": "SPY",
   "spot": 757.075,

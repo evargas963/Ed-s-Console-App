@@ -202,6 +202,23 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "surface_missing_expiry": server.gamma_surface(
                         tk, at, {**AUTO, "cols": None, "expiry": MISSING_EXPIRY}
                     ),
+                    # filtered to the chain's second expiry
+                    "surface_second_expiry": server.gamma_surface(
+                        tk,
+                        at,
+                        {**AUTO, "cols": None, "expiry": real.captures[1]["rows"][1]["expiry"]},
+                    ),
+                    # the All window, every strike, for the Gamma tests' ticker (AMZN's 88 strikes
+                    # by 24 expiries; SPY's is 491 by 34, 3.5 MB)
+                    **(
+                        {
+                            "surface_all": server.gamma_surface(
+                                tk, at, {**AUTO, "scope": "all", "cols": None, "expiry": None}
+                            )
+                        }
+                        if real is AMZN
+                        else {}
+                    ),
                     "chain": server.chain(tk, at, {"expiry": None}),
                     "book": {venue: server.book(tk, at, {"venue": venue}) for venue in real.venues},
                     "liquidity": server.liquidity_snapshot(tk, now),
