@@ -51,7 +51,6 @@ import asyncio
 import atexit
 import bisect
 import contextlib
-import enum
 import json
 import logging
 import logging.handlers
@@ -72,7 +71,6 @@ from types import FrameType
 from typing import Any, TextIO, TypedDict, override
 
 import uvicorn
-from schwab.streaming import StreamClient
 from websockets.exceptions import ConnectionClosed
 
 import live_market_plane as lmp
@@ -99,8 +97,8 @@ from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
 from feed.schwab_client import SchwabClientState, build_client_from_token, safe_get_quotes
+from feed.stream import TimedStream, label
 from instrument_identity import ticker_storage_key
-from numeric_contract import schwab_number
 from option_contract import OptionContract
 from stream_spine import (
     LATEST,
@@ -446,92 +444,6 @@ def _publisher(
     return handler
 
 
-#: schwab-py's field names of each service's items, as its add_*_handler names them (NEWS_HEADLINE
-#: has none: its items are taken as sent)
-FIELD_NAMES = {
-    "LEVELONE_EQUITIES": StreamClient.LevelOneEquityFields,
-    "CHART_EQUITY": StreamClient.ChartEquityFields,
-    "LEVELONE_OPTIONS": StreamClient.LevelOneOptionFields,
-    "NYSE_BOOK": StreamClient.BookFields,
-    "NASDAQ_BOOK": StreamClient.BookFields,
-    "OPTIONS_BOOK": StreamClient.BookFields,
-}
-#: a book's sides: each price level's field names, and each venue's on it
-BOOK_SIDES = (
-    ("BIDS", StreamClient.BidFields, StreamClient.PerExchangeBidFields),
-    ("ASKS", StreamClient.AskFields, StreamClient.PerExchangeAskFields),
-)
-
-
-def _label(d: dict[str, Any]) -> dict[str, Any]:
-    """Name a data entry's fields in place with schwab-py's field enums, a book's levels too.
-
-    The names schwab-py's label_message gives, without the copy of the whole entry it makes first:
-    the entry is the reader's own, just decoded, and nothing else holds it.
-    """
-    if d["service"] in FIELD_NAMES:
-        for item in d["content"]:
-            FIELD_NAMES[d["service"]].relabel_message(item, item)
-            for side, level_fields, venue_fields in BOOK_SIDES:
-                for level in item[side] if side in item else []:
-                    level_fields.relabel_message(level, level)
-                    for venue in level[side] if side in level else []:
-                        venue_fields.relabel_message(venue, venue)
-    return d
-
-
-def streaming_fields() -> dict[str, list[str]]:
-    """schwab-py's field names for every streaming service."""
-    return {
-        n.removesuffix("Fields"): [f.name for f in getattr(StreamClient, n)]
-        for n in dir(StreamClient)
-        if n.endswith("Fields")
-        and isinstance(getattr(StreamClient, n), type)
-        and issubclass(getattr(StreamClient, n), enum.Enum)
-    }
-
-
-def schwab_time(msg: dict[str, Any]) -> float | None:
-    """Return the time Schwab put on a frame, in seconds since the epoch.
-
-    The newest of its answers' and data's `timestamp` and its heartbeat (Streamer API §1.3:
-    milliseconds since the epoch, a heartbeat's sent as digits in text). None when it carries
-    none that is a number (rule 2).
-    """
-    sent = [
-        e["timestamp"] for k in ("response", "data") if k in msg for e in msg[k] if "timestamp" in e
-    ]
-    stamps = [v for v in map(schwab_number, sent) if v is not None]
-    beats = (
-        [str(n["heartbeat"]) for n in msg["notify"] if "heartbeat" in n] if "notify" in msg else []
-    )
-    stamps.extend(float(b) for b in beats if b.isdigit())
-    return max(stamps) / 1000 if stamps else None
-
-
-class _TimedStream(StreamClient):
-    """schwab-py's StreamClient, recording the time of every frame Schwab sends.
-
-    Data, responses and Schwab's heartbeats alike are timed: when the reader took it
-    (last_frame_ts, the liveness test) and the newest time Schwab put on one (schwab_ts, how far
-    Schwab's stream has been read).
-    """
-
-    def __init__(self, client: object) -> None:
-        super().__init__(client)
-        self.last_frame_ts = time_et.now()
-        self.schwab_ts: float | None = None
-
-    @override
-    async def _receive(self) -> dict[str, Any]:
-        msg = await super()._receive()
-        self.last_frame_ts = time_et.now()
-        t = schwab_time(msg)
-        if t is not None and (self.schwab_ts is None or t > self.schwab_ts):
-            self.schwab_ts = t
-        return msg
-
-
 def _dispatch(publishers: dict[str, Callable[[dict[str, Any]], None]], msg: dict[str, Any]) -> None:
     """Hand a frame's data, its fields named (_label), and its notifications to their services.
 
@@ -539,7 +451,7 @@ def _dispatch(publishers: dict[str, Callable[[dict[str, Any]], None]], msg: dict
     """
     for d in msg["data"] if "data" in msg else []:
         if d["service"] in publishers:
-            publishers[d["service"]](_label(d))
+            publishers[d["service"]](label(d))
     for d in msg["notify"] if "notify" in msg else []:
         if "heartbeat" not in d and d["service"] in publishers:
             publishers[d["service"]](d)
@@ -622,7 +534,7 @@ class Daemon:
         self._requests: list[tuple[str, str, list[str]]] = []
         self._sent: dict[int, _Sent] = {}
         self.wake = asyncio.Event()  # a request is waiting: the connection sends it now
-        self.stream: _TimedStream | None = None
+        self.stream: TimedStream | None = None
         #: each service's items -> the bus (_dispatch)
         self.publishers = {svc: _publisher(svc, bus, health) for svc in SERVICES}
         #: why Schwab is not connected, for /api/health (status()["schwab_down"], read while the
@@ -1045,7 +957,7 @@ class Daemon:
         self.held[svc] = kept
 
     async def connect(self, client: object) -> None:
-        stream = _TimedStream(client)
+        stream = TimedStream(client)
         # every message Schwab sends, whatever its size: the websockets library caps a received
         # message at 1 MiB by default, and nothing of ours does
         await stream.login(websocket_connect_args={"max_size": None})

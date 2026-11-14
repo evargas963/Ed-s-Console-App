@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from app.market_data.schwab.streaming import capture
+from feed import stream
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -91,4 +91,4 @@ def test_a_call_through_feeds_client_from_outside_feed_is_refused(head):
 
 
 def test_schwab_fields_for_a_stream_service_come_from_feed():
-    assert "BID_PRICE" in capture.streaming_fields()["LevelOneEquity"]
+    assert "BID_PRICE" in stream.streaming_fields()["LevelOneEquity"]
