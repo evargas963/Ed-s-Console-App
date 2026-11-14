@@ -15,7 +15,6 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from option_contract import read_chain
 from stream_spine import HealthRegistry, MessageBus
 
@@ -55,8 +54,8 @@ def forget_bars(*tickers: str) -> None:
     for tk in tickers:
         server._bars.pop(tk, None)
         server._series.pop((tk, "1d"), None)
-        for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-            del _MATERIALIZED_SNAPSHOTS[key]
+        for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+            del server._MATERIALIZED_SNAPSHOTS[key]
 
 
 def spy_minutes() -> list[dict]:

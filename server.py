@@ -75,12 +75,14 @@ from instrument_identity import display_symbol, ticker_storage_key, vendor_optio
 from l1_trade_observation import canonical_tape_prints
 from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 from liquidity_value_engine import (
-    _MATERIALIZED_SNAPSHOTS,
     OPTION_LEVEL_TAGS,
+    Bar,
     PriceLevelSnapshot,
     bars_from_candles,
     build_live_snapshot,
-    materialize_price_level_snapshot,
+    build_price_level_snapshot,
+    prior_session,
+    snapshot_input_fingerprint,
 )
 from math_exposure_core import (
     Bucket,
@@ -3611,6 +3613,47 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
         return
     if snap is not before:  # the same object when its bars did not change
         _levels_changed(tk)
+
+
+#: (ticker, session_date_iso) -> the ONE published price-level snapshot for its current bar input
+_MATERIALIZED_SNAPSHOTS: dict[tuple[str, str], PriceLevelSnapshot] = {}
+#: Guards the whole read-decide-build-write of materialize_price_level_snapshot: deciding to build
+#: from a value then overwritten is a check-then-act, a race unless something serialises it.
+_MATERIALIZE_LOCK = threading.Lock()
+
+
+def materialize_price_level_snapshot(
+    ticker: str,
+    session_date: date,
+    bars_norm: list[Bar],
+    *,
+    daily: list[Candle],
+    bar_source: str,
+    config: PlaybookConfig | None = None,
+) -> PriceLevelSnapshot:
+    """Build once per input; return the SAME object while the input is the same.
+
+    Built by the calculator (liquidity_value_engine.build_price_level_snapshot) from normalized
+    bars (bars_from_candles) and Schwab's daily candles (`daily`, _series), and held here, the
+    one store of it. A new input (the bars or the prior session's candle changed) builds exactly
+    once; every later ask with that input is a read, never a recomputation.
+    """
+    tk = ticker_storage_key(ticker)
+    key = (tk, session_date.isoformat())
+    prior = prior_session(daily, session_date)
+    fingerprint = snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source, prior)
+    # the read, the decision to build, the build and the write-back are one critical section:
+    # unguarded, two concurrent callers can both see no result for this input and build two
+    with _MATERIALIZE_LOCK:
+        existing = _MATERIALIZED_SNAPSHOTS.get(key)
+        if existing is not None and existing.input_fingerprint == fingerprint:
+            return existing
+        snap = build_price_level_snapshot(
+            tk, session_date, bars_norm, prior=prior, bar_source=bar_source, config=config
+        )
+        snap.input_fingerprint = fingerprint
+        _MATERIALIZED_SNAPSHOTS[key] = snap
+        return snap
 
 
 def _publish_missing_price_levels(tickers: Iterable[str], now: datetime) -> None:
