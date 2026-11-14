@@ -6,12 +6,9 @@ Walls, pins, inflections, support/resistance derived from options exposure struc
 
 from __future__ import annotations
 
-import functools
 import itertools
-from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
-from typing import Any
 
 import numpy as np
 
@@ -21,6 +18,7 @@ from math_exposure_core import (
     bsm_gamma_delta,
     bucket_metric,
     d1_vt,
+    expiry_years,
     key_level_strikes_with_oi,
     norm_pdf,
     schwab_iv_to_sigma,
@@ -67,7 +65,7 @@ def compute_charm_by_strike(
     out: dict[float, Bucket] = {}
     if not contracts or not spot or spot <= 0:
         return out
-    tte = _expiry_years(now, product)
+    tte = expiry_years(now, product)
     # each contract that counts: its strike, its side's slot, and its pricing inputs (NaN: it
     # cannot be priced, so its side's sum is not known)
     slot: list[tuple[float, bool]]
@@ -166,7 +164,7 @@ def contract_inputs(
     priced: list[ProfileRow]
     unpriced: dict[str, int]
     priced, unpriced = [], {}
-    tte = _expiry_years(now, product)
+    tte = expiry_years(now, product)
     for c in contracts:
         row = _profile_row(c, now, tte(c.expiration, c.settlement), product)
         if isinstance(row, tuple):
@@ -210,15 +208,6 @@ def repriced_to_close(
     return (
         [replace(c, gamma=g, delta=d) for c, (g, d) in zip(contracts, greeks, strict=True)],
         [r for r in rows if isinstance(r, tuple)],
-    )
-
-
-def _expiry_years(now: datetime, product: str) -> Callable[[Any, Any], float | None]:
-    """Return time_to_expiry_years at `now`, computed once per (expiration, settlement)."""
-    return functools.cache(
-        lambda expiration, settlement: time_to_expiry_years(
-            expiration, now=now, settlement_type=settlement, product=product
-        )
     )
 
 

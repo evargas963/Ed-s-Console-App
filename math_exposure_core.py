@@ -309,6 +309,22 @@ def _empty_bucket(dollarized: bool) -> Bucket:
 _EMPTY_BUCKET = {d: _empty_bucket(d) for d in (True, False)}
 
 
+def expiry_years(now: datetime, product: str) -> Callable[[str, str | None], float | None]:
+    """Return time_et.time_to_expiry_years at `now` for `product`, once per expiry.
+
+    The one valuation-T authority, computed once per (expiration, settlement) for every caller
+    that prices a book at one valuation instant.
+    """
+
+    @functools.cache
+    def years(expiration: str, settlement: str | None) -> float | None:
+        return time_to_expiry_years(
+            expiration, now=now, settlement_type=settlement, product=product
+        )
+
+    return years
+
+
 def compute_exposures_by_strike(
     contracts: list[OptionContract],
     *,
@@ -376,11 +392,7 @@ def compute_exposures_by_strike(
         spt = float(spot)
         # T from the ONE valuation-T authority (time_et.time_to_expiry_years, intraday ACT/365
         # to the session close) at the caller's one valuation instant `now`, per expiry
-        tte = functools.cache(
-            lambda expiration, settlement: time_to_expiry_years(
-                expiration, now=now, settlement_type=settlement, product=product
-            )
-        )
+        tte = expiry_years(now, product)
         years = np.array(
             [np.nan if (t := tte(str(c.expiration), c.settlement)) is None else t for c in rows],
             float,
