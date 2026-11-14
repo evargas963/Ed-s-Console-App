@@ -66,8 +66,10 @@ TERRAIN_SCHEMA_VERSION = 5
 type ExpiryKey = tuple[str | None, float | None]
 #: one (expiry, days to expiry) group's book with its diagnostics, as exposure_books holds it
 type Book = tuple[dict[float, Bucket], ExposureDiagnostics]
-#: a per-strike panel row, [strike, value, ...]: a value not known is None
-type StrikeRow = list[float | None]
+#: a GEX-by-strike row, [strike, net GEX $, session volume]: a value not known is None
+type StrikeRow = tuple[float, float | None, float | None]
+#: a migration row, [strike, GEX today, GEX prior, change]: a value not known is None
+type MigrationRow = tuple[float, float | None, float | None, float | None]
 
 
 class MeasureRows(TypedDict):
@@ -88,11 +90,11 @@ class PerStrikeView(MeasureRows):
 class PositioningMigration(TypedDict):
     """positioning_migration's answer for one DTE scope."""
 
-    rows: list[StrikeRow]
+    rows: list[MigrationRow]
     compared: bool
-    grew: list[float | None]
-    shrank: list[float | None]
-    busiest: list[float | None]
+    grew: list[float]
+    shrank: list[float]
+    busiest: list[float]
     busiest_vs_walls: str | None
     volume_total: float | None
 
@@ -273,7 +275,8 @@ def side_total(values: list[float | None]) -> float | None:
 
     Unknown with a strike not known or no strike at all, never the sum of the rest.
     """
-    return None if not values or None in values else sum(values)
+    known = [v for v in values if v is not None]
+    return sum(known) if values and len(known) == len(values) else None
 
 
 def _per_strike_rows(exposures: dict[float, Bucket]) -> list[StrikeRow]:
@@ -300,7 +303,7 @@ def _per_strike_rows(exposures: dict[float, Bucket]) -> list[StrikeRow]:
             continue
         gf = float_finite_or_none(net_gex_dollars_at_strike(b))
         vol = strike_total_volume(b)
-        rows.append([sk, gf, vol])
+        rows.append((sk, gf, vol))
     rows.sort(key=lambda r: r[0])
     return rows
 
@@ -343,13 +346,16 @@ def positioning_migration(
     (side_total).
     """
     prior_gex = {r[0]: r[1] for r in prior}
-    rows: list[StrikeRow] = []
+    rows: list[MigrationRow] = []
     for k, gx, _vol in today:
         gy = prior_gex.get(k)
-        rows.append([k, gx, gy, (gx - gy) if gx is not None and gy is not None else None])
-    changes = sorted((r for r in rows if r[3] is not None), key=lambda r: r[3], reverse=True)
-    grew = [r[0] for r in changes if r[3] > 0][:2]
-    shrank = [r[0] for r in changes if r[3] < 0][-2:]
+        rows.append((k, gx, gy, (gx - gy) if gx is not None and gy is not None else None))
+    # each strike with a known change, largest gain first
+    changes = sorted(
+        ((r[0], r[3]) for r in rows if r[3] is not None), key=lambda kc: kc[1], reverse=True
+    )
+    grew = [k for k, c in changes if c > 0][:2]
+    shrank = [k for k, c in changes if c < 0][-2:]
     vols = [(r[0], r[2]) for r in today if r[2]]
     busiest = sorted(k for k, _v in sorted(vols, key=lambda kv: kv[1], reverse=True)[:2])
     where = None
@@ -482,8 +488,9 @@ def atm_sigma_by_expiry(
     out: dict[ExpiryKey, float | None] = {}
     # a contract with no expiry date keeps its own key (None), last
     for k, s in sorted(legs.items(), key=lambda kv: (kv[0][0] is None, kv[0][0])):
-        sig = [s[x][1] for x in ("CALL", "PUT") if x in s]
-        out[k] = (sig[0] + sig[1]) / 2.0 if len(sig) == 2 and None not in sig else None
+        # the call's and the put's sigma, each when known: their mean only with both
+        sig = [v for x in ("CALL", "PUT") if x in s and (v := s[x][1]) is not None]
+        out[k] = (sig[0] + sig[1]) / 2.0 if len(sig) == 2 else None
     return out
 
 
@@ -668,7 +675,8 @@ def wall_lean(
     otherwise None.
     """
     if call_wall is not None and call_wall == put_wall:
-        return ("TWO-SIDED — magnet, not a barrier",) * 2
+        both = "TWO-SIDED — magnet, not a barrier"
+        return both, both
     earn = regime != "UNAVAILABLE" and confidence == "TRUSTED"
 
     def one(wall: float | None, side: str, lean: str) -> str | None:

@@ -92,7 +92,7 @@ from math_exposure_core import (
 )
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
-from numeric_contract import float_finite_or_none, price_text, schwab_count, schwab_number
+from numeric_contract import price_text, schwab_count, schwab_number
 from option_contract import OptionContract, chain_row
 from terrain_atr import Atr, compute_atrs
 from terrain_engine import (
@@ -2202,10 +2202,10 @@ def terrain_strikes_payload(
     def _side_sums(rows: list[StrikeRow], s: float | None) -> dict[str, float | None] | None:
         if not rows or s is None:
             return None
-        cells = [[float_finite_or_none(x) for x in r[:2]] for r in rows]
+        # each row as _per_strike_rows made it: a finite strike, its GEX finite or None
         return {
-            "gex_below": side_total([c[1] for c in cells if c[0] is not None and c[0] < s]),
-            "gex_above": side_total([c[1] for c in cells if c[0] is not None and c[0] > s]),
+            "gex_below": side_total([gx for k, gx, _v in rows if k < s]),
+            "gex_above": side_total([gx for k, gx, _v in rows if k > s]),
         }
 
     live_spot, _live_src, _live_ts = resolve_spot(tk, now=now)  # the one spot on every screen

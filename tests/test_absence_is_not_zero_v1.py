@@ -94,7 +94,7 @@ def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_has_gex_unknown(
     assert call["openInterest"] > 0
     del call["gamma"]
     rows = TE._per_strike_rows(crwd_exposures(chain))
-    assert [r[:2] for r in rows if r[0] == 270.0] == [[270.0, None]]
+    assert [r[:2] for r in rows if r[0] == 270.0] == [(270.0, None)]
 
 
 # ------------------------------------- a NULL bar volume is not zero traded volume ----
