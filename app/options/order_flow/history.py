@@ -55,40 +55,33 @@ class Quoted(TypedDict):
     landed: str
 
 
-class TapePrint(TypedDict):
-    """One kept print as the tape names it (recent_prints)."""
+class Printed(TypedDict):
+    """A print's own fields: Schwab's trade time, the trade and what the state held then."""
+
+    trade_time_ms: int | None
+    symbol: str
+    bid: Any
+    bid_size: Any
+    ask: Any
+    ask_size: Any
+    trade: float
+    size: Any
+    volume: Any
+    iv: Any
+    delta: Any
+    classification: str
+
+
+class TapePrint(Printed):
+    """One kept print as the tape names it (recent_prints), with when it was received."""
 
     ts_recv: float
-    trade_time_ms: int | None
-    symbol: str
-    bid: Any
-    bid_size: Any
-    ask: Any
-    ask_size: Any
-    trade: float
-    size: Any
-    volume: Any
-    iv: Any
-    delta: Any
-    classification: str
 
 
-class TapeRow(TypedDict):
-    """One print as the Options Flow tape shows it (tape_row): no receive time, its terms."""
+class TapeRow(Printed):
+    """One print as the Options Flow tape shows it (tape_row): its time in CT, its terms."""
 
-    trade_time_ms: int | None
     trade_time_ct: str | None
-    symbol: str
-    bid: Any
-    bid_size: Any
-    ask: Any
-    ask_size: Any
-    trade: float
-    size: Any
-    volume: Any
-    iv: Any
-    delta: Any
-    classification: str
     expiry: str | None
     type: str | None
     strike: float | None
