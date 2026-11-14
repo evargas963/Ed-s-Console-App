@@ -38,10 +38,8 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.program_lock import Ports, program_ports
-from calibration.complete_chain_capture import (
-    CAPTURE_BASIS,
-    chain_messages,
-)
+from calibration.complete_chain_capture import CAPTURE_BASIS
+from feed.chain_sweep import chain_messages
 from feed.schwab_client import build_client_from_token
 from option_contract import read_chain
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg

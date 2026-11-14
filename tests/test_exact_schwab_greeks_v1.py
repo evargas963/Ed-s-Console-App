@@ -25,7 +25,7 @@ import pytest
 
 import server
 import time_et
-from calibration.complete_chain_capture import ChainSweep
+from feed.chain_sweep import ChainSweep
 from numeric_contract import schwab_number
 from option_contract import GREEK_FIELDS, OptionContract, read_chain
 from stream_spine import CaptureWriter

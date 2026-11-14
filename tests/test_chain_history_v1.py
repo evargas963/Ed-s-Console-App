@@ -25,6 +25,7 @@ import calibration.complete_chain_capture as cch
 import server
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
+from feed import chain_sweep as cs
 from feed import schwab_client as sc
 from json_blob_codec import decode_json_blob
 from option_contract import read_chain
@@ -75,13 +76,13 @@ def test_the_capture_window_a_fetch_is_written_for(now, slot):
 
     tests/conftest.py holds the answers captured 2026-10-07.
     """
-    got = cch.capture_slot(et_ts(now))
+    got = cs.capture_slot(et_ts(now))
     assert (_et(got) if got is not None else None) == slot
 
 
 def test_every_capture_window_of_a_full_day_ends_at_the_last_option_markets_close():
     slots = {
-        cch.capture_slot(et_ts(f"2026-10-05 {h:02d}:{m:02d}"))
+        cs.capture_slot(et_ts(f"2026-10-05 {h:02d}:{m:02d}"))
         for h in range(0, 24)
         for m in range(0, 60)
     } - {None}
@@ -104,7 +105,7 @@ def _sweep(tmp_path, schwab, clock):
     """Run the daemon's sweep over SPY on `clock`, with the daemon's client of the stand-in host."""
     sqlite3.connect(tmp_path / "ed_console.db").close()  # the daemon's database exists
     published: list = []
-    sweep = cch.ChainSweep(
+    sweep = cs.ChainSweep(
         tmp_path / "ed_console.db",
         ["SPY"],
         lambda topic, msg: published.append((topic, msg)),
@@ -130,7 +131,7 @@ def _parts(ts: float):
 
     At no spot (a daemon holding no price).
     """
-    return cch.chain_messages("MRVL", _MRVL, ts, None, None)
+    return cs.chain_messages("MRVL", _MRVL, ts, None, None)
 
 
 def test_a_chain_reaches_the_console_whole_in_parts():
@@ -157,12 +158,12 @@ def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part
     It was lost when the next chain completed in its first part.
     """
     early = _parts(et_ts("2026-09-30 15:31:57"))[:2]  # two of five parts arrived
-    one_part = cch.chain_messages(
-        "MRVL", _MRVL[: cch.CHAIN_PART_CONTRACTS], et_ts("2026-09-30 15:35:57"), None, None
+    one_part = cs.chain_messages(
+        "MRVL", _MRVL[: cs.CHAIN_PART_CONTRACTS], et_ts("2026-09-30 15:35:57"), None, None
     )
     first, second = _assembled(early + one_part)
     assert first[1] is None and "arrived with 2 of its 5 parts" in first[3]
-    assert second[1] is not None and len(second[1]) == cch.CHAIN_PART_CONTRACTS
+    assert second[1] is not None and len(second[1]) == cs.CHAIN_PART_CONTRACTS
 
 
 def test_a_chain_begun_before_the_console_connected_is_no_failure():
@@ -391,7 +392,7 @@ def test_a_stop_asked_inside_a_ticker_asks_schwab_for_nothing_more(tmp_path, sch
         published.append((topic, msg))
         stop.set()
 
-    sweep = cch.ChainSweep(
+    sweep = cs.ChainSweep(
         tmp_path / "ed_console.db",
         ["SPY"],
         publish,

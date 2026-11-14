@@ -31,7 +31,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import CaptureWriter
-from calibration import complete_chain_capture as cch
+from feed import chain_sweep as cch
 from feed import schwab_client as sc
 from stream_spine import HealthRegistry, MessageBus
 from tests.feed_live_helper import daemon_status

@@ -22,6 +22,7 @@ import calibration.complete_chain_capture as cch
 import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
+from feed import chain_sweep as cs
 from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
@@ -58,7 +59,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
         lmp.record_feed_heartbeat(
             daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
         )
-        sweep = cch.ChainSweep(
+        sweep = cs.ChainSweep(
             tmp_path / "ed_console.db",
             [TK],
             lambda topic, msg: published.append((topic, msg)),
@@ -66,7 +67,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
             failures=CaptureWriter(tmp_path / "stream_capture.db"),
             streamed=lambda _symbol: None,
         )
-        chain = cch._Chain(
+        chain = cs._Chain(
             TK, at, spots={EXPIRY: CRWD.spot}, by_expiry={EXPIRY: [dict(c) for c in CRWD.chain]}
         )
         sweep.deliver(chain)
