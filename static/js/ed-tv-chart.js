@@ -56,8 +56,7 @@
       ink3: tok('--ed-ink-3', '#a7b6c9'), research: tok('--ed-research', '#b18cff')
     };
   }
-  function storageGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
-  function storageSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
+  var pref = window.EdShell.pref, setPref = window.EdShell.setPref;   // the viewer's own settings
 
   var TF_SECONDS = { '1': 60, '3': 180, '5': 300, '15': 900, '30': 1800, '60': 3600, 'D': 86400 };
   var LEVEL_TITLE_W = 150;   // px along the pane's right edge where the level lines' titles are drawn
@@ -539,7 +538,7 @@
     // ---- drawing tools ----
     function saveDrawings() {
       if (!S.drawKey) return;
-      storageSet(S.drawKey, JSON.stringify({ trend: draw.lines.map(function (l) { return { a: l.a, b: l.b }; }),
+      setPref(S.drawKey, JSON.stringify({ trend: draw.lines.map(function (l) { return { a: l.a, b: l.b }; }),
         hline: S.hlines.map(function (h) { return h.price; }) }));
     }
     function clearDrawingObjects() {
@@ -553,7 +552,7 @@
     }
     function loadDrawings() {
       clearDrawingObjects(); S.undo = [];
-      var raw = S.drawKey ? storageGet(S.drawKey) : null, d = null;
+      var raw = S.drawKey ? pref(S.drawKey, null) : null, d = null;
       try { d = raw ? JSON.parse(raw) : null; } catch (e) { d = null; }
       if (!d) return;
       d.hline.forEach(function (p) { addHline(Number(p), false); });
@@ -839,15 +838,13 @@
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
   var BARS_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
 
-  function lsGet(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
-  function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
 
   // The one chart toolbar, TradingView's: the timeframes (when the page passes onTf), candles or
   // line, the crosshair / horizontal-line / trend-line tools, undo, clear, reset, screenshot and
   // full screen. o: {tf, onTf(tf), styleKey (the viewer's candles/line choice, kept per chart)}.
   // Returns {setTf(tf), slot}: `slot` is where a page adds its own controls.
   function toolbar(el, api, o) {
-    var style = o.styleKey ? lsGet(o.styleKey, 'candles') : 'candles';
+    var style = o.styleKey ? pref(o.styleKey, 'candles') : 'candles';
     var btn = function (attr, title, html, cls) {
       return '<button type="button" class="tvc-tb' + (cls ? ' ' + cls : '') + '" ' + attr + ' title="' + title + '">' + html + '</button>'; };
     el.classList.add('tvc-toolbar');
@@ -868,7 +865,7 @@
       if (b.hasAttribute('data-tf')) { setTf(b.getAttribute('data-tf')); o.onTf(b.getAttribute('data-tf')); return; }
       if (b.hasAttribute('data-tool')) { api.setTool(b.getAttribute('data-tool')); return; }
       var a = b.getAttribute('data-act');
-      if (a === 'style') { style = style === 'line' ? 'candles' : 'line'; if (o.styleKey) lsSet(o.styleKey, style); paintStyle(); }
+      if (a === 'style') { style = style === 'line' ? 'candles' : 'line'; if (o.styleKey) setPref(o.styleKey, style); paintStyle(); }
       else if (a === 'undo') api.undo();
       else if (a === 'clear') api.clearDrawings();
       else if (a === 'reset') api.resetAll();

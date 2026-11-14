@@ -7,19 +7,17 @@ import json
 import logging
 import os
 import sqlite3
-import subprocess
 import threading
 import time
 from collections.abc import Collection, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from html import escape as html_escape
 from pathlib import Path
 from typing import Annotated
 
-import psutil
 from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -3303,6 +3301,7 @@ def chain(ticker: str, now: float, params: dict) -> dict:
             "spot": None,
             "expiry": resolved_expiry,
             "contracts": [],
+            "ladder": [],
             "status": "unavailable",
             **verdict,
             "scope": {"kind": "unavailable", "reason": reason},
@@ -3391,7 +3390,6 @@ def health():
     # UNAVAILABLE (unmeasurable is not ok).
     now = time_et.now()
     st = lmp.daemon_status(now)
-    watchlist = _watchlist()
     capability: dict[str, object] = {
         "schwab": "AVAILABLE" if st is not None and st["schwab_socket_open"] else "UNAVAILABLE"
     }
@@ -3400,7 +3398,6 @@ def health():
     return {
         "status": "ok",
         "time": datetime.fromtimestamp(now).isoformat(),
-        "watchlist_tickers": len(watchlist) if watchlist is not None else None,
         "capabilities": capability,
     }
 
@@ -3458,98 +3455,28 @@ def _is_full_git_sha(value: str) -> bool:
     return len(value) == 40 and set(value) <= _IDENTITY_SHA_HEX_CHARS
 
 
-@dataclass(frozen=True)
-class ProcessIdentityV1:
-    """Immutable process-start identity (schema v1).
-
-    Captured once; never recomputed per request. identity_capture_error carries a sanitized fixed
-    classification only — never raw subprocess output or stack traces.
-    """
-
-    schema_version: str
-    startup_git_sha: str | None
-    startup_git_sha_short: str | None
-    startup_git_dirty: bool | None
-    startup_git_available: bool
-    startup_identity_captured_at_utc: float
-    process_started_at_utc: float | None
-    process_id: int
-    identity_source: str
-    identity_capture_error: str | None
-
-
-def capture_process_identity(checkout: str | Path) -> ProcessIdentityV1:
-    """Capture the process's identity at its start.
-
-    `checkout`'s HEAD (checkout_head), whether its tree was dirty (`git status --porcelain` with
-    any output, tracked changes or untracked files; None, unknown and never clean, when git cannot
-    say), and the process's id and start time.
-    """
-    sha = checkout_head(checkout)
-    short, dirty, source, error = None, None, "unavailable", "head_unreadable"
-    if sha is not None:
-        short, source, error = sha[:12], "git_startup_capture", None
-        try:
-            dirty = bool(
-                subprocess.run(
-                    ["git", "status", "--porcelain"],
-                    cwd=checkout,
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    timeout=10.0,
-                ).stdout.strip()
-            )
-        except (OSError, subprocess.SubprocessError) as e:
-            log.warning("the checkout's dirty state is unknown: %r", e)
-            error = "git_dirty_state_unavailable"
-    return ProcessIdentityV1(
-        schema_version="1",
-        startup_git_sha=sha,
-        startup_git_sha_short=short,
-        startup_git_dirty=dirty,
-        startup_git_available=sha is not None,
-        startup_identity_captured_at_utc=time_et.now(),
-        process_started_at_utc=float(psutil.Process(os.getpid()).create_time()),
-        process_id=os.getpid(),
-        identity_source=source,
-        identity_capture_error=error,
-    )
-
-
 #: captured once, at import, before uvicorn serves any request (one process, no --reload:
 #: launch.CONSOLE)
-PROCESS_IDENTITY_V1: ProcessIdentityV1 = capture_process_identity(APP_DIR)
+RUNNING_COMMIT: str | None = checkout_head(APP_DIR)
 
 
-def build_identity_answer(identity: ProcessIdentityV1, repo_head_now: str | None) -> dict:
-    """/api/build's answer: `git_sha` is the code the running process loaded.
+def build_answer(running: str | None, checkout: str | None) -> dict:
+    """/api/build's answer: the commit the running process loaded, stable for its life.
 
-    That is its identity, stable for its life; the checkout's HEAD now is reported apart
-    (repository_state_now), and whether the checkout has moved past the process (None while
+    The checkout's HEAD now is reported beside it, and whether the two differ (None while
     either is unknown).
     """
-    startup_sha = identity.startup_git_sha
     return {
-        "git_sha": startup_sha,
-        "contract": "meet_or_exceed_v1",
-        "process_identity": asdict(identity),
-        "repository_state_now": {"repo_head_now": repo_head_now},
-        "code_drift": {
-            "repo_moved_past_process": None
-            if startup_sha is None or repo_head_now is None
-            else startup_sha != repo_head_now,
-            "running_code": startup_sha,
-            "checked_out_code": repo_head_now,
-        },
-        "git_sha_semantics": "startup_process_identity",
+        "running_commit": running,
+        "checkout_commit": checkout,
+        "differ": None if running is None or checkout is None else running != checkout,
     }
 
 
 @app.get("/api/build")
 def api_build():
-    """Serve the running process's identity and the checkout's HEAD now (build_identity_answer)."""
-    return build_identity_answer(PROCESS_IDENTITY_V1, checkout_head(APP_DIR))
+    """Serve the commit the process loaded and the checkout's HEAD now (build_answer)."""
+    return build_answer(RUNNING_COMMIT, checkout_head(APP_DIR))
 
 
 def _publish_price_levels(ticker: str, now: datetime) -> None:

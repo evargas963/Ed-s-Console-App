@@ -64,7 +64,7 @@
     {
       "verdict": "issue",
       "category": "clock taken",
-      "pattern": "in (watchlist_message|capture_process_identity|record_feed_status|log_request|request_sent|inspect_token_file)\\b",
+      "pattern": "in (watchlist_message|record_feed_status|log_request|request_sent|inspect_token_file)\\b",
       "reason": "a helper reads the clock; take now from its caller"
     },
     {

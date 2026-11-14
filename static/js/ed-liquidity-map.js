@@ -17,7 +17,7 @@
 
   var _chart = null;
   // the map's timeframe (the toolbar's), kept per viewer
-  var _tf = (function () { try { return window.localStorage.getItem('ed.liqm.tf') || '5'; } catch (e) { return '5'; } })();
+  var _tf = window.EdShell.pref('ed.liqm.tf', '5');
   function ensureChart(h) {
     if (_chart && h.querySelector('.liqm-plot')) return _chart;
     if (!window.EdTvChart || !window.LightweightCharts) return null;
@@ -25,7 +25,7 @@
       '<div class="fl-foot">Zones from the liquidity panel; prior-day and overnight levels and the price from the levels and bars panels. The map arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector('.liqm-plot'), { nearestN: 99 });
     window.EdTvChart.toolbar(h.querySelector('.liqm-tb'), _chart, { tf: _tf, styleKey: 'ed.liqm.style',
-      onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.liqm.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
+      onTf: function (tf) { _tf = tf; window.EdShell.setPref('ed.liqm.tf', tf); load(); } });
     return _chart;
   }
 
