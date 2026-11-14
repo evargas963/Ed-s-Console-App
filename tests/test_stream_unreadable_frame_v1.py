@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import logging
 
-import time_et
 from app.market_data.schwab.streaming import capture
 from feed.connection import held_key
 from stream_spine import HealthRegistry, MessageBus
@@ -25,11 +24,13 @@ from tests.schwab_stream_standin import FIELD_REPLIES, LocalStreamer
 NOT_JSON = "<html>Service Unavailable</html>"
 
 
-async def _until(cond, seconds: float = 15.0) -> None:
-    deadline = time_et.elapsed() + seconds
-    while not cond():
-        assert time_et.elapsed() < deadline, "not reached in time"
+async def _until(cond, tries: int = 750) -> None:
+    """Wait for `cond`, 0.02 s at a time, at most `tries` times (15 s)."""
+    for _ in range(tries):
+        if cond():
+            return
         await asyncio.sleep(0.02)
+    raise AssertionError("not reached in time")
 
 
 def test_a_frame_that_cannot_be_parsed_is_skipped_and_the_connection_carries_on(tmp_path, caplog):
