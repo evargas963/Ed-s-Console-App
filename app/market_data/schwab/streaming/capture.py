@@ -949,10 +949,12 @@ class Daemon:
     def status(self, now: float) -> dict[str, Any]:
         """Return what the console and browsers are told every second (live_ui's beat).
 
-        It is taken at `now`.
+        It is taken at `now`, which the header shows as `clock_ct` and `day_ct`.
         """
         return {
             "ts": now,
+            "clock_ct": time_et.ct_clock(now),
+            "day_ct": time_et.ct_day(now),
             "session": session_label(datetime.fromtimestamp(now, ET)),
             # open while a stream exists and Schwab sent a frame within DEAD_SEC
             "schwab_socket_open": self.stream is not None

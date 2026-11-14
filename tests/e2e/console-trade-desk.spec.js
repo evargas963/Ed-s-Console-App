@@ -395,6 +395,9 @@ test.describe('Trade Desk renders served values', () => {
     // the queue as served: the day's recorded crosses in the window, the book's size wall, the put wall
     await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(EVENTS.items.length);
     await expect(page.locator('#tdmQueueCount')).toHaveText(String(EVENTS.items.length));
+    // each entry's time is the one the server labels it with (time_et.ct_label), drawn as sent
+    for (const [i, it] of EVENTS.items.entries())
+      await expect(page.locator('#tdmQueue .tdm-q .tdm-q-m').nth(i)).toContainText(it.time_ct == null ? 'time not reported' : it.time_ct);
     await expect(page.locator('#tdmCardLiq .liq-word')).toHaveText(COMP.views.weighted.side_word);
     // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
     await expect(page.locator('#tdmCardFlow')).not.toContainText(/NET BUYING|NET SELLING|tick rule|PROXY|delta/i);

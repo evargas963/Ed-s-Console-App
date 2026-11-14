@@ -58792,7 +58792,8 @@
       "marker": true,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.08 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "wall0",
@@ -58802,7 +58803,8 @@
       "warn": false,
       "title": "NASDAQ_BOOK size wall \u00b7 bid 757.06",
       "detail": "125.0 shown \u00b7 3.1\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "pw",
@@ -58811,7 +58813,8 @@
       "dir": "down",
       "title": "Spot through the put wall",
       "detail": "put wall 760.00 \u00b7 spot 757.08",
-      "src": "gamma levels"
+      "src": "gamma levels",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "x41913",
@@ -58823,7 +58826,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.94 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "x41904",
@@ -58835,7 +58839,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:28 AM CT"
      },
      {
       "key": "x41902",
@@ -58847,7 +58852,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.90 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41895",
@@ -58859,7 +58865,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41892",
@@ -58871,7 +58878,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.88 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:25 AM CT"
      },
      {
       "key": "x41891",
@@ -58883,7 +58891,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.05 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:25 AM CT"
      },
      {
       "key": "x41886",
@@ -58895,7 +58904,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:22 AM CT"
      },
      {
       "key": "x41885",
@@ -58907,7 +58917,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:21 AM CT"
      },
      {
       "key": "x41877",
@@ -58919,7 +58930,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:20 AM CT"
      },
      {
       "key": "x41876",
@@ -58931,7 +58943,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.04 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:19 AM CT"
      },
      {
       "key": "x41871",
@@ -58943,7 +58956,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.90 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:16 AM CT"
      },
      {
       "key": "x41870",
@@ -58955,7 +58969,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:16 AM CT"
      },
      {
       "key": "x41865",
@@ -58967,7 +58982,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.89 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:11 AM CT"
      },
      {
       "key": "x41864",
@@ -58979,7 +58995,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.08 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:11 AM CT"
      },
      {
       "key": "x41857",
@@ -58991,7 +59008,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:01 AM CT"
      },
      {
       "key": "x41856",
@@ -59003,7 +59021,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.89 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:00 AM CT"
      },
      {
       "key": "x41841",
@@ -59015,7 +59034,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:45 AM CT"
      },
      {
       "key": "x41840",
@@ -59027,7 +59047,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:45 AM CT"
      },
      {
       "key": "x41835",
@@ -59039,7 +59060,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:40 AM CT"
      },
      {
       "key": "x41834",
@@ -59051,7 +59073,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:40 AM CT"
      },
      {
       "key": "x41832",
@@ -59063,7 +59086,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.03 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:39 AM CT"
      },
      {
       "key": "x41830",
@@ -59075,7 +59099,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.95 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:39 AM CT"
      },
      {
       "key": "x41827",
@@ -59087,7 +59112,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.98 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:38 AM CT"
      },
      {
       "key": "x41825",
@@ -59099,7 +59125,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.03 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:38 AM CT"
      },
      {
       "key": "x41822",
@@ -59111,7 +59138,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:37 AM CT"
      },
      {
       "key": "x41820",
@@ -59123,7 +59151,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.07 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:36 AM CT"
      }
     ],
     "cross_counts": {
@@ -59147,7 +59176,8 @@
       "marker": true,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.08 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "wall0",
@@ -59157,7 +59187,8 @@
       "warn": false,
       "title": "NASDAQ_BOOK size wall \u00b7 bid 757.06",
       "detail": "125.0 shown \u00b7 3.1\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "pw",
@@ -59166,7 +59197,8 @@
       "dir": "down",
       "title": "Spot through the put wall",
       "detail": "put wall 760.00 \u00b7 spot 757.08",
-      "src": "gamma levels"
+      "src": "gamma levels",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "x41913",
@@ -59178,7 +59210,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.94 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "x41904",
@@ -59190,7 +59223,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:28 AM CT"
      },
      {
       "key": "x41902",
@@ -59202,7 +59236,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.90 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41895",
@@ -59214,7 +59249,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41892",
@@ -59226,7 +59262,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.88 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:25 AM CT"
      },
      {
       "key": "x41891",
@@ -59238,7 +59275,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.05 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:25 AM CT"
      },
      {
       "key": "x41886",
@@ -59250,7 +59288,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:22 AM CT"
      },
      {
       "key": "x41885",
@@ -59262,7 +59301,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:21 AM CT"
      },
      {
       "key": "x41877",
@@ -59274,7 +59314,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:20 AM CT"
      },
      {
       "key": "x41876",
@@ -59286,7 +59327,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.04 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:19 AM CT"
      },
      {
       "key": "x41871",
@@ -59298,7 +59340,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.90 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:16 AM CT"
      },
      {
       "key": "x41870",
@@ -59310,7 +59353,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:16 AM CT"
      },
      {
       "key": "x41865",
@@ -59322,7 +59366,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.89 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:11 AM CT"
      },
      {
       "key": "x41864",
@@ -59334,7 +59379,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.08 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:11 AM CT"
      },
      {
       "key": "x41857",
@@ -59346,7 +59392,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:01 AM CT"
      },
      {
       "key": "x41856",
@@ -59358,7 +59405,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.89 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:00 AM CT"
      },
      {
       "key": "x41841",
@@ -59370,7 +59418,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:45 AM CT"
      },
      {
       "key": "x41840",
@@ -59382,7 +59431,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:45 AM CT"
      },
      {
       "key": "x41835",
@@ -59394,7 +59444,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:40 AM CT"
      },
      {
       "key": "x41834",
@@ -59406,7 +59457,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:40 AM CT"
      },
      {
       "key": "x41832",
@@ -59418,7 +59470,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.03 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:39 AM CT"
      },
      {
       "key": "x41830",
@@ -59430,7 +59483,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.95 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:39 AM CT"
      },
      {
       "key": "x41827",
@@ -59442,7 +59496,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.98 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:38 AM CT"
      },
      {
       "key": "x41825",
@@ -59454,7 +59509,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.03 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:38 AM CT"
      },
      {
       "key": "x41822",
@@ -59466,7 +59522,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:37 AM CT"
      },
      {
       "key": "x41820",
@@ -59478,7 +59535,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.07 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:36 AM CT"
      },
      {
       "key": "x41695",
@@ -59490,7 +59548,8 @@
       "marker": true,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 755.63 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:07 AM CT"
      },
      {
       "key": "x41694",
@@ -59502,7 +59561,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 759.81 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:07 AM CT"
      },
      {
       "key": "x41675",
@@ -59514,7 +59574,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:04 AM CT"
      },
      {
       "key": "x41674",
@@ -59526,7 +59587,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 759.81 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:04 AM CT"
      },
      {
       "key": "x41669",
@@ -59538,7 +59600,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.15 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:02 AM CT"
      },
      {
       "key": "x41668",
@@ -59550,7 +59613,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 759.81 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:02 AM CT"
      },
      {
       "key": "x41659",
@@ -59562,7 +59626,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.21 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:58 AM CT"
      },
      {
       "key": "x41592",
@@ -59574,7 +59639,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.24 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:34 AM CT"
      },
      {
       "key": "x41591",
@@ -59586,7 +59652,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.22 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:34 AM CT"
      },
      {
       "key": "x41580",
@@ -59598,7 +59665,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.21 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:29 AM CT"
      },
      {
       "key": "x41579",
@@ -59610,7 +59678,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.27 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:29 AM CT"
      },
      {
       "key": "x41576",
@@ -59622,7 +59691,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.26 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:28 AM CT"
      },
      {
       "key": "x41575",
@@ -59634,7 +59704,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.17 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:28 AM CT"
      },
      {
       "key": "x41506",
@@ -59646,7 +59717,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.26 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:06 AM CT"
      },
      {
       "key": "x41505",
@@ -59658,7 +59730,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.22 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:06 AM CT"
      },
      {
       "key": "x41504",
@@ -59670,7 +59743,8 @@
       "marker": true,
       "title": "Crossed above Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 756.64 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:03 AM CT"
      },
      {
       "key": "x41502",
@@ -59682,7 +59756,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.64 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:03 AM CT"
      },
      {
       "key": "x41500",
@@ -59694,7 +59769,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:03 AM CT"
      },
      {
       "key": "x41498",
@@ -59706,7 +59782,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:03 AM CT"
      },
      {
       "key": "x41490",
@@ -59718,7 +59795,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 756.42 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:02 AM CT"
      },
      {
       "key": "x41488",
@@ -59730,7 +59808,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.42 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:02 AM CT"
      },
      {
       "key": "x41487",
@@ -59742,7 +59821,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:02 AM CT"
      },
      {
       "key": "x41485",
@@ -59754,7 +59834,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:02 AM CT"
      },
      {
       "key": "x41452",
@@ -59766,7 +59847,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 756.36 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:01 AM CT"
      },
      {
       "key": "x41450",
@@ -59778,7 +59860,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.36 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:01 AM CT"
      },
      {
       "key": "x41449",
@@ -59790,7 +59873,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:01 AM CT"
      },
      {
       "key": "x41447",
@@ -59802,7 +59886,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:01 AM CT"
      },
      {
       "key": "x41438",
@@ -59814,7 +59899,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 756.32 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:00 AM CT"
      },
      {
       "key": "x41436",
@@ -59826,7 +59912,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:00 AM CT"
      },
      {
       "key": "x41434",
@@ -59838,7 +59925,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.28 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:00 AM CT"
      },
      {
       "key": "x41433",
@@ -59850,7 +59938,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.18 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:00 AM CT"
      },
      {
       "key": "x41432",
@@ -59862,7 +59951,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.29 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:58 AM CT"
      },
      {
       "key": "x41431",
@@ -59874,7 +59964,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.21 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:57 AM CT"
      },
      {
       "key": "x41430",
@@ -59886,7 +59977,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.23 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:56 AM CT"
      },
      {
       "key": "x41429",
@@ -59898,7 +59990,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.19 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:56 AM CT"
      },
      {
       "key": "x41428",
@@ -59910,7 +60003,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.24 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:55 AM CT"
      },
      {
       "key": "x41427",
@@ -59922,7 +60016,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.20 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:55 AM CT"
      }
     ],
     "cross_counts": {
@@ -59948,7 +60043,8 @@
       "marker": true,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.08 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "wall0",
@@ -59958,7 +60054,8 @@
       "warn": false,
       "title": "NYSE_BOOK size wall \u00b7 bid 757.06",
       "detail": "400.0 shown \u00b7 5.0\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "wall1",
@@ -59968,7 +60065,8 @@
       "warn": false,
       "title": "NYSE_BOOK size wall \u00b7 bid 757.01",
       "detail": "1080.0 shown \u00b7 13.5\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "wall2",
@@ -59978,7 +60076,8 @@
       "warn": false,
       "title": "NYSE_BOOK size wall \u00b7 ask 757.09",
       "detail": "560.0 shown \u00b7 4.7\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "pw",
@@ -59987,7 +60086,8 @@
       "dir": "down",
       "title": "Spot through the put wall",
       "detail": "put wall 760.00 \u00b7 spot 757.08",
-      "src": "gamma levels"
+      "src": "gamma levels",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "x41913",
@@ -59999,7 +60099,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.94 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "x41904",
@@ -60011,7 +60112,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:28 AM CT"
      },
      {
       "key": "x41902",
@@ -60023,7 +60125,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.90 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41895",
@@ -60035,7 +60138,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41892",
@@ -60047,7 +60151,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.88 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:25 AM CT"
      },
      {
       "key": "x41891",
@@ -60059,7 +60164,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.05 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:25 AM CT"
      },
      {
       "key": "x41886",
@@ -60071,7 +60177,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:22 AM CT"
      },
      {
       "key": "x41885",
@@ -60083,7 +60190,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:21 AM CT"
      },
      {
       "key": "x41877",
@@ -60095,7 +60203,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:20 AM CT"
      },
      {
       "key": "x41876",
@@ -60107,7 +60216,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.04 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:19 AM CT"
      },
      {
       "key": "x41871",
@@ -60119,7 +60229,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.90 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:16 AM CT"
      },
      {
       "key": "x41870",
@@ -60131,7 +60242,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:16 AM CT"
      },
      {
       "key": "x41865",
@@ -60143,7 +60255,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.89 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:11 AM CT"
      },
      {
       "key": "x41864",
@@ -60155,7 +60268,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.08 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:11 AM CT"
      },
      {
       "key": "x41857",
@@ -60167,7 +60281,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:01 AM CT"
      },
      {
       "key": "x41856",
@@ -60179,7 +60294,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.89 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:00 AM CT"
      },
      {
       "key": "x41841",
@@ -60191,7 +60307,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:45 AM CT"
      },
      {
       "key": "x41840",
@@ -60203,7 +60320,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:45 AM CT"
      },
      {
       "key": "x41835",
@@ -60215,7 +60333,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:40 AM CT"
      },
      {
       "key": "x41834",
@@ -60227,7 +60346,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:40 AM CT"
      },
      {
       "key": "x41832",
@@ -60239,7 +60359,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.03 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:39 AM CT"
      },
      {
       "key": "x41830",
@@ -60251,7 +60372,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.95 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:39 AM CT"
      },
      {
       "key": "x41827",
@@ -60263,7 +60385,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.98 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:38 AM CT"
      },
      {
       "key": "x41825",
@@ -60275,7 +60398,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.03 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:38 AM CT"
      },
      {
       "key": "x41822",
@@ -60287,7 +60411,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:37 AM CT"
      },
      {
       "key": "x41820",
@@ -60299,7 +60424,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.07 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:36 AM CT"
      }
     ],
     "cross_counts": {
@@ -60323,7 +60449,8 @@
       "marker": true,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.08 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "wall0",
@@ -60333,7 +60460,8 @@
       "warn": false,
       "title": "NYSE_BOOK size wall \u00b7 bid 757.06",
       "detail": "400.0 shown \u00b7 5.0\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "wall1",
@@ -60343,7 +60471,8 @@
       "warn": false,
       "title": "NYSE_BOOK size wall \u00b7 bid 757.01",
       "detail": "1080.0 shown \u00b7 13.5\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "wall2",
@@ -60353,7 +60482,8 @@
       "warn": false,
       "title": "NYSE_BOOK size wall \u00b7 ask 757.09",
       "detail": "560.0 shown \u00b7 4.7\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "pw",
@@ -60362,7 +60492,8 @@
       "dir": "down",
       "title": "Spot through the put wall",
       "detail": "put wall 760.00 \u00b7 spot 757.08",
-      "src": "gamma levels"
+      "src": "gamma levels",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "x41913",
@@ -60374,7 +60505,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.94 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:30 AM CT"
      },
      {
       "key": "x41904",
@@ -60386,7 +60518,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:28 AM CT"
      },
      {
       "key": "x41902",
@@ -60398,7 +60531,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.90 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41895",
@@ -60410,7 +60544,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41892",
@@ -60422,7 +60557,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.88 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:25 AM CT"
      },
      {
       "key": "x41891",
@@ -60434,7 +60570,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.05 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:25 AM CT"
      },
      {
       "key": "x41886",
@@ -60446,7 +60583,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:22 AM CT"
      },
      {
       "key": "x41885",
@@ -60458,7 +60596,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:21 AM CT"
      },
      {
       "key": "x41877",
@@ -60470,7 +60609,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:20 AM CT"
      },
      {
       "key": "x41876",
@@ -60482,7 +60622,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.04 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:19 AM CT"
      },
      {
       "key": "x41871",
@@ -60494,7 +60635,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.90 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:16 AM CT"
      },
      {
       "key": "x41870",
@@ -60506,7 +60648,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:16 AM CT"
      },
      {
       "key": "x41865",
@@ -60518,7 +60661,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.89 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:11 AM CT"
      },
      {
       "key": "x41864",
@@ -60530,7 +60674,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.08 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:11 AM CT"
      },
      {
       "key": "x41857",
@@ -60542,7 +60687,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:01 AM CT"
      },
      {
       "key": "x41856",
@@ -60554,7 +60700,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.89 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:00 AM CT"
      },
      {
       "key": "x41841",
@@ -60566,7 +60713,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:45 AM CT"
      },
      {
       "key": "x41840",
@@ -60578,7 +60726,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:45 AM CT"
      },
      {
       "key": "x41835",
@@ -60590,7 +60739,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:40 AM CT"
      },
      {
       "key": "x41834",
@@ -60602,7 +60752,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:40 AM CT"
      },
      {
       "key": "x41832",
@@ -60614,7 +60765,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.03 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:39 AM CT"
      },
      {
       "key": "x41830",
@@ -60626,7 +60778,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.95 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:39 AM CT"
      },
      {
       "key": "x41827",
@@ -60638,7 +60791,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.98 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:38 AM CT"
      },
      {
       "key": "x41825",
@@ -60650,7 +60804,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.03 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:38 AM CT"
      },
      {
       "key": "x41822",
@@ -60662,7 +60817,8 @@
       "marker": false,
       "title": "Crossed below Max Pain",
       "detail": "757.00 \u00b7 spot 756.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:37 AM CT"
      },
      {
       "key": "x41820",
@@ -60674,7 +60830,8 @@
       "marker": false,
       "title": "Crossed above Max Pain",
       "detail": "757.00 \u00b7 spot 757.07 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:36 AM CT"
      },
      {
       "key": "x41695",
@@ -60686,7 +60843,8 @@
       "marker": true,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 755.63 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:07 AM CT"
      },
      {
       "key": "x41694",
@@ -60698,7 +60856,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 759.81 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:07 AM CT"
      },
      {
       "key": "x41675",
@@ -60710,7 +60869,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:04 AM CT"
      },
      {
       "key": "x41674",
@@ -60722,7 +60882,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 759.81 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:04 AM CT"
      },
      {
       "key": "x41669",
@@ -60734,7 +60895,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.15 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:02 AM CT"
      },
      {
       "key": "x41668",
@@ -60746,7 +60908,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 759.81 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:02 AM CT"
      },
      {
       "key": "x41659",
@@ -60758,7 +60921,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.21 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:58 AM CT"
      },
      {
       "key": "x41592",
@@ -60770,7 +60934,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.24 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:34 AM CT"
      },
      {
       "key": "x41591",
@@ -60782,7 +60947,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.22 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:34 AM CT"
      },
      {
       "key": "x41580",
@@ -60794,7 +60960,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.21 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:29 AM CT"
      },
      {
       "key": "x41579",
@@ -60806,7 +60973,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.27 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:29 AM CT"
      },
      {
       "key": "x41576",
@@ -60818,7 +60986,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.26 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:28 AM CT"
      },
      {
       "key": "x41575",
@@ -60830,7 +60999,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.17 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:28 AM CT"
      },
      {
       "key": "x41506",
@@ -60842,7 +61012,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.26 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:06 AM CT"
      },
      {
       "key": "x41505",
@@ -60854,7 +61025,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.22 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:06 AM CT"
      },
      {
       "key": "x41504",
@@ -60866,7 +61038,8 @@
       "marker": true,
       "title": "Crossed above Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 756.64 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:03 AM CT"
      },
      {
       "key": "x41502",
@@ -60878,7 +61051,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.64 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:03 AM CT"
      },
      {
       "key": "x41500",
@@ -60890,7 +61064,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:03 AM CT"
      },
      {
       "key": "x41498",
@@ -60902,7 +61077,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:03 AM CT"
      },
      {
       "key": "x41490",
@@ -60914,7 +61090,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 756.42 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:02 AM CT"
      },
      {
       "key": "x41488",
@@ -60926,7 +61103,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.42 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:02 AM CT"
      },
      {
       "key": "x41487",
@@ -60938,7 +61116,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:02 AM CT"
      },
      {
       "key": "x41485",
@@ -60950,7 +61129,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:02 AM CT"
      },
      {
       "key": "x41452",
@@ -60962,7 +61142,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 756.36 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:01 AM CT"
      },
      {
       "key": "x41450",
@@ -60974,7 +61155,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.36 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:01 AM CT"
      },
      {
       "key": "x41449",
@@ -60986,7 +61168,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:01 AM CT"
      },
      {
       "key": "x41447",
@@ -60998,7 +61181,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:01 AM CT"
      },
      {
       "key": "x41438",
@@ -61010,7 +61194,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 756.32 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:00 AM CT"
      },
      {
       "key": "x41436",
@@ -61022,7 +61207,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call d-Wall",
       "detail": "750.00 \u00b7 spot 749.92 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:00 AM CT"
      },
      {
       "key": "x41434",
@@ -61034,7 +61220,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.28 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:00 AM CT"
      },
      {
       "key": "x41433",
@@ -61046,7 +61233,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.18 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 06:00 AM CT"
      },
      {
       "key": "x41432",
@@ -61058,7 +61246,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.29 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:58 AM CT"
      },
      {
       "key": "x41431",
@@ -61070,7 +61259,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.21 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:57 AM CT"
      },
      {
       "key": "x41430",
@@ -61082,7 +61272,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.23 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:56 AM CT"
      },
      {
       "key": "x41429",
@@ -61094,7 +61285,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.19 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:56 AM CT"
      },
      {
       "key": "x41428",
@@ -61106,7 +61298,8 @@
       "marker": false,
       "title": "Crossed above Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.24 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:55 AM CT"
      },
      {
       "key": "x41427",
@@ -61118,7 +61311,8 @@
       "marker": false,
       "title": "Crossed below Gamma Flip",
       "detail": "756.23 \u00b7 spot 756.20 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 05:55 AM CT"
      }
     ],
     "cross_counts": {

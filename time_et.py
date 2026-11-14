@@ -48,6 +48,11 @@ def ct_clock(ts_utc: float) -> str:
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%H:%M:%S.%f")[:-3] + " CT"
 
 
+def ct_day(ts_utc: float) -> str:
+    """Return an instant's Central Time day as the header shows it: "Sat, Nov 14"."""
+    return datetime.fromtimestamp(float(ts_utc), CT).strftime("%a, %b %d")
+
+
 def now() -> float:
     """Return now, in epoch seconds: the one reading of the computer's clock in the repository.
 

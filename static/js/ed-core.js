@@ -1064,15 +1064,14 @@
   var PRICE_SILENCE_MS = 3000; // the daemon beats every 1 s; 3 s of nothing = the push is down
   // the page reads no clock: a row arriving starts a PRICE_SILENCE_MS timer, and the push is
   // silent once it runs out with no newer row (_priceFresh); a ticker change is WAITING until one
-  // runs out the same way (_priceConnecting). Its time of day is the program's (_serverNow).
+  // runs out the same way (_priceConnecting). Its time of day is the program's (feed.clock_ct).
   var _priceWs = null,
     _priceUp = false,
     _priceFresh = false,
     _priceSilence = null,
     _priceRetry = 0;
   var _priceConnecting = false,
-    _priceConnectTimer = null,
-    _serverNow = null;
+    _priceConnectTimer = null;
   var _quoteShown = false;
   // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
   // age is served and the page computes none
@@ -1174,10 +1173,7 @@
         if (msg.feed) paintSession(msg.feed.session, "");
         else paintSession(null, "session unknown: the daemon sent no status");
         ingestWatchlist(msg.feed);
-        if (msg.feed && typeof msg.feed.ts === "number") {
-          _serverNow = msg.feed.ts;
-          tickClock();
-        }
+        if (msg.feed) tickClock(msg.feed);
       }
       if (msg && msg.type !== "feed" && msg.type !== "quotes") {
         // a panel: one for a ticker the page has left, of a panel it no longer shows, or of a
@@ -1328,20 +1324,11 @@
   }
 
   // ================= CT clock: the program's, from its heartbeat; none until the first =========
-  function tickClock() {
-    if (_serverNow == null) return;
-    var now = new Date(_serverNow * 1000);
-    var t = now.toLocaleTimeString("en-US", { hour12: false, timeZone: "America/Chicago" });
-    var dt = now.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "2-digit",
-      timeZone: "America/Chicago",
-    });
+  function tickClock(feed) {
     var c = document.getElementById("hClock"),
       cd = document.getElementById("hClockDate");
-    if (c) c.textContent = t + " CT";
-    if (cd) cd.textContent = dt;
+    if (c) c.textContent = orDash(feed.clock_ct);
+    if (cd) cd.textContent = orDash(feed.day_ct);
   }
 
   // ================= wire up =================
@@ -1598,9 +1585,6 @@
     marketContext: function () {
       return MARKET_CONTEXT.slice();
     }, // served [{key, display}]
-    now: function () {
-      return _serverNow;
-    }, // the program's time (s), from its heartbeat; null before the first
     setScope: setScope,
     getScope: function () {
       return state.scope;

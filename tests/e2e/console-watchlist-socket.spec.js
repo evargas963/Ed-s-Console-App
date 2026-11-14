@@ -46,6 +46,19 @@ test('the header session follows each beat, while quotes keep arriving between t
   await expect(page.locator('#hSession')).toHaveText('RTH');
 });
 
+test('the header clock is the beat time the program sends, drawn as sent', async ({ page }) => {
+  let socket;
+  // capture.Daemon.status at ts 1790380803.232: time_et.ct_clock and time_et.ct_day
+  const beat = { ts: 1790380803.232, clock_ct: '19:00:03.232 CT', day_ct: 'Fri, Sep 25', watchlist: ['SPY'], session: 'Closed' };
+  await page.routeWebSocket(/\/ws$/, (ws) => { socket = ws; ws.send(JSON.stringify({ type: 'feed', feed: beat })); });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#hClock')).toHaveText('19:00:03.232 CT');
+  await expect(page.locator('#hClockDate')).toHaveText('Fri, Sep 25');
+  // a status without its clock words: the header says "-", never a time of the page's own
+  socket.send(JSON.stringify({ type: 'feed', feed: { ts: 1790380804, watchlist: ['SPY'], session: 'Closed' } }));
+  await expect(page.locator('#hClock')).toHaveText('-');
+});
+
 test('before a beat has carried a list, the rail reads "-", never an empty list', async ({ page }) => {
   await holdClock(page);
   await page.routeWebSocket(/\/ws$/, () => {});          // open, no beat yet

@@ -51,6 +51,8 @@ import json
 import socket
 import threading
 from dataclasses import replace
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import psutil
 import pytest
@@ -337,6 +339,10 @@ def test_a_missing_heartbeat_keeps_the_last_watchlist():
         with lmp._lock:
             lmp._feed["status"] = None
     assert live["feed"]["watchlist"] == ["SPY", "TSLA"] and live["feed"]["ts"] is not None
+    # the header's time and day: the beat's own instant, in Central Time
+    at = datetime.fromtimestamp(live["feed"]["ts"], ZoneInfo("America/Chicago"))
+    assert live["feed"]["clock_ct"] == f"{at:%H:%M:%S}.{at.microsecond // 1000:03d} CT"
+    assert live["feed"]["day_ct"] == f"{at:%a, %b %d}"
     assert down["feed"] is None
 
 

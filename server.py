@@ -3014,6 +3014,8 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     items = sorted((it for it in items if it["ts"] is not None), key=lambda it: -it["ts"]) + [
         it for it in items if it["ts"] is None
     ]
+    for it in items:  # each event's own time as the screen shows it
+        it["time_ct"] = None if it["ts"] is None else ct_label(it["ts"])
     return {
         "ticker": tk,
         "tf": tf,
