@@ -34,7 +34,7 @@
   var _selected = null;
   function setSelected(symbol) {
     _selected = symbol;
-    fetch("/api/flow-contract", {
+    window.EdShell.request("/api/flow-contract", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contract: symbol }),

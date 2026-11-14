@@ -614,18 +614,19 @@ def _merged_recent_crosses(ticker: str, n: int) -> list[dict[str, Any]]:
         raw = _crosses[ticker][::-1][: max(int(n) * 8, 64)] if ticker in _crosses else []
     merged: list[dict[str, Any]] = []
     seen: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
+    # each row has every LevelCrossEvent field and its cross_id (db.get_recent_crosses, or the
+    # row record_level_crosses returned)
     for r in raw:
-        key = (r.get("ts_utc"), r.get("level_value"), r.get("direction"))
+        key = (r["ts_utc"], r["level_value"], r["direction"])
         hit = seen.get(key)
         if hit is None:
             row = dict(r)
-            row["level_names"] = [r.get("level_name")]
+            row["level_names"] = [r["level_name"]]
             seen[key] = row
             merged.append(row)
             continue
-        nm = r.get("level_name")
-        if nm and nm not in hit["level_names"]:
-            hit["level_names"].append(nm)
+        if r["level_name"] not in hit["level_names"]:
+            hit["level_names"].append(r["level_name"])
     return merged[:n]
 
 
@@ -2368,13 +2369,13 @@ def aggregate_bars(bars: list[dict[str, Any]], tf: str) -> list[dict[str, Any]]:
         if cur is None or k != cur_key:
             if cur is not None:
                 out.append(cur)
-            cur = {"t": b["t"], "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "v": b.get("v")}
+            cur = {"t": b["t"], "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "v": b["v"]}
             cur_key = k
             continue
         cur["h"] = max(cur["h"], b["h"])
         cur["l"] = min(cur["l"], b["l"])
         cur["c"] = b["c"]
-        cur["v"] = None if (cur["v"] is None or b.get("v") is None) else cur["v"] + b["v"]
+        cur["v"] = None if (cur["v"] is None or b["v"] is None) else cur["v"] + b["v"]
     if cur is not None:
         out.append(cur)
     return out
@@ -2942,21 +2943,20 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     start = _desk_window_start(tf, now)
     crosses = _merged_recent_crosses(tk, 200)
     in_window = sorted(
-        (c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
+        (c for c in crosses if c["ts_utc"] >= start),
         key=lambda c: c["ts_utc"],
     )
     items: list[dict[str, Any]] = []
     for i, c in enumerate(in_window):
         names = " + ".join(c["level_names"])
-        cid = c.get("cross_id")  # external-key-ok: ed_console.db level_crosses column
         items.append(
             {
-                "key": f"x{cid}",
+                "key": f"x{c['cross_id']}",
                 "n": i + 1,
                 "ts": c["ts_utc"],
                 "dom": "LEVELS",
-                "price": c.get("level_value"),
-                "dir": c.get("direction"),
+                "price": c["level_value"],
+                "dir": c["direction"],
                 "marker": False,
                 "title": f"Crossed {_CROSS_WORD[c['direction']]} {names}",
                 "detail": f"{price_text(c['level_value'])} · spot "
@@ -3808,6 +3808,45 @@ def _screen_levels(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return levels
 
 
+def _rail(levels: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The Confluence rail's levels against the shown strike rows (highest strike first).
+
+    `rail_lanes`: each lane's levels inside the rows, highest price first; `rail_lines`: one
+    price line per price inside, `session` when a session level sits at it; `levels_above` /
+    `levels_below`: the levels past the rows, in the levels' order; `level_names`: each price's
+    level titles, joined. With no rows nothing is inside, above or below.
+    """
+    names: dict[str, list[str]] = {}
+    for lv in levels:
+        names.setdefault(lv["price_text"], []).append(lv["title"])
+    rail: dict[str, Any] = {
+        "rail_lanes": {"session": [], "options": []},
+        "rail_lines": [],
+        "levels_above": [],
+        "levels_below": [],
+        "level_names": {p: " + ".join(t) for p, t in names.items()},
+    }
+    if not rows:
+        return rail
+    top, bottom = rows[0]["strike"], rows[-1]["strike"]
+    inside = [lv for lv in levels if bottom <= lv["price"] <= top]
+    rail["levels_above"] = [lv for lv in levels if lv["price"] > top]
+    rail["levels_below"] = [lv for lv in levels if lv["price"] < bottom]
+    for lane in ("session", "options"):
+        rail["rail_lanes"][lane] = sorted(
+            (lv for lv in inside if lv["lane"] == lane), key=lambda lv: -lv["price"]
+        )
+    lines: dict[str, dict[str, Any]] = {}
+    for lv in inside:
+        line = lines.setdefault(
+            lv["price_text"],
+            {"price": lv["price"], "price_text": lv["price_text"], "session": False},
+        )
+        line["session"] = line["session"] or lv["lane"] == "session"
+    rail["rail_lines"] = list(lines.values())
+    return rail
+
+
 def _level_named(levels: list[dict[str, Any]], abbrev: str) -> dict[str, Any] | None:
     for level in levels:
         if level["abbrev"] == abbrev:
@@ -3849,12 +3888,12 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     """Return the ranking of the priced chain, for the expiry the operator picks."""
     published = published_levels(tk)
     if published is None or not published.snap.books:  # a snapshot with a book has its price
-        return unavailable(tk, "no priced chain is held for this ticker")
+        return unavailable(tk, "no priced chain is held for this ticker", **_rail([], []))
     live = published.snap
     today = now.strftime("%Y-%m-%d")
     listed = [e for e in _confluence_expiries(live.books, live.expiry_dte) if e["expiry"] >= today]
     if not listed:
-        return unavailable(tk, "no expiry on this chain is still open")
+        return unavailable(tk, "no expiry on this chain is still open", **_rail([], []))
     chosen = expiry
     if not isinstance(chosen, str) or chosen < today:
         live_listed = [e for e in listed if e["dte"] is not None and e["dte"] >= 0]
@@ -3867,7 +3906,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             if absent
             else "that expiry did not carry days to expiration"
         )
-        return unavailable(tk, reason, expiries=listed)
+        return unavailable(tk, reason, expiries=listed, **_rail([], []))
     stored = _ranked_matrix(live, chosen, match["dte"])
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
@@ -3903,7 +3942,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             # the distances, the spot line and the pin candidate are from the live price: its mark
             **price_mark(tk, live_ts, now.timestamp()),
             "status_text": "Chain as of " + ct_label(fetched),
-            "levels": levels,
+            **_rail(levels, body["rows"]),
             "regime": live.regime,
             "flip_text": None if flip is None else flip["price_text"],
             "pin_text": None if pin is None else pin["price_text"],

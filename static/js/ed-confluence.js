@@ -7,7 +7,7 @@
   var selectedStrike = null;
   var pinned = null;
   var lastRows = [];
-  var lastLevels = [];
+  var lastNames = {};
   var lastSpot = null;
   var lastSpotText = null;
   var lastBody = null;
@@ -116,35 +116,20 @@
     return height - 26;
   }
 
-  function rails(rows, levels) {
+  // the served rail (server._rail): each price line and each lane's levels inside the rows; the
+  // page places them
+  function rails(rows, lines, lanes) {
     var n = rows.length;
     var height = n * 52;
     if (!n) return "";
-    var hi = rows[0].strike;
-    var lo = rows[n - 1].strike;
-    var inside = levels.filter(function (lv) {
-      return lv.price <= hi && lv.price >= lo;
-    });
-    var seen = {};
-    var prices = [];
-    inside.forEach(function (lv) {
-      if (!seen[lv.price_text]) {
-        seen[lv.price_text] = lv.price;
-        prices.push(lv);
-      }
-    });
     var svg =
       '<svg viewBox="0 0 276 ' +
       height +
       '" width="276" height="' +
       height +
       '" aria-label="Price levels">';
-    prices.forEach(function (lv) {
-      var start = inside.some(function (o) {
-        return o.price_text === lv.price_text && o.lane === "session";
-      })
-        ? 8
-        : 146;
+    lines.forEach(function (lv) {
+      var start = lv.session ? 8 : 146;
       svg +=
         '<path class="price-line" data-price="' +
         esc(lv.price_text) +
@@ -155,12 +140,7 @@
         ' H290" stroke="#718198" opacity=".7"/>';
     });
     ["session", "options"].forEach(function (lane, laneIndex) {
-      var group = inside.filter(function (o) {
-        return o.lane === lane;
-      });
-      group.sort(function (a, b) {
-        return b.price - a.price;
-      });
+      var group = lanes[lane];
       var pos = group.map(function (o) {
         var y = anchorY(o.price, rows);
         if (y < 12) return 12;
@@ -221,13 +201,8 @@
     return svg + "</svg>";
   }
 
-  function offButtons(rows, levels, side) {
-    if (!rows.length) return "";
-    var hi = rows[0].strike;
-    var lo = rows[rows.length - 1].strike;
-    var list = levels.filter(function (lv) {
-      return side === "above" ? lv.price > hi : lv.price < lo;
-    });
+  // the served levels past the shown strikes (server._rail: levels_above / levels_below)
+  function offButtons(list, side) {
     return list
       .map(function (lv) {
         var prefix = side === "above" ? "↑ " : "↓ ";
@@ -354,14 +329,7 @@
         "Hover or focus a level; click to pin its line. Escape clears the selection.";
       return;
     }
-    var names = lastLevels
-      .filter(function (lv) {
-        return lv.price_text === priceText;
-      })
-      .map(function (lv) {
-        return lv.title;
-      });
-    var line = names.join(" + ") + " · " + priceText;
+    var line = lastNames[priceText] + " · " + priceText;
     if (pinned === priceText) line += " · PINNED";
     read.textContent = line;
   }
@@ -491,11 +459,10 @@
       pick += "</select></label>";
     }
     var rows = Array.isArray(body.rows) ? body.rows : [];
-    var levels = Array.isArray(body.levels) ? body.levels : [];
     var peaks = body.peaks,
       heat = window.EdShell.heatColors(); // each column's served scale
     lastRows = rows;
-    lastLevels = levels;
+    lastNames = body.level_names;
     lastSpot = typeof body.spot === "number" ? body.spot : null;
     lastSpotText = body.spot_text;
     if (
@@ -582,7 +549,7 @@
           '<td class="rail edge" colspan="2" rowspan="' +
           rows.length +
           '">' +
-          rails(rows, levels) +
+          rails(rows, body.rail_lines, body.rail_lanes) +
           "</td>";
       }
       bodyRows += '<td class="strike">' + esc(text(row.strike_text)) + "</td>";
@@ -664,11 +631,11 @@
       "</span>" +
       pick +
       '</div><div class="offscreen" id="cmAbove">' +
-      offButtons(rows, levels, "above") +
+      offButtons(body.levels_above, "above") +
       "</div>" +
       table +
       '<div class="offscreen" id="cmBelow">' +
-      offButtons(rows, levels, "below") +
+      offButtons(body.levels_below, "below") +
       '</div><div class="levelread" id="cmRead">Hover or focus a level; click to pin its line. Escape clears the selection.</div><div class="legend"><span><i class="scale"></i> Red − / green + · brighter = larger magnitude within each column.</span><span>OI, Opt Vol, Gross GEX, IV and composite: green intensity = size only. P/C: red put-heavy / green call-heavy.</span></div><div class="detail" id="cmDetail"></div>' +
       (notes.length ? '<p class="foot">' + esc(notes.join(" ")) + "</p>" : "") +
       "</div>";

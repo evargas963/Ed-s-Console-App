@@ -1466,34 +1466,118 @@
    "spot_time_ct": null,
    "spot_not_live_text": "not live",
    "status_text": "Chain as of Wed 10/07 09:31 AM CT",
-   "levels": [
+   "rail_lanes": {
+    "session": [],
+    "options": [
+     {
+      "lane": "options",
+      "abbrev": "0D GSF",
+      "price": 274.3766856566115,
+      "price_text": "274.38",
+      "title": "0DTE GSF"
+     },
+     {
+      "lane": "options",
+      "abbrev": "PW",
+      "price": 270.0,
+      "price_text": "270.00",
+      "title": "Put wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "Pain",
+      "price": 270.0,
+      "price_text": "270.00",
+      "title": "Max pain"
+     },
+     {
+      "lane": "options",
+      "abbrev": "0D C\u0394W",
+      "price": 270.0,
+      "price_text": "270.00",
+      "title": "0DTE Call \u0394 wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "GSF",
+      "price": 267.8408795429012,
+      "price_text": "267.84",
+      "title": "GSF"
+     },
+     {
+      "lane": "options",
+      "abbrev": "0D Flip",
+      "price": 267.44689374750476,
+      "price_text": "267.45",
+      "title": "0DTE \u0393 flip"
+     },
+     {
+      "lane": "options",
+      "abbrev": "0D Net P\u0393",
+      "price": 265.0,
+      "price_text": "265.00",
+      "title": "0DTE Net put \u0393 peak"
+     },
+     {
+      "lane": "options",
+      "abbrev": "PCh",
+      "price": 260.0,
+      "price_text": "260.00",
+      "title": "Put charm wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "P\u0394W",
+      "price": 250.0,
+      "price_text": "250.00",
+      "title": "Put \u0394 wall"
+     }
+    ]
+   },
+   "rail_lines": [
+    {
+     "price": 270.0,
+     "price_text": "270.00",
+     "session": false
+    },
+    {
+     "price": 267.8408795429012,
+     "price_text": "267.84",
+     "session": false
+    },
+    {
+     "price": 250.0,
+     "price_text": "250.00",
+     "session": false
+    },
+    {
+     "price": 260.0,
+     "price_text": "260.00",
+     "session": false
+    },
+    {
+     "price": 267.44689374750476,
+     "price_text": "267.45",
+     "session": false
+    },
+    {
+     "price": 274.3766856566115,
+     "price_text": "274.38",
+     "session": false
+    },
+    {
+     "price": 265.0,
+     "price_text": "265.00",
+     "session": false
+    }
+   ],
+   "levels_above": [
     {
      "lane": "options",
      "abbrev": "CW",
      "price": 300.0,
      "price_text": "300.00",
      "title": "Call wall"
-    },
-    {
-     "lane": "options",
-     "abbrev": "PW",
-     "price": 270.0,
-     "price_text": "270.00",
-     "title": "Put wall"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Flip",
-     "price": 249.97153629136815,
-     "price_text": "249.97",
-     "title": "\u0393 flip"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Pain",
-     "price": 270.0,
-     "price_text": "270.00",
-     "title": "Max pain"
     },
     {
      "lane": "options",
@@ -1504,24 +1588,10 @@
     },
     {
      "lane": "options",
-     "abbrev": "GSF",
-     "price": 267.8408795429012,
-     "price_text": "267.84",
-     "title": "GSF"
-    },
-    {
-     "lane": "options",
      "abbrev": "GRC",
      "price": 464.1238672971819,
      "price_text": "464.12",
      "title": "GRC"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Net P\u0393",
-     "price": 200.0,
-     "price_text": "200.00",
-     "title": "Net put \u0393 peak"
     },
     {
      "lane": "options",
@@ -1546,24 +1616,10 @@
     },
     {
      "lane": "options",
-     "abbrev": "P\u0394W",
-     "price": 250.0,
-     "price_text": "250.00",
-     "title": "Put \u0394 wall"
-    },
-    {
-     "lane": "options",
      "abbrev": "CCh",
      "price": 300.0,
      "price_text": "300.00",
      "title": "Call charm wall"
-    },
-    {
-     "lane": "options",
-     "abbrev": "PCh",
-     "price": 260.0,
-     "price_text": "260.00",
-     "title": "Put charm wall"
     },
     {
      "lane": "options",
@@ -1581,13 +1637,6 @@
     },
     {
      "lane": "options",
-     "abbrev": "0D Flip",
-     "price": 267.44689374750476,
-     "price_text": "267.45",
-     "title": "0DTE \u0393 flip"
-    },
-    {
-     "lane": "options",
      "abbrev": "0D Pin",
      "price": 285.0,
      "price_text": "285.00",
@@ -1595,24 +1644,10 @@
     },
     {
      "lane": "options",
-     "abbrev": "0D GSF",
-     "price": 274.3766856566115,
-     "price_text": "274.38",
-     "title": "0DTE GSF"
-    },
-    {
-     "lane": "options",
      "abbrev": "0D GRC",
      "price": 331.0487147181457,
      "price_text": "331.05",
      "title": "0DTE GRC"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0D Net P\u0393",
-     "price": 265.0,
-     "price_text": "265.00",
-     "title": "0DTE Net put \u0393 peak"
     },
     {
      "lane": "options",
@@ -1627,13 +1662,6 @@
      "price": 280.0,
      "price_text": "280.00",
      "title": "0DTE Key \u0394 strike"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0D C\u0394W",
-     "price": 270.0,
-     "price_text": "270.00",
-     "title": "0DTE Call \u0394 wall"
     },
     {
      "lane": "options",
@@ -1657,6 +1685,40 @@
      "title": "0DTE Put charm wall"
     }
    ],
+   "levels_below": [
+    {
+     "lane": "options",
+     "abbrev": "Flip",
+     "price": 249.97153629136815,
+     "price_text": "249.97",
+     "title": "\u0393 flip"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Net P\u0393",
+     "price": 200.0,
+     "price_text": "200.00",
+     "title": "Net put \u0393 peak"
+    }
+   ],
+   "level_names": {
+    "300.00": "Call wall + Abs \u0393 + Net call \u0393 peak + Key \u0394 strike + Call \u0394 wall + Call charm wall",
+    "270.00": "Put wall + Max pain + 0DTE Call \u0394 wall",
+    "249.97": "\u0393 flip",
+    "267.84": "GSF",
+    "464.12": "GRC",
+    "200.00": "Net put \u0393 peak",
+    "250.00": "Put \u0394 wall",
+    "260.00": "Put charm wall",
+    "282.50": "0DTE Call wall + 0DTE Net call \u0393 peak",
+    "290.00": "0DTE Put wall + 0DTE Put \u0394 wall + 0DTE Call charm wall + 0DTE Put charm wall",
+    "267.45": "0DTE \u0393 flip",
+    "285.00": "0DTE Abs \u0393",
+    "274.38": "0DTE GSF",
+    "331.05": "0DTE GRC",
+    "265.00": "0DTE Net put \u0393 peak",
+    "280.00": "0DTE Key \u0394 strike"
+   },
    "regime": "LONG_GAMMA_CHOP",
    "flip_text": "249.97",
    "pin_text": "285.00",
@@ -3127,14 +3189,110 @@
    "spot_time_ct": null,
    "spot_not_live_text": "not live",
    "status_text": "Chain as of Wed 10/07 09:31 AM CT",
-   "levels": [
+   "rail_lanes": {
+    "session": [],
+    "options": [
+     {
+      "lane": "options",
+      "abbrev": "CW",
+      "price": 300.0,
+      "price_text": "300.00",
+      "title": "Call wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "Abs \u0393",
+      "price": 300.0,
+      "price_text": "300.00",
+      "title": "Abs \u0393"
+     },
+     {
+      "lane": "options",
+      "abbrev": "Net C\u0393",
+      "price": 300.0,
+      "price_text": "300.00",
+      "title": "Net call \u0393 peak"
+     },
+     {
+      "lane": "options",
+      "abbrev": "Key \u0394",
+      "price": 300.0,
+      "price_text": "300.00",
+      "title": "Key \u0394 strike"
+     },
+     {
+      "lane": "options",
+      "abbrev": "C\u0394W",
+      "price": 300.0,
+      "price_text": "300.00",
+      "title": "Call \u0394 wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "CCh",
+      "price": 300.0,
+      "price_text": "300.00",
+      "title": "Call charm wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "0D PW",
+      "price": 290.0,
+      "price_text": "290.00",
+      "title": "0DTE Put wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "0D P\u0394W",
+      "price": 290.0,
+      "price_text": "290.00",
+      "title": "0DTE Put \u0394 wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "0D CCh",
+      "price": 290.0,
+      "price_text": "290.00",
+      "title": "0DTE Call charm wall"
+     },
+     {
+      "lane": "options",
+      "abbrev": "0D PCh",
+      "price": 290.0,
+      "price_text": "290.00",
+      "title": "0DTE Put charm wall"
+     }
+    ]
+   },
+   "rail_lines": [
     {
-     "lane": "options",
-     "abbrev": "CW",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Call wall"
+     "session": false
     },
+    {
+     "price": 290.0,
+     "price_text": "290.00",
+     "session": false
+    }
+   ],
+   "levels_above": [
+    {
+     "lane": "options",
+     "abbrev": "GRC",
+     "price": 464.1238672971819,
+     "price_text": "464.12",
+     "title": "GRC"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D GRC",
+     "price": 331.0487147181457,
+     "price_text": "331.05",
+     "title": "0DTE GRC"
+    }
+   ],
+   "levels_below": [
     {
      "lane": "options",
      "abbrev": "PW",
@@ -3158,24 +3316,10 @@
     },
     {
      "lane": "options",
-     "abbrev": "Abs \u0393",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Abs \u0393"
-    },
-    {
-     "lane": "options",
      "abbrev": "GSF",
      "price": 267.8408795429012,
      "price_text": "267.84",
      "title": "GSF"
-    },
-    {
-     "lane": "options",
-     "abbrev": "GRC",
-     "price": 464.1238672971819,
-     "price_text": "464.12",
-     "title": "GRC"
     },
     {
      "lane": "options",
@@ -3186,38 +3330,10 @@
     },
     {
      "lane": "options",
-     "abbrev": "Net C\u0393",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Net call \u0393 peak"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Key \u0394",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Key \u0394 strike"
-    },
-    {
-     "lane": "options",
-     "abbrev": "C\u0394W",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Call \u0394 wall"
-    },
-    {
-     "lane": "options",
      "abbrev": "P\u0394W",
      "price": 250.0,
      "price_text": "250.00",
      "title": "Put \u0394 wall"
-    },
-    {
-     "lane": "options",
-     "abbrev": "CCh",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Call charm wall"
     },
     {
      "lane": "options",
@@ -3232,13 +3348,6 @@
      "price": 282.5,
      "price_text": "282.50",
      "title": "0DTE Call wall"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0D PW",
-     "price": 290.0,
-     "price_text": "290.00",
-     "title": "0DTE Put wall"
     },
     {
      "lane": "options",
@@ -3260,13 +3369,6 @@
      "price": 274.3766856566115,
      "price_text": "274.38",
      "title": "0DTE GSF"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0D GRC",
-     "price": 331.0487147181457,
-     "price_text": "331.05",
-     "title": "0DTE GRC"
     },
     {
      "lane": "options",
@@ -3295,29 +3397,26 @@
      "price": 270.0,
      "price_text": "270.00",
      "title": "0DTE Call \u0394 wall"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0D P\u0394W",
-     "price": 290.0,
-     "price_text": "290.00",
-     "title": "0DTE Put \u0394 wall"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0D CCh",
-     "price": 290.0,
-     "price_text": "290.00",
-     "title": "0DTE Call charm wall"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0D PCh",
-     "price": 290.0,
-     "price_text": "290.00",
-     "title": "0DTE Put charm wall"
     }
    ],
+   "level_names": {
+    "300.00": "Call wall + Abs \u0393 + Net call \u0393 peak + Key \u0394 strike + Call \u0394 wall + Call charm wall",
+    "270.00": "Put wall + Max pain + 0DTE Call \u0394 wall",
+    "249.97": "\u0393 flip",
+    "267.84": "GSF",
+    "464.12": "GRC",
+    "200.00": "Net put \u0393 peak",
+    "250.00": "Put \u0394 wall",
+    "260.00": "Put charm wall",
+    "282.50": "0DTE Call wall + 0DTE Net call \u0393 peak",
+    "290.00": "0DTE Put wall + 0DTE Put \u0394 wall + 0DTE Call charm wall + 0DTE Put charm wall",
+    "267.45": "0DTE \u0393 flip",
+    "285.00": "0DTE Abs \u0393",
+    "274.38": "0DTE GSF",
+    "331.05": "0DTE GRC",
+    "265.00": "0DTE Net put \u0393 peak",
+    "280.00": "0DTE Key \u0394 strike"
+   },
    "regime": "LONG_GAMMA_CHOP",
    "flip_text": "249.97",
    "pin_text": "285.00",
@@ -4784,14 +4883,110 @@
   "spot_time_ct": null,
   "spot_not_live_text": "not live",
   "status_text": "Chain as of Wed 10/07 09:31 AM CT",
-  "levels": [
+  "rail_lanes": {
+   "session": [],
+   "options": [
+    {
+     "lane": "options",
+     "abbrev": "CW",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Call wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Abs \u0393",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Abs \u0393"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Net C\u0393",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Net call \u0393 peak"
+    },
+    {
+     "lane": "options",
+     "abbrev": "Key \u0394",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Key \u0394 strike"
+    },
+    {
+     "lane": "options",
+     "abbrev": "C\u0394W",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Call \u0394 wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "CCh",
+     "price": 300.0,
+     "price_text": "300.00",
+     "title": "Call charm wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D PW",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Put wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D P\u0394W",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Put \u0394 wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D CCh",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Call charm wall"
+    },
+    {
+     "lane": "options",
+     "abbrev": "0D PCh",
+     "price": 290.0,
+     "price_text": "290.00",
+     "title": "0DTE Put charm wall"
+    }
+   ]
+  },
+  "rail_lines": [
    {
-    "lane": "options",
-    "abbrev": "CW",
     "price": 300.0,
     "price_text": "300.00",
-    "title": "Call wall"
+    "session": false
    },
+   {
+    "price": 290.0,
+    "price_text": "290.00",
+    "session": false
+   }
+  ],
+  "levels_above": [
+   {
+    "lane": "options",
+    "abbrev": "GRC",
+    "price": 464.1238672971819,
+    "price_text": "464.12",
+    "title": "GRC"
+   },
+   {
+    "lane": "options",
+    "abbrev": "0D GRC",
+    "price": 331.0487147181457,
+    "price_text": "331.05",
+    "title": "0DTE GRC"
+   }
+  ],
+  "levels_below": [
    {
     "lane": "options",
     "abbrev": "PW",
@@ -4815,24 +5010,10 @@
    },
    {
     "lane": "options",
-    "abbrev": "Abs \u0393",
-    "price": 300.0,
-    "price_text": "300.00",
-    "title": "Abs \u0393"
-   },
-   {
-    "lane": "options",
     "abbrev": "GSF",
     "price": 267.8408795429012,
     "price_text": "267.84",
     "title": "GSF"
-   },
-   {
-    "lane": "options",
-    "abbrev": "GRC",
-    "price": 464.1238672971819,
-    "price_text": "464.12",
-    "title": "GRC"
    },
    {
     "lane": "options",
@@ -4843,38 +5024,10 @@
    },
    {
     "lane": "options",
-    "abbrev": "Net C\u0393",
-    "price": 300.0,
-    "price_text": "300.00",
-    "title": "Net call \u0393 peak"
-   },
-   {
-    "lane": "options",
-    "abbrev": "Key \u0394",
-    "price": 300.0,
-    "price_text": "300.00",
-    "title": "Key \u0394 strike"
-   },
-   {
-    "lane": "options",
-    "abbrev": "C\u0394W",
-    "price": 300.0,
-    "price_text": "300.00",
-    "title": "Call \u0394 wall"
-   },
-   {
-    "lane": "options",
     "abbrev": "P\u0394W",
     "price": 250.0,
     "price_text": "250.00",
     "title": "Put \u0394 wall"
-   },
-   {
-    "lane": "options",
-    "abbrev": "CCh",
-    "price": 300.0,
-    "price_text": "300.00",
-    "title": "Call charm wall"
    },
    {
     "lane": "options",
@@ -4889,13 +5042,6 @@
     "price": 282.5,
     "price_text": "282.50",
     "title": "0DTE Call wall"
-   },
-   {
-    "lane": "options",
-    "abbrev": "0D PW",
-    "price": 290.0,
-    "price_text": "290.00",
-    "title": "0DTE Put wall"
    },
    {
     "lane": "options",
@@ -4917,13 +5063,6 @@
     "price": 274.3766856566115,
     "price_text": "274.38",
     "title": "0DTE GSF"
-   },
-   {
-    "lane": "options",
-    "abbrev": "0D GRC",
-    "price": 331.0487147181457,
-    "price_text": "331.05",
-    "title": "0DTE GRC"
    },
    {
     "lane": "options",
@@ -4952,29 +5091,26 @@
     "price": 270.0,
     "price_text": "270.00",
     "title": "0DTE Call \u0394 wall"
-   },
-   {
-    "lane": "options",
-    "abbrev": "0D P\u0394W",
-    "price": 290.0,
-    "price_text": "290.00",
-    "title": "0DTE Put \u0394 wall"
-   },
-   {
-    "lane": "options",
-    "abbrev": "0D CCh",
-    "price": 290.0,
-    "price_text": "290.00",
-    "title": "0DTE Call charm wall"
-   },
-   {
-    "lane": "options",
-    "abbrev": "0D PCh",
-    "price": 290.0,
-    "price_text": "290.00",
-    "title": "0DTE Put charm wall"
    }
   ],
+  "level_names": {
+   "300.00": "Call wall + Abs \u0393 + Net call \u0393 peak + Key \u0394 strike + Call \u0394 wall + Call charm wall",
+   "270.00": "Put wall + Max pain + 0DTE Call \u0394 wall",
+   "249.97": "\u0393 flip",
+   "267.84": "GSF",
+   "464.12": "GRC",
+   "200.00": "Net put \u0393 peak",
+   "250.00": "Put \u0394 wall",
+   "260.00": "Put charm wall",
+   "282.50": "0DTE Call wall + 0DTE Net call \u0393 peak",
+   "290.00": "0DTE Put wall + 0DTE Put \u0394 wall + 0DTE Call charm wall + 0DTE Put charm wall",
+   "267.45": "0DTE \u0393 flip",
+   "285.00": "0DTE Abs \u0393",
+   "274.38": "0DTE GSF",
+   "331.05": "0DTE GRC",
+   "265.00": "0DTE Net put \u0393 peak",
+   "280.00": "0DTE Key \u0394 strike"
+  },
   "regime": "LONG_GAMMA_CHOP",
   "flip_text": "249.97",
   "pin_text": "285.00",
