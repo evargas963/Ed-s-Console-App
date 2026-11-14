@@ -13,26 +13,41 @@
    did not classify is tagged UNKNOWN. Nothing is classified, inferred, or defaulted here.
    native_aggressor_available=false => no signed buys/sells are ever shown. */
 (function () {
-  'use strict';
+  "use strict";
 
-  var esc = window.EdShell.esc, orDash = window.EdShell.orDash;
-  function num(n, d) { return (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d == null ? 2 : d); }
-  function int(n) { return (n == null || isNaN(n)) ? '-' : String(Math.round(Number(n))); }
-  function isFlow() { var s = window.EdShell.getState(); return s.workspace === 'options' && s.subview === 'flow'; }
+  var esc = window.EdShell.esc,
+    orDash = window.EdShell.orDash;
+  function num(n, d) {
+    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
+  }
+  function int(n) {
+    return n == null || isNaN(n) ? "-" : String(Math.round(Number(n)));
+  }
+  function isFlow() {
+    var s = window.EdShell.getState();
+    return s.workspace === "options" && s.subview === "flow";
+  }
 
-  function host() { return document.getElementById('flowBody'); }
+  function host() {
+    return document.getElementById("flowBody");
+  }
 
   // the selected contract (a Chain click), cleared by a ticker or expiry change; the daemon streams
   // it on both option services on top of its rule (POST /api/flow-contract)
   var _selected = null;
   function setSelected(symbol) {
     _selected = symbol;
-    fetch('/api/flow-contract', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contract: symbol }) }).then(load, load);
-    document.dispatchEvent(new CustomEvent('ed:contract', { detail: { contract: symbol } }));
+    fetch("/api/flow-contract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contract: symbol }),
+    }).then(load, load);
+    document.dispatchEvent(new CustomEvent("ed:contract", { detail: { contract: symbol } }));
   }
   window.EdFlow = {
-    selected: function () { return _selected; },
+    selected: function () {
+      return _selected;
+    },
     select: setSelected,
   };
 
@@ -41,13 +56,15 @@
   // no longer selected (sent before the page asked another) is not drawn.
   function load() {
     var h = host();
-    window.EdShell.showPanel('contract', isFlow() && _selected ? { contract: _selected } : null);
-    if (h && isFlow() && !_selected) shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null);
+    window.EdShell.showPanel("contract", isFlow() && _selected ? { contract: _selected } : null);
+    if (h && isFlow() && !_selected)
+      shell(h, null, "NONE", "Select a Call or Put contract in Chain.", null);
   }
-  document.addEventListener('ed:panel', function (e) {
-    var d = e.detail, h = host();
-    if (d.type !== 'contract' || !h || !isFlow() || !_selected) return;
-    if (d.failed != null) shell(h, _selected, 'DEGRADED', d.failed, null);
+  document.addEventListener("ed:panel", function (e) {
+    var d = e.detail,
+      h = host();
+    if (d.type !== "contract" || !h || !isFlow() || !_selected) return;
+    if (d.failed != null) shell(h, _selected, "DEGRADED", d.failed, null);
     else if (d.contract === _selected) render(h, _selected, d);
   });
 
@@ -58,15 +75,20 @@
   function subState(plane) {
     var s = (plane || {}).subscription_state;
     var l1 = plane && plane.feed_health && plane.feed_health.l1;
-    if (s === 'SUBSCRIBED' && l1 && l1.state === 'LIVE') return { label: 'ACTIVE', cls: 'live' };
-    if (s === 'SUBSCRIBED' && l1) return { label: l1.state, cls: 'stale' };
-    return { label: orDash(s), cls: 'stale' };
+    if (s === "SUBSCRIBED" && l1 && l1.state === "LIVE") return { label: "ACTIVE", cls: "live" };
+    if (s === "SUBSCRIBED" && l1) return { label: l1.state, cls: "stale" };
+    return { label: orDash(s), cls: "stale" };
   }
 
   // The backend's classification string for one canonical key, verbatim — or null when the
   // backend served no classification for it. Never defaulted, never inferred from the key.
-  function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
-  function bool3(v) { return v === true ? 'true' : (v === false ? 'false' : '-'); }
+  function classOf(map, key) {
+    var v = map ? map[key] : null;
+    return typeof v === "string" && v ? v : null;
+  }
+  function bool3(v) {
+    return v === true ? "true" : v === false ? "false" : "-";
+  }
 
   function render(h, desired, d) {
     // each always served: streaming_plane (server.options_microstructure), the book
@@ -75,100 +97,206 @@
     var ss = subState(plane);
     var tob = d.top_of_book;
     var depth = d.depth;
-    var flow = d.flow;                              // the ONE flow block (never flattened)
-    var bookCls = d.classification;                 // engine's book/microstructure classification
-    var flowCls = flow.classification;              // live_payload's flow classification
-    function bk(k) { return classOf(bookCls, k); }
-    function fk(k) { return classOf(flowCls, k); }
+    var flow = d.flow; // the ONE flow block (never flattened)
+    var bookCls = d.classification; // engine's book/microstructure classification
+    var flowCls = flow.classification; // live_payload's flow classification
+    function bk(k) {
+      return classOf(bookCls, k);
+    }
+    function fk(k) {
+      return classOf(flowCls, k);
+    }
     // row = [label, displayed value, canonical key (data-k), backend classification | null]
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
     var rowsTob = [
-      ['Bid', num(tob.bid), 'top_of_book.bid', bk('top_of_book.bid')],
-      ['Ask', num(tob.ask), 'top_of_book.ask', bk('top_of_book.ask')],
-      ['Bid size', int(tob.bid_size), 'top_of_book.bid_size', bk('top_of_book.bid_size')],
-      ['Ask size', int(tob.ask_size), 'top_of_book.ask_size', bk('top_of_book.ask_size')],
+      ["Bid", num(tob.bid), "top_of_book.bid", bk("top_of_book.bid")],
+      ["Ask", num(tob.ask), "top_of_book.ask", bk("top_of_book.ask")],
+      ["Bid size", int(tob.bid_size), "top_of_book.bid_size", bk("top_of_book.bid_size")],
+      ["Ask size", int(tob.ask_size), "top_of_book.ask_size", bk("top_of_book.ask_size")],
     ];
     var rowsBook = [
-      ['Mark', num(d.mark), 'mark', bk('mark')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
-      ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],
-      ['Depth 1 · imbalance', num(depth['1'].imbalance, 3), 'depth.1.imbalance', bk('depth.*.imbalance')],
-      ['Depth 3 · imbalance', num(depth['3'].imbalance, 3), 'depth.3.imbalance', bk('depth.*.imbalance')],
-      ['Depth 5 · imbalance', num(depth['5'].imbalance, 3), 'depth.5.imbalance', bk('depth.*.imbalance')],
-      ['Bid total (5)', int(depth['5'].bid_total), 'depth.5.bid_total', bk('depth.*.bid_total')],
-      ['Ask total (5)', int(depth['5'].ask_total), 'depth.5.ask_total', bk('depth.*.ask_total')],
+      ["Mark", num(d.mark), "mark", bk("mark")],
+      ["Microprice", num(d.microprice), "microprice", bk("microprice")],
+      ["Spread (pts)", num(d.spread_pts), "spread_pts", bk("spread_pts")],
+      [
+        "Depth 1 · imbalance",
+        num(depth["1"].imbalance, 3),
+        "depth.1.imbalance",
+        bk("depth.*.imbalance"),
+      ],
+      [
+        "Depth 3 · imbalance",
+        num(depth["3"].imbalance, 3),
+        "depth.3.imbalance",
+        bk("depth.*.imbalance"),
+      ],
+      [
+        "Depth 5 · imbalance",
+        num(depth["5"].imbalance, 3),
+        "depth.5.imbalance",
+        bk("depth.*.imbalance"),
+      ],
+      ["Bid total (5)", int(depth["5"].bid_total), "depth.5.bid_total", bk("depth.*.bid_total")],
+      ["Ask total (5)", int(depth["5"].ask_total), "depth.5.ask_total", bk("depth.*.ask_total")],
     ];
     var rowsFlow = [
-      ['Top-book pressure', num(flow.top_book_pressure, 3), 'flow.top_book_pressure', fk('top_book_pressure')],
-      ['Tape pressure 30s', num(flow.tape_pressure_30s, 3), 'flow.tape_pressure_30s', fk('tape_pressure_30s')],
-      ['Tape pressure 2m', num(flow.tape_pressure_2m, 3), 'flow.tape_pressure_2m', fk('tape_pressure_2m')],
-      ['Tape pressure 5m', num(flow.tape_pressure_5m, 3), 'flow.tape_pressure_5m', fk('tape_pressure_5m')],
-      ['Cum Δ (proxy)', num(flow.cum_delta_proxy, 1) + (flow.cum_delta_window ? ' · ' + flow.cum_delta_window : ''),
-        'flow.cum_delta_proxy', fk('cum_delta_proxy')],
-      ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
+      [
+        "Top-book pressure",
+        num(flow.top_book_pressure, 3),
+        "flow.top_book_pressure",
+        fk("top_book_pressure"),
+      ],
+      [
+        "Tape pressure 30s",
+        num(flow.tape_pressure_30s, 3),
+        "flow.tape_pressure_30s",
+        fk("tape_pressure_30s"),
+      ],
+      [
+        "Tape pressure 2m",
+        num(flow.tape_pressure_2m, 3),
+        "flow.tape_pressure_2m",
+        fk("tape_pressure_2m"),
+      ],
+      [
+        "Tape pressure 5m",
+        num(flow.tape_pressure_5m, 3),
+        "flow.tape_pressure_5m",
+        fk("tape_pressure_5m"),
+      ],
+      [
+        "Cum Δ (proxy)",
+        num(flow.cum_delta_proxy, 1) + (flow.cum_delta_window ? " · " + flow.cum_delta_window : ""),
+        "flow.cum_delta_proxy",
+        fk("cum_delta_proxy"),
+      ],
+      [
+        "Cum Δ slope (proxy)",
+        num(flow.cum_delta_slope, 3),
+        "flow.cum_delta_slope",
+        fk("cum_delta_slope"),
+      ],
     ];
-    var fh = plane.feed_health || {};   // served: the selected contract's three feeds
-    var dim = ss.label === 'ACTIVE' ? '' : ' fl-dim';   // not-active data recedes (never presented as live)
+    var fh = plane.feed_health || {}; // served: the selected contract's three feeds
+    var dim = ss.label === "ACTIVE" ? "" : " fl-dim"; // not-active data recedes (never presented as live)
     // Book/quote ages are served as text from the engine's `ages` block (classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
     var fresh = [
-      ['Book age', d.book_when_age_text == null ? '-' : d.book_when_age_text, 'ages.book_age_sec', bk('ages.book_age_sec')],
-      ['Quote age', d.quote_when_age_text == null ? '-' : d.quote_when_age_text, 'ages.quote_age_sec', bk('ages.quote_age_sec')],
-      ['Replay', orDash(fh.replay), 'streaming_plane.feed_health.replay', undefined],
-      ['L1 upstream', fh.l1 ? fh.l1.text : '-', 'streaming_plane.feed_health.l1', undefined],
-      ['Book upstream', fh.book ? fh.book.text : '-', 'streaming_plane.feed_health.book', undefined],
+      [
+        "Book age",
+        d.book_when_age_text == null ? "-" : d.book_when_age_text,
+        "ages.book_age_sec",
+        bk("ages.book_age_sec"),
+      ],
+      [
+        "Quote age",
+        d.quote_when_age_text == null ? "-" : d.quote_when_age_text,
+        "ages.quote_age_sec",
+        bk("ages.quote_age_sec"),
+      ],
+      ["Replay", orDash(fh.replay), "streaming_plane.feed_health.replay", undefined],
+      ["L1 upstream", fh.l1 ? fh.l1.text : "-", "streaming_plane.feed_health.l1", undefined],
+      [
+        "Book upstream",
+        fh.book ? fh.book.text : "-",
+        "streaming_plane.feed_health.book",
+        undefined,
+      ],
     ];
-    h.innerHTML = header(desired, ss, d && d.put_call) +
+    h.innerHTML =
+      header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
-      section('Top of book' + (d.top_outage ? ' · ' + d.top_feed_label : ''), rowsTob, '') +
-      section('Book microstructure', rowsBook, dim) +
-      section('Flow observations', rowsFlow, dim) +
-      section('Freshness / health', fresh, '') +
-      '</div>' +
+      section("Top of book" + (d.top_outage ? " · " + d.top_feed_label : ""), rowsTob, "") +
+      section("Book microstructure", rowsBook, dim) +
+      section("Flow observations", rowsFlow, dim) +
+      section("Freshness / health", fresh, "") +
+      "</div>" +
       '<div class="fl-foot">signed aggressor classification NOT PROVEN — native_aggressor_available=' +
-      bool3(flow.native_aggressor_available) + '; tape_classification=' + esc(orDash(flow.tape_classification)) +
-      '; no signed buys/sells, CVD, or bull/bear verdict is canonical.</div>';
+      bool3(flow.native_aggressor_available) +
+      "; tape_classification=" +
+      esc(orDash(flow.tape_classification)) +
+      "; no signed buys/sells, CVD, or bull/bear verdict is canonical.</div>";
   }
 
-  function header(desired, ss, putCall) {   // putCall: the chain record's side, served
-    var strike = window.EdShell.getState().selStrike, expiry = window.EdShell.getState().selExpiry;
-    return '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
-      '<span class="fl-sym">' + esc(orDash(desired)) + '</span>' +
-      '<span class="fl-meta">' + (putCall === 'CALL' ? 'Call' : putCall === 'PUT' ? 'Put' : '-') + (strike != null ? ' · ' + strike : '') + (expiry ? ' · ' + esc(expiry) : '') + '</span></div>' +
-      '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' + ss.cls + '">' + ss.label + '</span></div></div>';
+  function header(desired, ss, putCall) {
+    // putCall: the chain record's side, served
+    var strike = window.EdShell.getState().selStrike,
+      expiry = window.EdShell.getState().selExpiry;
+    return (
+      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
+      '<span class="fl-sym">' +
+      esc(orDash(desired)) +
+      "</span>" +
+      '<span class="fl-meta">' +
+      (putCall === "CALL" ? "Call" : putCall === "PUT" ? "Put" : "-") +
+      (strike != null ? " · " + strike : "") +
+      (expiry ? " · " + esc(expiry) : "") +
+      "</span></div>" +
+      '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' +
+      ss.cls +
+      '">' +
+      ss.label +
+      "</span></div></div>"
+    );
   }
   function shell(h, desired, badge, msg, x) {
-    var cls = badge === 'NONE' ? 'warn' : (badge === 'FAILED' || badge === 'DEGRADED' ? 'stale' : 'warn');
-    h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
-      '<span class="fl-sym">' + esc(orDash(desired)) + '</span></div>' +
-      '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' + cls + '">' + esc(badge) + '</span></div></div>' +
-      '<div class="placeholder"><div class="sm">' + esc(msg) + '</div></div>';
+    var cls =
+      badge === "NONE" ? "warn" : badge === "FAILED" || badge === "DEGRADED" ? "stale" : "warn";
+    h.innerHTML =
+      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
+      '<span class="fl-sym">' +
+      esc(orDash(desired)) +
+      "</span></div>" +
+      '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' +
+      cls +
+      '">' +
+      esc(badge) +
+      "</span></div></div>" +
+      '<div class="placeholder"><div class="sm">' +
+      esc(msg) +
+      "</div></div>";
   }
   // Classification tag: text is the backend string verbatim; the CSS hook is its leading token
   // (NATIVE/DERIVED/PROXY styled; anything else renders neutral). null => the backend served
   // no classification for a classified metric => UNKNOWN. undefined => not a classified metric.
   function tag(c) {
-    if (c === undefined) return '';
-    var text = c === null ? 'UNKNOWN' : c;
-    var hook = (String(text).toLowerCase().match(/^[a-z0-9-]+/) || ['unknown'])[0];
-    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(text) + '">' + esc(text) + '</span>';
+    if (c === undefined) return "";
+    var text = c === null ? "UNKNOWN" : c;
+    var hook = (String(text)
+      .toLowerCase()
+      .match(/^[a-z0-9-]+/) || ["unknown"])[0];
+    return (
+      '<span class="fl-tag ' + hook + '" data-cls="' + esc(text) + '">' + esc(text) + "</span>"
+    );
   }
   function section(title, rows, dim) {
-    var h = '<div class="fl-sec' + dim + '"><div class="fl-sec-h">' + esc(title) + '</div>';
+    var h = '<div class="fl-sec' + dim + '"><div class="fl-sec-h">' + esc(title) + "</div>";
     rows.forEach(function (r) {
-      h += '<div class="fl-row" data-k="' + esc(r[2]) + '"><span class="k">' + esc(r[0]) + '</span><span class="v">' + esc(r[1]) +
-        '</span>' + tag(r[3]) + '</div>';
+      h +=
+        '<div class="fl-row" data-k="' +
+        esc(r[2]) +
+        '"><span class="k">' +
+        esc(r[0]) +
+        '</span><span class="v">' +
+        esc(r[1]) +
+        "</span>" +
+        tag(r[3]) +
+        "</div>";
     });
-    return h + '</div>';
+    return h + "</div>";
   }
 
-  if (typeof document !== 'undefined') {
-    document.addEventListener('ed:view', load);           // fires on subview change too
-    document.addEventListener('ed:contract', load);       // an explicit Chain selection
+  if (typeof document !== "undefined") {
+    document.addEventListener("ed:view", load); // fires on subview change too
+    document.addEventListener("ed:contract", load); // an explicit Chain selection
     // a ticker or expiry change clears the selection; a fresh Chain click observes again
     // a page that selected nothing releases nothing (another tab's selection stands)
-    function clearSelected() { if (_selected) setSelected(null); else load(); }
-    document.addEventListener('ed:ticker', clearSelected);
-    document.addEventListener('ed:expiry', clearSelected);
+    function clearSelected() {
+      if (_selected) setSelected(null);
+      else load();
+    }
+    document.addEventListener("ed:ticker", clearSelected);
+    document.addEventListener("ed:expiry", clearSelected);
     // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
     // (that file's init() comment)
   }
