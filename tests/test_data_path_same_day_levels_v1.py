@@ -220,7 +220,7 @@ def test_with_no_expiry_today_the_next_one_is_priced_to_todays_close(book):
 @pytest.mark.parametrize(
     ("book", "modeled"),
     [(SPY_0DTE, False), (SPY_FULL, False), (CRWD, True), (MRVL, True), (NFLX, True), (TSLA, True)],
-    ids=lambda b: getattr(b, "ticker", str(b)),
+    ids=["SPY-0dte", "SPY-full", "CRWD", "MRVL", "NFLX", "TSLA"],
 )
 def test_the_hover_says_modeled_exactly_when_the_levels_are_repriced(book, modeled):
     """SPY's same-day expiry is read as sent: no note. The four with none today are re-priced.
