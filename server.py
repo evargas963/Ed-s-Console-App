@@ -40,6 +40,8 @@ from app.options.order_flow.engine import (
 from app.options.order_flow.history import (
     BOOKS_KEPT_SEC,
     LEAN,
+    BookHeatmap,
+    NoHeatmap,
     book_heatmap_for_ticker,
     recent_prints,
     tape_row,
@@ -2501,7 +2503,7 @@ def _tf_asked(params: dict[str, Any]) -> str:
     return tf
 
 
-def bookmap(ticker: str, params: dict[str, Any]) -> dict[str, Any]:
+def bookmap(ticker: str, params: dict[str, Any]) -> BookHeatmap | NoHeatmap:
     """Return the `bookmap` panel: the depth heatmap of the ticker's Schwab book `venue`.
 
     history.book_heatmap_for_ticker bins the venue's recent books in the console's memory into a
@@ -3897,7 +3899,7 @@ LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")
 #: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
 #: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
 #: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
-PAGE_PANELS: dict[str, Callable[[live_ui.Asked], dict[str, Any]]] = {
+PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "expiries": lambda a: expiries(a.ticker, a.now),
     "vanna": lambda a: strike_bars("vanna_rows", a.ticker, a.now, a.params),
     "charm": lambda a: strike_bars("charm_rows", a.ticker, a.now, a.params),

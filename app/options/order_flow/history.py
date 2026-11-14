@@ -13,7 +13,7 @@ import logging
 import threading
 from collections import defaultdict, deque
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
@@ -30,13 +30,101 @@ BOOKS_KEPT_SEC = 240 * 60
 Side = tuple[tuple[float, float], ...]
 #: a kept book: (Schwab's BOOK_TIME in seconds, bid levels, ask levels)
 KeptBook = tuple[float, Side, Side]
-#: one cell of the book heatmap: its time bucket, price, each side's size and the side shown
-Cell = dict[str, Any]
 
 
-def quoted(
-    trade: float, top: dict[str, Any] | None, streamed: dict[str, Any] | None
-) -> dict[str, Any]:
+class Cell(TypedDict):
+    """One cell of the book heatmap: its time bucket, price, each side's size, the side shown."""
+
+    t: int
+    price: float
+    bid: float | None
+    ask: float | None
+    side: str
+
+
+class Quoted(TypedDict):
+    """What the live state held as a print was received (quoted): top of book, streamed values."""
+
+    bid: Any
+    bid_size: Any
+    ask: Any
+    ask_size: Any
+    volume: Any
+    iv: Any
+    delta: Any
+    landed: str
+
+
+class TapePrint(TypedDict):
+    """One kept print as the tape names it (recent_prints)."""
+
+    ts_recv: float
+    trade_time_ms: int | None
+    symbol: str
+    bid: Any
+    bid_size: Any
+    ask: Any
+    ask_size: Any
+    trade: float
+    size: Any
+    volume: Any
+    iv: Any
+    delta: Any
+    classification: str
+
+
+class TapeRow(TypedDict):
+    """One print as the Options Flow tape shows it (tape_row): no receive time, its terms."""
+
+    trade_time_ms: int | None
+    trade_time_ct: str | None
+    symbol: str
+    bid: Any
+    bid_size: Any
+    ask: Any
+    ask_size: Any
+    trade: float
+    size: Any
+    volume: Any
+    iv: Any
+    delta: Any
+    classification: str
+    expiry: str | None
+    type: str | None
+    strike: float | None
+    oi: Any
+    premium: float | None
+
+
+class NoHeatmap(TypedDict):
+    """The heatmap's answer when there is no book to draw: why."""
+
+    ticker: str
+    available: Literal[False]
+    reason: str
+
+
+class BookHeatmap(TypedDict):
+    """The heatmap of one venue's recent books (book_heatmap_for_ticker)."""
+
+    ticker: str
+    venue: str
+    available: Literal[True]
+    since_ts: float
+    until_ts: float
+    since_ct: str
+    until_ct: str
+    n_buckets: int
+    bucket_sec: float
+    display_lo: float
+    display_hi: float
+    max_size: float
+    rows_scanned: int
+    cells: list[Cell]
+    method: str
+
+
+def quoted(trade: float, top: dict[str, Any] | None, streamed: dict[str, Any] | None) -> Quoted:
     """Return what the live state held as a print at `trade` was received, kept with the print.
 
     Its top of book (`top`), its streamed volume, volatility and delta (`streamed`), and
@@ -63,7 +151,7 @@ def quoted(
     }
 
 
-def recent_prints(contract: str, content: Sequence[Any], limit: int) -> list[dict[str, Any]]:
+def recent_prints(contract: str, content: Sequence[Any], limit: int) -> list[TapePrint]:
     """Return the newest `limit` prints of `contract` as the tape names them, newest first.
 
     `content` is the live state's for the contract (state.get_content_for_symbol): each print it
@@ -94,7 +182,7 @@ def recent_prints(contract: str, content: Sequence[Any], limit: int) -> list[dic
     ]
 
 
-def tape_row(printed: dict[str, Any], contract: OptionContract) -> dict[str, Any]:
+def tape_row(printed: TapePrint, contract: OptionContract) -> TapeRow:
     """Return one kept print as the Options Flow tape shows it, with its contract's terms.
 
     Expiry, side, strike and open interest are the chain record's (option_contract.read_contract,
@@ -104,8 +192,19 @@ def tape_row(printed: dict[str, Any], contract: OptionContract) -> dict[str, Any
     """
     size, mult, ms = printed["size"], contract.multiplier, printed["trade_time_ms"]
     return {
-        **{k: v for k, v in printed.items() if k != "ts_recv"},
+        "trade_time_ms": ms,
         "trade_time_ct": None if ms is None else ct_clock(ms / 1000),
+        "symbol": printed["symbol"],
+        "bid": printed["bid"],
+        "bid_size": printed["bid_size"],
+        "ask": printed["ask"],
+        "ask_size": printed["ask_size"],
+        "trade": printed["trade"],
+        "size": size,
+        "volume": printed["volume"],
+        "iv": printed["iv"],
+        "delta": printed["delta"],
+        "classification": printed["classification"],
         "expiry": contract.expiry,
         "type": contract.side,
         "strike": contract.strike,
@@ -255,7 +354,7 @@ LEAN = RecentLean()
 
 def book_heatmap_for_ticker(
     ticker: str, venue: str, *, minutes: float = 60.0, books: RecentBooks = BOOKS
-) -> dict[str, Any]:
+) -> BookHeatmap | NoHeatmap:
     """Return the book-depth heatmap for one Schwab book of a ticker, `venue`.
 
     `venue` is NYSE_BOOK or NASDAQ_BOOK; the two are never merged. Its recent books binned into
