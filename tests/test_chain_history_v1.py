@@ -31,6 +31,7 @@ from option_contract import read_chain
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.schwab_rest_standin import CHAIN, QUOTES, SPY_QUOTES, LocalSchwab
+from tests.shared_helpers import et_ts
 from time_et import ET
 
 _QUOTED = {s: e["quote"] for s, e in SPY_QUOTES.items()}
@@ -43,10 +44,6 @@ _MRVL = sc.flatten_chain_contracts(
         ).read_text(encoding="utf-8")
     )["full"]
 )
-
-
-def _ts(s: str) -> float:
-    return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
 def _et(ts: float) -> str:
@@ -78,13 +75,13 @@ def test_the_capture_window_a_fetch_is_written_for(now, slot):
 
     tests/conftest.py holds the answers captured 2026-10-07.
     """
-    got = cch.capture_slot(_ts(now))
+    got = cch.capture_slot(et_ts(now))
     assert (_et(got) if got is not None else None) == slot
 
 
 def test_every_capture_window_of_a_full_day_ends_at_the_last_option_markets_close():
     slots = {
-        cch.capture_slot(_ts(f"2026-10-05 {h:02d}:{m:02d}"))
+        cch.capture_slot(et_ts(f"2026-10-05 {h:02d}:{m:02d}"))
         for h in range(0, 24)
         for m in range(0, 60)
     } - {None}
@@ -137,18 +134,18 @@ def _parts(ts: float):
 
 
 def test_a_chain_reaches_the_console_whole_in_parts():
-    published = _parts(_ts("2026-09-30 15:31:57"))
+    published = _parts(et_ts("2026-09-30 15:31:57"))
     assert [m["part"] for _t, m in published] == [0, 1, 2, 3, 4]  # 2,432 contracts
     ((tk, contracts, ts, reason, spot),) = _assembled(published)
-    assert (tk, ts, reason, spot) == ("MRVL", _ts("2026-09-30 15:31:57"), None, (None, None))
+    assert (tk, ts, reason, spot) == ("MRVL", et_ts("2026-09-30 15:31:57"), None, (None, None))
     assert sorted(c.symbol for c in contracts) == sorted(c["symbol"] for c in _MRVL)
     assert contracts == read_chain(_MRVL), "each contract as read once, in order"
 
 
 def test_a_chain_missing_a_part_is_never_priced_and_says_why():
-    published = _parts(_ts("2026-09-30 15:31:57"))
+    published = _parts(et_ts("2026-09-30 15:31:57"))
     del published[2]  # one part lost on the way
-    published += _parts(_ts("2026-09-30 15:35:57"))  # the next chain begins
+    published += _parts(et_ts("2026-09-30 15:35:57"))  # the next chain begins
     first, second = _assembled(published)
     assert first[1] is None and "arrived with 4 of its 5 parts" in first[3]
     assert second[1] is not None and second[3] is None
@@ -159,9 +156,9 @@ def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part
 
     It was lost when the next chain completed in its first part.
     """
-    early = _parts(_ts("2026-09-30 15:31:57"))[:2]  # two of five parts arrived
+    early = _parts(et_ts("2026-09-30 15:31:57"))[:2]  # two of five parts arrived
     one_part = cch.chain_messages(
-        "MRVL", _MRVL[: cch.CHAIN_PART_CONTRACTS], _ts("2026-09-30 15:35:57"), None, None
+        "MRVL", _MRVL[: cch.CHAIN_PART_CONTRACTS], et_ts("2026-09-30 15:35:57"), None, None
     )
     first, second = _assembled(early + one_part)
     assert first[1] is None and "arrived with 2 of its 5 parts" in first[3]
@@ -173,15 +170,15 @@ def test_a_chain_begun_before_the_console_connected_is_no_failure():
 
     It reported the chain as arriving incomplete.
     """
-    published = _parts(_ts("2026-09-30 15:31:57"))[2:]  # the console connected after part 1
-    published += _parts(_ts("2026-09-30 15:35:57"))
+    published = _parts(et_ts("2026-09-30 15:31:57"))[2:]  # the console connected after part 1
+    published += _parts(et_ts("2026-09-30 15:35:57"))
     ((tk, contracts, _ts_, reason, _spot),) = _assembled(published)
     assert contracts is not None and reason is None and len(contracts) == len(_MRVL)
 
 
 def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab):
     schwab.refuse_chain = {"SPY"}
-    sweep, published, client = _sweep(tmp_path, schwab, lambda: _ts("2026-09-30 15:31:57"))
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: et_ts("2026-09-30 15:31:57"))
     assert _rotate(sweep, client) == set()
     ((tk, contracts, _ts_, reason, spot),) = _assembled(published)
     assert (
@@ -201,7 +198,7 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
         "2026-09-30 16:01:00",  # the 16:00 window
         "2026-09-30 17:00:00",
     ):  # after the close capture's window
-        clock["now"] = _ts(at)
+        clock["now"] = et_ts(at)
         assert _rotate(sweep, client) == {"SPY"}
     with sqlite3.connect(tmp_path / "ed_console.db") as c:
         rows = c.execute(
@@ -239,7 +236,7 @@ def test_schwabs_chains_answers_are_asked_every_five_minutes_and_its_quotes_ever
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     asked = []
     for at in ("2026-09-30 10:01", "2026-09-30 10:04", "2026-09-30 10:07"):
-        clock["now"] = _ts(at)
+        clock["now"] = et_ts(at)
         assert _rotate(sweep, client) == {"SPY"}
         asked.append((len(schwab.asked(CHAIN)), len(schwab.asked(QUOTES))))
     (one, quotes), (two, quotes_two), (three, quotes_three) = asked
@@ -278,7 +275,7 @@ def test_before_the_open_the_chains_answers_are_asked_every_five_minutes_too(tmp
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     asked = []
     for at in ("2026-09-30 08:00", "2026-09-30 08:03", "2026-09-30 08:07"):
-        clock["now"] = _ts(at)
+        clock["now"] = et_ts(at)
         sweep.fetch_chain(client, "SPY", threading.Event())
         while sweep._queue:
             sweep.send_quotes(client)
@@ -295,7 +292,7 @@ def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
 
     TSLA added to the watchlist beside SPY: SPY first, then TSLA, in sorted order.
     """
-    sweep, published, client = _sweep(tmp_path, schwab, lambda: _ts("2026-08-28 09:05"))
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: et_ts("2026-08-28 09:05"))
     sweep.watchlist = ["TSLA", "SPY"]  # the daemon's list after an add
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(client, stop), daemon=True)
@@ -315,11 +312,11 @@ def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_pat
     """
     clock = {"times": iter([])}
     sweep, _published, client = _sweep(tmp_path, schwab, lambda: next(clock["times"]))
-    clock["times"] = itertools.repeat(_ts("2026-09-30 16:00:30"))
+    clock["times"] = itertools.repeat(et_ts("2026-09-30 16:00:30"))
     _rotate(sweep, client)  # the 16:00 window's capture
     clock["times"] = itertools.chain(
-        [_ts("2026-09-30 16:14:30")] * 3,  # the rotation begins, the chain is due and begins
-        itertools.repeat(_ts("2026-09-30 16:15:10")),
+        [et_ts("2026-09-30 16:14:30")] * 3,  # the rotation begins, the chain is due and begins
+        itertools.repeat(et_ts("2026-09-30 16:15:10")),
     )
     _rotate(sweep, client)  # begun 16:14:30, delivered 16:15:10
     with sqlite3.connect(tmp_path / "ed_console.db") as c:
@@ -343,7 +340,7 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
             "completeness_basis TEXT NOT NULL, chain_json TEXT NOT NULL, source TEXT NOT NULL, "
             "created_at TEXT, refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))"
         )
-    clock = {"now": _ts("2026-09-30 15:31:57")}
+    clock = {"now": et_ts("2026-09-30 15:31:57")}
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     assert _rotate(sweep, client) == {"SPY"}
     assert all("failed" not in m for _t, m in published)
@@ -368,7 +365,7 @@ def test_a_round_is_timed_only_when_it_asked_for_the_whole_watchlist(tmp_path, s
     every ticker's levels read STALE against the 180 s floor while a whole round takes 234 to
     268 s. A round of part of the watchlist is not timed.
     """
-    ticks = itertools.count(_ts("2026-09-30 15:31:57"), 1.0)
+    ticks = itertools.count(et_ts("2026-09-30 15:31:57"), 1.0)
     sweep, _published, client = _sweep(tmp_path, schwab, lambda: next(ticks))
     sweep.watchlist = ["SPY", "TSLA"]
     _rotate(sweep, client)  # SPY alone
@@ -398,7 +395,7 @@ def test_a_stop_asked_inside_a_ticker_asks_schwab_for_nothing_more(tmp_path, sch
         tmp_path / "ed_console.db",
         ["SPY"],
         publish,
-        clock=lambda: _ts("2026-09-30 15:31:57"),
+        clock=lambda: et_ts("2026-09-30 15:31:57"),
         failures=CaptureWriter(tmp_path / "stream_capture.db"),
         streamed={}.get,  # nothing streamed
     )
@@ -442,7 +439,7 @@ def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in():
 
     async def go():
         sub = bus.subscribe("chain.", policy=LATEST)
-        parts = _parts(_ts("2026-09-30 15:31:57"))
+        parts = _parts(et_ts("2026-09-30 15:31:57"))
         for topic, msg in parts[:-1]:
             bus.publish(topic, msg)
         assert not sub.changed, "a partial chain is never current"
@@ -475,7 +472,7 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
                 spot=spot,
                 chain_spot=spot,
                 completeness_basis=basis,
-                ts_utc=_ts(when),
+                ts_utc=et_ts(when),
             )
 
     put("2026-09-24 15:30", 10.0, ["2030-01-04"])
@@ -508,7 +505,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
         contracts=[ct],
         spot=5.0,
         completeness_basis="expiries_to_37_days_morning",
-        ts_utc=_ts("2026-09-25 10:00"),
+        ts_utc=et_ts("2026-09-25 10:00"),
     )
     store_capture(
         db,
@@ -517,7 +514,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
         contracts=[ct],
         spot=5.0,
         completeness_basis=cch.CAPTURE_BASIS,
-        ts_utc=_ts("2026-09-28 16:15"),
+        ts_utc=et_ts("2026-09-28 16:15"),
     )
     caps = cch.last_capture_per_day(db, "ZZ", 2)
     assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]

@@ -7,19 +7,15 @@ from datetime import datetime
 import pytest
 
 import server
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
-from tests.feed_live_helper import daemon_bars, hold_schwab_daily, stream_daemon_bars
+from tests.feed_live_helper import (
+    daemon_bars,
+    forget_bars,
+    hold_schwab_daily,
+    stream_daemon_bars,
+)
 from time_et import ET, ct_label
 
 _BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
-
-
-def _forget(*tickers: str) -> None:
-    for tk in tickers:
-        server._bars.pop(tk, None)
-        server._series.pop((tk, "1d"), None)
-        for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-            del _MATERIALIZED_SNAPSHOTS[key]
 
 
 def test_the_levels_page_carries_each_levels_time():
@@ -29,7 +25,7 @@ def test_the_levels_page_carries_each_levels_time():
     the snapshot's time. The market being closed does not remove either.
     """
     closed = datetime(2026, 10, 3, 12, 0, tzinfo=ET)
-    _forget("SPY", "TSLA")
+    forget_bars("SPY", "TSLA")
     try:
         stream_daemon_bars(_BARS)
         server._publish_price_levels("SPY", closed)
@@ -39,7 +35,7 @@ def test_the_levels_page_carries_each_levels_time():
         assert vwap["price"] is not None
         assert vwap["staleness"]["as_of_time_ct"] == ct_label(as_of)
     finally:
-        _forget("SPY", "TSLA")
+        forget_bars("SPY", "TSLA")
 
 
 @pytest.mark.parametrize(
@@ -57,7 +53,7 @@ def test_the_overnight_levels_name_the_sessions_they_span(now, window):
     to Friday's regular open. Thursday 2026-10-01, the first day the bars hold: Schwab's candle of
     Wednesday 09-30 makes it the prior session, though no bar of it is held.
     """
-    _forget("SPY", "TSLA")
+    forget_bars("SPY", "TSLA")
     try:
         stream_daemon_bars(_BARS)
         hold_schwab_daily("SPY")
@@ -68,4 +64,4 @@ def test_the_overnight_levels_name_the_sessions_they_span(now, window):
         for row in overnight:
             assert row["provenance"]["window"] == window
     finally:
-        _forget("SPY", "TSLA")
+        forget_bars("SPY", "TSLA")

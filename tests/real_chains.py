@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from math_exposure_core import compute_exposures_by_strike
+from option_contract import OptionContract, read_chain
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -57,6 +59,18 @@ CRWD = _load("real_crwd_complete_chain_2026_10_07.json")
 TSLA = _load("real_tsla_complete_chain_2026_10_07.json")
 MRVL = _load("real_mrvl_full_chain_2026_10_07.json")
 NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")
+
+
+def crwd_exposures(chain: list[dict]) -> dict[float, dict]:
+    """The per-strike exposures of `chain`, CRWD's or a copy of it, at CRWD's price and capture."""
+    return compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)[0]
+
+
+def spy_0dte_book() -> tuple[list[OptionContract], float]:
+    """SPY_0DTE's contracts as the one reader reads them, and its price."""
+    return read_chain(SPY_0DTE.chain), SPY_0DTE.spot
+
+
 SPY_CLOSE = _load("real_spy_close_capture_and_after_hours_print_2026_10_22.json")
 #: SPY's first LEVELONE_EQUITIES message with a LAST_PRICE from 18:00 ET 2026-10-22, as recorded
 _SPY_CLOSE_FX = json.loads(

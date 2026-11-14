@@ -29,17 +29,12 @@ from math_levels import (
 )
 from option_contract import OptionContract, read_chain, read_contract
 from terrain_engine import compute_terrain
-from tests.real_chains import CRWD
+from tests.real_chains import CRWD, SPY_0DTE, spy_0dte_book
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
 #: own capture time (a live 0DTE, ~3.7 h to SPY's 16:15 option close)
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_2026_10_07.json"
-_DATA = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
-NOW = datetime.fromtimestamp(_DATA["ts_utc"], time_et.ET)
-
-
-def _load_real_chain() -> tuple[list[OptionContract], float]:
-    return read_chain(_DATA["chain"]), float(_DATA["spot"])
+NOW = SPY_0DTE.now
 
 
 def _profile(contracts: list[OptionContract], spot: float) -> list[tuple[float, float]]:
@@ -54,7 +49,7 @@ def _one(symbol: str) -> list[tuple[float, float]]:
 
     Wide enough that the same-day contract's gamma is exactly 0.0 at both ends.
     """
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     priced, _unpriced = contract_inputs(
         [c for c in chain if c.symbol == symbol], NOW, product=time_et.option_close_product("SPY")
     )
@@ -79,7 +74,7 @@ def _tsla() -> tuple[list[tuple[float, float]], float]:
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
     """The candidate prices are Schwab's: every strike holding a priced contract, and the price."""
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
     priced, _unpriced = contract_inputs(chain, NOW, product=time_et.option_close_product("SPY"))
     prices = [p for p, _ in prof]
@@ -106,7 +101,7 @@ def test_the_curve_reaches_as_far_as_the_chain_does() -> None:
 
 def test_profile_uses_dealer_sign_convention() -> None:
     """Calls add, puts subtract: an all-call book must be positive at every price."""
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     calls = [c for c in chain if c.side == "CALL"]
     assert calls, "fixture must contain calls"
     prof = _profile(calls, spot)
@@ -122,7 +117,7 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
     the span. Existence is pinned; the exact value is not (it moves with vol/time inputs) -
     span containment is the invariant.
     """
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
     flip = gamma_flip_from_profile(prof, spot)
     assert flip is not None, (
@@ -149,7 +144,7 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     arguably more certain than one with a flip beside spot. Before this was corrected, 20
     of 51 live tickers reported UNAVAILABLE while their gamma was uniformly signed.
     """
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
     assert prof, "real chain must produce a profile"
 
@@ -173,7 +168,7 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
 
 
 def test_gamma_at_price_clamps_outside_the_profile() -> None:
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
     assert gamma_at_price(prof, prof[0][0] - 50.0) == prof[0][1]  # below -> first value
     assert gamma_at_price(prof, prof[-1][0] + 50.0) == prof[-1][1]  # above -> last value
@@ -187,7 +182,7 @@ def test_flip_detects_positive_to_negative_crossing():
     Every captured whole book crosses from negative to positive. This selection is long gamma
     below and short gamma above, a boundary the other way.
     """
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     half = [c for c in chain if (c.strike < 777) == (c.side == "CALL") and c.strike != 777]
     prof = _profile(half, spot)
     ((below, above),) = _crossings(prof, 1)
@@ -202,7 +197,7 @@ def test_flip_still_detects_negative_to_positive():
     The curve is computed again between those two strikes, so the two prices the crossing lies
     between are under a cent apart.
     """
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
     ((below, above),) = _crossings(prof, -1)
     flip = gamma_flip_from_profile(prof, spot)
@@ -216,7 +211,7 @@ def test_flip_picks_the_crossing_nearest_spot():
     Induced: the real chain's puts from 774 to 779 with its calls outside them, which crosses
     down below 774 and up again below 779.
     """
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     band = [c for c in chain if (774 <= c.strike <= 779) == (c.side == "PUT")]
     prof = _profile(band, spot)
     ((down_lo, down_hi),) = _crossings(prof, 1)
@@ -229,7 +224,7 @@ def test_flip_picks_the_crossing_nearest_spot():
 
 
 def test_flip_none_when_one_signed():
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     puts = _profile([c for c in chain if c.side == "PUT"], spot)
     calls = _profile([c for c in chain if c.side == "CALL"], spot)
     assert all(v < 0 for _, v in puts) and gamma_flip_from_profile(puts, spot) is None
@@ -297,7 +292,7 @@ def test_grc_found_when_cushion_decays_above_spot():
 
 def test_below_support_state_never_fabricates_a_price():
     """The whole real SPY chain is negative at spot: a state, both levels None."""
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
     assert gamma_at_price(prof, spot) < 0
     out = compute_gamma_support_levels(prof, spot)

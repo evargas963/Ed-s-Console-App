@@ -11,14 +11,9 @@ from __future__ import annotations
 
 import collections
 
-from math_exposure_core import compute_exposures_by_strike, key_level_strikes_with_oi
+from math_exposure_core import key_level_strikes_with_oi
 from math_levels import compute_max_pain
-from option_contract import read_chain
-from tests.real_chains import CRWD
-
-
-def _exposures(chain: list[dict]) -> dict[float, dict]:
-    return compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)[0]
+from tests.real_chains import CRWD, crwd_exposures
 
 
 def _without(field: str, strike: float, side: str) -> list[dict]:
@@ -42,16 +37,16 @@ def test_key_level_strikes_with_oi_counts_one_sided_and_skips_unknown():
     known = sorted(k for k, (c, p) in weights.items() if c + p > 0)
     assert 46.25 in known and weights[46.25][0] == 0.0  # one-sided: counts (M-06)
     assert 297.5 not in known and weights[297.5] == [0.0, 0.0]  # known zero OI: excluded
-    assert key_level_strikes_with_oi(_exposures(CRWD.chain)) == known
+    assert key_level_strikes_with_oi(crwd_exposures(CRWD.chain)) == known
     # unknown OI: excluded
-    unknown = _exposures(_without("openInterest", 100.0, "PUT"))
+    unknown = crwd_exposures(_without("openInterest", 100.0, "PUT"))
     assert key_level_strikes_with_oi(unknown) == [k for k in known if k != 100.0]
 
 
 def test_compute_max_pain_ignores_strike_when_oi_present_but_mult_missing():
     # positive OI with no multiplier: the strike can't be weighed, so NO max pain -- it
     # used to be skipped, giving a max pain over part of the open interest (M-08)
-    assert compute_max_pain(_exposures(_without("multiplier", 100.0, "CALL"))) is None
+    assert compute_max_pain(crwd_exposures(_without("multiplier", 100.0, "CALL"))) is None
 
 
 def test_compute_max_pain_skips_strike_with_only_one_oi_mult():
@@ -70,4 +65,4 @@ def test_compute_max_pain_skips_strike_with_only_one_oi_mult():
         )
 
     want = min(strikes, key=pain)
-    assert compute_max_pain(_exposures(CRWD.chain)) == want
+    assert compute_max_pain(crwd_exposures(CRWD.chain)) == want

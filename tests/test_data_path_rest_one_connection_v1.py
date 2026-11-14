@@ -44,6 +44,7 @@ from tests.schwab_rest_standin import (
     LocalSchwab,
     delivered,
 )
+from tests.shared_helpers import et_ts
 from time_et import ET
 
 _STREAM = next(
@@ -55,10 +56,6 @@ _STREAM = next(
 )
 HELD = "SPY   261120C00875000"
 GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
-
-
-def _et(s: str) -> float:
-    return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
 def _setup(tmp_path, schwab: LocalSchwab, now: float):
@@ -100,7 +97,7 @@ def test_market_hours_are_not_asked_for_a_date_beyond_the_year_schwab_answers(tm
     year from today."; the one inside is published as Schwab sent it.
     """
     schwab = LocalSchwab()
-    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-01 10:15"))
     try:
         sweep.fetch_markets(client, ["2026-10-09", "2027-10-08"])
     finally:
@@ -116,7 +113,7 @@ def test_market_hours_are_asked_to_the_last_day_schwab_answered(tmp_path):
     asked, the second is not.
     """
     schwab = LocalSchwab()
-    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-07 22:16"))
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-07 22:16"))
     try:
         sweep.fetch_markets(client, ["2027-10-07", "2027-10-08"])
     finally:
@@ -129,7 +126,7 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     tmp_path, caplog
 ):
     schwab = LocalSchwab()
-    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-01 10:15"))
     try:
         with caplog.at_level(logging.INFO, logger="chain_history"):
             assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
@@ -198,7 +195,7 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     # each /quotes answer went to the console at once as Schwab sent it, its quoteTime included,
     # with the time it was received (the sweep's clock)
     answers = [msg for topic, msg in published if topic == "optquotes"]
-    assert {msg["ts_recv"] for msg in answers} == {_et("2026-10-01 10:15")}
+    assert {msg["ts_recv"] for msg in answers} == {et_ts("2026-10-01 10:15")}
     sent = {sym: quote for msg in answers for sym, quote in msg["answer"].items()}
     for sym, ct in spy.items():
         if sym != HELD:
@@ -227,13 +224,13 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     book, _diag = compute_exposures_by_strike(
         list(spy.values()),
         spot=SPY["spot"],
-        now=datetime.fromtimestamp(_et("2026-10-01 10:15"), ET),
+        now=datetime.fromtimestamp(et_ts("2026-10-01 10:15"), ET),
     )
     assert put_call_volume_ratio(book) is not None
     unknown, _diag = compute_exposures_by_strike(
         [replace(ct, volume=None) if sym == HELD else ct for sym, ct in spy.items()],
         spot=SPY["spot"],
-        now=datetime.fromtimestamp(_et("2026-10-01 10:15"), ET),
+        now=datetime.fromtimestamp(et_ts("2026-10-01 10:15"), ET),
     )
     assert put_call_volume_ratio(unknown) is None
     assert all(
@@ -277,7 +274,7 @@ def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
     quote's exact greeks. The same rule for every ticker.
     """
     schwab = LocalSchwab()
-    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-01 10:15"))
     record = daemon.option_record(HELD)[1]
     daemon.bus.publish(
         f"optquote.{HELD}",
@@ -308,7 +305,7 @@ def test_a_429_on_one_expiry_does_not_cost_the_ticker_its_round(tmp_path):
     """
     schwab = LocalSchwab()
     schwab.throttle_chain = {"SPY"}
-    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
     try:
         assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
     finally:
@@ -322,7 +319,7 @@ def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_g
 ):
     schwab = LocalSchwab()
     schwab.quotes_status = 429
-    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
     try:
         assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == set()
         refused = list(schwab.requests)
@@ -347,7 +344,7 @@ def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a
     schwab = LocalSchwab()
     schwab.refuse_chain = {"TSLA"}
     _daemon, sweep, client, published = _setup(
-        tmp_path, schwab, _et("2026-10-03 12:00")
+        tmp_path, schwab, et_ts("2026-10-03 12:00")
     )  # Saturday
     stop = threading.Event()
     try:
@@ -375,7 +372,7 @@ def test_a_held_contracts_record_ends_with_its_connection(tmp_path):
     asked of the quotes endpoint rather than priced on the ended connection's Greeks.
     """
     schwab = LocalSchwab()
-    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
+    daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-01 10:15"))
     asyncio.run(daemon.disconnect())
     daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})  # Schwab accepted it on the new one
     assert daemon.option_record(HELD) is None
@@ -393,7 +390,7 @@ def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path)
     quotes endpoint, never taken from a feed that is down.
     """
     schwab = LocalSchwab()
-    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
     daemon.held["LEVELONE_OPTIONS"] = frozenset()  # as Daemon.disconnect leaves it
     try:
         assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
@@ -414,7 +411,7 @@ def test_a_quotes_answer_that_is_not_json_fails_its_tickers_and_the_sweep_goes_o
     """
     schwab = LocalSchwab()
     schwab.quotes_body = b"<html>not json</html>"
-    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
     try:
         assert sweep.rotation(client, ["SPY"], threading.Event()) == set()
         schwab.quotes_body = None
@@ -443,7 +440,7 @@ def test_contracts_schwab_names_invalid_get_no_greeks_and_every_ticker_in_the_re
     named = invalid["quotes_errors"]["invalidSymbols"]
     schwab = LocalSchwab()
     schwab.invalid = invalid["chain_entries"]
-    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
     with caplog.at_level("WARNING", logger="chain_history"):
         try:
             assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}

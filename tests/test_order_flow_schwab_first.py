@@ -10,31 +10,24 @@ through the live state's one reader of a contract's top (OrderFlowState.push_opt
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from app.options.order_flow.engine import _compute_top_book_pressure
 from app.options.order_flow.state import OrderFlowState
-
-_FX = Path(__file__).resolve().parent / "fixtures"
-
-
-def _read(name: str) -> dict:
-    return json.loads((_FX / name).read_text(encoding="utf-8"))
-
+from tests.shared_helpers import fixture_json
 
 _REST_QUOTE = next(
     a["body"]["SPY"]
-    for a in _read("real_schwab_quotes_watchlist_check_2026_10_07.json")["answers"]
+    for a in fixture_json("real_schwab_quotes_watchlist_check_2026_10_07.json")["answers"]
     if a["ticker"] == "SPY"
 )
-_CHAIN_UNDERLYING = _read("real_schwab_chain_top_level_spy_tsla_2026_10_08.json")["answers"]["SPY"][
-    "top_level"
-]["underlying"]
-_BOOK = next(r[2] for r in _read("real_spy_books_2026_11_02.json")["rows"] if r[1] == "NYSE_BOOK")
+_CHAIN_UNDERLYING = fixture_json("real_schwab_chain_top_level_spy_tsla_2026_10_08.json")["answers"][
+    "SPY"
+]["top_level"]["underlying"]
+_BOOK = next(
+    r[2] for r in fixture_json("real_spy_books_2026_11_02.json")["rows"] if r[1] == "NYSE_BOOK"
+)
 _OPTION_TOP = next(
     m["item"]
-    for m in _read("real_stream_mix_2026_10_05_1400ct.json")["messages"]
+    for m in fixture_json("real_stream_mix_2026_10_05_1400ct.json")["messages"]
     if m["service"] == "LEVELONE_OPTIONS"
     and m["item"]["key"] == "SPY   261016P00780000"
     and {"BID_SIZE", "ASK_SIZE"} <= set(m["item"])

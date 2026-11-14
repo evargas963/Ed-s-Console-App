@@ -37,6 +37,7 @@ from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.real_chains import MRVL
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, LocalStreamer
+from tests.shared_helpers import TimerCountingLoop
 
 _FX = Path(__file__).parent / "fixtures"
 SPY = json.loads((_FX / "real_spy_full_chain_2026_11_09.json").read_text(encoding="utf-8"))
@@ -163,16 +164,6 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
     assert daemon._ranked[tk] == capture.shown_first(read, MRVL.spot, now), "the rule: that read"
 
 
-class _TimerCountingLoop(asyncio.SelectorEventLoop):
-    """asyncio's own event loop, counting each timer scheduled on it (call_at); nothing else."""
-
-    timers = 0
-
-    def call_at(self, when, callback, *args, context=None):
-        self.timers += 1
-        return super().call_at(when, callback, *args, context=context)
-
-
 def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
     """Schwab's heartbeat every 10 ms for 2 s: about 200 frames, each read as it comes.
 
@@ -186,7 +177,7 @@ def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
     rest = LocalSchwab(streamer.url)
     client = rest.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
-    loop = _TimerCountingLoop()
+    loop = TimerCountingLoop()
 
     async def go() -> tuple[int, float]:
         stop = asyncio.Event()

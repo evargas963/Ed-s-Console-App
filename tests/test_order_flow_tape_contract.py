@@ -18,6 +18,7 @@ from pathlib import Path
 
 import app.options.order_flow.engine as ofe
 from app.options.order_flow.state import OrderFlowState
+from tests.shared_helpers import sent
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _MIX = [
@@ -36,16 +37,11 @@ _NVDA_ZERO = next(
 )
 
 
-def _sent(key: str) -> list[dict]:
-    """`key`'s LEVELONE_EQUITIES messages, in receive order."""
-    return [m for m in _MIX if m["item"]["key"] == key]
-
-
 def _prints(key: str) -> list[tuple]:
     """(LAST_PRICE, LAST_SIZE or None, TRADE_TIME_MILLIS) of each message of `key` with a price."""
     return [
         (i["LAST_PRICE"], i.get("LAST_SIZE"), i["TRADE_TIME_MILLIS"])
-        for i in (m["item"] for m in _sent(key))
+        for i in (m["item"] for m in sent(_MIX, key))
         if "LAST_PRICE" in i
     ]
 
@@ -63,13 +59,13 @@ def test_cum_delta_proxy_skips_missing_print_size():
     prints = _prints("RKLB")
     assert [size for _p, size, _t in prints] == [None, None, None, 138]
     assert prints[3][0] < prints[2][0]  # a downtick: the sized print signs negative
-    assert ofe._compute_cum_delta_proxy(_data(_sent("RKLB"))) == -138
+    assert ofe._compute_cum_delta_proxy(_data(sent(_MIX, "RKLB"))) == -138
 
 
 def test_cum_delta_proxy_returns_none_when_all_print_sizes_missing():
     prints = _prints("$SPX")
     assert len(prints) == 4 and all(size is None for _p, size, _t in prints)
-    assert ofe._compute_cum_delta_proxy(_data(_sent("$SPX"))) is None
+    assert ofe._compute_cum_delta_proxy(_data(sent(_MIX, "$SPX"))) is None
 
 
 def test_a_tape_of_zero_size_prints_sums_to_zero_and_serves_its_window():
@@ -89,7 +85,7 @@ def test_a_tape_of_zero_size_prints_sums_to_zero_and_serves_its_window():
 def test_tape_pressure_skips_missing_print_size():
     """RKLB's one sized print, a downtick, is all the pressure: -138 / 138."""
     now = _prints("RKLB")[-1][2] / 1000
-    assert ofe._compute_tape_pressure(_data(_sent("RKLB")), window_sec=60.0, now=now) == -1.0
+    assert ofe._compute_tape_pressure(_data(sent(_MIX, "RKLB")), window_sec=60.0, now=now) == -1.0
 
 
 def test_an_old_tape_has_no_current_window_pressure():
@@ -99,7 +95,7 @@ def test_an_old_tape_has_no_current_window_pressure():
     trade was an hour ago still reported "30-second" pressure as current. Windows end at now;
     prints outside them count for nothing. SPY's prints, judged at its last trade and an hour on.
     """
-    data = _data(_sent("SPY"))
+    data = _data(sent(_MIX, "SPY"))
     last = max(t for _p, _s, t in _prints("SPY")) / 1000
     assert ofe._compute_tape_pressure(data, window_sec=30.0, now=last) is not None
     assert ofe._compute_tape_pressure(data, window_sec=30.0, now=last + 3600) is None

@@ -47,27 +47,23 @@ from tests.real_chains import (
     SPY_PRINT_A_STRIKE_AWAY,
     TSLA,
 )
+from tests.shared_helpers import fixture_json
 from tests.test_order_flow_book_payload_v1 import _same
 from time_et import ET, INDEX_OPTIONS, ct_label, record_markets, valuation_instant
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
-
-def _fixture(name: str) -> dict:
-    return json.loads((_FX / name).read_text(encoding="utf-8"))
-
-
-_QUOTE = _fixture("real_crwd_quote_2026_10_07.json")
+_QUOTE = fixture_json("real_crwd_quote_2026_10_07.json")
 #: SPY's and TSLA's LEVELONE_EQUITIES messages at their 2026-10-07 chain captures (SPY_0DTE, TSLA)
 _AT_CAPTURE = {
     q["ticker"]: q
-    for q in _fixture("real_spy_tsla_quotes_at_chain_capture_2026_10_07.json")["quotes"]
+    for q in fixture_json("real_spy_tsla_quotes_at_chain_capture_2026_10_07.json")["quotes"]
 }
-_SPY_TWO_CLOSES = _fixture("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json")
-_SPY_MONDAY = _fixture("real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json")
-_IWM_ON_A_STRIKE = _fixture("real_iwm_0dte_chain_priced_on_a_strike_2026_10_23.json")
-_SPY_PRINT_ON_A_STRIKE = _fixture("real_spy_print_on_a_strike_2026_10_22.json")
-_SPY_PRINT_ABOVE = _fixture("real_spy_print_above_the_0dte_strikes_2026_10_23.json")
+_SPY_TWO_CLOSES = fixture_json("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json")
+_SPY_MONDAY = fixture_json("real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json")
+_IWM_ON_A_STRIKE = fixture_json("real_iwm_0dte_chain_priced_on_a_strike_2026_10_23.json")
+_SPY_PRINT_ON_A_STRIKE = fixture_json("real_spy_print_on_a_strike_2026_10_22.json")
+_SPY_PRINT_ABOVE = fixture_json("real_spy_print_above_the_0dte_strikes_2026_10_23.json")
 
 
 def _chain_spot(tk: str, quote: dict) -> tuple:
@@ -222,7 +218,7 @@ def test_an_am_settled_expiry_past_the_year_is_scored():
     The expiry is past the year Schwab's /markets answers: each strike with open interest has
     its charm and vanna, so it has a score, and the score is the definition's.
     """
-    fx = _fixture("real_spx_chain_2026_10_07_2027_12_17.json")
+    fx = fixture_json("real_spx_chain_2026_10_07_2027_12_17.json")
     tk, at = server.ticker_storage_key(fx["ticker"]), datetime.fromtimestamp(fx["ts_utc"], ET)
     try:
         server._publish_levels(

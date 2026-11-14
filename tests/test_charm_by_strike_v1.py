@@ -12,33 +12,20 @@ verification is a test and not a one-off script.
 
 from __future__ import annotations
 
-import json
 import math
-from datetime import datetime
-from pathlib import Path
 
-import time_et
 from math_levels import compute_charm_by_strike, pick_charm_wall_strikes
-from option_contract import read_chain
 from tests.one_contract_greeks import charm
+from tests.real_chains import SPY_0DTE, spy_0dte_book
+from tests.shared_helpers import norm_cdf
 
 #: a REAL same-day-expiry SPY chain captured 2026-10-07 12:32 ET, valued at its own capture time
-_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_2026_10_07.json"
-_DATA = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
-NOW = datetime.fromtimestamp(_DATA["ts_utc"], time_et.ET)
-
-
-def _load_real_chain() -> tuple[list, float]:
-    return read_chain(_DATA["chain"]), float(_DATA["spot"])
-
-
-def _norm_cdf(x: float) -> float:
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+NOW = SPY_0DTE.now
 
 
 def _bs_delta_call(s: float, k: float, t: float, sig: float, r: float = 0.0) -> float:
     d1 = (math.log(s / k) + (r + 0.5 * sig * sig) * t) / (sig * math.sqrt(t))
-    return _norm_cdf(d1)
+    return norm_cdf(d1)
 
 
 def test_bs_charm_matches_finite_difference_of_delta() -> None:
@@ -69,7 +56,7 @@ def test_bs_charm_refuses_degenerate_inputs() -> None:
 
 def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:
     """net_charm must be call - put, matching the net-GEX dealer convention."""
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     cbs = compute_charm_by_strike(chain, spot, now=NOW)
     assert cbs, "real chain must produce per-strike charm"
     for b in cbs.values():
@@ -79,7 +66,7 @@ def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:
 
 
 def test_charm_walls_are_real_strikes_from_the_chain() -> None:
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     cbs = compute_charm_by_strike(chain, spot, now=NOW)
     assert cbs, "real chain must produce per-strike charm"
     call_wall, put_wall = pick_charm_wall_strikes(cbs)
@@ -93,7 +80,7 @@ def test_two_strikes_with_the_same_charm_give_the_lower_strike_whatever_their_or
 
     The wall is the lower of the two in either order of the map, as every other level picks.
     """
-    chain, spot = _load_real_chain()
+    chain, spot = spy_0dte_book()
     cbs = compute_charm_by_strike(chain, spot, now=NOW)
     call_wall, put_wall = pick_charm_wall_strikes(cbs)
     assert call_wall is not None
@@ -107,6 +94,6 @@ def test_two_strikes_with_the_same_charm_give_the_lower_strike_whatever_their_or
 def test_charm_by_strike_fails_closed() -> None:
     assert compute_charm_by_strike([], 100.0, now=NOW) == {}
     assert compute_charm_by_strike(None, 100.0, now=NOW) == {}
-    chain, _ = _load_real_chain()
+    chain, _ = spy_0dte_book()
     assert compute_charm_by_strike(chain, 0.0, now=NOW) == {}
     assert pick_charm_wall_strikes({}) == (None, None)

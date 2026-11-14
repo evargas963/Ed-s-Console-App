@@ -915,11 +915,7 @@ def build_price_level_snapshot(
 
     sess_window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"
 
-    if not bars_norm:
-        families_absent.extend(
-            {"family": fam, "reason": f"no bars available (source {bar_source})"}
-            for fam in ("vwap", "opening_range", "overnight", "value_area")
-        )
+    def snapshot(rth_volume_bars: int, profile: VolumeProfile | None) -> PriceLevelSnapshot:
         return PriceLevelSnapshot(
             ticker=tk,
             session_date=session_date,
@@ -931,9 +927,17 @@ def build_price_level_snapshot(
             vwap_series=vwap_series,
             families_absent=families_absent,
             degraded=degraded,
-            bars_used=0,
-            session_rth_positive_volume_bars=0,
+            bars_used=len(bars_norm),
+            session_rth_positive_volume_bars=rth_volume_bars,
+            volume_profile=profile,
         )
+
+    if not bars_norm:
+        families_absent.extend(
+            {"family": fam, "reason": f"no bars available (source {bar_source})"}
+            for fam in ("vwap", "opening_range", "overnight", "value_area")
+        )
+        return snapshot(0, None)
 
     # ── vwap + bands (one accumulation: the series IS the scalars' source) ───
     session_rth_vol_n = count_session_rth_positive_volume_bars(bars_norm, session_date)
@@ -1016,21 +1020,7 @@ def build_price_level_snapshot(
             window=sess_window,
         )
 
-    return PriceLevelSnapshot(
-        ticker=tk,
-        session_date=session_date,
-        generation=generation,
-        bar_source=bar_source,
-        as_of_ts_utc=as_of,
-        levels=levels,
-        vwap_path=vwap_path,
-        vwap_series=vwap_series,
-        families_absent=families_absent,
-        degraded=degraded,
-        bars_used=len(bars_norm),
-        session_rth_positive_volume_bars=session_rth_vol_n,
-        volume_profile=profile,
-    )
+    return snapshot(session_rth_vol_n, profile)
 
 
 #: (ticker, session_date_iso) -> the ONE materialized snapshot for the current generation.

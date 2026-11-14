@@ -6,18 +6,10 @@ from datetime import datetime
 
 import server
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
-from tests.feed_live_helper import daemon_bars, stream_daemon_bars
+from tests.feed_live_helper import daemon_bars, newest_bars, stream_daemon_bars
 from time_et import ET, ct_label
 
 _BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
-
-
-def _newest(rows: list[dict], tk: str) -> list[dict]:
-    out = {}
-    for r in sorted(rows, key=lambda r: r["ts_recv"]):
-        if r["symbol"] == tk:
-            out[r["bar_start_ms"]] = r
-    return [out[ms] for ms in sorted(out)]
 
 
 def _forget(*tickers: str) -> None:
@@ -39,7 +31,7 @@ def test_the_levels_pill_carries_the_snapshots_time():
         stream_daemon_bars(_BARS)
         server._publish_price_levels("SPY", closed)
         body = server.levels_payload("SPY", "1", closed)
-        as_of = _newest(_BARS, "SPY")[-1]["bar_start_ms"] / 1000
+        as_of = newest_bars(_BARS, "SPY")[-1]["bar_start_ms"] / 1000
         assert body["snapshot_time_ct"] == ct_label(as_of)
     finally:
         _forget("SPY", "TSLA")

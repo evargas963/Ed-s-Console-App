@@ -233,14 +233,12 @@ def book_msg(
     ts_recv: float | None = None,
     schwab_ts: int | None = None,
 ) -> dict:
-    """book.* (NYSE_BOOK / NASDAQ_BOOK / OPTIONS_BOOK), Schwab's item verbatim."""
+    """book.* (NYSE_BOOK / NASDAQ_BOOK / OPTIONS_BOOK), Schwab's item verbatim, and its service."""
     return {
-        "ts_recv": _now(ts_recv),
-        "schwab_ts": schwab_ts,
-        "symbol": symbol,
+        **verbatim_msg(
+            symbol=symbol, content=content, src=src, ts_recv=ts_recv, schwab_ts=schwab_ts
+        ),
         "service": service,
-        "content": content,
-        "src": src,
     }
 
 
@@ -1065,17 +1063,8 @@ class _Spill:
             spill.read_at = disk
         return spill
 
-    def left(self) -> dict:
-        """Return the spill file as listed when it is left on disk."""
-        return {
-            "path": str(self.path),
-            "messages": self.messages,
-            "bytes": self.size,
-            "written_back": self.written_back,
-        }
-
     def status(self) -> dict:
-        """Return the spill file as the heartbeat carries it."""
+        """Return the spill file as the heartbeat carries it, and as listed when left on disk."""
         return {
             "path": str(self.path),
             "bytes": self.size,
@@ -1618,7 +1607,7 @@ class CaptureWriter:
         """
         for spill in self._spills:
             spill.close()
-            self.left_on_disk.append(spill.left())
+            self.left_on_disk.append(spill.status())
         self._spills = []
 
     def _spilled(self, item, spill: _Spill | None, refused: BaseException | None) -> None:
@@ -1731,7 +1720,7 @@ class CaptureWriter:
                 spill.messages,
             )
             with self._lock:
-                self.left_on_disk.append(spill.left())
+                self.left_on_disk.append(spill.status())
             return
         conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
         conn.commit()

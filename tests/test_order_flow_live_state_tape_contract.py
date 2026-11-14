@@ -15,6 +15,7 @@ from pathlib import Path
 
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as live_state
+from tests.shared_helpers import sent
 
 _MIX = [
     m
@@ -27,13 +28,9 @@ _MIX = [
 ]
 
 
-def _sent(key: str) -> list[dict]:
-    return [m for m in _MIX if m["item"]["key"] == key]
-
-
 def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     sym = "$SPX"
-    first = next(m for m in _sent(sym) if "LAST_PRICE" in m["item"])
+    first = next(m for m in sent(_MIX, sym) if "LAST_PRICE" in m["item"])
     assert "LAST_SIZE" not in first["item"]
     live_state.clear_symbol(sym)
     try:
@@ -61,13 +58,13 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
     sym = "SPY"
     prints = [
         (m["item"]["LAST_PRICE"], m["item"].get("LAST_SIZE"))
-        for m in _sent(sym)
+        for m in sent(_MIX, sym)
         if "LAST_PRICE" in m["item"]
     ]
     assert prints == [(775.565, 40), (775.57, None), (775.565, 49)]
     live_state.clear_symbol(sym)
     try:
-        for m in _sent(sym):
+        for m in sent(_MIX, sym):
             live_state.push_level_one(sym, m["item"], ts_recv=m["ts_recv"])
         content = live_state.get_content_for_symbol(sym)
     finally:

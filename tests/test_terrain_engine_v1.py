@@ -16,7 +16,7 @@ import pytest
 from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
 from math_levels import GAMMA_FLIP_TRUSTED
 from math_probabilities import compute_pin_score
-from option_contract import OptionContract, read_chain, read_contract
+from option_contract import read_chain, read_contract
 from terrain_engine import (
     TERRAIN_SCHEMA_VERSION,
     WALL_BREACHED,
@@ -29,13 +29,9 @@ from terrain_engine import (
     price_relations,
     wall_geometry_state,
 )
-from tests.real_chains import CRWD, MRVL, SPY_0DTE
+from tests.real_chains import CRWD, MRVL, SPY_0DTE, spy_0dte_book
 
 NOW = SPY_0DTE.now
-
-
-def _real_chain() -> tuple[list[OptionContract], float]:
-    return read_chain(SPY_0DTE.chain), SPY_0DTE.spot
 
 
 def test_fails_closed_on_every_missing_input() -> None:
@@ -56,7 +52,7 @@ def test_fails_closed_on_every_missing_input() -> None:
 
 
 def test_real_chain_produces_a_complete_payload() -> None:
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
 
     assert snap.ticker == "SPY"
@@ -73,7 +69,7 @@ def test_levels_are_real_strikes_or_absent() -> None:
 
     The gamma flip is the one exception: it is interpolated between strikes by design.
     """
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     strikes = {c.strike for c in chain if c.strike is not None}
     served = snap.to_dict() | price_relations(snap.to_dict(), spot).to_dict()
@@ -103,7 +99,7 @@ def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
     /api/analytics/state duplicate produced. One terrain source of truth keeps this fail-closed
     backstop.
     """
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     assert snap.profile, "the chain must price, so the NARROW gate (not an expiry) is tested"
     assert snap.confidence != GAMMA_FLIP_TRUSTED
@@ -113,7 +109,7 @@ def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
 
 def test_payload_is_json_serialisable() -> None:
     """It is served over HTTP; a non-serialisable field breaks the tab silently."""
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     payload = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     round_tripped = json.loads(json.dumps(payload))
     assert round_tripped["ticker"] == "SPY"
@@ -158,7 +154,7 @@ def test_a_price_midway_between_two_strikes_takes_the_lower_strikes_iv_in_any_or
     Each leg's IV is the lower strike's (nearest_strike's rule), whichever way the chain is
     ordered: once the first contract met won, so the answer followed the chain's order.
     """
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     strikes = sorted({c.strike for c in chain if c.expiry == chain[0].expiry})
     lower = max(k for k in strikes if k <= spot)
     upper = min(k for k in strikes if k > lower)
@@ -177,7 +173,7 @@ def test_the_nearest_strike_is_one_rule_for_a_list_in_order_and_a_list_that_is_n
     nearest_position (the daemon's recorded window and streamed-contract order) and
     nearest_strike (every panel's spot row) agree with the nearest by distance, lower on a tie.
     """
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     strikes = sorted({c.strike for c in chain})
     lower = max(k for k in strikes if k <= spot)
     upper = min(k for k in strikes if k > lower)
@@ -256,7 +252,7 @@ def test_real_chain_carries_the_sigma_band() -> None:
 
     A same-day-only chain has none; the CRWD chain (9 days out, valued at its capture) has one.
     """
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     assert compute_terrain("SPY", chain, spot, now=NOW).implied_1d_move is None
     snap = compute_terrain("CRWD", read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
     em = snap.implied_1d_move
@@ -314,7 +310,7 @@ def test_wall_geometry_state_rejects_unknown_side() -> None:
 
 def test_real_chain_wall_states_agree_with_the_geometry() -> None:
     """The states qualify the walls at the price given, and agree with the geometry."""
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     d = price_relations(snap.to_dict(), spot)
     assert d.call_wall_state == wall_geometry_state(spot, snap.call_wall, "call")
@@ -352,7 +348,7 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
     absolute_gamma_gex_dollars / absolute_gamma_oi / book_oi_total are the same
     compute_exposures_by_strike map pick_pin_and_strength used (RC-292 renamed the fields).
     """
-    chain, spot = _real_chain()
+    chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     exposures, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     pin = snap.absolute_gamma_strike
