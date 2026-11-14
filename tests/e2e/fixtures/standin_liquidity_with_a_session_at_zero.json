@@ -1,9 +1,7 @@
 {
  "ticker": "ZZLIQ",
- "snapshot_type": "live",
  "zones": [
   {
-   "zone_type": "pivot_value",
    "zone_label": "Pivot / value",
    "zone_side": "value",
    "zone_low": -44.3533325484506,
@@ -15,15 +13,10 @@
      "value": -44.3533325484506
     }
    ],
-   "source_tags": [
-    "VWAP_M1"
-   ],
    "confluence_score": 1,
-   "interpretation_notes": "Fair value / pivot",
-   "distance_to_spot": null
+   "interpretation_notes": "Fair value / pivot"
   },
   {
-   "zone_type": "resistance_liquidity",
    "zone_label": "Resistance",
    "zone_side": "resistance",
    "zone_low": 0.0,
@@ -59,21 +52,10 @@
      "value": 0.0
     }
    ],
-   "source_tags": [
-    "ORB_HIGH",
-    "ORB_MID",
-    "ORB_LOW",
-    "TODAY_VAH",
-    "TODAY_POC",
-    "TODAY_VAL",
-    "OVERNIGHT_LOW"
-   ],
    "confluence_score": 7,
-   "interpretation_notes": "Resistance / upper structure",
-   "distance_to_spot": null
+   "interpretation_notes": "Resistance / upper structure"
   },
   {
-   "zone_type": "pivot_value",
    "zone_label": "Pivot / value",
    "zone_side": "value",
    "zone_low": 2.9153649326952222,
@@ -85,15 +67,10 @@
      "value": 2.9153649326952222
     }
    ],
-   "source_tags": [
-    "VWAP"
-   ],
    "confluence_score": 1,
-   "interpretation_notes": "Fair value / pivot",
-   "distance_to_spot": null
+   "interpretation_notes": "Fair value / pivot"
   },
   {
-   "zone_type": "pivot_value",
    "zone_label": "Pivot / value",
    "zone_side": "value",
    "zone_low": 50.18406241384104,
@@ -105,15 +82,10 @@
      "value": 50.18406241384104
     }
    ],
-   "source_tags": [
-    "VWAP_P1"
-   ],
    "confluence_score": 1,
-   "interpretation_notes": "Fair value / pivot",
-   "distance_to_spot": null
+   "interpretation_notes": "Fair value / pivot"
   },
   {
-   "zone_type": "support_liquidity",
    "zone_label": "Support",
    "zone_side": "support",
    "zone_low": 758.7901,
@@ -125,15 +97,10 @@
      "value": 758.7901
     }
    ],
-   "source_tags": [
-    "PDL"
-   ],
    "confluence_score": 1,
-   "interpretation_notes": "Support / lower structure",
-   "distance_to_spot": null
+   "interpretation_notes": "Support / lower structure"
   },
   {
-   "zone_type": "support_liquidity",
    "zone_label": "Support",
    "zone_side": "support",
    "zone_low": 761.19,
@@ -145,15 +112,10 @@
      "value": 761.19
     }
    ],
-   "source_tags": [
-    "PD_VAL"
-   ],
    "confluence_score": 1,
-   "interpretation_notes": "Support / lower structure",
-   "distance_to_spot": null
+   "interpretation_notes": "Support / lower structure"
   },
   {
-   "zone_type": "resistance_liquidity",
    "zone_label": "Resistance",
    "zone_side": "resistance",
    "zone_low": 764.35,
@@ -177,15 +139,8 @@
      "value": 765.65
     }
    ],
-   "source_tags": [
-    "PD_POC",
-    "OVERNIGHT_HIGH",
-    "PD_VAH",
-    "PDH"
-   ],
    "confluence_score": 4,
-   "interpretation_notes": "Resistance / upper structure",
-   "distance_to_spot": null
+   "interpretation_notes": "Resistance / upper structure"
   }
  ],
  "summary": {

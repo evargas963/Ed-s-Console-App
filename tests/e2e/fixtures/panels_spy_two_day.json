@@ -46852,10 +46852,8 @@
  },
  "liquidity": {
   "ticker": "SPY",
-  "snapshot_type": "live",
   "zones": [
    {
-    "zone_type": "pivot_value",
     "zone_label": "Pivot / value",
     "zone_side": "value",
     "zone_low": 757.0,
@@ -46887,20 +46885,10 @@
       "value": 758.01
      }
     ],
-    "source_tags": [
-     "MAX_PAIN",
-     "SPOT_LIVE",
-     "VWAP_P1",
-     "TODAY_VAH",
-     "ORB_HIGH",
-     "PD_VAL"
-    ],
     "confluence_score": 6,
-    "interpretation_notes": "Live spot (from console cache)",
-    "distance_to_spot": 0.0
+    "interpretation_notes": "Live spot (from console cache)"
    },
    {
-    "zone_type": "support_liquidity",
     "zone_label": "Support",
     "zone_side": "support",
     "zone_low": 754.9,
@@ -46932,20 +46920,10 @@
       "value": 756.7
      }
     ],
-    "source_tags": [
-     "PDL",
-     "VWAP_M1",
-     "ORB_MID",
-     "TODAY_VAL",
-     "VWAP",
-     "TODAY_POC"
-    ],
     "confluence_score": 6,
-    "interpretation_notes": "Support / lower structure",
-    "distance_to_spot": 0.375
+    "interpretation_notes": "Support / lower structure"
    },
    {
-    "zone_type": "support_liquidity",
     "zone_label": "Support",
     "zone_side": "support",
     "zone_low": 760.0,
@@ -46981,21 +46959,10 @@
       "value": 761.62
      }
     ],
-    "source_tags": [
-     "GAMMA_PUT_WALL",
-     "DELTA_PUT_WALL",
-     "ABS_GAMMA",
-     "PD_POC",
-     "OVERNIGHT_HIGH",
-     "GAMMA_FLIP",
-     "PD_VAH"
-    ],
     "confluence_score": 7,
-    "interpretation_notes": "Confluence: downside positioning / demand",
-    "distance_to_spot": 2.9249999999999545
+    "interpretation_notes": "Confluence: downside positioning / demand"
    },
    {
-    "zone_type": "support_liquidity",
     "zone_label": "Support",
     "zone_side": "support",
     "zone_low": 752.82,
@@ -47011,16 +46978,10 @@
       "value": 753.67
      }
     ],
-    "source_tags": [
-     "OVERNIGHT_LOW",
-     "ORB_LOW"
-    ],
     "confluence_score": 2,
-    "interpretation_notes": "Support / lower structure",
-    "distance_to_spot": 3.4050000000000864
+    "interpretation_notes": "Support / lower structure"
    },
    {
-    "zone_type": "resistance_liquidity",
     "zone_label": "Resistance",
     "zone_side": "resistance",
     "zone_low": 762.51,
@@ -47032,15 +46993,10 @@
       "value": 762.51
      }
     ],
-    "source_tags": [
-     "PDH"
-    ],
     "confluence_score": 1,
-    "interpretation_notes": "Resistance / upper structure",
-    "distance_to_spot": 5.434999999999945
+    "interpretation_notes": "Resistance / upper structure"
    },
    {
-    "zone_type": "pivot_value",
     "zone_label": "Pivot / value",
     "zone_side": "value",
     "zone_low": 750.0,
@@ -47052,15 +47008,10 @@
       "value": 750.0
      }
     ],
-    "source_tags": [
-     "NET_PUT_PEAK"
-    ],
     "confluence_score": 1,
-    "interpretation_notes": "Confluence: mixed positioning + session levels",
-    "distance_to_spot": 7.0750000000000455
+    "interpretation_notes": "Confluence: mixed positioning + session levels"
    },
    {
-    "zone_type": "resistance_liquidity",
     "zone_label": "Resistance",
     "zone_side": "resistance",
     "zone_low": 775.0,
@@ -47080,14 +47031,8 @@
       "value": 775.0
      }
     ],
-    "source_tags": [
-     "GAMMA_CALL_WALL",
-     "DELTA_CALL_WALL",
-     "NET_CALL_PEAK"
-    ],
     "confluence_score": 3,
-    "interpretation_notes": "Confluence: overhead positioning / supply",
-    "distance_to_spot": 17.924999999999955
+    "interpretation_notes": "Confluence: overhead positioning / supply"
    }
   ],
   "summary": {

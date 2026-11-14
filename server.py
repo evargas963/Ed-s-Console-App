@@ -4275,26 +4275,25 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
     )
     zones_payload = [
         {
-            "zone_type": z.zone_type.value,
             "zone_label": ZONE_DISPLAY[z.zone_type][0],
             "zone_side": ZONE_DISPLAY[z.zone_type][1],
             "zone_low": z.zone_low,
             "zone_high": z.zone_high,
             "anchor": z.zone_mid,
             "source_levels": z.source_levels,
-            "source_tags": z.source_tags,
             "confluence_score": z.confluence_score,
             "interpretation_notes": z.interpretation_notes,
-            "distance_to_spot": _distance_to_spot(z.zone_low, z.zone_high, spot_for_zones),
         }
         for z in out.zones
     ]
+    # by price, then (with a live price) nearest the price first
     zones_payload.sort(key=lambda x: x["zone_low"])
     if spot_for_zones is not None:
-        zones_payload.sort(key=lambda x: x["distance_to_spot"])
+        zones_payload.sort(
+            key=lambda x: _distance_to_spot(x["zone_low"], x["zone_high"], spot_for_zones)
+        )
     return {
         "ticker": out.ticker,
-        "snapshot_type": out.snapshot_type.value,
         "zones": zones_payload,
         "summary": out.summary
         and {
