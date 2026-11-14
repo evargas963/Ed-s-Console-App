@@ -304,16 +304,14 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
             ("oi", strike_oi_legs(bucket)),
             ("volume", strike_volume_legs(bucket)),
         ):
-            exp_cell = (
-                None
-                if legs is None
-                else {
-                    "call": round(legs[0]),
-                    "put": round(legs[1]),
-                    "total": round(legs[0] + legs[1]),
-                }
-            )
-            assert row[key][col] == exp_cell
+            if legs is None:  # no count Schwab sent: the cell is unknown
+                assert row[key][col] is None
+                continue
+            assert row[key][col] == {
+                "call": round(legs[0]),
+                "put": round(legs[1]),
+                "total": round(legs[0] + legs[1]),
+            }
         checked += 1
     assert checked > 20
 
