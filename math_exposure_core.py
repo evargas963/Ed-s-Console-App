@@ -86,6 +86,39 @@ def _each(
     return on
 
 
+def _priced_d1(
+    spot: float,
+    strike: NDArray[np.float64],
+    t_years: NDArray[np.float64],
+    sigma: NDArray[np.float64],
+    rate: NDArray[np.float64],
+    dividend: NDArray[np.float64],
+) -> tuple[NDArray[np.bool_], NDArray[np.float64], NDArray[np.float64]]:
+    """Return which contracts can be priced, and each one's d1 and sigma * sqrt(T).
+
+    Priced: every input positive and the rate and dividend yield known. d1 carries r - q
+    (d1_vt), NaN where not priced.
+    """
+    priced = (
+        (spot > 0)
+        & (strike > 0)
+        & (t_years > 0)
+        & (sigma > 0)
+        & np.isfinite(rate)
+        & np.isfinite(dividend)
+    )
+    d1, vt = d1_vt(
+        spot,
+        strike,
+        t_years,
+        sigma,
+        rate - dividend,
+        log=_each(math.log, priced),
+        sqrt=np.sqrt,
+    )
+    return priced, d1, vt
+
+
 def bs_vanna_array(
     spot: float,
     strike: NDArray[np.float64],
@@ -106,24 +139,8 @@ def bs_vanna_array(
     dividend yield not known, a d1 or a vanna that is not finite.
     """
     with np.errstate(all="ignore"):
-        priced = (
-            (spot > 0)
-            & (strike > 0)
-            & (t_years > 0)
-            & (sigma > 0)
-            & np.isfinite(rate)
-            & np.isfinite(dividend)
-        )
+        priced, d1, vt = _priced_d1(spot, strike, t_years, sigma, rate, dividend)
         exp = _each(math.exp, priced)
-        d1, vt = d1_vt(
-            spot,
-            strike,
-            t_years,
-            sigma,
-            rate - dividend,
-            log=_each(math.log, priced),
-            sqrt=np.sqrt,
-        )
         d2 = d1 - vt
         v = -exp(-dividend * t_years) * norm_pdf(d1, exp=exp) * d2 / sigma
     return np.where(priced & np.isfinite(d1) & np.isfinite(v), v, np.nan)
@@ -151,24 +168,8 @@ def bs_charm_array(
     dividend yield not known, a d1 or a charm that is not finite.
     """
     with np.errstate(all="ignore"):
-        priced = (
-            (spot > 0)
-            & (strike > 0)
-            & (t_years > 0)
-            & (sigma > 0)
-            & np.isfinite(rate)
-            & np.isfinite(dividend)
-        )
+        priced, d1, vt = _priced_d1(spot, strike, t_years, sigma, rate, dividend)
         exp = _each(math.exp, priced)
-        d1, vt = d1_vt(
-            spot,
-            strike,
-            t_years,
-            sigma,
-            rate - dividend,
-            log=_each(math.log, priced),
-            sqrt=np.sqrt,
-        )
         d2 = d1 - vt
         cdf = 0.5 * (1.0 + _each(math.erf, priced)(sign * d1 / math.sqrt(2.0)))
         c = exp(-dividend * t_years) * (
