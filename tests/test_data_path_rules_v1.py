@@ -61,7 +61,7 @@ from tests.feed_live_helper import (
 )
 from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
 from tests.shared_helpers import et_ts
-from time_et import ET, ct_label, now_et
+from time_et import ET, ct_label
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -1081,7 +1081,9 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
                 for d, c in at
                 if d.date().isoformat() == "2026-10-06" and 570 <= d.hour * 60 + d.minute < 960
             ]
-            snap = server.canonical_price_level_snapshot(tk, now_et())
+            snap = server.canonical_price_level_snapshot(
+                tk, datetime.fromtimestamp(time_et.now(), ET)
+            )
             assert snap.as_of_ts_utc == candles[-1]["datetime"] / 1000, tk
             assert (snap.levels["PDL"].price, snap.levels["PDH"].price) == (
                 min(c["low"] for c in monday),

@@ -128,7 +128,6 @@ from time_et import (
     et_date_str_from_ts_utc,
     last_open,
     market_session_date,
-    now_et,
     option_close_product,
     option_market_open,
     option_window_began,
@@ -401,7 +400,9 @@ def _bar_writer() -> None:
         msgs = [streamed_bars.get()]
         while not streamed_bars.empty():
             msgs.append(streamed_bars.get_nowait())
-        _write_streamed_bars([m for m in msgs if m is not None], now_et())
+        _write_streamed_bars(
+            [m for m in msgs if m is not None], datetime.fromtimestamp(time_et.now(), ET)
+        )
         if None in msgs:
             return
 
@@ -1789,7 +1790,7 @@ def _price_waiting_chain() -> None:
         delivered = any(what == DELIVERED for what, *_ in _chains_waiting.values())
         tk = next(t for t in waiting if not (delivered and _chains_waiting[t][0] == STORED))
         what, contracts, ts, spot = _chains_waiting.pop(tk)
-    _price_chain(tk, what, contracts, ts, spot, now_et())
+    _price_chain(tk, what, contracts, ts, spot, datetime.fromtimestamp(time_et.now(), ET))
 
 
 def _price_chain(
@@ -1959,14 +1960,15 @@ def _terrain_loop() -> None:
     )
     watchlist = _watchlist()
     _load_crosses(watchlist)
-    _publish_missing_price_levels(watchlist, now_et())
+    started = datetime.fromtimestamp(time_et.now(), ET)
+    _publish_missing_price_levels(watchlist, started)
     queued = _load_stored_levels(watchlist)
     log.info(
         "Ready: the stored levels of %d of %d watchlist tickers are queued to price (session: %s); "
         "the daemon's chains price them from here.",
         queued,
         len(watchlist),
-        session_label(now_et()),
+        session_label(started),
     )
     next_status = time_et.elapsed() + STATUS_EVERY_SEC
     while _terrain_loop_running:
@@ -1979,7 +1981,7 @@ def _terrain_loop() -> None:
                 refresh_not_live_pages(now)
                 watchlist = _watchlist()
                 if watchlist is not None:
-                    _publish_missing_price_levels(watchlist, now_et())
+                    _publish_missing_price_levels(watchlist, datetime.fromtimestamp(now, ET))
         except Exception as e:  # the status line says it failed, never silence
             log.warning("levels loop: %s: %s", type(e).__name__, e, exc_info=True)
     log.info("Terrain loop stopped")

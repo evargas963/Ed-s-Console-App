@@ -18,7 +18,6 @@ from time_et import (
     MIN_TIME_TO_EXPIRY_YEARS,
     YEAR_SECONDS,
     elapsed,
-    now_et,
     set_within,
     time_to_expiry_years,
 )
@@ -46,13 +45,6 @@ def test_a_wait_for_an_event_answers_whether_it_was_set_and_leaves_no_task_behin
     unset, waited, is_set, took, left = asyncio.run(go())
     assert (unset, is_set, left) == (False, True, [])
     assert waited >= 0.05 and took < 1.0
-
-
-def test_now_et_uses_america_new_york_zone():
-    dt = now_et()
-    assert dt.tzinfo is not None
-    assert str(dt.tzinfo) in ("America/New_York", "America/New_York EST", "America/New_York EDT")
-    assert dt.utcoffset() is not None
 
 
 def test_dst_offset_differs_summer_vs_winter():

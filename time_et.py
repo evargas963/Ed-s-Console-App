@@ -86,11 +86,6 @@ async def set_within(event: asyncio.Event, seconds: float) -> bool:
     return event.is_set()
 
 
-def now_et() -> datetime:
-    """Timezone-aware US/Eastern now (now)."""
-    return datetime.fromtimestamp(now(), ET)
-
-
 def et_date_str_from_ts_utc(ts_utc: float) -> str:
     """YYYY-MM-DD in America/New_York for the instant."""
     dt = datetime.fromtimestamp(float(ts_utc), tz=UTC).astimezone(ET)
