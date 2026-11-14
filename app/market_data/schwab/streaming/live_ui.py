@@ -50,7 +50,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, override
@@ -160,7 +160,7 @@ class LiveUiServer:
         record_heartbeat: Callable[[dict[str, Any]], object] = lmp.record_feed_heartbeat,
         clock: Callable[[], float] = time_et.now,
         *,
-        panels: dict[str, Callable[[Asked], dict[str, Any]]],
+        panels: dict[str, Callable[[Asked], Mapping[str, Any]]],
         priced: tuple[str, ...] = (),
         on_select: Callable[[str], object],
     ) -> None:
@@ -234,7 +234,7 @@ class LiveUiServer:
                 body = await self._produce(name, asked)
                 await self._send(c, {"type": name, "ticker": asked.ticker, **body})
 
-    async def _produce(self, name: str, asked: Asked) -> dict[str, Any]:
+    async def _produce(self, name: str, asked: Asked) -> Mapping[str, Any]:
         """Return panel `name`'s body: its kind's producer, given what the page asked.
 
         On a worker thread, as a route's read ran: a producer that waits on a lock the pricing
@@ -395,7 +395,7 @@ async def serve_live_ui(
     *,
     state: State,
     heartbeat_fn: Callable[[float], dict[str, Any]],
-    panels: dict[str, Callable[[Asked], dict[str, Any]]],
+    panels: dict[str, Callable[[Asked], Mapping[str, Any]]],
     priced: tuple[str, ...] = (),
     on_select: Callable[[str], object],
     stats: dict[str, int] | None = None,
