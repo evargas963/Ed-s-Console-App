@@ -102,6 +102,7 @@ from terrain_engine import (
     SCOPES,
     Book,
     ExpiryKey,
+    OneDayMove,
     StrikeRow,
     TerrainSnapshot,
     chain_ladder,
@@ -3753,9 +3754,7 @@ def _confluence_markers(
     return markers
 
 
-def expected_move(
-    move: dict[str, float | str] | None, spot: float | None
-) -> tuple[float, float] | None:
+def expected_move(move: OneDayMove | None, spot: float | None) -> tuple[float, float] | None:
     """Return the one-day move's upper and lower price.
 
     The live price plus and minus the terrain's implied one-day move

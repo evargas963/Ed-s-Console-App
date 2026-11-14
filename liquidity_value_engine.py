@@ -87,6 +87,11 @@ LEVEL_NAMES = {
     "ORB_MID": ("Opening range mid", "ORM"),
     "OVERNIGHT_HIGH": ("Overnight high", "ONH"),
     "OVERNIGHT_LOW": ("Overnight low", "ONL"),
+    "VWAP": ("VWAP", "VWAP"),
+    "VWAP_P1": ("VWAP +1σ", "VWAP+1σ"),
+    "VWAP_M1": ("VWAP −1σ", "VWAP−1σ"),
+    "VWAP_P2": ("VWAP +2σ", "VWAP+2σ"),
+    "VWAP_M2": ("VWAP −2σ", "VWAP−2σ"),
 }
 
 
@@ -699,7 +704,7 @@ class PriceLevelValue:
         return _SESSION_SCOPE_OF.get(self.semantic_scope, self.semantic_scope)
 
     def to_contract_dict(self) -> dict[str, Any]:
-        label, short = LEVEL_NAMES.get(self.level_id, (self.level_id, self.level_id))
+        label, short = LEVEL_NAMES[self.level_id]
         return {
             "id": self.level_id,
             "price": self.price,

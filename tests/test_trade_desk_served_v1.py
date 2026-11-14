@@ -26,7 +26,7 @@ from app.options.order_flow.engine import (
 )
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import LevelCrossEvent
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, LEVEL_NAMES
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, LEVEL_NAMES, PHASE2A_LEVEL_IDS
 from micro_structure import Candle
 from option_contract import read_chain
 from terrain_engine import (
@@ -444,6 +444,9 @@ def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
     body = serve()
     snap = [r for r in body["levels"] if r["id"] in LEVEL_NAMES]
     assert len(snap) >= 8  # the real SPY bars price most of them
+    # every level the engine can produce has its name: none is ever served by its id
+    assert set(PHASE2A_LEVEL_IDS) <= set(LEVEL_NAMES)
+    assert {r["label"] for r in snap} >= {"VWAP +1σ", "VWAP −1σ", "VWAP +2σ", "VWAP −2σ"}
     for r in body["levels"]:
         assert r["label"] and r["short"], r["id"]
         if r["id"] in LEVEL_NAMES:
