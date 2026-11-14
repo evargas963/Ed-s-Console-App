@@ -40,6 +40,9 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
   await expect(plot.locator('.tvc-pin')).toBeVisible();
   await expect(plot.locator('.tvc-pin')).toContainText('Bid size');
+  // its time is the served bucket's (history.book_heatmap_for_ticker's bucket_ct)
+  const shown = await plot.locator('.tvc-pin .tvc-pin-h span').textContent();
+  expect(HEAT.bucket_ct).toContain(shown);
   expect(errs).toEqual([]);
 });
 

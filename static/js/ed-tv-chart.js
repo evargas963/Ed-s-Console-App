@@ -1037,8 +1037,8 @@
         pinBox.hidden = false;
         pinBox.innerHTML =
           '<div class="tvc-pin-h"><span>' +
-          esc(CT_FULL.format(new Date(S.pinned.time * 1000))) +
-          " CT</span>" +
+          esc(cell ? heat.h.bucket_ct[cell.t] : "-") + // the served bucket's time
+          "</span>" +
           '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
           '<div class="tvc-pin-g"><span>Price</span><b>' +
           num(S.pinned.price) +
@@ -1062,8 +1062,8 @@
         pct = b.chg_pct; // served per bar
       pinBox.innerHTML =
         '<div class="tvc-pin-h"><span>' +
-        esc(CT_FULL.format(new Date(b.t * 1000))) +
-        " CT</span>" +
+        esc(b.time_ct) + // served per bar
+        "</span>" +
         '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
         '<div class="tvc-pin-g"><span>Open</span><b>' +
         num(b.o) +

@@ -109,6 +109,8 @@ class BookHeatmap(TypedDict):
     until_ct: str
     n_buckets: int
     bucket_sec: float
+    #: each time bucket's start as the screen shows it, by the cells' `t`
+    bucket_ct: list[str]
     display_lo: float
     display_hi: float
     max_size: float
@@ -417,6 +419,7 @@ def book_heatmap_for_ticker(
         "until_ct": ct_label(rows[-1][0]),
         "n_buckets": n_buckets,
         "bucket_sec": bucket_sec,
+        "bucket_ct": [ct_label(t0 + i * bucket_sec) for i in range(n_buckets)],
         # the default price window, and the largest displayed size (the colour scale's top)
         "display_lo": display_lo,
         "display_hi": display_hi,
