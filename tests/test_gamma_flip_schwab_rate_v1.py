@@ -28,7 +28,7 @@ from math_levels import contract_inputs
 from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_FULL, TSLA, RealChain
-from time_et import ET, option_close_product, time_to_expiry_years
+from time_et import ET, option_close_product, sessions, time_to_expiry_years
 
 
 def _number(x):
@@ -42,6 +42,7 @@ def _inputs(book: RealChain):
     """Each contract with open interest that can be priced: K, T, sigma, r, q, signed OI x mult."""
     rows = []
     product = option_close_product(book.ticker)
+    held = sessions()
     for c in book.chain:
         oi, k, iv, mult = (
             _number(c.get(f)) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
@@ -50,7 +51,11 @@ def _inputs(book: RealChain):
         if not oi or None in (k, iv, mult, r, q) or iv <= 0 or c["putCall"] not in ("CALL", "PUT"):
             continue
         t = time_to_expiry_years(
-            c["expirationDate"], book.now, settlement_type=c.get("settlementType"), product=product
+            c["expirationDate"],
+            book.now,
+            sessions=held,
+            settlement_type=c.get("settlementType"),
+            product=product,
         )
         if not t:
             continue
@@ -96,7 +101,9 @@ def _expected_flip(book: RealChain) -> float | None:
     "book", [CRWD, TSLA, MRVL, SPY_0DTE, SPY_FULL], ids=lambda b: f"{b.ticker}-{b.now.date()}"
 )
 def test_the_flip_reprices_with_schwabs_rate_and_dividend_yield(book):
-    snap = compute_terrain(book.ticker, read_chain(book.chain), book.spot, now=book.now)
+    snap = compute_terrain(
+        book.ticker, read_chain(book.chain), book.spot, now=book.now, sessions=sessions()
+    )
     expected = _expected_flip(book)
     assert expected is not None
     # the program's curve is computed again between the two strikes it changes sign between:
@@ -136,6 +143,6 @@ def test_a_contract_schwab_sent_without_its_rate_is_not_priced():
     chain = read_chain(held["chain"])
     assert all(c.interest_rate is None and c.dividend_yield is None for c in chain)
     now = datetime.fromtimestamp(held["ts_utc"], ET)
-    snap = compute_terrain("SPY", chain, float(held["spot"]), now=now)
-    assert contract_inputs(chain, now)[1]["no_rate"] > 0
+    snap = compute_terrain("SPY", chain, float(held["spot"]), now=now, sessions=sessions())
+    assert contract_inputs(chain, now, sessions=sessions())[1]["no_rate"] > 0
     assert snap.gamma_flip is None and snap.profile == []

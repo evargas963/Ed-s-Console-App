@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import TSLA
+from time_et import sessions
 
 
 def _real_chain():
@@ -26,7 +27,7 @@ def _real_chain():
 
 def _vanna(chain, spot, now) -> float | None:
     """Return the terrain's vanna book at `now`: every strike's net vanna, per vol point, summed."""
-    books = compute_terrain("TSLA", chain, spot, now=now).books
+    books = compute_terrain("TSLA", chain, spot, now=now, sessions=sessions()).books
     nets = [b["net_vanna"] for book, _diag in books.values() for b in book.values()]
     return None if None in nets else sum(nets)
 

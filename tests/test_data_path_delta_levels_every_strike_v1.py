@@ -14,7 +14,7 @@ import pytest
 
 from option_contract import read_chain
 from terrain_engine import compute_terrain
-from time_et import ET
+from time_et import ET, sessions
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -30,7 +30,9 @@ def test_the_key_delta_strike_and_call_delta_wall_rank_every_strike(name, strike
     held = json.loads((_FX / name).read_text(encoding="utf-8"))
     now = datetime.fromtimestamp(held["ts_utc"], ET)
     chain = read_chain(held["chain"])
-    terrain = compute_terrain(held["ticker"], chain, float(held["spot"]), now=now)
+    terrain = compute_terrain(
+        held["ticker"], chain, float(held["spot"]), now=now, sessions=sessions()
+    )
     assert terrain.key_delta_strike == strike
     assert terrain.call_delta_wall == strike
 
@@ -39,5 +41,7 @@ def test_the_call_wall_keeps_a_strike_whose_put_gamma_alone_is_refused():
     """AMZN's 250: its calls are all reported, two puts' gamma refused as impossible."""
     held = json.loads((_FX / "real_amzn_full_chain_2026_10_29.json").read_text(encoding="utf-8"))
     now = datetime.fromtimestamp(held["ts_utc"], ET)
-    terrain = compute_terrain("AMZN", read_chain(held["chain"]), float(held["spot"]), now=now)
+    terrain = compute_terrain(
+        "AMZN", read_chain(held["chain"]), float(held["spot"]), now=now, sessions=sessions()
+    )
     assert terrain.call_wall == 250.0

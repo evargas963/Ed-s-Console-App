@@ -11,10 +11,13 @@ from __future__ import annotations
 from math_exposure_core import bucket_metric, compute_exposures_by_strike, net_gex_dollars_at_strike
 from option_contract import read_chain
 from tests.real_chains import CRWD
+from time_et import sessions
 
 
 def _bucket(chain: list[dict], strike: float) -> dict:
-    exposures = compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)[0]
+    exposures = compute_exposures_by_strike(
+        read_chain(chain), spot=CRWD.spot, now=CRWD.now, sessions=sessions()
+    )[0]
     return exposures[strike]
 
 

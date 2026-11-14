@@ -49,7 +49,7 @@ from tests.real_chains import (
 )
 from tests.shared_helpers import fixture_json
 from tests.test_order_flow_book_payload_v1 import _same
-from time_et import ET, INDEX_OPTIONS, ct_label, record_markets, valuation_instant
+from time_et import ET, INDEX_OPTIONS, ct_label, record_markets, sessions, valuation_instant
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -386,7 +386,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     strike = zero_oi[0]
     inside = datetime(2026, 10, 22, 15, 0, tzinfo=ET)  # before the close: charm has time
     legs = read_chain([c for c in SPY_CLOSE.chain if c["strikePrice"] == strike])
-    charm = compute_charm_by_strike(legs, SPY_CLOSE.spot, now=inside)
+    charm = compute_charm_by_strike(legs, SPY_CLOSE.spot, now=inside, sessions=sessions())
     assert charm == {strike: {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0}}
     try:
         live = _publish_close()
@@ -548,7 +548,7 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     held, price = SPY_0DTE, _SPY_PRINT_ABOVE["native"]["LAST_PRICE"]
     chain = read_chain(held.chain)
     book, _diag = compute_exposures_by_strike(
-        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
+        chain, spot=held.spot, now=held.now, sessions=sessions(), product=INDEX_OPTIONS
     )
     matrix = build_matrix(book, {}, iv_by_strike(chain), held.spot, 0.0)
     rows = window_rows(matrix, _around(sorted(matrix["ranked"]), price))
@@ -667,12 +667,18 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
     chain = read_chain(held.chain)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     book, _diag = compute_exposures_by_strike(
-        chain, spot=held.spot, now=held.now, product=INDEX_OPTIONS
+        chain, spot=held.spot, now=held.now, sessions=sessions(), product=INDEX_OPTIONS
     )
     earlier = compute_charm_by_strike(
-        chain, held.spot, now=held.now - timedelta(hours=1), product=INDEX_OPTIONS
+        chain,
+        held.spot,
+        now=held.now - timedelta(hours=1),
+        sessions=sessions(),
+        product=INDEX_OPTIONS,
     )
-    at_capture = compute_charm_by_strike(chain, held.spot, now=held.now, product=INDEX_OPTIONS)
+    at_capture = compute_charm_by_strike(
+        chain, held.spot, now=held.now, sessions=sessions(), product=INDEX_OPTIONS
+    )
     strike = min(book, key=lambda s: abs(s - held.spot))
     try:
         levels = _published_0dte()
@@ -726,16 +732,23 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     valued = valuation_instant(at, INDEX_OPTIONS)
     chain = read_chain(held.chain)
+    on_file = sessions()
     at_close, _diag = compute_exposures_by_strike(
-        chain, spot=held.spot, now=valued, product=INDEX_OPTIONS
+        chain, spot=held.spot, now=valued, sessions=on_file, product=INDEX_OPTIONS
     )
-    after, _diag = compute_exposures_by_strike(chain, spot=held.spot, now=at, product=INDEX_OPTIONS)
+    after, _diag = compute_exposures_by_strike(
+        chain, spot=held.spot, now=at, sessions=on_file, product=INDEX_OPTIONS
+    )
     strike = min(at_close, key=lambda s: abs(s - held.spot))
     assert bucket_metric(at_close[strike], "net_vanna") is not None
     assert bucket_metric(after[strike], "net_vanna") is None
     iv = iv_by_strike(chain)
-    charm_close = compute_charm_by_strike(chain, held.spot, now=valued, product=INDEX_OPTIONS)
-    charm_late = compute_charm_by_strike(chain, held.spot, now=at, product=INDEX_OPTIONS)
+    charm_close = compute_charm_by_strike(
+        chain, held.spot, now=valued, sessions=on_file, product=INDEX_OPTIONS
+    )
+    charm_late = compute_charm_by_strike(
+        chain, held.spot, now=at, sessions=on_file, product=INDEX_OPTIONS
+    )
     close = build_matrix(at_close, charm_close, iv, held.spot, 0.0)
     late = build_matrix(after, charm_late, iv, held.spot, 0.0)
     close_rows = window_rows(close, _around(sorted(close["ranked"]), held.spot))
@@ -757,8 +770,11 @@ def test_spy_keeps_vanna_until_the_index_close():
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
     chain = read_chain(held.chain)
-    book, _diag = compute_exposures_by_strike(chain, spot=held.spot, now=at, product=INDEX_OPTIONS)
-    equity, _diag = compute_exposures_by_strike(chain, spot=held.spot, now=at)
+    on_file = sessions()
+    book, _diag = compute_exposures_by_strike(
+        chain, spot=held.spot, now=at, sessions=on_file, product=INDEX_OPTIONS
+    )
+    equity, _diag = compute_exposures_by_strike(chain, spot=held.spot, now=at, sessions=on_file)
     strike = min(book, key=lambda s: abs(s - held.spot))
     assert bucket_metric(book[strike], "net_vanna") is not None
     assert bucket_metric(equity[strike], "net_vanna") is None
@@ -1318,13 +1334,16 @@ def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
     held = SPY_0DTE
     valued = valuation_instant(_BANKED_AFTER_CLOSE, INDEX_OPTIONS)
     chain = read_chain(held.chain)
-    snap = compute_terrain("SPY", chain, held.spot, now=valued)
+    on_file = sessions()
+    snap = compute_terrain("SPY", chain, held.spot, now=valued, sessions=on_file)
     caps = _two_day_captures(chain)
     fresh = server._forces_from_captures("SPY", caps)
     from_book = server._forces_from_captures("SPY", caps, snap.charm_by_strike)
     assert from_book["charm_below"] == fresh["charm_below"]
     assert from_book["charm_above"] == fresh["charm_above"]
-    midday = compute_charm_by_strike(chain, held.spot, now=held.now, product=INDEX_OPTIONS)
+    midday = compute_charm_by_strike(
+        chain, held.spot, now=held.now, sessions=on_file, product=INDEX_OPTIONS
+    )
     read = server._forces_from_captures("SPY", caps, midday)
     below = sum(v["net_charm"] for k, v in midday.items() if k < held.spot)
     above = sum(v["net_charm"] for k, v in midday.items() if k > held.spot)

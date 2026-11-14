@@ -16,13 +16,15 @@ from option_contract import read_chain
 from terrain_engine import compute_terrain
 from terrain_read import FLIP_CURVE_DISAGREES
 from tests.real_chains import CRWD, SPY_0DTE, SPY_FULL
+from time_et import sessions
 
 
 def test_gamma_at_spot_is_schwabs_gamma_summed_over_the_book():
     """SPY's same-day chain of 2026-10-07 12:32 ET, valued at its capture (tests/real_chains.py)."""
     chain, spot, now = read_chain(SPY_0DTE.chain), SPY_0DTE.spot, SPY_0DTE.now
-    snap = compute_terrain("SPY", chain, spot, now=now)
-    per, _ = compute_exposures_by_strike(chain, spot=spot, now=now)
+    held = sessions()
+    snap = compute_terrain("SPY", chain, spot, now=now, sessions=held)
+    per, _ = compute_exposures_by_strike(chain, spot=spot, now=now, sessions=held)
     schwab = sum(v for b in per.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None)
     assert snap.net_gex_at_spot == pytest.approx(schwab, rel=1e-9)
     assert snap.flip_note is None, "the flip's own curve has that gamma's sign at the price"
@@ -54,7 +56,10 @@ def test_a_flip_whose_curve_disagrees_with_schwab_says_so():
     it never reached a screen. SPY's full chain (tests/real_chains.py): the curve's sign at
     its price differs from Schwab's gamma, so the note is served; CRWD's agree, so none is.
     """
-    spy = compute_terrain("SPY", read_chain(SPY_FULL.chain), SPY_FULL.spot, now=SPY_FULL.now)
+    held = sessions()
+    spy = compute_terrain(
+        "SPY", read_chain(SPY_FULL.chain), SPY_FULL.spot, now=SPY_FULL.now, sessions=held
+    )
     assert spy.flip_note == spy.to_dict()["flip_note"] == FLIP_CURVE_DISAGREES
-    crwd = compute_terrain("CRWD", read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
+    crwd = compute_terrain("CRWD", read_chain(CRWD.chain), CRWD.spot, now=CRWD.now, sessions=held)
     assert crwd.flip_note is None

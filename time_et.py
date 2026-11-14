@@ -452,6 +452,7 @@ def time_to_expiry_years(
     expiration_date: str,
     now: datetime,
     *,
+    sessions: Mapping[str, Session],
     settlement_type: str | None = None,
     product: str = EQUITY_OPTIONS,
 ) -> float | None:
@@ -460,8 +461,8 @@ def time_to_expiry_years(
     Seconds from `now` (the caller's valuation instant) to the option's settlement, over a
     365-day year. `expiration_date` is Schwab's expirationDate as sent.
     The settlement is the option market's regular close Schwab's /markets sent for the
-    expiry date (`product`, EQO unless the caller names another), or its open for Schwab's
-    settlementType "A".
+    expiry date (`sessions`, the answers by ET date, read by the caller's entry point;
+    `product`, EQO unless the caller names another), or its open for Schwab's settlementType "A".
     Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
     $SPX monthly carries the 16:00 ET of its date, as captured). For a date with no /markets
     answer held a PM-settled contract settles at Schwab's expirationDate as sent, and an
@@ -476,7 +477,7 @@ def time_to_expiry_years(
     regular option session, and an expirationDate without its time. At the settlement instant the
     10-minute floor guards the exact-expiry singularity.
     """
-    s = session(str(expiration_date)[:10])
+    s = sessions.get(str(expiration_date)[:10])
     if s is None:
         if len(str(expiration_date)) <= 10:
             return None

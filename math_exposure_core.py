@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import functools
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -17,7 +17,7 @@ import numpy as np
 
 from numeric_contract import float_finite_or_none
 from option_contract import OptionContract, streamed_greek_set
-from time_et import time_to_expiry_years
+from time_et import Session, time_to_expiry_years
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -309,17 +309,19 @@ def _empty_bucket(dollarized: bool) -> Bucket:
 _EMPTY_BUCKET = {d: _empty_bucket(d) for d in (True, False)}
 
 
-def expiry_years(now: datetime, product: str) -> Callable[[str, str | None], float | None]:
+def expiry_years(
+    now: datetime, product: str, sessions: Mapping[str, Session]
+) -> Callable[[str, str | None], float | None]:
     """Return time_et.time_to_expiry_years at `now` for `product`, once per expiry.
 
     The one valuation-T authority, computed once per (expiration, settlement) for every caller
-    that prices a book at one valuation instant.
+    that prices a book at one valuation instant, on Schwab's /markets answers (`sessions`).
     """
 
     @functools.cache
     def years(expiration: str, settlement: str | None) -> float | None:
         return time_to_expiry_years(
-            expiration, now=now, settlement_type=settlement, product=product
+            expiration, now=now, sessions=sessions, settlement_type=settlement, product=product
         )
 
     return years
@@ -330,6 +332,7 @@ def compute_exposures_by_strike(
     *,
     spot: float | None = None,
     now: datetime,
+    sessions: Mapping[str, Session],
     product: str = "EQO",
 ) -> tuple[dict[float, Bucket], ExposureDiagnostics]:
     """Produce per-strike aggregates over every listed contract with a strike and a side.
@@ -392,7 +395,7 @@ def compute_exposures_by_strike(
         spt = float(spot)
         # T from the ONE valuation-T authority (time_et.time_to_expiry_years, intraday ACT/365
         # to the session close) at the caller's one valuation instant `now`, per expiry
-        tte = expiry_years(now, product)
+        tte = expiry_years(now, product, sessions)
         years = np.array(
             [np.nan if (t := tte(str(c.expiration), c.settlement)) is None else t for c in rows],
             float,
@@ -492,6 +495,7 @@ def exposure_books(
     *,
     spot: float | None,
     now: datetime,
+    sessions: Mapping[str, Session],
     product: str = "EQO",
 ) -> dict[tuple[str | None, float | None], tuple[dict[float, Bucket], ExposureDiagnostics]]:
     """Run compute_exposures_by_strike once per (expiry, days to expiry) group.
@@ -504,7 +508,7 @@ def exposure_books(
     for c in contracts:
         groups.setdefault((c.expiry, c.days_to_expiry), []).append(c)
     return {
-        k: compute_exposures_by_strike(cs, spot=spot, now=now, product=product)
+        k: compute_exposures_by_strike(cs, spot=spot, now=now, sessions=sessions, product=product)
         for k, cs in groups.items()
     }
 

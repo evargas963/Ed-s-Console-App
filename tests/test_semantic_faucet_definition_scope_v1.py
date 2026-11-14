@@ -30,6 +30,7 @@ from math_exposure_core import (
 )
 from terrain_engine import compute_terrain, price_relations, qualify_pin_candidate
 from tests.real_chains import SPY_0DTE, spy_0dte_book
+from time_et import sessions
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -117,7 +118,7 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     metric cannot produce.
     """
     chain, spot = spy_0dte_book()
-    ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
+    ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW, sessions=sessions())
     total_leader, _strength = pick_pin_and_strength(ex)
     net_leader, _net_call_peak = pick_volatility_point_strikes(ex)  # the net put gamma peak
     assert total_leader is not None and net_leader is not None
@@ -136,8 +137,9 @@ def test_terrain_names_carry_their_declared_definitions():
     Same book, same strikes, ONE faucet per definition.
     """
     chain, spot = spy_0dte_book()
-    snap = compute_terrain("SPY", chain, spot, now=NOW)
-    ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
+    held = sessions()
+    snap = compute_terrain("SPY", chain, spot, now=NOW, sessions=held)
+    ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW, sessions=held)
     assert snap.absolute_gamma_strike == pick_pin_and_strength(ex)[0]
     assert (snap.hvp, snap.lvp) == pick_volatility_point_strikes(ex)
     # the cross-wire that RC-292 could never see: each name now refuses the other metric
@@ -181,7 +183,7 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     # regime gate withholds the claim, and liquidity too -- WITH the reasons; the measured
     # concentration stays.
     chain, spot = spy_0dte_book()
-    snap = compute_terrain("SPY", chain, spot, now=NOW)
+    snap = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions())
     served = price_relations(snap.to_dict(), spot).to_dict()
     assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
     assert served["pin_candidate"] is None
@@ -197,7 +199,7 @@ def test_every_level_shaped_payload_name_is_declared():
     The omission RC-303 names as the root becomes a failing test.
     """
     chain, spot = spy_0dte_book()
-    published = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
+    published = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions()).to_dict()
     payload = published | price_relations(published, spot).to_dict()  # as the terrain panel sends
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
     same = payload.get("same_day")
