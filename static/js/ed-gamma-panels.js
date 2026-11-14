@@ -33,9 +33,7 @@
       (s.subview === "gamma" || s.subview === "dex" || s.subview === "oi")
     );
   }
-  function ticker() {
-    return window.EdShell.getState().ticker;
-  }
+  var ticker = window.EdShell.ticker;
 
   var REGIME = {
     LONG_GAMMA_CHOP: { t: "Long Γ · chop", c: "var(--ed-pos-ink)", tone: "up" },

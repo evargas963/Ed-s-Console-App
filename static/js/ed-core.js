@@ -1153,7 +1153,7 @@
     var ws;
     try {
       ws = new WebSocket(priceSocketUrl());
-    } catch (e) {
+    } catch {
       schedulePriceReconnect();
       return;
     }
@@ -1545,6 +1545,23 @@
   function orDash(v) {
     return v == null || v === "" ? "-" : v;
   }
+  // a whole number as served, "-" for a value not known
+  function int(n) {
+    return n == null || isNaN(n) ? "-" : String(Math.round(Number(n)));
+  }
+  // a panel as served: one not received yet, or one the program could not produce, is null
+  function served(p) {
+    return p && p.failed == null ? p : null;
+  }
+  // the served classification word for `key`, null when none was sent
+  function classOf(map, key) {
+    var v = map ? map[key] : null;
+    return typeof v === "string" && v ? v : null;
+  }
+  // a value computed from the live price, marked when that price is not live (served words)
+  function notLive(d) {
+    return d && d.spot_not_live_text ? " · " + d.spot_not_live_text : "";
+  }
   // a served classification word as a badge (its first word is the CSS hook); none sent, nothing
   function classTag(c) {
     if (c == null) return "";
@@ -1564,7 +1581,14 @@
     esc: esc,
     orDash: orDash,
     classTag: classTag,
+    classOf: classOf,
+    served: served,
+    notLive: notLive,
     num: fmt,
+    int: int,
+    ticker: function () {
+      return state.ticker;
+    },
     pref: _ls,
     setPref: _lsSet, // a viewer's own setting, kept in the browser
     addSymbol: addSymbol,

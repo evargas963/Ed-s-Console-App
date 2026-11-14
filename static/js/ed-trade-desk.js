@@ -16,25 +16,21 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  var num = window.EdShell.num;
+  var num = window.EdShell.num,
+    ticker = window.EdShell.ticker,
+    classOf = window.EdShell.classOf,
+    served = window.EdShell.served,
+    notLive = window.EdShell.notLive,
+    tag = window.EdShell.classTag;
+  var usd = window.EdGamma.formatUsd,
+    fmtVol = window.EdGamma.formatCount;
   function isRightNow() {
     var s = window.EdShell.getState();
     return s.workspace === "trade-desk" && s.subview === "right-now";
   }
-  function ticker() {
-    return window.EdShell.getState().ticker;
-  }
   function host() {
     return document.getElementById("tdBody");
   }
-
-  function classOf(map, key) {
-    var v = map ? map[key] : null;
-    return typeof v === "string" && v ? v : null;
-  }
-  var tag = window.EdShell.classTag;
-  var usd = window.EdGamma.formatUsd,
-    fmtVol = window.EdGamma.formatCount;
 
   // ---- one stage card: numbered badge, title, one HERO stat, a short supporting-row list ----
   function stage(n, accentCls, title, hero, heroUnit, heroDir, rows, badgeText, badgeCls) {
@@ -194,10 +190,6 @@
       rows,
       null,
     );
-  }
-  // a value computed from the live price, marked when that price is not live (served price_mark)
-  function notLive(d) {
-    return d && d.spot_not_live_text ? " · " + d.spot_not_live_text : "";
   }
 
   function confirmStage(d) {
@@ -644,10 +636,6 @@
       throw err;
     }
   });
-  // a panel as sent: none yet, or one the program could not produce, is absent
-  function served(p) {
-    return p && p.failed == null ? p : null;
-  }
   function draw() {
     var h = host();
     if (!h) return;

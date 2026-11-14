@@ -11,18 +11,6 @@
 
   var usd = window.EdGamma.formatUsd;
   var esc = window.EdShell.esc;
-  function ctTime(sec) {
-    try {
-      return new Date(sec * 1000).toLocaleTimeString("en-US", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "America/Chicago",
-      });
-    } catch (e) {
-      return "";
-    }
-  }
   function isChart() {
     var s = window.EdShell.getState();
     return (
@@ -54,9 +42,7 @@
       signed: true,
     };
   }
-  function ticker() {
-    return window.EdShell.getState().ticker;
-  }
+  var ticker = window.EdShell.ticker;
 
   var _mode = "profile"; // 'profile' (bars) | 'dotmap' (dots)
   var _chart = null;
@@ -208,15 +194,22 @@
     empty.hidden = !words && !!(bars.length || win.length);
     empty.textContent =
       words || (empty.hidden ? "" : "no bars / per-strike " + prof.name + " for this symbol");
-    paintHead(host.querySelector(".gchart-head"), bars, win, prof, sd, spot, tradeTime);
+    paintHead(
+      host.querySelector(".gchart-head"),
+      okBars ? barsD.last_bar : null,
+      win,
+      prof,
+      sd,
+      spot,
+      tradeTime,
+    );
   }
-  function paintHead(el, bars, win, prof, sd, spot, tradeTime) {
+  function paintHead(el, lastBar, win, prof, sd, spot, tradeTime) {
     var n = prof.name;
     var ab = window.EdShell.asOfBadge;
-    var lastT = bars.length ? bars[bars.length - 1].t : null;
     var asof =
-      (lastT
-        ? '<span class="asof">price ' + tfLabel() + " · " + ctTime(lastT) + " CT</span>"
+      (lastBar
+        ? '<span class="asof">price ' + tfLabel() + " · " + esc(lastBar.label) + "</span>"
         : "") +
       (sd && sd.failed == null
         ? ab({

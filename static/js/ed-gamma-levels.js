@@ -17,9 +17,7 @@
     if (s.workspace === "liquidity" && s.subview === "levels") return "lvlBody";
     return null;
   }
-  function ticker() {
-    return window.EdShell.getState().ticker;
-  }
+  var ticker = window.EdShell.ticker;
 
   // The levels are the `levels:view` panel (server.levels) the program sends on the page's
   // socket while a Levels view is on, at once and each time the levels change. Nothing received

@@ -17,10 +17,9 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  var num = window.EdShell.num;
-  function int(n) {
-    return n == null || isNaN(n) ? "-" : String(Math.round(Number(n)));
-  }
+  var num = window.EdShell.num,
+    int = window.EdShell.int,
+    classOf = window.EdShell.classOf;
   function isFlow() {
     var s = window.EdShell.getState();
     return s.workspace === "options" && s.subview === "flow";
@@ -56,13 +55,13 @@
     var h = host();
     window.EdShell.showPanel("contract", isFlow() && _selected ? { contract: _selected } : null);
     if (h && isFlow() && !_selected)
-      shell(h, null, "NONE", "Select a Call or Put contract in Chain.", null);
+      shell(h, null, "NONE", "Select a Call or Put contract in Chain.");
   }
   document.addEventListener("ed:panel", function (e) {
     var d = e.detail,
       h = host();
     if (d.type !== "contract" || !h || !isFlow() || !_selected) return;
-    if (d.failed != null) shell(h, _selected, "DEGRADED", d.failed, null);
+    if (d.failed != null) shell(h, _selected, "DEGRADED", d.failed);
     else if (d.contract === _selected) render(h, _selected, d);
   });
 
@@ -80,10 +79,6 @@
 
   // The backend's classification string for one canonical key, verbatim — or null when the
   // backend served no classification for it. Never defaulted, never inferred from the key.
-  function classOf(map, key) {
-    var v = map ? map[key] : null;
-    return typeof v === "string" && v ? v : null;
-  }
   function bool3(v) {
     return v === true ? "true" : v === false ? "false" : "-";
   }
@@ -237,7 +232,7 @@
       "</span></div></div>"
     );
   }
-  function shell(h, desired, badge, msg, x) {
+  function shell(h, desired, badge, msg) {
     var cls =
       badge === "NONE" ? "warn" : badge === "FAILED" || badge === "DEGRADED" ? "stale" : "warn";
     h.innerHTML =
