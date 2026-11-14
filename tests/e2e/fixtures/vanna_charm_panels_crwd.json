@@ -7747,6 +7747,7 @@
    "call_charm_wall": 270.0,
    "put_charm_wall": 265.0
   },
+  "same_day_repriced_from": "2026-10-16",
   "implied_1d_move": {
    "points": 8.084099646977684,
    "iv_pct_atm": 47.69963702,

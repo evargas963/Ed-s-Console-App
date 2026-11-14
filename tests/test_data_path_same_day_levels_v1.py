@@ -14,6 +14,7 @@ import statistics
 
 import pytest
 
+import server
 import terrain_engine
 from option_contract import read_chain
 from terrain_engine import SAME_DAY_LEVELS, compute_terrain
@@ -214,6 +215,31 @@ def test_with_no_expiry_today_the_next_one_is_priced_to_todays_close(book):
     expected = _front_walls(book, _at_todays_close)
     assert {name: same[name] for name in expected} == expected
     assert expected != _front_walls(book, _as_sent)
+
+
+@pytest.mark.parametrize(
+    ("book", "modeled"),
+    [(SPY_0DTE, False), (SPY_FULL, False), (CRWD, True), (MRVL, True), (NFLX, True), (TSLA, True)],
+    ids=lambda b: getattr(b, "ticker", str(b)),
+)
+def test_the_hover_says_modeled_exactly_when_the_levels_are_repriced(book, modeled):
+    """SPY's same-day expiry is read as sent: no note. The four with none today are re-priced.
+
+    Their note names the expiry re-priced (the front listed one) and says it is a model, on hover
+    (server.same_day_note, operator 2026-11-14: "label with a tooltip ... so it doesn't get in the
+    way").
+    """
+    snap = compute_terrain(
+        book.ticker, read_chain(book.chain), book.spot, now=book.now, sessions=sessions()
+    )
+    note = server.same_day_note(snap)
+    if not modeled:
+        assert snap.same_day_repriced_from is None and note is None
+        return
+    today = book.now.date().isoformat()
+    front = min(c["expirationDate"][:10] for c in book.chain if c["expirationDate"][:10] > today)
+    assert snap.same_day_repriced_from == front
+    assert note.startswith(f"Modeled: the {front} expiry re-priced"), note
 
 
 def _with_a_call_at(strike: float, book) -> dict:

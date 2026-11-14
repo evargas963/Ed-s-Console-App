@@ -15154,6 +15154,7 @@
    "call_charm_wall": 765.0,
    "put_charm_wall": 756.0
   },
+  "same_day_repriced_from": null,
   "implied_1d_move": {
    "points": 8.391520212971177,
    "iv_pct_atm": 17.58726927,
@@ -47850,6 +47851,7 @@
      "id": "call_wall",
      "label": "Call wall",
      "price": 759.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47860,6 +47862,7 @@
      "id": "put_wall",
      "label": "Put wall",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47870,6 +47873,7 @@
      "id": "gamma_flip",
      "label": "\u0393 flip",
      "price": 759.8723887322883,
+     "note": null,
      "carried": 761.2225055632189,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47880,6 +47884,7 @@
      "id": "absolute_gamma_strike",
      "label": "Abs \u0393",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47890,6 +47895,7 @@
      "id": "gsf",
      "label": "GSF",
      "price": null,
+     "note": null,
      "carried": null,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47900,6 +47906,7 @@
      "id": "grc",
      "label": "GRC",
      "price": null,
+     "note": null,
      "carried": null,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47910,6 +47917,7 @@
      "id": "hvp",
      "label": "Net put \u0393 peak",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47920,6 +47928,7 @@
      "id": "lvp",
      "label": "Net call \u0393 peak",
      "price": 761.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47930,6 +47939,7 @@
      "id": "key_delta_strike",
      "label": "Key \u0394 strike",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47940,6 +47950,7 @@
      "id": "call_delta_wall",
      "label": "Call \u0394 wall",
      "price": 754.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47950,6 +47961,7 @@
      "id": "put_delta_wall",
      "label": "Put \u0394 wall",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47960,6 +47972,7 @@
      "id": "call_charm_wall",
      "label": "Call charm wall",
      "price": 765.0,
+     "note": null,
      "carried": 765.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -47970,6 +47983,7 @@
      "id": "put_charm_wall",
      "label": "Put charm wall",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51883,6 +51897,7 @@
      "id": "call_wall",
      "label": "Call wall",
      "price": 759.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51893,6 +51908,7 @@
      "id": "put_wall",
      "label": "Put wall",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51903,6 +51919,7 @@
      "id": "gamma_flip",
      "label": "\u0393 flip",
      "price": 759.8723887322883,
+     "note": null,
      "carried": 761.2225055632189,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51913,6 +51930,7 @@
      "id": "absolute_gamma_strike",
      "label": "Abs \u0393",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51923,6 +51941,7 @@
      "id": "gsf",
      "label": "GSF",
      "price": null,
+     "note": null,
      "carried": null,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51933,6 +51952,7 @@
      "id": "grc",
      "label": "GRC",
      "price": null,
+     "note": null,
      "carried": null,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51943,6 +51963,7 @@
      "id": "hvp",
      "label": "Net put \u0393 peak",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51953,6 +51974,7 @@
      "id": "lvp",
      "label": "Net call \u0393 peak",
      "price": 761.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51963,6 +51985,7 @@
      "id": "key_delta_strike",
      "label": "Key \u0394 strike",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51973,6 +51996,7 @@
      "id": "call_delta_wall",
      "label": "Call \u0394 wall",
      "price": 754.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51983,6 +52007,7 @@
      "id": "put_delta_wall",
      "label": "Put \u0394 wall",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -51993,6 +52018,7 @@
      "id": "call_charm_wall",
      "label": "Call charm wall",
      "price": 765.0,
+     "note": null,
      "carried": 765.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -52003,6 +52029,7 @@
      "id": "put_charm_wall",
      "label": "Put charm wall",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55532,6 +55559,7 @@
      "id": "call_wall",
      "label": "Call wall",
      "price": 759.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55542,6 +55570,7 @@
      "id": "put_wall",
      "label": "Put wall",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55552,6 +55581,7 @@
      "id": "gamma_flip",
      "label": "\u0393 flip",
      "price": 759.8723887322883,
+     "note": null,
      "carried": 761.2225055632189,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55562,6 +55592,7 @@
      "id": "absolute_gamma_strike",
      "label": "Abs \u0393",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55572,6 +55603,7 @@
      "id": "gsf",
      "label": "GSF",
      "price": null,
+     "note": null,
      "carried": null,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55582,6 +55614,7 @@
      "id": "grc",
      "label": "GRC",
      "price": null,
+     "note": null,
      "carried": null,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55592,6 +55625,7 @@
      "id": "hvp",
      "label": "Net put \u0393 peak",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55602,6 +55636,7 @@
      "id": "lvp",
      "label": "Net call \u0393 peak",
      "price": 761.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55612,6 +55647,7 @@
      "id": "key_delta_strike",
      "label": "Key \u0394 strike",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55622,6 +55658,7 @@
      "id": "call_delta_wall",
      "label": "Call \u0394 wall",
      "price": 754.0,
+     "note": null,
      "carried": 775.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55632,6 +55669,7 @@
      "id": "put_delta_wall",
      "label": "Put \u0394 wall",
      "price": 756.0,
+     "note": null,
      "carried": 760.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55642,6 +55680,7 @@
      "id": "call_charm_wall",
      "label": "Call charm wall",
      "price": 765.0,
+     "note": null,
      "carried": 765.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,
@@ -55652,6 +55691,7 @@
      "id": "put_charm_wall",
      "label": "Put charm wall",
      "price": 756.0,
+     "note": null,
      "carried": 750.0,
      "staleness": {
       "as_of_ts_utc": 1794497441.9345267,

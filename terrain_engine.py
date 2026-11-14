@@ -171,6 +171,9 @@ class TerrainSnapshot:
     #: The levels on a 0DTE basis (same_day_levels). Keys are SAME_DAY_LEVELS.
     #: absolute_gamma_strike in this dict is the one 0DTE pin.
     same_day: dict[str, float | None] = field(default_factory=dict)
+    #: the expiry the same-day levels were re-priced from to today's close (a model, said on
+    #: hover); None when they are today's own expiry as held, or absent
+    same_day_repriced_from: str | None = None
 
     #: The institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
@@ -800,8 +803,11 @@ def same_day_levels(
     product: str,
     books: dict[ExpiryKey, Book],
     charm_by_expiry: dict[str | None, dict[float, Bucket]],
-) -> dict[str, float | None]:
+) -> tuple[dict[str, float | None], str | None]:
     """Return the whole book's levels on a 0DTE basis, read on the nearest listed expiry alone.
+
+    With the expiry they were re-priced from (None when an expiry listed today was read as held,
+    or when there are no levels): a re-priced set is a model, and the screen says so on hover.
 
     Every ticker, one function, the same producers as the whole book, over the book's contracts
     by expiry day (`expiry_rows`). An expiry listed today is read as the book holds it: its
@@ -817,8 +823,9 @@ def same_day_levels(
     today = now.astimezone(ET).date().isoformat()
     front = min((e for e in expiry_rows if e is not None and e >= today), default=None)
     if front is None:
-        return blank
+        return blank, None
     rows = expiry_rows[front]
+    repriced_from = None if front == today else front
     if front == today:
         front_books = (b for (e, _d), b in books.items() if e == front)
         parsed, _unpriced = contract_inputs(rows, now, sessions=sessions, product=product)
@@ -826,7 +833,7 @@ def same_day_levels(
     else:
         t_close = time_to_expiry_years(today, now, sessions=sessions, product=product)
         if not t_close:
-            return blank
+            return blank, None
         rows, parsed = repriced_to_close(rows, spot, t_close)
         front_books = exposure_books(
             rows, spot=spot, now=now, sessions=sessions, product=product
@@ -843,7 +850,7 @@ def same_day_levels(
     support = compute_gamma_support_levels(profile, spot)
     call_charm, put_charm = pick_charm_wall_strikes(charm)
     (call_delta_wall, _), (put_delta_wall, _) = pick_delta_wall_strikes(exposures)
-    return {
+    levels: dict[str, float | None] = {
         "call_wall": call_wall,
         "put_wall": put_wall,
         "gamma_flip": flip,
@@ -858,6 +865,7 @@ def same_day_levels(
         "call_charm_wall": call_charm,
         "put_charm_wall": put_charm,
     }
+    return levels, repriced_from
 
 
 def compute_terrain(
@@ -961,6 +969,15 @@ def compute_terrain(
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
     read = build_terrain_read(spot=spot, flip_confidence=confidence, gamma_at_spot=_gamma_at_spot)
+    same_day, same_day_repriced_from = same_day_levels(
+        expiry_rows,
+        spot,
+        now=now,
+        sessions=sessions,
+        product=product,
+        books=books,
+        charm_by_expiry=charm_by_expiry,
+    )
 
     return TerrainSnapshot(
         ticker=ticker,
@@ -983,15 +1000,8 @@ def compute_terrain(
         net_gex_at_spot=_gamma_at_spot,
         gsf=_gsl["gsf"],
         grc=_gsl["grc"],
-        same_day=same_day_levels(
-            expiry_rows,
-            spot,
-            now=now,
-            sessions=sessions,
-            product=product,
-            books=books,
-            charm_by_expiry=charm_by_expiry,
-        ),
+        same_day=same_day,
+        same_day_repriced_from=same_day_repriced_from,
         implied_1d_move=compute_implied_one_day_move(contracts, spot, atm_sigma),
         call_delta_wall=call_delta_wall,  # one book for delta walls too
         put_delta_wall=put_delta_wall,

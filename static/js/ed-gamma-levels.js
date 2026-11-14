@@ -58,7 +58,7 @@
     if (when == null || when === "") return "";
     return '<div class="lv-age">' + esc(when) + "</div>";
   }
-  function pairRow(name, nowPrice, nowWhen, sameDay, sameWhen, paired) {
+  function pairRow(name, nowPrice, nowWhen, sameDay, sameWhen, paired, note) {
     var cls = paired ? "lv-row zd-row" : "lv-row";
     var third = paired ? px(sameDay) : "-";
     var thirdWhen = paired ? timeHtml(sameWhen) : "";
@@ -72,7 +72,9 @@
       px(nowPrice) +
       timeHtml(nowWhen) +
       "</td>" +
-      '<td class="lv-px">' +
+      '<td class="lv-px"' +
+      (note ? ' title="' + esc(note) + '"' : "") + // the served note, on hover
+      ">" +
       third +
       thirdWhen +
       "</td></tr>"
@@ -89,7 +91,7 @@
         if (r.id != null) shown[r.id] = true;
         var st = r.staleness != null ? r.staleness : null;
         var when = st != null && st.as_of_time_ct != null ? st.as_of_time_ct : null;
-        body += pairRow(levelName(r), r.carried, when, r.price, when, true);
+        body += pairRow(levelName(r), r.carried, when, r.price, when, true, r.note);
       });
     }
     if (levels != null) {

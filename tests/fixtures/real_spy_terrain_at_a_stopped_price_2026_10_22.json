@@ -78,6 +78,7 @@
   "put_delta_wall": 772.0,
   "put_wall": 764.0
  },
+ "same_day_repriced_from": null,
  "schema_version": 5,
  "spot": 773.1269,
  "spot_as_of_ts_utc": 1792701541.652,

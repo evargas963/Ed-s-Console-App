@@ -3758,6 +3758,21 @@ _OPTION_SHORT = {
 }
 
 
+def same_day_note(snap: TerrainSnapshot) -> str | None:
+    """Return the same-day levels' note, shown on hover: what they are when they are a model.
+
+    None when they are today's own expiry as Schwab sent it (or there are none); with no expiry
+    listed today, they are the next one re-priced to today's close (terrain_engine.same_day_levels,
+    math_levels.repriced_to_close), and the note says so.
+    """
+    if snap.same_day_repriced_from is None:
+        return None
+    return (
+        f"Modeled: the {snap.same_day_repriced_from} expiry re-priced as if it expired at today's "
+        "close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)"
+    )
+
+
 def _option_abbrev(label: str, same_day: bool) -> str:
     if same_day and label == "Abs Γ":
         return "0D Pin"
@@ -4178,6 +4193,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
                 "label": label,
                 # an unavailable snapshot holds no same-day level
                 "price": None if published is None else published.snap.same_day.get(gid),
+                "note": None if published is None else same_day_note(published.snap),
                 "carried": None if t is None else t[gid],
                 "staleness": {
                     "as_of_ts_utc": None if published is None else published.levels_ts_utc,

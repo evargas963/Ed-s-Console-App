@@ -3922,6 +3922,7 @@
    "call_charm_wall": 267.5,
    "put_charm_wall": 265.0
   },
+  "same_day_repriced_from": "2026-11-13",
   "implied_1d_move": {
    "points": 6.843076566955164,
    "iv_pct_atm": 40.31862554,
@@ -71569,6 +71570,7 @@
      "id": "call_wall",
      "label": "Call wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71579,6 +71581,7 @@
      "id": "put_wall",
      "label": "Put wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71589,6 +71592,7 @@
      "id": "gamma_flip",
      "label": "\u0393 flip",
      "price": 258.49264280576534,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71599,6 +71603,7 @@
      "id": "absolute_gamma_strike",
      "label": "Abs \u0393",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71609,6 +71614,7 @@
      "id": "gsf",
      "label": "GSF",
      "price": 265.4998340068834,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71619,6 +71625,7 @@
      "id": "grc",
      "label": "GRC",
      "price": 292.1097422685329,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71629,6 +71636,7 @@
      "id": "hvp",
      "label": "Net put \u0393 peak",
      "price": 262.5,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 240.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71639,6 +71647,7 @@
      "id": "lvp",
      "label": "Net call \u0393 peak",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71649,6 +71658,7 @@
      "id": "key_delta_strike",
      "label": "Key \u0394 strike",
      "price": 260.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71659,6 +71669,7 @@
      "id": "call_delta_wall",
      "label": "Call \u0394 wall",
      "price": 260.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71669,6 +71680,7 @@
      "id": "put_delta_wall",
      "label": "Put \u0394 wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71679,6 +71691,7 @@
      "id": "call_charm_wall",
      "label": "Call charm wall",
      "price": 267.5,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -71689,6 +71702,7 @@
      "id": "put_charm_wall",
      "label": "Put charm wall",
      "price": 265.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 260.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -75991,6 +76005,7 @@
      "id": "call_wall",
      "label": "Call wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76001,6 +76016,7 @@
      "id": "put_wall",
      "label": "Put wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76011,6 +76027,7 @@
      "id": "gamma_flip",
      "label": "\u0393 flip",
      "price": 258.49264280576534,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76021,6 +76038,7 @@
      "id": "absolute_gamma_strike",
      "label": "Abs \u0393",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76031,6 +76049,7 @@
      "id": "gsf",
      "label": "GSF",
      "price": 265.4998340068834,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76041,6 +76060,7 @@
      "id": "grc",
      "label": "GRC",
      "price": 292.1097422685329,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76051,6 +76071,7 @@
      "id": "hvp",
      "label": "Net put \u0393 peak",
      "price": 262.5,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 240.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76061,6 +76082,7 @@
      "id": "lvp",
      "label": "Net call \u0393 peak",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76071,6 +76093,7 @@
      "id": "key_delta_strike",
      "label": "Key \u0394 strike",
      "price": 260.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76081,6 +76104,7 @@
      "id": "call_delta_wall",
      "label": "Call \u0394 wall",
      "price": 260.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76091,6 +76115,7 @@
      "id": "put_delta_wall",
      "label": "Put \u0394 wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76101,6 +76126,7 @@
      "id": "call_charm_wall",
      "label": "Call charm wall",
      "price": 267.5,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -76111,6 +76137,7 @@
      "id": "put_charm_wall",
      "label": "Put charm wall",
      "price": 265.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 260.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -79973,6 +80000,7 @@
      "id": "call_wall",
      "label": "Call wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -79983,6 +80011,7 @@
      "id": "put_wall",
      "label": "Put wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -79993,6 +80022,7 @@
      "id": "gamma_flip",
      "label": "\u0393 flip",
      "price": 258.49264280576534,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 243.91411813739333,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80003,6 +80033,7 @@
      "id": "absolute_gamma_strike",
      "label": "Abs \u0393",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80013,6 +80044,7 @@
      "id": "gsf",
      "label": "GSF",
      "price": 265.4998340068834,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 259.325308455338,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80023,6 +80055,7 @@
      "id": "grc",
      "label": "GRC",
      "price": 292.1097422685329,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 380.60114725715437,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80033,6 +80066,7 @@
      "id": "hvp",
      "label": "Net put \u0393 peak",
      "price": 262.5,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 240.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80043,6 +80077,7 @@
      "id": "lvp",
      "label": "Net call \u0393 peak",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80053,6 +80088,7 @@
      "id": "key_delta_strike",
      "label": "Key \u0394 strike",
      "price": 260.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80063,6 +80099,7 @@
      "id": "call_delta_wall",
      "label": "Call \u0394 wall",
      "price": 260.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 250.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80073,6 +80110,7 @@
      "id": "put_delta_wall",
      "label": "Put \u0394 wall",
      "price": 270.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 270.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80083,6 +80121,7 @@
      "id": "call_charm_wall",
      "label": "Call charm wall",
      "price": 267.5,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 275.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,
@@ -80093,6 +80132,7 @@
      "id": "put_charm_wall",
      "label": "Put charm wall",
      "price": 265.0,
+     "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
      "carried": 260.0,
      "staleness": {
       "as_of_ts_utc": 1794497958.2236412,

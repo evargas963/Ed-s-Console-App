@@ -288,6 +288,7 @@
    "carried": 765.0,
    "id": "call_wall",
    "label": "Call wall",
+   "note": null,
    "price": 765.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -298,6 +299,7 @@
    "carried": 764.0,
    "id": "put_wall",
    "label": "Put wall",
+   "note": null,
    "price": 764.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -308,6 +310,7 @@
    "carried": 770.7699684126369,
    "id": "gamma_flip",
    "label": "\u0393 flip",
+   "note": null,
    "price": 770.7699684126369,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -318,6 +321,7 @@
    "carried": 765.0,
    "id": "absolute_gamma_strike",
    "label": "Abs \u0393",
+   "note": null,
    "price": 765.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -328,6 +332,7 @@
    "carried": null,
    "id": "gsf",
    "label": "GSF",
+   "note": null,
    "price": null,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -338,6 +343,7 @@
    "carried": null,
    "id": "grc",
    "label": "GRC",
+   "note": null,
    "price": null,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -348,6 +354,7 @@
    "carried": 764.0,
    "id": "hvp",
    "label": "Net put \u0393 peak",
+   "note": null,
    "price": 764.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -358,6 +365,7 @@
    "carried": 776.0,
    "id": "lvp",
    "label": "Net call \u0393 peak",
+   "note": null,
    "price": 776.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -368,6 +376,7 @@
    "carried": 772.0,
    "id": "key_delta_strike",
    "label": "Key \u0394 strike",
+   "note": null,
    "price": 772.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -378,6 +387,7 @@
    "carried": 763.0,
    "id": "call_delta_wall",
    "label": "Call \u0394 wall",
+   "note": null,
    "price": 763.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -388,6 +398,7 @@
    "carried": 772.0,
    "id": "put_delta_wall",
    "label": "Put \u0394 wall",
+   "note": null,
    "price": 772.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -398,6 +409,7 @@
    "carried": 765.0,
    "id": "call_charm_wall",
    "label": "Call charm wall",
+   "note": null,
    "price": 765.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
@@ -408,6 +420,7 @@
    "carried": 765.0,
    "id": "put_charm_wall",
    "label": "Put charm wall",
+   "note": null,
    "price": 765.0,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
