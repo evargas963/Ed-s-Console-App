@@ -2,7 +2,7 @@
 
 Deterministic institutional intraday zone mapper. Works for any ticker.
 The price levels (prior day, overnight, opening range, VWAP, value area) are computed once per
-generation into the materialized PriceLevelSnapshot (build_price_level_snapshot); the zones
+bar input into the materialized PriceLevelSnapshot (build_price_level_snapshot); the zones
 (build_live_snapshot, build_premarket_snapshot before the open) are built from that snapshot.
 
 Data source agnostic: consumes normalized OHLCV bars (list of dicts).
@@ -592,16 +592,16 @@ def build_live_snapshot(
 # The canonical materialized PriceLevelSnapshot
 # ─────────────────────────────────────────────────────────────────────────────
 # THE INVARIANT: exactly ONE authoritative computation and
-# ONE materialized result per (ticker, level_id, semantic_scope, generation). Every
+# ONE materialized result per (ticker, level_id, semantic_scope) and bar input. Every
 # API, UI, decision path, model feature, persistence write and report consumes THAT
-# result unchanged. A new market generation may invoke the producer once; endpoints
+# result unchanged. A new bar input may invoke the producer once; endpoints
 # and consumers may not independently invoke or reconstruct the computation.
 # The same helpers run over DIFFERENT bar inputs are a second materialization, not a
 # second formula, so the MATERIALIZATION is what is single.
 
 #: level_id -> (family, semantic_scope, evidence_tier). The registry: an id
 #: in this table has exactly one canonical producer and one materialized value per
-#: generation. A checkpoint-scoped or otherwise differently-windowed metric must NOT
+#: bar input. A checkpoint-scoped or otherwise differently-windowed metric must NOT
 #: reuse these ids — it carries its own explicit scope suffix.
 PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
     "PDH": ("prior_day", "prior_rth_session", "price_fact"),
@@ -777,10 +777,10 @@ _BAR_ABSENT = struct.Struct("<qddddB")
 def _snapshot_input_fingerprint(
     ticker: str, session_date: date, bars_norm: list, bar_source: str, prior
 ) -> tuple:
-    """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
+    """Identity of the INPUT. Same fingerprint ⇒ same result object.
 
-    Bar identity, not wall-clock: re-asking within a generation must return the very
-    result already materialized, or "one result per generation" is prose.
+    Bar identity, not wall-clock: re-asking with the same input must return the very
+    result already materialized, or "one result per input" is prose.
 
     A cache key shorter than its input is a claim of equality that cannot always hold.
     Every bar enters a stable digest, so no interior edit can survive it, and the digest
@@ -1011,10 +1011,10 @@ def build_price_level_snapshot(
     return snapshot(session_rth_vol_n, profile)
 
 
-#: (ticker, session_date_iso) -> the ONE materialized snapshot for the current generation.
+#: (ticker, session_date_iso) -> the ONE materialized snapshot for the current bar input.
 _MATERIALIZED_SNAPSHOTS: dict[tuple[str, str], PriceLevelSnapshot] = {}
 #: Guards the whole read-decide-build-write of materialize_price_level_snapshot.
-#: Deciding a generation from a value you then overwrite is a check-then-act, and a
+#: Deciding to build from a value you then overwrite is a check-then-act, and a
 #: check-then-act is a race unless something serialises it.
 _MATERIALIZE_LOCK = threading.Lock()
 
@@ -1028,13 +1028,13 @@ def materialize_price_level_snapshot(
     bar_source: str,
     config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
-    """Materialize once per generation; return the SAME object within a generation.
+    """Materialize once per input; return the SAME object while the input is the same.
 
     Built from normalized bars (bars_from_candles) and Schwab's daily candles (`daily`,
     server._series).
 
-    A new market generation (the bar input or the prior session's candle changed) invokes the
-    producer exactly once. Every later ask in that generation is a read, never a recomputation.
+    A new input (the bars or the prior session's candle changed) invokes the producer exactly
+    once. Every later ask with that input is a read, never a recomputation.
     """
     tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
     key = (tk, session_date.isoformat())
