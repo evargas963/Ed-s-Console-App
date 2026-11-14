@@ -762,7 +762,7 @@ def qualify_pin_candidate(
             absolute_gamma_gex_dollars,
             (float(absolute_gamma_oi) / float(book_oi_total)),
         )
-        if score.get("label") in (None, "negligible", "missing_oi"):
+        if score["label"] in ("negligible", "missing_oi"):
             blockers.append("liquidity")
     else:
         blockers.append("liquidity")
