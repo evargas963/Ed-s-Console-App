@@ -258,66 +258,61 @@ def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_w
 
 # K. DEX/VANNA/OI/VOLUME — each cell field equals the SAME canonical faucet bucket test_A
 # anchors net_gex_1pct against.
-def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
+def _cells_and_buckets():
+    """Yield each heatmap row of E1's and E2's strikes, its expiry's column, and its bucket.
+
+    The bucket is the canonical faucet's (compute_exposures_by_strike) for that expiry's slice.
+    """
     chain = _chain()
     surface = _surface(chain, SPOT)
-    checked = 0
     for exp in (E1, E2):
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
-            assert row["dex"][col] == bucket_metric(bucket, "net_dex_dollars")  # unrounded
-            checked += 1
+            yield row, col, bucket
+
+
+def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
+    checked = 0
+    for row, col, bucket in _cells_and_buckets():
+        assert row["dex"][col] == bucket_metric(bucket, "net_dex_dollars")  # unrounded
+        checked += 1
     assert checked > 20
 
 
 def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex():
-    chain = _chain()
-    surface = _surface(chain, SPOT)
     checked = nonzero = 0
-    for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)
-        col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
-        for k, bucket in exposures_e.items():
-            row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
-            if bucket_metric(bucket, "net_vanna") is None:  # a leg's vanna input not sent
-                assert row["vanna"][col] is None
-                continue
-            expected = bucket["call_vanna"] - bucket["put_vanna"]
-            assert row["vanna"][col] == bucket_metric(bucket, "net_vanna")  # same instant: exact
-            assert abs(row["vanna"][col] - expected) < 1e-9
-            checked += 1
-            nonzero += expected != 0
+    for row, col, bucket in _cells_and_buckets():
+        if bucket_metric(bucket, "net_vanna") is None:  # a leg's vanna input not sent
+            assert row["vanna"][col] is None
+            continue
+        expected = bucket["call_vanna"] - bucket["put_vanna"]
+        assert row["vanna"][col] == bucket_metric(bucket, "net_vanna")  # same instant: exact
+        assert abs(row["vanna"][col] - expected) < 1e-9
+        checked += 1
+        nonzero += expected != 0
     assert checked > 20
     assert nonzero > 10, "vanna must be real values, not zero against zero"
 
 
 def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_totals():
-    chain = _chain()
-    surface = _surface(chain, SPOT)
     checked = 0
-    for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)
-        col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
-        for k, bucket in exposures_e.items():
-            row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
-            # the cell carries the one readers' answers: Schwab's values as sent, 0 a real zero
-            for key, legs in (
-                ("oi", strike_oi_legs(bucket)),
-                ("volume", strike_volume_legs(bucket)),
-            ):
-                exp_cell = (
-                    None
-                    if legs is None
-                    else {
-                        "call": round(legs[0]),
-                        "put": round(legs[1]),
-                        "total": round(legs[0] + legs[1]),
-                    }
-                )
-                assert row[key][col] == exp_cell
-            checked += 1
+    for row, col, bucket in _cells_and_buckets():
+        # the cell carries the one readers' answers: Schwab's values as sent, 0 a real zero
+        for key, legs in (
+            ("oi", strike_oi_legs(bucket)),
+            ("volume", strike_volume_legs(bucket)),
+        ):
+            if legs is None:  # no count Schwab sent: the cell is unknown
+                assert row[key][col] is None
+                continue
+            assert row[key][col] == {
+                "call": round(legs[0]),
+                "put": round(legs[1]),
+                "total": round(legs[0] + legs[1]),
+            }
+        checked += 1
     assert checked > 20
 
 

@@ -31,7 +31,7 @@ from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from option_contract import read_chain
 from stream_spine import verbatim_msg
-from tests.feed_live_helper import daemon_status, mark_feed_live
+from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
 from time_et import ET
 
@@ -68,20 +68,7 @@ def _daemon(at: float, held_options=()):
 
 def _publish(fetched_ts: float):
     """Publish the chain as the stored capture it is, at the price Schwab sent with it."""
-    server._publish_levels(
-        TK,
-        captures=[
-            {
-                "contracts": read_chain(_CONTRACTS),
-                "ts_utc": fetched_ts,
-                "spot": PUBLISHED,
-                "et_date": _AT.date().isoformat(),
-                "basis": server.CAPTURE_BASIS,
-                "spot_ts": None,
-            }
-        ],
-        now=_AT,
-    )
+    publish_capture(TK, _CONTRACTS, fetched_ts, PUBLISHED, _AT.date().isoformat(), _AT)
 
 
 def _forget():
@@ -222,19 +209,9 @@ def test_the_spot_row_is_served(route):
     strikes = sorted({float(c["strikePrice"]) for c in SPY_CLOSE.chain})
     live = min(strikes, key=lambda k: abs(k - print_["native"]["LAST_PRICE"]))
     assert live != min(strikes, key=lambda k: abs(k - SPY_CLOSE.spot))
-    server._publish_levels(
-        "SPY",
-        captures=[
-            {
-                "contracts": read_chain(SPY_CLOSE.chain),
-                "ts_utc": SPY_CLOSE.now.timestamp(),
-                "spot": SPY_CLOSE.spot,
-                "et_date": SPY_CLOSE.now.date().isoformat(),
-                "basis": server.CAPTURE_BASIS,
-                "spot_ts": None,
-            }
-        ],
-        now=SPY_CLOSE.now,
+    held = SPY_CLOSE
+    publish_capture(
+        "SPY", held.chain, held.now.timestamp(), held.spot, held.now.date().isoformat(), held.now
     )
     lmp.record_from_level_one_equity("SPY", print_["native"], received_ts=print_["ts_recv"])
     lmp.record_feed_heartbeat(

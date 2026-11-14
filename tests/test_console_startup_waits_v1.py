@@ -24,6 +24,7 @@ from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.program_lock import Ports, program_ports
 
 REPO = Path(__file__).resolve().parent.parent
+WINDOWS = sys.platform == "win32"
 
 
 def held_ports(tmp_path: Path) -> Ports | None:
@@ -56,8 +57,11 @@ def program_env(tmp_path: Path) -> dict:
     return env
 
 
-def run_until(env: dict, done) -> str:
-    """Run the program until `done(window text)` (120 s at most), then stop it: its window."""
+def start(env: dict, own_group: bool = False) -> tuple[subprocess.Popen, list]:
+    """Start the real program; return it and its window's lines, read as it writes them.
+
+    With `own_group`, in a process group of its own on Windows, so a Ctrl+Break reaches it alone.
+    """
     program = subprocess.Popen(
         [sys.executable, *launch.DAEMON_START],
         cwd=REPO,
@@ -66,9 +70,16 @@ def run_until(env: dict, done) -> str:
         encoding="utf-8",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if own_group and WINDOWS else 0,
     )
     lines: list = []
     threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
+    return program, lines
+
+
+def run_until(env: dict, done) -> str:
+    """Run the program until `done(window text)` (120 s at most), then stop it: its window."""
+    program, lines = start(env)
     try:
         end = time_et.elapsed() + 120
         while not done("".join(list(lines))):
@@ -88,19 +99,7 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     Windows (Windows sends a console event to another program's group as Ctrl+Break, not
     Ctrl+C; both take the same handler, capture.INTERRUPTS), Ctrl+C's SIGINT elsewhere.
     """
-    windows = sys.platform == "win32"
-    program = subprocess.Popen(
-        [sys.executable, *launch.DAEMON_START],
-        cwd=REPO,
-        env=program_env(tmp_path),
-        text=True,
-        encoding="utf-8",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
-    )
-    lines: list = []
-    threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
+    program, lines = start(program_env(tmp_path), own_group=True)
     try:
         end = time_et.elapsed() + 120
         while (ports := held_ports(tmp_path)) is None:
@@ -108,7 +107,7 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
             time.sleep(0.25)
         answer = answered(tmp_path)  # a page request, as the browser makes
         assert answer == ports, (answer, "".join(lines))
-        os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
+        os.kill(program.pid, signal.CTRL_BREAK_EVENT if WINDOWS else signal.SIGINT)
         code = program.wait(90)
     finally:
         if program.poll() is None:
@@ -127,19 +126,7 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
     so the web server closes at once, not after its 10 s graceful timeout, and no connection is
     cancelled (each was logged as a traceback).
     """
-    windows = sys.platform == "win32"
-    program = subprocess.Popen(
-        [sys.executable, *launch.DAEMON_START],
-        cwd=REPO,
-        env=program_env(tmp_path),
-        text=True,
-        encoding="utf-8",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
-    )
-    lines: list = []
-    threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
+    program, lines = start(program_env(tmp_path), own_group=True)
     page = socket.socket()
     try:
         end = time_et.elapsed() + 120
@@ -162,7 +149,7 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
             assert chunk, got
             got += chunk
         asked = time_et.elapsed()
-        os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
+        os.kill(program.pid, signal.CTRL_BREAK_EVENT if WINDOWS else signal.SIGINT)
         code = program.wait(90)
         took = time_et.elapsed() - asked
     finally:
@@ -187,19 +174,7 @@ def test_the_waits_own_requests_leave_the_stop_nothing_to_wait_on(tmp_path):
     (about 1 unread answer in 150 was reset at that moment), and the stop sent as soon as the
     window shows a reset.
     """
-    windows = sys.platform == "win32"
-    program = subprocess.Popen(
-        [sys.executable, *launch.DAEMON_START],
-        cwd=REPO,
-        env=program_env(tmp_path),
-        text=True,
-        encoding="utf-8",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0,
-    )
-    lines: list = []
-    threading.Thread(target=lambda: lines.extend(program.stdout), daemon=True).start()
+    program, lines = start(program_env(tmp_path), own_group=True)
     try:
         end = time_et.elapsed() + 120
         while (ports := held_ports(tmp_path)) is None:
@@ -211,7 +186,7 @@ def test_the_waits_own_requests_leave_the_stop_nothing_to_wait_on(tmp_path):
             if "ConnectionResetError" in "".join(lines):
                 break
         asked = time_et.elapsed()
-        os.kill(program.pid, signal.CTRL_BREAK_EVENT if windows else signal.SIGINT)
+        os.kill(program.pid, signal.CTRL_BREAK_EVENT if WINDOWS else signal.SIGINT)
         code = program.wait(90)
         took = time_et.elapsed() - asked
     finally:

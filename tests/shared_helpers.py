@@ -52,6 +52,23 @@ def git(cwd: Path, *args: str) -> str:
     ).stdout.strip()
 
 
+def node_json(script: str, cwd: Path, env: dict[str, str]):
+    """Run the ES module `script` in node in `cwd` with `env`; return the last line it printed.
+
+    The line is read as JSON. The run must succeed.
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
 def sent(messages: list[dict], key: str) -> list[dict]:
     """`key`'s messages among the stream's `messages`, in receive order."""
     return [m for m in messages if m["item"]["key"] == key]

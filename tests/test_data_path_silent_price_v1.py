@@ -25,6 +25,23 @@ from tests.test_live_push_channel_v1 import (
 )
 
 
+def _serving(stop: asyncio.Event, stats: dict) -> tuple[asyncio.Task, str]:
+    """Start the program's page socket on a port of its own; return its task and its URL."""
+    sock, url = listener()
+    ui = asyncio.create_task(
+        serve_page_socket(
+            stop,
+            sock,
+            {
+                "heartbeat_fn": _daemon_heartbeat(),
+                "stats": stats,
+                "record_heartbeat": lambda _beat: None,
+            },
+        )
+    )
+    return ui, url
+
+
 def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog):
     """The daemon's price socket reads every page frame.
 
@@ -35,18 +52,7 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
 
     async def go():
         stop, stats = asyncio.Event(), {}
-        sock, url = listener()
-        ui = asyncio.create_task(
-            serve_page_socket(
-                stop,
-                sock,
-                {
-                    "heartbeat_fn": _daemon_heartbeat(),
-                    "stats": stats,
-                    "record_heartbeat": lambda _beat: None,
-                },
-            )
-        )
+        ui, url = _serving(stop, stats)
         assert await _until(lambda: "clients" in stats)  # serving
         ws = await connect(f"{url}/ws", max_size=None)
         try:
@@ -92,18 +98,7 @@ def test_a_page_selecting_a_ticker_queues_its_reprice_and_its_ticks_end_with_the
 
     async def go():
         stop, stats = asyncio.Event(), {}
-        sock, url = listener()
-        ui = asyncio.create_task(
-            serve_page_socket(
-                stop,
-                sock,
-                {
-                    "heartbeat_fn": _daemon_heartbeat(),
-                    "stats": stats,
-                    "record_heartbeat": lambda _beat: None,
-                },
-            )
-        )
+        ui, url = _serving(stop, stats)
         assert await _until(lambda: "clients" in stats)  # serving
         ws = await connect(f"{url}/ws", max_size=None)
         try:

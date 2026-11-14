@@ -56,6 +56,30 @@ def _push_book(symbol, content, ts_recv):
     )
 
 
+def _push_real_spy_books() -> dict:
+    """Push the real SPY NASDAQ_BOOK and NYSE_BOOK messages through the real ingest.
+
+    They are from tests/fixtures/real_spy_nyse_nasdaq_books.json; return them by service.
+    """
+    fx = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
+            encoding="utf-8"
+        )
+    )["books"]
+    for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
+        ofs._ingest_pushed(
+            "book.SPY",
+            book_msg(
+                symbol="SPY",
+                service=svc,
+                content=fx[svc]["content"],
+                src="schwab_book",
+                ts_recv=fx[svc]["ts_recv"],
+            ),
+        )
+    return fx
+
+
 def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
     _reset(tmp_path)
     lmp._by_ticker.pop("SPY", None)  # a plane row an earlier test wrote
@@ -100,22 +124,7 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
     answer is that venue's book, never the newest of the two.
     """
     _reset(tmp_path)
-    fx = json.loads(
-        (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
-            encoding="utf-8"
-        )
-    )["books"]
-    for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
-        ofs._ingest_pushed(
-            "book.SPY",
-            book_msg(
-                symbol="SPY",
-                service=svc,
-                content=fx[svc]["content"],
-                src="schwab_book",
-                ts_recv=fx[svc]["ts_recv"],
-            ),
-        )
+    fx = _push_real_spy_books()
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
         body = server.order_flow_microstructure("SPY", svc, time_et.now())
         prov = body["provenance"]
@@ -134,22 +143,7 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     (RTH_INSTANT).
     """
     _reset(tmp_path)
-    fx = json.loads(
-        (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
-            encoding="utf-8"
-        )
-    )["books"]
-    for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
-        ofs._ingest_pushed(
-            "book.SPY",
-            book_msg(
-                symbol="SPY",
-                service=svc,
-                content=fx[svc]["content"],
-                src="schwab_book",
-                ts_recv=fx[svc]["ts_recv"],
-            ),
-        )
+    _push_real_spy_books()
 
     def stale(svc):
         return server.order_flow_microstructure("SPY", svc, RTH_INSTANT)["ages"]["book_stale"]

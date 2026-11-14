@@ -95,6 +95,26 @@ def _states_when_the_status_was_sent(offset: float) -> list[str]:
 
     The daemon's status is stamped `offset` seconds from `_AT` (negative: earlier).
     """
+    at = _priced_when_the_status_was_sent(offset)
+    return _leg_states(server.gamma_surface_payload(TK, "all", None, 0, None, None, at))
+
+
+def _leg_states(body: dict) -> list[str]:
+    """Return the states of SYM's legs on the heatmap `body`."""
+    return [
+        col[side]["state"]
+        for cell in body["cells"]
+        for col, pair in zip(cell["stream"], cell["contracts"])
+        for side in ("call", "put")
+        if col and pair.get(side) == SYM
+    ]
+
+
+def _priced_when_the_status_was_sent(offset: float) -> datetime:
+    """SPY's chain priced at `_AT`, with SPY's quote and SYM's message taken in; return `_AT`.
+
+    The daemon's status is stamped `offset` seconds from `_AT` (negative: earlier).
+    """
     _beat(_AT + offset)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     row = ofs.price_row(TK, _AT)
@@ -112,14 +132,7 @@ def _states_when_the_status_was_sent(offset: float) -> list[str]:
         chain_spot=(row["spot"], row["trade_ts"]),
         now=at,
     )
-    body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
-    return [
-        col[side]["state"]
-        for cell in body["cells"]
-        for col, pair in zip(cell["stream"], cell["contracts"])
-        for side in ("call", "put")
-        if col and pair.get(side) == SYM
-    ]
+    return at
 
 
 @pytest.mark.parametrize("before", [0.001, 0.5, 2.9])
@@ -130,31 +143,7 @@ def test_a_status_stamped_before_the_time_judged_keeps_the_streamed_cell_live(be
 @pytest.mark.parametrize("after", [0.001, 0.5, 2.9])
 def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
     """A stamp after `_AT` is not `_AT`. The last price still stands, and the cell is not live."""
-    _beat(_AT + after)
-    lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
-    row = ofs.price_row(TK, _AT)
-    ofs._ingest_pushed(
-        f"optquote.{SYM}",
-        verbatim_msg(
-            symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
-        ),
-    )
-    at = datetime.fromtimestamp(_AT, ET)
-    server._publish_levels(
-        TK,
-        read_chain(_CAPTURE["chain"]),
-        _CAPTURE["capture_ts_utc"],
-        chain_spot=(row["spot"], row["trade_ts"]),
-        now=at,
-    )
-    body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
-    states = [
-        col[side]["state"]
-        for cell in body["cells"]
-        for col, pair in zip(cell["stream"], cell["contracts"])
-        for side in ("call", "put")
-        if col and pair.get(side) == SYM
-    ]
+    states = _states_when_the_status_was_sent(after)
     assert lmp.daemon_status(_AT) is None
     assert states and "live" not in states
 
@@ -177,13 +166,7 @@ def test_a_streamed_cell_is_not_live_after_its_own_option_close():
         body = server.gamma_surface_payload(
             TK, "all", None, 0, None, None, datetime.fromtimestamp(at, ET)
         )
-        return [
-            col[side]["state"]
-            for cell in body["cells"]
-            for col, pair in zip(cell["stream"], cell["contracts"])
-            for side in ("call", "put")
-            if col and pair.get(side) == SYM
-        ], body
+        return _leg_states(body), body
 
     open_states, _ = legs_at("16:05")
     closed_states, body = legs_at("16:20")
@@ -204,23 +187,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
 
     The cell is stale, and its tooltip carries Schwab's time and the age.
     """
-    _beat(_AT - 0.5)
-    lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
-    row = ofs.price_row(TK, _AT)
-    ofs._ingest_pushed(
-        f"optquote.{SYM}",
-        verbatim_msg(
-            symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
-        ),
-    )
-    at = datetime.fromtimestamp(_AT, ET)
-    server._publish_levels(
-        TK,
-        read_chain(_CAPTURE["chain"]),
-        _CAPTURE["capture_ts_utc"],
-        chain_spot=(row["spot"], row["trade_ts"]),
-        now=at,
-    )
+    at = _priced_when_the_status_was_sent(-0.5)
     gex = [cell["gex"] for cell in server.published_levels(TK).gamma_surface["cells"]]
     kept = ofls.get_stream_greeks(SYM)
     _beat(_AT, socket_open=False, options=[])
@@ -507,14 +474,7 @@ def test_a_change_to_one_tickers_held_contracts_restamps_that_surface_alone():
 
 def _sym_states() -> list[str]:
     """Return the states of SYM's legs on SPY's published heatmap."""
-    surface = server.published_levels(TK).gamma_surface
-    return [
-        col[side]["state"]
-        for cell in surface["cells"]
-        for col, pair in zip(cell["stream"], cell["contracts"])
-        for side in ("call", "put")
-        if col and pair.get(side) == SYM
-    ]
+    return _leg_states(server.published_levels(TK).gamma_surface)
 
 
 def _publish_chain(at: float) -> None:

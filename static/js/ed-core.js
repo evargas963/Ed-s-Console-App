@@ -795,7 +795,7 @@
   // is fabricated for an unknown symbol, and no hard-coded allowlist exists here.
   function normSym(raw) {
     var s = raw.trim().toUpperCase();
-    return /^[$^]?[A-Z0-9][A-Z0-9.\-\/]{0,11}$/.test(s) ? s : null;
+    return /^[$^]?[A-Z0-9][A-Z0-9.\-/]{0,11}$/.test(s) ? s : null;
   }
   function removeSymbol(sym) {
     wlFetch("/api/watchlist/" + encodeURIComponent(sym), { method: "DELETE", cache: "no-store" })

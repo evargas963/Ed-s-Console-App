@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests.shared_helpers import node_json
+
 ROOT = Path(__file__).resolve().parents[1]
 PLACEHOLDER_KEY = "ci-placeholder-api-key"
 PLACEHOLDER_SECRET = "ci-placeholder-app-secret"
@@ -35,16 +37,7 @@ def _e2e_server_env(poison_root: Path) -> dict[str, str]:
         "import {e2eServerEnv,e2eRuntimeRoot} from './playwright.config.mjs';"
         "console.log(JSON.stringify({env:e2eServerEnv,root:e2eRuntimeRoot}));"
     )
-    result = subprocess.run(
-        ["node", "--input-type=module", "-e", script],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    doc = json.loads(result.stdout.strip().splitlines()[-1])
+    doc = node_json(script, ROOT, env)
     server_env = doc["env"]
     server_env["_E2E_RUNTIME_ROOT"] = doc["root"]
     return server_env

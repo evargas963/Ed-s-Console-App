@@ -1,3 +1,4 @@
+---
 name: Pytest Full Suite
 
 # Playwright E2E and the full Python suite, on Linux and on Windows. Each suite runs on a runner
