@@ -1545,6 +1545,14 @@
   function orDash(v) {
     return v == null || v === "" ? "-" : v;
   }
+  // a served classification word as a badge (its first word is the CSS hook); none sent, nothing
+  function classTag(c) {
+    if (c == null) return "";
+    var hook = (String(c)
+      .toLowerCase()
+      .match(/^[a-z0-9-]+/) || ["unknown"])[0];
+    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + "</span>";
+  }
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = {
@@ -1555,6 +1563,7 @@
     emit: emit,
     esc: esc,
     orDash: orDash,
+    classTag: classTag,
     num: fmt,
     pref: _ls,
     setPref: _lsSet, // a viewer's own setting, kept in the browser

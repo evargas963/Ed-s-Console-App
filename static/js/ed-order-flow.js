@@ -54,13 +54,7 @@
     var v = map ? map[key] : null;
     return typeof v === "string" && v ? v : null;
   }
-  function tag(c) {
-    if (c === undefined || c == null) return "";
-    var hook = (String(c)
-      .toLowerCase()
-      .match(/^[a-z0-9-]+/) || ["unknown"])[0];
-    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + "</span>";
-  }
+  var tag = window.EdShell.classTag;
   function section(title, rows) {
     var h = '<div class="fl-sec"><div class="fl-sec-h">' + esc(title) + "</div>";
     rows.forEach(function (r) {

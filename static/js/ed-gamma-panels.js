@@ -10,15 +10,9 @@
 
   var usd = window.EdGamma.formatUsd;
   var px = window.EdShell.num;
+  var fmtVol = window.EdGamma.formatCount;
   // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
   // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
-  function fmtVol(n) {
-    if (n == null || isNaN(n)) return "-";
-    var a = Math.abs(Number(n));
-    if (a >= 1e6) return (a / 1e6).toFixed(1) + "M";
-    if (a >= 1e3) return (a / 1e3).toFixed(1) + "K";
-    return String(Math.round(a));
-  }
   function txt(id, v) {
     var e = document.getElementById(id);
     if (e) e.textContent = v;
@@ -167,7 +161,7 @@
     var net = document.getElementById("klNet");
     if (net) {
       var v = d.net_gex_at_spot;
-      net.textContent = v == null ? "-" : usd(v);
+      net.textContent = usd(v);
       net.style.color = v == null ? "" : v >= 0 ? "var(--ed-pos-ink)" : "var(--ed-neg-ink)";
     }
     var reg = document.getElementById("klRegime");
@@ -310,7 +304,7 @@
           '<span class="gbs-v ' +
           (v == null ? "" : pos ? "pos" : "neg") +
           '">' +
-          (v == null ? "-" : (opts.value || usd)(v)) +
+          (opts.value || usd)(v) +
           "</span>" +
           (opts.cells ? opts.cells(r) : "") +
           "</div>";
@@ -380,7 +374,7 @@
           fmtVol(r[2]) +
           "</span>" +
           '<span class="gbs-chg" title="net GEX change vs the previous session">' +
-          (chg[r[0]] == null ? "-" : usd(chg[r[0]])) +
+          usd(chg[r[0]]) +
           "</span>"
         );
       },
@@ -511,7 +505,7 @@
       '<tr class="sd-net"><td class="side">Net</td><td>-</td><td>-</td><td>-</td><td class="' +
       netCls +
       '">' +
-      (net == null ? "-" : usd(net)) +
+      usd(net) +
       "</td><td>-</td><td>-</td></tr>" +
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · the chain</div>';
   }
@@ -761,7 +755,7 @@
           fmtOfSize(r.size) +
           "</td>" +
           "<td>" +
-          (r.premium == null ? "-" : usd(r.premium)) +
+          usd(r.premium) +
           "</td>" +
           "<td>" +
           fmtVol(r.volume) +

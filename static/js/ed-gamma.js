@@ -10,7 +10,7 @@
 
   // ---- pure formatter: compact signed USD ($958.6K, $7.6M, -$264.5K) ----
   function formatUsd(n) {
-    if (n === null || n === undefined || isNaN(n)) return "";
+    if (n == null || isNaN(n)) return "-";
     var v = Number(n),
       a = Math.abs(v),
       sign = v < 0 ? "-" : "";
@@ -23,7 +23,7 @@
   }
   // ---- compact contract count (1.0K, 23.1K): open interest and volume are counts, not dollars ----
   function formatCount(n) {
-    if (n === null || n === undefined || isNaN(n)) return "";
+    if (n == null || isNaN(n)) return "-";
     var v = Number(n),
       a = Math.abs(v),
       sign = v < 0 ? "-" : "";

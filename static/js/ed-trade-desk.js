@@ -32,29 +32,9 @@
     var v = map ? map[key] : null;
     return typeof v === "string" && v ? v : null;
   }
-  function tag(c) {
-    if (c === undefined || c == null) return "";
-    var hook = (String(c)
-      .toLowerCase()
-      .match(/^[a-z0-9-]+/) || ["unknown"])[0];
-    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + "</span>";
-  }
-  var usd = function (n) {
-    if (n == null || isNaN(n)) return "-";
-    var a = Math.abs(n),
-      s = n < 0 ? "-" : "";
-    if (a >= 1e9) return s + "$" + (a / 1e9).toFixed(1) + "B";
-    if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(1) + "M";
-    if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(1) + "K";
-    return s + "$" + a.toFixed(0);
-  };
-  function fmtVol(n) {
-    if (n == null || isNaN(n)) return "-";
-    var a = Math.abs(Number(n));
-    if (a >= 1e6) return (a / 1e6).toFixed(1) + "M";
-    if (a >= 1e3) return (a / 1e3).toFixed(1) + "K";
-    return String(Math.round(a));
-  }
+  var tag = window.EdShell.classTag;
+  var usd = window.EdGamma.formatUsd,
+    fmtVol = window.EdGamma.formatCount;
 
   // ---- one stage card: numbered badge, title, one HERO stat, a short supporting-row list ----
   function stage(n, accentCls, title, hero, heroUnit, heroDir, rows, badgeText, badgeCls) {
@@ -248,11 +228,7 @@
         "Max pain" + (d.max_pain_dte != null ? " (" + d.max_pain_dte + "DTE)" : ""),
         num(d.max_pain),
       ],
-      // the heatmap's own dollar formatter: a value under $50K reads as itself, never "0.0M"
-      [
-        "Net GEX @ spot",
-        d.net_gex_at_spot != null ? window.EdGamma.formatUsd(d.net_gex_at_spot) : "-",
-      ],
+      ["Net GEX @ spot", usd(d.net_gex_at_spot)],
     ];
     if (d.flip_note != null) rows.push(["Γ flip note", d.flip_note]); // served: the flip's note
     return stage(
@@ -574,7 +550,7 @@
         '<span class="gbs-v ' +
         (gx == null ? "" : pos ? "pos" : "neg") +
         '">' +
-        (gx == null ? "-" : usd(gx)) +
+        usd(gx) +
         "</span>" +
         (_migGhost ? deltaHtml : "") +
         '<span class="gbs-vol" title="session volume">' +
