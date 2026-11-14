@@ -395,7 +395,7 @@ the program.
   its age since the trade) is drawn on the chart as its own line and moves with every update; no
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
-  generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
+  bar input from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
   → the levels panel on `/ws` (`server.levels`), and the liquidity zones of the liquidity panel (`server.liquidity`) are built from that same
   snapshot (the market's session, `time_et.market_session_date`: today's while a session is
   open, the newest session's while Closed, whose levels stand until the next session opens; no

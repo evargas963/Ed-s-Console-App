@@ -2,7 +2,7 @@
 
 Deterministic institutional intraday zone mapper. Works for any ticker.
 The price levels (prior day, overnight, opening range, VWAP, value area) are computed once per
-generation into the materialized PriceLevelSnapshot (build_price_level_snapshot); the zones
+bar input into the materialized PriceLevelSnapshot (build_price_level_snapshot); the zones
 (build_live_snapshot, build_premarket_snapshot before the open) are built from that snapshot.
 
 Data source agnostic: consumes normalized OHLCV bars (list of dicts).
@@ -592,16 +592,16 @@ def build_live_snapshot(
 # The canonical materialized PriceLevelSnapshot
 # ─────────────────────────────────────────────────────────────────────────────
 # THE INVARIANT: exactly ONE authoritative computation and
-# ONE materialized result per (ticker, level_id, semantic_scope, generation). Every
+# ONE materialized result per (ticker, level_id, semantic_scope) and bar input. Every
 # API, UI, decision path, model feature, persistence write and report consumes THAT
-# result unchanged. A new market generation may invoke the producer once; endpoints
+# result unchanged. A new bar input may invoke the producer once; endpoints
 # and consumers may not independently invoke or reconstruct the computation.
 # The same helpers run over DIFFERENT bar inputs are a second materialization, not a
 # second formula, so the MATERIALIZATION is what is single.
 
 #: level_id -> (family, semantic_scope, evidence_tier). The registry: an id
 #: in this table has exactly one canonical producer and one materialized value per
-#: generation. A checkpoint-scoped or otherwise differently-windowed metric must NOT
+#: bar input. A checkpoint-scoped or otherwise differently-windowed metric must NOT
 #: reuse these ids — it carries its own explicit scope suffix.
 PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
     "PDH": ("prior_day", "prior_rth_session", "price_fact"),
@@ -655,7 +655,6 @@ class PriceLevelValue:
         "window",
         "vendor_basis",
         "as_of_ts_utc",
-        "generation",
     )
 
     def __init__(
@@ -670,7 +669,6 @@ class PriceLevelValue:
         window: str,
         vendor_basis: str,
         as_of_ts_utc: float | None,
-        generation: int,
     ) -> None:
         self.level_id = level_id
         self.price = float(price)
@@ -681,7 +679,6 @@ class PriceLevelValue:
         self.window = window
         self.vendor_basis = vendor_basis
         self.as_of_ts_utc = as_of_ts_utc
-        self.generation = generation
 
     @property
     def session_scope(self) -> str:
@@ -699,7 +696,6 @@ class PriceLevelValue:
             "strength": None,
             "evidence_tier": self.evidence_tier,
             "semantic_scope": self.semantic_scope,
-            "generation": self.generation,
             "provenance": {
                 "producer": self.producer,
                 "session_scope": self.session_scope,
@@ -712,16 +708,15 @@ class PriceLevelValue:
 
 
 class PriceLevelSnapshot:
-    """The ONE materialized result for (ticker, session scope, generation).
+    """The ONE materialized result for (ticker, session scope) and its input.
 
-    `input_fingerprint` is set by materialize_price_level_snapshot, which decides the generation
-    from it.
+    `input_fingerprint` is set by materialize_price_level_snapshot, which builds again only
+    when it changes.
     """
 
     __slots__ = (
         "ticker",
         "session_date",
-        "generation",
         "bar_source",
         "as_of_ts_utc",
         "levels",
@@ -740,7 +735,6 @@ class PriceLevelSnapshot:
         *,
         ticker: str,
         session_date: date,
-        generation: int,
         bar_source: str,
         as_of_ts_utc: float | None,
         levels: dict,
@@ -754,7 +748,6 @@ class PriceLevelSnapshot:
     ) -> None:
         self.ticker = ticker
         self.session_date = session_date
-        self.generation = generation
         self.bar_source = bar_source
         self.as_of_ts_utc = as_of_ts_utc
         self.levels = levels  # level_id -> PriceLevelValue
@@ -784,10 +777,10 @@ _BAR_ABSENT = struct.Struct("<qddddB")
 def _snapshot_input_fingerprint(
     ticker: str, session_date: date, bars_norm: list, bar_source: str, prior
 ) -> tuple:
-    """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
+    """Identity of the INPUT. Same fingerprint ⇒ same result object.
 
-    Bar identity, not wall-clock: re-asking within a generation must return the very
-    result already materialized, or "one result per generation" is prose.
+    Bar identity, not wall-clock: re-asking with the same input must return the very
+    result already materialized, or "one result per input" is prose.
 
     A cache key shorter than its input is a claim of equality that cannot always hold.
     Every bar enters a stable digest, so no interior edit can survive it, and the digest
@@ -821,7 +814,6 @@ def _put_levels(
     window: str,
     vendor_basis: str,
     as_of: float | None,
-    generation: int,
 ) -> None:
     """Materialize each (level id, price) of `prices` into `levels`.
 
@@ -842,7 +834,6 @@ def _put_levels(
             window=window,
             vendor_basis=vendor_basis,
             as_of_ts_utc=as_of,
-            generation=generation,
         )
 
 
@@ -854,7 +845,6 @@ def build_price_level_snapshot(
     prior,
     bar_source: str,
     config: PlaybookConfig | None = None,
-    generation: int = 0,
 ) -> PriceLevelSnapshot:
     """Build the levels: THE level producer.
 
@@ -882,7 +872,6 @@ def build_price_level_snapshot(
         levels,
         vendor_basis=f"1m bars ({bar_source}); Schwab streamed bars",
         as_of=as_of,
-        generation=generation,
     )
 
     # ── prior day ────────────────────────────────────────────────────────────
@@ -919,7 +908,6 @@ def build_price_level_snapshot(
         return PriceLevelSnapshot(
             ticker=tk,
             session_date=session_date,
-            generation=generation,
             bar_source=bar_source,
             as_of_ts_utc=as_of,
             levels=levels,
@@ -1023,10 +1011,10 @@ def build_price_level_snapshot(
     return snapshot(session_rth_vol_n, profile)
 
 
-#: (ticker, session_date_iso) -> the ONE materialized snapshot for the current generation.
+#: (ticker, session_date_iso) -> the ONE materialized snapshot for the current bar input.
 _MATERIALIZED_SNAPSHOTS: dict[tuple[str, str], PriceLevelSnapshot] = {}
 #: Guards the whole read-decide-build-write of materialize_price_level_snapshot.
-#: Deciding a generation from a value you then overwrite is a check-then-act, and a
+#: Deciding to build from a value you then overwrite is a check-then-act, and a
 #: check-then-act is a race unless something serialises it.
 _MATERIALIZE_LOCK = threading.Lock()
 
@@ -1040,26 +1028,25 @@ def materialize_price_level_snapshot(
     bar_source: str,
     config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
-    """Materialize once per generation; return the SAME object within a generation.
+    """Materialize once per input; return the SAME object while the input is the same.
 
     Built from normalized bars (bars_from_candles) and Schwab's daily candles (`daily`,
     server._series).
 
-    A new market generation (the bar input or the prior session's candle changed) invokes the
-    producer exactly once. Every later ask in that generation is a read, never a recomputation.
+    A new input (the bars or the prior session's candle changed) invokes the producer exactly
+    once. Every later ask with that input is a read, never a recomputation.
     """
     tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
     key = (tk, session_date.isoformat())
     prior = prior_session(daily, session_date)
     fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source, prior)
-    # The read, the generation decision, the build and the write-back are ONE
-    # critical section. Unguarded, two concurrent callers can both see `existing is None`,
-    # both compute generation 1 and produce two results under one generation.
+    # The read, the decision to build, the build and the write-back are ONE critical
+    # section. Unguarded, two concurrent callers can both see no result for this input and
+    # produce two.
     with _MATERIALIZE_LOCK:
         existing = _MATERIALIZED_SNAPSHOTS.get(key)
         if existing is not None and existing.input_fingerprint == fingerprint:
             return existing
-        generation = 1 if existing is None else existing.generation + 1
         snap = build_price_level_snapshot(
             tk,
             session_date,
@@ -1067,7 +1054,6 @@ def materialize_price_level_snapshot(
             prior=prior,
             bar_source=bar_source,
             config=config,
-            generation=generation,
         )
         snap.input_fingerprint = fingerprint
         _MATERIALIZED_SNAPSHOTS[key] = snap

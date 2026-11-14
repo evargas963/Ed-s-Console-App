@@ -2198,11 +2198,20 @@ FEED = ("app/market_data/schwab/", "option_contract.py", "numeric_contract.py")
 DICT_READ = "dict reads with .get outside the Feed (a dict whose keys nothing guarantees; rule 12)"
 add(S, DICT_READ, "12", "ast")
 for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:
+    #: a route's decorator (`@app.get(path)`) and a queue's `get()` read no dict
+    routes = {
+        id(d)
+        for fn in ast.walk(trees[f])
+        if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef)
+        for d in fn.decorator_list
+    }
     for node in ast.walk(trees[f]):
         if (
             isinstance(node, ast.Call)
             and called_name(node) == "get"
             and isinstance(node.func, ast.Attribute)
+            and node.args
+            and id(node) not in routes
         ):
             add(S, DICT_READ, "12", "ast", f"{f}:{node.lineno}")
 

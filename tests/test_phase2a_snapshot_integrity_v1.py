@@ -100,34 +100,32 @@ def _mat(session, bars):
 
 
 def test_an_interior_bar_change_is_a_new_generation():
-    """(a) The prior session's high moved from 105 to 999: a new generation with the new PDH."""
+    """(a) The prior session's high moved from 105 to 999: a new snapshot with the new PDH."""
     _fresh()
     session = most_recent_trading_day_et()
 
     first = _mat(session, _bars(session, 105.0))
-    assert first.generation == 1
     pdh_before = first.price("PDH")
+    assert pdh_before == 105.0
 
     second = _mat(session, _bars(session, 999.0))
     assert second is not first, (
         "an interior bar changed and the producer returned the SAME object — the "
         "fingerprint is sampling the input instead of covering it (RC-324)"
     )
-    assert second.generation == first.generation + 1, (
-        f"generation did not advance: {first.generation} -> {second.generation}"
-    )
+    assert second.input_fingerprint != first.input_fingerprint
     assert second.price("PDH") != pdh_before, (
         f"PDH stayed {pdh_before!r} after the high was moved to 999 — a stale value served "
-        "under a fresh generation"
+        "for a new input"
     )
 
-    # And the same input must still be ONE generation: no churn.
+    # And the same input must still be ONE snapshot: no churn.
     again = _mat(session, _bars(session, 999.0))
-    assert again is second, "an unchanged input minted a new object — one result per generation"
+    assert again is second, "an unchanged input minted a new object — one result per input"
 
 
 def test_concurrent_materialization_yields_one_object_and_one_generation():
-    """(b) Eight concurrent callers, one input: one object, one generation."""
+    """(b) Eight concurrent callers, one input: one object."""
     _fresh()
     session = most_recent_trading_day_et()
     bars = _bars(session, 105.0)
@@ -149,12 +147,10 @@ def test_concurrent_materialization_yields_one_object_and_one_generation():
     assert len(results) == 8, f"only {len(results)} of 8 threads completed"
     assert len({id(r) for r in results}) == 1, (
         "concurrent callers received DIFFERENT snapshot objects — two results for one "
-        "generation, the exact defect Cursor reproduced with PDH 105 and 205 (RC-324)"
+        "input, the exact defect Cursor reproduced with PDH 105 and 205 (RC-324)"
     )
-    assert len({r.generation for r in results}) == 1, (
-        f"one input produced several generations: {sorted({r.generation for r in results})}"
-    )
-    assert results[0].generation == 1
+    assert len({r.input_fingerprint for r in results}) == 1
+    assert results[0].price("PDH") == 105.0
 
 
 def test_the_fingerprint_covers_every_bar_field():

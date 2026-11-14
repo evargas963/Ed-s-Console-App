@@ -276,7 +276,7 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     # the desk: Schwab's books at the price, zones and session levels built from its bars
     assert {book["status"] for book in panels["book"].values()} == {"ok"}
     assert panels["liquidity"]["zones"]
-    assert {levels["generation"] for levels in panels["levels"].values()} == {1}
+    assert all(levels["levels"] for levels in panels["levels"].values())
     assert all(bars["bars"] for bars in panels["bars"].values()) and panels["bars_flow"]["bars"]
     # the queue's crosses are the day's recorded ones, inside the timeframe's window
     recorded = {f"x{row['cross_id']}" for row in real.desk["crosses"]}

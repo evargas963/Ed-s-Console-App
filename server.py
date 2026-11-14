@@ -311,15 +311,15 @@ def _write_streamed_bar(msg: dict) -> bool:
     lacks a valid field (then it is not kept).
     """
     bar = _schwab_bar(
-        msg.get("bar_start_ms"),
-        msg.get("open"),
-        msg.get("high"),
-        msg.get("low"),
-        msg.get("close"),
-        msg.get("volume"),
+        msg["bar_start_ms"],
+        msg["open"],
+        msg["high"],
+        msg["low"],
+        msg["close"],
+        msg["volume"],
     )
     if bar is None:
-        log.warning("streamed bar for %s lacks a valid field, not kept: %s", msg.get("symbol"), msg)
+        log.warning("streamed bar for %s lacks a valid field, not kept: %s", msg["symbol"], msg)
         return False
     tk = ticker_storage_key(msg["symbol"])
     _keep_bar(tk, bar)  # what every live reader reads
@@ -348,7 +348,7 @@ def _write_streamed_bars(msgs: list, now: datetime) -> None:
         except Exception as e:  # logged; the next bar is still written
             log.warning(
                 "streamed bar or price history for %s not written: %s",
-                msg.get("symbol"),
+                msg["symbol"],
                 e,
                 exc_info=True,
             )
@@ -3949,7 +3949,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
         **mark,  # each level's distance and side are from that price
-        "generation": snap.generation if snap is not None else None,
         "snapshot_time_ct": ct_label(snap.as_of_ts_utc)
         if snap is not None and snap.as_of_ts_utc is not None
         else None,

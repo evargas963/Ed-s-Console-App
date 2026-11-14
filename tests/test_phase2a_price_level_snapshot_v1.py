@@ -115,18 +115,16 @@ def _clean_snapshots():
 # ── the materialized snapshot ────────────────────────────────────────────────
 
 
-def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
+def test_snapshot_carries_value_scope_provenance_and_as_of():
     snap = build_price_level_snapshot(
         "SPY",
         SESSION,
         bars_from_candles(_tape()),
         prior=_prior("SPY", SESSION),
         bar_source="unit_tape",
-        generation=7,
     )
     for lid, value in snap.levels.items():
         assert lid in PHASE2A_LEVEL_IDS, f"{lid} is not a declared Phase 2A id"
-        assert value.generation == 7
         assert value.semantic_scope == PHASE2A_LEVEL_IDS[lid][1]
         assert value.producer.startswith("liquidity_value_engine.")
         assert value.as_of_ts_utc is not None
@@ -138,18 +136,17 @@ def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
         assert snap.price(lid) not in (110, 90), "multi-session union value materialized"
 
 
-def test_one_materialization_per_generation_returns_the_same_object():
-    """A new generation may invoke the producer once; re-asking is a READ."""
+def test_one_materialization_per_input_returns_the_same_object():
+    """A new input may invoke the producer once; re-asking is a READ."""
     tape, daily = bars_from_candles(_tape()), _daily("SPY")
     a = materialize_price_level_snapshot("SPY", SESSION, tape, daily=daily, bar_source="unit_tape")
     b = materialize_price_level_snapshot("SPY", SESSION, tape, daily=daily, bar_source="unit_tape")
-    assert a is b, "the same generation re-materialized — that is a second result"
-    assert a.generation == 1
+    assert a is b, "the same input re-materialized — that is a second result"
 
     moved = bars_from_candles(_tape() + [_bar(2026, 8, 4, 11, 1, 107, 112, 106, 111)])
     c = materialize_price_level_snapshot("SPY", SESSION, moved, daily=daily, bar_source="unit_tape")
-    assert c is not a and c.generation == 2, "a new bar input must bump the generation"
-    assert all(v.generation == 2 for v in c.levels.values())
+    assert c is not a, "a new bar input must be built again"
+    assert c.bars_used == a.bars_used + 1
 
 
 def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
@@ -237,12 +234,8 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute():
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     ids = [lv["id"] for lv in payload["levels"]]
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload"
-    assert payload["generation"] >= 1
     assert by_id["PDH"]["price"] == 105 and by_id["PDL"]["price"] == 95
     for lv in payload["levels"]:
-        assert lv["generation"] == payload["generation"], (
-            "every served level must name the generation it came out of"
-        )
         assert lv["semantic_scope"] == PHASE2A_LEVEL_IDS[lv["id"]][1]
     assert payload["vwap_series"], "the carried VWAP curve is missing"
     assert by_id["VWAP"]["price"] == payload["vwap_series"][-1][1]

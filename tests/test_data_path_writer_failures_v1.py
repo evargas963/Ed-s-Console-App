@@ -354,10 +354,10 @@ class _Defect(dict):
     thread ends.
     """
 
-    def get(self, key, default=None):
+    def __getitem__(self, key):
         if key == "bid":
             raise RuntimeError("a defect in the writer")
-        return dict.get(self, key, default)
+        return dict.__getitem__(self, key)
 
 
 def _tsla_quotes(bus, health, n: int) -> None:
@@ -1325,10 +1325,10 @@ class _ArmedDefect(dict):
         super().__init__(*args)
         self.armed = armed
 
-    def get(self, key, default=None):
+    def __getitem__(self, key):
         if key == "bid" and self.armed.is_set():
             raise RuntimeError("a defect in the writer")
-        return dict.get(self, key, default)
+        return dict.__getitem__(self, key)
 
 
 def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(tmp_path):
