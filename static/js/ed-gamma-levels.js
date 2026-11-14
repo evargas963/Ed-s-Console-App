@@ -5,9 +5,7 @@
 (function () {
   "use strict";
 
-  function px(n, d) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
-  }
+  var px = window.EdShell.num;
   var esc = window.EdShell.esc;
   // Two homes render the SAME canonical levels contract, same function, same host-id
   // resolution pattern -- Options > Gamma > Levels and Liquidity > Levels. Never two renderers

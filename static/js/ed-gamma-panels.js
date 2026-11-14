@@ -9,9 +9,7 @@
   "use strict";
 
   var usd = window.EdGamma.formatUsd;
-  function px(n, d) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
-  }
+  var px = window.EdShell.num;
   // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
   // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
   function fmtVol(n) {
@@ -700,7 +698,7 @@
     unknown: "-",
   };
   function fmtOfPrice(n) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(2);
+    return px(n);
   }
   function fmtOfSize(n) {
     return n == null || isNaN(n) ? "-" : String(n);

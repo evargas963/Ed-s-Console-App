@@ -968,10 +968,9 @@
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
+  // the page's one number formatter: `d` digits (2 when not given), "-" for a value not known
   function fmt(n, d) {
-    return n === null || n === undefined || isNaN(n)
-      ? "-"
-      : Number(n).toFixed(d === undefined ? 2 : d);
+    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
   }
   function setFeed(cls, label, age, ageTitle) {
     var dot = document.getElementById("hFeedDot"),
@@ -1556,6 +1555,7 @@
     emit: emit,
     esc: esc,
     orDash: orDash,
+    num: fmt,
     pref: _ls,
     setPref: _lsSet, // a viewer's own setting, kept in the browser
     addSymbol: addSymbol,

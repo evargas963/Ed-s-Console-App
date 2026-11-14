@@ -16,9 +16,7 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  function num(n, d) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
-  }
+  var num = window.EdShell.num;
   function isRightNow() {
     var s = window.EdShell.getState();
     return s.workspace === "trade-desk" && s.subview === "right-now";
