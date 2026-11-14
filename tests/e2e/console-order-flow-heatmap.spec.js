@@ -40,9 +40,20 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
   await expect(plot.locator('.tvc-pin')).toBeVisible();
   await expect(plot.locator('.tvc-pin')).toContainText('Bid size');
-  // its time is the served bucket's (history.book_heatmap_for_ticker's bucket_ct)
-  const shown = await plot.locator('.tvc-pin .tvc-pin-h span').textContent();
-  expect(HEAT.bucket_ct).toContain(shown);
+  // its time is the served bucket's (history.book_heatmap_for_ticker's bucket_ct) on a cell, and
+  // "-" off every cell: pins across the plot, at least one on a served cell
+  const times = [];
+  for (const fx of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+    for (const fy of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+      await page.keyboard.press('Escape');
+      await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
+      if (await plot.locator('.tvc-pin').isVisible()) {
+        times.push(await plot.locator('.tvc-pin .tvc-pin-h span').textContent());
+      }
+    }
+  }
+  expect(times.every((t) => t === '-' || HEAT.bucket_ct.includes(t))).toBe(true);
+  expect(times.some((t) => HEAT.bucket_ct.includes(t))).toBe(true);
   expect(errs).toEqual([]);
 });
 

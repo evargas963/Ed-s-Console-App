@@ -1452,6 +1452,7 @@
             v: b.v,
             chg: b.chg,
             chg_pct: b.chg_pct,
+            time_ct: b.time_ct,
           };
         });
         S.tf = tf;
