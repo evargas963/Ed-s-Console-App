@@ -88,7 +88,7 @@
     if (d.spot_time_ct) trade = ' · last trade ' + esc(d.spot_time_ct);
     var source = '';
     if (d.spot_source) source = ' · ' + esc(d.spot_source);
-    var head = '<div class="lv-head"><span>Levels · gen ' + esc(d.generation) + '</span>' +
+    var head = '<div class="lv-head"><span>Levels</span>' +
       '<span class="lv-spot">spot ' + (isFinite(spot) ? spot.toFixed(2) : '-') +
       source + trade + '</span></div>';
     var table = '<table class="lv"><thead><tr><th>Level</th><th>Regular</th><th>0DTE</th>' +

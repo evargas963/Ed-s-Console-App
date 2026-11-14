@@ -71032,7 +71032,6 @@
    "spot_as_of_ts_utc": 1794497956.43,
    "spot_time_ct": "Thu 11/12 09:39 AM CT",
    "spot_not_live_text": null,
-   "generation": 1,
    "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
    "snapshot_age_text": "78s",
    "levels_state": "LIVE",
@@ -71131,7 +71130,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -71156,7 +71154,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -71181,7 +71178,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -71206,7 +71202,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -71231,7 +71226,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -71256,7 +71250,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -71281,7 +71274,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -71306,7 +71298,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
@@ -71331,7 +71322,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -71436,7 +71426,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -71461,7 +71450,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -71486,7 +71474,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -71511,7 +71498,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -71536,7 +71522,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -71561,7 +71546,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -71586,7 +71570,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -71611,7 +71594,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -71636,7 +71618,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -71661,7 +71642,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
@@ -75474,7 +75454,6 @@
    "spot_as_of_ts_utc": 1794497956.43,
    "spot_time_ct": "Thu 11/12 09:39 AM CT",
    "spot_not_live_text": null,
-   "generation": 1,
    "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
    "snapshot_age_text": "78s",
    "levels_state": "LIVE",
@@ -75573,7 +75552,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -75598,7 +75576,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -75623,7 +75600,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -75648,7 +75624,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -75673,7 +75648,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -75698,7 +75672,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -75723,7 +75696,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -75748,7 +75720,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
@@ -75773,7 +75744,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -75878,7 +75848,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -75903,7 +75872,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -75928,7 +75896,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -75953,7 +75920,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -75978,7 +75944,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -76003,7 +75968,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -76028,7 +75992,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -76053,7 +76016,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -76078,7 +76040,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -76103,7 +76064,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
@@ -79476,7 +79436,6 @@
    "spot_as_of_ts_utc": 1794497956.43,
    "spot_time_ct": "Thu 11/12 09:39 AM CT",
    "spot_not_live_text": null,
-   "generation": 1,
    "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
    "snapshot_age_text": "78s",
    "levels_state": "LIVE",
@@ -79575,7 +79534,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -79600,7 +79558,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -79625,7 +79582,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -79650,7 +79606,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -79675,7 +79630,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -79700,7 +79654,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -79725,7 +79678,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -79750,7 +79702,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
@@ -79775,7 +79726,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -79880,7 +79830,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
@@ -79905,7 +79854,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -79930,7 +79878,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
@@ -79955,7 +79902,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
@@ -79980,7 +79926,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -80005,7 +79950,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -80030,7 +79974,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -80055,7 +79998,6 @@
      "strength": null,
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -80080,7 +80022,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
@@ -80105,7 +80046,6 @@
      "strength": null,
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
-     "generation": 1,
      "provenance": {
       "producer": "liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",

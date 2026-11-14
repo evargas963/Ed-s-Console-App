@@ -105,7 +105,6 @@ def test_an_interior_bar_change_is_a_new_generation():
     session = most_recent_trading_day_et()
 
     first = _mat(session, _bars(session, 105.0))
-    assert first.generation == 1
     pdh_before = first.price("PDH")
 
     second = _mat(session, _bars(session, 999.0))
@@ -113,12 +112,9 @@ def test_an_interior_bar_change_is_a_new_generation():
         "an interior bar changed and the producer returned the SAME object — the "
         "fingerprint is sampling the input instead of covering it (RC-324)"
     )
-    assert second.generation == first.generation + 1, (
-        f"generation did not advance: {first.generation} -> {second.generation}"
-    )
     assert second.price("PDH") != pdh_before, (
         f"PDH stayed {pdh_before!r} after the high was moved to 999 — a stale value served "
-        "under a fresh generation"
+        "for a new input"
     )
 
     # And the same input must still be ONE generation: no churn.
@@ -151,10 +147,6 @@ def test_concurrent_materialization_yields_one_object_and_one_generation():
         "concurrent callers received DIFFERENT snapshot objects — two results for one "
         "generation, the exact defect Cursor reproduced with PDH 105 and 205 (RC-324)"
     )
-    assert len({r.generation for r in results}) == 1, (
-        f"one input produced several generations: {sorted({r.generation for r in results})}"
-    )
-    assert results[0].generation == 1
 
 
 def test_the_fingerprint_covers_every_bar_field():

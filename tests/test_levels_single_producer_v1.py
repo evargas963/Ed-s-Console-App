@@ -254,7 +254,7 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
 
         # nothing published yet: the levels are absent with their reason
         none_yet = srv.levels_payload(tk, "1", now)
-        assert none_yet["generation"] is None
+        assert none_yet["levels"] == []
         assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet[
             "families_absent"
         ]
@@ -270,7 +270,7 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
             assert served.told(elsewhere) == set(), "a page on another ticker is told nothing"
         assert told == {tk: {"liquidity", "levels"}, other: {"liquidity", "levels"}}
         served = srv.levels_payload(tk, "1", now)
-        assert served["generation"] is not None
+        assert served["levels"]
         assert served["snapshot_time_ct"] == ct_label(pushed[tk]["bar_start_ms"] / 1000.0)
         assert (
             srv.canonical_price_level_snapshot(other, now).as_of_ts_utc
@@ -279,7 +279,6 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         # the route reads no bar: with the ticker's bars gone from memory it serves the same levels
         kept = srv._bars.pop(tk)
         again = srv.levels_payload(tk, "15", now)
-        assert again["generation"] == served["generation"]
         assert [(r["id"], r["price"]) for r in again["levels"]] == [
             (r["id"], r["price"]) for r in served["levels"]
         ]

@@ -87,7 +87,6 @@ def _canonical(session: date, bars: list):
         prior=prior,
         bar_source="test_fixture",
         config=PlaybookConfig(),
-        generation=1,
     )
 
 

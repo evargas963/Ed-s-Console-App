@@ -3949,7 +3949,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
         **mark,  # each level's distance and side are from that price
-        "generation": snap.generation if snap is not None else None,
         "snapshot_time_ct": ct_label(snap.as_of_ts_utc)
         if snap is not None and snap.as_of_ts_utc is not None
         else None,
