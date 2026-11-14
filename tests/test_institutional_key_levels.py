@@ -111,7 +111,6 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
         "lvp",
         "absolute_gamma_strike",
         "pin_candidate",
-        "pin_candidate_blockers",
     ):
         assert fld in d, fld + " missing from terrain payload"
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"

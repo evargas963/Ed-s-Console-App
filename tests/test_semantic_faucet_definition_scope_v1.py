@@ -180,14 +180,12 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
             f"the {gate} gate did not withhold the pin claim: blockers={blockers}"
         )
     # The real book, valued at its capture (2026-10-07 12:32 ET): gamma at spot is -$2.44B, so the
-    # regime gate withholds the claim, and liquidity too -- WITH the reasons; the measured
-    # concentration stays.
+    # regime gate withholds the claim, and liquidity too; the measured concentration stays.
     chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions())
     served = price_relations(snap.to_dict(), spot).to_dict()
     assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
     assert served["pin_candidate"] is None
-    assert served["pin_candidate_blockers"] == ["regime", "liquidity"]
     assert snap.absolute_gamma_strike is not None, (
         "withholding the CLAIM must never delete the measured concentration (deliver, never delete)"
     )

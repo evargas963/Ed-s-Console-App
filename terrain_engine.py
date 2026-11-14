@@ -620,9 +620,8 @@ class PriceRelations:
     put_wall_lean: str | None
     flip_relation: str | None
     pin_candidate: float | None
-    pin_candidate_blockers: list[str]
 
-    def to_dict(self) -> dict[str, str | float | list[str] | None]:
+    def to_dict(self) -> dict[str, str | float | None]:
         return asdict(self)
 
 
@@ -639,7 +638,7 @@ def price_relations(terrain: dict[str, Any], price: float | None) -> PriceRelati
     """
     call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
     call_lean, put_lean = wall_lean(call, put, price, terrain["regime"], terrain["confidence"])
-    pin, pin_blockers = qualify_pin_candidate(
+    pin, _blockers = qualify_pin_candidate(
         spot=price,
         absolute_gamma_strike=terrain["absolute_gamma_strike"],
         absolute_gamma_strength_pct=terrain["absolute_gamma_strength_pct"],
@@ -656,7 +655,6 @@ def price_relations(terrain: dict[str, Any], price: float | None) -> PriceRelati
         put_wall_lean=put_lean,
         flip_relation=price_side(flip, price),
         pin_candidate=pin,
-        pin_candidate_blockers=list(pin_blockers),
     )
 
 
