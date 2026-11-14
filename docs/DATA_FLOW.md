@@ -670,7 +670,7 @@ the program.
   Desk map) serve that result and read no stored chain. The same publication carries each
   strike's net DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap
   cell's readers), sent as the strikes panel's `measures` for the Chart view of Delta / DEX and Open
-  Interest. The book's values at spot (gamma at spot, regime, posture, confidence, headline) are
+  Interest. The book's values at spot (gamma at spot, regime, confidence, headline and its source) are
   computed in that one publication at that publication's price; the terrain panel sends them as
   published and recomputes none. Each relation of the live price to the levels is served beside
   them, at the live price (below).

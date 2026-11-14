@@ -1180,7 +1180,7 @@
         l && l.summary ? String(orDash(l.summary.vwap_relation)).replace(/_/g, " ") : "-",
         "",
       ],
-      ["OPTIONS", t && !why(t) && t.posture ? String(t.posture).replace(/_/g, " ") : "-", ""],
+      ["OPTIONS", t && !why(t) && t.regime ? window.EdGammaRegime[t.regime].t : "-", ""],
       [
         "GAMMA",
         t && t.flip_relation

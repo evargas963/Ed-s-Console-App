@@ -648,7 +648,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klCall')).toHaveText('270.00');
     await expect(page.locator('#klPut')).toHaveText('270.00');
     await expect(page.locator('#klNet')).toHaveText('$937.3M');
-    await expect(page.locator('#klRegime')).toContainText('Long Γ');
+    await expect(page.locator('#klRegime')).toContainText('Dealer Γ +'); // net GEX at the price > 0
     // the price levels are the levels panel's own rows (AMZN's real set): the expected move from
     // Schwab's implied volatility, the prior day's high, low and close, and VWAP
     await expect(page.locator('#klEmUp')).toHaveText('276.27');

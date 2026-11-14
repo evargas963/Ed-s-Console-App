@@ -46,7 +46,7 @@ def test_fails_closed_on_every_missing_input() -> None:
     ):
         snap = compute_terrain(ticker, chain, spot, now=NOW, sessions=sessions())
         assert snap.regime == "UNAVAILABLE"
-        assert snap.posture == "STAND_ASIDE"
+        assert snap.headline.startswith("No estimate"), snap.headline
         assert snap.gamma_flip is None
         assert snap.call_wall is None and snap.put_wall is None
         assert snap.error, "a refusal must state its reason"
@@ -105,7 +105,7 @@ def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
     assert snap.profile, "the chain must price, so the NARROW gate (not an expiry) is tested"
     assert snap.confidence != GAMMA_FLIP_TRUSTED
     assert snap.regime == "UNAVAILABLE"
-    assert snap.posture == "STAND_ASIDE"
+    assert snap.headline.startswith("No estimate"), snap.headline
 
 
 def test_payload_is_json_serialisable() -> None:

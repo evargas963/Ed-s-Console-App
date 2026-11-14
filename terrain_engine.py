@@ -118,9 +118,10 @@ class TerrainSnapshot:
 
     # regime
     regime: str = "UNAVAILABLE"
-    posture: str = "STAND_ASIDE"
     confidence: str = "UNAVAILABLE"
     headline: str = ""
+    #: the headline's sources, shown on hover
+    headline_source: str = ""
 
     # levels — chain scope for every level in this dataclass: FULL_BOOK (the wide
     # multi-expiry capture chain). The analytics summary_rows carry the SELECTED_EXPIRY
@@ -261,9 +262,9 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
         ticker=ticker,
         spot=spot,
         regime=read.regime,
-        posture=read.posture,
         confidence=read.confidence,
         headline=read.headline,
+        headline_source=read.headline_source,
         error=reason,
     )
 
@@ -880,7 +881,7 @@ def compute_terrain(
     basis (dealers hedge the whole delta book across weekly/monthly expiries, not
     just the 0DTE slice). The narrow-chain confidence gate in compute_gamma_flip_v2
     is the fail-closed backstop: a genuinely narrow chain (e.g. wide
-    capture unavailable) still yields STAND_ASIDE, never a trusted-looking verdict.
+    capture unavailable) still yields no regime (UNAVAILABLE), never a trusted-looking verdict.
     """
     if not contracts:
         return _unavailable(ticker, spot, "no option chain")
@@ -966,9 +967,9 @@ def compute_terrain(
         ticker=ticker,
         spot=float(spot),
         regime=read.regime,
-        posture=read.posture,
         confidence=read.confidence,
         headline=read.headline,
+        headline_source=read.headline_source,
         gamma_flip=flip,
         call_wall=call_wall,
         put_wall=put_wall,
