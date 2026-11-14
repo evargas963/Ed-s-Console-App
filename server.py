@@ -3332,7 +3332,17 @@ async def post_flow_contract(selected: FlowContract):
     return {"ok": True, "contract": contract}
 
 
-def expiries(ticker: str, now: float) -> dict[str, Any]:
+class Expiries(TypedDict):
+    """The expiries panel: each listed expiry with its dropdown texts, or why there are none."""
+
+    expiries: list[str] | None
+    dte: dict[str, float | None] | None
+    labels: dict[str, str] | None
+    dte_text: dict[str, str | None] | None
+    reason: str | None
+
+
+def expiries(ticker: str, now: float) -> Expiries:
     """Return the ticker's listed expiries at `now`, each with its dropdown texts.
 
     `ticker` is the levels' own key ($SPX). Each expiry's label is its date, MM/DD/YYYY, and its
@@ -3544,7 +3554,15 @@ def _is_full_git_sha(value: str) -> bool:
 RUNNING_COMMIT: str | None = checkout_head(APP_DIR)
 
 
-def build_answer(running: str | None, checkout: str | None) -> dict[str, str | bool | None]:
+class BuildAnswer(TypedDict):
+    """/api/build: the commit the program runs, the checkout's, and whether they differ."""
+
+    running_commit: str | None
+    checkout_commit: str | None
+    differ: bool | None
+
+
+def build_answer(running: str | None, checkout: str | None) -> BuildAnswer:
     """/api/build's answer: the commit the running process loaded, stable for its life.
 
     The checkout's HEAD now is reported beside it, and whether the two differ (None while
