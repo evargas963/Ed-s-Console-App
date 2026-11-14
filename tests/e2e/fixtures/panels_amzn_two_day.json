@@ -83355,7 +83355,8 @@
       "warn": false,
       "title": "NASDAQ_BOOK size wall \u00b7 bid 269.39",
       "detail": "1000.0 shown \u00b7 25.0\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:39 AM CT"
      },
      {
       "key": "wall1",
@@ -83365,7 +83366,8 @@
       "warn": false,
       "title": "NASDAQ_BOOK size wall \u00b7 bid 268.95",
       "detail": "200.0 shown \u00b7 5.0\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:39 AM CT"
      },
      {
       "key": "pw",
@@ -83374,7 +83376,8 @@
       "dir": "down",
       "title": "Spot through the put wall",
       "detail": "put wall 270.00 \u00b7 spot 269.43",
-      "src": "gamma levels"
+      "src": "gamma levels",
+      "time_ct": "Thu 11/12 09:39 AM CT"
      },
      {
       "key": "x41910",
@@ -83386,7 +83389,8 @@
       "marker": true,
       "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:28 AM CT"
      },
      {
       "key": "x41907",
@@ -83398,7 +83402,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:28 AM CT"
      },
      {
       "key": "x41901",
@@ -83410,7 +83415,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41898",
@@ -83422,7 +83428,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41884",
@@ -83434,7 +83441,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:21 AM CT"
      },
      {
       "key": "x41881",
@@ -83446,7 +83454,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.10 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:21 AM CT"
      },
      {
       "key": "x41875",
@@ -83458,7 +83467,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Put g-Wall",
       "detail": "270.00 \u00b7 spot 270.09 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:18 AM CT"
      },
      {
       "key": "x41873",
@@ -83470,7 +83480,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Put g-Wall",
       "detail": "270.00 \u00b7 spot 269.94 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:18 AM CT"
      },
      {
       "key": "x41821",
@@ -83482,7 +83493,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall",
       "detail": "270.00 \u00b7 spot 270.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:37 AM CT"
      },
      {
       "key": "x41800",
@@ -83494,7 +83506,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.86 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:30 AM CT"
      },
      {
       "key": "x41798",
@@ -83506,7 +83519,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.10 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:30 AM CT"
      }
     ],
     "cross_counts": {
@@ -83528,7 +83542,8 @@
       "warn": false,
       "title": "NASDAQ_BOOK size wall \u00b7 bid 269.39",
       "detail": "1000.0 shown \u00b7 25.0\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:39 AM CT"
      },
      {
       "key": "wall1",
@@ -83538,7 +83553,8 @@
       "warn": false,
       "title": "NASDAQ_BOOK size wall \u00b7 bid 268.95",
       "detail": "200.0 shown \u00b7 5.0\u00d7 the median level",
-      "src": "equity book"
+      "src": "equity book",
+      "time_ct": "Thu 11/12 09:39 AM CT"
      },
      {
       "key": "pw",
@@ -83547,7 +83563,8 @@
       "dir": "down",
       "title": "Spot through the put wall",
       "detail": "put wall 270.00 \u00b7 spot 269.43",
-      "src": "gamma levels"
+      "src": "gamma levels",
+      "time_ct": "Thu 11/12 09:39 AM CT"
      },
      {
       "key": "x41910",
@@ -83559,7 +83576,8 @@
       "marker": true,
       "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:28 AM CT"
      },
      {
       "key": "x41907",
@@ -83571,7 +83589,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.02 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:28 AM CT"
      },
      {
       "key": "x41901",
@@ -83583,7 +83602,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41898",
@@ -83595,7 +83615,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:27 AM CT"
      },
      {
       "key": "x41884",
@@ -83607,7 +83628,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:21 AM CT"
      },
      {
       "key": "x41881",
@@ -83619,7 +83641,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Put g-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.10 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:21 AM CT"
      },
      {
       "key": "x41875",
@@ -83631,7 +83654,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Put g-Wall",
       "detail": "270.00 \u00b7 spot 270.09 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:18 AM CT"
      },
      {
       "key": "x41873",
@@ -83643,7 +83667,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Put g-Wall",
       "detail": "270.00 \u00b7 spot 269.94 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 09:18 AM CT"
      },
      {
       "key": "x41821",
@@ -83655,7 +83680,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall",
       "detail": "270.00 \u00b7 spot 270.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:37 AM CT"
      },
      {
       "key": "x41800",
@@ -83667,7 +83693,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.86 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:30 AM CT"
      },
      {
       "key": "x41798",
@@ -83679,7 +83706,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.10 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:30 AM CT"
      },
      {
       "key": "x41783",
@@ -83691,7 +83719,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.94 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:26 AM CT"
      },
      {
       "key": "x41781",
@@ -83703,7 +83732,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.17 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:26 AM CT"
      },
      {
       "key": "x41779",
@@ -83715,7 +83745,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:25 AM CT"
      },
      {
       "key": "x41777",
@@ -83727,7 +83758,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:25 AM CT"
      },
      {
       "key": "x41775",
@@ -83739,7 +83771,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.09 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:23 AM CT"
      },
      {
       "key": "x41773",
@@ -83751,7 +83784,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:23 AM CT"
      },
      {
       "key": "x41771",
@@ -83763,7 +83797,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:22 AM CT"
      },
      {
       "key": "x41769",
@@ -83775,7 +83810,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.01 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:21 AM CT"
      },
      {
       "key": "x41767",
@@ -83787,7 +83823,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 269.72 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:21 AM CT"
      },
      {
       "key": "x41763",
@@ -83799,7 +83836,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:16 AM CT"
      },
      {
       "key": "x41761",
@@ -83811,7 +83849,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 270.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 08:12 AM CT"
      },
      {
       "key": "x41739",
@@ -83823,7 +83862,8 @@
       "marker": true,
       "title": "Crossed above Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 265.09 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:51 AM CT"
      },
      {
       "key": "x41737",
@@ -83835,7 +83875,8 @@
       "marker": false,
       "title": "Crossed below Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 264.94 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:51 AM CT"
      },
      {
       "key": "x41735",
@@ -83847,7 +83888,8 @@
       "marker": false,
       "title": "Crossed above Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 265.07 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:50 AM CT"
      },
      {
       "key": "x41733",
@@ -83859,7 +83901,8 @@
       "marker": false,
       "title": "Crossed below Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 264.99 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:50 AM CT"
      },
      {
       "key": "x41731",
@@ -83871,7 +83914,8 @@
       "marker": false,
       "title": "Crossed below Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 264.76 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:48 AM CT"
      },
      {
       "key": "x41729",
@@ -83883,7 +83927,8 @@
       "marker": false,
       "title": "Crossed above Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 265.18 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:48 AM CT"
      },
      {
       "key": "x41727",
@@ -83895,7 +83940,8 @@
       "marker": false,
       "title": "Crossed below Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 264.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:47 AM CT"
      },
      {
       "key": "x41725",
@@ -83907,7 +83953,8 @@
       "marker": false,
       "title": "Crossed above Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 265.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:47 AM CT"
      },
      {
       "key": "x41723",
@@ -83919,7 +83966,8 @@
       "marker": false,
       "title": "Crossed below Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 265.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:46 AM CT"
      },
      {
       "key": "x41721",
@@ -83931,7 +83979,8 @@
       "marker": false,
       "title": "Crossed below Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 264.96 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:22 AM CT"
      },
      {
       "key": "x41719",
@@ -83943,7 +83992,8 @@
       "marker": false,
       "title": "Crossed above Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 265.50 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:22 AM CT"
      },
      {
       "key": "x41709",
@@ -83955,7 +84005,8 @@
       "marker": false,
       "title": "Crossed above Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 265.00 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:09 AM CT"
      },
      {
       "key": "x41707",
@@ -83967,7 +84018,8 @@
       "marker": false,
       "title": "Crossed below Max Pain + Put g-Wall",
       "detail": "265.00 \u00b7 spot 264.60 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:09 AM CT"
      },
      {
       "key": "x41693",
@@ -83979,7 +84031,8 @@
       "marker": false,
       "title": "Crossed below Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 266.62 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:05 AM CT"
      },
      {
       "key": "x41691",
@@ -83991,7 +84044,8 @@
       "marker": false,
       "title": "Crossed above Put d-Wall + Call g-Wall",
       "detail": "270.00 \u00b7 spot 273.26 at the cross",
-      "src": "level_crosses"
+      "src": "level_crosses",
+      "time_ct": "Thu 11/12 07:05 AM CT"
      }
     ],
     "cross_counts": {

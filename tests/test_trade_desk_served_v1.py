@@ -160,6 +160,8 @@ def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live()
     assert walls
     for it in walls:
         assert it["ts"] == nat["BOOK_TIME"] / 1000.0
+        # 00:00:03.232 UTC on 2026-09-26 is 19:00 the evening before in Chicago (CDT, UTC-5)
+        assert it["time_ct"] == "Fri 09/25 07:00 PM CT"
         assert it["title"].endswith("(not live)") and it["warn"] is True
 
 

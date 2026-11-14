@@ -42,18 +42,6 @@
     options: ["options", "gamma"],
     vol: ["options", "chain"],
   };
-  var CT_HM = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  var CT_DAYKEY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
-  var CT_MD = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    month: "short",
-    day: "numeric",
-  });
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
@@ -89,13 +77,6 @@
         return w != null;
       })
       .join(" · ");
-  }
-  function whenCT(ts) {
-    // today is the program's (EdShell.now, its heartbeat); with none yet the date is shown
-    var d = new Date(ts * 1000),
-      now = window.EdShell.now();
-    var today = now != null && CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date(now * 1000));
-    return (today ? "" : CT_MD.format(d) + " ") + CT_HM.format(d);
   }
   function onDesk() {
     var s = window.EdShell.getState();
@@ -554,7 +535,7 @@
           '<span class="tdm-q-m">' +
           esc(q.src) +
           " · " +
-          (q.ts == null ? "time not reported" : esc(whenCT(q.ts)) + " CT") +
+          (q.time_ct == null ? "time not reported" : esc(q.time_ct)) +
           "</span></span></button>"
         );
       })
