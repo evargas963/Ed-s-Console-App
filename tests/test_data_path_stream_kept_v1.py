@@ -26,6 +26,7 @@ import pytest
 
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture
+from feed import connection
 from feed.chain_sweep import chain_messages
 from stream_spine import (
     LOG,
@@ -273,7 +274,7 @@ def _old_file(tmp_path_factory) -> Path:
         for m in _MIX["messages"]:
             if m["service"] == "LEVELONE_OPTIONS":
                 key = m["item"]["key"].upper()
-                kind, msg = capture._message(m["service"], key, m["item"], m["schwab_ts"])
+                kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"])
                 msg["ts_recv"] = m["ts_recv"] - 7 * 86_400 - 60.0 * copy
                 writer.insert(f"{kind}.{key}", msg, conn=conn)
     conn.commit()
@@ -287,7 +288,7 @@ def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> in
     Each frame is decoded from its JSON through the daemon's handler for its service.
     """
     health = HealthRegistry()
-    handlers = {s: capture._publisher(s, bus, health) for s in services}
+    handlers = {s: connection._publisher(s, bus, health) for s in services}
     sent = [m for m in _MIX["messages"] if m["service"] in services][:limit]
     for m in sent:
         handlers[m["service"]](
@@ -557,7 +558,7 @@ def _dies_holding(db, cap: int, eleventh: dict, *, stop: bool) -> dict:
 
 def _eleventh() -> dict:
     m = [m for m in _MIX["messages"] if m["service"] == "LEVELONE_EQUITIES"][10]
-    return capture._message(m["service"], m["item"]["key"].upper(), m["item"], m["schwab_ts"])[1]
+    return connection._message(m["service"], m["item"]["key"].upper(), m["item"], m["schwab_ts"])[1]
 
 
 def test_a_writer_that_dies_while_spilling_counts_as_not_recorded_only_what_was_not_yet_held(

@@ -70,15 +70,18 @@ class _Outbox:
         self.lag = 0.0  # the login is answered at once
         self.queue: asyncio.Queue = asyncio.Queue()
 
-    def send(self, frame: dict | None) -> None:
-        """Queue a frame; None closes the socket once every frame before it is sent."""
+    def send(self, frame: dict | str | None) -> None:
+        """Queue a frame (text: sent as it is); None closes the socket once every frame before it
+        is sent.
+        """
         self.queue.put_nowait((time_et.elapsed() + self.lag, frame))
 
     async def deliver(self) -> None:
         while (item := await self.queue.get())[1] is not None:
             if (wait := item[0] - time_et.elapsed()) > 0:
                 await asyncio.sleep(wait)
-            await self.ws.send(json.dumps(item[1]))
+            frame = item[1]
+            await self.ws.send(frame if isinstance(frame, str) else json.dumps(frame))
         await self.ws.close()
 
     async def beat(self) -> None:
@@ -167,7 +170,8 @@ class LocalStreamer:
             and req["service"] in self.data
             and frames[-1]["response"][0]["content"]["code"] == 0
         ):
-            out.send({"data": [self.data[req["service"]]]})
+            entry = self.data[req["service"]]  # text is sent as it is, in place of a frame
+            out.send(entry if isinstance(entry, str) else {"data": [entry]})
         return True
 
     def answer(self, req: dict) -> list[dict]:

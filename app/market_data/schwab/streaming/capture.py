@@ -15,29 +15,13 @@ every watchlist ticker, each in its turn in one rotation, a ticker on a page bef
              errors.invalidSymbols, or does not quote, is not added. The record carries the
              request's id and Schwab's answer back to the console.
 
-It does four things, in one loop:
-
-  1. SUBSCRIBE Once per connection, every watchlist ticker on each equity service (with the
-             market context the page header shows, MARKET_CONTEXT, on LEVELONE_EQUITIES,
-             CHART_EQUITY and NEWS_HEADLINE), and the option contracts the option rule picks
-             (pick_options: the contract selected on the Flow panel, then every ticker's
-             contracts dealt in turn, each ticker's in shown_first's order of its newest chain,
-             none expired). No number of ours caps a service: Schwab is asked for all of them, and
-             when it refuses with its symbol limit (code 19) the service is asked again once, a
-             SUBS of the first that many. A change to the watchlist or the picked contracts is
-             asked once: UNSUBS what left, then SUBS (a service's first request) or ADD what
-             came. Any other refusal is not asked again on this connection. Requests are split
-             so none exceeds Schwab's 64 KB message limit (a larger request closes the socket).
-  2. ANSWERS Every Schwab answer is matched to its own request by its requestid, logged and
-             recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
-             (code 19, then code 24 "ADD command failed"), and both are its answers.
-  3. FAN-OUT Every Schwab message is published once on the bus: the database writer
-             (stream_capture.db), the console and the pages' price socket (/ws on the
-             program's port) all read from it.
-  4. HEALTH  Any frame from Schwab -- data or Schwab's own heartbeat -- proves the connection
-             is alive. None for DEAD_SEC, or a request unanswered while Schwab's stream, by the
-             time Schwab put on the frames read, moved on REQUEST_TIMEOUT_SEC past it: reconnect
-             with backoff and subscribe once again. There is nothing else to recover.
+  1. WANTED  What Schwab's stream is asked for (wanted): every watchlist ticker on each equity
+             service (with the market context the page header shows, MARKET_CONTEXT, on
+             LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE), and the option contracts the
+             option rule picks (pick_options: the contract selected on the Flow panel, then every
+             ticker's contracts dealt in turn, each ticker's in shown_first's order of its newest
+             chain, none expired). Feed's one connection (feed.connection.Connection) asks for
+             it, matches Schwab's answers, publishes every frame on the bus and reconnects.
 
 What Schwab offers (its answers on the live connection): LEVELONE_EQUITIES, CHART_EQUITY, NYSE_BOOK
 (exchange book), NASDAQ_BOOK (market-maker quotes), LEVELONE_OPTIONS, OPTIONS_BOOK and
@@ -56,14 +40,12 @@ import logging
 import logging.handlers
 import os
 import queue
-import re
 import signal
 import socket
 import sqlite3
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass
 from datetime import date, datetime
 from itertools import zip_longest
 from pathlib import Path
@@ -71,7 +53,6 @@ from types import FrameType
 from typing import Any, TextIO, TypedDict, override
 
 import uvicorn
-from websockets.exceptions import ConnectionClosed
 
 import live_market_plane as lmp
 import live_price_rows
@@ -96,8 +77,8 @@ from app.options.order_flow import streaming as console_feed
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
 from feed.chain_sweep import ChainSweep
+from feed.connection import SERVICES, Connection, held_key
 from feed.schwab_client import SchwabClientState, build_client_from_token, safe_get_quotes
-from feed.stream import TimedStream, label
 from instrument_identity import ticker_storage_key
 from option_contract import OptionContract
 from stream_spine import (
@@ -106,12 +87,6 @@ from stream_spine import (
     CaptureWriter,
     HealthRegistry,
     MessageBus,
-    bar_msg,
-    book_msg,
-    current_key,
-    quote_msg,
-    subscription_msg,
-    verbatim_msg,
 )
 from terrain_engine import nearest_position
 from time_et import (
@@ -125,73 +100,11 @@ from time_et import (
 
 log = logging.getLogger("capture")
 
-#: How often the connection checks for silence and for a request Schwab has not answered
-#: (Daemon.watch); its frames are read and its requests sent as they come.
-READ_SEC = 1.0
-#: No frame at all from Schwab (data or heartbeat) for this long -> the connection is dead.
-DEAD_SEC = 30.0
-#: Reconnect waits, in order; the last repeats.
-RECONNECT_BACKOFF_SEC = (1.0, 2.0, 5.0, 10.0, 30.0, 60.0)
-#: Schwab closes the socket on a request over 65,535 bytes; stay well under it.
-MAX_REQUEST_BYTES = 48_000
-#: A request Schwab does not answer in this long, by Schwab's time on the frames read, means the
-#: connection is broken. Schwab's time, not the reader's: an answer Schwab sent waits behind the
-#: frames before it until the reader takes them, and a reader running behind is not Schwab silent.
-REQUEST_TIMEOUT_SEC = 15.0
-
-SERVICES = (
-    "LEVELONE_EQUITIES",
-    "CHART_EQUITY",
-    "NYSE_BOOK",
-    "NASDAQ_BOOK",
-    "LEVELONE_OPTIONS",
-    "OPTIONS_BOOK",
-    "NEWS_HEADLINE",
-)
-#: Schwab's answer code for a request past its symbol limit (Schwab Streamer API, response
-#: codes: 19 REACHED_SYMBOL_LIMIT)
-SYMBOL_LIMIT = 19
 #: every watchlist ticker is streamed on each of these
 EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
 #: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
 #: whatever the watchlist holds
 MARKET_CONTEXT_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
-
-#: LEVELONE_EQUITIES / CHART_EQUITY fields copied into the database's flat columns (the full
-#: Schwab item is kept verbatim beside them in native_json).
-LEVELONE_FIELDS = {
-    "BID_PRICE": "bid",
-    "ASK_PRICE": "ask",
-    "LAST_PRICE": "last",
-    "BID_SIZE": "bid_size",
-    "ASK_SIZE": "ask_size",
-    "TOTAL_VOLUME": "total_volume",
-    "LAST_SIZE": "last_size",
-    "QUOTE_TIME_MILLIS": "quote_time_ms",
-    "TRADE_TIME_MILLIS": "trade_time_ms",
-}
-CHART_FIELDS = {
-    "OPEN_PRICE": "open",
-    "HIGH_PRICE": "high",
-    "LOW_PRICE": "low",
-    "CLOSE_PRICE": "close",
-    "VOLUME": "volume",
-    "CHART_TIME_MILLIS": "bar_start_ms",
-}
-#: The highest field number Schwab accepts on each service: every number above it, asked alone, is
-#: answered code 22 "SUBS command failed"
-#: (tests/fixtures/real_schwab_field_number_replies_2026_10_12.json). The daemon asks for every
-#: number up to it, so each field Schwab sends, documented or not, is kept.
-HIGHEST_FIELD = {
-    "LEVELONE_EQUITIES": 150,
-    "LEVELONE_OPTIONS": 150,
-    "CHART_EQUITY": 300,
-    "NYSE_BOOK": 300,
-    "NASDAQ_BOOK": 300,
-    "OPTIONS_BOOK": 300,
-    "NEWS_HEADLINE": 300,
-}
-FIELDS = {svc: ",".join(str(f) for f in range(top + 1)) for svc, top in HIGHEST_FIELD.items()}
 
 
 # ---------------------------------------------------------------------------- the watchlist
@@ -272,23 +185,6 @@ def check_ticker(client: object, ticker: str) -> tuple[bool, int, object]:
         resp.status_code,
         answer,
     )
-
-
-def split_request(symbols: list[str], max_bytes: int = MAX_REQUEST_BYTES) -> list[list[str]]:
-    """Chunks whose comma-joined key list stays under max_bytes."""
-    chunks: list[list[str]] = []
-    cur: list[str] = []
-    size = 0
-    for s in symbols:
-        n = len(s) + 1
-        if cur and size + n > max_bytes:
-            chunks.append(cur)
-            cur, size = [], 0
-        cur.append(s)
-        size += n
-    if cur:
-        chunks.append(cur)
-    return chunks
 
 
 # ---------------------------------------------------------------------------- the option rule
@@ -376,98 +272,6 @@ def saved_window(ladders: list[Ladder], price: float, now: float) -> frozenset[s
     return frozenset()
 
 
-# ---------------------------------------------------------------------------- Schwab messages
-
-#: each Schwab service's bus topic kind and the source its messages carry
-SERVICE_TOPIC = {
-    "LEVELONE_EQUITIES": ("quote", "schwab_l1"),
-    "CHART_EQUITY": ("bar1m", "schwab_chart"),
-    "LEVELONE_OPTIONS": ("optquote", "schwab_options_l1"),
-    "NEWS_HEADLINE": ("news", "schwab_news"),
-    "NYSE_BOOK": ("book", "schwab_book"),
-    "NASDAQ_BOOK": ("book", "schwab_book"),
-    "OPTIONS_BOOK": ("book", "schwab_book"),
-}
-
-
-def _current_key(service: str, sym: str) -> str:
-    """Return the bus's current-record key of `sym` on `service` (stream_spine.current_key)."""
-    kind, src = SERVICE_TOPIC[service]
-    return current_key(f"{kind}.{sym}", {"service": service, "src": src})
-
-
-def _message(
-    service: str, sym: str, item: dict[str, Any], schwab_ts: int | None
-) -> tuple[str, dict[str, Any]]:
-    """(topic kind, bus message) for one Schwab item, with the timestamp of Schwab's frame."""
-    kind, src = SERVICE_TOPIC[service]
-    if service == "LEVELONE_EQUITIES":
-        flat = {name: item.get(k) for k, name in LEVELONE_FIELDS.items()}
-        return kind, quote_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
-    if service == "CHART_EQUITY":
-        flat = {name: item.get(k) for k, name in CHART_FIELDS.items()}
-        return kind, bar_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
-    if service in ("LEVELONE_OPTIONS", "NEWS_HEADLINE"):
-        return kind, verbatim_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
-    return kind, book_msg(symbol=sym, service=service, content=item, src=src, schwab_ts=schwab_ts)
-
-
-def _publisher(
-    service: str, bus: MessageBus, health: HealthRegistry
-) -> Callable[[dict[str, Any]], None]:
-    """schwab-py handler for one service: every item -> the bus.
-
-    Each item goes with the timestamp Schwab put on the frame. The service counts as alive only
-    when a frame delivered data, not merely arrived. A frame with no list of items, and an item
-    with no symbol, cannot be taken: each is logged as it came and the stream goes on.
-    """
-
-    def handler(msg: dict[str, Any]) -> None:
-        published = False
-        schwab_ts = msg.get("timestamp")
-        content = msg.get("content")
-        if not isinstance(content, list):
-            log.warning("%s: a frame with no list of items, not taken: %.500r", service, msg)
-            return
-        for item in content:
-            key = item.get("key") if isinstance(item, dict) else None
-            if not isinstance(key, str) or not key:
-                log.warning("%s: an item with no symbol, not taken: %.500r", service, item)
-                continue
-            sym = key.upper()
-            kind, out = _message(service, sym, item, schwab_ts)
-            bus.publish(f"{kind}.{sym}", out)
-            published = True
-        if published:
-            health.beat(service)
-
-    return handler
-
-
-def _dispatch(publishers: dict[str, Callable[[dict[str, Any]], None]], msg: dict[str, Any]) -> None:
-    """Hand a frame's data, its fields named (_label), and its notifications to their services.
-
-    Schwab's heartbeats carry nothing to hand.
-    """
-    for d in msg["data"] if "data" in msg else []:
-        if d["service"] in publishers:
-            publishers[d["service"]](label(d))
-    for d in msg["notify"] if "notify" in msg else []:
-        if "heartbeat" not in d and d["service"] in publishers:
-            publishers[d["service"]](d)
-
-
-@dataclass(eq=False)
-class _Sent:
-    """One request this connection sent, and how many answers Schwab has sent to it."""
-
-    service: str
-    command: str
-    symbols: list[str]
-    sent_ts: float
-    answers: int = 0
-
-
 def _request_ended(task: asyncio.Future[None]) -> None:
     """Handle a watchlist request's end: one that ended on an error is logged with its traceback."""
     if not task.cancelled() and task.exception() is not None:
@@ -475,17 +279,7 @@ def _request_ended(task: asyncio.Future[None]) -> None:
         log.error("watchlist request: ended on %s: %s", type(e).__name__, e, exc_info=e)
 
 
-def _connection_lost(e: BaseException) -> bool:
-    """Tell whether the socket itself is gone (as opposed to Schwab refusing one request)."""
-    return isinstance(e, (ConnectionClosed, ConnectionError, OSError, asyncio.IncompleteReadError))
-
-
 # ---------------------------------------------------------------------------- the daemon
-
-
-#: why Schwab is not connected while no attempt has failed since the stream last logged in: it is
-#: logging in, or its connection has just ended and the reason is on its way
-SCHWAB_CONNECTING = "NOT CONNECTED: the stream is logging in, or its connection has just ended"
 
 
 class Daemon:
@@ -525,57 +319,22 @@ class Daemon:
         self.writer: CaptureWriter | None = None  # its state rides the heartbeat
         #: the daemon's one Schwab client (run): the checks
         self.schwab_client: Callable[[], object] | None = None
-        #: what this connection has asked Schwab for, what Schwab accepted (code 0), and the symbol
-        #: limit Schwab stated for the service in a refusal (code 19), None until it states one
-        self.asked: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
-        self.held: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
-        self.limit: dict[str, int | None] = dict.fromkeys(SERVICES)
-        #: requests waiting to be sent, and every request sent on this connection by requestid
-        self._requests: list[tuple[str, str, list[str]]] = []
-        self._sent: dict[int, _Sent] = {}
-        self.wake = asyncio.Event()  # a request is waiting: the connection sends it now
-        self.stream: TimedStream | None = None
-        #: each service's items -> the bus (_dispatch)
-        self.publishers = {svc: _publisher(svc, bus, health) for svc in SERVICES}
-        #: why Schwab is not connected, for /api/health (status()["schwab_down"], read while the
-        #: socket is not open): SCHWAB_CONNECTING, or NOT CONNECTED since the first failure in a
-        #: row (_down_since) with the last one's reason, as the log has it
-        self.schwab_down = SCHWAB_CONNECTING
-        self._down_since: float | None = None
+        #: the one Schwab stream connection, asking for what is wanted (wanted)
+        self.connection = Connection(bus, health, self.wanted, time_et.now)
 
     def wanted(self) -> dict[str, tuple[str, ...]]:
         """Return what Schwab is asked for, per service, in the order it is asked.
 
         That is every watchlist ticker on each equity service, then the market context on
         MARKET_CONTEXT_SERVICES, and the option contracts in the rule's order on each option
-        service; each cut at the symbol limit Schwab stated for the service on this connection.
+        service (the connection cuts each at the symbol limit Schwab states for it).
         """
         out = {svc: tuple(self.watchlist) for svc in EQUITY_SERVICES}
         for svc in MARKET_CONTEXT_SERVICES:
             out[svc] = tuple(dict.fromkeys([*self.watchlist, *MARKET_CONTEXT]))
         for svc in lmp.OPTION_SERVICES:
             out[svc] = self.option_order
-        return {svc: order[: self.limit[svc]] for svc, order in out.items()}
-
-    def ask(self) -> None:
-        """Queue what this connection has not asked Schwab for.
-
-        Per service, UNSUBS what left, then SUBS (when nothing asked stays: its first request, or
-        the first since Schwab stated its limit) or ADD what came, in the service's order. What
-        Schwab refuses is not asked again on this connection. Nothing is queued while no
-        connection is open: a connection asks for everything when it opens.
-        """
-        if self.stream is None:
-            return
-        for svc, want in self.wanted().items():
-            have = self.asked[svc]
-            drop, add = sorted(have.difference(want)), [s for s in want if s not in have]
-            if drop:
-                self._requests.append((svc, "UNSUBS", drop))
-            if add:
-                self._requests.append((svc, "ADD" if have - set(drop) else "SUBS", add))
-            self.asked[svc] = frozenset(want)
-        self.wake.set()
+        return out
 
     def shown(self) -> list[str]:
         """Return the watchlist tickers a page has selected, in the watchlist's order."""
@@ -624,7 +383,7 @@ class Daemon:
                 if s is not None
             )
         )
-        self.ask()
+        self.connection.ask()
 
     def _keep_options(self) -> None:
         """Set the option contracts recorded (saved_options).
@@ -840,7 +599,7 @@ class Daemon:
         if self.chains is not None:
             self.chains.watchlist = list(self.watchlist)
         self.pick_options()  # every ticker's share changes with the list
-        self.ask()
+        self.connection.ask()
         self.bus.publish(
             *watchlist_message(
                 self.watchlist, op=op, ticker=ticker, request_id=rid, status=status, answer=answer
@@ -855,8 +614,8 @@ class Daemon:
         contract's Greeks from it, and asks the quotes endpoint for every contract it returns None
         for: a record left from a connection that ended is not held).
         """
-        held = symbol in self.held["LEVELONE_OPTIONS"]
-        return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
+        held = symbol in self.connection.held["LEVELONE_OPTIONS"]
+        return self.bus.current.get(held_key("LEVELONE_OPTIONS", symbol)) if held else None
 
     def status(self, now: float) -> dict[str, Any]:
         """Return what the console and browsers are told every second (live_ui's beat).
@@ -864,244 +623,30 @@ class Daemon:
         It is taken at `now`, which the header shows as `clock_ct` and `day_ct`.
         """
         # open while a stream exists and Schwab sent a frame within DEAD_SEC; why not, only when not
-        socket_open = self.stream is not None and now - self.stream.last_frame_ts < DEAD_SEC
+        socket_open = self.connection.socket_open(now)
         return {
             "ts": now,
             "clock_ct": time_et.ct_clock(now),
             "day_ct": time_et.ct_day(now),
             "session": session_label(datetime.fromtimestamp(now, ET)),
             "schwab_socket_open": socket_open,
-            "schwab_down": None if socket_open else self.schwab_down,
+            "schwab_down": None if socket_open else self.connection.schwab_down,
             "watchlist": list(self.watchlist),
             "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
             "chains_waiting": self.chains.waiting if self.chains is not None else None,
-            "held": {k: sorted(v) for k, v in self.held.items()},
+            "held": {k: sorted(v) for k, v in self.connection.held.items()},
             "health": self.health.report(now),
             "writer": self.writer.status() if self.writer is not None else None,
         }
 
-    async def send_requests(self) -> None:
-        """Send every queued request, each split under Schwab's message limit.
-
-        Nothing waits for an answer: the reader matches each answer to its request (answered).
-        A SUBS replaces all a service holds, so only its first part is SUBS and the rest are ADD.
-        """
-        while self._requests:
-            svc, first, symbols = self._requests.pop(0)
-            for i, chunk in enumerate(split_request(symbols)):
-                cmd = "ADD" if first == "SUBS" and i else first
-                params = {"keys": ",".join(chunk)}
-                if cmd != "UNSUBS":
-                    params["fields"] = FIELDS[svc]
-                req, rid = self.stream._make_request(service=svc, command=cmd, parameters=params)
-                self._sent[rid] = _Sent(svc, cmd, chunk, time_et.now())
-                await self.stream._send({"requests": [req]})
-                log.info("%s %s sent: %d symbols, requestid %d", svc, cmd, len(chunk), rid)
-
-    def answered(self, response: dict[str, Any]) -> None:
-        """Take one answer from Schwab (an entry of a frame's `response`).
-
-        It is matched to its request by its requestid, logged and recorded
-        (stream_subscriptions) exactly as Schwab sent it. The first answer to a request decides
-        what the service holds; a later answer to the same request is recorded as its own. An
-        answer of code 19 that states a symbol limit not yet known has the service asked again
-        within it (ask).
-        """
-        rid = int(response["requestid"])
-        sent = self._sent.get(rid)
-        if sent is None:
-            log.warning(
-                "schwab answered requestid %d, which this connection did not send: %s",
-                rid,
-                json.dumps(response),
-            )
-            return
-        sent.answers += 1
-        code, msg = response["content"]["code"], response["content"]["msg"]
-        log.log(
-            logging.INFO if code == 0 else logging.WARNING,
-            "%s %s answer %d (%d symbols, requestid %d): %s",
-            sent.service,
-            sent.command,
-            sent.answers,
-            len(sent.symbols),
-            rid,
-            json.dumps(response),
-        )
-        self.bus.publish(
-            f"sub.{sent.service}",
-            subscription_msg(
-                service=sent.service,
-                command=sent.command,
-                symbols=sent.symbols,
-                code=code,
-                reason=msg,
-            ),
-        )
-        svc = sent.service
-        stated = re.search(rf"{svc}=(\d+)", msg)
-        if code == SYMBOL_LIMIT and stated and int(stated[1]) != self.limit[svc]:
-            # Schwab states the service's limit, and not which of the request's symbols it kept:
-            # the service is asked again from nothing, the first that many of its order
-            self.limit[svc] = int(stated[1])
-            self.asked[svc] = frozenset()
-            self.ask()
-        if sent.answers > 1:
-            return
-        # a SUBS overwrites all the service held, an ADD adds, an UNSUBS removes (Schwab Streamer
-        # API, Command Name); what Schwab refuses it does not confirm, so a refused SUBS holds none
-        held, new = self.held[svc], frozenset(sent.symbols if code == 0 else ())
-        kept = {"SUBS": new, "ADD": held | new, "UNSUBS": held - new}[sent.command]
-        for sym in (held | new) - kept:  # no longer held: no longer current
-            self.bus.forget(_current_key(svc, sym))
-        self.held[svc] = kept
-
-    async def connect(self, client: object) -> None:
-        stream = TimedStream(client)
-        # every message Schwab sends, whatever its size: the websockets library caps a received
-        # message at 1 MiB by default, and nothing of ours does
-        await stream.login(websocket_connect_args={"max_size": None})
-        self.stream = stream
-        self._requests, self._sent = [], {}
-        self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
-        log.info("schwab: connected")
-
-    async def disconnect(self) -> None:
-        s, self.stream = self.stream, None
-        for svc in lmp.OPTION_SERVICES:  # an option contract's hold ends with its connection
-            for sym in self.held[svc]:
-                self.bus.forget(_current_key(svc, sym))
-        # the next connection has asked for nothing, holds nothing and has been told no limit
-        self.asked = {k: frozenset() for k in SERVICES}
-        self.held = {k: frozenset() for k in SERVICES}
-        self.limit = dict.fromkeys(SERVICES)
-        if s is not None:
-            try:
-                await asyncio.wait_for(s.logout(), timeout=5)
-            except Exception as e:  # the session is dropped either way
-                log.info(
-                    "schwab: logout of the old session failed (%s: %s)",
-                    type(e).__name__,
-                    e,
-                    exc_info=True,
-                )
-
-    async def read(self) -> None:
-        """Handle every frame Schwab sends, as it comes, until the socket is gone.
-
-        Each answer goes to its request (answered), the data to the services' publishers. This
-        task alone reads, so every answer reaches it; it awaits each frame with no timer of its
-        own (a stop cancels it, and websockets' recv is safe to cancel: no frame is lost).
-        """
-        while True:
-            try:
-                msg = await self.stream._receive()
-            except Exception as e:  # a frame Schwab sent that cannot be read: logged, next one
-                if _connection_lost(e):
-                    raise
-                log.warning(
-                    "schwab: skipped a frame (%s: %s)",
-                    type(e).__name__,
-                    str(e)[:250],
-                    exc_info=True,
-                )
-                continue
-            for response in msg["response"] if "response" in msg else []:
-                self.answered(response)
-            try:
-                _dispatch(self.publishers, msg)
-            except Exception as e:  # that frame is logged; the next one is read
-                log.warning(
-                    "schwab: skipped a frame (%s: %s)",
-                    type(e).__name__,
-                    str(e)[:250],
-                    exc_info=True,
-                )
-
-    async def send(self) -> None:
-        """Send what is asked (ask), as soon as it is asked, until the connection ends."""
-        while True:
-            await self.wake.wait()
-            self.wake.clear()
-            await self.send_requests()
-
-    async def watch(self, stop: asyncio.Event) -> None:
-        """Check the connection every READ_SEC until `stop`; raise once it is broken.
-
-        Broken: no frame from Schwab for DEAD_SEC, or a request Schwab has not answered once the
-        frames read reach REQUEST_TIMEOUT_SEC past it by Schwab's time (its send time is read on
-        this computer's clock, which agreed with Schwab's: of 18,358 answers logged 2026-11-03 to
-        11-09, Schwab's time on each was 0.005 s before to 3.5 s after its request's send, 0.02 s
-        after at the median).
-        """
-        while not await time_et.set_within(stop, READ_SEC):
-            now, schwab_now = time_et.now(), self.stream.schwab_ts
-            if now - self.stream.last_frame_ts > DEAD_SEC:
-                raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
-            late = [
-                s
-                for s in self._sent.values()
-                if s.answers == 0
-                and schwab_now is not None
-                and schwab_now - s.sent_ts > REQUEST_TIMEOUT_SEC
-            ]
-            if late:
-                raise ConnectionError(
-                    f"no answer to {late[0].service} {late[0].command} in "
-                    f"{REQUEST_TIMEOUT_SEC:.0f} s"
-                )
-
-    async def run_connection(self, client: object, stop: asyncio.Event) -> None:
-        """Run one connection's life until it dies or stop is set.
-
-        Ask for everything once; then one task reads (read), one sends what is asked (send) and
-        one checks the connection (watch). The first to end ends the others: the stop, or the
-        connection's error, raised.
-        """
-        await self.connect(client)
-        try:
-            self.ask()
-            parts = {
-                asyncio.ensure_future(self.read()),
-                asyncio.ensure_future(self.send()),
-                asyncio.ensure_future(self.watch(stop)),
-            }
-            try:
-                done, _ = await asyncio.wait(parts, return_when=asyncio.FIRST_COMPLETED)
-            finally:
-                for part in parts:
-                    part.cancel()
-                await asyncio.gather(*parts, return_exceptions=True)
-            for part in done:
-                part.result()  # the connection's error, raised for run to name
-        finally:
-            await self.disconnect()
-
     async def run(self, schwab_client: Callable[[], object], stop: asyncio.Event) -> None:
-        """Connect, and reconnect with backoff whenever the connection ends, until stop.
+        """Run the stream connection until stop (Connection.run: it reconnects with backoff).
 
         It runs on the daemon's one Schwab client (`schwab_client()`), which also makes the
         watchlist's checks.
         """
         self.schwab_client = schwab_client
-        failures = 0
-        while not stop.is_set():
-            started = time_et.now()
-            try:
-                await self.run_connection(schwab_client(), stop)
-            except Exception as e:  # every failure is a reconnect; its reason to the log and health
-                why = f"{type(e).__name__}: {str(e)[:350]}"
-                log.warning("schwab: connection ended (%s)", why, exc_info=True)
-                if self._down_since is None:
-                    self._down_since = time_et.now()
-                self.schwab_down = f"NOT CONNECTED since {ct_label(self._down_since)}: {why}"
-            if stop.is_set():
-                break
-            # a connection that lasted 5 minutes starts the backoff over
-            failures = 1 if time_et.now() - started > 300 else failures + 1
-            wait = RECONNECT_BACKOFF_SEC[min(failures, len(RECONNECT_BACKOFF_SEC)) - 1]
-            log.info("schwab: reconnecting in %.0f s", wait)
-            await time_et.set_within(stop, wait)
+        await self.connection.run(schwab_client, stop)
 
 
 # ---------------------------------------------------------------------------- process
@@ -1248,7 +793,8 @@ async def record_feed_status(
     while True:
         now = time_et.now()
         try:
-            last_frame = daemon.stream.last_frame_ts if daemon.stream is not None else None
+            stream = daemon.connection.stream
+            last_frame = stream.last_frame_ts if stream is not None else None
             st = daemon.status(now)
             for svc in SERVICES:
                 daemon.bus.publish(
@@ -1258,7 +804,7 @@ async def record_feed_status(
                         "service": svc,
                         "socket_open": st["schwab_socket_open"],
                         "schwab_last_frame_ts": last_frame,
-                        "held": len(daemon.held[svc]),
+                        "held": len(daemon.connection.held[svc]),
                         "last_data_ts": daemon.health.last(svc),
                     },
                 )

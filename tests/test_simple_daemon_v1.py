@@ -19,9 +19,9 @@ import pytest
 
 import live_market_plane as lmp
 import stream_spine as ss
-from app.market_data.schwab.streaming import capture as cap
 from app.market_data.schwab.streaming import program_lock as pl
 from app.options.order_flow import streaming as ofs
+from feed import connection
 from tests.feed_live_helper import RTH_INSTANT
 from tests.real_chains import TSLA
 
@@ -30,10 +30,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_requests_are_split_under_schwabs_message_limit():
     syms = [f"SPY   2610{i:02d}C00{i:05d}000" for i in range(4000)]  # ~100 KB of keys
-    chunks = cap.split_request(syms)
+    chunks = connection.split_request(syms)
     assert sum(chunks, []) == syms
     assert len(chunks) > 1
-    assert all(len(",".join(c)) <= cap.MAX_REQUEST_BYTES for c in chunks)
+    assert all(len(",".join(c)) <= connection.MAX_REQUEST_BYTES for c in chunks)
 
 
 # ------------------------------------------------------------------ Schwab's messages
@@ -49,18 +49,18 @@ def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_a
         "LAST_MIC_ID": "XADF",
         "TOTAL_VOLUME": 9,
     }
-    cap._publisher("LEVELONE_EQUITIES", bus, health)({"content": [item]})
+    connection._publisher("LEVELONE_EQUITIES", bus, health)({"content": [item]})
     topic, q = sub.queue.get_nowait()
     assert topic == "quote.SPY" and q["bid"] == 1.0 and q["last"] == 2.0 and q["native"] == item
     book = {"key": "SPY", "BOOK_TIME": 1, "BIDS": [], "ASKS": []}
-    cap._publisher("NYSE_BOOK", bus, health)({"content": [book, {"BIDS": []}]})
+    connection._publisher("NYSE_BOOK", bus, health)({"content": [book, {"BIDS": []}]})
     topic, b = sub.queue.get_nowait()
     assert topic == "book.SPY" and b["content"] == book and b["service"] == "NYSE_BOOK"
     assert sub.queue.empty(), "an item with no symbol is skipped"
     news = {"key": "SPY", "4": "headline"}
-    cap._publisher("NEWS_HEADLINE", bus, health)({"content": [news]})
+    connection._publisher("NEWS_HEADLINE", bus, health)({"content": [news]})
     assert sub.queue.get_nowait()[1]["content"] == news
-    cap._publisher("LEVELONE_OPTIONS", bus, health)({"content": [{"BIDS": []}]})
+    connection._publisher("LEVELONE_OPTIONS", bus, health)({"content": [{"BIDS": []}]})
     assert health.last("LEVELONE_OPTIONS") is None, "a frame that delivered nothing is not data"
     assert health.last("NYSE_BOOK") is not None
 

@@ -1,11 +1,12 @@
 """The program's one reader of Schwab's stream keeps up while a whole chain is read and priced.
 
-The capture daemon's connection (capture.Daemon.run_connection) on the real schwab-py StreamClient,
-logged in to Schwab's streamer played locally (tests/schwab_stream_standin.py), its market
-follower (follow_market) and the console's feed bound to it (streaming.start_order_flow_stream
-with server.FEED_CALLBACKS), all on one event loop as capture.run runs them. A thread samples how
-far behind Schwab's stream the reader is: this computer's time less Schwab's newest time on the
-frames read (feed.stream.TimedStream.schwab_ts).
+The capture daemon's connection (feed.connection.Connection.run_connection) on the real
+schwab-py StreamClient, logged in to Schwab's streamer played locally
+(tests/schwab_stream_standin.py), its market follower (follow_market) and the console's feed
+bound to it (streaming.start_order_flow_stream with server.FEED_CALLBACKS), all on one event
+loop as capture.run runs them. A thread samples how far behind Schwab's stream the reader is:
+this computer's time less Schwab's newest time on the frames read
+(feed.stream.TimedStream.schwab_ts).
 
 Real data: SPY's whole chain as Schwab sent it, every expiry, 12,904 contracts (production's
 newest complete capture, 2026-11-09 10:06:10 CT), with the spot captured with it; Schwab's
@@ -31,7 +32,7 @@ import terrain_engine
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
-from feed import stream
+from feed import connection, stream
 from feed.chain_sweep import chain_messages
 from option_contract import read_chain, read_contract
 from stream_spine import HealthRegistry, MessageBus, quote_msg
@@ -179,15 +180,16 @@ def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
     client = rest.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
     loop = TimerCountingLoop()
+    conn = daemon.connection
 
     async def go() -> tuple[int, float]:
         stop = asyncio.Event()
-        run = asyncio.create_task(daemon.run_connection(client, stop))
-        await _until(lambda: daemon.stream is not None and daemon.stream.schwab_ts is not None, 30)
+        run = asyncio.create_task(conn.run_connection(client, stop))
+        await _until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
         before, started = loop.timers, time_et.now()
         await time_et.set_within(stop, 2.0)  # this wait's own timer: one
         scheduled = loop.timers - before - 1
-        behind = time_et.now() - daemon.stream.schwab_ts
+        behind = time_et.now() - conn.stream.schwab_ts
         assert time_et.now() - started >= 2.0
         stop.set()
         await asyncio.wait_for(run, 30)
@@ -200,7 +202,7 @@ def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
         streamer.close()
         rest.close()
     assert behind < 0.5, f"the frames were not read as they came: {behind:.2f} s behind"
-    assert scheduled <= 2 / capture.READ_SEC + 2, f"{scheduled} timers in 2 s of ~200 frames"
+    assert scheduled <= 2 / connection.READ_SEC + 2, f"{scheduled} timers in 2 s of ~200 frames"
 
 
 def test_the_status_says_why_schwab_is_down_only_while_it_is(tmp_path):
@@ -213,12 +215,13 @@ def test_the_status_says_why_schwab_is_down_only_while_it_is(tmp_path):
     rest = LocalSchwab(streamer.url)
     client = rest.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
+    conn = daemon.connection
     before = daemon.status(time_et.now())
 
     async def go() -> dict:
         stop = asyncio.Event()
-        run = asyncio.create_task(daemon.run_connection(client, stop))
-        await _until(lambda: daemon.stream is not None and daemon.stream.schwab_ts is not None, 30)
+        run = asyncio.create_task(conn.run_connection(client, stop))
+        await _until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
         during = daemon.status(time_et.now())
         stop.set()
         await asyncio.wait_for(run, 30)
@@ -230,7 +233,7 @@ def test_the_status_says_why_schwab_is_down_only_while_it_is(tmp_path):
         streamer.close()
         rest.close()
     assert before["schwab_socket_open"] is False
-    assert before["schwab_down"] == capture.SCHWAB_CONNECTING
+    assert before["schwab_down"] == connection.SCHWAB_CONNECTING
     assert during["schwab_socket_open"] is True
     assert during["schwab_down"] is None
 
@@ -261,13 +264,14 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
     client = rest.client(tmp_path)
     bus = MessageBus()
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: SPY["capture_ts_utc"])
+    conn = daemon.connection
     behind: list[float] = []
     sampled = threading.Event()
 
     def sample() -> None:
         while not sampled.wait(0.01):
-            if daemon.stream is not None and daemon.stream.schwab_ts is not None:
-                behind.append(time_et.now() - daemon.stream.schwab_ts)
+            if conn.stream is not None and conn.stream.schwab_ts is not None:
+                behind.append(time_et.now() - conn.stream.schwab_ts)
 
     async def go():
         loop = asyncio.get_running_loop()
@@ -276,12 +280,12 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
         ofs.bind_daemon(daemon)  # as capture.serve_console binds it
         assert ofs.start_order_flow_stream(**server.FEED_CALLBACKS)
         tasks = [
-            asyncio.create_task(daemon.run_connection(client, stop)),
+            asyncio.create_task(conn.run_connection(client, stop)),
             asyncio.create_task(daemon.follow_market(stop)),
         ]
         sampler = threading.Thread(target=sample, daemon=True)
         try:
-            await _until(lambda: daemon.held["LEVELONE_EQUITIES"], 30)
+            await _until(lambda: conn.held["LEVELONE_EQUITIES"], 30)
             sampler.start()
             bus.publish(
                 "quote.SPY",
@@ -307,13 +311,13 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
             # and stamped its heatmap
             await _until(
                 lambda: (
-                    daemon.held["LEVELONE_OPTIONS"]
+                    conn.held["LEVELONE_OPTIONS"]
                     and server.published_levels("SPY") is not None
                     and server.published_levels("SPY").gamma_surface is not None
                 ),
                 180,
                 lambda: {
-                    "held": len(daemon.held["LEVELONE_OPTIONS"]),
+                    "held": len(conn.held["LEVELONE_OPTIONS"]),
                     "options": len(daemon.option_order),
                     "levels": server.published_levels("SPY") is not None,
                     "why": server._terrain_refresh_last_error.get("SPY"),
