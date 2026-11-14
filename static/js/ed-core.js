@@ -3,13 +3,13 @@
    file only fetches canonical endpoints and formats/arranges the results (ONE FAUCET).
    View-specific rendering (heatmap, levels, order flow) is wired in per-view modules. */
 (function () {
-  'use strict';
+  "use strict";
 
   // ---- shared ticker key ----
-  var TICKER_KEY = 'ed_ticker';
-  var RAIL_KEY = 'ed_rail_open';
+  var TICKER_KEY = "ed_ticker";
+  var RAIL_KEY = "ed_rail_open";
 
-  var app = document.getElementById('app');
+  var app = document.getElementById("app");
 
   // ---- 3-tier navigation config (workspace -> subnav -> views).
   //      `state:'na'` marks a tab whose canonical capability is absent/partial.
@@ -20,85 +20,150 @@
   // object has no inherited properties to collide with, for any sub id
   // (map/filter/find/sort/... are all real Array.prototype methods). ----
   var NAV = {
-    'trade-desk': { title: 'TRADE DESK', subs: [
-      { id: 'desk', label: 'Desk' }, { id: 'confluence', label: 'Confluence Matrix' },
-      { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
-      { id: 'expression', label: 'Expression', state: 'na' } ], views: Object.create(null) },
+    "trade-desk": {
+      title: "TRADE DESK",
+      subs: [
+        { id: "desk", label: "Desk" },
+        { id: "confluence", label: "Confluence Matrix" },
+        { id: "right-now", label: "Right Now" },
+        { id: "plan", label: "Plan" },
+        { id: "expression", label: "Expression", state: "na" },
+      ],
+      views: Object.create(null),
+    },
     // Book/DOM (the book panel) and Heatmap are wired; the rest stay `na`
     // (a labelled placeholder) until they have their own real wiring.
-    'order-flow': { title: 'ORDER FLOW', subs: [
-      { id: 'book', label: 'Book / DOM' }, { id: 'heatmap', label: 'Heatmap' },
-      { id: 'overview', label: 'Overview', state: 'na' },
-      { id: 'tape', label: 'Tape', state: 'na' }, { id: 'options-book', label: 'Options Book', state: 'na' },
-      { id: 'history', label: 'History', state: 'na' } ], views: Object.create(null) },
-    'options': { title: 'OPTIONS', subs: [
-      { id: 'gamma', label: 'Gamma' }, { id: 'vanna', label: 'Vanna', note: 'AGG BY STRIKE' },
-      { id: 'charm', label: 'Charm', note: 'AGG BY STRIKE' },
-      { id: 'dex', label: 'Delta / DEX' }, { id: 'oi', label: 'Open Interest' },
-      { id: 'flow', label: 'Flow' }, { id: 'chain', label: 'Chain' },
-      { id: 'structures', label: 'Structures' } ],
+    "order-flow": {
+      title: "ORDER FLOW",
+      subs: [
+        { id: "book", label: "Book / DOM" },
+        { id: "heatmap", label: "Heatmap" },
+        { id: "overview", label: "Overview", state: "na" },
+        { id: "tape", label: "Tape", state: "na" },
+        { id: "options-book", label: "Options Book", state: "na" },
+        { id: "history", label: "History", state: "na" },
+      ],
+      views: Object.create(null),
+    },
+    options: {
+      title: "OPTIONS",
+      subs: [
+        { id: "gamma", label: "Gamma" },
+        { id: "vanna", label: "Vanna", note: "AGG BY STRIKE" },
+        { id: "charm", label: "Charm", note: "AGG BY STRIKE" },
+        { id: "dex", label: "Delta / DEX" },
+        { id: "oi", label: "Open Interest" },
+        { id: "flow", label: "Flow" },
+        { id: "chain", label: "Chain" },
+        { id: "structures", label: "Structures" },
+      ],
       views: (function () {
         // dex/oi present the SAME strike x expiry grid + view family gamma does (heatmap/
         // chart/levels/multi-map), just a different `measure` (see MEASURE_BY_SUBVIEW) --
         // one shared view list, not three copies to keep in sync by hand.
         var gammaViews = [
-          { id: 'heatmap', label: 'Heatmap' }, { id: 'chart', label: 'Chart' },
-          { id: 'levels', label: 'Levels' }, { id: 'multimap', label: 'Multi-Map' },
-          { id: 'term', label: 'Term Structure', state: 'na' }, { id: 'analytics', label: 'Analytics', state: 'na' } ];
+          { id: "heatmap", label: "Heatmap" },
+          { id: "chart", label: "Chart" },
+          { id: "levels", label: "Levels" },
+          { id: "multimap", label: "Multi-Map" },
+          { id: "term", label: "Term Structure", state: "na" },
+          { id: "analytics", label: "Analytics", state: "na" },
+        ];
         return { gamma: gammaViews, dex: gammaViews, oi: gammaViews };
-      })() },
+      })(),
+    },
     // Map and Levels are wired: Map is a visual liquidity map, not a table --
     // the liquidity panel's own confluence-scored zones on a price axis; Levels reuses
     // ed-gamma-levels.js's levels renderer verbatim. The rest stay `na` until they have
     // their own real wiring.
-    'liquidity': { title: 'LIQUIDITY', subs: [
-      { id: 'map', label: 'Map' }, { id: 'levels', label: 'Levels' },
-      { id: 'profile', label: 'Profile', state: 'na' },
-      { id: 'vwap', label: 'VWAP / Value', state: 'na' }, { id: 'session', label: 'Session', state: 'na' },
-      { id: 'history', label: 'History', state: 'na' } ], views: Object.create(null) },
-    'portfolio': { title: 'PORTFOLIO / RISK', subs: [
-      { id: 'positions', label: 'Positions', state: 'na' }, { id: 'exposure', label: 'Exposure', state: 'na' },
-      { id: 'risk', label: 'Risk', state: 'na' }, { id: 'scenarios', label: 'Scenarios', state: 'na' } ], views: Object.create(null) },
-    'system': { title: 'SYSTEM / TRUST', subs: [
-      { id: 'data-health', label: 'Data Health' }, { id: 'feeds', label: 'Feeds' },
-      { id: 'provenance', label: 'Provenance' }, { id: 'runtime', label: 'Runtime' } ], views: Object.create(null) }
+    liquidity: {
+      title: "LIQUIDITY",
+      subs: [
+        { id: "map", label: "Map" },
+        { id: "levels", label: "Levels" },
+        { id: "profile", label: "Profile", state: "na" },
+        { id: "vwap", label: "VWAP / Value", state: "na" },
+        { id: "session", label: "Session", state: "na" },
+        { id: "history", label: "History", state: "na" },
+      ],
+      views: Object.create(null),
+    },
+    portfolio: {
+      title: "PORTFOLIO / RISK",
+      subs: [
+        { id: "positions", label: "Positions", state: "na" },
+        { id: "exposure", label: "Exposure", state: "na" },
+        { id: "risk", label: "Risk", state: "na" },
+        { id: "scenarios", label: "Scenarios", state: "na" },
+      ],
+      views: Object.create(null),
+    },
+    system: {
+      title: "SYSTEM / TRUST",
+      subs: [
+        { id: "data-health", label: "Data Health" },
+        { id: "feeds", label: "Feeds" },
+        { id: "provenance", label: "Provenance" },
+        { id: "runtime", label: "Runtime" },
+      ],
+      views: Object.create(null),
+    },
   };
 
-  function _ls(k, d) { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; }
-  function _lsSet(k, v) { localStorage.setItem(k, v); }
+  function _ls(k, d) {
+    var v = localStorage.getItem(k);
+    return v == null || v === "" ? d : v;
+  }
+  function _lsSet(k, v) {
+    localStorage.setItem(k, v);
+  }
   // D: persist UI navigation state (client state, not market truth)
   // The strike-window scopes, served in the page (meta ed-scopes, from terrain_engine.SCOPES):
   // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
-  var SCOPES = JSON.parse(document.querySelector('meta[name="ed-scopes"]').getAttribute('content'));
-  var SCOPE_MODES = SCOPES.map(function (s) { return s.key; });
-  function _lsScope() { var v = _ls('ed_scope', SCOPE_MODES[0]); return SCOPE_MODES.indexOf(v) !== -1 ? v : SCOPE_MODES[0]; }
+  var SCOPES = JSON.parse(document.querySelector('meta[name="ed-scopes"]').getAttribute("content"));
+  var SCOPE_MODES = SCOPES.map(function (s) {
+    return s.key;
+  });
+  function _lsScope() {
+    var v = _ls("ed_scope", SCOPE_MODES[0]);
+    return SCOPE_MODES.indexOf(v) !== -1 ? v : SCOPE_MODES[0];
+  }
   // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
   var _served = {};
   var state = {
-    ticker: _ls(TICKER_KEY, '').toUpperCase(),
+    ticker: _ls(TICKER_KEY, "").toUpperCase(),
     // the selected instrument's identity as the daemon's price socket serves it (ingestIdentity):
     // the key every price row and route uses ("$SPX") and its display name ("SPX"); null until served
-    key: null, display: null,
-    workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),
-    subview: _ls('ed_sub', app.getAttribute('data-subview') || 'gamma'),
-    view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
+    key: null,
+    display: null,
+    workspace: _ls("ed_ws", app.getAttribute("data-workspace") || "options"),
+    subview: _ls("ed_sub", app.getAttribute("data-subview") || "gamma"),
+    view: _ls("ed_view", app.getAttribute("data-view") || "heatmap"),
     scope: _lsScope(),
     // the one Schwab book every book panel shows; the two are never combined
-    bookVenue: _ls('ed_book_venue', 'NYSE_BOOK') === 'NASDAQ_BOOK' ? 'NASDAQ_BOOK' : 'NYSE_BOOK',
-    expiryFilter: null,   // null = All Expirations; else a single 'YYYY-MM-DD' from the socket's `expiries`
-    selStrike: null, selExpiry: null,
+    bookVenue: _ls("ed_book_venue", "NYSE_BOOK") === "NASDAQ_BOOK" ? "NASDAQ_BOOK" : "NYSE_BOOK",
+    expiryFilter: null, // null = All Expirations; else a single 'YYYY-MM-DD' from the socket's `expiries`
+    selStrike: null,
+    selExpiry: null,
     // The Gamma heatmap grid, Strike Detail's native fields, and the strike x expiry
     // PROJECTION (server.py project_gamma_surface) carry dex/vanna/oi/volume per cell
     // alongside gex -- one canonical faucet, more measures the SAME grid can present, not a
     // second computation or a second UI. This is that ONE measure switch: 'gex' | 'dex' |
     // 'oi' | 'volume'. Vanna stays aggregate-only (see the Key Levels 'AGG $ ONLY' badge)
     // since it has no per-expiry column.
-    measure: 'gex'
+    measure: "gex",
   };
-  function normalizeState() {   // restored state must be valid for the current NAV config
-    if (!NAV[state.workspace]) state.workspace = 'options';
+  function normalizeState() {
+    // restored state must be valid for the current NAV config
+    if (!NAV[state.workspace]) state.workspace = "options";
     var subDefs = NAV[state.workspace].subs;
-    var enabledIds = subDefs.filter(function (s) { return s.state !== 'na'; }).map(function (s) { return s.id; });
+    var enabledIds = subDefs
+      .filter(function (s) {
+        return s.state !== "na";
+      })
+      .map(function (s) {
+        return s.id;
+      });
     // Membership alone isn't enough: a sub can be a real, listed id while `state:'na'` marks
     // it disabled -- localStorage['ed_sub'] persists across a NAV change, so a cached subview
     // that is `na` would otherwise restore onto a selected-but-disabled tab with no matching
@@ -106,8 +171,10 @@
     if (enabledIds.indexOf(state.subview) === -1) state.subview = enabledIds[0] || subDefs[0].id;
     var v0 = NAV[state.workspace].views && NAV[state.workspace].views[state.subview];
     var v = Array.isArray(v0) ? v0 : [];
-    var vids = v.map(function (x) { return x.id; });
-    state.view = vids.indexOf(state.view) !== -1 ? state.view : (vids[0] || '');
+    var vids = v.map(function (x) {
+      return x.id;
+    });
+    state.view = vids.indexOf(state.view) !== -1 ? state.view : vids[0] || "";
     // A page reload restores `subview` from localStorage (ed_sub) but `measure` is not
     // persisted, so it would default to 'gex' (GEX dollars under an "Open Interest Heatmap"
     // title on the 'oi' tab). It is re-derived from the restored subview here, the same rule
@@ -119,34 +186,47 @@
   // Theme resolution/first-paint/OS-change is owned by window.EdTheme (the pre-CSS bootstrap in
   // index.html). ed-core only CONSUMES it — delegates changes and reflects the control — so there
   // is one canonical resolution path shared by first paint and runtime.
-  var THEME_ICON = { system: '◐', light: '☀', dark: '☾' };
+  var THEME_ICON = { system: "◐", light: "☀", dark: "☾" };
   function reflectThemeIcon() {
     var t = window.EdTheme;
-    var pref = t.getPref(), ic = document.getElementById('themeIcon'), btn = document.getElementById('themeBtn');
+    var pref = t.getPref(),
+      ic = document.getElementById("themeIcon"),
+      btn = document.getElementById("themeBtn");
     if (ic) ic.textContent = THEME_ICON[pref];
-    if (btn) btn.title = 'Theme: ' + pref + ' (resolved ' + t.resolve(pref) + ')';
+    if (btn) btn.title = "Theme: " + pref + " (resolved " + t.resolve(pref) + ")";
   }
-  function applyTheme(pref) { window.EdTheme.setPref(pref); }   // owner persists+applies+dispatches
+  function applyTheme(pref) {
+    window.EdTheme.setPref(pref);
+  } // owner persists+applies+dispatches
   function cycleTheme() {
     var cur = window.EdTheme.getPref();
-    applyTheme(cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system');
+    applyTheme(cur === "system" ? "light" : cur === "light" ? "dark" : "system");
   }
-  document.addEventListener('ed:theme', reflectThemeIcon);   // the control follows the owner's changes
+  document.addEventListener("ed:theme", reflectThemeIcon); // the control follows the owner's changes
 
   // ================= navigation =================
   function renderSubnav() {
     var cfg = NAV[state.workspace];
-    var sub = document.getElementById('subnav');
-    var html = '<span class="wtitle">' + cfg.title + '</span>';
+    var sub = document.getElementById("subnav");
+    var html = '<span class="wtitle">' + cfg.title + "</span>";
     cfg.subs.forEach(function (s) {
-      var cls = 'tab' + (s.state === 'na' ? ' na' : '') + (s.id === state.subview ? ' on' : '');
-      html += '<button class="' + cls + '" data-sub="' + s.id + '">' + s.label +
-        (s.note ? '<span class="np">' + s.note + '</span>' : '') + '</button>';
+      var cls = "tab" + (s.state === "na" ? " na" : "") + (s.id === state.subview ? " on" : "");
+      html +=
+        '<button class="' +
+        cls +
+        '" data-sub="' +
+        s.id +
+        '">' +
+        s.label +
+        (s.note ? '<span class="np">' + s.note + "</span>" : "") +
+        "</button>";
     });
     sub.innerHTML = html;
-    sub.querySelectorAll('button[data-sub]').forEach(function (b) {
-      if (b.classList.contains('na')) return;
-      b.addEventListener('click', function () { setSubview(b.getAttribute('data-sub')); });
+    sub.querySelectorAll("button[data-sub]").forEach(function (b) {
+      if (b.classList.contains("na")) return;
+      b.addEventListener("click", function () {
+        setSubview(b.getAttribute("data-sub"));
+      });
     });
   }
 
@@ -157,31 +237,44 @@
     // comment) must never reach `.forEach` on anything but a real array.
     var v0 = cfg.views && cfg.views[state.subview];
     var views = Array.isArray(v0) ? v0 : [];
-    var bar = document.getElementById('viewbar');
-    var ctrls = bar.querySelector('.ctrls');
+    var bar = document.getElementById("viewbar");
+    var ctrls = bar.querySelector(".ctrls");
     // rebuild only the tab region, preserve the controls block
-    var tabHtml = '';
+    var tabHtml = "";
     views.forEach(function (v) {
-      var na = v.state === 'na';
-      tabHtml += '<button class="vtab' + (v.id === state.view ? ' on' : '') + (na ? ' na' : '') +
-        '" data-view="' + v.id + '"' + (na ? ' title="not yet implemented"' : '') + '>' + v.label + '</button>';
+      var na = v.state === "na";
+      tabHtml +=
+        '<button class="vtab' +
+        (v.id === state.view ? " on" : "") +
+        (na ? " na" : "") +
+        '" data-view="' +
+        v.id +
+        '"' +
+        (na ? ' title="not yet implemented"' : "") +
+        ">" +
+        v.label +
+        "</button>";
     });
     // clear existing tabs
-    Array.prototype.slice.call(bar.querySelectorAll('.vtab')).forEach(function (n) { n.remove(); });
-    if (ctrls) ctrls.insertAdjacentHTML('beforebegin', tabHtml);
-    else bar.insertAdjacentHTML('afterbegin', tabHtml);
-    bar.querySelectorAll('.vtab').forEach(function (b) {
-      if (b.classList.contains('na')) return;   // unavailable shell tab — part of the IA, not clickable
-      b.addEventListener('click', function () { setView(b.getAttribute('data-view')); });
+    Array.prototype.slice.call(bar.querySelectorAll(".vtab")).forEach(function (n) {
+      n.remove();
+    });
+    if (ctrls) ctrls.insertAdjacentHTML("beforebegin", tabHtml);
+    else bar.insertAdjacentHTML("afterbegin", tabHtml);
+    bar.querySelectorAll(".vtab").forEach(function (b) {
+      if (b.classList.contains("na")) return; // unavailable shell tab — part of the IA, not clickable
+      b.addEventListener("click", function () {
+        setView(b.getAttribute("data-view"));
+      });
     });
     // keep the control bar for every options subview (the ticker/expiry dropdowns drive Chain too),
     // even those with no view tabs; hide it only for workspaces that have neither views nor controls.
-    bar.style.display = (views.length || state.workspace === 'options') ? '' : 'none';
+    bar.style.display = views.length || state.workspace === "options" ? "" : "none";
   }
 
   function showPane() {
-    document.querySelectorAll('.workspace').forEach(function (w) {
-      w.classList.toggle('on', w.getAttribute('data-ws-pane') === state.workspace);
+    document.querySelectorAll(".workspace").forEach(function (w) {
+      w.classList.toggle("on", w.getAttribute("data-ws-pane") === state.workspace);
     });
   }
   // Subview panes (Gamma grid / Chain ladder / Flow, and Liquidity / Order Flow / Trade
@@ -192,82 +285,115 @@
   // so that workspace is never blank -- no other workspace has (or needs) that fallback.
   function showSubPane() {
     var wsSection = document.querySelector('.workspace[data-ws-pane="' + state.workspace + '"]');
-    var panes = wsSection ? wsSection.querySelectorAll('.sub-pane') : [];
+    var panes = wsSection ? wsSection.querySelectorAll(".sub-pane") : [];
     if (!panes.length) return;
     var target = state.subview;
     var hasOwn = target && wsSection.querySelector('.sub-pane[data-sub-pane="' + target + '"]');
     panes.forEach(function (p) {
-      var id = p.getAttribute('data-sub-pane');
-      p.classList.toggle('on', !!target &&
-        (id === target || (state.workspace === 'options' && id === 'gamma' && !hasOwn)));
+      var id = p.getAttribute("data-sub-pane");
+      p.classList.toggle(
+        "on",
+        !!target && (id === target || (state.workspace === "options" && id === "gamma" && !hasOwn)),
+      );
     });
-    relabelExpiryDefault();   // the null-expiry label is subview-contextual (Chain = Default Expiry)
+    relabelExpiryDefault(); // the null-expiry label is subview-contextual (Chain = Default Expiry)
   }
 
   // Measure-adaptive panel title for the 'heatmap' view -- dex/oi (and gex itself) all share
   // this ONE grid (see state.measure's own comment), so its title must name whichever
   // measure is actually selected, not always say "Gamma Exposure Heatmap" while showing DEX.
-  var MEASURE_TITLE = { gex: 'Gamma Exposure Heatmap', dex: 'Delta Exposure (DEX) Heatmap',
-    oi: 'Open Interest Heatmap', volume: 'Volume Heatmap' };
-  var MV_TITLE = { levels: 'Levels', multimap: 'Multi-Map' };
+  var MEASURE_TITLE = {
+    gex: "Gamma Exposure Heatmap",
+    dex: "Delta Exposure (DEX) Heatmap",
+    oi: "Open Interest Heatmap",
+    volume: "Volume Heatmap",
+  };
+  var MV_TITLE = { levels: "Levels", multimap: "Multi-Map" };
   // the Chart view draws the selected measure's per-strike profile (ed-gamma-chart.js); volume has none
-  var CHART_TITLE = { gex: 'Price + GEX Profile', dex: 'Price + DEX Profile', oi: 'Price + Open Interest Profile',
-    volume: 'Price + GEX Profile' };
+  var CHART_TITLE = {
+    gex: "Price + GEX Profile",
+    dex: "Price + DEX Profile",
+    oi: "Price + Open Interest Profile",
+    volume: "Price + GEX Profile",
+  };
   function showMainView() {
     // dex/oi are the SAME gamma pane (see NAV/MEASURE_BY_SUBVIEW) under a different subview
     // id -- the view-switching/title logic below applies to all three, not gamma alone.
-    if (!(state.workspace === 'options' && (state.subview === 'gamma' || state.subview === 'dex' || state.subview === 'oi'))) return;
-    ['heatmap', 'chart', 'levels', 'multimap'].forEach(function (v) {
-      var el = document.getElementById('view-' + v);
-      if (el) el.classList.toggle('on', v === state.view);
+    if (
+      !(
+        state.workspace === "options" &&
+        (state.subview === "gamma" || state.subview === "dex" || state.subview === "oi")
+      )
+    )
+      return;
+    ["heatmap", "chart", "levels", "multimap"].forEach(function (v) {
+      var el = document.getElementById("view-" + v);
+      if (el) el.classList.toggle("on", v === state.view);
     });
-    var t = document.getElementById('mvTitle');
-    if (t) t.textContent = state.view === 'heatmap' ? (MEASURE_TITLE[state.measure] || MEASURE_TITLE.gex)
-      : state.view === 'chart' ? (CHART_TITLE[state.measure] || CHART_TITLE.gex) : (MV_TITLE[state.view] || '');
-    var cm = document.getElementById('chartModes'); if (cm) cm.hidden = state.view !== 'chart';
-    var sc = document.getElementById('heatScope'); if (sc) sc.style.display = state.view === 'heatmap' ? '' : 'none';
+    var t = document.getElementById("mvTitle");
+    if (t)
+      t.textContent =
+        state.view === "heatmap"
+          ? MEASURE_TITLE[state.measure] || MEASURE_TITLE.gex
+          : state.view === "chart"
+            ? CHART_TITLE[state.measure] || CHART_TITLE.gex
+            : MV_TITLE[state.view] || "";
+    var cm = document.getElementById("chartModes");
+    if (cm) cm.hidden = state.view !== "chart";
+    var sc = document.getElementById("heatScope");
+    if (sc) sc.style.display = state.view === "heatmap" ? "" : "none";
   }
   // active-workspace children expanded under it in the rail (the reference Options tree). Reuses the
   // NAV subs; clicking a child sets the subview — same one nav state as the horizontal subnav.
   function renderRailChildren() {
-    Array.prototype.slice.call(document.querySelectorAll('.rail-children')).forEach(function (n) { n.remove(); });
+    Array.prototype.slice.call(document.querySelectorAll(".rail-children")).forEach(function (n) {
+      n.remove();
+    });
     var active = document.querySelector('.navitem[data-ws="' + state.workspace + '"]');
     var cfg = NAV[state.workspace];
     if (!active || !cfg || !cfg.subs || !cfg.subs.length) return;
-    var box = document.createElement('div');
-    box.className = 'rail-children';
+    var box = document.createElement("div");
+    box.className = "rail-children";
     cfg.subs.forEach(function (s) {
-      var na = s.state === 'na';
-      var el = document.createElement('a');
-      el.className = 'rail-child' + (s.id === state.subview ? ' on' : '') + (na ? ' na' : '');
+      var na = s.state === "na";
+      var el = document.createElement("a");
+      el.className = "rail-child" + (s.id === state.subview ? " on" : "") + (na ? " na" : "");
       el.textContent = s.label;
-      if (!na) el.addEventListener('click', function () { setSubview(s.id); });
+      if (!na)
+        el.addEventListener("click", function () {
+          setSubview(s.id);
+        });
       box.appendChild(el);
     });
-    active.insertAdjacentElement('afterend', box);
+    active.insertAdjacentElement("afterend", box);
   }
 
   // #8: maximize the Gamma main analytical panel (Heatmap/Chart). PRESENTATION ONLY — it toggles a
   // grid class that hides the Key Levels rail + bottom strip; the shared ticker / strike / expiry /
   // scope state is never touched, so Restore returns to the exact same context. Persisted + Esc.
-  var MAX_KEY = 'ed_gamma_max';
+  var MAX_KEY = "ed_gamma_max";
   function applyMaximize(on) {
-    var grid = document.querySelector('.gamma-grid'); if (!grid) return;
-    grid.classList.toggle('maxed', !!on);
-    var b = document.getElementById('maxBtn');
-    if (b) { b.classList.toggle('on', !!on); b.title = on ? 'Restore panel (Esc)' : 'Maximize panel (Esc to restore)'; }
-    _lsSet(MAX_KEY, on ? '1' : '0');
+    var grid = document.querySelector(".gamma-grid");
+    if (!grid) return;
+    grid.classList.toggle("maxed", !!on);
+    var b = document.getElementById("maxBtn");
+    if (b) {
+      b.classList.toggle("on", !!on);
+      b.title = on ? "Restore panel (Esc)" : "Maximize panel (Esc to restore)";
+    }
+    _lsSet(MAX_KEY, on ? "1" : "0");
   }
   function toggleMaximize() {
-    var grid = document.querySelector('.gamma-grid');
-    applyMaximize(!(grid && grid.classList.contains('maxed')));
+    var grid = document.querySelector(".gamma-grid");
+    applyMaximize(!(grid && grid.classList.contains("maxed")));
   }
 
   function reflectScopeVisibility() {
     // The scope control shows on the gamma-family subviews (MEASURE_BY_SUBVIEW), whose panels the
     // server windows by it.
-    var scp = document.getElementById('scopeCtl'); if (!scp) return;
-    scp.hidden = !(state.workspace === 'options' && !!MEASURE_BY_SUBVIEW[state.subview]);
+    var scp = document.getElementById("scopeCtl");
+    if (!scp) return;
+    scp.hidden = !(state.workspace === "options" && !!MEASURE_BY_SUBVIEW[state.subview]);
     if (!scp.hidden) reflectScope();
   }
 
@@ -276,16 +402,20 @@
   var _booting = true;
 
   function syncAttrs() {
-    app.setAttribute('data-workspace', state.workspace);
-    app.setAttribute('data-subview', state.subview);
-    app.setAttribute('data-view', state.view);
-    _lsSet('ed_ws', state.workspace); _lsSet('ed_sub', state.subview); _lsSet('ed_view', state.view);
-    document.querySelectorAll('.navitem[data-ws]').forEach(function (n) {
-      n.classList.toggle('active', n.getAttribute('data-ws') === state.workspace);
+    app.setAttribute("data-workspace", state.workspace);
+    app.setAttribute("data-subview", state.subview);
+    app.setAttribute("data-view", state.view);
+    _lsSet("ed_ws", state.workspace);
+    _lsSet("ed_sub", state.subview);
+    _lsSet("ed_view", state.view);
+    document.querySelectorAll(".navitem[data-ws]").forEach(function (n) {
+      n.classList.toggle("active", n.getAttribute("data-ws") === state.workspace);
     });
-    var aiWs = document.getElementById('aiCtxWs');
-    if (aiWs) aiWs.textContent = NAV[state.workspace].title.replace(/\s*\/\s*/g, ' / ') +
-      (state.subview ? ' · ' + state.subview : '');
+    var aiWs = document.getElementById("aiCtxWs");
+    if (aiWs)
+      aiWs.textContent =
+        NAV[state.workspace].title.replace(/\s*\/\s*/g, " / ") +
+        (state.subview ? " · " + state.subview : "");
     showSubPane();
     showMainView();
     reflectScopeVisibility();
@@ -299,7 +429,7 @@
     // dispatch only during that one initial pass; setTicker's OWN ed:ticker dispatch (below,
     // unconditional) is the single signal every module hydrates from at cold start, and
     // ed:view fires normally, exactly once per call, on every REAL subsequent view change.
-    if (!_booting) emit('ed:view', Object.assign({}, state));
+    if (!_booting) emit("ed:view", Object.assign({}, state));
   }
 
   function setWorkspace(ws) {
@@ -309,28 +439,42 @@
     // tab first, but nothing enforced that; landing a workspace switch on a `state:'na'` tab
     // would hit the exact same "selected but disabled, no matching pane" gap normalizeState()
     // guards against on reload.
-    var firstEnabled = NAV[ws].subs.filter(function (s) { return s.state !== 'na'; })[0] || NAV[ws].subs[0] || {};
-    state.subview = firstEnabled.id || '';
+    var firstEnabled =
+      NAV[ws].subs.filter(function (s) {
+        return s.state !== "na";
+      })[0] ||
+      NAV[ws].subs[0] ||
+      {};
+    state.subview = firstEnabled.id || "";
     var v0 = NAV[ws].views && NAV[ws].views[state.subview];
     var v = Array.isArray(v0) ? v0 : [];
-    state.view = (v[0] || {}).id || '';
-    renderSubnav(); renderViewbar(); showPane(); syncAttrs();
+    state.view = (v[0] || {}).id || "";
+    renderSubnav();
+    renderViewbar();
+    showPane();
+    syncAttrs();
   }
   // Which measure a given Options subview presents on the SAME strike x expiry grid the
   // Gamma tab already renders -- see `state.measure`'s own comment. A subview absent here
   // (chain/flow/structures/vanna/charm — vanna/charm have no per-expiry surface yet) leaves
   // the measure untouched, so returning to Gamma after visiting Chain still shows whichever
   // measure was last selected there, exactly like `scope` already persists across subviews.
-  var MEASURE_BY_SUBVIEW = { gamma: 'gex', dex: 'dex', oi: 'oi' };
+  var MEASURE_BY_SUBVIEW = { gamma: "gex", dex: "dex", oi: "oi" };
   function setSubview(sv) {
     state.subview = sv;
     var v0 = NAV[state.workspace].views && NAV[state.workspace].views[sv];
     var v = Array.isArray(v0) ? v0 : [];
-    state.view = (v[0] || {}).id || '';
+    state.view = (v[0] || {}).id || "";
     if (MEASURE_BY_SUBVIEW[sv]) setMeasure(MEASURE_BY_SUBVIEW[sv], /*fromSubview*/ true);
-    renderSubnav(); renderViewbar(); syncAttrs();
+    renderSubnav();
+    renderViewbar();
+    syncAttrs();
   }
-  function setView(v) { state.view = v; renderViewbar(); syncAttrs(); }
+  function setView(v) {
+    state.view = v;
+    renderViewbar();
+    syncAttrs();
+  }
 
   // #dex/#oi: ONE canonical strike x expiry projection (server.py project_gamma_surface)
   // already carries dex/oi/volume alongside gex per cell -- this switches which of those
@@ -339,106 +483,143 @@
   // already about to do for a tab-driven switch; a direct #measureSel change (fromSubview
   // falsy) still needs its own reflect + redraw.
   function reflectMeasure() {
-    var sel = document.getElementById('measureSel');
+    var sel = document.getElementById("measureSel");
     if (sel && sel.value !== state.measure) sel.value = state.measure;
   }
   function setMeasure(m, fromSubview) {
-    if (m === state.measure) { reflectMeasure(); return; }
+    if (m === state.measure) {
+      reflectMeasure();
+      return;
+    }
     state.measure = m;
     reflectMeasure();
-    showMainView();   // the heatmap panel title names the measure (see MEASURE_TITLE)
+    showMainView(); // the heatmap panel title names the measure (see MEASURE_TITLE)
     if (!fromSubview) {
-      emit('ed:measure', { measure: m });
+      emit("ed:measure", { measure: m });
     }
   }
 
   // #3: presentation-scope — one control, one state, one event for every windowed Gamma panel.
   function reflectScope() {
-    var ctl = document.getElementById('scopeCtl');
-    if (ctl) ctl.querySelectorAll('.scbtn').forEach(function (b) {
-      b.classList.toggle('on', b.getAttribute('data-scope') === state.scope);
-    });
+    var ctl = document.getElementById("scopeCtl");
+    if (ctl)
+      ctl.querySelectorAll(".scbtn").forEach(function (b) {
+        b.classList.toggle("on", b.getAttribute("data-scope") === state.scope);
+      });
   }
   function setScope(mode) {
-    if (SCOPE_MODES.indexOf(mode) === -1 || mode === state.scope) { reflectScope(); return; }
-    state.scope = mode; _lsSet('ed_scope', mode); reflectScope();
-    emit('ed:scope', { scope: mode });
+    if (SCOPE_MODES.indexOf(mode) === -1 || mode === state.scope) {
+      reflectScope();
+      return;
+    }
+    state.scope = mode;
+    _lsSet("ed_scope", mode);
+    reflectScope();
+    emit("ed:scope", { scope: mode });
   }
   function reflectBookVenue() {
-    document.querySelectorAll('.bookvenue .scbtn').forEach(function (b) {
-      b.classList.toggle('on', b.getAttribute('data-venue') === state.bookVenue);
+    document.querySelectorAll(".bookvenue .scbtn").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-venue") === state.bookVenue);
     });
   }
   function setBookVenue(v) {
     if (v === state.bookVenue) return;
-    state.bookVenue = v; _lsSet('ed_book_venue', v); reflectBookVenue();
-    emit('ed:book_venue', { venue: v });
+    state.bookVenue = v;
+    _lsSet("ed_book_venue", v);
+    reflectBookVenue();
+    emit("ed:book_venue", { venue: v });
   }
   // A panel's pan state: {centre, shift, served}. `served` is the centre of the window on screen
   // (the view the server sent); `centre`/`shift` are what the next read asks for (none: follow
   // the price).
-  function newPan() { return { centre: null, shift: 0, served: null }; }
+  function newPan() {
+    return { centre: null, shift: 0, served: null };
+  }
   // The strike axis of a per-strike panel: dragging the strike labels pans (rows of movement
   // become `shift` from the centre the drag began on), a double-click follows the price again,
   // ctrl/cmd+wheel over `wheelEl` steps the scope (Auto -> Wider -> All). `reload` re-reads the
   // panel with the pan state as it now is.
   var _axisDrag = null;
-  if (typeof document !== 'undefined') {
-    document.addEventListener('mousemove', function (e) {
-      var d = _axisDrag; if (!d) return;
+  if (typeof document !== "undefined") {
+    document.addEventListener("mousemove", function (e) {
+      var d = _axisDrag;
+      if (!d) return;
       var rows = Math.round((e.clientY - d.startY) / d.rowPx);
       if (rows === d.pan.shift && d.pan.centre === d.base) return;
-      d.pan.centre = d.base; d.pan.shift = rows;
+      d.pan.centre = d.base;
+      d.pan.shift = rows;
       d.reload();
     });
-    document.addEventListener('mouseup', function () { _axisDrag = null; });
+    document.addEventListener("mouseup", function () {
+      _axisDrag = null;
+    });
   }
   // A read's view arrived: its centre is the window on screen (the next drag starts from it). The
   // pan the operator asked for (`centre`, `shift`) is kept as asked, so a read still held behind a
   // drag asks for where the drag ended.
-  function panServed(pan, centre) { pan.served = centre; }
+  function panServed(pan, centre) {
+    pan.served = centre;
+  }
   function wireStrikeAxis(axisEls, wheelEl, pan, rowPx, reload) {
     Array.prototype.forEach.call(axisEls, function (el) {
-      el.style.cursor = 'ns-resize';
-      el.setAttribute('draggable', 'false');
-      el.addEventListener('dragstart', function (e) { e.preventDefault(); });
-      el.addEventListener('mousedown', function (e) {
-        _axisDrag = { startY: e.clientY, rowPx: rowPx, pan: pan, base: pan.served, reload: reload };
-        e.preventDefault(); e.stopPropagation();
+      el.style.cursor = "ns-resize";
+      el.setAttribute("draggable", "false");
+      el.addEventListener("dragstart", function (e) {
+        e.preventDefault();
       });
-      el.addEventListener('dblclick', function (e) {
-        pan.centre = null; pan.shift = 0; reload(); e.stopPropagation();
+      el.addEventListener("mousedown", function (e) {
+        _axisDrag = { startY: e.clientY, rowPx: rowPx, pan: pan, base: pan.served, reload: reload };
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      el.addEventListener("dblclick", function (e) {
+        pan.centre = null;
+        pan.shift = 0;
+        reload();
+        e.stopPropagation();
       });
     });
-    if (wheelEl) wheelEl.addEventListener('wheel', function (e) {
-      if (!e.ctrlKey && !e.metaKey) return;   // a plain wheel scrolls the panel
-      e.preventDefault();
-      var cur = SCOPE_MODES.indexOf(state.scope); if (cur === -1) cur = 0;
-      var next = e.deltaY > 0 ? Math.min(SCOPE_MODES.length - 1, cur + 1) : Math.max(0, cur - 1);
-      if (next !== cur) setScope(SCOPE_MODES[next]);
-    }, { passive: false });
+    if (wheelEl)
+      wheelEl.addEventListener(
+        "wheel",
+        function (e) {
+          if (!e.ctrlKey && !e.metaKey) return; // a plain wheel scrolls the panel
+          e.preventDefault();
+          var cur = SCOPE_MODES.indexOf(state.scope);
+          if (cur === -1) cur = 0;
+          var next =
+            e.deltaY > 0 ? Math.min(SCOPE_MODES.length - 1, cur + 1) : Math.max(0, cur - 1);
+          if (next !== cur) setScope(SCOPE_MODES[next]);
+        },
+        { passive: false },
+      );
   }
 
   // the as-of badges print only served fields (asOfBadge): never a computed freshness, never one
   // global "LIVE"
-  function _escBadge(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  function _escBadge(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
   // a panel's placeholder: one line of words, drawn as text
   function placeholder(host, words) {
     host.innerHTML = '<div class="placeholder"><div class="sm"></div></div>';
-    host.querySelector('.sm').textContent = words;
+    host.querySelector(".sm").textContent = words;
   }
   // The one empty-chain message for every chain panel (Chain, Strike Detail, contract
   // specs). The chain panel is the live chain or status 'unavailable' with a named reason --
   // no stored or captured substitute -- so the reason IS the message.
   function chainEmptyText(d) {
-    var why = d && d.status === 'unavailable' && d.scope && d.scope.reason;
-    return why ? ('chain unavailable — ' + why) : 'no chain for this expiry';
+    var why = d && d.status === "unavailable" && d.scope && d.scope.reason;
+    return why ? "chain unavailable — " + why : "no chain for this expiry";
   }
   // A panel's as-of badge: its label, the served state word (o.state: LIVE, CLOSE, STALE, NOT LIVE,
   // the levels verdict), the served time and the served age text. The word's style follows the word.
   function asOfBadge(o) {
-    var cls = 'asof' + (o.state === 'LIVE' ? ' live' : o.state === 'STALE' ? ' stale' : o.state ? ' ref' : '');
+    var cls =
+      "asof" +
+      (o.state === "LIVE" ? " live" : o.state === "STALE" ? " stale" : o.state ? " ref" : "");
     var parts = [];
     if (o.label) parts.push(_escBadge(o.label));
     if (o.state) parts.push(_escBadge(o.state));
@@ -446,17 +627,25 @@
     if (o.age) parts.push(_escBadge(o.age));
     // the detailed reason is DISCLOSED in the tooltip — never as a paragraph inside an analytical panel
     var title = o.reason || o.title || o.label;
-    return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
+    return (
+      '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(" · ") + "</span>"
+    );
   }
   // A chain answer's badge: its served scope and the levels verdict served with it; '' after a
   // failed read (null: no answer).
-  var CHAIN_SCOPE = { complete_single_expiry: 'complete (ALL)', unavailable: 'unavailable' };
+  var CHAIN_SCOPE = { complete_single_expiry: "complete (ALL)", unavailable: "unavailable" };
   function chainScopeBadge(d) {
-    if (d === null) return '';
-    var sc = d.scope, kind = sc.kind;
-    return asOfBadge({ label: 'vendor · ' + CHAIN_SCOPE[kind], state: d.levels_state,
-      when: d.levels_time_ct, age: d.levels_age_text, reason: d.levels_stale_reason,
-      title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') });
+    if (d === null) return "";
+    var sc = d.scope,
+      kind = sc.kind;
+    return asOfBadge({
+      label: "vendor · " + CHAIN_SCOPE[kind],
+      state: d.levels_state,
+      when: d.levels_time_ct,
+      age: d.levels_age_text,
+      reason: d.levels_stale_reason,
+      title: "chain scope: " + kind + (sc.reason ? " — " + sc.reason : ""),
+    });
   }
 
   // ================= watchlist: the one list, kept by the capture daemon =================
@@ -466,10 +655,18 @@
   // carries the new list. Each list carries its time on the program's one clock (a beat's `ts`, an
   // answer's `ts`): a list stamped before the one shown is older and is not drawn (a beat built
   // before an add can arrive after the add's answer).
-  var _wl = null, _wlShown = null, _wlTs = null;
-  function loadWL() { return _wl ? _wl.slice() : []; }
+  var _wl = null,
+    _wlShown = null,
+    _wlTs = null;
+  function loadWL() {
+    return _wl ? _wl.slice() : [];
+  }
   function wlFetch(url, opts) {
-    return fetch(url, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+    return fetch(url, opts).then(function (r) {
+      return r.json().then(function (j) {
+        return { ok: r.ok, j: j };
+      });
+    });
   }
   // a list carried to the page at time `ts`: an older one is not taken, and one is drawn only
   // when it is not the one already drawn
@@ -478,77 +675,119 @@
     _wlTs = ts;
     var shown = JSON.stringify(list);
     if (shown === _wlShown) return;
-    _wlShown = shown; _wl = list; renderWatchlist();
+    _wlShown = shown;
+    _wl = list;
+    renderWatchlist();
   }
   // one beat's status: a beat with none (the daemon's status failed) keeps the list drawn and says
   // so on the list's own state line, which stands until a beat carries a status again (the
   // message line is the answer to the operator's add or removal alone)
   function ingestWatchlist(feed) {
-    document.getElementById('wlFeed').textContent = feed ? '' : 'the capture daemon is not reporting';
+    document.getElementById("wlFeed").textContent = feed
+      ? ""
+      : "the capture daemon is not reporting";
     if (feed) setWL(feed.watchlist, feed.ts);
   }
   // the daemon's answer to an add or a removal: the new list, or what happened instead
   function wlAnswer(a) {
     if (a.j.tickers) setWL(a.j.tickers, a.j.ts);
     if (a.j.ok) return true;
-    if (a.j.op === 'invalid') wlNotify(a.j.ticker + ' is not added: Schwab does not quote it (' + JSON.stringify(a.j.answer) + ')');
-    else wlNotify(a.j.error || (a.j.ticker + ': ' + a.j.op));
+    if (a.j.op === "invalid")
+      wlNotify(
+        a.j.ticker + " is not added: Schwab does not quote it (" + JSON.stringify(a.j.answer) + ")",
+      );
+    else wlNotify(a.j.error || a.j.ticker + ": " + a.j.op);
     return false;
   }
 
   function renderWatchlist() {
     var list = loadWL();
-    var host = document.getElementById('watchlist');
-    var add = document.getElementById('wlAdd');
-    host.querySelectorAll('.wl-row, .wl-empty').forEach(function (n) { n.remove(); });
+    var host = document.getElementById("watchlist");
+    var add = document.getElementById("wlAdd");
+    host.querySelectorAll(".wl-row, .wl-empty").forEach(function (n) {
+      n.remove();
+    });
     if (!list.length) {
-      var empty = document.createElement('div');
-      empty.className = 'wl-empty';
-      empty.textContent = _wl ? 'Watchlist is empty — use + Add symbol below' : '-';
+      var empty = document.createElement("div");
+      empty.className = "wl-empty";
+      empty.textContent = _wl ? "Watchlist is empty — use + Add symbol below" : "-";
       host.insertBefore(empty, add);
     }
     list.forEach(function (sym) {
-      var row = document.createElement('div');
-      row.className = 'wl-row' + (sym === state.ticker ? ' sel' : '');
+      var row = document.createElement("div");
+      row.className = "wl-row" + (sym === state.ticker ? " sel" : "");
       // Remove is a real <button> in normal flow (not display:none swapped by hover JS), so
       // Tab reaches it and Enter/Space activates it natively — CSS (:hover/:focus-within/
       // :focus) alone controls its visibility, no mouse required to discover or use it.
-      row.innerHTML = '<span class="wl-sym s">' + (_served[sym] ? _served[sym].display : sym) + '</span>' +
-        '<span class="wl-px" data-wlpx="' + sym + '">-</span>' +
-        '<span class="wl-chg" data-wlchg="' + sym + '">-</span>' +
-        '<button class="st-x" data-rm="' + sym + '" aria-label="Remove ' + sym + ' from watchlist">×</button>';
-      row.addEventListener('click', function (e) {
-        if (e.target.getAttribute('data-rm')) return;
+      row.innerHTML =
+        '<span class="wl-sym s">' +
+        (_served[sym] ? _served[sym].display : sym) +
+        "</span>" +
+        '<span class="wl-px" data-wlpx="' +
+        sym +
+        '">-</span>' +
+        '<span class="wl-chg" data-wlchg="' +
+        sym +
+        '">-</span>' +
+        '<button class="st-x" data-rm="' +
+        sym +
+        '" aria-label="Remove ' +
+        sym +
+        ' from watchlist">×</button>';
+      row.addEventListener("click", function (e) {
+        if (e.target.getAttribute("data-rm")) return;
         setTicker(sym);
       });
       host.insertBefore(row, add);
     });
-    host.querySelectorAll('[data-rm]').forEach(function (b) {
-      b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
+    host.querySelectorAll("[data-rm]").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        removeSymbol(b.getAttribute("data-rm"));
+      });
     });
-    buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
+    buildSymList(); // the watchlist is only a SUGGESTION list for the instrument control
     // the open price socket is told the new set; nothing reconnects, nothing blanks
     subscribePrices();
   }
   var _wlMsgTimer = null;
-  function wlNotify(msg) {   // understandable feedback for invalid/duplicate add — aria-live, self-clearing
-    var el = document.getElementById('wlMsg'); if (!el) return;
+  function wlNotify(msg) {
+    // understandable feedback for invalid/duplicate add — aria-live, self-clearing
+    var el = document.getElementById("wlMsg");
+    if (!el) return;
     el.textContent = msg;
     if (_wlMsgTimer) clearTimeout(_wlMsgTimer);
-    _wlMsgTimer = setTimeout(function () { el.textContent = ''; }, 3000);
+    _wlMsgTimer = setTimeout(function () {
+      el.textContent = "";
+    }, 3000);
   }
   // WATCHLIST = persistent symbols the operator chose to monitor. Adding is an explicit action
   // (the rail's "+ Add symbol"); analysing an instrument never adds it.
   function addSymbol(sym) {
     var raw = sym;
     sym = normSym(sym);
-    if (!sym) { wlNotify('Not a valid symbol: "' + raw + '"'); return; }
-    if (loadWL().indexOf(sym) !== -1) { wlNotify(sym + ' is already on the watchlist'); setTicker(sym); return; }
-    wlNotify('Checking ' + sym + ' with Schwab…');
-    wlFetch('/api/watchlist', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker: sym }) })
-      .then(function (a) { if (wlAnswer(a)) setTicker(sym); })
-      .catch(function (e) { wlNotify(sym + ' is not added: ' + e); });
+    if (!sym) {
+      wlNotify('Not a valid symbol: "' + raw + '"');
+      return;
+    }
+    if (loadWL().indexOf(sym) !== -1) {
+      wlNotify(sym + " is already on the watchlist");
+      setTicker(sym);
+      return;
+    }
+    wlNotify("Checking " + sym + " with Schwab…");
+    wlFetch("/api/watchlist", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker: sym }),
+    })
+      .then(function (a) {
+        if (wlAnswer(a)) setTicker(sym);
+      })
+      .catch(function (e) {
+        wlNotify(sym + " is not added: " + e);
+      });
   }
   // ACTIVE INSTRUMENT = any supported Schwab symbol the operator wants to analyse now. The client
   // only normalises the FORM (upper-case, the vendor's symbol alphabet); whether the instrument is
@@ -559,9 +798,11 @@
     return /^[$^]?[A-Z0-9][A-Z0-9.\-/]{0,11}$/.test(s) ? s : null;
   }
   function removeSymbol(sym) {
-    wlFetch('/api/watchlist/' + encodeURIComponent(sym), { method: 'DELETE', cache: 'no-store' })
+    wlFetch("/api/watchlist/" + encodeURIComponent(sym), { method: "DELETE", cache: "no-store" })
       .then(wlAnswer)
-      .catch(function (e) { wlNotify(sym + ' is not removed: ' + e); });
+      .catch(function (e) {
+        wlNotify(sym + " is not removed: " + e);
+      });
   }
 
   // Every view event goes through emit(): with no ticker chosen, no panel is asked to load
@@ -571,9 +812,10 @@
     document.dispatchEvent(new CustomEvent(name, { detail: detail }));
   }
   function paintNoTicker() {
-    var px = document.getElementById('hPx'); if (px) px.textContent = 'CHOOSE A SYMBOL';
-    setFeed('stale', 'NO SYMBOL', '-');
-    paintIdentity('-');
+    var px = document.getElementById("hPx");
+    if (px) px.textContent = "CHOOSE A SYMBOL";
+    setFeed("stale", "NO SYMBOL", "-");
+    paintIdentity("-");
   }
 
   // ================= ticker store (ONE selected-symbol state across every surface) =================
@@ -581,44 +823,71 @@
   // display name (ingestIdentity).
   // Every panel header ticker label shares .hticker, so a panel added later is never missed.
   function paintIdentity(name) {
-    ['hSym', 'aiCtxSym'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = name; });
-    document.querySelectorAll('.hticker').forEach(function (el) { el.textContent = name; });
-    document.querySelectorAll('.wl-row').forEach(function (r) {
-      var s = r.querySelector('.wl-sym'); r.classList.toggle('sel', !!s && (s.textContent === name || s.textContent === state.ticker));
+    ["hSym", "aiCtxSym"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = name;
+    });
+    document.querySelectorAll(".hticker").forEach(function (el) {
+      el.textContent = name;
+    });
+    document.querySelectorAll(".wl-row").forEach(function (r) {
+      var s = r.querySelector(".wl-sym");
+      r.classList.toggle("sel", !!s && (s.textContent === name || s.textContent === state.ticker));
     });
   }
   function setTicker(sym) {
     state.ticker = sym.toUpperCase();
-    state.key = null; state.display = null;
+    state.key = null;
+    state.display = null;
     _lsSet(TICKER_KEY, state.ticker);
     paintIdentity(state.ticker);
-    var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
-    state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
+    var si = document.getElementById("symInput");
+    if (si) {
+      si.value = state.ticker;
+      buildSymList();
+    } // the control reflects the ONE state
+    state.selStrike = null;
+    state.selExpiry = null; // a new ticker clears the shared selection
     // this ticker's list is not received yet (the socket sends it on the subscribe below): '-'
-    paintExpiries({ expiries: null, labels: null, dte_text: null, reason: '-' });
+    paintExpiries({ expiries: null, labels: null, dte_text: null, reason: "-" });
     // just asked for this ticker: WAITING (not OFFLINE) until PRICE_SILENCE_MS passes with no row
-    _priceConnecting = true; clearTimeout(_priceConnectTimer);
-    _priceConnectTimer = setTimeout(function () { _priceConnecting = false; }, PRICE_SILENCE_MS);
-    _quoteShown = false;                 // the last ticker's price is not this one's
-    markHeaderPushDown();                // WAITING until the row the subscribe below asks lands
-    emit('ed:ticker', { ticker: state.ticker });   // each view names its panels for this ticker ...
-    subscribePrices();                   // ... then one subscribe asks for them and this ticker's row
+    _priceConnecting = true;
+    clearTimeout(_priceConnectTimer);
+    _priceConnectTimer = setTimeout(function () {
+      _priceConnecting = false;
+    }, PRICE_SILENCE_MS);
+    _quoteShown = false; // the last ticker's price is not this one's
+    markHeaderPushDown(); // WAITING until the row the subscribe below asks lands
+    emit("ed:ticker", { ticker: state.ticker }); // each view names its panels for this ticker ...
+    subscribePrices(); // ... then one subscribe asks for them and this ticker's row
   }
 
   // ---- instrument control: a typed symbol IS the control (institutional selector: type -> Enter ->
   //      the whole workspace changes context). The watchlist only feeds the suggestion list; it is
   //      never a membership test and never changes when an instrument is analysed. ----
   function buildSymList() {
-    var dl = document.getElementById('symList'); if (!dl) return;
+    var dl = document.getElementById("symList");
+    if (!dl) return;
     var list = loadWL().slice();
     if (list.indexOf(state.ticker) === -1) list.unshift(state.ticker);
-    dl.innerHTML = list.map(function (s) { return '<option value="' + s + '"></option>'; }).join('');
+    dl.innerHTML = list
+      .map(function (s) {
+        return '<option value="' + s + '"></option>';
+      })
+      .join("");
   }
   function commitSymInput(input) {
     var v = normSym(input.value);
-    if (!v) { input.value = state.ticker; input.classList.add('invalid'); setTimeout(function () { input.classList.remove('invalid'); }, 900); return; }
+    if (!v) {
+      input.value = state.ticker;
+      input.classList.add("invalid");
+      setTimeout(function () {
+        input.classList.remove("invalid");
+      }, 900);
+      return;
+    }
     input.value = v;
-    if (v !== state.ticker) setTicker(v);   // analyse it; the watchlist is untouched
+    if (v !== state.ticker) setTicker(v); // analyse it; the watchlist is untouched
     input.blur();
   }
 
@@ -630,72 +899,100 @@
   // operator's pick waits for a known list, which keeps it while it lists it, else All ----
   var _expiryPick = null;
   function paintExpiries(d) {
-    var exps = d.expiries, labels = d.labels, dteText = d.dte_text;
+    var exps = d.expiries,
+      labels = d.labels,
+      dteText = d.dte_text;
     if (exps === null) {
       if (state.expiryFilter !== null) _expiryPick = state.expiryFilter;
       state.expiryFilter = null;
-      var ctx = document.getElementById('aiCtxExp'); if (ctx) ctx.textContent = 'All';
+      var ctx = document.getElementById("aiCtxExp");
+      if (ctx) ctx.textContent = "All";
     }
-    var sel = document.getElementById('expSel'); if (!sel) return;
+    var sel = document.getElementById("expSel");
+    if (!sel) return;
     var opts = '<option value="">All Expirations</option>';
     // the date, then Schwab's days to expiration ('-' when Schwab sent none)
-    if (exps !== null) exps.forEach(function (e) {
-      opts += '<option value="' + e + '">' + _escBadge(labels[e] + ' · ' + (dteText[e] !== null ? dteText[e] : '-')) + '</option>';
-    });
-    if (exps === null || !exps.length) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
+    if (exps !== null)
+      exps.forEach(function (e) {
+        opts +=
+          '<option value="' +
+          e +
+          '">' +
+          _escBadge(labels[e] + " · " + (dteText[e] !== null ? dteText[e] : "-")) +
+          "</option>";
+      });
+    if (exps === null || !exps.length)
+      opts += '<option value="" disabled>' + _escBadge(d.reason) + "</option>";
     sel.innerHTML = opts;
     if (exps !== null) {
       var pick = _expiryPick !== null ? _expiryPick : state.expiryFilter;
       _expiryPick = null;
       var keep = pick !== null && exps.indexOf(pick) !== -1;
-      sel.value = keep ? pick : '';
-      setExpiry(keep ? pick : '');
+      sel.value = keep ? pick : "";
+      setExpiry(keep ? pick : "");
     }
     relabelExpiryDefault();
   }
-  function setExpiry(v) {   // v: an expiry, or '' -- the select's "All Expirations", no filter
-    var nv = v === '' ? null : v;
+  function setExpiry(v) {
+    // v: an expiry, or '' -- the select's "All Expirations", no filter
+    var nv = v === "" ? null : v;
     if (nv === state.expiryFilter) return;
     state.expiryFilter = nv;
-    var sel = document.getElementById('expSel'); if (sel) sel.value = v;
-    var ctx = document.getElementById('aiCtxExp');     // the selected option's served label
-    if (ctx) ctx.textContent = (sel && nv && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : 'All';
-    emit('ed:expiry', { expiry: nv });
+    var sel = document.getElementById("expSel");
+    if (sel) sel.value = v;
+    var ctx = document.getElementById("aiCtxExp"); // the selected option's served label
+    if (ctx)
+      ctx.textContent =
+        sel && nv && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : "All";
+    emit("ed:expiry", { expiry: nv });
   }
   // B: the chain panel is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
   // "All Expirations" while Chain is active — the server returns ONE (default) expiry. In every
   // other subview null legitimately means all expirations. One expiry authority; label only.
   function relabelExpiryDefault() {
-    var sel = document.getElementById('expSel'); if (!sel || !sel.options.length) return;
+    var sel = document.getElementById("expSel");
+    if (!sel || !sel.options.length) return;
     var first = sel.options[0];
-    if (first && first.value === '') first.textContent =
-      (state.workspace === 'options' && state.subview === 'chain') ? 'Default Expiry' : 'All Expirations';
+    if (first && first.value === "")
+      first.textContent =
+        state.workspace === "options" && state.subview === "chain"
+          ? "Default Expiry"
+          : "All Expirations";
   }
 
   // A: one selected strike shared across heatmap / profile / dot map / GEX-by-strike / Strike Detail
   function setStrike(strike, expiry) {
-    state.selStrike = (strike == null || isNaN(strike)) ? null : Number(strike);
+    state.selStrike = strike == null || isNaN(strike) ? null : Number(strike);
     state.selExpiry = expiry;
-    emit('ed:strike', { strike: state.selStrike, expiry: state.selExpiry });
+    emit("ed:strike", { strike: state.selStrike, expiry: state.selExpiry });
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
-  function fmt(n, d) { return (n === null || n === undefined || isNaN(n)) ? '-' : Number(n).toFixed(d === undefined ? 2 : d); }
+  function fmt(n, d) {
+    return n === null || n === undefined || isNaN(n)
+      ? "-"
+      : Number(n).toFixed(d === undefined ? 2 : d);
+  }
   function setFeed(cls, label, age, ageTitle) {
-    var dot = document.getElementById('hFeedDot'), f = document.getElementById('hFeed'), a = document.getElementById('hAge');
-    if (dot) dot.className = 'dot' + (cls ? ' ' + cls : '');
+    var dot = document.getElementById("hFeedDot"),
+      f = document.getElementById("hFeed"),
+      a = document.getElementById("hAge");
+    if (dot) dot.className = "dot" + (cls ? " " + cls : "");
     if (f) f.textContent = label;
     if (a && age != null) {
       a.textContent = age;
-      a.title = ageTitle == null ? '' : ageTitle;
+      a.title = ageTitle == null ? "" : ageTitle;
     }
-    var shown = age != null ? age : (a ? a.textContent : '');
-    var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (shown && shown !== '-' ? ' · ' + shown : '');
+    var shown = age != null ? age : a ? a.textContent : "";
+    var fresh = document.getElementById("aiCtxFresh");
+    if (fresh) fresh.textContent = label + (shown && shown !== "-" ? " · " + shown : "");
     // Key Levels' Spot is this price: not live, it says so with the reason, the trade time and age
-    var spot = document.getElementById('klSpot');
+    var spot = document.getElementById("klSpot");
     if (spot) {
-      spot.style.color = cls ? 'var(--ed-stale)' : '';
-      spot.title = [cls ? label + (ageTitle != null ? ': ' + ageTitle : '') : '', shown].filter(Boolean).join(' · ');
+      spot.style.color = cls ? "var(--ed-stale)" : "";
+      spot.title = [cls ? label + (ageTitle != null ? ": " + ageTitle : "") : "", shown]
+        .filter(Boolean)
+        .join(" · ");
     }
   }
   // ---- header quote + watchlist: PUSHED BY THE CAPTURE DAEMON over the page's socket (/ws on
@@ -705,22 +1002,30 @@
   //      (no fallbacks): when it is not delivering, the header says so -- nothing polls a
   //      quote. ----
   function paintQuote(q) {
-    var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
-    if (px) px.textContent = q.spot_disp == null ? '-' : q.spot_disp;
-    var spot = document.getElementById('klSpot');
-    if (spot) spot.textContent = q.spot_disp == null ? '-' : q.spot_disp;
+    var px = document.getElementById("hPx"),
+      chg = document.getElementById("hChg"),
+      ba = document.getElementById("hBidAsk");
+    if (px) px.textContent = q.spot_disp == null ? "-" : q.spot_disp;
+    var spot = document.getElementById("klSpot");
+    if (spot) spot.textContent = q.spot_disp == null ? "-" : q.spot_disp;
     if (ba) {
-      ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
-      ba.title = q.quoteTime ? ('quote ' + q.quoteTime) : '';
+      ba.textContent = fmt(q.bid) + " × " + fmt(q.ask);
+      ba.title = q.quoteTime ? "quote " + q.quoteTime : "";
     }
     // Schwab's two change percents, each labelled: the regular session's and the last price's
     // (extended hours included). Formatting only; absent reads "-".
-    [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular], [chg, 'EXT ', q.chgPct]].forEach(function (c) {
+    [
+      [document.getElementById("hChgReg"), "REG ", q.chgPctRegular],
+      [chg, "EXT ", q.chgPct],
+    ].forEach(function (c) {
       if (!c[0]) return;
       if (c[2] != null) {
-        c[0].textContent = c[1] + (c[2] >= 0 ? '+' : '') + fmt(c[2]) + '%';
-        c[0].className = 'chg mono ' + (c[2] >= 0 ? 'pos' : 'neg');
-      } else { c[0].textContent = c[1] + '-'; c[0].className = 'chg mono'; }
+        c[0].textContent = c[1] + (c[2] >= 0 ? "+" : "") + fmt(c[2]) + "%";
+        c[0].className = "chg mono " + (c[2] >= 0 ? "pos" : "neg");
+      } else {
+        c[0].textContent = c[1] + "-";
+        c[0].className = "chg mono";
+      }
     });
     setFeed(q.feedCls, q.feedLabel, q.ageLabel, q.ageTitle);
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
@@ -732,129 +1037,189 @@
   function setWlRow(sym, spot, chgPct, tradeTime) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
     if (pe) {
-      pe.textContent = spot == null ? 'UNAVAILABLE' : fmt(spot);
-      pe.title = tradeTime ? ('last trade ' + tradeTime) : '';
+      pe.textContent = spot == null ? "UNAVAILABLE" : fmt(spot);
+      pe.title = tradeTime ? "last trade " + tradeTime : "";
     }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
-      if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
-      else { ce.textContent = '-'; ce.className = 'wl-chg'; }
+      if (chgPct != null) {
+        ce.textContent = (chgPct >= 0 ? "+" : "") + fmt(chgPct) + "%";
+        ce.className = "wl-chg " + (chgPct >= 0 ? "pos" : "neg");
+      } else {
+        ce.textContent = "-";
+        ce.className = "wl-chg";
+      }
     }
   }
   // A silent price push marks the list degraded (the header says why). The last prices stay, and
   // the message line stays the answer to the operator's own add or removal.
   function markWlDegraded() {
-    var host = document.getElementById('watchlist');
-    if (host) host.classList.add('wl-degraded');
+    var host = document.getElementById("watchlist");
+    if (host) host.classList.add("wl-degraded");
   }
   function markWlHealthy() {
-    var host = document.getElementById('watchlist');
-    if (host) host.classList.remove('wl-degraded');
+    var host = document.getElementById("watchlist");
+    if (host) host.classList.remove("wl-degraded");
   }
   // ---- the price socket (daemon -> browser) ----
-  var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
+  var PRICE_SILENCE_MS = 3000; // the daemon beats every 1 s; 3 s of nothing = the push is down
   // the page reads no clock: a row arriving starts a PRICE_SILENCE_MS timer, and the push is
   // silent once it runs out with no newer row (_priceFresh); a ticker change is WAITING until one
   // runs out the same way (_priceConnecting). Its time of day is the program's (_serverNow).
-  var _priceWs = null, _priceUp = false, _priceFresh = false, _priceSilence = null, _priceRetry = 0;
-  var _priceConnecting = false, _priceConnectTimer = null, _serverNow = null;
+  var _priceWs = null,
+    _priceUp = false,
+    _priceFresh = false,
+    _priceSilence = null,
+    _priceRetry = 0;
+  var _priceConnecting = false,
+    _priceConnectTimer = null,
+    _serverNow = null;
   var _quoteShown = false;
   // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
   // age is served and the page computes none
   var _tradeShown = null;
   // the program's own address, the one the page was loaded from
   function priceSocketUrl() {
-    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
   }
   // The market context the server always streams, served in the page (meta ed-market-context,
   // from live_push.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
   // subscribes to, so every page asks for it.
   var MARKET_CONTEXT = JSON.parse(
-    document.querySelector('meta[name="ed-market-context"]').getAttribute('content'));
+    document.querySelector('meta[name="ed-market-context"]').getAttribute("content"),
+  );
   function priceSymbols() {
     var out = [];
     if (state.ticker) out.push(String(state.ticker).toUpperCase());
-    MARKET_CONTEXT.forEach(function (c) { if (out.indexOf(c.key) === -1) out.push(c.key); });
-    loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
+    MARKET_CONTEXT.forEach(function (c) {
+      if (out.indexOf(c.key) === -1) out.push(c.key);
+    });
+    loadWL().forEach(function (s) {
+      s = String(s).toUpperCase();
+      if (out.indexOf(s) === -1) out.push(s);
+    });
     return out;
   }
   function subscribePrices() {
-    if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
+    if (!_priceWs || _priceWs.readyState !== 1) return; // sent on open
     // the selected ticker and the panels the page shows: the program sends each at once, then on
     // each change
-    _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols(), ticker: state.ticker,
-      panels: _panels }));
+    _priceWs.send(
+      JSON.stringify({
+        op: "subscribe",
+        symbols: priceSymbols(),
+        ticker: state.ticker,
+        panels: _panels,
+      }),
+    );
   }
   // ---- the selected ticker's panels on the page's socket: each view module names the panels it
   // shows, with their parameters (showPanel); the subscribe carries them, and the program sends
   // each at once and again on each change, drawn by its module (`ed:panel`) for this ticker only.
   // The expiry dropdown's list is always shown. ----
-  var _panels = { expiries: {} }, _panelsAsked = false;
-  function showPanel(kind, params) {   // params: an object, or null when the panel is not shown
+  var _panels = { expiries: {} },
+    _panelsAsked = false;
+  function showPanel(kind, params) {
+    // params: an object, or null when the panel is not shown
     var was = JSON.stringify(_panels[kind] === undefined ? null : _panels[kind]);
-    if (params === null) delete _panels[kind]; else _panels[kind] = params;
+    if (params === null) delete _panels[kind];
+    else _panels[kind] = params;
     if (JSON.stringify(params) === was || _panelsAsked) return;
-    _panelsAsked = true;   // the modules' asks of one event go in one subscribe
-    Promise.resolve().then(function () { _panelsAsked = false; subscribePrices(); });
+    _panelsAsked = true; // the modules' asks of one event go in one subscribe
+    Promise.resolve().then(function () {
+      _panelsAsked = false;
+      subscribePrices();
+    });
   }
   // The strikes a per-strike panel shows are the program's choice (terrain_engine.strike_window):
   // every such panel asks with these -- the scope, and while the operator has panned, the centre
   // strike the drag began on and the rows it moved from there (none: follow the price).
   function windowParams(pan) {
-    return { scope: state.scope, centre: pan && pan.centre != null ? pan.centre : null, shift: pan ? (pan.shift | 0) : 0 };
+    return {
+      scope: state.scope,
+      centre: pan && pan.centre != null ? pan.centre : null,
+      shift: pan ? pan.shift | 0 : 0,
+    };
   }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
   // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '-'.
   function paintRecord(w) {
-    var el = document.getElementById('hRecord'); if (!el) return;
-    el.textContent = w ? w.line : '-';
-    el.className = w ? 'v ' + w.cls : 'v';
+    var el = document.getElementById("hRecord");
+    if (!el) return;
+    el.textContent = w ? w.line : "-";
+    el.className = w ? "v " + w.cls : "v";
   }
   function openPriceSocket() {
-    if (typeof WebSocket === 'undefined') return;
+    if (typeof WebSocket === "undefined") return;
     var ws;
-    try { ws = new WebSocket(priceSocketUrl()); } catch (e) { schedulePriceReconnect(); return; }
-    _priceWs = ws;   // (_priceConnecting is set by a ticker change only: a reconnect during an
-                     //  outage keeps reading OFFLINE, not WAITING)
-    ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
+    try {
+      ws = new WebSocket(priceSocketUrl());
+    } catch (e) {
+      schedulePriceReconnect();
+      return;
+    }
+    _priceWs = ws; // (_priceConnecting is set by a ticker change only: a reconnect during an
+    //  outage keeps reading OFFLINE, not WAITING)
+    ws.onopen = function () {
+      _priceRetry = 0;
+      subscribePrices();
+    };
     ws.onmessage = function (ev) {
       var msg = JSON.parse(ev.data);
-      if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
-      if (msg && msg.type === 'feed') {
-        paintRecord(msg.feed && msg.feed.writer);
-        if (msg.feed) paintSession(msg.feed.session, '');
-        else paintSession(null, 'session unknown: the daemon sent no status');
-        ingestWatchlist(msg.feed);
-        if (msg.feed && typeof msg.feed.ts === 'number') { _serverNow = msg.feed.ts; tickClock(); }
+      if (msg && msg.type === "symbols" && Array.isArray(msg.symbols)) {
+        ingestIdentity(msg.symbols);
+        return;
       }
-      if (msg && msg.type !== 'feed' && msg.type !== 'quotes') {
+      if (msg && msg.type === "feed") {
+        paintRecord(msg.feed && msg.feed.writer);
+        if (msg.feed) paintSession(msg.feed.session, "");
+        else paintSession(null, "session unknown: the daemon sent no status");
+        ingestWatchlist(msg.feed);
+        if (msg.feed && typeof msg.feed.ts === "number") {
+          _serverNow = msg.feed.ts;
+          tickClock();
+        }
+      }
+      if (msg && msg.type !== "feed" && msg.type !== "quotes") {
         // a panel: one for a ticker the page has left, of a panel it no longer shows, or of a
         // venue it no longer asks, is not drawn
-        if (msg.ticker !== state.key || !Object.prototype.hasOwnProperty.call(_panels, msg.type)) return;
+        if (msg.ticker !== state.key || !Object.prototype.hasOwnProperty.call(_panels, msg.type))
+          return;
         if (msg.venue != null && msg.venue !== _panels[msg.type].venue) return;
         // a panel the program could not produce carries why (`failed`): its module draws the words
-        if (msg.type !== 'expiries') emit('ed:panel', msg);
-        else if (msg.failed != null) paintExpiries({ expiries: null, labels: null, dte_text: null, reason: msg.failed });
+        if (msg.type !== "expiries") emit("ed:panel", msg);
+        else if (msg.failed != null)
+          paintExpiries({ expiries: null, labels: null, dte_text: null, reason: msg.failed });
         else paintExpiries(msg);
         return;
       }
       if (!msg || !Array.isArray(msg.rows)) return;
-      _priceUp = true; _priceFresh = true; clearTimeout(_priceSilence);
-      _priceSilence = setTimeout(function () { _priceFresh = false; checkPriceSilence(); }, PRICE_SILENCE_MS);
+      _priceUp = true;
+      _priceFresh = true;
+      clearTimeout(_priceSilence);
+      _priceSilence = setTimeout(function () {
+        _priceFresh = false;
+        checkPriceSilence();
+      }, PRICE_SILENCE_MS);
       msg.rows.forEach(ingestPriceRow);
     };
     ws.onclose = function () {
       if (_priceWs !== ws) return;
-      _priceWs = null; _priceUp = false;
-      paintSession(null, 'session unknown: the console push is down');
+      _priceWs = null;
+      _priceUp = false;
+      paintSession(null, "session unknown: the console push is down");
       schedulePriceReconnect();
     };
-    ws.onerror = function () { ws.close(); };
+    ws.onerror = function () {
+      ws.close();
+    };
   }
   function schedulePriceReconnect() {
     // 0.25 s, 0.5 s, 1 s, then every 2 s: the daemon restarting is seen and recovered at once
     var ms = Math.min(2000, 250 * Math.pow(2, _priceRetry++));
-    setTimeout(function () { if (!_priceWs) openPriceSocket(); }, ms);
+    setTimeout(function () {
+      if (!_priceWs) openPriceSocket();
+    }, ms);
   }
   // What each symbol the page asked for is, as the daemon answers the subscribe: the key its rows
   // carry ("$SPX") and its display name ("SPX"). Rows are matched to what was asked by that key.
@@ -863,7 +1228,8 @@
       if (!s || !s.key) return;
       _served[s.requested] = s;
       if (s.requested === state.ticker && state.key !== s.key) {
-        state.key = s.key; state.display = s.display;
+        state.key = s.key;
+        state.display = s.display;
         paintIdentity(s.display);
       }
     });
@@ -879,26 +1245,37 @@
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
       _quoteShown = true;
-      _tradeShown = q.trade_time_ct != null ? 'last trade ' + q.trade_time_ct : null;
-      var trade = q.trade_time_ct != null
-        ? ('last trade ' + q.trade_time_ct + (q.trade_age_text != null ? (' · ' + q.trade_age_text) : ''))
-        : null;
-      paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
-        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular,
+      _tradeShown = q.trade_time_ct != null ? "last trade " + q.trade_time_ct : null;
+      var trade =
+        q.trade_time_ct != null
+          ? "last trade " +
+            q.trade_time_ct +
+            (q.trade_age_text != null ? " · " + q.trade_age_text : "")
+          : null;
+      paintQuote({
+        spot_disp: q.spot_disp,
+        spot: q.spot,
+        bid: q.bid,
+        ask: q.ask,
+        chgPct: q.chg_pct,
+        chgPctRegular: q.chg_pct_regular,
         quoteTime: q.quote_time_ct,
-        feedCls: q.feed_live ? '' : 'stale',
+        feedCls: q.feed_live ? "" : "stale",
         feedLabel: q.feed_label,
-        ageLabel: trade || q.outage || 'no trade sent',
-        ageTitle: q.outage });
+        ageLabel: trade || q.outage || "no trade sent",
+        ageTitle: q.outage,
+      });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
       setWlRow(wlSym, q.spot, q.chg_pct, q.trade_time_ct);
       markWlHealthy();
     });
-    window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q }));
+    window.dispatchEvent(new CustomEvent("ed:quote_tick", { detail: q }));
   }
-  function pricePushHealthy() { return _priceUp && _priceFresh; }
+  function pricePushHealthy() {
+    return _priceUp && _priceFresh;
+  }
   // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
   function checkPriceSilence() {
     if (!state.ticker || pricePushHealthy()) return;
@@ -910,11 +1287,19 @@
   // answer for today is not held), sent with each beat of the socket
   // label: one of time_et's five session words, or null while the console's push is down
   function paintSession(label, why) {
-    var el = document.getElementById('hSession'); if (!el) return;
-    var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'],
-              'Unknown': ['UNKNOWN', 'unknown'] };
-    var v = label === null ? ['-', ''] : m[label];
-    el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why;
+    var el = document.getElementById("hSession");
+    if (!el) return;
+    var m = {
+      RTH: ["RTH", "rth"],
+      "Pre-Market": ["PRE", "pre"],
+      "After-Hours": ["AH", "ah"],
+      Closed: ["CLOSED", "closed"],
+      Unknown: ["UNKNOWN", "unknown"],
+    };
+    var v = label === null ? ["-", ""] : m[label];
+    el.textContent = v[0];
+    el.className = "sess " + v[1];
+    el.title = why;
   }
 
   // The push is not delivering: the last quote stays and the chip says so. Nothing polls
@@ -924,12 +1309,22 @@
     // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its
     // last trade time and no age: the last served age is not the age now.
     var connecting = _priceConnecting;
-    var label = connecting ? 'WAITING' : 'OFFLINE';
-    var age = connecting ? 'no push yet' : 'live push down';
-    emit('ed:price_push_down', { label: label });   // every surface of this price says so (the desk map)
-    if (_quoteShown) setFeed('stale', label, _tradeShown != null ? _tradeShown : age);
-    else paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
-      feedCls: 'stale', feedLabel: label, ageLabel: age });
+    var label = connecting ? "WAITING" : "OFFLINE";
+    var age = connecting ? "no push yet" : "live push down";
+    emit("ed:price_push_down", { label: label }); // every surface of this price says so (the desk map)
+    if (_quoteShown) setFeed("stale", label, _tradeShown != null ? _tradeShown : age);
+    else
+      paintQuote({
+        spot: null,
+        spot_disp: null,
+        bid: null,
+        ask: null,
+        chgPct: null,
+        chgPctRegular: null,
+        feedCls: "stale",
+        feedLabel: label,
+        ageLabel: age,
+      });
     paintRecord(null);
   }
 
@@ -937,68 +1332,108 @@
   function tickClock() {
     if (_serverNow == null) return;
     var now = new Date(_serverNow * 1000);
-    var t = now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
-    var dt = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: '2-digit', timeZone: 'America/Chicago' });
-    var c = document.getElementById('hClock'), cd = document.getElementById('hClockDate');
-    if (c) c.textContent = t + ' CT';
+    var t = now.toLocaleTimeString("en-US", { hour12: false, timeZone: "America/Chicago" });
+    var dt = now.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "2-digit",
+      timeZone: "America/Chicago",
+    });
+    var c = document.getElementById("hClock"),
+      cd = document.getElementById("hClockDate");
+    if (c) c.textContent = t + " CT";
     if (cd) cd.textContent = dt;
   }
 
   // ================= wire up =================
   function init() {
     // rail collapse/expand (persisted)
-    if (localStorage.getItem(RAIL_KEY) === '0') app.classList.remove('rail-open');
-    document.getElementById('railToggle').addEventListener('click', function () {
-      app.classList.toggle('rail-open');
-      _lsSet(RAIL_KEY, app.classList.contains('rail-open') ? '1' : '0');
+    if (localStorage.getItem(RAIL_KEY) === "0") app.classList.remove("rail-open");
+    document.getElementById("railToggle").addEventListener("click", function () {
+      app.classList.toggle("rail-open");
+      _lsSet(RAIL_KEY, app.classList.contains("rail-open") ? "1" : "0");
     });
     // theme control — window.EdTheme owns resolution/first-paint/OS changes; reflect + wire the cycle
     reflectThemeIcon();
-    var themeBtn = document.getElementById('themeBtn');
-    if (themeBtn) themeBtn.addEventListener('click', cycleTheme);
+    var themeBtn = document.getElementById("themeBtn");
+    if (themeBtn) themeBtn.addEventListener("click", cycleTheme);
     // workspace nav
-    document.querySelectorAll('.navitem[data-ws]').forEach(function (n) {
-      n.addEventListener('click', function () { setWorkspace(n.getAttribute('data-ws')); });
+    document.querySelectorAll(".navitem[data-ws]").forEach(function (n) {
+      n.addEventListener("click", function () {
+        setWorkspace(n.getAttribute("data-ws"));
+      });
     });
     // the scope control: one button per served scope (one control for every per-strike panel)
-    var scopeCtl = document.getElementById('scopeCtl');
-    if (scopeCtl) SCOPES.forEach(function (s) {
-      var b = document.createElement('button');
-      b.className = 'scbtn'; b.setAttribute('data-scope', s.key); b.textContent = s.label;
-      b.addEventListener('click', function () { setScope(s.key); });
-      scopeCtl.appendChild(b);
-    });
+    var scopeCtl = document.getElementById("scopeCtl");
+    if (scopeCtl)
+      SCOPES.forEach(function (s) {
+        var b = document.createElement("button");
+        b.className = "scbtn";
+        b.setAttribute("data-scope", s.key);
+        b.textContent = s.label;
+        b.addEventListener("click", function () {
+          setScope(s.key);
+        });
+        scopeCtl.appendChild(b);
+      });
     reflectScope();
-    document.querySelectorAll('.bookvenue .scbtn').forEach(function (b) {
-      b.addEventListener('click', function () { setBookVenue(b.getAttribute('data-venue')); });
+    document.querySelectorAll(".bookvenue .scbtn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        setBookVenue(b.getAttribute("data-venue"));
+      });
     });
     reflectBookVenue();
     // ONE canonical strike x expiry projection presents gex/dex/oi/volume -- this control
     // switches which one, on the same grid (see state.measure's own comment).
-    var measureSel = document.getElementById('measureSel');
+    var measureSel = document.getElementById("measureSel");
     if (measureSel) {
       reflectMeasure();
-      measureSel.addEventListener('change', function () { setMeasure(measureSel.value); });
+      measureSel.addEventListener("change", function () {
+        setMeasure(measureSel.value);
+      });
     }
     // operator dropdowns: ticker (one symbol state) + expiry (the socket's `expiries`)
     buildSymList();
-    var symInput = document.getElementById('symInput');
+    var symInput = document.getElementById("symInput");
     if (symInput) {
-      symInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commitSymInput(symInput); } if (e.key === 'Escape') { symInput.value = state.ticker; symInput.blur(); } });
-      symInput.addEventListener('change', function () { commitSymInput(symInput); });   // datalist pick / focus-out with an edit
-      symInput.addEventListener('focus', function () { symInput.select(); });
-      symInput.addEventListener('blur', function () { if (!symInput.value.trim()) symInput.value = state.ticker; });
+      symInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commitSymInput(symInput);
+        }
+        if (e.key === "Escape") {
+          symInput.value = state.ticker;
+          symInput.blur();
+        }
+      });
+      symInput.addEventListener("change", function () {
+        commitSymInput(symInput);
+      }); // datalist pick / focus-out with an edit
+      symInput.addEventListener("focus", function () {
+        symInput.select();
+      });
+      symInput.addEventListener("blur", function () {
+        if (!symInput.value.trim()) symInput.value = state.ticker;
+      });
     }
-    var expSel = document.getElementById('expSel');
-    if (expSel) expSel.addEventListener('change', function () { setExpiry(expSel.value); });
+    var expSel = document.getElementById("expSel");
+    if (expSel)
+      expSel.addEventListener("change", function () {
+        setExpiry(expSel.value);
+      });
     // #8: maximize / restore the Gamma main panel
-    var maxBtn = document.getElementById('maxBtn');
-    if (maxBtn) maxBtn.addEventListener('click', toggleMaximize);
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { var g = document.querySelector('.gamma-grid'); if (g && g.classList.contains('maxed')) applyMaximize(false); }
+    var maxBtn = document.getElementById("maxBtn");
+    if (maxBtn) maxBtn.addEventListener("click", toggleMaximize);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        var g = document.querySelector(".gamma-grid");
+        if (g && g.classList.contains("maxed")) applyMaximize(false);
+      }
     });
-    if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true);
-    window.addEventListener('resize', function () { emit('ed:resize', {}); });   // a view event too
+    if (localStorage.getItem(MAX_KEY) === "1") applyMaximize(true);
+    window.addEventListener("resize", function () {
+      emit("ed:resize", {});
+    }); // a view event too
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
     // Reflect AGAIN, now that normalizeState() may have just corrected state.measure to
@@ -1006,29 +1441,46 @@
     // reflectMeasure() at bind time ran before normalizeState() and would otherwise leave
     // the dropdown showing "GEX" while the grid itself correctly renders OI.
     reflectMeasure();
-    renderSubnav(); renderViewbar(); showPane(); syncAttrs();
+    renderSubnav();
+    renderViewbar();
+    showPane();
+    syncAttrs();
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
     // watchlist
     renderWatchlist();
-    document.getElementById('wlAdd').addEventListener('click', function () {   // EXPLICIT watchlist add
-      var s = window.prompt('Add symbol to watchlist', state.ticker); if (s) addSymbol(s);
+    document.getElementById("wlAdd").addEventListener("click", function () {
+      // EXPLICIT watchlist add
+      var s = window.prompt("Add symbol to watchlist", state.ticker);
+      if (s) addSymbol(s);
     });
     // header search: analyse a symbol (active-instrument change only — never a watchlist mutation)
-    var search = document.getElementById('symSearch');
-    if (search) search.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && search.value.trim()) { var v = normSym(search.value); if (v) { setTicker(v); search.value = ''; } }
-    });
+    var search = document.getElementById("symSearch");
+    if (search)
+      search.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && search.value.trim()) {
+          var v = normSym(search.value);
+          if (v) {
+            setTicker(v);
+            search.value = "";
+          }
+        }
+      });
     // AI drawer
-    document.getElementById('aiOpen').addEventListener('click', function () {
-      var d = document.getElementById('aidrawer'); d.classList.add('open'); d.setAttribute('aria-hidden', 'false');
+    document.getElementById("aiOpen").addEventListener("click", function () {
+      var d = document.getElementById("aidrawer");
+      d.classList.add("open");
+      d.setAttribute("aria-hidden", "false");
     });
-    document.getElementById('aiClose').addEventListener('click', function () {
-      var d = document.getElementById('aidrawer'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
+    document.getElementById("aiClose").addEventListener("click", function () {
+      var d = document.getElementById("aidrawer");
+      d.classList.remove("open");
+      d.setAttribute("aria-hidden", "true");
     });
     // initial ticker + header
-    if (state.ticker) setTicker(state.ticker); else paintNoTicker();
-    _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
-    openPriceSocket();                   // prices: daemon -> browser, one socket for the page
+    if (state.ticker) setTicker(state.ticker);
+    else paintNoTicker();
+    _booting = false; // every REAL subsequent view/ticker change dispatches both events normally
+    openPriceSocket(); // prices: daemon -> browser, one socket for the page
     setInterval(checkPriceSilence, 1000);
   }
 
@@ -1042,8 +1494,8 @@
   // `readyState === 'complete'` is the one case where
   // DOMContentLoaded has already fired (a very late/dynamic script insertion) and must run
   // immediately instead of waiting for an event that will never come again.
-  if (document.readyState === 'complete') init();
-  else document.addEventListener('DOMContentLoaded', init);
+  if (document.readyState === "complete") init();
+  else document.addEventListener("DOMContentLoaded", init);
 
   // ---- the one intensity rule of every heatmap and bar: how strong a value draws against its
   // served scale, the straight proportion in [0, 1]; null when the value is unknown or the scale
@@ -1052,42 +1504,94 @@
     if (value == null || isNaN(value) || !(scale > 0)) return null;
     return Math.min(1, Math.abs(value) / scale);
   }
-  function _hex(h) {   // a token's '#rrggbb'
-    var n = parseInt(String(h).trim().slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  function _hex(h) {
+    // a token's '#rrggbb'
+    var n = parseInt(String(h).trim().slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
   // the theme's heat palette (--ed-heat-pos/neg/zero), read once per drawing
   function heatColors() {
     var cs = getComputedStyle(document.documentElement);
-    return { pos: _hex(cs.getPropertyValue('--ed-heat-pos')), neg: _hex(cs.getPropertyValue('--ed-heat-neg')),
-      zero: _hex(cs.getPropertyValue('--ed-heat-zero')) };
+    return {
+      pos: _hex(cs.getPropertyValue("--ed-heat-pos")),
+      neg: _hex(cs.getPropertyValue("--ed-heat-neg")),
+      zero: _hex(cs.getPropertyValue("--ed-heat-zero")),
+    };
   }
   // a heat cell's colour: the theme's zero toward its positive or negative colour by strength;
   // null when strength is
   function heatFill(value, scale, colors) {
-    var t = strength(value, scale); if (t == null) return null;
-    var a = colors.zero, b = value < 0 ? colors.neg : colors.pos;
-    return [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)];
+    var t = strength(value, scale);
+    if (t == null) return null;
+    var a = colors.zero,
+      b = value < 0 ? colors.neg : colors.pos;
+    return [
+      Math.round(a[0] + (b[0] - a[0]) * t),
+      Math.round(a[1] + (b[1] - a[1]) * t),
+      Math.round(a[2] + (b[2] - a[2]) * t),
+    ];
   }
   // the text colour that reads on a heat cell's colour: light on dark, dark on light
-  function heatInk(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? '#f4f7fb' : '#0a0e17'; }
+  function heatInk(c) {
+    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? "#f4f7fb" : "#0a0e17";
+  }
 
   // the one HTML escape of every view module
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
   // the one way a value the console did not send is drawn: "-" (a 0 is a value and is drawn)
-  function orDash(v) { return v == null || v === '' ? '-' : v; }
+  function orDash(v) {
+    return v == null || v === "" ? "-" : v;
+  }
 
   // expose for view modules + tests (no trading logic here)
-  window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, emit: emit,
-    esc: esc, orDash: orDash,
-    pref: _ls, setPref: _lsSet,   // a viewer's own setting, kept in the browser
-    addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
+  window.EdShell = {
+    getState: function () {
+      return Object.assign({}, state);
+    },
+    setTicker: setTicker,
+    emit: emit,
+    esc: esc,
+    orDash: orDash,
+    pref: _ls,
+    setPref: _lsSet, // a viewer's own setting, kept in the browser
+    addSymbol: addSymbol,
+    setWorkspace: setWorkspace,
+    setStrike: setStrike,
     setTheme: applyTheme,
-    marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
-    now: function () { return _serverNow; },   // the program's time (s), from its heartbeat; null before the first
-    setScope: setScope, getScope: function () { return state.scope; },
-    windowParams: windowParams, showPanel: showPanel, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, chainScopeBadge: chainScopeBadge, chainEmptyText: chainEmptyText, placeholder: placeholder,
-    setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
-    getMeasure: function () { return state.measure; },
-    setSubview: setSubview, strength: strength, heatColors: heatColors, heatFill: heatFill, heatInk: heatInk };
+    marketContext: function () {
+      return MARKET_CONTEXT.slice();
+    }, // served [{key, display}]
+    now: function () {
+      return _serverNow;
+    }, // the program's time (s), from its heartbeat; null before the first
+    setScope: setScope,
+    getScope: function () {
+      return state.scope;
+    },
+    windowParams: windowParams,
+    showPanel: showPanel,
+    newPan: newPan,
+    panServed: panServed,
+    wireStrikeAxis: wireStrikeAxis,
+    asOfBadge: asOfBadge,
+    chainScopeBadge: chainScopeBadge,
+    chainEmptyText: chainEmptyText,
+    placeholder: placeholder,
+    setExpiry: setExpiry,
+    getExpiry: function () {
+      return state.expiryFilter;
+    },
+    getMeasure: function () {
+      return state.measure;
+    },
+    setSubview: setSubview,
+    strength: strength,
+    heatColors: heatColors,
+    heatFill: heatFill,
+    heatInk: heatInk,
+  };
 })();

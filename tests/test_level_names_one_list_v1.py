@@ -14,15 +14,18 @@ from terrain_engine import OPTION_LEVELS
 STATIC = Path(__file__).resolve().parent.parent / "static"
 NAMES = dict(OPTION_LEVELS)
 LOOSE = {"Γ": "(?:Γ|γ|gamma)", "Δ": "(?:Δ|δ|delta)", " ": "[ -]?"}
+#: a quoted piece of page text, in either quote mark (the page's layout may use either)
+Q = r"""['"]([^'"\n]+)['"]"""
 #: Where a page types a name beside the key of the value it prints: (name, key) or (key, name).
+#: Spacing and line breaks between the parts are the layout's, so any run of them is read.
 NAME_THEN_KEY = (
-    r"\['([^']+)'[^\],]*, num\(d\.(\w+)\)",
-    r"row\('([^']+)', num\(t\.(\w+)",
+    rf"\[\s*{Q}[^\],]*,\s*num\(d\.(\w+)\)",
+    rf"row\(\s*{Q},\s*num\(t\.(\w+)",
 )
 KEY_THEN_NAME = (
-    r"\b(\w+): '([^']+)'",
-    r"\b(\w+): \['([^']+)', P\.",
-    r"id: '(\w+)', price: [^,]+, label: '([^']+)'",
+    rf"\b(\w+):\s*{Q}",
+    rf"\b(\w+):\s*\[\s*{Q},\s*P\.",
+    rf"id:\s*{Q},\s*price:\s*[^,]+,\s*label:\s*{Q}",
 )
 
 
@@ -33,7 +36,8 @@ def _pages() -> dict[str, str]:
 
 def _typed(text: str) -> list[str]:
     """Every whole piece of text a page types: a quoted string, or an element's text."""
-    return re.findall(r"'([^'\n]*)'", text) + re.findall(r">([^<>\n]+)<", text)
+    quoted = re.findall(r"""'([^'\n]*)'|"([^"\n]*)\"""", text)
+    return [a or b for a, b in quoted] + re.findall(r">([^<>\n]+)<", text)
 
 
 def test_a_level_name_a_page_types_is_the_lists_letter_for_letter():
@@ -72,7 +76,7 @@ def test_a_name_typed_beside_a_levels_key_is_that_levels_name():
 
 def test_the_key_levels_card_names_each_row_by_the_level_it_prints():
     pages = _pages()
-    printed = dict(re.findall(r"txt\('(kl\w+)', px\(d\.(\w+)\)\)", pages["ed-gamma-panels.js"]))
+    printed = dict(re.findall(rf"txt\(\s*{Q},\s*px\(d\.(\w+)\)\s*\)", pages["ed-gamma-panels.js"]))
     rows = dict(
         (cell, name)
         for name, cell in re.findall(
