@@ -6,6 +6,8 @@ Support-math layer for prediction and call engines.
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 # ══════════════════════════════════════════════════════════════════════════════
 # DERIVED FORMULA DICTIONARY — SECTION 8
 # Predictive Positioning Signals
@@ -18,10 +20,18 @@ from __future__ import annotations
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+class PinScore(TypedDict):
+    """The pin score: raw (0-1) and on 0-100, None when not known, and its label."""
+
+    raw: float | None
+    normalized: float | None
+    label: str
+
+
 def compute_pin_score(
     gex_at_pin: float | None,
     oi_concentration: float | None,
-) -> dict[str, float | str | None]:
+) -> PinScore:
     """
     Pin Probability Score.
 
