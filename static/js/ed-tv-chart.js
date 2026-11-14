@@ -44,7 +44,8 @@
   var CT_YEAR = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric" });
   var CT_MONTH = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "short" });
 
-  var esc = window.EdShell.esc;
+  var esc = window.EdShell.esc,
+    num = window.EdShell.num;
   function fmtVol(n) {
     if (n == null || isNaN(n)) return "-";
     var a = Math.abs(Number(n));
@@ -994,19 +995,19 @@
         '<span>O <b class="' +
         cls +
         '">' +
-        b.o.toFixed(2) +
+        num(b.o) +
         '</b></span><span>H <b class="' +
         cls +
         '">' +
-        b.h.toFixed(2) +
+        num(b.h) +
         '</b></span><span>L <b class="' +
         cls +
         '">' +
-        b.l.toFixed(2) +
+        num(b.l) +
         '</b></span><span>C <b class="' +
         cls +
         '">' +
-        b.c.toFixed(2) +
+        num(b.c) +
         "</b></span><span>Vol <b>" +
         fmtVol(b.v) +
         "</b></span>"
@@ -1040,7 +1041,7 @@
           " CT</span>" +
           '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
           '<div class="tvc-pin-g"><span>Price</span><b>' +
-          S.pinned.price.toFixed(2) +
+          num(S.pinned.price) +
           "</b><span>Bid size</span><b>" +
           (cell && cell.bid != null ? fmtVol(cell.bid) : "-") +
           "</b><span>Ask size</span><b>" +
@@ -1065,13 +1066,13 @@
         " CT</span>" +
         '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
         '<div class="tvc-pin-g"><span>Open</span><b>' +
-        b.o.toFixed(2) +
+        num(b.o) +
         "</b><span>High</span><b>" +
-        b.h.toFixed(2) +
+        num(b.h) +
         "</b><span>Low</span><b>" +
-        b.l.toFixed(2) +
+        num(b.l) +
         "</b><span>Close</span><b>" +
-        b.c.toFixed(2) +
+        num(b.c) +
         '</b><span>Bar change</span><b class="' +
         (chg == null ? "" : chg >= 0 ? "up" : "dn") +
         '">' +
@@ -1081,7 +1082,7 @@
         fmtVol(b.v) +
         "</b>" +
         (S.pinned.price != null
-          ? "<span>Price at click</span><b>" + S.pinned.price.toFixed(2) + "</b>"
+          ? "<span>Price at click</span><b>" + num(S.pinned.price) + "</b>"
           : "") +
         "</div>";
       pinBox.querySelector(".tvc-pin-x").addEventListener("click", function () {
@@ -1140,7 +1141,7 @@
         d = null;
       try {
         d = raw ? JSON.parse(raw) : null;
-      } catch (e) {
+      } catch {
         d = null;
       }
       if (!d) return;
@@ -1311,7 +1312,7 @@
               " " +
               esc(l.label) +
               " " +
-              l.price.toFixed(2) +
+              num(l.price) +
               "</span>"
             );
           })

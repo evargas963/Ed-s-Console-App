@@ -204,9 +204,9 @@
     var v = !d ? null : ex ? d.pcr_by_expiry[ex] : d.pcr_all;
     var vv = !d ? null : ex ? d.pcr_volume_by_expiry[ex] : d.pcr_volume_all;
     var scope = ex ? "exp " + ex : "all exp";
-    txt("klPcr", v == null ? "-" : Number(v).toFixed(2));
+    txt("klPcr", px(v));
     txt("klPcrScope", "OI · " + scope);
-    txt("klPcrVol", vv == null ? "-" : Number(vv).toFixed(2));
+    txt("klPcrVol", px(vv));
     txt("klPcrVolScope", "volume · " + scope);
   }
 
@@ -754,10 +754,10 @@
           fmtOfSize(r.oi) +
           "</td>" +
           "<td>" +
-          (r.iv == null ? "-" : Number(r.iv).toFixed(1)) +
+          px(r.iv, 1) +
           "</td>" +
           "<td>" +
-          (r.delta == null ? "-" : Number(r.delta).toFixed(3)) +
+          px(r.delta, 3) +
           "</td>" +
           '<td><span class="of-cls ' +
           esc(r.classification || "unknown") +
