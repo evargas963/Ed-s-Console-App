@@ -21,7 +21,8 @@ const TERRAIN = REAL.terrain, SURFACE = REAL.surface;
 const BARS = { ticker: 'SPY', bars: [] };
 
 const TAPE_ROW = {
-  trade_time_ms: 1789166557500, symbol: 'SPY   260918C00600000',
+  // trade_time_ct: history.tape_row's time_et.ct_clock of trade_time_ms
+  trade_time_ms: 1789166557500, trade_time_ct: '17:42:37.500 CT', symbol: 'SPY   260918C00600000',
   expiry: '2026-09-18', type: 'CALL', strike: 600,
   bid: 1.17, bid_size: 187, ask: 1.19, ask_size: 180,
   trade: 1.18, size: 1, premium: 118.0,
@@ -60,7 +61,7 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
        'Premium', 'Vol', 'OI', 'IV%', 'Δ', 'vs Market']);
     const row = of.locator('tbody tr').first();
     // Schwab's trade time (1789166557500 ms = 2026-09-11 17:42:37 Central), not a receive time
-    await expect(row.locator('td').nth(0)).toHaveText('17:42:37');
+    await expect(row.locator('td').nth(0)).toHaveText('17:42:37.500 CT');
     await expect(row.locator('td').nth(1)).toHaveText(TAPE_ROW.symbol);   // exact vendor symbol, verbatim
     await expect(row.locator('td').nth(2)).toHaveText('09-18');
     await expect(row.locator('td').nth(3)).toHaveText('CALL');
@@ -81,8 +82,8 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
   });
 
   test('at-bid and at-ask prints are labelled by mechanical comparison, not aggressor inference', async ({ page }) => {
-    const atBid = { ...TAPE_ROW, trade_time_ms: TAPE_ROW.trade_time_ms + 1000, trade: 1.17, classification: 'at_bid' };
-    const atAsk = { ...TAPE_ROW, trade_time_ms: TAPE_ROW.trade_time_ms + 2000, trade: 1.19, classification: 'at_ask' };
+    const atBid = { ...TAPE_ROW, trade_time_ms: TAPE_ROW.trade_time_ms + 1000, trade_time_ct: '17:42:38.500 CT', trade: 1.17, classification: 'at_bid' };
+    const atAsk = { ...TAPE_ROW, trade_time_ms: TAPE_ROW.trade_time_ms + 2000, trade_time_ct: '17:42:39.500 CT', trade: 1.19, classification: 'at_ask' };
     await intercept(page, { ticker: 'SPY', available: true, symbols: [TAPE_ROW.symbol], rows: [atAsk, atBid] });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#ofBody tbody tr');

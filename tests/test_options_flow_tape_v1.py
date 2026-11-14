@@ -92,7 +92,10 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     assert r["iv"] == 27.10704925 and r["delta"] == 0.45935825
     assert r["classification"] == "at_ask"
     assert r["trade_time_ms"] == sent[0][1]["TRADE_TIME_MILLIS"] == 1792762334664  # Schwab's own
+    # 13:32:14.664 UTC on 2026-10-23 is 08:32:14.664 in Chicago (CDT, UTC-5)
+    assert r["trade_time_ct"] == "08:32:14.664 CT"
     assert set(r) == {"trade_time_ms", "symbol", "expiry", "type", "strike", "bid", "bid_size"} | {
+        "trade_time_ct",
         "ask",
         "ask_size",
         "trade",

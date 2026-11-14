@@ -9,15 +9,12 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  function num(n, d) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
-  }
+  var num = window.EdShell.num,
+    ticker = window.EdShell.ticker,
+    served = window.EdShell.served;
   function isMap() {
     var s = window.EdShell.getState();
     return s.workspace === "liquidity" && s.subview === "map";
-  }
-  function ticker() {
-    return window.EdShell.getState().ticker;
   }
   function host() {
     return document.getElementById("liqmBody");
@@ -71,10 +68,6 @@
     );
   }
 
-  // a panel as served: one not received yet, or one the program could not produce, draws nothing
-  function served(p) {
-    return p && p.failed == null ? p : null;
-  }
   function render(h, tk) {
     var c = ensureChart(h);
     if (!c) return;

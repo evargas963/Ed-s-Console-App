@@ -24,6 +24,8 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   // drawn on the one shared chart (ed-tv-chart.js), every served cell handed to it
   const plot = page.locator('#ofhBody .ofh-plot');
   await expect(plot.locator('canvas').first()).toBeVisible();
+  // the window as served (history.book_heatmap_for_ticker's time_et.ct_label of each end)
+  await expect(page.locator('#ofhBody .ofh-foot')).toContainText('Fri 09/25 06:55 PM CT – Fri 09/25 07:00 PM CT');
   await expect.poll(() => page.evaluate(() => window.EdBookHeatmap.state()?.heatCells)).toBe(HEAT.cells.length);
   await expect.poll(() => plot.evaluate((p) => {
     let green = 0, red = 0;

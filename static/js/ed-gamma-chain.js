@@ -6,9 +6,7 @@
 (function () {
   "use strict";
 
-  function px(n, d) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
-  }
+  var px = window.EdShell.num;
   var AS_SENT = "as_sent";
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;

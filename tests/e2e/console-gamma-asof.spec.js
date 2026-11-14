@@ -17,7 +17,9 @@ const { mockPriceSocket, chainAt } = require('./fixtures/price_socket');
 const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
 const SURFACE = REAL.surface, TERRAIN = REAL.terrain, STRIKES = REAL.strikes;
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
-  return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
+  return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }),
+  // server.bars' newest minute, labelled by time_et.ct_label
+  last_bar: { t: 1757000180, label: 'Thu 09/04 10:36 AM CT' } };
 const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
   net_gex_by_strike: [], adjusted_deliverable_symbols: [],
   scope: { kind: 'complete_single_expiry' },
@@ -90,7 +92,8 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab', { hasText: 'Chart' }).click();
     const asof = page.locator('#chartBody .chart-asof');
-    await expect(asof).toContainText('price 1m');       // bars clock
+    // bars clock: the served time of the newest minute
+    await expect(asof).toContainText('price 1m · Thu 09/04 10:36 AM CT');
     await expect(asof).toContainText('GEX terrain · LIVE'); // levels clock (separate)
   });
 

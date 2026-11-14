@@ -5,9 +5,7 @@
 (function () {
   "use strict";
 
-  function px(n, d) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
-  }
+  var px = window.EdShell.num;
   var esc = window.EdShell.esc;
   // Two homes render the SAME canonical levels contract, same function, same host-id
   // resolution pattern -- Options > Gamma > Levels and Liquidity > Levels. Never two renderers
@@ -19,9 +17,7 @@
     if (s.workspace === "liquidity" && s.subview === "levels") return "lvlBody";
     return null;
   }
-  function ticker() {
-    return window.EdShell.getState().ticker;
-  }
+  var ticker = window.EdShell.ticker;
 
   // The levels are the `levels:view` panel (server.levels) the program sends on the page's
   // socket while a Levels view is on, at once and each time the levels change. Nothing received

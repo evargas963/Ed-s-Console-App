@@ -11,18 +11,13 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  function num(n, d) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
-  }
-  function int(n) {
-    return n == null || isNaN(n) ? "-" : String(Math.round(Number(n)));
-  }
+  var num = window.EdShell.num,
+    int = window.EdShell.int,
+    ticker = window.EdShell.ticker,
+    classOf = window.EdShell.classOf;
   function isBook() {
     var s = window.EdShell.getState();
     return s.workspace === "order-flow" && s.subview === "book";
-  }
-  function ticker() {
-    return window.EdShell.getState().ticker;
   }
   function host() {
     return document.getElementById("obBody");
@@ -52,17 +47,7 @@
     else render(h, ticker(), d);
   });
 
-  function classOf(map, key) {
-    var v = map ? map[key] : null;
-    return typeof v === "string" && v ? v : null;
-  }
-  function tag(c) {
-    if (c === undefined || c == null) return "";
-    var hook = (String(c)
-      .toLowerCase()
-      .match(/^[a-z0-9-]+/) || ["unknown"])[0];
-    return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + "</span>";
-  }
+  var tag = window.EdShell.classTag;
   function section(title, rows) {
     var h = '<div class="fl-sec"><div class="fl-sec-h">' + esc(title) + "</div>";
     rows.forEach(function (r) {

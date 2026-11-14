@@ -57,9 +57,8 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  function num(n, d) {
-    return n == null || isNaN(n) ? "-" : Number(n).toFixed(d == null ? 2 : d);
-  }
+  var num = window.EdShell.num,
+    notLive = window.EdShell.notLive;
   function usd(n) {
     if (n == null || isNaN(n)) return "-";
     var a = Math.abs(n),
@@ -74,10 +73,6 @@
     if (a >= 1e6) return (a / 1e6).toFixed(2) + "M";
     if (a >= 1e3) return (a / 1e3).toFixed(1) + "K";
     return String(Math.round(a));
-  }
-  // a value computed from the live price, marked when that price is not live (served price_mark)
-  function notLive(d) {
-    return d && d.spot_not_live_text ? " · " + d.spot_not_live_text : "";
   }
   // Schwab's book time stands beside the age words. A book that is not live keeps that
   // time and says so. The words are unchanged when no book time was sent.

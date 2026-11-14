@@ -51,8 +51,15 @@ assert.strictEqual(G.formatUsd(7600000), '$7.6M');
 assert.strictEqual(G.formatUsd(2140000000), '$2.1B');
 assert.strictEqual(G.formatUsd(807500), '$807.5K');
 assert.strictEqual(G.formatUsd(0), '$0');
-assert.strictEqual(G.formatUsd(null), '');
-assert.strictEqual(G.formatUsd(undefined), '');
+// a value not known is drawn "-" (AGENTS.md rule 5); a 0 is a value
+assert.strictEqual(G.formatUsd(null), '-');
+assert.strictEqual(G.formatUsd(undefined), '-');
+// a count (session volume, open interest): no '$', the same digits
+assert.strictEqual(G.formatCount(0), '0');
+assert.strictEqual(G.formatCount(999), '999');
+assert.strictEqual(G.formatCount(1050), '1.1K');
+assert.strictEqual(G.formatCount(2345678), '2.3M');
+assert.strictEqual(G.formatCount(null), '-');
 // formatting must not change sign or magnitude scale
 for (const v of [958600, -264500, 7600000, -1, 42, -999999]) {
   assert.strictEqual(G.formatUsd(v).startsWith('-'), v < 0, 'formatUsd changed sign for ' + v);
