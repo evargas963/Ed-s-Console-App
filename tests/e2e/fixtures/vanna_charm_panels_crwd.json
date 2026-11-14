@@ -7793,11 +7793,6 @@
   "put_wall_lean": "DEALERS BUY",
   "flip_relation": "ABOVE",
   "pin_candidate": null,
-  "pin_candidate_blockers": [
-   "proximity",
-   "dte",
-   "liquidity"
-  ],
   "atr_daily": null,
   "atr_weekly": null,
   "atr_monthly": null,
@@ -7813,9 +7808,9 @@
   "reason": null,
   "source": "terrain_live_cache",
   "levels_state": "LIVE",
-  "levels_time_ct": "Wed 10/07 09:38 AM CT",
-  "levels_age_text": "0s",
   "levels_stale_reason": "",
+  "levels_age_text": "0s",
+  "levels_time_ct": "Wed 10/07 09:38 AM CT",
   "chain_basis": "every_expiry_strike_range_ALL",
   "expirations": [
    {

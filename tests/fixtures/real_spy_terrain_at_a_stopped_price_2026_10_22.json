@@ -57,11 +57,6 @@
   "2026-10-22": 1.1502520957806701
  },
  "pin_candidate": null,
- "pin_candidate_blockers": [
-  "regime",
-  "proximity",
-  "liquidity"
- ],
  "posture": "FOLLOW_BREAKS",
  "put_charm_wall": 765.0,
  "put_delta_wall": 772.0,

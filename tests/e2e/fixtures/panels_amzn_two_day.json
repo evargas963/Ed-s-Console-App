@@ -4083,9 +4083,6 @@
   "put_wall_lean": "TWO-SIDED \u2014 magnet, not a barrier",
   "flip_relation": "ABOVE",
   "pin_candidate": null,
-  "pin_candidate_blockers": [
-   "liquidity"
-  ],
   "atr_daily": 9.452408341900341,
   "atr_weekly": 17.39414267906555,
   "atr_monthly": 32.792381399428905,

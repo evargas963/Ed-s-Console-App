@@ -420,4 +420,3 @@ def test_unavailable_terrain_does_not_fabricate_pin_score_stamps() -> None:
     assert snap.book_oi_total is None
     served = price_relations(snap.to_dict(), SPY_0DTE.spot)
     assert served.pin_candidate is None, "no chain must never yield a pin claim"
-    assert "completeness" in served.pin_candidate_blockers, "no chain: no absolute-gamma strike"
