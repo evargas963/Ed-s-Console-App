@@ -23,10 +23,9 @@ import server
 import time_et
 from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
-from option_contract import read_chain
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import clock_from, daemon_status
+from tests.feed_live_helper import clock_from, daemon_status, mark_feed_live, publish_capture
 from tests.page_on_socket import pages
 from tests.real_chains import (
     SPY_AFTER_HOURS_PRINT,
@@ -49,27 +48,11 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
 
     `now` is the wall clock when not given.
     """
-    server._publish_levels(
-        tk,
-        captures=[
-            {
-                "contracts": read_chain(SPY_CLOSE.chain),
-                "ts_utc": SPY_CLOSE.now.timestamp(),
-                "spot": SPY_CLOSE.spot,
-                "et_date": SPY_CLOSE.now.date().isoformat(),
-                "basis": server.CAPTURE_BASIS,
-                "spot_ts": None,
-            }
-        ],
-        now=SPY_CLOSE.now,
+    held = SPY_CLOSE
+    publish_capture(
+        tk, held.chain, held.now.timestamp(), held.spot, held.now.date().isoformat(), held.now
     )
-    lmp.record_feed_heartbeat(
-        daemon_status(
-            time_et.now() if now is None else now,
-            schwab_socket_open=True,
-            held={"LEVELONE_EQUITIES": [tk]},
-        )
-    )
+    mark_feed_live(tk, now=now)
     published = server.published_levels(tk).served()
     return {name: published[k] for k, name in server.CROSS_LEVELS}
 

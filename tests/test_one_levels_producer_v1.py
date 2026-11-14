@@ -219,6 +219,15 @@ def _as_pushed(record):
     )
 
 
+def _price_job(job: tuple) -> tuple:
+    """Price `job` at its own instant, as _price_waiting_chain passes.
+
+    Return the levels published and the terrain of the chain with _PUSHED_SET's values.
+    """
+    server._price_chain(TK, *job, _AT)
+    return _cached(), compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
+
+
 def test_a_pushed_greek_set_prices_the_levels_and_their_time_is_the_push():
     """Schwab pushed every Greek of a streamed contract after the chain.
 
@@ -256,9 +265,7 @@ def test_a_push_reprices_the_ticker_a_page_shows_through_the_feed(_clean):
     finally:
         ofs._on_tick_callback = None
         gate.set()
-    server._price_chain(TK, *job, _AT)  # the job's own instant, as _price_waiting_chain passes
-    c = _cached()
-    pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
+    c, pushed = _price_job(job)
     assert job[0] == server.REPRICE
     assert c.snap.per_strike == pushed.per_strike
     assert c.levels_ts_utc == _T
@@ -566,9 +573,7 @@ def test_a_push_on_a_ticker_no_page_shows_is_priced_with_its_next_chain():
     finally:
         ofs._on_tick_callback = None
         gate.set()
-    server._price_chain(TK, *job, _AT)  # the job's own instant, as _price_waiting_chain passes
-    c = _cached()
-    pushed = compute_terrain(TK, [_as_pushed(_RECORDS[0]), *_RECORDS[1:]], _SPOT, now=_AT)
+    c, pushed = _price_job(job)
     assert TK not in after_push
     assert job[0] == server.DELIVERED
     assert c.snap.per_strike == pushed.per_strike

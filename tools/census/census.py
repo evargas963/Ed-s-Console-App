@@ -1979,7 +1979,8 @@ for f in BATCH:
             )
 for f in [f for f in FILES if f.endswith((".json", ".webmanifest"))]:
     r = subprocess.run(
-        [PY, "-m", "json.tool", "--no-ensure-ascii", HEAD / f],
+        # UTF-8 mode: the child prints non-ASCII text, which Windows' console encoding cannot hold
+        [PY, "-X", "utf8", "-m", "json.tool", "--no-ensure-ascii", HEAD / f],
         capture_output=True,
         text=True,
         encoding="utf-8",

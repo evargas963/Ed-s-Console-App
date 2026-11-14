@@ -50,6 +50,18 @@ BASE = {
     TEST: "def test_x():\n    pass\n",
 }
 
+# An except that logs its error; a PR that removes the log line makes it swallow.
+LOGGED_EXCEPT = (
+    "import logging\n"
+    "log = logging.getLogger()\n"
+    "def spot(row):\n"
+    "    try:\n"
+    "        return row['last']\n"
+    "    except KeyError as e:\n"
+    "        log.warning('no last: %s', e)\n"
+    "        return None\n"
+)
+
 
 def _found(tmp_path, files: dict[str, str]) -> list[str]:
     root = _repo(tmp_path, BASE)
@@ -71,16 +83,7 @@ def test_a_patch_no_added_line_carries_is_refused_by_the_whole_repositorys_count
     An old except that logs and carries on swallows the error once its log line is removed, and
     the PR adds no line.
     """
-    old = (
-        "import logging\n"
-        "log = logging.getLogger()\n"
-        "def spot(row):\n"
-        "    try:\n"
-        "        return row['last']\n"
-        "    except KeyError as e:\n"
-        "        log.warning('no last: %s', e)\n"
-        "        return None\n"
-    )
+    old = LOGGED_EXCEPT
     root = _repo(tmp_path, {**BASE, "server.py": old})
     _commit(root, {"server.py": old.replace("        log.warning('no last: %s', e)\n", "")})
     assert cee.violations(root, "main") == ["server.py:6: an except that swallows the error"]
@@ -91,16 +94,7 @@ def test_a_shape_removed_elsewhere_does_not_pay_for_one_brought_in(tmp_path):
 
     The repository's total holds, and the new shape is still refused at its line.
     """
-    old = (
-        "import logging\n"
-        "log = logging.getLogger()\n"
-        "def spot(row):\n"
-        "    try:\n"
-        "        return row['last']\n"
-        "    except KeyError as e:\n"
-        "        log.warning('no last: %s', e)\n"
-        "        return None\n"
-    )
+    old = LOGGED_EXCEPT
     root = _repo(
         tmp_path, {**BASE, "server.py": old, "app/size.py": "def n(a):\n    return a or 0\n"}
     )
@@ -782,6 +776,44 @@ def test_a_code_change_a_comment_reader_could_miss_is_a_product_change(
     assert _changed(root) == [path]
 
 
+@pytest.mark.parametrize(
+    "before, after",
+    [
+        # quote marks, a plain key quoted or not, spacing and line breaks, a trailing comma
+        (
+            "var S = { 'tf': f('a', '5'), nearest: 6 };\n",
+            'var S = {\n  tf: f("a", "5"),\n  nearest: 6,\n};\n',
+        ),
+        # a number key written as a number or as text: one property name
+        ("var T = { '1': 60, '5': 300 };\n", "var T = { 1: 60, 5: 300 };\n"),
+        # parentheses the grammar does not need
+        ("x = (a || b) ? 1 : 2;\n", "x = a || b ? 1 : 2;\n"),
+    ],
+)
+def test_a_change_of_layout_only_is_not_a_change_of_page_code(tmp_path, before, after):
+    """Prettier's layout moves nothing the browser runs: the same program, no product change."""
+    root = _repo(tmp_path, {**BASE, "static/js/page.js": before})
+    _commit(root, {"static/js/page.js": after})
+    assert _changed(root) == []
+
+
+@pytest.mark.parametrize(
+    "before, after",
+    [
+        ("var T = { '1': 60 };\n", "var T = { '2': 60 };\n"),  # another property
+        ("var T = { k: 60 };\n", "var T = { [k]: 60 };\n"),  # a key computed from k
+        ("var s = 'a';\n", 'var s = "b";\n'),  # another value
+        ("x = (a + b) * c;\n", "x = a + b * c;\n"),  # parentheses that change the sum
+    ],
+)
+def test_a_change_of_what_runs_beside_a_layout_change_is_a_change_of_page_code(
+    tmp_path, before, after
+):
+    root = _repo(tmp_path, {**BASE, "static/js/page.js": before})
+    _commit(root, {"static/js/page.js": after})
+    assert _changed(root) == ["static/js/page.js"]
+
+
 def test_every_python_and_page_code_file_in_the_repo_is_read():
     """Every .py, .js and .mjs product file of this repository reads (code_tree is not None).
 
@@ -836,6 +868,18 @@ def _git_in(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
 
+def _blob(root: Path, name: str, text: str) -> str:
+    """Write `text` to `name` in `root` and store it in git; return the blob's sha."""
+    (root / name).write_text(text, encoding="utf-8")
+    return subprocess.run(
+        ["git", "hash-object", "-w", name],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
 @pytest.mark.parametrize("path", ["static/js/my page.js", "static/js/café.js"])
 def test_a_product_file_whose_name_git_quotes_is_still_read(tmp_path, path):
     root = _repo(tmp_path, {**BASE, path: "function draw(v) { return v; }\n"})
@@ -868,14 +912,7 @@ def test_a_name_git_quotes_with_raw_characters_is_still_read(tmp_path):
     root = _repo(tmp_path, BASE)
     _git_in(root, "config", "core.quotePath", "false")
     _git_in(root, "config", "core.protectNTFS", "false")  # a name Windows cannot hold on disk
-    (tmp_path / "blob.txt").write_text("var y = v || 0;\n", encoding="utf-8")
-    sha = subprocess.run(
-        ["git", "hash-object", "-w", "blob.txt"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    sha = _blob(root, "blob.txt", "var y = v || 0;\n")
     _git_in(root, "update-index", "--add", "--cacheinfo", f"100644,{sha},{path}")
     _commit(root, REAL_TEST)
     assert cee.violations(root, "main") == [
@@ -886,14 +923,7 @@ def test_a_name_git_quotes_with_raw_characters_is_still_read(tmp_path):
 def test_a_file_name_that_is_not_utf8_fails_the_check_itself(tmp_path):
     """Exit 2 (the check itself failed), never a judgment on a file it could not name."""
     root = _repo(tmp_path, BASE)
-    (tmp_path / "blob.txt").write_text("var y = v || 0;\n", encoding="utf-8")
-    sha = subprocess.run(
-        ["git", "hash-object", "-w", "blob.txt"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    sha = _blob(root, "blob.txt", "var y = v || 0;\n")
     subprocess.run(
         ["git", "update-index", "--add", "-z", "--index-info"],
         cwd=root,
@@ -932,14 +962,7 @@ def test_a_patch_moved_into_product_code_is_refused_at_its_line(tmp_path):
 
 def test_a_product_file_replaced_by_a_link_is_a_change(tmp_path):
     root = _repo(tmp_path, BASE)
-    (tmp_path / "target.txt").write_text("server_impl.py", encoding="utf-8")
-    sha = subprocess.run(
-        ["git", "hash-object", "-w", "target.txt"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    sha = _blob(root, "target.txt", "server_impl.py")
     _git_in(root, "update-index", "--cacheinfo", f"120000,{sha},server.py")
     _git_in(root, "commit", "-q", "-m", "server.py becomes a link")
     assert _changed(root) == ["server.py"]

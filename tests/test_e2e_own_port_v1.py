@@ -7,12 +7,12 @@ run's server went away.
 
 from __future__ import annotations
 
-import json
 import os
 import socket
-import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
+
+from tests.shared_helpers import node_json
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,16 +23,7 @@ def _load_config(env: dict[str, str]) -> dict:
         "console.log(JSON.stringify({base:c.use.baseURL,url:c.webServer.url,"
         "command:c.webServer.command,storage:c.use.storageState}));"
     )
-    result = subprocess.run(
-        ["node", "--input-type=module", "-e", script],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    return json.loads(result.stdout.strip().splitlines()[-1])
+    return node_json(script, ROOT, env)
 
 
 def _run_port(config: dict) -> int:

@@ -22,6 +22,18 @@ from runtime_layout import _default_runtime_root
 REPO = Path(__file__).resolve().parent.parent
 
 
+def _python(script: str, env: dict) -> subprocess.CompletedProcess:
+    """Run `script` in a Python of its own in the checkout, with `env`; return its run."""
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(REPO),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
 def test_linked_worktree_metadata_failure_refuses_local_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -109,14 +121,7 @@ print(json.dumps([
 ]))
 """
     env = {k: v for k, v in os.environ.items() if k not in ("ED_RUNTIME_ROOT", "SCHWAB_TOKEN_PATH")}
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=str(REPO),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    result = _python(script, env)
     assert result.returncode == 0, result.stderr
     root, token, console_db, stream_db = json.loads(result.stdout.strip().splitlines()[-1])
     assert Path(root) == sandbox.resolve()
@@ -144,14 +149,7 @@ shutil.rmtree(runtime_layout.runtime_root(), ignore_errors=True)
         env.pop("PYTEST_XDIST_WORKER", None)
     else:
         env["PYTEST_XDIST_WORKER"] = worker
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=str(REPO),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    result = _python(script, env)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout.strip().splitlines()[-1])
 
