@@ -203,6 +203,38 @@ def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
     assert scheduled <= 2 / capture.READ_SEC + 2, f"{scheduled} timers in 2 s of ~200 frames"
 
 
+def test_the_status_says_why_schwab_is_down_only_while_it_is(tmp_path):
+    """Before the stream logs in, the daemon's status says why Schwab is not connected.
+
+    While Schwab's frames arrive, it says nothing is down: the socket is open and `schwab_down`
+    is None, never the login word it started with.
+    """
+    streamer = LocalStreamer({}, data={}, beat=0.05)
+    rest = LocalSchwab(streamer.url)
+    client = rest.client(tmp_path)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
+    before = daemon.status(time_et.now())
+
+    async def go() -> dict:
+        stop = asyncio.Event()
+        run = asyncio.create_task(daemon.run_connection(client, stop))
+        await _until(lambda: daemon.stream is not None and daemon.stream.schwab_ts is not None, 30)
+        during = daemon.status(time_et.now())
+        stop.set()
+        await asyncio.wait_for(run, 30)
+        return during
+
+    try:
+        during = asyncio.run(go())
+    finally:
+        streamer.close()
+        rest.close()
+    assert before["schwab_socket_open"] is False
+    assert before["schwab_down"] == capture.SCHWAB_CONNECTING
+    assert during["schwab_socket_open"] is True
+    assert during["schwab_down"] is None
+
+
 async def _until(cond, seconds: float, state=lambda: None) -> None:
     deadline = time_et.elapsed() + seconds
     while not cond():

@@ -27,15 +27,15 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import httpx
-from schwab.client import Client
-
 import time_et
 from app.options.order_flow.state import streamed_volume
 from feed.schwab_client import (
     QUOTES_AT_ONCE,
     QUOTES_BATCH_MAX,
+    Answer,
     flatten_chain_contracts,
+    get_market_hours,
+    get_price_history,
     option_expiries,
     safe_get_chain,
     safe_get_quotes,
@@ -575,10 +575,7 @@ class ChainSweep:
             if date.fromisoformat(day) > markets_last_day(today):
                 continue
             try:
-                resp = schwab_client().get_market_hours(
-                    [Client.MarketHours.Market.EQUITY, Client.MarketHours.Market.OPTION],
-                    date=date.fromisoformat(day),
-                )
+                resp = get_market_hours(schwab_client(), date.fromisoformat(day))
                 answer = resp.json()
             except Exception as e:  # that date's answer is the failure; it is asked again
                 log.warning(
@@ -669,17 +666,10 @@ class ChainSweep:
         published (log_request has the answer) and is asked again the next time (series_due).
         """
         for series in due:
-            period_type, period, frequency_type, frequency = PRICE_HISTORY[series]
             now = self.clock()
             try:
-                resp = schwab_client().get_price_history(
-                    ticker,
-                    period_type=period_type,
-                    period=period,
-                    frequency_type=frequency_type,
-                    frequency=frequency,
-                    end_datetime=datetime.fromtimestamp(now, UTC),
-                    need_extended_hours_data=True,
+                resp = get_price_history(
+                    schwab_client(), ticker, PRICE_HISTORY[series], datetime.fromtimestamp(now, UTC)
                 )
                 if resp.status_code != 200:
                     continue
@@ -798,7 +788,7 @@ class ChainSweep:
         self._queue = [
             (chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist
         ]  # removed: not asked
-        asked: list[tuple[list[_Queued], Future[httpx.Response]]] = []
+        asked: list[tuple[list[_Queued], Future[Answer]]] = []
         while self._queue and len(asked) < at_once:
             batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
             symbols: list[str] = [ct["symbol"] for _chain, ct in batch]
@@ -807,7 +797,7 @@ class ChainSweep:
         for batch, ask in asked:
             self.take_quotes(batch, ask)
 
-    def take_quotes(self, batch: list[_Queued], ask: Future[httpx.Response]) -> None:
+    def take_quotes(self, batch: list[_Queued], ask: Future[Answer]) -> None:
         """Take Schwab's answer to one quotes request (`ask`) for the contracts of `batch`.
 
         They take their quote's Greeks; each chain it completes is delivered. A request that
