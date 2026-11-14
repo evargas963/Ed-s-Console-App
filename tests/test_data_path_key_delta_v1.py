@@ -12,6 +12,7 @@ from math_exposure_core import bucket_metric_abs, compute_exposures_by_strike
 from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, TSLA
+from time_et import sessions
 
 
 @pytest.mark.parametrize(
@@ -24,8 +25,11 @@ def test_a_strike_with_one_sides_delta_not_known_is_not_the_key_delta_strike(hel
     No captured chain holds that alone.
     """
     records = read_chain(held.chain)
-    key = compute_terrain(held.ticker, records, held.spot, now=held.now).key_delta_strike
-    book, _ = compute_exposures_by_strike(records, spot=held.spot, now=held.now)
+    answers = sessions()
+    key = compute_terrain(
+        held.ticker, records, held.spot, now=held.now, sessions=answers
+    ).key_delta_strike
+    book, _ = compute_exposures_by_strike(records, spot=held.spot, now=held.now, sessions=answers)
     calls = bucket_metric_abs(book[key], "call_dex_dollars")
     side = "CALL" if calls < bucket_metric_abs(book[key], "put_dex_dollars") else "PUT"
     chain = [
@@ -33,6 +37,6 @@ def test_a_strike_with_one_sides_delta_not_known_is_not_the_key_delta_strike(hel
         for c in held.chain
     ]
     after = compute_terrain(
-        held.ticker, read_chain(chain), held.spot, now=held.now
+        held.ticker, read_chain(chain), held.spot, now=held.now, sessions=answers
     ).key_delta_strike
     assert after is not None and after != key

@@ -72,8 +72,16 @@ def test_the_window_gives_different_levels_than_the_full_chain():
 
     Only the strikes differ.
     """
-    full = _levels(compute_terrain("MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED))
-    window = _levels(compute_terrain("MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED))
+    full = _levels(
+        compute_terrain(
+            "MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED, sessions=time_et.sessions()
+        )
+    )
+    window = _levels(
+        compute_terrain(
+            "MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED, sessions=time_et.sessions()
+        )
+    )
     differing = {k for k in full if full[k] != window[k]}
     assert differing, (full, window)
     assert (full["max_pain"], window["max_pain"]) == (242.5, 247.5), "as measured 2026-09-25"
@@ -104,8 +112,16 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
         )
     server._publish_levels(tk, captures=cch.last_capture_per_day(db, tk, 2), now=_CAPTURED)
     published = server.published_levels(tk).served()
-    full = _levels(compute_terrain("MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED))
-    window = _levels(compute_terrain("MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED))
+    full = _levels(
+        compute_terrain(
+            "MRVL", _records(_FX["full"]), _SPOT, now=_CAPTURED, sessions=time_et.sessions()
+        )
+    )
+    window = _levels(
+        compute_terrain(
+            "MRVL", _records(_FX["window"]), _SPOT, now=_CAPTURED, sessions=time_et.sessions()
+        )
+    )
     got = {k: published[k] for k in full}
     assert got == full, (got, full)
     assert got != window

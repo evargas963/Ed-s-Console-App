@@ -7,6 +7,7 @@ Walls, pins, inflections, support/resistance derived from options exposure struc
 from __future__ import annotations
 
 import itertools
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime
 from typing import TypedDict
@@ -27,7 +28,7 @@ from math_exposure_core import (
     strike_oi_legs,
 )
 from option_contract import OptionContract
-from time_et import time_to_expiry_years
+from time_et import Session
 
 #: one contract's gamma-profile row (_profile_row): strike, open interest, multiplier, years
 #: to expiry, sigma, side sign, rate, dividend yield
@@ -44,10 +45,14 @@ def compute_charm_by_strike(
     spot: float,
     *,
     now: datetime,
+    sessions: Mapping[str, Session],
     t_years: float | None = None,
     product: str = "EQO",
 ) -> dict[float, Bucket]:
-    """Per-strike dealer CHARM exposure, in delta-shares per day. `t_years`: as _contract_inputs.
+    """Per-strike dealer CHARM exposure, in delta-shares per day.
+
+    Each contract's time to expiry is expiry_years' at `now` on Schwab's /markets answers
+    (`sessions`), unless the caller prices every contract at one horizon (`t_years`).
 
     Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
     VannaCharm all publish charm-by-strike alongside GEX), and charm pressure is the
@@ -66,7 +71,7 @@ def compute_charm_by_strike(
     out: dict[float, Bucket] = {}
     if not contracts or not spot or spot <= 0:
         return out
-    tte = expiry_years(now, product)
+    tte = expiry_years(now, product, sessions)
     # each contract that counts: its strike, its side's slot, and its pricing inputs (NaN: it
     # cannot be priced, so its side's sum is not known)
     slot: list[tuple[float, bool]]
@@ -77,7 +82,7 @@ def compute_charm_by_strike(
         if years == 0 or c.strike is None or c.side is None:  # settled, or no strike or side
             continue
         out.setdefault(c.strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
-        row = _profile_row(c, now, years, product)
+        row = _profile_row(c, years)
         if row == "zero_open_interest":  # no contract open: it adds nothing to its strike's 0
             continue
         slot.append((c.strike, c.side == "CALL"))
@@ -154,7 +159,11 @@ _CHARM_SIDES = ("call_charm", "put_charm")
 
 
 def contract_inputs(
-    contracts: list[OptionContract], now: datetime, product: str = "EQO"
+    contracts: list[OptionContract],
+    now: datetime,
+    *,
+    sessions: Mapping[str, Session],
+    product: str = "EQO",
 ) -> tuple[list[ProfileRow], dict[str, int]]:
     """(priced, unpriced): the gamma profile's inputs for every contract with open interest.
 
@@ -165,9 +174,9 @@ def contract_inputs(
     priced: list[ProfileRow]
     unpriced: dict[str, int]
     priced, unpriced = [], {}
-    tte = expiry_years(now, product)
+    tte = expiry_years(now, product, sessions)
     for c in contracts:
-        row = _profile_row(c, now, tte(c.expiration, c.settlement), product)
+        row = _profile_row(c, tte(c.expiration, c.settlement))
         if isinstance(row, tuple):
             priced.append(row)
         elif row != "zero_open_interest":
@@ -175,9 +184,7 @@ def contract_inputs(
     return priced, unpriced
 
 
-def _profile_row(
-    c: OptionContract, now: datetime, t_years: float | None, product: str
-) -> ProfileRow | str:
+def _profile_row(c: OptionContract, t_years: float | None) -> ProfileRow | str:
     """One contract's gamma-profile row, or the reason it cannot be priced.
 
     The row is _contract_inputs' (strike, oi, mult, t_years, sigma, sign) and then the contract's
@@ -185,7 +192,7 @@ def _profile_row(
     docs/schwab/schwab_market_data_api_spec.pdf p. 27) and `dividendYield`, percents as sent. A
     contract sent without either is not priced ("no_rate").
     """
-    row = _contract_inputs(c, now, t_years=t_years, product=product)
+    row = _contract_inputs(c, t_years)
     rate, dividend = c.interest_rate, c.dividend_yield
     if isinstance(row, tuple) and rate is not None and dividend is not None:
         return (*row, rate / 100.0, dividend / 100.0)
@@ -193,16 +200,16 @@ def _profile_row(
 
 
 def repriced_to_close(
-    contracts: list[OptionContract], spot: float, now: datetime, t_close: float, product: str
+    contracts: list[OptionContract], spot: float, t_close: float
 ) -> tuple[list[OptionContract], list[ProfileRow]]:
-    """(contracts, priced): each contract as if it expired `t_close` years from `now`.
+    """(contracts, priced): each contract as if it expired `t_close` years from the valuation.
 
     Its gamma and delta are the Black-Scholes-Merton ones at that horizon (bsm_gamma_delta, on
     Schwab's volatility, rate and dividend yield as sent), from the row the gamma profile prices
     it by (`priced`, as contract_inputs'). A contract with no row has neither: not known, never
     Schwab's Greek at its own expiry.
     """
-    rows = [_profile_row(c, now, t_close, product) for c in contracts]
+    rows = [_profile_row(c, t_close) for c in contracts]
     greeks = (
         bsm_gamma_delta(spot, r[0], *r[3:]) if isinstance(r, tuple) else (None, None) for r in rows
     )
@@ -213,28 +220,17 @@ def repriced_to_close(
 
 
 def _contract_inputs(
-    c: OptionContract,
-    now: datetime,
-    *,
-    t_years: float | None = None,
-    product: str = "EQO",
+    c: OptionContract, t_years: float | None
 ) -> tuple[float, float, float, float, float, int] | str:
     """(strike, oi, mult, t_years, sigma, sign), or the reason it cannot be priced.
 
-    `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
-    contract's settlement (the option market's regular close Schwab's /markets sent for its
-    expiry date, or its open for Schwab's settlementType "A"; on a date /markets has not answered,
-    as time_et.time_to_expiry_years says), ACT/365, from `now` (the caller's valuation instant),
-    unless the caller passes `t_years`. Offline/replay callers pass
-    `now` = the snapshot time.
+    `t_years` is the contract's INTRADAY time-to-expiry, as its caller took it once
+    (math_exposure_core.expiry_years, time_et.time_to_expiry_years) or the horizon it prices at
+    (repriced_to_close); None: not known, so the contract is not priced ("no_expiry").
     """
     strike, oi, mult = c.strike, c.open_interest, c.multiplier
     if oi == 0:
         return "zero_open_interest"
-    if t_years is None:
-        t_years = time_to_expiry_years(
-            c.expiration, now=now, settlement_type=c.settlement, product=product
-        )
     if t_years == 0:
         return "settled"
     if oi is None:

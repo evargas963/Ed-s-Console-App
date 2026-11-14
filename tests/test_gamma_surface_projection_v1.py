@@ -25,6 +25,7 @@ from math_exposure_core import (
 from option_contract import OptionContract, read_chain
 from server import project_gamma_surface, ticker_storage_key
 from tests.real_chains import MRVL
+from time_et import sessions
 
 NOW = MRVL.now
 SPOT = MRVL.spot
@@ -70,7 +71,9 @@ def _slice(chain: list[OptionContract], exp: str) -> list[OptionContract]:
 
 def _surface(chain: list[OptionContract], spot: float) -> dict:
     """Return the grid as _publish_levels builds it: shaped from the chain's exposure_books."""
-    return project_gamma_surface(chain, exposure_books(chain, spot=spot, now=NOW))
+    return project_gamma_surface(
+        chain, exposure_books(chain, spot=spot, now=NOW, sessions=sessions())
+    )
 
 
 def _cell(surface, strike, expiry):
@@ -104,7 +107,9 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     checked = 0
     for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)
+        exposures_e, _ = compute_exposures_by_strike(
+            _slice(chain, exp), spot=SPOT, now=NOW, sessions=sessions()
+        )
         assert exposures_e, f"the real {exp} slice must yield OI-bearing strikes"
         for k, bucket in exposures_e.items():
             # every listed strike's cell is the book's own value, unrounded: 0 where its
@@ -118,10 +123,11 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
 # B. ADDITIVITY / RECONCILIATION — per-expiry cells sum to the canonical full-book value.
 def test_B_per_expiry_sum_reconciles_to_full_book():
     chain = _chain()
-    full, _ = compute_exposures_by_strike(chain, spot=SPOT, now=NOW)
+    held = sessions()
+    full, _ = compute_exposures_by_strike(chain, spot=SPOT, now=NOW, sessions=held)
     surface = _surface(chain, SPOT)
     per = {
-        exp: compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)[0]
+        exp: compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW, sessions=held)[0]
         for exp in (E1, E2)
     }
     for k, bucket in full.items():
@@ -162,7 +168,10 @@ def test_F_input_projection_coverage():
     expected_strikes = set()
     for exp in (E1, E2):
         expected_strikes |= {
-            float(k) for k in compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)[0]
+            float(k)
+            for k in compute_exposures_by_strike(
+                _slice(chain, exp), spot=SPOT, now=NOW, sessions=sessions()
+            )[0]
         }
     assert set(surface["strikes"]) == expected_strikes
     # native DTE carried onto the column header, not inferred
@@ -266,7 +275,9 @@ def _cells_and_buckets():
     chain = _chain()
     surface = _surface(chain, SPOT)
     for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, now=NOW)
+        exposures_e, _ = compute_exposures_by_strike(
+            _slice(chain, exp), spot=SPOT, now=NOW, sessions=sessions()
+        )
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
@@ -349,8 +360,9 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute():
     for strike, field for field, at the same valuation instant.
     """
     chain = _chain()
-    full, _diag = compute_exposures_by_strike(chain, spot=SPOT, now=NOW)
-    by_expiry = exposure_books(chain, spot=SPOT, now=NOW)
+    held = sessions()
+    full, _diag = compute_exposures_by_strike(chain, spot=SPOT, now=NOW, sessions=held)
+    by_expiry = exposure_books(chain, spot=SPOT, now=NOW, sessions=held)
     assert {exp for exp, _dte in by_expiry} == {E1, E2}
     merged, merged_diag = merge_exposure_books(by_expiry.values())
     assert (merged_diag.contracts_total, merged_diag.contracts_used) == (

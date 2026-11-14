@@ -30,7 +30,10 @@ from tests.real_chains import CRWD, SPY_0DTE
 
 def _book():
     per, _ = compute_exposures_by_strike(
-        read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=SPY_0DTE.now
+        read_chain(SPY_0DTE.chain),
+        spot=SPY_0DTE.spot,
+        now=SPY_0DTE.now,
+        sessions=time_et.sessions(),
     )
     return per
 
@@ -55,14 +58,15 @@ def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
     terrain has no same-day book (no expiry of 0 days) with it or without it.
     """
     chain, spot = CRWD.chain, CRWD.spot
-    base = compute_terrain("CRWD", read_chain(chain), spot, now=CRWD.now).books
+    held = time_et.sessions()
+    base = compute_terrain("CRWD", read_chain(chain), spot, now=CRWD.now, sessions=held).books
     # the contract with the most gamma among those Schwab sent a gamma for
     top = max((c for c in chain if c.get("gamma") is not None), key=lambda c: c["gamma"])
     orphan = {k: v for k, v in top.items() if k not in ("expirationDate", "daysToExpiration")}
     orphan["openInterest"] = 100_000
     assert not [d for (_e, d) in base if d is not None and d <= 0]
     with_orphan = read_chain(chain + [orphan])
-    books = compute_terrain("CRWD", with_orphan, spot, now=CRWD.now).books
+    books = compute_terrain("CRWD", with_orphan, spot, now=CRWD.now, sessions=held).books
     assert not [d for (_e, d) in books if d is not None and d <= 0]
 
 
@@ -122,7 +126,7 @@ def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
     """
     next_day = SPY_0DTE.now + timedelta(days=1)
     per, _ = compute_exposures_by_strike(
-        read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=next_day
+        read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=next_day, sessions=time_et.sessions()
     )
     assert [bucket_metric(b, "net_vanna") for b in per.values()] == [None] * len(per)
     assert [bucket_metric(b, f"{s}_vanna") for b in per.values() for s in ("call", "put")] == [

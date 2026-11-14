@@ -15,7 +15,7 @@ from pathlib import Path
 from option_contract import read_chain
 from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.real_chains import CRWD, MRVL, TSLA
-from time_et import ET
+from time_et import ET, sessions
 
 _SPY = json.loads(
     (Path(__file__).parent / "fixtures" / "real_spy_full_chain_2026_11_09.json").read_text(
@@ -39,8 +39,9 @@ def canonical(v):
 
 def real_terrains() -> dict[str, TerrainSnapshot]:
     """compute_terrain of every watchlist-sized real chain held: CRWD, TSLA, MRVL and SPY's."""
+    held = sessions()
     out = {
-        c.ticker: compute_terrain(c.ticker, read_chain(c.chain), c.spot, now=c.now)
+        c.ticker: compute_terrain(c.ticker, read_chain(c.chain), c.spot, now=c.now, sessions=held)
         for c in (CRWD, TSLA, MRVL)
     }
     out["SPY"] = compute_terrain(
@@ -48,5 +49,6 @@ def real_terrains() -> dict[str, TerrainSnapshot]:
         read_chain(_SPY["chain"]),
         _SPY["spot"],
         now=datetime.fromtimestamp(_SPY["capture_ts_utc"], ET),
+        sessions=held,
     )
     return out

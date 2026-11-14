@@ -13,6 +13,7 @@ from __future__ import annotations
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from option_contract import read_chain
 from tests.real_chains import CRWD
+from time_et import sessions
 
 _SENT = CRWD.chain[0]
 STRIKE = _SENT["strikePrice"]
@@ -26,7 +27,9 @@ def _contract(without: str | None = None) -> dict:
 
 
 def _exposures(ct: dict):
-    return compute_exposures_by_strike(read_chain([ct]), spot=CRWD.spot, now=CRWD.now)
+    return compute_exposures_by_strike(
+        read_chain([ct]), spot=CRWD.spot, now=CRWD.now, sessions=sessions()
+    )
 
 
 def test_exposures_use_schwab_multiplier_without_defaulting_to_100():

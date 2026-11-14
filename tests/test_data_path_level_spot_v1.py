@@ -8,6 +8,7 @@ from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
 from tests.real_chains import CRWD
+from time_et import sessions
 
 
 def test_a_down_price_marks_the_levels_and_the_wall_stays():
@@ -20,7 +21,9 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
     """
     tk = "ZZLVSPOT"
     now = RTH_INSTANT
-    published = compute_terrain(tk, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now).to_dict()
+    published = compute_terrain(
+        tk, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now, sessions=sessions()
+    ).to_dict()
     srv._publish_levels(tk, read_chain(CRWD.chain), now, chain_spot=(CRWD.spot, now), now=CRWD.now)
     try:
         down = srv.terrain(tk, now)

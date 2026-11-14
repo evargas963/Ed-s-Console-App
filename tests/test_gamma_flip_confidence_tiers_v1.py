@@ -46,7 +46,7 @@ from terrain_read import (
     REGIME_UNAVAILABLE,
     build_terrain_read,
 )
-from time_et import EQUITY_OPTIONS, ET
+from time_et import EQUITY_OPTIONS, ET, sessions
 
 #: the chain here expires 2027-07-16 (a date Schwab's /markets answers); valued a month before
 NOW = datetime(2027, 6, 16, 12, 0, tzinfo=ET)
@@ -54,7 +54,7 @@ NOW = datetime(2027, 6, 16, 12, 0, tzinfo=ET)
 
 def _verdict(span: float) -> str:
     chain = _chain(span)
-    priced, _unpriced = contract_inputs(chain, NOW, product=EQUITY_OPTIONS)
+    priced, _unpriced = contract_inputs(chain, NOW, sessions=sessions(), product=EQUITY_OPTIONS)
     return compute_gamma_flip_v2(chain, 100.0, profile=compute_gamma_profile(priced, 100.0))[1]
 
 
