@@ -65,7 +65,7 @@ def bring_to_origin_main(root: Path) -> tuple[str, str | None, str]:
 
 
 def _bring(root: Path) -> tuple[str, str, str]:
-    def git(*args: str) -> subprocess.CompletedProcess:
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
 
     head = git("rev-parse", "HEAD").stdout.strip()

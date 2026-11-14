@@ -21,7 +21,7 @@ from __future__ import annotations
 def compute_pin_score(
     gex_at_pin: float | None,
     oi_concentration: float | None,
-) -> dict:
+) -> dict[str, float | str | None]:
     """
     Pin Probability Score.
 

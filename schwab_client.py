@@ -13,10 +13,11 @@ import socket
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import override
+from typing import Any, override
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -33,6 +34,9 @@ from option_contract import listed_expiries
 from time_et import ct_clock
 
 log = logging.getLogger(__name__)
+
+#: a value of parsed JSON (json.loads)
+type _Json = dict[str, _Json] | list[_Json] | str | int | float | bool | None
 
 
 @dataclass
@@ -94,7 +98,7 @@ def token_file_lock(token_path: str) -> FileLock:
     )
 
 
-def write_token_file_atomically(token_path: str, payload: dict) -> None:
+def write_token_file_atomically(token_path: str, payload: dict[str, Any]) -> None:
     """Write schwab_token.json via temp + fsync + os.replace, under the token file's lock.
 
     Never a partial file, never two writers at once.
@@ -130,10 +134,10 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
                 return
 
 
-def _token_update_func(resolved: str):
+def _token_update_func(resolved: str) -> Callable[..., None]:
     """schwab-py token_write_func: every refresh goes through write_token_file_atomically."""
 
-    def update_token(t, *_args, **_kwargs):
+    def update_token(t: dict[str, Any], *_args: object, **_kwargs: object) -> None:
         write_token_file_atomically(resolved, t)
         log.info(
             "schwab token refreshed and written; Schwab's expires_in: %s s",
@@ -143,8 +147,8 @@ def _token_update_func(resolved: str):
     return update_token
 
 
-def _token_read_func(resolved: str):
-    def load_token():
+def _token_read_func(resolved: str) -> Callable[[], Any]:
+    def load_token() -> Any:
         with open(resolved, "rb") as f:
             return json.load(f)
 
@@ -226,16 +230,17 @@ class OneRefreshSession(OAuth2Client):
     nothing is sent, until a new sign-in is saved.
     """
 
-    def __init__(self, *args, token_file: str, metadata, **kwargs):
+    def __init__(self, *args: Any, token_file: str, metadata: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._refresh_lock = threading.Lock()
         self._token_file, self._metadata = token_file, metadata
         self._refused: AuthlibBaseError | None = None  # Schwab's refusal, held until a new sign-in
         self._unread: str | None = None  # the token file's read failure last logged
-        self._seen: tuple | None = None  # the token file as last looked at (id, time, size)
+        # the token file as last looked at (id, time, size)
+        self._seen: tuple[int, int, int] | None = None
 
     @override
-    def ensure_active_token(self, token=None):
+    def ensure_active_token(self, token: Any = None) -> bool | None:
         with self._refresh_lock:
             if self._refused is None and not self.token.is_expired(leeway=self.leeway):
                 return True
@@ -249,7 +254,9 @@ class OneRefreshSession(OAuth2Client):
                         log.exception("%s", self._refusal_text())
             raise SignInRefused(self._refusal_text()) from self._refused
 
-    def request(self, method, url, withhold_token=False, **kwargs):
+    def request(
+        self, method: str, url: httpx.URL | str, withhold_token: bool = False, **kwargs: Any
+    ) -> httpx.Response:
         """Send the request; Schwab's answer is the access token's truth (RFC 6750 §3.1).
 
         A 401 whose challenge names `invalid_token` means Schwab no longer accepts the token this
@@ -371,7 +378,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
     try:
         with open(resolved, encoding="utf-8") as f:
             raw = f.read()
-        data = json.loads(raw)
+        data: _Json = json.loads(raw)
         out.json_valid = True
     except ValueError as e:  # not UTF-8 text, or not JSON
         out.message = f"Invalid JSON in token file: {e}"
@@ -624,14 +631,14 @@ def complete_oauth_from_redirect_url(
 
 
 def safe_get_chain(
-    client,
+    client: Any,
     ticker: str,
     *,
     strike_count: int | None = 20,
     strike_range: str | None = None,
-    from_date=None,
-    to_date=None,
-):
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> httpx.Response:
     # `strike_range` (e.g. "ALL", every strike) and `strike_count` (N strikes around the price)
     # are different selections; a count can leave strikes out, so a given range is sent alone.
     # The stock's quote is not asked for: the stream pushes it (AGENTS.md rule 3).
@@ -647,7 +654,9 @@ def safe_get_chain(
     return client.get_option_chain(ticker, **kwargs)
 
 
-def option_expiries(client, ticker: str, today: date):
+def option_expiries(
+    client: Any, ticker: str, today: date
+) -> tuple[list[date] | None, httpx.Response]:
     """Return Schwab's expiration chain (/marketdata/v1/expirationchain) for `ticker`.
 
     It is (its expiries from `today` on, option_contract.listed_expiries, its response). The
@@ -659,7 +668,7 @@ def option_expiries(client, ticker: str, today: date):
     return listed_expiries(resp.json(), today), resp
 
 
-def safe_get_quotes(client, symbols: "list[str]"):
+def safe_get_quotes(client: Any, symbols: "list[str]") -> httpx.Response:
     """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`.
 
     The quote fields only; Schwab's response.
@@ -672,21 +681,21 @@ def safe_get_quotes(client, symbols: "list[str]"):
 QUOTES_BATCH_MAX = 300
 
 
-def flatten_chain_contracts(c_json: dict) -> list[dict]:
+def flatten_chain_contracts(c_json: dict[str, Any]) -> list[dict[str, Any]]:
     """Flatten a Schwab chain response into a flat contract list.
 
     The chain sweep's one reader of a chain answer (ChainSweep.fetch_chain). It reads
     callExpDateMap.* / putExpDateMap.* and the chain's interestRate and dividendYield, which
     each contract carries as sent; no derivation.
     """
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     if not isinstance(c_json, dict):
         return out
     # the chain sends its interest rate and dividend yield once, at the top; each contract
     # carries them as sent, so a stored contract can be priced on its own
     chain_fields = {k: c_json[k] for k in ("interestRate", "dividendYield") if k in c_json}
     for side_key in ("callExpDateMap", "putExpDateMap"):
-        side_map = c_json.get(side_key)
+        side_map: _Json = c_json.get(side_key)
         if not isinstance(side_map, dict):
             continue
         for exp_map in side_map.values():

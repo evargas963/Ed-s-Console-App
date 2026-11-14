@@ -7,10 +7,12 @@ for that expiry. This module ranks them. It does not recompute a greek or the bl
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 from math_exposure_core import (
+    Bucket,
     bucket_metric,
     strike_total_oi,
     strike_total_volume,
@@ -23,6 +25,26 @@ ABSENT = ("DGEXM", "FLOWM")
 THIN_BOOK = 10
 
 
+class FactorPart(TypedDict):
+    """One scored factor's share of a strike's score (score_magnitudes)."""
+
+    factor: str
+    label: str
+    raw: float | None
+    normalized: float
+    weight: float
+    contribution: float
+
+
+class Scored(TypedDict):
+    """One strike's score with what it is missing (score_magnitudes)."""
+
+    score: float | None
+    missing: list[str]
+    contributions: list[FactorPart]
+    factors: list[FactorPart]
+
+
 @dataclass(frozen=True)
 class RankedStrike:
     """One strike of an expiry's ranking.
@@ -30,8 +52,8 @@ class RankedStrike:
     Its factor magnitudes (magnitudes) and its score with what it is missing (score_magnitudes).
     """
 
-    factors: dict
-    result: dict
+    factors: dict[str, float | None]
+    result: Scored
 
 
 WRITTEN = {
@@ -129,7 +151,7 @@ def _normalize(present: list[tuple[float, float]]) -> tuple[dict[float, float], 
     if hi == lo:
         return {s: 0.0 for s, _v in present}, None
     span = hi - lo
-    out = {}
+    out: dict[float, float] = {}
     for s, v in present:
         x = (v - lo) / span
         if x < 0.0:
@@ -142,7 +164,7 @@ def _normalize(present: list[tuple[float, float]]) -> tuple[dict[float, float], 
 
 def score_magnitudes(
     by_strike: dict[float, dict[str, float | None]], weights: dict[str, float]
-) -> tuple[dict[float, dict[str, Any]], list[str], dict[str, float | None]]:
+) -> tuple[dict[float, Scored], list[str], dict[str, float | None]]:
     """One score per strike. A missing factor whose weight is above zero blanks that strike.
 
     The third value is p95 − p5 for each scored factor, None when that factor does not vary.
@@ -159,7 +181,7 @@ def score_magnitudes(
         spans[name] = span
         if span is None and present and len(present) == len(universe):
             flat.append(name)
-    scored: dict[float, dict[str, Any]] = {}
+    scored: dict[float, Scored] = {}
     for strike, factors in by_strike.items():
         if strike not in universe:
             unreported = factors.get("OI") is None or factors.get("VOL") is None
@@ -174,7 +196,7 @@ def score_magnitudes(
         if missing:
             scored[strike] = {"score": None, "missing": missing, "contributions": [], "factors": []}
             continue
-        parts = []
+        parts: list[FactorPart] = []
         total = 0.0
         for name in required:
             share = weights[name] * norm[name][strike]
@@ -205,7 +227,7 @@ def _in_universe(factors: dict[str, float | None]) -> bool:
     return (oi is not None and oi > 0) or (vol is not None and vol > 0)
 
 
-def _legs_ok(bucket: dict, call_key: str, put_key: str) -> tuple[float, float] | None:
+def _legs_ok(bucket: Bucket, call_key: str, put_key: str) -> tuple[float, float] | None:
     call = bucket_metric(bucket, call_key)
     put = bucket_metric(bucket, put_key)
     if call is None or put is None or call < 0 or put < 0:
@@ -214,7 +236,7 @@ def _legs_ok(bucket: dict, call_key: str, put_key: str) -> tuple[float, float] |
 
 
 def magnitudes(
-    bucket: dict, charm: dict | None, iv: float | None, spot: float
+    bucket: Bucket, charm: Bucket | None, iv: float | None, spot: float
 ) -> dict[str, float | None]:
     """Return the scored magnitudes, plus the signed numbers the columns show."""
     gex = _legs_ok(bucket, "call_gex_1pct", "put_gex_1pct")
@@ -251,7 +273,7 @@ def magnitudes(
 
 def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
     """(open interest + volume)-weighted Schwab volatility, in vol points."""
-    grouped: dict[float, list] = {}
+    grouped: dict[float, list[OptionContract]] = {}
     for c in contracts:
         if c.strike is not None:
             grouped.setdefault(float(c.strike), []).append(c)
@@ -280,7 +302,7 @@ def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
     return out
 
 
-def window_rows(matrix: dict, shown: list[float]) -> list[dict]:
+def window_rows(matrix: dict[str, Any], shown: list[float]) -> list[dict[str, Any]]:
     """Return the rows of the ranked strikes `shown`, highest strike first.
 
     Each cell shades against its whole expiry's peak (the matrix's `peaks`).
@@ -303,7 +325,9 @@ def _text(n: float | None, digits: int) -> str | None:
     return f"{n:.{digits}f}"
 
 
-def at_price(rows: list[dict], strikes: list[float], spot: float | None) -> dict:
+def at_price(
+    rows: list[dict[str, Any]], strikes: list[float], spot: float | None
+) -> dict[str, float | str | None]:
     """Each shown row's distance from the live price, the strike the price sits under, its text.
 
     The matrix is ranked at the book's price, the price on screen is the live one.
@@ -353,7 +377,7 @@ def _thousands(n: float | None) -> str | None:
     return f"{n / 1000:.2f}"
 
 
-def _peak(values) -> float | None:
+def _peak(values: Iterable[float | None]) -> float | None:
     """Largest absolute value on this expiry: the column's scale, not a score."""
     peak = None
     for value in values:
@@ -381,7 +405,7 @@ SHADED = {
 LEANS = {"pc_gex_lean": "_pc_gex", "pc_vol_lean": "_pc_vol"}
 
 
-def _shades(factors: dict) -> dict:
+def _shades(factors: dict[str, float | None]) -> dict[str, float | None]:
     """Return the numbers the page shades each column's cell by, against the column's peak."""
     out = {key: factors[name] for key, name in SHADED.items()}
     for key, name in LEANS.items():
@@ -389,7 +413,7 @@ def _shades(factors: dict) -> dict:
     return out
 
 
-def _absent(value, words: str) -> str | None:
+def _absent(value: float | None, words: str) -> str | None:
     if isinstance(value, (int, float)):
         return None
     return words
@@ -411,7 +435,7 @@ def _raw_text(name: str, raw: float | None) -> str | None:
     return f"{raw:.0f}"
 
 
-def _factor_row(part: dict) -> dict:
+def _factor_row(part: FactorPart) -> dict[str, str | None]:
     return {
         "label": part["label"],
         "text": f"{100.0 * part['contribution']:.1f}",
@@ -422,8 +446,12 @@ def _factor_row(part: dict) -> dict:
 
 
 def build_matrix(
-    exposures: dict, charm_by_strike: dict, ivs: dict[float, float | None], spot: float, dte: float
-) -> dict:
+    exposures: dict[float, Bucket],
+    charm_by_strike: dict[float, Bucket],
+    ivs: dict[float, float | None],
+    spot: float,
+    dte: float,
+) -> dict[str, Any]:
     """Build the ranking of one expiry's book.
 
     Every strike's factors and score and the expiry's colour scales. The rows the page shows are
@@ -432,7 +460,7 @@ def build_matrix(
     name = preset_name(dte)
     weights = in_score_weights(name)
     strikes = sorted(float(s) for s in exposures)
-    mags = {}
+    mags: dict[float, dict[str, float | None]] = {}
     for strike in strikes:
         bucket = exposures.get(strike)
         if not isinstance(bucket, dict):
@@ -449,7 +477,7 @@ def build_matrix(
         1 for s in mags if _in_universe({k: v for k, v in mags[s].items() if not k.startswith("_")})
     )
     flat_labels = [_LABEL[k] for k in flat]
-    notes = []
+    notes: list[str] = []
     if universe_n < THIN_BOOK:
         notes.append("Thin book: fewer than " + str(THIN_BOOK) + " strikes.")
     if flat_labels:
@@ -465,7 +493,7 @@ def build_matrix(
     }
 
 
-def _row(strike: float, ranked: RankedStrike) -> dict:
+def _row(strike: float, ranked: RankedStrike) -> dict[str, Any]:
     """One strike's row of the matrix.
 
     Each column's text and the number its cell shades by (_shades), against the expiry's peaks.

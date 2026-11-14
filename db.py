@@ -7,6 +7,7 @@ import sqlite3
 import threading
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
+from typing import Any
 
 from db_authority import (
     default_console_db_path,
@@ -182,7 +183,7 @@ class EdDB:
             maybe_install_sql_guard_on_connection(conn, self.db_path)
         return conn
 
-    def _init_schema(self):
+    def _init_schema(self) -> None:
         """Create all tables if they don't exist. Safe to call on every startup."""
         with self._connect() as conn:
             conn.executescript("""
@@ -213,7 +214,7 @@ class EdDB:
     # LEVEL CROSS OPERATIONS
     # ════════════════════════════════════════════════════════════════════════
 
-    def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[dict]:
+    def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[dict[str, Any]]:
         """Store the level crosses of one price, all in one transaction.
 
         server._log_level_crosses decides them. Every one is stored, or none is and the error is
@@ -223,7 +224,7 @@ class EdDB:
         sql = (
             f"INSERT INTO level_crosses ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
         )
-        logged: list[dict] = []
+        logged: list[dict[str, Any]] = []
         with self._connect() as conn:
             for event in events:
                 d = asdict(event)
@@ -231,7 +232,7 @@ class EdDB:
                 logged.append({**d, "cross_id": cross_id})  # the stored row
         return logged
 
-    def get_recent_crosses(self, ticker: str, n: int = 20) -> list:
+    def get_recent_crosses(self, ticker: str, n: int = 20) -> list[dict[str, Any]]:
         """Return the most recent level crosses, each the row record_level_crosses returns."""
         cols = ", ".join(["cross_id", *(f.name for f in fields(LevelCrossEvent))])
         with self._connect() as conn:

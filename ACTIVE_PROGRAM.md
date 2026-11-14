@@ -144,21 +144,24 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 
 ### P1-6 — what is still open, by file
 
-**server.py**
+#### server.py
+
 - S-23 `_side_sums`' sums use the live spot while the rows were priced at the snapshot's.
 - S-38 `_publish_levels` reads the database (`newest_capture_ts`) on every new chain to learn whether a newer capture exists; the daemon, which writes the captures, could carry that time on the chain it delivers.
 - S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the microstructure content build return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
 - M-28 `gsf_state` (model curve at spot) and `regime` (Schwab's book) judge gamma at spot from two sources; `gsf_state` is documented as the regime and carries no basis.
 
-**liquidity_value_engine.py, liquidity_models.py**
+#### liquidity_value_engine.py, liquidity_models.py
+
 - M-02 `volume_profile` drops bars (`hi < lo`) without counting them.
 - M-05 `compute_session_vwap_series` skips volume-less bars without disclosing the count.
 - M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"`.
 - M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar); `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in `families_absent`.
 - M-12 fused option levels: the non-number rejection is gone (#646: no caller can send one). A level at 0 is no longer dropped, by the regular-session fusion or the clustering (a reported 0 is 0, rule 2); before the open, `build_premarket_snapshot` takes no option or spot levels at all. The liquidity zones are served nearest the live price first, and with no live price by price, lowest first (operator 2026-10-30: "By price"), not by the deleted score.
 
-**math_exposure_core.py, math_levels.py**
+#### math_exposure_core.py, math_levels.py
+
 - M-13 one strike validity rule for both files: core takes any strike Schwab sent, levels rejects ≤ 0 (`_contract_inputs`, counted "invalid").
 - M-14 contracts with no strike or side are dropped uncounted.
 - M-21 `pick_pin_and_strength` serves 100% with no runner-up.
@@ -167,12 +170,14 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - M-25 the flip profile turns a non-finite gamma into 0.
 - M-27 `gamma_at_price`, the one interpolator for gamma at a price, returns the end value off the profile.
 
-**terrain_engine.py, terrain_atr.py, math_volatility.py, math_probabilities.py, time_et.py**
+#### terrain_engine.py, terrain_atr.py, math_volatility.py, math_probabilities.py, time_et.py
+
 - M-32 per-expiry PCR/IV maps key by date alone while books key by (date, dte): same-date books overwrite.
 - M-36 the pin score clamps `oi_concentration` to [0, 1] and divides by an unsourced $50,000 (PIN-FLOOR).
 - M-37 `time_to_expiry_years` floors T at 10 minutes.
 
-**app/options/order_flow/, live_price_rows.py, live_market_plane.py**
+#### app/options/order_flow/, live_price_rows.py, live_market_plane.py
+
 - O-02 equity TOTAL_VOLUME is written into `_stream_greeks` (read only for options).
 - O-13 malformed push messages and bad frames are dropped uncounted.
 - O-17 the book heatmap's `method` text says "both venues merged".
@@ -180,13 +185,15 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 - O-20 the default contract at startup/closed is picked from the stored capture's spot with no age.
 - O-24 on reconnect the last `bar1m` is replayed and processed as a new bar.
 
-**The daemon and Schwab client**
+#### The daemon and Schwab client
+
 - O-21 `stream_spine._now` substitutes `time.time()`; no capture builder passes the receive time.
 - O-22 symbols keyed with `.upper().strip()` instead of `ticker_storage_key` (stream_spine, capture, streaming).
 - O-23 flat L1 columns copied raw into `stream_quotes_raw` beside `native_json`, read by no product code.
 - D-14 `persist_complete_chain_capture` drops non-dict contracts uncounted.
 
-**Page code (static/js)**
+#### Page code (static/js)
+
 - P-02 ages formatted and thresholded on the page (`fmtAge`, `Math.round(trade_age_sec)`); the push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).
 - P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; the watchlist's sends in `ed-core.js` say a true failure without naming its status (the panels' HTTP reads are deleted: every panel comes on the socket, a failed one with its words).
 - P-10 six or more page formatters for dollars and volume with different precision.

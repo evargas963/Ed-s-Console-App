@@ -9,7 +9,9 @@ book as Schwab last sent it) and ``book_live`` (whether the feed delivers the bo
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -50,8 +52,11 @@ OF_BOOK_DEPTH_DEEP: int = 5
 
 Exchanges = tuple[tuple[str, float, float | None], ...]
 
+#: a value inside a Schwab book item, as its JSON was read
+type Json = dict[str, Json] | list[Json] | str | float | None
 
-def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
+
+def _exchange_sizes(rows: Json, size_key: str) -> Exchanges | None:
     """Return a level's own rows, one per exchange or market maker, as sent.
 
     Each row is (EXCHANGE, BID_VOLUME or ASK_VOLUME, its quote time;
@@ -61,7 +66,7 @@ def _exchange_sizes(rows: object, size_key: str) -> Exchanges | None:
     """
     if not isinstance(rows, list) or not rows:
         return None
-    out = []
+    out: list[tuple[str, float, float | None]] = []
     for row in rows:
         if not isinstance(row, dict):
             return None
@@ -97,7 +102,7 @@ class Book:
         return [(p, v) for p, v, _ in self.levels(side)]
 
 
-def read_book(content_item: dict, service: str) -> Book | None:
+def read_book(content_item: dict[str, Any], service: str) -> Book | None:
     """Read a Schwab book message; this is its one reader.
 
     None when it carries neither side (a side Schwab sent no levels for is empty).
@@ -112,7 +117,7 @@ def read_book(content_item: dict, service: str) -> Book | None:
     )
 
 
-def _side_levels(content_item: dict, side: str) -> list[Level]:
+def _side_levels(content_item: dict[str, Any], side: str) -> list[Level]:
     """Return one side of a Schwab book, "BIDS" or "ASKS".
 
     (price, TOTAL_VOLUME, the level's per-exchange sizes) for each level, as sent. A level
@@ -121,10 +126,10 @@ def _side_levels(content_item: dict, side: str) -> list[Level]:
     price_key, size_key = (
         ("BID_PRICE", "BID_VOLUME") if side == "BIDS" else ("ASK_PRICE", "ASK_VOLUME")
     )
-    raw = content_item.get(side)
+    raw: Json = content_item.get(side)
     if not raw:
         return []
-    out = []
+    out: list[Level] = []
     for level in raw if isinstance(raw, list) else [raw]:
         for lv in level if isinstance(level, list) else [level]:
             if not isinstance(lv, dict):
@@ -141,7 +146,7 @@ def _side_levels(content_item: dict, side: str) -> list[Level]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _latest_book_snapshot(items: list) -> Book | None:
+def _latest_book_snapshot(items: list[Book | dict[str, Any]]) -> Book | None:
     """Return the most recent book.
 
     A one-sided book included: the side Schwab sent no levels for is empty.
@@ -180,29 +185,29 @@ def _book_imbalance_from_totals(bid_total: float | None, ask_total: float | None
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _top(data: dict) -> dict:
+def _top(data: dict[str, Any]) -> dict[str, Any]:
     """Return the top of book the caller supplies as ``data["top"]``.
 
     Its bid, ask, bid_size, ask_size and mark are each the last value Schwab sent; absent when
     Schwab has sent none.
     """
-    t = data.get("top")
+    t: dict[str, Any] | None = data.get("top")
     return t if isinstance(t, dict) else {}
 
 
-def _compute_top_book_pressure(data: dict) -> float | None:
+def _compute_top_book_pressure(data: dict[str, Any]) -> float | None:
     """Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size), streamed sizes."""
     t = _top(data)
     return _book_imbalance_from_totals(t.get("bid_size"), t.get("ask_size"))
 
 
-def _resolve_bid_ask_prices(data: dict) -> tuple[float | None, float | None]:
+def _resolve_bid_ask_prices(data: dict[str, Any]) -> tuple[float | None, float | None]:
     """Level-one BID_PRICE / ASK_PRICE as Schwab sent them."""
     t = _top(data)
     return t.get("bid"), t.get("ask")
 
 
-def _resolve_quote_mark(data: dict) -> float | None:
+def _resolve_quote_mark(data: dict[str, Any]) -> float | None:
     """Level-one MARK as Schwab sent it, a ticker's or a contract's; a reported 0 is 0."""
     return _top(data).get("mark")
 
@@ -238,11 +243,11 @@ OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (
 #: data. Validity keys on the canonical book's CONTENT identity (see `_canonical_book_identity`),
 #: NOT on BOOK_TIME alone — BOOK_TIME is not assumed unique, so a changed ladder under a repeated
 #: BOOK_TIME must yield a different identity and force recompute.
-_MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
+_MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple[Any, ...], dict[str, Any]]] = {}
 
 
 def _sorted_valid_levels(
-    levels: list[tuple[float, float]], *, descending: bool
+    levels: Sequence[tuple[float | None, float | None]], *, descending: bool
 ) -> list[tuple[float, float]]:
     """Normalize a raw book side ONCE.
 
@@ -255,7 +260,7 @@ def _sorted_valid_levels(
     return valid
 
 
-def _extract_canonical_book(data: dict) -> dict:
+def _extract_canonical_book(data: dict[str, Any]) -> dict[str, Any]:
     """Extract and normalize the live book: THE single extraction/normalization.
 
     Walks the content ONCE, validates and sorts both sides, and carries the live top of book
@@ -285,7 +290,7 @@ def _extract_canonical_book(data: dict) -> dict:
     }
 
 
-def _canonical_book_identity(cb: dict) -> tuple:
+def _canonical_book_identity(cb: dict[str, Any]) -> tuple[Any, ...]:
     """Return the hashable CONTENT identity of the canonical book.
 
     It holds every field the structural state is derived from. The carry cache validates on
@@ -325,9 +330,11 @@ def _microprice(
     return (bid * ask_size + ask * bid_size) / denom
 
 
-def _book_pressure_curve(levels: list[tuple[float, float]], max_levels: int) -> list[dict]:
+def _book_pressure_curve(
+    levels: list[tuple[float, float]], max_levels: int
+) -> list[dict[str, float]]:
     """Cumulative displayed depth per level (best-first): the depth-pressure curve."""
-    out: list[dict] = []
+    out: list[dict[str, float]] = []
     cum = 0.0
     for price, vol in levels[:max_levels]:
         cum += vol
@@ -335,7 +342,9 @@ def _book_pressure_curve(levels: list[tuple[float, float]], max_levels: int) -> 
     return out
 
 
-def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: int) -> list[dict]:
+def _book_wall_candidates(
+    levels: list[tuple[float, float]], side: str, depth: int
+) -> list[dict[str, str | float]]:
     """Return HEURISTIC displayed-size anomalies as wall candidates.
 
     They are candidates, NOT objectively-known liquidity walls. A level is a candidate when its
@@ -353,14 +362,14 @@ def _book_wall_candidates(levels: list[tuple[float, float]], side: str, depth: i
     median = vols[n // 2] if n % 2 else (vols[n // 2 - 1] + vols[n // 2]) / 2.0
     if median <= 0:
         return []
-    out: list[dict] = []
+    out: list[dict[str, str | float]] = []
     for price, vol in lv:
         if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
             out.append({"side": side, "price": price, "volume": vol, "median_mult": vol / median})
     return out
 
 
-def _microstructure_structural(cb: dict) -> dict:
+def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
     """Return everything derivable from a single canonical book snapshot, no wall-clock `now`.
 
     Age fields and the per-serialization timestamps are stamped by `compute_book_microstructure`,
@@ -379,7 +388,7 @@ def _microstructure_structural(cb: dict) -> dict:
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
     # totals and imbalance), carried.
     ladder = _readout(bid_levels, ask_levels, cb["book_time_ms"])["views"]
-    depth: dict[str, dict] = {}
+    depth: dict[str, dict[str, float | None]] = {}
     for n in OF_MICRO_DEPTH_LADDER:
         lv = ladder[str(n)]
         depth[str(n)] = {
@@ -445,7 +454,9 @@ def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
     return None if book_time_ms is None else now - book_time_ms / 1000.0
 
 
-def compute_book_microstructure(data: dict, *, now_ts: float, ticker: str | None = None) -> dict:
+def compute_book_microstructure(
+    data: dict[str, Any], *, now_ts: float, ticker: str | None = None
+) -> dict[str, Any]:
     """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
 
     The ONE producer the engine and the book panel (`server.book`) both read.
@@ -545,7 +556,7 @@ READOUT_DETAIL = {
 }
 _DIVERGENCE = "Touch and deeper book disagree"
 _CROSSED_SENTENCE = "Book crossed — bid and ask overlap, no balancing sentence."
-_TOUCH_FLAG = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
+_TOUCH_FLAG: dict[str | None, str] = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 
 Levels = list[tuple[float, float]]
 
@@ -622,7 +633,7 @@ _ONE_SIDED = {
 }
 
 
-def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
+def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict[str, Any]:
     """Return one book's views.
 
     The flat totals of its best 1, 3 and 5 levels and their imbalance (the
@@ -630,7 +641,7 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
     microstructure's `depth`), and the headline percentage (the weighted view's flat totals are
     the top five's).
     """
-    views = {}
+    views: dict[str, dict[str, float | None]] = {}
     for view in READOUT_VIEWS:
         depth = OF_BOOK_DEPTH_DEEP if view == "weighted" else int(view)
         bt, at = _book_side_depth_total(bids, depth), _book_side_depth_total(asks, depth)
@@ -664,14 +675,14 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict:
     }
 
 
-def book_readout(books: dict[str, Book | None]) -> dict[str, dict]:
+def book_readout(books: dict[str, Book | None]) -> dict[str, dict[str, Any]]:
     """Return the imbalance readout of each Schwab book and of their composite.
 
     Read from each venue's newest book (`state.newest_book`, every venue of BOOK_VENUES; None:
     no book). The composite is of the books held (`books` names them): with one, that book; with
     none, no_book, `books` naming the two it reads. Its time is its older book's.
     """
-    out: dict[str, dict] = {}
+    out: dict[str, dict[str, Any]] = {}
     held: dict[str, Book] = {}
     for v in BOOK_VENUES:
         book = books[v]
@@ -693,17 +704,21 @@ def book_readout(books: dict[str, Book | None]) -> dict[str, dict]:
     return out
 
 
-def _headline(readout: dict[str, dict], venue: str, view: str) -> float | None:
+def _headline(readout: dict[str, dict[str, Any]], venue: str, view: str) -> float | None:
     r = readout[venue]
     return r["views"][view]["pct"] if "views" in r else None
 
 
-def _standing(points: list[tuple[float, dict]], venue: str, view: str, first: int, last: int):
+def _standing(
+    points: list[tuple[float, dict[str, Any]]], venue: str, view: str, first: int, last: int
+) -> list[float | None]:
     """Return the headline percentage of `venue` and `view` standing in each second first..last.
 
     Each whole second's value is the newest readout received by that second's end (Schwab sends
     a book only when it changes, so the last one stands).
     """
+    out: list[float | None]
+    cur: float | None
     out, i, cur = [], 0, None
     for sec in range(first, last + 1):
         while i < len(points) and points[i][0] < sec + 1:
@@ -721,8 +736,9 @@ def _zone(pct: float | None) -> str | None:
     return "BID_HEAVY" if pct > 0 else "OFFER_HEAVY"
 
 
-def _zones(values: list, first: int) -> list[tuple[str | None, int | None]]:
+def _zones(values: list[float | None], first: int) -> list[tuple[str | None, int | None]]:
     """Return each second's zone and the second the value entered it; (None, None) while unknown."""
+    shown: list[tuple[str | None, int | None]]
     shown, since, prev = [], None, None
     for k, value in enumerate(values):
         zone = _zone(value)
@@ -756,7 +772,7 @@ def _flips(shown: list[tuple[str | None, int | None]], first: int, last: int) ->
     return flips
 
 
-def _lean(values: list) -> str | None:
+def _lean(values: list[float | None]) -> str | None:
     known = [v for v in values if v is not None]
     if not known:
         return None
@@ -788,7 +804,11 @@ def _opposite(a: float | None, b: float | None) -> bool:
     return a is not None and b is not None and a * b < 0
 
 
-def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], ends: dict) -> dict:
+def readout_card(
+    readout: dict[str, dict[str, Any]],
+    points: list[tuple[float, dict[str, Any]]],
+    ends: Mapping[str, float | None],
+) -> dict[str, Any]:
     """Return the Liquidity card's values, every venue and view.
 
     The headline (the percentage standing at
@@ -800,12 +820,12 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
     kept, (receive time,
     readout) oldest first; `ends`: venue -> its end time, None with no value.
     """
-    venues: dict[str, dict] = {}
+    venues: dict[str, dict[str, Any]] = {}
     for v, r in readout.items():
         end = ends.get(v)
-        views = {}
+        views: dict[str, dict[str, Any]] = {}
         for view in READOUT_VIEWS:
-            snap = r["views"][view] if "views" in r else {}
+            snap: dict[str, Any] = r["views"][view] if "views" in r else {}
             if end is None:
                 views[view] = {"pct": None, "zone": None}
                 continue
@@ -891,7 +911,7 @@ def readout_card(readout: dict[str, dict], points: list[tuple[float, dict]], end
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> float | None:
+def _compute_tape_pressure(data: dict[str, Any], window_sec: float, now: float) -> float | None:
     """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
     return _canonical_tape_pressure(
         canonical_tape_prints(data["content"]), window_sec, now * 1000.0
@@ -903,12 +923,14 @@ def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> float |
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _compute_cum_delta_proxy(data: dict) -> float | None:
+def _compute_cum_delta_proxy(data: dict[str, Any]) -> float | None:
     """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
     return _canonical_cum_delta(canonical_tape_prints(data["content"]))
 
 
-def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> float | None:
+def _compute_cum_delta_slope(
+    data: dict[str, Any], now: float, window_sec: float = 60.0
+) -> float | None:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
     points = iter_signed_cum_points(
         canonical_tape_prints(data["content"]), window_sec, now * 1000.0
@@ -928,7 +950,9 @@ def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -
 class OrderFlowEngine:
     """Order Flow Engine: computes metrics from Schwab data using only identified field paths."""
 
-    def compute(self, data: dict, *, now: float, ticker: str | None = None) -> dict:
+    def compute(
+        self, data: dict[str, Any], *, now: float, ticker: str | None = None
+    ) -> dict[str, Any]:
         """Compute the book microstructure and the tape flow of one symbol at `now`.
 
         `now` is in epoch seconds; missing data yields None.

@@ -16,6 +16,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -162,7 +163,7 @@ _sessions: dict[
 ] = {}  # ET date (YYYY-MM-DD) -> Schwab's answer for it; replaced, never mutated
 
 
-def _windows(hours: dict, name: str) -> Windows:
+def _windows(hours: dict[str, Any], name: str) -> Windows:
     if name not in hours:
         return ()
     return tuple(
@@ -174,11 +175,11 @@ def _windows(hours: dict, name: str) -> Windows:
     )
 
 
-def _hours(entry: dict) -> dict:
+def _hours(entry: dict[str, Any]) -> dict[str, Any]:
     return entry["sessionHours"] if "sessionHours" in entry else {}
 
 
-def record_markets(answer: dict) -> Session:
+def record_markets(answer: dict[str, Any]) -> Session:
     """Record Schwab's 200 answer to GET /markets?markets=equity,option for one date, as sent.
 
     Its equity entry (product EQ on a market day; "equity", isOpen false and no hours on a

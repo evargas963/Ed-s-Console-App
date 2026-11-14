@@ -8,9 +8,10 @@ its market trades.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, TypedDict
 
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import (
@@ -125,7 +126,7 @@ def record_from_level_one_equity(
     trade_ms = val(VENDOR_TRADE_TIME)
     bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
     quote_ts = val("QUOTE_TIME_MILLIS")  # exchange quote clock; TRADE_TIME never stands in
-    out = {
+    out: dict[str, float | str | None] = {
         "ticker": t,
         "spot": spot_f,
         "bid": bid,
@@ -166,15 +167,15 @@ def record_from_level_one_equity(
 
 #: callables told the ticker of every published row, in the process that owns this plane: the
 #: capture daemon's browser push (live_ui).
-_row_listeners: list = []
+_row_listeners: list[Callable[[str], object]] = []
 
 
-def add_row_listener(fn) -> None:
+def add_row_listener(fn: Callable[[str], object]) -> None:
     if fn not in _row_listeners:
         _row_listeners.append(fn)
 
 
-def remove_row_listener(fn) -> None:
+def remove_row_listener(fn: Callable[[str], object]) -> None:
     if fn in _row_listeners:
         _row_listeners.remove(fn)
 
@@ -191,10 +192,17 @@ def get_quote(ticker: str) -> dict[str, Any] | None:
 #: only while the latest one was stamped within this of the time judged. The one liveness limit.
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
+
+class _Feed(TypedDict):
+    rx: float | None
+    status: dict[str, Any] | None
+    held: dict[str, frozenset[str]]
+
+
 #: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
 #: it holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only. A down
 #: feed keeps the status and `held`: what the daemon last reported stands, not live.
-_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
+_feed: _Feed = {"rx": None, "status": None, "held": {}}
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
@@ -316,7 +324,7 @@ def live_state(symbol: str, service: str, now: float) -> tuple[str, str | None]:
     return _judge(feed_now(now), symbol, service, now)
 
 
-def live_symbols(feed: FeedNow, symbols, service: str, now: float) -> set[str]:
+def live_symbols(feed: FeedNow, symbols: Iterable[str], service: str, now: float) -> set[str]:
     """Return the `symbols` live on Schwab `service` at `now` by the live rule.
 
     They are judged on one read of the heartbeat (`feed`).

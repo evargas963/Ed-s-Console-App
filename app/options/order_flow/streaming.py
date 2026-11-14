@@ -27,7 +27,7 @@ import itertools
 import logging
 import queue
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import live_market_plane as _lmp
 import live_price_rows
@@ -45,13 +45,16 @@ from app.options.order_flow.state import (
     push_rest_quotes,
 )
 from instrument_identity import ticker_storage_key
-from stream_spine import LATEST
+from stream_spine import LATEST, MessageBus, Payload
 from time_et import record_markets
+
+if TYPE_CHECKING:
+    from app.market_data.schwab.streaming.capture import Daemon
 
 log = logging.getLogger(__name__)
 
 
-def price_row(ticker: str, now: float) -> dict:
+def price_row(ticker: str, now: float) -> dict[str, Any]:
     """Return `ticker`'s price row at `now`.
 
     It is the daemon's one row (live_price_rows.price_row), the one the browser reads.
@@ -76,10 +79,10 @@ def price_state(
 
 #: the capture daemon this console runs in (start_order_flow_stream): watchlist requests and the
 #: Flow panel's contract go to it
-_daemon = None
+_daemon: Daemon | None = None
 #: request id -> the future the daemon's watchlist record for it resolves
 #: (_answer_watchlist_request)
-_watchlist_answers: dict[int, asyncio.Future] = {}
+_watchlist_answers: dict[int, asyncio.Future[dict[str, Any]]] = {}
 #: each watchlist request's id, unique in this process (an id, not a time)
 _request_ids = itertools.count(1)
 #: how long a watchlist request waits for the daemon's record (an add waits on Schwab's /quotes
@@ -87,7 +90,7 @@ _request_ids = itertools.count(1)
 WATCHLIST_ANSWER_SEC = 30.0
 
 
-async def watchlist_request(action: str, ticker: str) -> dict:
+async def watchlist_request(action: str, ticker: str) -> dict[str, Any]:
     """Send an add or a removal ("add" | "remove") of `ticker` to the daemon.
 
     The daemon keeps the watchlist; this returns its record once the daemon has answered
@@ -120,7 +123,7 @@ async def select_flow_contract(contract: str | None) -> None:
 
 # ── Runtime state (single asyncio task inside the SAME event loop as the server —
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
-_feed_task: asyncio.Task | None = None
+_feed_task: asyncio.Task[None] | None = None
 _feed_running = False
 
 #: Called with the symbol of every streamed equity quote, every option quote carrying a
@@ -135,18 +138,21 @@ _on_flow_callback: Callable[[str], None] | None = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write;
 #: None is server.stop_bar_writer's stop.
-streamed_bars: queue.SimpleQueue[dict | None] = queue.SimpleQueue()
+streamed_bars: queue.SimpleQueue[dict[str, Any] | None] = queue.SimpleQueue()
 #: Called on the event loop with what assemble_chain_part settles: (ticker, contracts, fetched_ts,
 #: None, (spot, spot_ts)) for each whole chain the daemon fetched, and (ticker, None, ts, reason,
 #: None) for one it could not deliver (server._on_chain).
 _on_chain_callback: Callable[..., None] | None = None
 #: ticker -> the chain being received: {"ts", "parts", "got": {part: contracts}}
-_chain_parts: dict[str, dict] = {}
+_chain_parts: dict[str, dict[str, Any]] = {}
+
+#: what one chain message settles: (ticker, contracts, time, reason, (spot, spot_ts))
+type ChainSettled = tuple[
+    str, list[dict[str, Any]] | None, float, str | None, tuple[float | None, float | None] | None
+]
 
 
-def assemble_chain_part(
-    msg: dict,
-) -> list[tuple[str, list | None, float, str | None, tuple | None]]:
+def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
     """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it settles.
 
     In order: a chain whose parts did not all arrive before the next one began
@@ -157,7 +163,7 @@ def assemble_chain_part(
     tk, ts = msg.get("ticker"), msg.get("ts_recv")
     if not tk or not isinstance(ts, (int, float)):
         return []
-    out = []
+    out: list[ChainSettled] = []
     cur = _chain_parts.get(tk)
     if cur is not None and cur["ts"] != ts:
         out.append(
@@ -217,7 +223,7 @@ def _flow(sym: str) -> None:
         _on_flow_callback(sym)
 
 
-def _service_feed(symbol: str, service: str, now: float) -> dict:
+def _service_feed(symbol: str, service: str, now: float) -> dict[str, str]:
     """One Schwab option service's feed for contract `symbol` at `now`, as the page shows it.
 
     Its state by the one live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and
@@ -248,7 +254,7 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
 _REPRICE_FIELDS = ("TOTAL_VOLUME", "GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY")
 
 
-def _ingest_pushed(topic: str, msg: Any) -> None:
+def _ingest_pushed(topic: str, msg: Payload) -> None:
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
     Every timestamp written is the message's own `ts_recv` -- the daemon's receive time for
@@ -298,14 +304,14 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         apply(sym, ts, msg, received)
 
 
-def _apply_chain_part(msg: dict) -> None:
+def _apply_chain_part(msg: dict[str, Any]) -> None:
     """Take a chain's part; each chain it completes goes to the chain callback."""
     for done in assemble_chain_part(msg):
         if _on_chain_callback is not None:
             _on_chain_callback(*done)
 
 
-def _apply_rest_quotes(msg: dict) -> None:
+def _apply_rest_quotes(msg: dict[str, Any]) -> None:
     """Take a /quotes answer: each contract's newest values, its ticker repriced now.
 
     The answer's time is the daemon's receive time for it (`ts_recv`).
@@ -316,16 +322,16 @@ def _apply_rest_quotes(msg: dict) -> None:
         _tick(sym)
 
 
-def _answer_watchlist_request(msg: dict) -> None:
+def _answer_watchlist_request(msg: dict[str, Any]) -> None:
     """Resolve the watchlist request the daemon's record answers, while it still waits."""
     answer = _watchlist_answers.get(msg["request_id"])
     if answer is not None and not answer.done():
         answer.set_result(msg)
 
 
-def _apply_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
+def _apply_quote(sym: str, ts: float, msg: dict[str, Any], received: dict[str, Any] | None) -> None:
     """Apply a LEVELONE_EQUITIES message: the order-flow state, then the equity's tick."""
-    item = msg.get("native")
+    item: Payload = msg.get("native")
     if not isinstance(item, dict):
         return
     push_level_one(sym, item, ts_recv=ts, field_received=received)
@@ -333,9 +339,9 @@ def _apply_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
     _tick(sym)
 
 
-def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
+def _apply_book(sym: str, ts: float, msg: dict[str, Any], _received: dict[str, Any] | None) -> None:
     """Apply a book message: an option contract's, or an equity venue's with its readout."""
-    content = msg.get("content")
+    content: Payload = msg.get("content")
     if not isinstance(content, dict):
         return
     book = push_book(sym, content, msg["service"])
@@ -347,14 +353,16 @@ def _apply_book(sym: str, ts: float, msg: dict, _received: dict | None) -> None:
     _flow(sym)
 
 
-def _apply_option_quote(sym: str, ts: float, msg: dict, received: dict | None) -> None:
+def _apply_option_quote(
+    sym: str, ts: float, msg: dict[str, Any], received: dict[str, Any] | None
+) -> None:
     """Apply a LEVELONE_OPTIONS message: the contract's top of book, then its state and tape.
 
     The top first: a print is kept with the bid and ask its own message brought. A tick when the
     newest message carried a value the levels use (a merged record holds the last of each field;
     only one this message brought is new).
     """
-    content = msg.get("content")
+    content: Payload = msg.get("content")
     if not isinstance(content, dict):
         return
     push_option_top(sym, content)
@@ -369,7 +377,7 @@ _APPLY_BY_KIND = {"quote": _apply_quote, "book": _apply_book, "optquote": _apply
 _APPLY_BY_TOPIC = {"watchlist": _answer_watchlist_request, "optquotes": _apply_rest_quotes}
 
 
-async def _bus_loop(bus) -> None:
+async def _bus_loop(bus: MessageBus) -> None:
     """Every Schwab record on the daemon's bus, as it changes, applied the moment it does.
 
     Applied by _ingest_pushed: the console runs in the daemon's program and reads its one bus,
@@ -378,6 +386,7 @@ async def _bus_loop(bus) -> None:
     take a turn.
     """
     sub = bus.subscribe("", policy=LATEST)
+    record: Payload
     try:
         while _feed_running:
             topic, record = await sub.get()
@@ -432,7 +441,7 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     }
 
 
-def bind_daemon(daemon) -> None:
+def bind_daemon(daemon: Daemon) -> None:
     """Bind the capture daemon this console runs in (capture.run, before the web server starts).
 
     Its bus is the console's one source, and its requests go to it.
@@ -471,7 +480,7 @@ def start_order_flow_stream(
     return True
 
 
-async def _run_feed(bus) -> None:
+async def _run_feed(bus: MessageBus) -> None:
     await asyncio.gather(_bus_loop(bus), _beat_loop())
 
 

@@ -50,10 +50,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import override
+from typing import Any, override
 
+from starlette.datastructures import State
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
 
@@ -124,7 +126,7 @@ class Asked:
 
     ticker: str
     now: float
-    params: dict
+    params: dict[str, Any]
 
     @property
     def at(self) -> datetime:
@@ -135,13 +137,14 @@ class Asked:
 class _Client:
     __slots__ = ("ws", "symbols", "pending", "identity", "ticker", "shown", "panels", "wake")
 
-    def __init__(self, ws) -> None:
+    def __init__(self, ws: WebSocket) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()  # symbols changed since the last send
-        self.identity: list[dict] | None = None  # the last subscribe's answer, not yet sent
+        #: the last subscribe's answer, not yet sent
+        self.identity: list[dict[str, str]] | None = None
         self.ticker: str | None = None  # the page's selected ticker (its key); None: none
-        self.shown: dict[str, dict] = {}  # each panel the page shows: its parameters
+        self.shown: dict[str, dict[str, Any]] = {}  # each panel the page shows: its parameters
         self.panels: set[str] = set()  # the selected ticker's panels changed since the last send
         self.wake = asyncio.Event()
 
@@ -152,14 +155,14 @@ class LiveUiServer:
 
     def __init__(
         self,
-        heartbeat_fn,
-        stats: dict,
-        record_heartbeat=lmp.record_feed_heartbeat,
-        clock=time_et.now,
+        heartbeat_fn: Callable[[float], dict[str, Any]],
+        stats: dict[str, int],
+        record_heartbeat: Callable[[dict[str, Any]], object] = lmp.record_feed_heartbeat,
+        clock: Callable[[], float] = time_et.now,
         *,
-        panels: dict,
-        priced: tuple = (),
-        on_select,
+        panels: dict[str, Callable[[Asked], dict[str, Any]]],
+        priced: tuple[str, ...] = (),
+        on_select: Callable[[str], object],
     ) -> None:
         self.heartbeat_fn = heartbeat_fn
         self.panels = panels  # each panel's producer, what the page asked (Asked) -> its body
@@ -196,7 +199,7 @@ class LiveUiServer:
                 c.panels.update(names)
                 c.wake.set()
 
-    def beat(self) -> dict:
+    def beat(self) -> dict[str, Any]:
         """Return the daemon's whole status, recorded here and sent with every beat.
 
         The status covers the Schwab socket, symbols held and refused per service, the watchlist
@@ -208,7 +211,7 @@ class LiveUiServer:
 
     # -- browser side -----------------------------------------------------------------
 
-    async def _send(self, c: _Client, payload: dict) -> None:
+    async def _send(self, c: _Client, payload: dict[str, Any]) -> None:
         await c.ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
         if "rows" in payload:  # a symbols frame carries none
             self.stats["rows_sent"] += len(payload["rows"])
@@ -231,7 +234,7 @@ class LiveUiServer:
                 body = await self._produce(name, asked)
                 await self._send(c, {"type": name, "ticker": asked.ticker, **body})
 
-    async def _produce(self, name: str, asked: Asked) -> dict:
+    async def _produce(self, name: str, asked: Asked) -> dict[str, Any]:
         """Return panel `name`'s body: its kind's producer, given what the page asked.
 
         On a worker thread, as a route's read ran: a producer that waits on a lock the pricing
@@ -260,6 +263,8 @@ class LiveUiServer:
                     "live ui: a page frame that is not a subscribe with symbols: %.200r", frame
                 )
                 continue
+            keys: list[str]
+            identity: list[dict[str, str]]
             keys, identity = [], []
             for s in raw:
                 k = ticker_storage_key(s) if isinstance(s, str) else ""
@@ -287,12 +292,12 @@ class LiveUiServer:
             c.panels |= {n for n, p in c.shown.items() if n not in shown_was or shown_was[n] != p}
             c.wake.set()
 
-    def _shown(self, shown) -> dict[str, dict]:
+    def _shown(self, shown: Any) -> dict[str, dict[str, Any]]:
         """Return the panels a subscribe names that the program has, each with its parameters."""
         if not isinstance(shown, dict):
             log.warning("live ui: a subscribe's panels not an object: %.200r", shown)
             return {}
-        out = {}
+        out: dict[str, dict[str, Any]] = {}
         for name, params in shown.items():
             if kind_of(name) in self.panels and isinstance(params, dict):
                 out[name] = params
@@ -305,7 +310,7 @@ class LiveUiServer:
                 )
         return out
 
-    async def serve_client(self, ws) -> None:
+    async def serve_client(self, ws: WebSocket) -> None:
         c = _Client(ws)
         self.clients.add(c)
         self.stats["clients"] = len(self.clients)
@@ -351,7 +356,7 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
-def changed(state, ticker: str, *kinds: str) -> None:
+def changed(state: State, ticker: str, *kinds: str) -> None:
     """Mark panels `kinds` of `ticker` (its key) changed for the pages showing them.
 
     While the program serves the pages (`state.prices`, the web server's app state); callable
@@ -363,7 +368,7 @@ def changed(state, ticker: str, *kinds: str) -> None:
             prices.loop.call_soon_threadsafe(prices.mark_changed, ticker, kind)
 
 
-def selected(state) -> set[str]:
+def selected(state: State) -> set[str]:
     """Return the tickers (keys) the open pages have selected; callable from any thread."""
     prices = state.prices
     if prices is None:
@@ -388,14 +393,14 @@ async def page_socket(ws: WebSocket) -> None:
 async def serve_live_ui(
     stop: asyncio.Event,
     *,
-    state,
-    heartbeat_fn,
-    panels: dict,
-    priced: tuple = (),
-    on_select,
-    stats: dict | None = None,
-    record_heartbeat=lmp.record_feed_heartbeat,
-    clock=time_et.now,
+    state: State,
+    heartbeat_fn: Callable[[float], dict[str, Any]],
+    panels: dict[str, Callable[[Asked], dict[str, Any]]],
+    priced: tuple[str, ...] = (),
+    on_select: Callable[[str], object],
+    stats: dict[str, int] | None = None,
+    record_heartbeat: Callable[[dict[str, Any]], object] = lmp.record_feed_heartbeat,
+    clock: Callable[[], float] = time_et.now,
 ) -> None:
     """Serve the pages' price socket (page_socket) until `stop` is set.
 
