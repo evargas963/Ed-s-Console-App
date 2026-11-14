@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, override
 from urllib.parse import parse_qs, urlparse
@@ -669,12 +669,49 @@ def option_expiries(
     return listed_expiries(resp.json(), today), resp
 
 
+#: Schwab's answer to one request, as Feed hands it on
+type Answer = httpx.Response
+
+
 def safe_get_quotes(client: Any, symbols: "list[str]") -> httpx.Response:
     """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`.
 
     The quote fields only; Schwab's response.
     """
     return client.get_quotes(symbols, fields=["quote"])
+
+
+def get_market_hours(client: Any, day: date) -> httpx.Response:
+    """One request to Schwab's markets endpoint for equity and option hours on `day`.
+
+    Schwab's response.
+    """
+    return client.get_market_hours(
+        [Client.MarketHours.Market.EQUITY, Client.MarketHours.Market.OPTION], date=day
+    )
+
+
+def get_price_history(
+    client: Any,
+    ticker: str,
+    shape: tuple[str, int, str, int],
+    end: datetime,
+) -> httpx.Response:
+    """One request to Schwab's price history endpoint for `ticker`, extended hours included.
+
+    `shape` is (period type, period, frequency type, frequency), as schwab-py names them; the
+    candles end at `end`. Schwab's response.
+    """
+    period_type, period, frequency_type, frequency = shape
+    return client.get_price_history(
+        ticker,
+        period_type=period_type,
+        period=period,
+        frequency_type=frequency_type,
+        frequency=frequency,
+        end_datetime=end,
+        need_extended_hours_data=True,
+    )
 
 
 #: The most symbols one quotes request carries: Schwab Trader API Support (email 1, item 4: not

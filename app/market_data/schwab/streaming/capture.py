@@ -863,15 +863,15 @@ class Daemon:
 
         It is taken at `now`, which the header shows as `clock_ct` and `day_ct`.
         """
+        # open while a stream exists and Schwab sent a frame within DEAD_SEC; why not, only when not
+        socket_open = self.stream is not None and now - self.stream.last_frame_ts < DEAD_SEC
         return {
             "ts": now,
             "clock_ct": time_et.ct_clock(now),
             "day_ct": time_et.ct_day(now),
             "session": session_label(datetime.fromtimestamp(now, ET)),
-            # open while a stream exists and Schwab sent a frame within DEAD_SEC
-            "schwab_socket_open": self.stream is not None
-            and now - self.stream.last_frame_ts < DEAD_SEC,
-            "schwab_down": self.schwab_down,
+            "schwab_socket_open": socket_open,
+            "schwab_down": None if socket_open else self.schwab_down,
             "watchlist": list(self.watchlist),
             "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
             "chains_waiting": self.chains.waiting if self.chains is not None else None,

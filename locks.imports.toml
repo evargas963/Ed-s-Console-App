@@ -17,10 +17,7 @@ name = "Only Feed talks to Schwab"
 type = "protected"
 protected_modules = ["schwab", "authlib", "httpx"]
 as_packages = false
-allowed_importers = [
-    "head.feed.**",
-    "head.calibration.complete_chain_capture",
-]
+allowed_importers = ["head.feed.**"]
 
 # Feed is protected as `schwab` is: `from feed import ...` is the outside name `feed` (the header
 # above), reached only by the daemon's stream and chain sweep, the operator's sign-in, the field
