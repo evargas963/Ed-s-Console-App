@@ -3636,8 +3636,8 @@ def materialize_price_level_snapshot(
 
     Built by the calculator (liquidity_value_engine.build_price_level_snapshot) from normalized
     bars (bars_from_candles) and Schwab's daily candles (`daily`, _series), and held here, the
-    one store of it. A new input (the bars, the prior session's candle or Schwab's hours for
-    either session changed) builds exactly once; every later ask with that input is a read,
+    one store of it. A new input (the bars, the prior session's candle or the regular hours
+    Schwab's /markets sent changed) builds exactly once; every later ask with that input is a read,
     never a recomputation.
     """
     tk = ticker_storage_key(ticker)

@@ -833,10 +833,9 @@ def snapshot_input_fingerprint(
     h = hashlib.blake2b(digest_size=16)
     h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f{len(bars_norm)}".encode())
     h.update(repr(prior).encode())  # the prior session's Schwab daily candle (a dataclass), or None
-    # the regular hours the build reads, this session's and the prior one's: an answer from
-    # Schwab's /markets that arrives later is a new input
-    days = [session_date] + ([] if prior is None else [datetime.fromtimestamp(prior.ts, ET).date()])
-    h.update(repr([_regular(sessions, d) for d in days]).encode())
+    # the regular hours Schwab's /markets sent, every held day's (the build reads this session's
+    # and the prior one's): an answer that arrives later is a new input
+    h.update(repr(sorted((day, s.regular) for day, s in sessions.items())).encode())
     present, absent = _BAR_PRESENT.pack, _BAR_ABSENT.pack
     for b in bars_norm:
         ts, o, hi, lo, c = (
