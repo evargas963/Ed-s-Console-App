@@ -119,6 +119,7 @@ def _get(ticker, expiry=None):
 def test_no_held_chain_is_unavailable_with_its_reason():
     body = _get(ticker="ZZNOCHAIN")
     assert body["status"] == "unavailable" and body["contracts"] == []
+    assert body["ladder"] == []  # the page draws the ladder it is sent: no rows, not no key
     assert body["scope"]["reason"]
     assert set(body["scope"]) == {"kind", "reason"}
 

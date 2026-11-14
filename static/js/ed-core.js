@@ -1080,6 +1080,7 @@
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker, emit: emit,
     esc: esc, orDash: orDash,
+    pref: _ls, setPref: _lsSet,   // a viewer's own setting, kept in the browser
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]

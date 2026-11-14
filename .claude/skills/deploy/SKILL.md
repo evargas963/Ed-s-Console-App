@@ -21,7 +21,9 @@ on the moved file and its replacement and `icacls <new folder> /deny "evarg:(DC)
    `explorer.exe start_ed_console.bat` in the production checkout.
 5. Confirm it came back and runs the merge commit: one program (`Get-CimInstance Win32_Process` with
    `capture_main` in the command line: the venv's launcher and its interpreter child), the ports it
-   holds (`program_lock.program_ports()`), `curl -s http://127.0.0.1:8000/api/health`, and
-   `git -C <production> rev-parse --short HEAD` equal to `origin/main`. Show each output.
+   holds (`program_lock.program_ports()`), `curl -s http://127.0.0.1:8000/api/health` (its
+   `capabilities` say `"schwab":"AVAILABLE"`), and `curl -s http://127.0.0.1:8000/api/build`: its
+   `running_commit`, the code the running program loaded, equals `git -C <production> rev-parse
+   origin/main`, and its `checkout_commit` equals it too (`differ` is false). Show each output.
 6. Deployed means step 5 passed and the screen was checked during market hours. Until then report the
    change as on disk, not deployed.

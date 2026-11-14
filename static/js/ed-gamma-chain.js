@@ -43,7 +43,7 @@
 
   function render(host, d) {
     setSrc(d);
-    var rows = (d && d.ladder) || [];   // served: strikes high to low, one row per listed contract
+    var rows = d.ladder;   // served: strikes high to low, one row per listed contract
     if (!rows.length) { host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>'; return; }
     var dup = d.has_duplicate_contracts === true;   // served
     // null/'' spot is ABSENT: Number(null) is 0, which would draw 'spot 0.00'

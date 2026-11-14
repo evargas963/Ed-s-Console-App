@@ -875,8 +875,10 @@ served = {
     and re.fullmatch(r"[a-z][a-z0-9_]{2,}", k.value)
 }
 all_product_py = "\n".join(TEXT[f] for f in PRODUCT_PY)
+#: a key the page names or a procedure (a skill) checks is read
+key_readers = page_text + "\n".join(TEXT[f] for f in FILES if f.endswith("SKILL.md") and f in TEXT)
 for key, f in sorted(served):
-    if re.search(rf"(?<!\w){re.escape(key)}(?!\w)", page_text):
+    if re.search(rf"(?<!\w){re.escape(key)}(?!\w)", key_readers):
         continue
     uses = len(
         re.findall(

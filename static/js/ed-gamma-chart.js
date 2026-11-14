@@ -32,7 +32,7 @@
   var _liveQuote = null;          // the header's price row (ed:quote_tick), the one displayed price
   var _last = { bars: undefined, strikes: undefined, terrain: undefined };
   // the chart's timeframe (the toolbar's), kept per viewer
-  var _tf = (function () { try { return window.localStorage.getItem('ed.gchart.tf') || '1'; } catch (e) { return '1'; } })();
+  var _tf = window.EdShell.pref('ed.gchart.tf', '1');
   function tfLabel() { return (window.EdTvChart.TFS.filter(function (t) { return t.id === _tf; })[0] || {}).lbl || _tf; }
 
   function liveSpot() {   // the row whose served key is the selected instrument's (EdShell state.key)
@@ -49,7 +49,7 @@
         window.EdShell.setStrike(row.price, window.EdShell.getExpiry());   // the workspace's expiry filter carries through
       } });
     window.EdTvChart.toolbar(host.querySelector('.gchart-tb'), _chart, { tf: _tf, styleKey: 'ed.gchart.style',
-      onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.gchart.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
+      onTf: function (tf) { _tf = tf; window.EdShell.setPref('ed.gchart.tf', tf); load(); } });
     return _chart;
   }
 

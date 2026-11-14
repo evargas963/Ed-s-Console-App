@@ -76,13 +76,12 @@
   // until it arrives
   function shown() { return window.EdShell.getState().display || S.ticker; }
   function $(id) { return document.getElementById(id); }
-  function sget(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
-  function sset(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
+  var sget = window.EdShell.pref, sset = window.EdShell.setPref;   // the viewer's own settings
 
   var S = {
     tf: sget('ed.desk.tf', '5'), nearest: Number(sget('ed.desk.nearest', '6')) || 6,
-    fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
-      { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
+    fam: JSON.parse(sget('ed.desk.fam',
+      '{"value_area":1,"vwap":1,"gamma":1,"expected_move":1,"prior_day":1,"opening_range":1,"overnight":1}')),
     ticker: null, tb: null, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
     analytics: null, liq: null, quotes: {}, queue: [], sel: null,
     // the Liquidity card's venue (COMPOSITE, or BOOK: the shell's book switch) and depth view

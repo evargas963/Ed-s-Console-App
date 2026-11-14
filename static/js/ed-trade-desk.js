@@ -136,7 +136,7 @@
       lines.push(['Regime', orDash(terrain.regime) + (terrain.posture ? ' · ' + terrain.posture : '')]);
       if (terrain.headline) lines.push(['Read', terrain.headline]);
     }
-    var zones = (snap && snap.zones) || [], sl = snap && snap.spot_location;   // served
+    var sl = snap && snap.spot_location, zones = sl && snap.zones;   // served
     var loc = sl ? { inside: sl.inside != null ? zones[sl.inside] : null,
                      above: sl.above != null ? zones[sl.above] : null, below: sl.below != null ? zones[sl.below] : null } : null;
     if (loc && loc.inside) {
