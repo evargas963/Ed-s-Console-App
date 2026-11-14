@@ -163,12 +163,10 @@ class TerrainSnapshot:
     #: materialized profile as the flip. GSF = highest level
     #: below spot where the positive-gamma cushion has decayed to half its at-spot value
     #: (support ends BEFORE the flip's zero-crossing); GRC = the upside mirror, often
-    #: at/beyond the call wall (resistance strengthens before it exhausts). gsf_state is
-    #: the fail-closed verdict: OK | BELOW_SUPPORT (negative regime — no fabricated
-    #: price) | UNAVAILABLE.
+    #: at/beyond the call wall (resistance strengthens before it exhausts). None when not
+    #: found, a negative regime included (no fabricated price).
     gsf: float | None = None
     grc: float | None = None
-    gsf_state: str = "UNAVAILABLE"
 
     #: The levels on a 0DTE basis (same_day_levels). Keys are SAME_DAY_LEVELS.
     #: absolute_gamma_strike in this dict is the one 0DTE pin.
@@ -985,7 +983,6 @@ def compute_terrain(
         net_gex_at_spot=_gamma_at_spot,
         gsf=_gsl["gsf"],
         grc=_gsl["grc"],
-        gsf_state=_gsl["state"],
         same_day=same_day_levels(
             expiry_rows,
             spot,
