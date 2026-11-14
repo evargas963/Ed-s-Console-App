@@ -22,7 +22,7 @@ def test_a_strike_keeps_every_digit_of_volume_and_open_interest():
             },
         }
     )
-    assert volume == [[500.0, 12.5, 10.6]]
+    assert volume == [(500.0, 12.5, 10.6)]
     oi = _per_strike_measure_rows(
         {
             500.0: {
