@@ -115,7 +115,6 @@
       return;
     }
     // null/'' spot is ABSENT: Number(null) is 0, which would draw 'spot 0.00'
-    var spot = d.spot == null || d.spot === "" ? NaN : Number(d.spot);
     var trade = "";
     if (d.spot_time_ct) trade = " · last trade " + esc(d.spot_time_ct);
     var source = "";
@@ -123,7 +122,7 @@
     var head =
       '<div class="lv-head"><span>Levels</span>' +
       '<span class="lv-spot">spot ' +
-      (isFinite(spot) ? spot.toFixed(2) : "-") +
+      px(d.spot) +
       source +
       trade +
       "</span></div>";
