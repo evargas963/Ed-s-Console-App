@@ -70,11 +70,11 @@
   // its served state (OFFLINE: its feed down; NOT LIVE: its market not trading). The numbers stay.
   // Anything else shows the served words.
   function subState(plane) {
-    var s = (plane || {}).subscription_state;
-    var l1 = plane && plane.feed_health && plane.feed_health.l1;
-    if (s === "SUBSCRIBED" && l1 && l1.state === "LIVE") return { label: "ACTIVE", cls: "live" };
-    if (s === "SUBSCRIBED" && l1) return { label: l1.state, cls: "stale" };
-    return { label: orDash(s), cls: "stale" };
+    var s = plane.subscription_state,
+      l1 = plane.feed_health.l1; // each always served (streaming.get_option_contract_streaming_diagnostics)
+    if (s === "SUBSCRIBED" && l1.state === "LIVE") return { label: "ACTIVE", cls: "live" };
+    if (s === "SUBSCRIBED") return { label: l1.state, cls: "stale" };
+    return { label: s, cls: "stale" };
   }
 
   // The backend's classification string for one canonical key, verbatim — or null when the
@@ -170,7 +170,7 @@
         fk("cum_delta_slope"),
       ],
     ];
-    var fh = plane.feed_health || {}; // served: the selected contract's three feeds
+    var fh = plane.feed_health; // served: the selected contract's three feeds
     var dim = ss.label === "ACTIVE" ? "" : " fl-dim"; // not-active data recedes (never presented as live)
     // Book/quote ages are served as text from the engine's `ages` block (classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
@@ -187,14 +187,9 @@
         "ages.quote_age_sec",
         bk("ages.quote_age_sec"),
       ],
-      ["Replay", orDash(fh.replay), "streaming_plane.feed_health.replay", undefined],
-      ["L1 upstream", fh.l1 ? fh.l1.text : "-", "streaming_plane.feed_health.l1", undefined],
-      [
-        "Book upstream",
-        fh.book ? fh.book.text : "-",
-        "streaming_plane.feed_health.book",
-        undefined,
-      ],
+      ["Replay", fh.replay, "streaming_plane.feed_health.replay", undefined],
+      ["L1 upstream", fh.l1.text, "streaming_plane.feed_health.l1", undefined],
+      ["Book upstream", fh.book.text, "streaming_plane.feed_health.book", undefined],
     ];
     h.innerHTML =
       header(desired, ss, d && d.put_call) +
