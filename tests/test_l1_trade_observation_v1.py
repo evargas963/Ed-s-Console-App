@@ -148,3 +148,16 @@ def test_slope_uses_same_signed_size_walk():
     slope = ofe._compute_cum_delta_slope({"content": content}, now=3.0, window_sec=60.0)
     assert slope is not None
     assert math.isclose(slope, -1.0, rel_tol=0.0, abs_tol=1e-9)
+
+
+def test_a_window_keeps_only_the_prints_traded_at_or_after_its_start():
+    """A 1.5 s window ending at 3 s: the print at 1 s is left out; its tick still signs the next."""
+    content = _tape("L1W", (500.0, 10, 1000), (500.1, 4, 2000), (499.9, 6, 3000))
+    prints = l1.canonical_tape_prints(content)
+    assert [(round(t, 6), c) for t, c in l1.iter_signed_cum_points(prints, 1500.0)] == [
+        (2.0, 4.0),
+        (3.0, -2.0),
+    ]
+    slope = ofe._compute_cum_delta_slope({"content": content}, now=3.0, window_sec=1.5)
+    assert slope is not None
+    assert math.isclose(slope, -6.0, rel_tol=0.0, abs_tol=1e-9)

@@ -933,7 +933,7 @@ def _compute_cum_delta_slope(
 ) -> float | None:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
     points = iter_signed_cum_points(
-        canonical_tape_prints(data["content"]), window_sec, now * 1000.0
+        canonical_tape_prints(data["content"]), now * 1000.0 - int(window_sec * 1000)
     )
     if len(points) < 2:
         return None
