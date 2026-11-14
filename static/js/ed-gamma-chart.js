@@ -7,49 +7,101 @@
    Interest subviews. The strikes shown are the window the server sends for the Gamma scope. A click
    on a strike selects it for every panel. The page computes no exposure or level. */
 (function () {
-  'use strict';
+  "use strict";
 
   var usd = window.EdGamma.formatUsd;
   var esc = window.EdShell.esc;
-  function ctTime(sec) { try { return new Date(sec * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
+  function ctTime(sec) {
+    try {
+      return new Date(sec * 1000).toLocaleTimeString("en-US", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "America/Chicago",
+      });
+    } catch (e) {
+      return "";
+    }
+  }
   function isChart() {
     var s = window.EdShell.getState();
-    return s.workspace === 'options' && ['gamma', 'dex', 'oi'].indexOf(s.subview) !== -1 && s.view === 'chart';
+    return (
+      s.workspace === "options" &&
+      ["gamma", "dex", "oi"].indexOf(s.subview) !== -1 &&
+      s.view === "chart"
+    );
   }
   // the served profile for the selected measure: {rows (the window), its scale (the window's
   // largest |value|), max_abs_row, name}
   function served(sd) {
-    if (sd === undefined || sd.failed != null || sd.available === false) return { rows: [], name: 'GEX', signed: true };   // not sent, not produced, or no window: no rows
-    var m = window.EdShell.getState().measure, x = sd.measures[m];   // DEX and OI; GEX is the rows' own
-    if (x) return { rows: x.rows, scale: x.view.max_abs, max_abs_row: x.max_abs_row,
-      name: m === 'oi' ? 'OI' : 'DEX', signed: m !== 'oi' };
-    return { rows: sd.today.all, scale: sd.views.all.max_abs, max_abs_row: sd.max_abs_row, name: 'GEX', signed: true };
+    if (sd === undefined || sd.failed != null || sd.available === false)
+      return { rows: [], name: "GEX", signed: true }; // not sent, not produced, or no window: no rows
+    var m = window.EdShell.getState().measure,
+      x = sd.measures[m]; // DEX and OI; GEX is the rows' own
+    if (x)
+      return {
+        rows: x.rows,
+        scale: x.view.max_abs,
+        max_abs_row: x.max_abs_row,
+        name: m === "oi" ? "OI" : "DEX",
+        signed: m !== "oi",
+      };
+    return {
+      rows: sd.today.all,
+      scale: sd.views.all.max_abs,
+      max_abs_row: sd.max_abs_row,
+      name: "GEX",
+      signed: true,
+    };
   }
-  function ticker() { return window.EdShell.getState().ticker; }
+  function ticker() {
+    return window.EdShell.getState().ticker;
+  }
 
-  var _mode = 'profile';          // 'profile' (bars) | 'dotmap' (dots)
+  var _mode = "profile"; // 'profile' (bars) | 'dotmap' (dots)
   var _chart = null;
-  var _liveQuote = null;          // the header's price row (ed:quote_tick), the one displayed price
+  var _liveQuote = null; // the header's price row (ed:quote_tick), the one displayed price
   var _last = { bars: undefined, strikes: undefined, terrain: undefined };
   // the chart's timeframe (the toolbar's), kept per viewer
-  var _tf = window.EdShell.pref('ed.gchart.tf', '1');
-  function tfLabel() { return (window.EdTvChart.TFS.filter(function (t) { return t.id === _tf; })[0] || {}).lbl || _tf; }
+  var _tf = window.EdShell.pref("ed.gchart.tf", "1");
+  function tfLabel() {
+    return (
+      (
+        window.EdTvChart.TFS.filter(function (t) {
+          return t.id === _tf;
+        })[0] || {}
+      ).lbl || _tf
+    );
+  }
 
-  function liveSpot() {   // the row whose served key is the selected instrument's (EdShell state.key)
+  function liveSpot() {
+    // the row whose served key is the selected instrument's (EdShell state.key)
     var q = _liveQuote;
-    return (q && q.ticker === window.EdShell.getState().key && q.spot != null) ? Number(q.spot) : null;
+    return q && q.ticker === window.EdShell.getState().key && q.spot != null
+      ? Number(q.spot)
+      : null;
   }
   function ensureChart() {
-    var host = document.getElementById('chartBody');
+    var host = document.getElementById("chartBody");
     if (!host || !window.EdTvChart || !window.LightweightCharts) return null;
-    if (_chart && host.querySelector('.gchart-plot')) return _chart;
-    host.innerHTML = '<div class="gchart-head"></div><div class="gchart-tb"></div><div class="gchart-plot"></div><div class="gchart-empty" hidden></div>';
-    _chart = window.EdTvChart.create(host.querySelector('.gchart-plot'), { nearestN: 99,
+    if (_chart && host.querySelector(".gchart-plot")) return _chart;
+    host.innerHTML =
+      '<div class="gchart-head"></div><div class="gchart-tb"></div><div class="gchart-plot"></div><div class="gchart-empty" hidden></div>';
+    _chart = window.EdTvChart.create(host.querySelector(".gchart-plot"), {
+      nearestN: 99,
       onProfileClick: function (row) {
-        window.EdShell.setStrike(row.price, window.EdShell.getExpiry());   // the workspace's expiry filter carries through
-      } });
-    window.EdTvChart.toolbar(host.querySelector('.gchart-tb'), _chart, { tf: _tf, styleKey: 'ed.gchart.style',
-      onTf: function (tf) { _tf = tf; window.EdShell.setPref('ed.gchart.tf', tf); load(); } });
+        window.EdShell.setStrike(row.price, window.EdShell.getExpiry()); // the workspace's expiry filter carries through
+      },
+    });
+    window.EdTvChart.toolbar(host.querySelector(".gchart-tb"), _chart, {
+      tf: _tf,
+      styleKey: "ed.gchart.style",
+      onTf: function (tf) {
+        _tf = tf;
+        window.EdShell.setPref("ed.gchart.tf", tf);
+        load();
+      },
+    });
     return _chart;
   }
 
@@ -57,17 +109,19 @@
   // flip and walls: the `bars:chart`, `strikes:chart` and `terrain:chart` panels (server.bars,
   // server.strikes, server.terrain) the program sends on the page's socket while the chart is on,
   // at once and each time the bars or the levels change.
-  var PANELS = { 'bars:chart': 'bars', 'strikes:chart': 'strikes', 'terrain:chart': 'terrain' };
+  var PANELS = { "bars:chart": "bars", "strikes:chart": "strikes", "terrain:chart": "terrain" };
   function askPanels() {
-    window.EdShell.showPanel('strikes:chart', isChart() ? window.EdShell.windowParams(null) : null);
-    window.EdShell.showPanel('terrain:chart', isChart() ? {} : null);
+    window.EdShell.showPanel("strikes:chart", isChart() ? window.EdShell.windowParams(null) : null);
+    window.EdShell.showPanel("terrain:chart", isChart() ? {} : null);
   }
   function load() {
     askPanels();
-    window.EdShell.showPanel('bars:chart',
-      isChart() && ensureChart() ? { tf: _tf, limit: window.EdTvChart.BARS_LIMIT[_tf] } : null);
+    window.EdShell.showPanel(
+      "bars:chart",
+      isChart() && ensureChart() ? { tf: _tf, limit: window.EdTvChart.BARS_LIMIT[_tf] } : null,
+    );
   }
-  document.addEventListener('ed:panel', function (e) {
+  document.addEventListener("ed:panel", function (e) {
     var key = PANELS[e.detail.type];
     if (!key) return;
     _last[key] = e.detail;
@@ -75,84 +129,175 @@
   });
 
   function render() {
-    var c = ensureChart(); if (!c) return;
-    var host = document.getElementById('chartBody');
-    var P = c.palette(), barsD = _last.bars, sd = _last.strikes, t = _last.terrain;
+    var c = ensureChart();
+    if (!c) return;
+    var host = document.getElementById("chartBody");
+    var P = c.palette(),
+      barsD = _last.bars,
+      sd = _last.strikes,
+      t = _last.terrain;
     var prof = served(sd);
     // each panel as served; one not sent yet (undefined) draws nothing, and the program's words
     // when it could not produce one (`failed`) are said, never drawn as empty
-    var words = '';
-    [barsD, sd, t].forEach(function (p) { if (p && p.failed != null) words = (words ? words + ' · ' : '') + p.failed; });
+    var words = "";
+    [barsD, sd, t].forEach(function (p) {
+      if (p && p.failed != null) words = (words ? words + " · " : "") + p.failed;
+    });
     var okBars = barsD && barsD.failed == null;
     var bars = okBars ? barsD.bars : [];
-    var win = prof.rows.filter(function (r) { return r[1] != null; });   // the served window; unknown: nothing drawn
-    c.setBars(bars, okBars ? barsD.tf : _tf, window.EdShell.getState().display || ticker(), okBars && barsD.last_bar && barsD.last_bar.label);
-    c.setProfile(win.map(function (r) {
-      return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
-      prof.scale, _mode === 'dotmap' ? 'dots' : 'bars');
-    c.selectProfile(window.EdShell.getState().selStrike == null ? null : Number(window.EdShell.getState().selStrike));
+    var win = prof.rows.filter(function (r) {
+      return r[1] != null;
+    }); // the served window; unknown: nothing drawn
+    c.setBars(
+      bars,
+      okBars ? barsD.tf : _tf,
+      window.EdShell.getState().display || ticker(),
+      okBars && barsD.last_bar && barsD.last_bar.label,
+    );
+    c.setProfile(
+      win.map(function (r) {
+        return {
+          price: Number(r[0]),
+          value: Number(r[1]),
+          color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down,
+        };
+      }),
+      prof.scale,
+      _mode === "dotmap" ? "dots" : "bars",
+    );
+    c.selectProfile(
+      window.EdShell.getState().selStrike == null
+        ? null
+        : Number(window.EdShell.getState().selStrike),
+    );
     var lv = [];
     if (t && !t.error && t.failed == null) {
-      if (t.gamma_flip != null) lv.push({ id: 'gamma_flip', price: Number(t.gamma_flip), label: 'Γ flip', color: P.accent, style: 2, width: 1 });
-      if (t.call_wall != null) lv.push({ id: 'call_wall', price: Number(t.call_wall), label: 'Call wall', color: P.down, style: 0, width: 1 });
-      if (t.put_wall != null) lv.push({ id: 'put_wall', price: Number(t.put_wall), label: 'Put wall', color: P.up, style: 0, width: 1 });
+      if (t.gamma_flip != null)
+        lv.push({
+          id: "gamma_flip",
+          price: Number(t.gamma_flip),
+          label: "Γ flip",
+          color: P.accent,
+          style: 2,
+          width: 1,
+        });
+      if (t.call_wall != null)
+        lv.push({
+          id: "call_wall",
+          price: Number(t.call_wall),
+          label: "Call wall",
+          color: P.down,
+          style: 0,
+          width: 1,
+        });
+      if (t.put_wall != null)
+        lv.push({
+          id: "put_wall",
+          price: Number(t.put_wall),
+          label: "Put wall",
+          color: P.up,
+          style: 0,
+          width: 1,
+        });
     }
     c.setLevels(lv);
     var spot = liveSpot();
-    var tradeTime = (_liveQuote && spot != null) ? _liveQuote.trade_time_ct : null;
+    var tradeTime = _liveQuote && spot != null ? _liveQuote.trade_time_ct : null;
     c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_text : null, tradeTime);
-    var empty = host.querySelector('.gchart-empty');
+    var empty = host.querySelector(".gchart-empty");
     empty.hidden = !words && !!(bars.length || win.length);
-    empty.textContent = words || (empty.hidden ? '' : 'no bars / per-strike ' + prof.name + ' for this symbol');
-    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot, tradeTime);
+    empty.textContent =
+      words || (empty.hidden ? "" : "no bars / per-strike " + prof.name + " for this symbol");
+    paintHead(host.querySelector(".gchart-head"), bars, win, prof, sd, spot, tradeTime);
   }
   function paintHead(el, bars, win, prof, sd, spot, tradeTime) {
     var n = prof.name;
     var ab = window.EdShell.asOfBadge;
     var lastT = bars.length ? bars[bars.length - 1].t : null;
-    var asof = (lastT ? '<span class="asof">price ' + tfLabel() + ' · ' + ctTime(lastT) + ' CT</span>' : '') +
-      (sd && sd.failed == null ? ab({ label: n + ' terrain', state: sd.levels_state, when: sd.levels_time_ct,
-        age: sd.levels_age_text, reason: sd.levels_stale_reason }) : '');
-    var top = prof.max_abs_row;   // served: the largest-magnitude row
-    var shown = top ? (prof.signed ? usd(top[1]) : Number(top[1]).toLocaleString('en-US') + ' contracts') : '';
-    el.innerHTML = (asof ? '<div class="chart-asof">' + asof + '</div>' : '') +
-      '<div class="chart-legend">' + (prof.signed
-        ? '<span><span class="sw" style="background:var(--ed-pos)"></span>+' + n + '</span>' +
-          '<span><span class="sw" style="background:var(--ed-neg)"></span>−' + n + '</span>'
-        : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + '</span>') +
+    var asof =
+      (lastT
+        ? '<span class="asof">price ' + tfLabel() + " · " + ctTime(lastT) + " CT</span>"
+        : "") +
+      (sd && sd.failed == null
+        ? ab({
+            label: n + " terrain",
+            state: sd.levels_state,
+            when: sd.levels_time_ct,
+            age: sd.levels_age_text,
+            reason: sd.levels_stale_reason,
+          })
+        : "");
+    var top = prof.max_abs_row; // served: the largest-magnitude row
+    var shown = top
+      ? prof.signed
+        ? usd(top[1])
+        : Number(top[1]).toLocaleString("en-US") + " contracts"
+      : "";
+    el.innerHTML =
+      (asof ? '<div class="chart-asof">' + asof + "</div>" : "") +
+      '<div class="chart-legend">' +
+      (prof.signed
+        ? '<span><span class="sw" style="background:var(--ed-pos)"></span>+' +
+          n +
+          "</span>" +
+          '<span><span class="sw" style="background:var(--ed-neg)"></span>−' +
+          n +
+          "</span>"
+        : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + "</span>") +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
-      '<span>spot ' + (spot == null ? '-' : spot.toFixed(2)) +
-      (tradeTime ? (' · last trade ' + esc(tradeTime)) : '') + '</span>' +
-      (top ? '<span>largest |' + n + '| ' + esc(top[0]) + ' · ' + esc(shown) + '</span>' : '') + '</div>';
+      "<span>spot " +
+      (spot == null ? "-" : spot.toFixed(2)) +
+      (tradeTime ? " · last trade " + esc(tradeTime) : "") +
+      "</span>" +
+      (top ? "<span>largest |" + n + "| " + esc(top[0]) + " · " + esc(shown) + "</span>" : "") +
+      "</div>";
   }
 
   function bindModes() {
-    var host = document.getElementById('chartModes');
+    var host = document.getElementById("chartModes");
     if (!host) return;
-    host.querySelectorAll('.cmode').forEach(function (b) {
-      b.addEventListener('click', function () {
-        _mode = b.getAttribute('data-cmode');
-        host.querySelectorAll('.cmode').forEach(function (x) { x.classList.toggle('on', x === b); });
+    host.querySelectorAll(".cmode").forEach(function (b) {
+      b.addEventListener("click", function () {
+        _mode = b.getAttribute("data-cmode");
+        host.querySelectorAll(".cmode").forEach(function (x) {
+          x.classList.toggle("on", x === b);
+        });
         if (_chart) render();
       });
     });
   }
 
-  window.addEventListener('ed:quote_tick', function (ev) {
+  window.addEventListener("ed:quote_tick", function (ev) {
     var q = (ev && ev.detail) || {};
     if (q.ticker !== window.EdShell.getState().key) return;
     _liveQuote = q;
     if (isChart() && _chart && _last.bars !== undefined) render();
   });
-  document.addEventListener('ed:view', load);
-  document.addEventListener('ed:ticker', function () { _last = { bars: undefined, strikes: undefined, terrain: undefined }; load(); });
-  document.addEventListener('ed:scope', askPanels);   // a new window: the profile's panel asks it
-  document.addEventListener('ed:measure', function () { if (_chart && isChart() && _last.bars !== undefined) render(); });
-  document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(window.EdShell.getState().selStrike == null ? null : Number(window.EdShell.getState().selStrike)); });
+  document.addEventListener("ed:view", load);
+  document.addEventListener("ed:ticker", function () {
+    _last = { bars: undefined, strikes: undefined, terrain: undefined };
+    load();
+  });
+  document.addEventListener("ed:scope", askPanels); // a new window: the profile's panel asks it
+  document.addEventListener("ed:measure", function () {
+    if (_chart && isChart() && _last.bars !== undefined) render();
+  });
+  document.addEventListener("ed:strike", function () {
+    if (_chart && isChart())
+      _chart.selectProfile(
+        window.EdShell.getState().selStrike == null
+          ? null
+          : Number(window.EdShell.getState().selStrike),
+      );
+  });
   bindModes();
   // read-only view for tests (e2e) -- never a control surface
   window.EdGammaChart = {
-    state: function () { return _chart ? _chart.state() : null; },
-    profilePoint: function (price) { return _chart ? _chart.profilePoint(price) : null; }
+    state: function () {
+      return _chart ? _chart.state() : null;
+    },
+    profilePoint: function (price) {
+      return _chart ? _chart.profilePoint(price) : null;
+    },
   };
 })();
