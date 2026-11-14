@@ -10,9 +10,9 @@ import sys
 import threading
 from pathlib import Path
 
-import schwab_client
 import server
 import time_et
+from feed import schwab_client
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -45,7 +45,7 @@ def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
     interpreter whose environment has no Schwab credential.
     """
     code = (
-        "import config, schwab_client\n"
+        "import config\nfrom feed import schwab_client\n"
         "cfg = config.build_config()\n"
         "assert cfg.api_key is None and cfg.app_secret is None, cfg\n"
         "assert config.schwab_live_blocked_for(cfg.api_key, cfg.app_secret) is True\n"
@@ -65,8 +65,8 @@ def test_server_import_does_not_build_client_or_run_login_flow() -> None:
     """`import server` in a fresh interpreter builds no client and runs no login flow."""
     code = (
         "from unittest.mock import patch\n"
-        "with patch('schwab_client.build_client_from_token') as b, "
-        "patch('schwab_client.run_login_flow') as lf:\n"
+        "with patch('feed.schwab_client.build_client_from_token') as b, "
+        "patch('feed.schwab_client.run_login_flow') as lf:\n"
         "    import server\n"
         "    b.assert_not_called(); lf.assert_not_called()\n"
         "    assert server.app is not None\n"

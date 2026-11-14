@@ -25,7 +25,6 @@ from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-import schwab_client as sc
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_push
@@ -39,6 +38,7 @@ from calibration.complete_chain_capture import (
     price_history_message,
 )
 from db import get_db
+from feed import schwab_client as sc
 from liquidity_value_engine import bars_from_candles
 from stream_spine import (
     LATEST,
@@ -1341,7 +1341,7 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
     base = f"http://127.0.0.1:{srv.server_address[1]}"
     try:
         client = sc.client_from_token_file_atomic(str(tok), "k", "s")
-        with caplog.at_level("WARNING", logger="schwab_client"):
+        with caplog.at_level("WARNING", logger="feed.schwab_client"):
             for _ in range(3):
                 client.session.get(f"{base}/marketdata/v1/chains?symbol=SPY")
             client.session.get(f"{base}/trader/v1/accounts/HASH123/orders")

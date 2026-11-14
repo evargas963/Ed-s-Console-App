@@ -33,8 +33,8 @@ from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import ChainSweep, chain_messages
+from feed.schwab_client import build_client_from_token, flatten_chain_contracts
 from option_contract import read_chain
-from schwab_client import build_client_from_token, flatten_chain_contracts
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import daemon_status
 from tests.page_on_socket import pages

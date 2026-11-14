@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from schwab_client import safe_get_chain
+from feed.schwab_client import safe_get_chain
 
 
 class _FakeClient:

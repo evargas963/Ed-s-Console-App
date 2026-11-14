@@ -32,6 +32,14 @@ from schwab.client import Client
 
 import time_et
 from app.options.order_flow.state import streamed_volume
+from feed.schwab_client import (
+    QUOTES_AT_ONCE,
+    QUOTES_BATCH_MAX,
+    flatten_chain_contracts,
+    option_expiries,
+    safe_get_chain,
+    safe_get_quotes,
+)
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from live_price_rows import price_row
@@ -42,14 +50,6 @@ from option_contract import (
     streamed_greek_set,
     streamed_greeks,
     streamed_top,
-)
-from schwab_client import (
-    QUOTES_AT_ONCE,
-    QUOTES_BATCH_MAX,
-    flatten_chain_contracts,
-    option_expiries,
-    safe_get_chain,
-    safe_get_quotes,
 )
 from stream_spine import CaptureWriter
 from time_et import (

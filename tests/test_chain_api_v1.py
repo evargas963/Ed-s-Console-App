@@ -25,8 +25,8 @@ import live_market_plane as lmp
 import server as srv
 import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
+from feed.schwab_client import flatten_chain_contracts
 from option_contract import GREEKS, LISTED, read_chain
-from schwab_client import flatten_chain_contracts
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
 from time_et import ET

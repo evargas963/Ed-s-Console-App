@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from schwab_client import write_token_file_atomically
+from feed.schwab_client import write_token_file_atomically
 
 
 def test_token_write_is_atomic_temp_replace(tmp_path):
