@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from html import escape as html_escape
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict
 
 from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -156,7 +156,30 @@ SPOT_SOURCE_PLANE = (
 SPOT_SOURCE_NONE = "none"  # Schwab has sent no price
 
 
-def price_mark(ticker: str, spot_ts: float | None, now: float) -> dict[str, str | None]:
+class PriceMark(TypedDict):
+    """The live price's trade time and, while the price is not live, the mark beside its values."""
+
+    spot_time_ct: str | None
+    spot_not_live_text: str | None
+
+
+class LevelsVerdict(TypedDict):
+    """The levels' verdict every screen shows (terrain_staleness)."""
+
+    levels_state: str
+    levels_stale_reason: str | None
+    levels_age_text: str | None
+    levels_time_ct: str | None
+
+
+class LevelsMark(TypedDict):
+    """The one word the Key Levels line shows, and why (levels_mark)."""
+
+    levels_mark: str
+    levels_mark_reason: str | None
+
+
+def price_mark(ticker: str, spot_ts: float | None, now: float) -> PriceMark:
     """The live price's trade time and, while it is not live at `now` (price_state), its mark.
 
     Served beside every value computed from that price, so a value from a price that has stopped
@@ -672,9 +695,7 @@ def published_levels(ticker: str) -> PublishedLevels | None:
         return _terrain_cache.get(ticker_storage_key(ticker))
 
 
-def terrain_cache_get(
-    ticker: str, now: float
-) -> tuple[PublishedLevels | None, dict[str, str | None]]:
+def terrain_cache_get(ticker: str, now: float) -> tuple[PublishedLevels | None, LevelsVerdict]:
     """Return the ticker's published levels (None before the first) and their verdict at `now`.
 
     The verdict is terrain_staleness's: the cache holds the chain's time, never a verdict.
@@ -698,7 +719,7 @@ def terrain_staleness(
     *,
     now: float,
     levels_ts_utc: float | None = None,
-) -> dict[str, str | None]:
+) -> LevelsVerdict:
     """Return the levels' state at `now`, THE levels verdict every screen shows (`levels_state`).
 
     LIVE from the market day's start (time_et.options_open) until the ticker's own option market
@@ -805,7 +826,7 @@ def _levels_state(
 LEVELS_CLOSE, LEVELS_STALE = "CLOSE", "STALE"
 
 
-def levels_mark(levels: dict[str, Any], ticker: str, now: float) -> dict[str, str | None]:
+def levels_mark(levels: Mapping[str, Any], ticker: str, now: float) -> LevelsMark:
     """Return the one word the Key Levels line shows, from the levels' verdict and their price's.
 
     From terrain_staleness and price_state: the levels' state while it is not LIVE, else the
@@ -819,22 +840,6 @@ def levels_mark(levels: dict[str, Any], ticker: str, now: float) -> dict[str, st
         }
     label, outage = price_state(ticker, now)
     return {"levels_mark": label, "levels_mark_reason": outage}
-
-
-def levels_verdict(staleness: dict[str, str | None]) -> dict[str, str | None]:
-    """Return the levels verdict a screen shows, from terrain_staleness's answer.
-
-    The word, the chain's time, the age and why not live.
-    """
-    return {
-        k: staleness[k]
-        for k in (
-            "levels_state",
-            "levels_time_ct",
-            "levels_age_text",
-            "levels_stale_reason",
-        )
-    }
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
@@ -2786,7 +2791,7 @@ def gamma_surface_payload(
     """Return the heatmap's answer for ticker `tk` at `now` (the `surface` panel).
 
     With no live surface the answer is "unavailable" with the reason; there is no second source.
-    Served with the levels' verdict (levels_verdict) and the chain's and price's times.
+    Served with the levels' verdict (terrain_staleness) and the chain's and price's times.
     """
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live, verdict = terrain_cache_get(tk, now.timestamp())
@@ -2806,7 +2811,7 @@ def gamma_surface_payload(
             "available": True,
             "reason": None,
             "source": "terrain_live_cache",
-            **levels_verdict(verdict),
+            **verdict,
             "chain_basis": live.chain_basis,
             **window,
             "view": view,
@@ -3371,12 +3376,11 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     """
     t = ticker
     expiry = params.get("expiry")
-    held, staleness = terrain_cache_get(t, now)
+    # the chain's state is its levels' (terrain_staleness), the one verdict the screen shows
+    held, verdict = terrain_cache_get(t, now)
     listed = held.snap.expiries if held is not None else None
     requested = expiry.strip()[:10] if isinstance(expiry, str) and expiry.strip() else None
     resolved_expiry = requested or (listed[0] if listed else None)
-    # the chain's state is its levels' (terrain_staleness), the one verdict the screen shows
-    verdict = levels_verdict(staleness)
 
     def _unavailable(reason: str) -> dict[str, Any]:
         return {
@@ -4042,7 +4046,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
             else None
         ),
         # the gamma levels' verdict (terrain_staleness: LIVE, CLOSE, STALE, NOT LIVE)
-        **levels_verdict(verdict),
+        **verdict,
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
