@@ -14,7 +14,7 @@ from liquidity_value_engine import (
     count_session_rth_positive_volume_bars,
 )
 from micro_structure import Candle
-from time_et import session
+from time_et import session, sessions
 
 FRIDAY = date(2026, 10, 2)
 
@@ -37,11 +37,15 @@ def test_first_positive_volume_rth_bar_produces_session_vwap() -> None:
     The rule names no ticker.
     """
     bars = bars_from_candles([_rth_bar(FRIDAY, 0, 100.0, volume=2_500.0)])
-    assert compute_session_vwap_series(bars, FRIDAY), "VWAP absent after the first +volume RTH bar"
-    assert count_session_rth_positive_volume_bars(bars, FRIDAY) == 1
+    held = sessions()
+    assert compute_session_vwap_series(bars, FRIDAY, sessions=held), (
+        "VWAP absent after the first +volume RTH bar"
+    )
+    assert count_session_rth_positive_volume_bars(bars, FRIDAY, sessions=held) == 1
 
 
 def test_zero_volume_rth_bar_does_not_create_session_vwap() -> None:
     bars = bars_from_candles([_rth_bar(FRIDAY, 0, 100.0, volume=0.0)])
-    assert compute_session_vwap_series(bars, FRIDAY) == []
-    assert count_session_rth_positive_volume_bars(bars, FRIDAY) == 0
+    held = sessions()
+    assert compute_session_vwap_series(bars, FRIDAY, sessions=held) == []
+    assert count_session_rth_positive_volume_bars(bars, FRIDAY, sessions=held) == 0

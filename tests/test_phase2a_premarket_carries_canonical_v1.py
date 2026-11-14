@@ -25,7 +25,7 @@ from liquidity_value_engine import (
 )
 from micro_structure import Candle
 from tests.conftest import most_recent_trading_day_et
-from time_et import ET
+from time_et import ET, sessions
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -86,6 +86,7 @@ def _canonical(session: date, bars: list):
         bars_from_candles(bars),
         prior=prior,
         bar_source="test_fixture",
+        sessions=sessions(),
         config=PlaybookConfig(),
     )
 
@@ -121,7 +122,12 @@ def test_the_live_builder_before_the_open_carries_the_snapshot():
     canon = _canonical(session, _bars(session))
     pre_open = datetime(session.year, session.month, session.day, 9, 0, tzinfo=ET)
     out = build_live_snapshot(
-        "SPY", PlaybookConfig(), canonical=canon, now=pre_open, extra_levels=[]
+        "SPY",
+        PlaybookConfig(),
+        canonical=canon,
+        now=pre_open,
+        extra_levels=[],
+        sessions=sessions(),
     )
     assert out.snapshot_type.value == "premarket"
     got = _published(out)

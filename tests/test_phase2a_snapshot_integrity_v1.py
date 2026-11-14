@@ -18,7 +18,7 @@ from liquidity_value_engine import PlaybookConfig
 from micro_structure import Candle
 from server import materialize_price_level_snapshot
 from tests.conftest import most_recent_trading_day_et
-from time_et import ET
+from time_et import ET, sessions
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -157,12 +157,19 @@ def test_the_fingerprint_covers_every_bar_field():
     session = most_recent_trading_day_et()
     base = _bars(session, 105.0)
     (prior,) = _daily(session, base)
-    fp = LVE.snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture", prior)
+    held = sessions()
+
+    def key(bars, candle, hours=held):
+        return LVE.snapshot_input_fingerprint(
+            "ZZRC324", session, bars, "test_fixture", candle, hours
+        )
+
+    fp = key(base, prior)
 
     for field in ("open", "high", "low", "close", "volume"):
         mutated = [dict(b) for b in base]
         mutated[30][field] = mutated[30][field] + 7.0
-        other = LVE.snapshot_input_fingerprint("ZZRC324", session, mutated, "test_fixture", prior)
+        other = key(mutated, prior)
         assert other != fp, (
             f"changing an interior bar's {field} left the fingerprint unchanged — that "
             f"field can go stale (RC-324)"
@@ -171,10 +178,17 @@ def test_the_fingerprint_covers_every_bar_field():
     # A timestamp change must also register.
     shifted = [dict(b) for b in base]
     shifted[30]["timestamp"] = shifted[30]["timestamp"] + 60_000
-    assert LVE.snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture", prior) != fp
+    assert key(shifted, prior) != fp
 
     # So must each field of the prior session's daily candle, and its absence.
     for field in ("high", "low", "close"):
         moved = Candle(**{**prior.__dict__, field: getattr(prior, field) + 7.0})
-        assert LVE.snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture", moved) != fp
-    assert LVE.snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture", None) != fp
+        assert key(base, moved) != fp
+    assert key(base, None) != fp
+
+    # And Schwab's /markets answer for this session or the prior one, held or not: an answer
+    # that arrives after the levels were built is a new input
+    prior_day = datetime.fromtimestamp(prior.ts, ET).date().isoformat()
+    for day in (session.isoformat(), prior_day):
+        assert day in held, f"no /markets answer held for {day}: the check would be vacuous"
+        assert key(base, prior, {d: s for d, s in held.items() if d != day}) != fp

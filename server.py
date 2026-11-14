@@ -139,6 +139,7 @@ from time_et import (
     record_markets,
     session,
     session_label,
+    sessions,
     valuation_instant,
 )
 
@@ -3635,13 +3636,15 @@ def materialize_price_level_snapshot(
 
     Built by the calculator (liquidity_value_engine.build_price_level_snapshot) from normalized
     bars (bars_from_candles) and Schwab's daily candles (`daily`, _series), and held here, the
-    one store of it. A new input (the bars or the prior session's candle changed) builds exactly
-    once; every later ask with that input is a read, never a recomputation.
+    one store of it. A new input (the bars, the prior session's candle or the regular hours
+    Schwab's /markets sent changed) builds exactly once; every later ask with that input is a read,
+    never a recomputation.
     """
     tk = ticker_storage_key(ticker)
     key = (tk, session_date.isoformat())
     prior = prior_session(daily, session_date)
-    fingerprint = snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source, prior)
+    held = sessions()  # one set of Schwab's /markets answers for the key and the build
+    fingerprint = snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source, prior, held)
     # the read, the decision to build, the build and the write-back are one critical section:
     # unguarded, two concurrent callers can both see no result for this input and build two
     with _MATERIALIZE_LOCK:
@@ -3649,7 +3652,13 @@ def materialize_price_level_snapshot(
         if existing is not None and existing.input_fingerprint == fingerprint:
             return existing
         snap = build_price_level_snapshot(
-            tk, session_date, bars_norm, prior=prior, bar_source=bar_source, config=config
+            tk,
+            session_date,
+            bars_norm,
+            prior=prior,
+            bar_source=bar_source,
+            sessions=held,
+            config=config,
         )
         snap.input_fingerprint = fingerprint
         _MATERIALIZED_SNAPSHOTS[key] = snap
@@ -4252,7 +4261,9 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
     _canon = canonical_price_level_snapshot(ticker_upper, now)
     if _canon is None:
         return unavailable(ticker_upper, NO_PRICE_LEVELS_REASON, zones=[])
-    out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now, extra_levels=extra)
+    out = build_live_snapshot(
+        ticker_upper, config, canonical=_canon, now=now, extra_levels=extra, sessions=sessions()
+    )
     zones_payload = [
         {
             "zone_type": z.zone_type.value,

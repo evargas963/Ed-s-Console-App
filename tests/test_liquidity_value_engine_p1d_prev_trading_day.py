@@ -20,7 +20,7 @@ from liquidity_value_engine import (
     get_previous_day_levels,
     prior_session,
 )
-from time_et import ET
+from time_et import ET, sessions
 
 _FX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(
@@ -64,7 +64,10 @@ def test_the_prior_days_high_low_and_close_are_schwabs_daily_candle_as_sent():
             (date(2026, 10, 7), date(2026, 10, 6)),
         ):
             out = get_previous_day_levels(
-                bars_from_candles(minutes), prior_session(daily, session_day), PlaybookConfig()
+                bars_from_candles(minutes),
+                prior_session(daily, session_day),
+                PlaybookConfig(),
+                sessions=sessions(),
             )
             sent = _sent(symbol, prior_day)
             assert out["prior_date"] == prior_day
@@ -79,7 +82,10 @@ def test_the_prior_close_is_schwabs_official_close_not_the_last_minutes():
     """SPY 2026-10-01: Schwab's daily close 763.99; its last regular 1-minute bar closed 764.03."""
     daily, minutes = _held("SPY")
     out = get_previous_day_levels(
-        bars_from_candles(minutes), prior_session(daily, date(2026, 10, 2)), PlaybookConfig()
+        bars_from_candles(minutes),
+        prior_session(daily, date(2026, 10, 2)),
+        PlaybookConfig(),
+        sessions=sessions(),
     )
     assert out["pdc"] == 763.99
 
@@ -94,7 +100,12 @@ def test_no_daily_candle_before_the_session_leaves_the_prior_day_absent():
     daily, minutes = _held("SPY")
     first = min(datetime.fromtimestamp(c.ts, ET).date() for c in daily)
     assert prior_session(daily, first) is None
-    assert get_previous_day_levels(bars_from_candles(minutes), None, PlaybookConfig()) == {}
+    assert (
+        get_previous_day_levels(
+            bars_from_candles(minutes), None, PlaybookConfig(), sessions=sessions()
+        )
+        == {}
+    )
 
 
 def test_the_prior_value_area_is_estimated_from_that_sessions_regular_bars_only():
@@ -105,7 +116,10 @@ def test_the_prior_value_area_is_estimated_from_that_sessions_regular_bars_only(
     """
     daily, minutes = _held("SPY")
     out = get_previous_day_levels(
-        bars_from_candles(minutes), prior_session(daily, date(2026, 10, 2)), PlaybookConfig()
+        bars_from_candles(minutes),
+        prior_session(daily, date(2026, 10, 2)),
+        PlaybookConfig(),
+        sessions=sessions(),
     )
     assert out["rth_bars"] == 390
     assert out["pd_val"] <= out["pd_poc"] <= out["pd_vah"]

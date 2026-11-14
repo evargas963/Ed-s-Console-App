@@ -13,7 +13,7 @@ from datetime import date, datetime
 from liquidity_value_engine import bars_from_candles, compute_session_vwap_series
 from micro_structure import Candle
 from tests.feed_live_helper import daemon_bars
-from time_et import ET
+from time_et import ET, sessions
 
 
 def test_session_vwap_absent_when_volume_missing():
@@ -32,6 +32,7 @@ def test_session_vwap_absent_when_volume_missing():
         close=bar["close"],
         volume=bar["volume"],
     )
-    assert compute_session_vwap_series(bars_from_candles([sent]), session) != []
+    held = sessions()
+    assert compute_session_vwap_series(bars_from_candles([sent]), session, sessions=held) != []
     bars = [replace(sent, volume=None)]
-    assert compute_session_vwap_series(bars_from_candles(bars), session) == []
+    assert compute_session_vwap_series(bars_from_candles(bars), session, sessions=held) == []
