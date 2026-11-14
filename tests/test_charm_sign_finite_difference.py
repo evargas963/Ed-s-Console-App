@@ -30,6 +30,7 @@ from math_levels import compute_charm_by_strike
 from option_contract import read_chain
 from tests.one_contract_greeks import charm, vanna
 from tests.real_chains import MRVL, SPY_0DTE, SPY_FULL, RealChain
+from tests.shared_helpers import norm_cdf
 from time_et import ET, option_close_product, time_to_expiry_years
 
 SIGMA = 0.20
@@ -45,13 +46,9 @@ CASES = [
 ]
 
 
-def _N(x: float) -> float:
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-
-
 def _call_delta(S: float, T: float) -> float:
     d1 = (math.log(S / K) + 0.5 * SIGMA * SIGMA * T) / (SIGMA * math.sqrt(T))
-    return _N(d1)
+    return norm_cdf(d1)
 
 
 def _fd_calendar_charm(S: float, dte: int) -> float:

@@ -63,6 +63,7 @@ from app.market_data.schwab.streaming import capture, live_ui
 from instrument_identity import ticker_storage_key
 from option_contract import read_chain
 from stream_spine import HealthRegistry, MessageBus, quote_msg
+from tests.feed_live_helper import clock_from
 from tests.real_chains import CRWD, MRVL
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
 
@@ -148,7 +149,7 @@ async def _next_row(ws, sym, pred=lambda _r: True, timeout=3.0):
 
 def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
     """In regular hours: the server's clock runs from _RTH."""
-    clock = _clock_from(_RTH)
+    clock = clock_from(_RTH)
 
     async def body(bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
@@ -231,7 +232,7 @@ def test_an_index_typed_bare_is_served_under_its_storage_key():
     The subscription goes through ticker_storage_key, so the typed form gets the index's rows. In
     regular hours (_RTH).
     """
-    clock = _clock_from(_RTH)
+    clock = clock_from(_RTH)
 
     async def body(bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX"]}))
@@ -246,12 +247,6 @@ def test_an_index_typed_bare_is_served_under_its_storage_key():
 _RTH, _CLOSED = 1790780400.0, 1790820000.0
 
 
-def _clock_from(start: float):
-    """Return a clock running from `start` (the session the test is in); time still passes."""
-    began = time_et.elapsed()
-    return lambda: start + time_et.elapsed() - began
-
-
 @pytest.mark.parametrize("start", [_RTH, _CLOSED], ids=["rth", "closed"])
 def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5).
@@ -261,7 +256,7 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
     the market closed. The server's clock runs from `start` so the session is that hour, and time
     still passes.
     """
-    clock = _clock_from(start)
+    clock = clock_from(start)
 
     async def body(bus, ws, feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
@@ -282,7 +277,7 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
 
 
 def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
-    clock = _clock_from(_CLOSED)
+    clock = clock_from(_CLOSED)
 
     async def body(bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["TSLA"]}))

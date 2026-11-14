@@ -6,14 +6,8 @@ math_exposure_core.compute_exposures_by_strike. Induced (named): fields taken ou
 contracts, as Schwab leaves a field out.
 """
 
-from math_exposure_core import compute_exposures_by_strike
 from math_levels import compute_max_pain
-from option_contract import read_chain
-from tests.real_chains import CRWD
-
-
-def _exposures(chain: list[dict]) -> dict[float, dict]:
-    return compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)[0]
+from tests.real_chains import CRWD, crwd_exposures
 
 
 def test_compute_max_pain_returns_none_for_sparse_chain():
@@ -21,4 +15,4 @@ def test_compute_max_pain_returns_none_for_sparse_chain():
     # one strike with open interest (a one-sided strike, calls only): no grid to settle over
     one = [ct for ct in CRWD.chain if ct["strikePrice"] == 315.0]
     assert [ct["openInterest"] > 0 for ct in one] == [True, False]
-    assert compute_max_pain(_exposures(one)) is None
+    assert compute_max_pain(crwd_exposures(one)) is None

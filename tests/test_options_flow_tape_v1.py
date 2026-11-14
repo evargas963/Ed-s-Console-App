@@ -19,9 +19,7 @@ chain that lists the call and the put).
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
-from pathlib import Path
 
 import live_market_plane as lmp
 import server
@@ -32,29 +30,24 @@ from app.options.order_flow.state import OrderFlowState
 from app.options.order_flow.streaming import _ingest_pushed
 from option_contract import read_chain, read_contract
 from stream_spine import verbatim_msg
+from tests.shared_helpers import fixture_json
 from time_et import ET
 
-_FX = Path(__file__).resolve().parent / "fixtures"
 CALL = "SPY   261023C00761000"
 PUT = "SPY   261023P00762000"
 SIZE_ONLY = "SPY   260904C00772000"
 INSIDE = "SPY   261019C00764000"
 
-
-def _load(name: str) -> dict:
-    return json.loads((_FX / name).read_text(encoding="utf-8"))
-
-
 #: the call's and the put's /chains rows, as Schwab sent them in the capture before their messages
 LISTED = {
     c["symbol"]: read_contract(c)
-    for c in _load("real_spy_option_contract_type_2026_10_23.json")["chain"]["contracts"]
+    for c in fixture_json("real_spy_option_contract_type_2026_10_23.json")["chain"]["contracts"]
 }
 
 
 def _sent(contract: str) -> list[tuple[float, dict]]:
     """Return Schwab's first four records of `contract`, each with the time it was received."""
-    rows = _load("real_spy_option_contract_type_2026_10_23.json")["contracts"][contract]
+    rows = fixture_json("real_spy_option_contract_type_2026_10_23.json")["contracts"][contract]
     return [(r["ts_recv"], r["item"]) for r in rows]
 
 
@@ -142,7 +135,7 @@ def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row
     """
     contract = next(
         c
-        for c in _load("real_options_stream_history_samples.json")["contracts"]
+        for c in fixture_json("real_options_stream_history_samples.json")["contracts"]
         if c["symbol"] == SIZE_ONLY
     )
     sent = [(e["ts_recv"], e["content"]) for e in contract["events"] if e["kind"] == "l1"]
@@ -180,7 +173,7 @@ def test_a_print_without_a_size_or_a_multiplier_has_no_premium():
     assert sent[1][1]["LAST_PRICE"] == 2.07 and "LAST_SIZE" not in sent[1][1]
     sizeless, sized = _tape(CALL, sent)
     assert tape_row(sizeless, LISTED[CALL])["premium"] is None
-    chain = _load("real_spy_option_contract_type_2026_10_23.json")["chain"]["contracts"]
+    chain = fixture_json("real_spy_option_contract_type_2026_10_23.json")["chain"]["contracts"]
     bare = read_contract({k: v for k, v in chain[0].items() if k != "multiplier"})
     assert bare.symbol == CALL and tape_row(sized, bare)["premium"] is None
     assert tape_row(sized, LISTED[CALL])["premium"] == 2.04 * 1 * 100
@@ -196,7 +189,7 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
     """
     sent = {sym: _sent(sym) for sym in (CALL, PUT)}
     at = max(ts for rows in sent.values() for ts, _ in rows)
-    close = _load("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json")["newer"]
+    close = fixture_json("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json")["newer"]
     at_close = datetime.fromtimestamp(close["ts_utc"], ET)
     state.clear_all_live_state()
     try:
@@ -268,7 +261,7 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
 def test_classification_at_bid_at_ask_and_outside_spread_are_mechanical_not_aggressor():
     whole = next(
         m
-        for m in _load("real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json")[
+        for m in fixture_json("real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json")[
             "zero_volume_messages"
         ]
         if m["symbol"] == INSIDE
@@ -313,7 +306,7 @@ def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     """
     at, first = _sent(CALL)[0]
     _ingest_pushed(f"optquote.{CALL}", {"symbol": CALL, "ts_recv": at, "content": first})
-    book = _load("real_spy_nyse_nasdaq_books.json")["books"]["NYSE_BOOK"]
+    book = fixture_json("real_spy_nyse_nasdaq_books.json")["books"]["NYSE_BOOK"]
     history.BOOKS.record("SPY", "NYSE_BOOK", read_book(book["content"], "NYSE_BOOK"))
     kept = recent_prints(CALL, state.get_content_for_symbol(CALL), 50)
     assert len(kept) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)

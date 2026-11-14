@@ -7,7 +7,7 @@ from datetime import datetime as _dt
 import live_market_plane as lmp
 import server as srv
 import time_et
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, DAILY_CANDLE_BASIS
+from liquidity_value_engine import DAILY_CANDLE_BASIS
 from math_exposure_core import (
     compute_exposures_by_strike,
     net_gex_dollars_at_strike,
@@ -18,7 +18,9 @@ from option_contract import read_chain
 from tests.feed_live_helper import (
     daemon_bars,
     daemon_status,
+    forget_bars,
     hold_schwab_daily,
+    newest_bars,
     price_history,
     stream_daemon_bars,
 )
@@ -32,15 +34,6 @@ _DAEMON_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 _PAIR = ("SPY", "TSLA")
 
 
-def _forget(*tickers: str) -> None:
-    """No bar in memory or published level of `tickers` is left behind."""
-    for tk in tickers:
-        srv._bars.pop(tk, None)
-        srv._series.pop((tk, "1d"), None)
-        for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-            del _MATERIALIZED_SNAPSHOTS[key]
-
-
 def _candle(b: dict) -> Candle:
     return Candle(
         ts=b["timestamp"] / 1000.0,
@@ -50,15 +43,6 @@ def _candle(b: dict) -> Candle:
         close=b["close"],
         volume=b["volume"],
     )
-
-
-def _newest(rows: list[dict], tk: str) -> list[dict]:
-    """Schwab's newest receipt of each minute of `tk`, in time order."""
-    out = {}
-    for r in sorted(rows, key=lambda r: r["ts_recv"]):
-        if r["symbol"] == tk:
-            out[r["bar_start_ms"]] = r
-    return [out[ms] for ms in sorted(out)]
 
 
 def _sent_daily(tk: str, day: str) -> dict:
@@ -72,7 +56,7 @@ def _sent_daily(tk: str, day: str) -> dict:
 
 
 def _rth(rows: list[dict], tk: str, day: str) -> list[dict]:
-    at = [(_dt.fromtimestamp(r["bar_start_ms"] / 1000, ET), r) for r in _newest(rows, tk)]
+    at = [(_dt.fromtimestamp(r["bar_start_ms"] / 1000, ET), r) for r in newest_bars(rows, tk)]
     return [r for d, r in at if d.date().isoformat() == day and 570 <= d.hour * 60 + d.minute < 960]
 
 
@@ -119,7 +103,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
             _bar(2026, 10, 2, 0, 0, 96, 105, 95, 102),
         )
     ]
-    _forget(tk)
+    forget_bars(tk)
     try:
         for b in tape:
             srv._keep_bar(tk, _candle(b))
@@ -127,7 +111,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
         srv._publish_price_levels(tk, now)  # as the bar writer does
         payload = srv.levels_payload(tk, "1", now)
     finally:
-        _forget(tk)
+        forget_bars(tk)
 
     assert payload["schema_version"] == 1
     assert payload["spot"] is None, (
@@ -222,7 +206,7 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
     at 10:00 ET.
     """
     now = _dt(2026, 10, 2, 10, 0, tzinfo=ET)
-    _forget(*_PAIR)
+    forget_bars(*_PAIR)
     try:
         stream_daemon_bars(_DAEMON_BARS)
         for tk in _PAIR:
@@ -232,7 +216,7 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
             srv._publish_price_levels(tk, now)  # as the bar writer does
             payloads[tk] = srv.levels_payload(tk, "1", now)
     finally:
-        _forget(*_PAIR)
+        forget_bars(*_PAIR)
     for tk in _PAIR:
         monday = _rth(_DAEMON_BARS, tk, "2026-10-01")
         assert len(monday) == 390, tk
@@ -260,9 +244,9 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
     """
     tk, other = _PAIR
     now = _dt(2026, 10, 2, 19, 59, 30, tzinfo=ET)
-    pushed = {t: _newest(_DAEMON_BARS, t)[-1] for t in _PAIR}
+    pushed = {t: newest_bars(_DAEMON_BARS, t)[-1] for t in _PAIR}
     loaded = [r for r in _DAEMON_BARS if r not in pushed.values()]
-    _forget(*_PAIR)
+    forget_bars(*_PAIR)
     try:
         stream_daemon_bars(loaded)
         for t in _PAIR:
@@ -310,4 +294,4 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
             tk, "2026-10-02"
         )["high"]
     finally:
-        _forget(*_PAIR)
+        forget_bars(*_PAIR)

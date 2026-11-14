@@ -36,13 +36,10 @@ from calibration.complete_chain_capture import PRICE_HISTORY, ChainSweep, price_
 from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.page_on_socket import pages
 from tests.schwab_rest_standin import HISTORY, PRICEHISTORY, LocalSchwab
+from tests.shared_helpers import et_ts
 from time_et import ET
 
 _SERIES = {s: (kind, str(n)) for s, (_, _, kind, n) in PRICE_HISTORY.items()}
-
-
-def _et(s: str) -> float:
-    return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
 def _sweep(tmp_path, clock, publish):
@@ -60,16 +57,16 @@ def _sweep(tmp_path, clock, publish):
 def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_sent(tmp_path):
     schwab = LocalSchwab()
     published: list = []
-    clock = {"now": _et("2026-10-01 09:05")}  # Thursday, in the pre-market Schwab sent
+    clock = {"now": et_ts("2026-10-01 09:05")}  # Thursday, in the pre-market Schwab sent
     sweep = _sweep(tmp_path, clock, lambda topic, msg: published.append((topic, msg)))
     client = schwab.client(tmp_path)
 
     def due(at: str) -> list[str]:
-        return sweep.candles_due("SPY", datetime.fromtimestamp(_et(at), ET))
+        return sweep.candles_due("SPY", datetime.fromtimestamp(et_ts(at), ET))
 
     def ask(at: str) -> list[str]:
         before = len(schwab.asked(PRICEHISTORY))
-        clock["now"] = _et(at)
+        clock["now"] = et_ts(at)
         sweep.candles(lambda: client, {"SPY": due(at)}, threading.Event())
         return [q["frequencyType"] + q["frequency"] for q in schwab.asked(PRICEHISTORY)[before:]]
 
@@ -113,7 +110,7 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
             frequency_type,
             str(frequency),
         ), series
-        assert q["endDate"] == str(int(_et("2026-10-01 09:05") * 1000)), (
+        assert q["endDate"] == str(int(et_ts("2026-10-01 09:05") * 1000)), (
             "each request ends at the clock"
         )
         assert q["needExtendedHoursData"] == "true"
@@ -150,7 +147,7 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
             "src": "schwab_pricehistory",
             "symbol": "SPY",
             "series": series,
-            "ts_recv": _et("2026-10-01 09:05"),
+            "ts_recv": et_ts("2026-10-01 09:05"),
             "answer": sent,
         }, (topic, series)
 

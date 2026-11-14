@@ -41,6 +41,11 @@ def _redirect_url_arg() -> str | None:
 
 
 def _print_post_reauth_validation(token_path: str) -> None:
+    print(f"\nSUCCESS: Token written to {token_path}")
+    print(
+        "No restart: the capture daemon takes it at once if Schwab refused the old "
+        "sign-in, else when its token next comes due (within about 30 minutes)."
+    )
     if not os.path.exists(token_path):
         return
     inv = inspect_token_file(token_path)
@@ -87,11 +92,6 @@ def reauth():
                 token_path=token_path,
             )
             if ok:
-                print(f"\nSUCCESS: Token written to {token_path}")
-                print(
-                    "No restart: the capture daemon takes it at once if Schwab refused the old "
-                    "sign-in, else when its token next comes due (within about 30 minutes)."
-                )
                 _print_post_reauth_validation(token_path)
                 return
             print(f"\nFAILURE: {msg}")
@@ -138,11 +138,6 @@ def reauth():
         token_path=token_path,
     )
     if ok:
-        print(f"\nSUCCESS: Token written to {token_path}")
-        print(
-            "No restart: the capture daemon takes it at once if Schwab refused the old "
-            "sign-in, else when its token next comes due (within about 30 minutes)."
-        )
         _print_post_reauth_validation(token_path)
     else:
         print(f"\nFAILURE: {msg}")

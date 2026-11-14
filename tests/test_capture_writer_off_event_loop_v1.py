@@ -18,6 +18,7 @@ from pathlib import Path
 import time_et
 from app.market_data.schwab.streaming import capture
 from stream_spine import LOG, CaptureWriter, MessageBus, quote_msg
+from tests.shared_helpers import TimerCountingLoop
 
 #: production's stream of 2026-10-05 14:00:00-14:00:03 CT (RTH): every LEVELONE_EQUITIES and
 #: LEVELONE_OPTIONS item Schwab sent, in receive order, as stored
@@ -31,16 +32,6 @@ _BURST = [
     for m in _MIX["messages"]
     if m["service"] in ("LEVELONE_EQUITIES", "LEVELONE_OPTIONS")
 ]
-
-
-class _TimerCountingLoop(asyncio.SelectorEventLoop):
-    """asyncio's own event loop, counting each timer scheduled on it (call_at); nothing else."""
-
-    timers = 0
-
-    def call_at(self, when, callback, *args, context=None):
-        self.timers += 1
-        return super().call_at(when, callback, *args, context=context)
 
 
 def _rows(path, table: str) -> int:
@@ -62,7 +53,7 @@ def test_the_writer_takes_each_message_with_no_timer_and_writes_all_delivered_be
     writer = CaptureWriter(tmp_path / "cap.db")
     bus = MessageBus()
     sub = bus.subscribe("", policy=LOG)
-    loop = _TimerCountingLoop()
+    loop = TimerCountingLoop()
 
     async def go() -> int:
         stop = asyncio.Event()

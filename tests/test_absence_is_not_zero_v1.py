@@ -32,16 +32,10 @@ import pytest
 
 import terrain_engine as TE
 from liquidity_models import volume_profile
-from math_exposure_core import compute_exposures_by_strike
-from option_contract import read_chain
 from tests.feed_live_helper import daemon_bars
-from tests.real_chains import CRWD
+from tests.real_chains import CRWD, crwd_exposures
 
 _BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY")
-
-
-def _exposures(chain: list[dict]) -> dict[float, dict]:
-    return compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)[0]
 
 
 def _at(strike: float) -> dict[str, dict]:
@@ -73,7 +67,7 @@ def test_a_measured_gamma_still_draws_its_bar():
         side: ct["gamma"] * ct["openInterest"] * ct["multiplier"] * CRWD.spot * CRWD.spot * 0.01
         for side, ct in legs.items()
     }
-    rows = [r for r in TE._per_strike_rows(_exposures(CRWD.chain)) if r[0] == 270.0]
+    rows = [r for r in TE._per_strike_rows(crwd_exposures(CRWD.chain)) if r[0] == 270.0]
     assert len(rows) == 1
     assert rows[0][0] == pytest.approx(270.0)
     assert rows[0][1] == pytest.approx(gex["CALL"] - gex["PUT"], rel=1e-12)
@@ -86,7 +80,7 @@ def test_a_genuine_zero_gamma_still_draws_its_bar():
     Strike 297.5: Schwab sent open interest 0 on both sides.
     """
     assert [ct["openInterest"] for ct in _at(297.5).values()] == [0, 0]
-    rows = [r for r in TE._per_strike_rows(_exposures(CRWD.chain)) if r[0] == 297.5]
+    rows = [r for r in TE._per_strike_rows(crwd_exposures(CRWD.chain)) if r[0] == 297.5]
     assert len(rows) == 1 and rows[0][1] == pytest.approx(0.0)
 
 
@@ -99,7 +93,7 @@ def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_has_gex_unknown(
     call = next(c for c in chain if c["strikePrice"] == 270.0 and c["putCall"] == "CALL")
     assert call["openInterest"] > 0
     del call["gamma"]
-    rows = TE._per_strike_rows(_exposures(chain))
+    rows = TE._per_strike_rows(crwd_exposures(chain))
     assert [r[:2] for r in rows if r[0] == 270.0] == [[270.0, None]]
 
 

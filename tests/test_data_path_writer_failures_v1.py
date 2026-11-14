@@ -105,6 +105,13 @@ async def _until(pred, limit: float = 10.0) -> None:
         await asyncio.sleep(0.05)
 
 
+def _writable(db: Path) -> None:
+    """The database file `db` and the WAL files beside it take writes again."""
+    for path in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        if path.exists():
+            os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+
+
 def test_the_writer_handed_the_consoles_database_refuses_it_naming_the_file(tmp_path):
     """The one writer records into stream_capture.db only.
 
@@ -304,11 +311,6 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     os.chmod(db, stat.S_IREAD)
 
-    def writable() -> None:
-        for path in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
-            if path.exists():
-                os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
-
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         daemon = capture.Daemon(bus, health)
@@ -321,7 +323,7 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
             )
         )
         during = daemon.status(time_et.now()).get("writer")
-        writable()
+        _writable(db)
         await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
         after = daemon.status(time_et.now()).get("writer")
         stop.set()
@@ -331,7 +333,7 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
     try:
         during, after = asyncio.run(go())
     finally:
-        writable()
+        _writable(db)
 
     assert _count(db, "stream_options_quotes_raw") == len(_EVENTS), "the writer never recovered"
     assert during["state"] == "blocked"
@@ -379,11 +381,6 @@ def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_onc
     writer = CaptureWriter(db)
     os.chmod(db, stat.S_IREAD)
 
-    def writable() -> None:
-        for path in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
-            if path.exists():
-                os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
-
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
@@ -392,7 +389,7 @@ def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_onc
         await _until(  # refused, the 4 held
             lambda: writer.status()["state"] == "blocked" and writer.status()["held"] == 4
         )
-        writable()
+        _writable(db)
         await _until(lambda: writer.status()["state"] == "dead")
         dead = writer.status()
         stop.set()
@@ -402,7 +399,7 @@ def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_onc
     try:
         dead, after = asyncio.run(go())
     finally:
-        writable()
+        _writable(db)
 
     assert dead["state"] == "dead" and dead["error"] == "RuntimeError: a defect in the writer"
     assert dead["unrecorded"] == 4 and dead["rows_written"] == 0
@@ -799,16 +796,7 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
             [(older.name, 4), (newer.name, 2)],
         )
 
-    async def go():
-        bus, stop = MessageBus(), asyncio.Event()
-        writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        await _until(lambda: writer.status()["spill"] is None)
-        stop.set()
-        await task
-        return writer.status()
-
-    after = asyncio.run(go())
+    after = _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
 
     with closing(sqlite3.connect(db)) as conn, conn:
         stored = [
@@ -956,16 +944,7 @@ def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
     spill = db.with_name("stream_capture.1.spill")
     spill.write_bytes(framed[0] + rest)
 
-    async def go():
-        bus, stop = MessageBus(), asyncio.Event()
-        writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        await _until(lambda: writer.status()["spill"] is None)
-        stop.set()
-        await task
-        return writer.status()
-
-    after = asyncio.run(go())
+    after = _run_until_no_spill(CaptureWriter(db, batch_rows=1, batch_sec=0.01))
 
     with closing(sqlite3.connect(db)) as conn, conn:
         stored = [

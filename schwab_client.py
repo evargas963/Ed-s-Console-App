@@ -488,13 +488,11 @@ def _wait_for_callback_port(host: str, port: int, timeout: float = 5.0) -> bool:
     """Poll until the callback port is accepting connections. Returns True if ready."""
     deadline = time_et.elapsed() + timeout
     while time_et.elapsed() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                pass
-        except OSError:
-            time.sleep(0.1)
-        else:
-            return True
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            if s.connect_ex((host, port)) == 0:  # 0: connected; else the error's number
+                return True
+        time.sleep(0.1)
     return False
 
 

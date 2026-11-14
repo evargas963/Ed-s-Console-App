@@ -14,6 +14,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from stream_spine import HealthRegistry, MessageBus
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -36,6 +37,24 @@ def daemon_bars(name: str, *symbols: str) -> list[dict]:
     """
     rows = json.loads((_FIXTURES / name).read_text(encoding="utf-8"))["rows"]
     return [r for r in rows if not symbols or r["symbol"] in symbols]
+
+
+def newest_bars(rows: list[dict], tk: str) -> list[dict]:
+    """Schwab's newest receipt of each minute of `tk`, in time order."""
+    out = {}
+    for r in sorted(rows, key=lambda r: r["ts_recv"]):
+        if r["symbol"] == tk:
+            out[r["bar_start_ms"]] = r
+    return [out[ms] for ms in sorted(out)]
+
+
+def forget_bars(*tickers: str) -> None:
+    """No bar in memory or published level of `tickers` is left behind."""
+    for tk in tickers:
+        server._bars.pop(tk, None)
+        server._series.pop((tk, "1d"), None)
+        for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+            del _MATERIALIZED_SNAPSHOTS[key]
 
 
 def spy_minutes() -> list[dict]:

@@ -28,9 +28,8 @@ from math_exposure_core import (
     pick_pin_and_strength,
     pick_volatility_point_strikes,
 )
-from option_contract import read_chain
 from terrain_engine import compute_terrain, price_relations, qualify_pin_candidate
-from tests.real_chains import SPY_0DTE
+from tests.real_chains import SPY_0DTE, spy_0dte_book
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -107,10 +106,6 @@ _LEVEL_EXTRAS = {"hvp", "lvp", "gsf", "grc"}
 _SINGLE_SURFACE_FULL_BOOK = {"hvp", "lvp", "gsf", "grc"}
 
 
-def _fixture_book():
-    return read_chain(SPY_0DTE.chain), SPY_0DTE.spot
-
-
 def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     """Premise: the two pin-shaped definitions disagree on this chain.
 
@@ -121,7 +116,7 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     split, so every name-to-metric wiring below is checked against a number the other
     metric cannot produce.
     """
-    chain, spot = _fixture_book()
+    chain, spot = spy_0dte_book()
     ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     total_leader, _strength = pick_pin_and_strength(ex)
     net_leader, _net_call_peak = pick_volatility_point_strikes(ex)  # the net put gamma peak
@@ -140,7 +135,7 @@ def test_terrain_names_carry_their_declared_definitions():
 
     Same book, same strikes, ONE faucet per definition.
     """
-    chain, spot = _fixture_book()
+    chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     assert snap.absolute_gamma_strike == pick_pin_and_strength(ex)[0]
@@ -185,7 +180,7 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
     # The real book, valued at its capture (2026-10-07 12:32 ET): gamma at spot is -$2.44B, so the
     # regime gate withholds the claim, and liquidity too -- WITH the reasons; the measured
     # concentration stays.
-    chain, spot = _fixture_book()
+    chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW)
     served = price_relations(snap.to_dict(), spot).to_dict()
     assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
@@ -201,7 +196,7 @@ def test_every_level_shaped_payload_name_is_declared():
 
     The omission RC-303 names as the root becomes a failing test.
     """
-    chain, spot = _fixture_book()
+    chain, spot = spy_0dte_book()
     published = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     payload = published | price_relations(published, spot).to_dict()  # as the terrain panel sends
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}

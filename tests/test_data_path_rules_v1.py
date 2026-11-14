@@ -39,7 +39,7 @@ from calibration.complete_chain_capture import (
     price_history_message,
 )
 from db import get_db
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, bars_from_candles
+from liquidity_value_engine import bars_from_candles
 from stream_spine import (
     LATEST,
     LOG,
@@ -53,11 +53,14 @@ from stream_spine import (
 from tests.feed_live_helper import (
     daemon_bars,
     daemon_status,
+    forget_bars,
     hold_schwab_daily,
+    newest_bars,
     price_history,
     stream_daemon_bars,
 )
 from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
+from tests.shared_helpers import et_ts
 from time_et import ET, ct_label, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -447,10 +450,6 @@ def test_d5_while_closed_a_live_feed_keeps_the_last_values_marked_not_live_not_o
 # ticker can deliver a chain with no contracts, and then its option market is not known).
 
 
-def _et(s: str) -> float:
-    return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
-
-
 class _Swept:
     """The sweep (the watchlist `watchlist`) at `clock["now"]`.
 
@@ -459,7 +458,7 @@ class _Swept:
     """
 
     def __init__(self, tmp_path, at: str, watchlist: list[str]):
-        self.clock = {"now": _et(at)}
+        self.clock = {"now": et_ts(at)}
         self.chains: list[str] = []
         self.delivered: list[float] = []
         self.schwab = LocalSchwab()
@@ -486,7 +485,7 @@ class _Swept:
         Return the number of requests Schwab's host received before the move.
         """
         before = len(self.schwab.requests)
-        self.clock["now"] = _et(at)
+        self.clock["now"] = et_ts(at)
         return before
 
     def until(self, n: int) -> list[str]:
@@ -731,11 +730,11 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     swept = _Swept(tmp_path, "2026-10-01 17:00", ["SPY"])
     try:
         after_hours = swept.idle()
-        swept.clock["now"] = _et("2026-10-01 20:00:30")
+        swept.clock["now"] = et_ts("2026-10-01 20:00:30")
         swept.idle()
-        swept.clock["now"] = _et("2026-10-02 03:30")
+        swept.clock["now"] = et_ts("2026-10-02 03:30")
         swept.idle()
-        swept.clock["now"] = _et("2026-10-02 03:45")
+        swept.clock["now"] = et_ts("2026-10-02 03:45")
         swept.idle()
     finally:
         swept.close()
@@ -748,7 +747,7 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
         return [
             q["frequencyType"] + q["frequency"]
             for q in swept.schwab.asked("/marketdata/v1/pricehistory")
-            if q["endDate"] == str(int(_et(when) * 1000))
+            if q["endDate"] == str(int(et_ts(when) * 1000))
         ]
 
     assert (
@@ -827,10 +826,12 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
         "each expiry once more after the 16:15 close"
     )
 
-    stands = server.terrain_staleness(_et("2026-10-07 16:20"), "SPY", now=_et("2026-10-07 17:00"))
+    stands = server.terrain_staleness(
+        et_ts("2026-10-07 16:20"), "SPY", now=et_ts("2026-10-07 17:00")
+    )
     assert (stands["levels_state"], stands["levels_stale_reason"]) == ("CLOSE", "")
     assert (
-        server.terrain_staleness(_et("2026-10-07 15:00"), "SPY", now=_et("2026-10-07 16:10"))[
+        server.terrain_staleness(et_ts("2026-10-07 15:00"), "SPY", now=et_ts("2026-10-07 16:10"))[
             "levels_state"
         ]
         == "STALE"
@@ -854,9 +855,9 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
 
     def clock() -> float:
         return (
-            _et("2026-10-07 16:20")
+            et_ts("2026-10-07 16:20")
             if any(r[0] == chains for r in schwab.requests)
-            else _et("2026-10-07 16:10")
+            else et_ts("2026-10-07 16:10")
         )
 
     def publish(_topic, msg):
@@ -886,13 +887,13 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
                 )
             }
         )
-    assert delivered == [_et("2026-10-07 16:10"), _et("2026-10-07 16:20")], (
+    assert delivered == [et_ts("2026-10-07 16:10"), et_ts("2026-10-07 16:20")], (
         "a chain carries the time it began"
     )
     assert asked and all(asked.count(e) == 2 for e in asked), (
         "each expiry: the chain in flight, then the close chain"
     )
-    assert stored == [_et("2026-10-07 16:10"), _et("2026-10-07 16:20")], (
+    assert stored == [et_ts("2026-10-07 16:10"), et_ts("2026-10-07 16:20")], (
         "each chain stored at the time it began"
     )
     assert writer.status()["failures"] == 0, "a chain history write failed"
@@ -915,7 +916,7 @@ def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_on
     swept = _Swept(tmp_path, "2026-10-12 10:00", ["TSLA"])
     try:
         monday = swept.idle()
-        swept.clock["now"] = _et("2026-10-13 10:00")
+        swept.clock["now"] = et_ts("2026-10-13 10:00")
         swept.idle()
     finally:
         swept.close()
@@ -933,21 +934,23 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
 
     Ticker ZZCLOSED has no chain failure recorded.
     """
-    sat, monday_early = _et("2026-10-03 12:00"), _et("2026-10-05 03:00")
+    sat, monday_early = et_ts("2026-10-03 12:00"), et_ts("2026-10-05 03:00")
     for now in (sat, monday_early):
-        st = server.terrain_staleness(_et("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
+        st = server.terrain_staleness(et_ts("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
         assert (st["levels_state"], st["levels_stale_reason"]) == ("CLOSE", ""), st
         # ZZCLOSED's options are stock options, whose own market closes at 16:00: a chain fetched at
         # 16:14 is its close values, one fetched at 15:59 is not
-        st = server.terrain_staleness(_et("2026-10-02 16:14"), "ZZCLOSED", now=now)
+        st = server.terrain_staleness(et_ts("2026-10-02 16:14"), "ZZCLOSED", now=now)
         assert st["levels_state"] == "CLOSE", st
-        st = server.terrain_staleness(_et("2026-10-02 15:59"), "ZZCLOSED", now=now)
+        st = server.terrain_staleness(et_ts("2026-10-02 15:59"), "ZZCLOSED", now=now)
         assert st["levels_state"] == "STALE" and st["levels_stale_reason"] == (
             "this ticker's options are closed and its close values have not been fetched"
         ), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
         assert st["levels_state"] == "STALE" and st["levels_age_text"] is None  # absent, not zero
-    st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
+    st = server.terrain_staleness(
+        et_ts("2026-10-01 10:00"), "ZZCLOSED", now=et_ts("2026-10-01 11:00")
+    )
     assert (
         st["levels_state"] == "STALE"
         and "has not delivered this ticker" in st["levels_stale_reason"]
@@ -960,7 +963,7 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     The daemon's price row: that trade is the spot with its trade time, the heartbeat live or
     not.
     """
-    at = _et("2026-10-02 11:00")
+    at = et_ts("2026-10-02 11:00")
     served = {}
     for live in (True, False):
         if live:
@@ -986,27 +989,9 @@ _DAEMON_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 _PAIR = ("SPY", "TSLA")
 
 
-def _newest(rows: list[dict], tk: str) -> list[dict]:
-    """Schwab's newest receipt of each minute of `tk`, in time order."""
-    out = {}
-    for r in sorted(rows, key=lambda r: r["ts_recv"]):
-        if r["symbol"] == tk:
-            out[r["bar_start_ms"]] = r
-    return [out[ms] for ms in sorted(out)]
-
-
 def _rth(rows: list[dict], tk: str, day: str) -> list[dict]:
-    at = [(datetime.fromtimestamp(r["bar_start_ms"] / 1000, ET), r) for r in _newest(rows, tk)]
+    at = [(datetime.fromtimestamp(r["bar_start_ms"] / 1000, ET), r) for r in newest_bars(rows, tk)]
     return [r for d, r in at if d.date().isoformat() == day and 570 <= d.hour * 60 + d.minute < 960]
-
-
-def _forget(*tickers: str) -> None:
-    """No bar in memory or published level of `tickers` is left behind."""
-    for tk in tickers:
-        server._bars.pop(tk, None)
-        server._series.pop((tk, "1d"), None)
-        for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-            del _MATERIALIZED_SNAPSHOTS[key]
 
 
 def test_d5_while_closed_the_price_levels_are_the_last_sessions():
@@ -1018,7 +1003,7 @@ def test_d5_while_closed_the_price_levels_are_the_last_sessions():
     (2026-10-04: every ticker showed "no RTH volume" all weekend).
     """
     closed = datetime(2026, 10, 3, 12, 0, tzinfo=ET)
-    _forget(*_PAIR)
+    forget_bars(*_PAIR)
     try:
         stream_daemon_bars(_DAEMON_BARS)
         for tk in _PAIR:
@@ -1033,11 +1018,11 @@ def test_d5_while_closed_the_price_levels_are_the_last_sessions():
                 f["family"] for f in body["families_absent"]
             }, tk
             assert body["snapshot_time_ct"] == ct_label(
-                _newest(_DAEMON_BARS, tk)[-1]["bar_start_ms"] / 1000
+                newest_bars(_DAEMON_BARS, tk)[-1]["bar_start_ms"] / 1000
             ), tk
             assert served["PDH"] == max(r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-01")), tk
     finally:
-        _forget(*_PAIR)
+        forget_bars(*_PAIR)
 
 
 def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history():
@@ -1054,9 +1039,9 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
     session at its own clock (an entry point), so they are read at now: the newest session in the
     history before it is Tue 10-06.
     """
-    pushed = [_newest(_DAEMON_BARS, tk)[-1] for tk in _PAIR]
+    pushed = [newest_bars(_DAEMON_BARS, tk)[-1] for tk in _PAIR]
     history = {tk: price_history(tk, "1m") for tk in _PAIR}
-    _forget(*_PAIR)
+    forget_bars(*_PAIR)
     while not ofs.streamed_bars.empty():
         ofs.streamed_bars.get_nowait()
     try:
@@ -1113,7 +1098,7 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
                 r["volume"],
             ), (tk, "the streamed minute stands")
     finally:
-        _forget(*_PAIR)
+        forget_bars(*_PAIR)
 
 
 #: price_bars_1m as production holds it: the console's old bar store, which its quote accumulator
@@ -1165,13 +1150,13 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
         con.commit()
     finally:
         con.close()
-    _forget(*_PAIR)
+    forget_bars(*_PAIR)
     try:
         stream_daemon_bars(daemon)
         for tk in _PAIR:
             recorded = {
                 r["bar_start_ms"] / 1000: (r["open"], r["high"], r["low"], r["close"], r["volume"])
-                for r in _newest(daemon, tk)
+                for r in newest_bars(daemon, tk)
             }
             old = {
                 r["bar_start_ts_utc"]: (r["open"], r["high"], r["low"], r["close"], r["volume"])
@@ -1197,7 +1182,7 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
             assert served == recorded == levels_input, tk
             assert not set(old_only) & set(served), tk
     finally:
-        _forget(*_PAIR)
+        forget_bars(*_PAIR)
         con = sqlite3.connect(server.get_db().db_path)
         con.execute("DROP TABLE IF EXISTS price_bars_1m")
         con.commit()
