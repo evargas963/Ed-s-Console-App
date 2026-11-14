@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 import calibration.complete_chain_capture as cch
+from feed import chain_sweep as cs
 from feed import schwab_client as sc
 from stream_spine import CaptureWriter
 from time_et import ET
@@ -28,18 +29,18 @@ _MRVL = sc.flatten_chain_contracts(
 )
 
 
-def _chain() -> cch._Chain:
+def _chain() -> cs._Chain:
     """Inside a capture window, each contract with the sweep's mark that no quote came back."""
     by_expiry: dict[str, list[dict]] = {}
     for ct in _MRVL:
         by_expiry.setdefault(ct["expirationDate"][:10], []).append({**ct, "greeksTime": None})
     assert len(by_expiry) > 1
-    return cch._Chain("MRVL", _BEGUN, dict.fromkeys(by_expiry), by_expiry=by_expiry)
+    return cs._Chain("MRVL", _BEGUN, dict.fromkeys(by_expiry), by_expiry=by_expiry)
 
 
-def _sweep(tmp_path, publish) -> cch.ChainSweep:
+def _sweep(tmp_path, publish) -> cs.ChainSweep:
     sqlite3.connect(tmp_path / "ed_console.db").close()  # the daemon's database exists
-    return cch.ChainSweep(
+    return cs.ChainSweep(
         tmp_path / "ed_console.db",
         ["MRVL"],
         publish,

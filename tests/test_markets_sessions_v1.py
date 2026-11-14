@@ -27,7 +27,7 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import markets_message
+from feed.chain_sweep import markets_message
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.feed_live_helper import daemon_status, mark_feed_live
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab

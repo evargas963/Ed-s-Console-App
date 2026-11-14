@@ -20,8 +20,7 @@ as_packages = false
 allowed_importers = ["head.feed.**"]
 
 # Feed is protected as `schwab` is: `from feed import ...` is the outside name `feed` (the header
-# above), reached only by the daemon's stream and chain sweep, the operator's sign-in, the field
-# inventory and the tests
+# above), reached only by the daemon, the operator's sign-in, the field inventory and the tests
 [[tool.importlinter.contracts]]
 name = "Only the daemon reaches Feed"
 type = "protected"
@@ -30,7 +29,6 @@ as_packages = false
 allowed_importers = [
     "head.feed.**",
     "head.app.market_data.schwab.streaming.capture",
-    "head.calibration.complete_chain_capture",
     "head.reauth_schwab",
     "head.tools.schwab_field_inventory",
     "head.tests.**",

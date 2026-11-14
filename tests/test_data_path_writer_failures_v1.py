@@ -40,7 +40,7 @@ from app.market_data.schwab.streaming.program_lock import (
     ask_to_stop,
     release_owner_lock,
 )
-from calibration.complete_chain_capture import ChainSweep
+from feed.chain_sweep import ChainSweep
 from option_contract import read_chain
 from stream_spine import (
     LOG,

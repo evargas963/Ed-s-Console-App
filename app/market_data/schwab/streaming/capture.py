@@ -93,9 +93,9 @@ from app.market_data.schwab.streaming.program_lock import (
     release_owner_lock,
 )
 from app.options.order_flow import streaming as console_feed
-from calibration.complete_chain_capture import ChainSweep
 from config import build_config, load_dotenv_file
 from db_authority import canonical_console_db_path
+from feed.chain_sweep import ChainSweep
 from feed.schwab_client import SchwabClientState, build_client_from_token, safe_get_quotes
 from feed.stream import TimedStream, label
 from instrument_identity import ticker_storage_key
