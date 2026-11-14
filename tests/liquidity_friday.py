@@ -13,7 +13,6 @@ from functools import cache
 
 import pytest
 
-import liquidity_value_engine as lve
 import live_market_plane as lmp
 import server as srv
 from micro_structure import Candle
@@ -59,8 +58,8 @@ def published():
         with lmp._lock:
             lmp._by_ticker.pop(TK, None)
             lmp._fields_by_ticker.pop(TK, None)
-        for key in [k for k in lve._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
-            del lve._MATERIALIZED_SNAPSHOTS[key]
+        for key in [k for k in srv._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
+            del srv._MATERIALIZED_SNAPSHOTS[key]
 
     forget()
     for b in friday_bars():

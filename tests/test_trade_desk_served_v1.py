@@ -26,7 +26,7 @@ from app.options.order_flow.engine import (
 )
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import LevelCrossEvent
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, LEVEL_NAMES, PHASE2A_LEVEL_IDS
+from liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
 from micro_structure import Candle
 from option_contract import read_chain
 from terrain_engine import (
@@ -308,8 +308,8 @@ def _forget(tk):
     lmp._fields_by_ticker.pop(tk, None)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
-    for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-        del _MATERIALIZED_SNAPSHOTS[key]
+    for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+        del server._MATERIALIZED_SNAPSHOTS[key]
 
 
 def _priced(tk, chain, spot, ts_utc):

@@ -15,7 +15,6 @@ import functools
 import hashlib
 import logging
 import struct
-import threading
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -729,7 +728,7 @@ class PriceLevelValue:
 class PriceLevelSnapshot:
     """The ONE materialized result for (ticker, session scope) and its input.
 
-    `input_fingerprint` is set by materialize_price_level_snapshot, which builds again only
+    `input_fingerprint` is set by server.materialize_price_level_snapshot, which builds again only
     when it changes.
     """
 
@@ -793,7 +792,7 @@ _BAR_PRESENT = struct.Struct("<qdddddB")
 _BAR_ABSENT = struct.Struct("<qddddB")
 
 
-def _snapshot_input_fingerprint(
+def snapshot_input_fingerprint(
     ticker: str, session_date: date, bars_norm: list[Bar], bar_source: str, prior: Candle | None
 ) -> tuple[str, str, str, int, str]:
     """Identity of the INPUT. Same fingerprint ⇒ same result object.
@@ -1028,52 +1027,3 @@ def build_price_level_snapshot(
         )
 
     return snapshot(session_rth_vol_n, profile)
-
-
-#: (ticker, session_date_iso) -> the ONE materialized snapshot for the current bar input.
-_MATERIALIZED_SNAPSHOTS: dict[tuple[str, str], PriceLevelSnapshot] = {}
-#: Guards the whole read-decide-build-write of materialize_price_level_snapshot.
-#: Deciding to build from a value you then overwrite is a check-then-act, and a
-#: check-then-act is a race unless something serialises it.
-_MATERIALIZE_LOCK = threading.Lock()
-
-
-def materialize_price_level_snapshot(
-    ticker: str,
-    session_date: date,
-    bars_norm: list[Bar],
-    *,
-    daily: list[Candle],
-    bar_source: str,
-    config: PlaybookConfig | None = None,
-) -> PriceLevelSnapshot:
-    """Materialize once per input; return the SAME object while the input is the same.
-
-    Built from normalized bars (bars_from_candles) and Schwab's daily candles (`daily`,
-    server._series).
-
-    A new input (the bars or the prior session's candle changed) invokes the producer exactly
-    once. Every later ask with that input is a read, never a recomputation.
-    """
-    tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
-    key = (tk, session_date.isoformat())
-    prior = prior_session(daily, session_date)
-    fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source, prior)
-    # The read, the decision to build, the build and the write-back are ONE critical
-    # section. Unguarded, two concurrent callers can both see no result for this input and
-    # produce two.
-    with _MATERIALIZE_LOCK:
-        existing = _MATERIALIZED_SNAPSHOTS.get(key)
-        if existing is not None and existing.input_fingerprint == fingerprint:
-            return existing
-        snap = build_price_level_snapshot(
-            tk,
-            session_date,
-            bars_norm,
-            prior=prior,
-            bar_source=bar_source,
-            config=config,
-        )
-        snap.input_fingerprint = fingerprint
-        _MATERIALIZED_SNAPSHOTS[key] = snap
-        return snap

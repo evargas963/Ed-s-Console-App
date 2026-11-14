@@ -20,7 +20,6 @@ from __future__ import annotations
 from datetime import datetime
 
 import server
-from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from tests.feed_live_helper import daemon_bars, hold_schwab_daily, stream_daemon_bars
 from time_et import ET
 
@@ -38,8 +37,8 @@ def _published(now: datetime) -> dict:
         for tk in _PAIR:
             server._bars.pop(tk, None)
             server._series.pop((tk, "1d"), None)
-            for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-                del _MATERIALIZED_SNAPSHOTS[key]
+            for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+                del server._MATERIALIZED_SNAPSHOTS[key]
 
     forget()
     try:

@@ -10,18 +10,16 @@ from pathlib import Path
 
 import pytest
 
-import liquidity_value_engine as lve
 import server as srv
 from liquidity_value_engine import (
     PHASE2A_LEVEL_IDS,
     bars_from_candles,
     build_price_level_snapshot,
     compute_session_vwap_series,
-    materialize_price_level_snapshot,
     prior_session,
 )
 from micro_structure import Candle
-from server import _schwab_bar
+from server import _schwab_bar, materialize_price_level_snapshot
 from tests.feed_live_helper import daemon_bars, schwab_daily
 from time_et import ET
 
@@ -107,9 +105,9 @@ def _daemon_bars(name: str, tk: str) -> list:
 
 @pytest.fixture(autouse=True)
 def _clean_snapshots():
-    lve._MATERIALIZED_SNAPSHOTS.clear()
+    srv._MATERIALIZED_SNAPSHOTS.clear()
     yield
-    lve._MATERIALIZED_SNAPSHOTS.clear()
+    srv._MATERIALIZED_SNAPSHOTS.clear()
 
 
 # ── the materialized snapshot ────────────────────────────────────────────────
