@@ -48,7 +48,7 @@ BEAT_SEC = 0.1
 
 
 def _numbered(item: dict, fields) -> dict:
-    """An item as stored (named), back to the field numbers Schwab sends (the names' values)."""
+    """Return an item as stored (named) back in the field numbers Schwab sends (names' values)."""
     return {k if k == "key" else str(fields[k].value): v for k, v in item.items()}
 
 

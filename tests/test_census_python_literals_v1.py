@@ -46,7 +46,7 @@ FALLBACKS = [
 
 
 def _line(source: str) -> int:
-    """The one line check_end_to_end finds a shape on in `source`."""
+    """Return the one line check_end_to_end finds a shape on in `source`."""
     (found,) = {line for line, _what in e2e.shapes("product.py", source)}
     return found
 

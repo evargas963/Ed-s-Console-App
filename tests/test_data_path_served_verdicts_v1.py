@@ -328,7 +328,6 @@ def _told(tk: str, at: datetime) -> set:
 
     The minute is server.refresh_not_live_pages.
     """
-
     with pages() as served:
         page = served.open(tk, *server.PAGE_PANELS)
         server.refresh_not_live_pages(at.timestamp())

@@ -125,7 +125,7 @@ def _schwab_inputs(book: RealChain):
 
 
 def _finite_differences(book: RealChain):
-    """(inputs, dDelta/dt as T shrinks, dDelta/dSigma): central differences of _bsm_delta."""
+    """Return (inputs, dDelta/dt as T shrinks, dDelta/dSigma): _bsm_delta's central differences."""
     k, t, sigma, sign, r, q, size = _schwab_inputs(book)
     h, e = t * 1e-4, sigma * 1e-4
     charm_fd = (

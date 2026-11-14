@@ -25,7 +25,7 @@ def _real_chain():
 
 
 def _vanna(chain, spot, now) -> float | None:
-    """The terrain's vanna book at `now`: every strike's net vanna, per vol point, summed."""
+    """Return the terrain's vanna book at `now`: every strike's net vanna, per vol point, summed."""
     books = compute_terrain("TSLA", chain, spot, now=now).books
     nets = [b["net_vanna"] for book, _diag in books.values() for b in book.values()]
     return None if None in nets else sum(nets)

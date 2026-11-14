@@ -759,7 +759,7 @@ async def _next(ws, kind) -> dict:
 
 
 def _published_rows(tk, key) -> list:
-    """The rows the levels producer published for `tk` (its vanna_rows or charm_rows)."""
+    """Return the rows the levels producer published for `tk` (its vanna_rows or charm_rows)."""
     return [list(r) for r in getattr(server.published_levels(tk), key)]
 
 
@@ -972,7 +972,7 @@ TERRAIN_READERS = {"terrain:levels": {}, "terrain:chart": {}}
 
 
 def _published_terrain(tk) -> dict:
-    """The levels the producer published for `tk`: what every terrain panel carries."""
+    """Return the levels the producer published for `tk`: what every terrain panel carries."""
     snap = server.published_levels(tk).snap
     return {"call_wall": snap.call_wall, "put_wall": snap.put_wall, "gamma_flip": snap.gamma_flip}
 
@@ -1236,7 +1236,7 @@ HEATMAP = {**ALL, "cols": None, "expiry": None}
 
 
 def _surface_expiries(tk) -> list:
-    """The expiries of the surface the producer published for `tk`, in its column order."""
+    """Return the expiries of the surface the producer published for `tk`, in column order."""
     return [e["expiry"] for e in server.published_levels(tk).gamma_surface["expirations"]]
 
 
@@ -1345,7 +1345,7 @@ def test_a_surface_producer_that_raises_fails_its_panel_alone_in_words():
 
 
 async def _frames_of(ws, kinds) -> dict:
-    """The next frame of each of `kinds`, by its type."""
+    """Return the next frame of each of `kinds`, by its type."""
     seen = {}
     while set(kinds) - set(seen):
         frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
@@ -1433,7 +1433,7 @@ def test_a_chain_producer_that_raises_fails_its_panel_alone_in_words():
 
 
 def _levels_of(frame) -> dict:
-    """The gamma levels a levels panel carries, by id."""
+    """Return the gamma levels a levels panel carries, by id."""
     return {r["id"]: r["price"] for r in frame["levels"] if r["family"] == "gamma"}
 
 

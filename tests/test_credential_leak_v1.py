@@ -255,7 +255,7 @@ def test_a_secret_typed_into_a_merge_resolution_is_refused(tmp_path):
 
 
 def _resolved_merge(root):
-    """A pull request branch `pr` whose merge of `main` was resolved by hand in two places.
+    """Make a pull request branch `pr` whose merge of `main` was resolved by hand in two places.
 
     main's side of the first conflict carries an operator-home path, which the resolution keeps:
     that line is main's, not the PR's. The second conflict is resolved with a token neither side

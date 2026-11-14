@@ -106,7 +106,7 @@ async def _until(pred, limit: float = 10.0) -> None:
 
 
 def _writable(db: Path) -> None:
-    """The database file `db` and the WAL files beside it take writes again."""
+    """Make the database file `db` and the WAL files beside it take writes again."""
     for path in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         if path.exists():
             os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
@@ -583,7 +583,7 @@ async def _spilled(writer: CaptureWriter, stop: asyncio.Event) -> tuple:
 
 
 def _small_cap_writer(db: Path) -> CaptureWriter:
-    """A writer on `db` whose hold cap is _SMALL_CAP and whose lock wait is 0.2 s."""
+    """Return a writer on `db` whose hold cap is _SMALL_CAP and whose lock wait is 0.2 s."""
     return CaptureWriter(
         db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
     )

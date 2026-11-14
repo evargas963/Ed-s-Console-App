@@ -297,7 +297,7 @@ def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> in
 
 
 def _status_while_locked(db, writer: CaptureWriter, ready) -> tuple[dict, int]:
-    """The mix's equity quotes handed to `writer` while another connection holds the write lock.
+    """Hand `writer` the mix's equity quotes while another connection holds the write lock.
 
     Once `ready(subscription, sent)` holds, the writer's status is read and the lock let go, and
     every message is waited on until written. Return that status and how many were sent.

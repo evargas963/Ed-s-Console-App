@@ -32,7 +32,7 @@ from time_et import ET, option_close_product, time_to_expiry_years
 
 
 def _number(x):
-    """A value Schwab sent as a number, else None (rule 2: -999, text, NaN)."""
+    """Return a value Schwab sent as a number, else None (rule 2: -999, text, NaN)."""
     if isinstance(x, bool) or not isinstance(x, (int, float)):
         return None
     return None if not math.isfinite(x) or x == -999 else float(x)
