@@ -28,10 +28,11 @@ from collections import Counter
 from pathlib import Path
 
 import time_et
-from app.market_data.schwab.streaming.capture import stored_watchlist, streaming_fields
+from app.market_data.schwab.streaming.capture import stored_watchlist
 from config import build_config, load_dotenv_file
 from db_authority import canonical_stream_db_path
 from feed.schwab_client import build_client_from_token
+from feed.stream import streaming_fields
 from option_contract import listed_expiries
 from runtime_layout import runtime_root
 

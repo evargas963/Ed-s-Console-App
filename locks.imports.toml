@@ -19,7 +19,6 @@ protected_modules = ["schwab", "authlib", "httpx"]
 as_packages = false
 allowed_importers = [
     "head.feed.**",
-    "head.app.market_data.schwab.streaming.capture",
     "head.calibration.complete_chain_capture",
 ]
 
