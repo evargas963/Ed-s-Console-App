@@ -1,4 +1,4 @@
-# institutional-synthetic-ok: temp directories stand in for a relocated runtime root.
+# temp directories stand in for a relocated runtime root.
 """Runtime state is rooted in `runtime_layout`, not the source files.
 
 docs/ARCHITECTURE.md "Runtime state is not source". The controls of an environment variable

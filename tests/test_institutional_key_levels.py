@@ -37,7 +37,7 @@ def test_exposures_are_dollarized():
 
 def test_pin_fails_closed_without_dollarized_gex():
     """No dollarized book -> (None, None); a raw-gamma fallback would silently change basis."""
-    # institutional-synthetic-ok: the refusal path needs an un-dollarized bucket on purpose.
+    # the refusal path needs an un-dollarized bucket on purpose.
     raw_only = {700.0: {"net_gamma": 5.0, "call_gamma": 3.0, "put_gamma": 2.0}}
     assert pick_pin_and_strength(raw_only) == (None, None)
 

@@ -30,7 +30,7 @@ NOW = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
 
 
 def _c(strike, typ, *, delta, gamma, oi=1000):
-    # institutional-synthetic-ok: these tests MUST feed invalid greeks (NaN / None delta and
+    # these tests MUST feed invalid greeks (NaN / None delta and
     # gamma) to prove absence stays None; a captured chain cannot be made invalid on demand.
     return {
         "strikePrice": strike,

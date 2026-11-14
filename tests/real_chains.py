@@ -62,7 +62,7 @@ NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")
 
 
 def crwd_exposures(chain: list[dict]) -> dict[float, dict]:
-    """The per-strike exposures of `chain`, CRWD's or a copy of it, at CRWD's price and capture."""
+    """Return the per-strike exposures of `chain` (CRWD's or a copy) at CRWD's price, capture."""
     return compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)[0]
 
 

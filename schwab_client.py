@@ -392,12 +392,12 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
         return out
 
     out.has_creation_timestamp = "creation_timestamp" in data
-    tok = data.get("token")  # external-key-ok: schwab-py token file
+    tok = data.get("token")  # the schwab-py token file
     if isinstance(tok, dict):
         out.has_token_object = True
-        at = tok.get("access_token")  # external-key-ok: Schwab OAuth token payload
+        at = tok.get("access_token")  # Schwab's OAuth token payload
         out.has_access_token = isinstance(at, str) and len(at.strip()) > 0
-        rt = tok.get("refresh_token")  # external-key-ok: Schwab OAuth token payload
+        rt = tok.get("refresh_token")
         out.has_refresh_token = isinstance(rt, str) and len(rt.strip()) > 0
         out.has_expires_at = "expires_at" in tok
         sc = tok.get("scope")
@@ -605,8 +605,9 @@ def complete_oauth_from_redirect_url(
         return False, "Redirect URL is empty."
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
-    state = (qs.get("state") or [None])[0]  # caps-ok: parse_qs indexing idiom only
-    if not (qs.get("code") or [None])[0]:  # caps-ok: parse_qs indexing idiom only
+    # parse_qs gives each query parameter as a list of its values
+    state = (qs.get("state") or [None])[0]
+    if not (qs.get("code") or [None])[0]:
         return False, "Redirect URL missing OAuth code query parameter."
 
     resolved = _resolve_token_path(token_path)

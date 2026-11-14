@@ -14,7 +14,7 @@ from time_et import ET
 
 
 def _bar(day: str, hhmm: str, high: float, low: float) -> dict:
-    """A normalized one-minute bar (bars_from_candles' shape) starting at `hhmm` ET on `day`."""
+    """Return a one-minute bar (bars_from_candles' shape) starting at `hhmm` ET on `day`."""
     return {
         "_dt": datetime.fromisoformat(f"{day}T{hhmm}").replace(tzinfo=ET),
         "high": high,

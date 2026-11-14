@@ -1,4 +1,4 @@
-# institutional-synthetic-ok: inject cross-checkout edits and destructive git to prove the locks
+# inject cross-checkout edits and destructive git to prove the locks
 # BLOCK.
 """Operating process lock — negative controls + quiet paths."""
 

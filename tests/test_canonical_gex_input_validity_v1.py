@@ -27,7 +27,7 @@ NOW = datetime(2026, 9, 30, 12, 0, tzinfo=ET)
 
 
 def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0):
-    # institutional-synthetic-ok: each case needs one exactly-controlled field
+    # each case needs one exactly-controlled field
     return {
         "strikePrice": strike,
         "putCall": side,

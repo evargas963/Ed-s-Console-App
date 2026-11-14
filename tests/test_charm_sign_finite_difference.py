@@ -125,7 +125,7 @@ def _schwab_inputs(book: RealChain):
 
 
 def _finite_differences(book: RealChain):
-    """(inputs, dDelta/dt as T shrinks, dDelta/dSigma): central differences of _bsm_delta."""
+    """Return (inputs, dDelta/dt as T shrinks, dDelta/dSigma): _bsm_delta's central differences."""
     k, t, sigma, sign, r, q, size = _schwab_inputs(book)
     h, e = t * 1e-4, sigma * 1e-4
     charm_fd = (
@@ -214,7 +214,7 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
         "interestRate": 0.0,
         "dividendYield": 0.0,
     }
-    # institutional-synthetic-ok: exact-identity math lock needs controlled equal inputs;
+    # exact-identity math lock needs controlled equal inputs;
     # a captured chain cannot pin call_vanna == put_vanna at equal OI.
     call = dict(base, putCall="CALL")
     put = dict(base, putCall="PUT")
@@ -238,7 +238,7 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     now = datetime(2027, 6, 17, 12, 0, tzinfo=ET)
 
     def one(iv):
-        # institutional-synthetic-ok: a units-flip discriminator needs the SAME contract with IV in
+        # a units-flip discriminator needs the SAME contract with IV in
         # percent vs decimal form — a captured real chain cannot pin that controlled pair.
         return {
             "strikePrice": 100.0,

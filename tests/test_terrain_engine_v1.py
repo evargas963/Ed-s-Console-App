@@ -127,7 +127,7 @@ def test_implied_one_day_move_matches_the_named_formula() -> None:
     real-chain test below covers the live shape).
     """
     spot = 700.0
-    # institutional-synthetic-ok: formula verification REQUIRES known inputs — the exactness
+    # formula verification REQUIRES known inputs — the exactness
     # assertion below is meaningless on a live chain; the real-chain test covers the live shape.
     chain = read_chain(
         [
@@ -197,7 +197,7 @@ def test_the_nearest_strike_is_one_rule_for_a_list_in_order_and_a_list_that_is_n
 
 def test_implied_move_fails_closed_without_usable_iv() -> None:
     """No usable ATM IV -> None. A fabricated sigma is worse than no sigma."""
-    # institutional-synthetic-ok: fail-closed tests MUST feed malformed contracts on purpose.
+    # fail-closed tests MUST feed malformed contracts on purpose.
     assert compute_implied_one_day_move([], 700.0, {}) is None
     assert compute_implied_one_day_move(None, 700.0, {}) is None
     negative = read_chain(
@@ -218,7 +218,7 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
     The expiry's ATM IV is None -- the 705 call's IV used to stand in for it, labelled ATM
     (operator 2026-10-01: "we use what schwab gives us and we display it").
     """
-    # institutional-synthetic-ok: the rule needs a known ATM contract with no IV beside a priced one
+    # the rule needs a known ATM contract with no IV beside a priced one
     chain = read_chain(
         [
             {

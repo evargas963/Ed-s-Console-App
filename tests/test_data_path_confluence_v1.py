@@ -579,7 +579,7 @@ def _publish_mrvl() -> None:
 
 
 def mrvl_answers() -> dict:
-    """The confluence panel on MRVL's published chain, no live price row.
+    """Return the confluence panel on MRVL's published chain, no live price row.
 
     Its first two expiries asked
     at the capture instant, and the front one asked on Sunday, after it passed.

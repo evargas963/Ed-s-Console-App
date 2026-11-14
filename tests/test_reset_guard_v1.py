@@ -1,4 +1,4 @@
-# institutional-synthetic-ok: inject destructive git commands to prove the reset guard BLOCKs.
+# inject destructive git commands to prove the reset guard BLOCKs.
 """The reset guard — dedicated acceptance suite.
 
 Tree-destructive git blocks at PreToolUse: reset --hard, checkout -- <path>, clean -f,

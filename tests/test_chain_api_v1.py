@@ -112,7 +112,7 @@ def _as_shown(contracts):
 
 
 def _get(ticker, expiry=None):
-    """The chain panel for `ticker` (as typed) at `expiry` (None: the front one), now."""
+    """Return the chain panel for `ticker` (as typed) at `expiry` (None: the front one), now."""
     return srv.chain(srv.ticker_storage_key(ticker), time_et.now(), {"expiry": expiry})
 
 

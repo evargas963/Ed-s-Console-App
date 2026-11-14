@@ -38,7 +38,7 @@ NOW = SPY_0DTE.now
 
 
 def _profile(contracts: list[OptionContract], spot: float) -> list[tuple[float, float]]:
-    """The gamma profile as compute_terrain builds it for SPY: rows priced to its option close."""
+    """Return SPY's gamma profile as compute_terrain builds it: rows priced to its option close."""
     product = time_et.option_close_product("SPY")
     priced, _unpriced = contract_inputs(contracts, NOW, product=product)
     return compute_gamma_profile(priced, spot)
@@ -58,7 +58,7 @@ def _one(symbol: str) -> list[tuple[float, float]]:
 
 
 def _crossings(prof: list[tuple[float, float]], sign: int) -> list[tuple[float, float]]:
-    """The neighbouring prices between which the profile goes from `sign` to its opposite."""
+    """Return the neighbouring prices between which the profile goes from `sign` to its opposite."""
     return [(p0, p1) for (p0, v0), (p1, v1) in zip(prof, prof[1:]) if v0 * sign > 0 > v1 * sign]
 
 

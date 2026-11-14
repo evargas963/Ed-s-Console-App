@@ -37,7 +37,7 @@ _ON, _OFF = "ZZFRESHON", "ZZFRESHOFF"  # on the watchlist, and not
 
 
 def _call(tk):
-    """The heatmap's panel for `tk` now: Auto, following the price, every column."""
+    """Return the heatmap's panel for `tk` now: Auto, following the price, every column."""
     window = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
     return server.gamma_surface(ticker_storage_key(tk), time_et.now(), window)
 

@@ -17,7 +17,7 @@ from tests.real_chains import CRWD, crwd_exposures
 
 
 def _without(field: str, strike: float, side: str) -> list[dict]:
-    """The real chain with `field` taken out of the `side` contract at `strike`."""
+    """Return the real chain with `field` taken out of the `side` contract at `strike`."""
     chain = [dict(ct) for ct in CRWD.chain]
     ct = next(c for c in chain if c["strikePrice"] == strike and c["putCall"] == side)
     del ct[field]

@@ -35,7 +35,7 @@ def _daily_candle(d: date, high: float, low: float, close: float) -> Candle:
 
     It is built from the regular bars the test places in it.
     """
-    # institutional-synthetic-ok: the session is the test's own placed bars
+    # the session is the test's own placed bars
     ts = datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
     return Candle(ts=ts, open=low, high=high, low=low, close=close, volume=1000.0)
 

@@ -134,7 +134,7 @@ def _rule(
     flow: str | None = None,
     shown: tuple[str, ...] = (),
 ) -> dict[str, set[str]]:
-    """What Schwab holds, in the rule's order.
+    """Return what Schwab holds, in the rule's order.
 
     The Flow contract; every ticker's recorded contracts; every contract of the tickers a page
     shows (`shown`); every other ticker's. Each group dealt across its tickers: each ticker's

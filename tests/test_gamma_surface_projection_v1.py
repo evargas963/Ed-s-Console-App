@@ -225,7 +225,7 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
     """The ABSENT-side case, from ONE real row re-struck at a strike no other row uses.
 
     No other row in the chain uses the strike, so only ITS OWN presence/absence is under test.
-    # institutional-synthetic-ok: a single real CALL row, re-struck to an otherwise-unused
+    # a single real CALL row, re-struck to an otherwise-unused
     # strike so no PUT row exists there -- the minimal input this identity check needs.
     """
     chain = _raw_chain()

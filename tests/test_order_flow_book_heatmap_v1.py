@@ -250,7 +250,6 @@ def test_a_window_outside_the_books_kept_is_refused_never_replaced():
     A longer one, 0 or less, or one that is not a number, is refused, never answered for a
     window the page did not ask.
     """
-
     for minutes in (0.5, 15, 60, 120, 240):
         assert "available" in server.bookmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
     for minutes in (241, 0, -60, "abc"):

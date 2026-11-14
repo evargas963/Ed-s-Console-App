@@ -25,12 +25,12 @@ class TimerCountingLoop(asyncio.SelectorEventLoop):
 
 
 def et_ts(s: str) -> float:
-    """The epoch seconds of the ET wall time `s` (ISO format)."""
+    """Return the epoch seconds of the ET wall time `s` (ISO format)."""
     return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
 def norm_cdf(x: float) -> float:
-    """The standard normal distribution function at `x`."""
+    """Return the standard normal distribution function at `x`."""
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
@@ -41,7 +41,7 @@ def write(repo: Path, name: str, text: str) -> None:
 
 
 def fixture_json(name: str) -> dict:
-    """The captured file tests/fixtures/`name`, parsed."""
+    """Return the captured file tests/fixtures/`name`, parsed."""
     return json.loads((_FX / name).read_text(encoding="utf-8"))
 
 

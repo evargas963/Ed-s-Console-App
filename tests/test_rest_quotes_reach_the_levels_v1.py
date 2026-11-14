@@ -87,7 +87,7 @@ def _clean():
 
 
 def _daemon(at: float, held=()) -> None:
-    """The daemon's status at `at`: Schwab's stream up, holding `held` of SPY's contracts."""
+    """Return the daemon's status at `at`: Schwab's stream up, holding `held` of SPY's contracts."""
     lmp.record_feed_heartbeat(
         daemon_status(
             at,
@@ -98,7 +98,7 @@ def _daemon(at: float, held=()) -> None:
 
 
 def _put_chain() -> None:
-    """The chain reaches the console, priced at its capture's spot as of when it began."""
+    """Hand the console the chain, priced at its capture's spot as of when it began."""
     server._publish_levels(
         TK, _CHAIN, _BEGUN, chain_spot=(_SPOT, _BEGUN), now=datetime.fromtimestamp(_BEGUN, ET)
     )
@@ -141,7 +141,7 @@ def _repriced(answer: dict, received: float) -> server.PublishedLevels:
 
 
 def _quoted_chain(answer: dict) -> list:
-    """The chain, each contract of `answer` with its quote's values as sent, the others its own."""
+    """Return the chain, each contract of `answer` with its quote's values as sent."""
     return [
         replace(
             ct,
