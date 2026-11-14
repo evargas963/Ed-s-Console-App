@@ -56,8 +56,7 @@ def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> d
     ]
     srv._write_price_history({"symbol": TK, "series": "1d", "answer": {"candles": sent}})
     srv._publish_price_levels(TK, at)
-    resp = srv.liquidity_snapshot(TK, at)
-    return json.loads(resp.body) if hasattr(resp, "body") else resp
+    return srv.liquidity_snapshot(TK, at)
 
 
 def _tags_at_zero(body: dict) -> set[str]:
@@ -71,8 +70,7 @@ def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones():
         daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": 0}, received_ts=at)
-    resp = srv.liquidity_snapshot(TK, FRIDAY)
-    body = json.loads(resp.body) if hasattr(resp, "body") else resp
+    body = srv.liquidity_snapshot(TK, FRIDAY)
     tags = [t for z in body["zones"] for t in z["source_tags"]]
     assert "SPOT_LIVE" in tags, tags
 
@@ -101,11 +99,10 @@ def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
     )
     try:
         snap = srv.published_levels(TK).snap
-        resp = srv.liquidity_snapshot(TK, FRIDAY)
+        body = srv.liquidity_snapshot(TK, FRIDAY)
     finally:
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(TK, None)
-    body = json.loads(resp.body) if hasattr(resp, "body") else resp
     held = {
         tag
         for key, tag in liquidity_value_engine.OPTION_LEVEL_TAGS

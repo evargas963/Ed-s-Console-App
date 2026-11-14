@@ -180,7 +180,7 @@ class LevelsMark(TypedDict):
 
 
 def price_mark(ticker: str, spot_ts: float | None, now: float) -> PriceMark:
-    """The live price's trade time and, while it is not live at `now` (price_state), its mark.
+    """Return the live price's trade time and, while not live at `now` (price_state), its mark.
 
     Served beside every value computed from that price, so a value from a price that has stopped
     stands marked not live (AGENTS rule 5): `spot_not_live_text` is the mark the page prints
@@ -3809,7 +3809,7 @@ def _screen_levels(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _rail(levels: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """The Confluence rail's levels against the shown strike rows (highest strike first).
+    """Place the Confluence rail's levels against the shown strike rows (highest strike first).
 
     `rail_lanes`: each lane's levels inside the rows, highest price first; `rail_lines`: one
     price line per price inside, `session` when a session level sits at it; `levels_above` /
@@ -3868,7 +3868,7 @@ def _inside_move(strike: float, low: float | None, high: float | None) -> bool:
 
 
 def _ranked_matrix(snap: TerrainSnapshot, chosen: str, dte: float) -> dict[str, Any]:
-    """The ranking of one expiry of a priced chain: the one the matrix request shows.
+    """Return the ranking of one expiry of a priced chain: the one the matrix request shows.
 
     `chosen` is an expiry of `snap`'s books with its days to expiration, `dte`
     (_confluence_expiries).
@@ -3990,7 +3990,7 @@ PRICED_PANELS = ("levels",)
 
 
 def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
-    """The levels panel at `now`: the published price-level snapshot for the market's session.
+    """Return the levels panel at `now`: the published price-level snapshot for the session.
 
     The terrain's levels carried beside it, each with its distance from the live price.
     """

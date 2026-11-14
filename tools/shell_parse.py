@@ -381,10 +381,10 @@ class _Lexer:
         return None
 
     def escaped(self, i: int, value: list[str]) -> int:
-        """Read the escape character at `i`, outside quotes, into `value`.
+        r"""Read the escape character at `i`, outside quotes, into `value`.
 
         Before a line break it joins the lines; before a character it escapes, that character.
-        Otherwise it is kept as "\\0": bash drops it, a Windows path keeps it, and both readings
+        Otherwise it is kept as "\0": bash drops it, a Windows path keeps it, and both readings
         are judged. Returns the index past it.
         """
         nxt = self.s[i + 1 : i + 2]

@@ -207,7 +207,7 @@ def compute_opening_range(
     session_date: date,
     config: PlaybookConfig,
 ) -> dict[str, float]:
-    """The bars of the first N minutes (default 15) from the regular open Schwab sent for the date.
+    """Return the bars of the first N minutes (default 15) from the date's regular open (Schwab).
 
     From normalized bars (bars_from_candles). {} when the date has no regular session, when
     Schwab's /markets answer for it is not held (the open is unknown), or when no bar falls in it.
