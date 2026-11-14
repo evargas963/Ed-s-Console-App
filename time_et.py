@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -209,6 +210,15 @@ def record_markets(answer: dict[str, Any]) -> Session:
     # a new dict, never an insert: a reader on another thread keeps iterating the one it began with
     _sessions = {**_sessions, s.day: s}
     return s
+
+
+def sessions() -> Mapping[str, Session]:
+    """Every date's sessions as Schwab answered them, by ET date (YYYY-MM-DD).
+
+    The held dict itself: it is replaced on each answer, never mutated, so a calculator handed
+    it reads one consistent set.
+    """
+    return _sessions
 
 
 def session(day: str) -> Session | None:

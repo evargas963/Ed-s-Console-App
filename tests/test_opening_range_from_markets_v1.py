@@ -10,7 +10,7 @@ from datetime import datetime
 
 from liquidity_models import PlaybookConfig
 from liquidity_value_engine import compute_opening_range
-from time_et import ET
+from time_et import ET, sessions
 
 
 def _bar(day: str, hhmm: str, high: float, low: float) -> dict:
@@ -30,7 +30,8 @@ def test_the_range_is_the_bars_from_schwabs_open_for_the_configured_minutes():
         _bar(day, "09:44", 106, 100),
         _bar(day, "09:45", 130, 70),  # the 16th minute: not the range
     ]
-    assert compute_opening_range(bars, datetime(2026, 10, 5).date(), PlaybookConfig()) == {
+    day = datetime(2026, 10, 5).date()
+    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) == {
         "orb_high": 106,
         "orb_low": 100,
         "orb_mid": 103.0,
@@ -39,9 +40,11 @@ def test_the_range_is_the_bars_from_schwabs_open_for_the_configured_minutes():
 
 def test_a_closed_date_has_no_opening_range():
     bars = [_bar("2026-10-03", "09:35", 104, 101)]
-    assert compute_opening_range(bars, datetime(2026, 10, 3).date(), PlaybookConfig()) == {}
+    day = datetime(2026, 10, 3).date()
+    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) == {}
 
 
 def test_a_date_whose_open_is_not_known_has_no_opening_range():
     bars = [_bar("2025-06-02", "09:35", 104, 101)]
-    assert compute_opening_range(bars, datetime(2025, 6, 2).date(), PlaybookConfig()) == {}
+    day = datetime(2025, 6, 2).date()
+    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) == {}

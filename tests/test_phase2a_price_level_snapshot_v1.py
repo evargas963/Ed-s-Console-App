@@ -21,7 +21,7 @@ from liquidity_value_engine import (
 from micro_structure import Candle
 from server import _schwab_bar, materialize_price_level_snapshot
 from tests.feed_live_helper import daemon_bars, schwab_daily
-from time_et import ET
+from time_et import ET, sessions
 
 ROOT = Path(__file__).resolve().parent.parent
 #: a Monday whose prior session (Friday 2026-10-02) and the one before it (Thursday 10-01) are
@@ -120,6 +120,7 @@ def test_snapshot_carries_value_scope_provenance_and_as_of():
         bars_from_candles(_tape()),
         prior=_prior("SPY", SESSION),
         bar_source="unit_tape",
+        sessions=sessions(),
     )
     for lid, value in snap.levels.items():
         assert lid in PHASE2A_LEVEL_IDS, f"{lid} is not a declared Phase 2A id"
@@ -168,6 +169,7 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
             bars_from_candles(_daemon_bars(name, tk)),
             prior=prior_session(schwab_daily(tk), friday),
             bar_source=name,
+            sessions=sessions(),
         )
         absent = {f["family"]: f["reason"] for f in snap.families_absent}
         assert snap.price("PDH") is not None and "prior_day" not in absent, tk
@@ -179,7 +181,9 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
 
 
 def test_absent_input_stays_absent_and_is_declared():
-    snap = build_price_level_snapshot("SPY", SESSION, [], prior=None, bar_source="empty")
+    snap = build_price_level_snapshot(
+        "SPY", SESSION, [], prior=None, bar_source="empty", sessions=sessions()
+    )
     assert snap.levels == {}, "no bars must produce no levels, not zeros or spot"
     fams = {f["family"] for f in snap.families_absent}
     assert {"prior_day", "vwap", "opening_range", "overnight", "value_area"} <= fams
@@ -190,12 +194,17 @@ def test_absent_input_stays_absent_and_is_declared():
 def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
     """The drawn line must END on the served level — one accumulation, one number."""
     tape = bars_from_candles(_tape())
-    assert compute_session_vwap_series(tape, SESSION), (
+    assert compute_session_vwap_series(tape, SESSION, sessions=sessions()), (
         "no VWAP series for a session with RTH volume"
     )
 
     snap = build_price_level_snapshot(
-        "SPY", SESSION, tape, prior=_prior("SPY", SESSION), bar_source="unit_tape"
+        "SPY",
+        SESSION,
+        tape,
+        prior=_prior("SPY", SESSION),
+        bar_source="unit_tape",
+        sessions=sessions(),
     )
     assert snap.price("VWAP") == snap.vwap_series[-1][1]
     for lid, idx in (("VWAP_P1", 2), ("VWAP_M1", 3), ("VWAP_P2", 4), ("VWAP_M2", 5)):

@@ -25,9 +25,7 @@ from liquidity_value_engine import (
     get_overnight_levels,
 )
 from micro_structure import Candle
-from time_et import (
-    ET,
-)
+from time_et import ET, sessions
 
 
 def _daily_candle(d: date, high: float, low: float, close: float) -> Candle:
@@ -190,7 +188,7 @@ def _overnight(bars: list, session_date: date, prior: date | None) -> dict:
     Bars normalized once, from the close of the prior session `prior` (the date of Schwab's
     newest daily candle before the session, liquidity_value_engine.prior_session).
     """
-    return get_overnight_levels(bars_from_candles(bars), session_date, prior)
+    return get_overnight_levels(bars_from_candles(bars), session_date, prior, sessions=sessions())
 
 
 def test_overnight_window_monday_reaches_back_to_friday():
@@ -309,6 +307,7 @@ def _overnight_under_prior_low_zones(session_date: date):
         bars_from_candles(_overnight_under_prior_low_bars(session_date)),
         prior=_daily_candle(prev, 106.0, 100.0, 102.0),  # the prior session's two regular bars
         bar_source="test",
+        sessions=sessions(),
     )
     return build_premarket_snapshot("SPY", PlaybookConfig(), canonical=snap).zones
 
@@ -358,6 +357,7 @@ def test_no_lookahead_premarket():
         bars_from_candles(bars),
         prior=_daily_candle(prev_date, 501.0, 499.0, 500.0),
         bar_source="test",
+        sessions=sessions(),
         config=cfg,
     )
     out = build_premarket_snapshot("SPY", cfg, canonical=snap)

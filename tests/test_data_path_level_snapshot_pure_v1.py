@@ -20,6 +20,7 @@ from liquidity_value_engine import (
 )
 from server import _schwab_bar
 from tests.feed_live_helper import daemon_bars, schwab_daily
+from time_et import sessions
 
 FIXTURE = "real_daemon_bars_spy_tsla_2026_10_01_02.json"
 FRIDAY = date(2026, 10, 2)
@@ -45,7 +46,11 @@ def _state(snap: PriceLevelSnapshot) -> dict:
 @pytest.mark.parametrize("tk", ["SPY", "TSLA"])
 def test_the_same_bars_give_the_same_level_snapshot(tk):
     bars, prior = _bars(tk), prior_session(schwab_daily(tk), FRIDAY)
-    first = build_price_level_snapshot(tk, FRIDAY, bars, prior=prior, bar_source=FIXTURE)
-    second = build_price_level_snapshot(tk, FRIDAY, bars, prior=prior, bar_source=FIXTURE)
+    first, second = (
+        build_price_level_snapshot(
+            tk, FRIDAY, bars, prior=prior, bar_source=FIXTURE, sessions=sessions()
+        )
+        for _ in range(2)
+    )
     assert first.levels, f"{tk}: no levels from a real session's bars"
     assert _state(first) == _state(second)

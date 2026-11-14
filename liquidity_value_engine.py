@@ -16,6 +16,7 @@ import hashlib
 import logging
 import struct
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -32,7 +33,7 @@ from liquidity_models import (
 )
 from micro_structure import Candle
 from numeric_contract import float_finite_or_none, float_positive_or_none
-from time_et import ET, session
+from time_et import ET, Session
 
 log = logging.getLogger(__name__)
 
@@ -52,19 +53,20 @@ LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
 DAILY_CANDLE_BASIS = "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
 
 
-def _regular(d: date) -> tuple[datetime, datetime] | None:
-    """`d`'s regular session (open, close) as Schwab's /markets sent it (time_et.session).
+def _regular(sessions: Mapping[str, Session], d: date) -> tuple[datetime, datetime] | None:
+    """`d`'s regular session (open, close) as Schwab's /markets sent it.
 
-    None: no regular session that day, or Schwab's answer for it is not held.
+    `sessions` is the program's held answers by ET date (time_et.sessions). None: no regular
+    session that day, or Schwab's answer for it is not held.
     """
-    s = session(d.isoformat())
+    s = sessions.get(d.isoformat())
     if s is None or not s.regular:
         return None
     return s.regular[0][0], s.regular[-1][1]
 
 
-def _in_rth(dt: datetime) -> bool:
-    regular = _regular(dt.date())
+def _in_rth(sessions: Mapping[str, Session], dt: datetime) -> bool:
+    regular = _regular(sessions, dt.date())
     return regular is not None and regular[0] <= dt < regular[1]
 
 
@@ -132,7 +134,11 @@ def prior_session(daily: list[Candle], session_date: date) -> Candle | None:
 
 
 def get_previous_day_levels(
-    bars_norm: list[Bar], prior: Candle | None, config: PlaybookConfig
+    bars_norm: list[Bar],
+    prior: Candle | None,
+    config: PlaybookConfig,
+    *,
+    sessions: Mapping[str, Session],
 ) -> dict[str, Any]:
     """Return the prior session's levels.
 
@@ -143,7 +149,9 @@ def get_previous_day_levels(
     if prior is None:
         return {}
     prior_date = datetime.fromtimestamp(prior.ts, ET).date()
-    prev_bars = [b for b in bars_norm if b["_dt"].date() == prior_date and _in_rth(b["_dt"])]
+    prev_bars = [
+        b for b in bars_norm if b["_dt"].date() == prior_date and _in_rth(sessions, b["_dt"])
+    ]
     p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
     return {
         "prior_date": prior_date,
@@ -161,6 +169,8 @@ def get_overnight_levels(
     bars_norm: list[Bar],
     session_date: date,
     prev_session: date | None,
+    *,
+    sessions: Mapping[str, Session],
 ) -> dict[str, float]:
     """Overnight range over normalized bars (bars_from_candles).
 
@@ -170,8 +180,8 @@ def get_overnight_levels(
     only this session's pre-open bars are used. No bars in the window, or a session's hours not
     held: {}.
     """
-    today = _regular(session_date)
-    prev = None if prev_session is None else _regular(prev_session)
+    today = _regular(sessions, session_date)
+    prev = None if prev_session is None else _regular(sessions, prev_session)
     if today is None or (prev_session is not None and prev is None):
         return {}
     session_open_dt = today[0]
@@ -205,13 +215,15 @@ def compute_opening_range(
     bars_norm: list[Bar],
     session_date: date,
     config: PlaybookConfig,
+    *,
+    sessions: Mapping[str, Session],
 ) -> dict[str, float]:
     """Return the bars of the first N minutes (default 15) from the date's regular open (Schwab).
 
     From normalized bars (bars_from_candles). {} when the date has no regular session, when
     Schwab's /markets answer for it is not held (the open is unknown), or when no bar falls in it.
     """
-    regular = _regular(session_date)
+    regular = _regular(sessions, session_date)
     span = timedelta(minutes=config.opening_range_minutes)
     orb_bars = [
         b for b in bars_norm if regular is not None and regular[0] <= b["_dt"] < regular[0] + span
@@ -234,6 +246,8 @@ def compute_opening_range(
 def compute_session_vwap_series(
     bars_norm: list[Bar],
     session_date: date,
+    *,
+    sessions: Mapping[str, Session],
 ) -> list[VwapPoint]:
     """Return running session VWAP and σ bands after each RTH bar.
 
@@ -244,7 +258,7 @@ def compute_session_vwap_series(
     The one VWAP accumulation: the served VWAP level and bands are its last point; the chart's
     polyline is this list carried to the browser.
     """
-    rth_bars = _filter_rth_bars(bars_norm, session_date)
+    rth_bars = _filter_rth_bars(bars_norm, session_date, sessions)
     cum_tpv = cum_vol = cum_tp2v = 0.0
     series: list[VwapPoint] = []
     for b in rth_bars:
@@ -263,17 +277,21 @@ def compute_session_vwap_series(
     return series
 
 
-def count_session_rth_positive_volume_bars(bars_norm: list[Bar], session_date: date) -> int:
+def count_session_rth_positive_volume_bars(
+    bars_norm: list[Bar], session_date: date, *, sessions: Mapping[str, Session]
+) -> int:
     """INPUT RTH bars with positive volume on session_date — independent of the VWAP series."""
     return sum(
         1
-        for b in _filter_rth_bars(bars_norm, session_date)
+        for b in _filter_rth_bars(bars_norm, session_date, sessions)
         if b["volume"] is not None and b["volume"] > 0
     )
 
 
-def _filter_rth_bars(bars_norm: list[Bar], session_date: date) -> list[Bar]:
-    return [b for b in bars_norm if b["_dt"].date() == session_date and _in_rth(b["_dt"])]
+def _filter_rth_bars(
+    bars_norm: list[Bar], session_date: date, sessions: Mapping[str, Session]
+) -> list[Bar]:
+    return [b for b in bars_norm if b["_dt"].date() == session_date and _in_rth(sessions, b["_dt"])]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -285,13 +303,15 @@ def compute_volume_profile_levels(
     bars_norm: list[Bar],
     session_date: date,
     config: PlaybookConfig,
+    *,
+    sessions: Mapping[str, Session],
 ) -> VolumeProfile | None:
     """Return the current day's volume profile with its POC, VAH, VAL.
 
     From normalized bars (bars_from_candles). RTH only, no lookahead.
     """
     return volume_profile(
-        _filter_rth_bars(bars_norm, session_date),
+        _filter_rth_bars(bars_norm, session_date, sessions),
         config.value_area_percent,
         config.tick_size,
         ndigits=4,
@@ -575,6 +595,7 @@ def build_live_snapshot(
     canonical: PriceLevelSnapshot,
     now: datetime,
     extra_levels: list[tuple[float, str]],
+    sessions: Mapping[str, Session],
 ) -> SnapshotOutput:
     """Build the session's zones from the one materialized price-level snapshot (``canonical``).
 
@@ -582,7 +603,7 @@ def build_live_snapshot(
     here. Before the session's regular open it is the premarket shape, as it is while the session's
     hours are not held: the regular session Schwab's /markets sent.
     """
-    regular = _regular(canonical.session_date)
+    regular = _regular(sessions, canonical.session_date)
     if regular is None or now < regular[0]:
         return build_premarket_snapshot(ticker, config, canonical=canonical)
     levels = _held_levels(canonical, LIVE_LEVELS) + [
@@ -793,7 +814,12 @@ _BAR_ABSENT = struct.Struct("<qddddB")
 
 
 def snapshot_input_fingerprint(
-    ticker: str, session_date: date, bars_norm: list[Bar], bar_source: str, prior: Candle | None
+    ticker: str,
+    session_date: date,
+    bars_norm: list[Bar],
+    bar_source: str,
+    prior: Candle | None,
+    sessions: Mapping[str, Session],
 ) -> tuple[str, str, str, int, str]:
     """Identity of the INPUT. Same fingerprint ⇒ same result object.
 
@@ -807,6 +833,10 @@ def snapshot_input_fingerprint(
     h = hashlib.blake2b(digest_size=16)
     h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f{len(bars_norm)}".encode())
     h.update(repr(prior).encode())  # the prior session's Schwab daily candle (a dataclass), or None
+    # the regular hours the build reads, this session's and the prior one's: an answer from
+    # Schwab's /markets that arrives later is a new input
+    days = [session_date] + ([] if prior is None else [datetime.fromtimestamp(prior.ts, ET).date()])
+    h.update(repr([_regular(sessions, d) for d in days]).encode())
     present, absent = _BAR_PRESENT.pack, _BAR_ABSENT.pack
     for b in bars_norm:
         ts, o, hi, lo, c = (
@@ -862,13 +892,14 @@ def build_price_level_snapshot(
     *,
     prior: Candle | None,
     bar_source: str,
+    sessions: Mapping[str, Session],
     config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
     """Build the levels: THE level producer.
 
-    From normalized bars (bars_from_candles) and the prior session's Schwab daily candle
-    (`prior`, prior_session; None when none is held). The only production caller of the
-    canonical helpers.
+    From normalized bars (bars_from_candles), the prior session's Schwab daily candle
+    (`prior`, prior_session; None when none is held) and Schwab's /markets answers by ET date
+    (`sessions`, time_et.sessions). The only production caller of the canonical helpers.
 
     Absent input stays absent: a family with no bars in its window is declared in
     `families_absent` and its ids are simply not present. Nothing substitutes spot,
@@ -893,7 +924,7 @@ def build_price_level_snapshot(
     )
 
     # ── prior day ────────────────────────────────────────────────────────────
-    eng = get_previous_day_levels(bars_norm, prior, cfg)
+    eng = get_previous_day_levels(bars_norm, prior, cfg, sessions=sessions)
     prior_date = eng.get("prior_date")
     if prior_date is None:
         families_absent.append(
@@ -946,8 +977,10 @@ def build_price_level_snapshot(
         return snapshot(0, None)
 
     # ── vwap + bands (one accumulation: the series IS the scalars' source) ───
-    session_rth_vol_n = count_session_rth_positive_volume_bars(bars_norm, session_date)
-    vwap_series = compute_session_vwap_series(bars_norm, session_date)
+    session_rth_vol_n = count_session_rth_positive_volume_bars(
+        bars_norm, session_date, sessions=sessions
+    )
+    vwap_series = compute_session_vwap_series(bars_norm, session_date, sessions=sessions)
     if not vwap_series:
         families_absent.append(
             {
@@ -970,7 +1003,7 @@ def build_price_level_snapshot(
     vwap_path = [(t, w) for t, w, _a, _b, _c, _d in vwap_series]
 
     # ── opening range ────────────────────────────────────────────────────────
-    orb = compute_opening_range(bars_norm, session_date, cfg)
+    orb = compute_opening_range(bars_norm, session_date, cfg, sessions=sessions)
     if not orb:
         families_absent.append(
             {"family": "opening_range", "reason": "no bar in the opening minutes, or no open known"}
@@ -987,7 +1020,7 @@ def build_price_level_snapshot(
         )
 
     # ── overnight ────────────────────────────────────────────────────────────
-    overnight = get_overnight_levels(bars_norm, session_date, prior_date)
+    overnight = get_overnight_levels(bars_norm, session_date, prior_date, sessions=sessions)
     if not overnight:
         families_absent.append(
             {"family": "overnight", "reason": "no overnight-window bars in available tape"}
@@ -1007,7 +1040,7 @@ def build_price_level_snapshot(
         )
 
     # ── current-session value area ───────────────────────────────────────────
-    profile = compute_volume_profile_levels(bars_norm, session_date, cfg)
+    profile = compute_volume_profile_levels(bars_norm, session_date, cfg, sessions=sessions)
     if profile is None:
         families_absent.append(
             {
