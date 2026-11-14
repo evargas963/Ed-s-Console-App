@@ -326,6 +326,50 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     assert checked > 5 and grossed > 5
 
 
+def _rail_levels(body: dict) -> list[dict]:
+    """Every level the Confluence answer serves: each lane's inside the rows, then those past."""
+    lanes = body["rail_lanes"]
+    return [*lanes["session"], *lanes["options"], *body["levels_above"], *body["levels_below"]]
+
+
+def test_the_rail_sorts_and_places_each_level_against_the_shown_strikes():
+    """SPY's 2026-10-22 close capture: the server, not the page, places each level.
+
+    Inside the shown strikes each lane's levels come highest price first; a level above the
+    highest strike or below the lowest is listed past them; one price line per price inside,
+    marked when a session level sits there; each price names every level at it. An answer
+    with no chain has an empty rail.
+    """
+    try:
+        _publish_close()
+        body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
+    finally:
+        server._terrain_cache.pop("SPY", None)
+    top, bottom = body["rows"][0]["strike"], body["rows"][-1]["strike"]
+    assert top > bottom, "the rows run highest strike first"
+    for lane, levels in body["rail_lanes"].items():
+        assert all(lv["lane"] == lane and bottom <= lv["price"] <= top for lv in levels)
+        prices = [lv["price"] for lv in levels]
+        assert prices == sorted(prices, reverse=True)
+    assert all(lv["price"] > top for lv in body["levels_above"])
+    assert all(lv["price"] < bottom for lv in body["levels_below"])
+    inside = [*body["rail_lanes"]["session"], *body["rail_lanes"]["options"]]
+    assert inside and (body["levels_above"] or body["levels_below"])
+    assert sorted(line["price_text"] for line in body["rail_lines"]) == sorted(
+        {lv["price_text"] for lv in inside}
+    )
+    for line in body["rail_lines"]:
+        at = [lv for lv in inside if lv["price_text"] == line["price_text"]]
+        assert line["session"] == any(lv["lane"] == "session" for lv in at)
+    for lv in _rail_levels(body):
+        assert lv["title"] in body["level_names"][lv["price_text"]].split(" + ")
+    _forget("ZZNOCHAIN")
+    none = server.confluence_payload("ZZNOCHAIN", None, SPY_CLOSE.now)
+    assert none["available"] is False
+    assert none["rail_lanes"] == {"session": [], "options": []}
+    assert none["levels_above"] == none["levels_below"] == none["rail_lines"] == []
+
+
 def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     """SPY's 2026-10-22 close capture: a strike with open interest 0 everywhere has charm 0.
 
@@ -352,7 +396,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
         server._terrain_cache.pop("SPY", None)
     assert magnitudes(bucket, charm[strike], None, SPY_CLOSE.spot)["CHARMM"] == 0.0
     assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] is None
-    walls = [level for level in body["levels"] if level["abbrev"] == "CW"]
+    walls = [level for level in _rail_levels(body) if level["abbrev"] == "CW"]
     assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
         (live.snap.call_wall, price_text(live.snap.call_wall), "options")
     ]
@@ -1326,7 +1370,9 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
         levels = {r["id"]: r["price"] for r in server.levels_payload(tk, "1", at)["levels"]}
     finally:
         _forget(tk)
-    moves = {lv["abbrev"]: lv["price"] for lv in body["levels"] if lv["abbrev"] in ("EM+", "EM−")}
+    moves = {
+        lv["abbrev"]: lv["price"] for lv in _rail_levels(body) if lv["abbrev"] in ("EM+", "EM−")
+    }
     listed = sorted({float(c["strikePrice"]) for c in CRWD.chain})
     assert live not in listed
     assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live)

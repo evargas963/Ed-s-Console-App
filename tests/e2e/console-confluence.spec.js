@@ -91,17 +91,23 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   await expect(page.locator('#cmBody h1')).toHaveCount(0);
   await expect(page.locator('#cmBody')).not.toContainText('Hover a level to trace its price');
   await expect(page.locator('#cmExp')).toHaveValue(FRONT);
-  const inside = body.levels.filter((l) => l.price <= hi && l.price >= lo);
+  // the served rail (server._rail): each lane's levels inside the rows, those past them
+  const inside = [...body.rail_lanes.session, ...body.rail_lanes.options];
   expect(inside.length).toBeGreaterThan(0);
   for (const lv of inside) {
+    expect(lv.price <= hi && lv.price >= lo).toBe(true);
     await expect(page.locator('.level-pill', { hasText: lv.abbrev + ' ' + lv.price_text }).first()).toBeAttached();
   }
-  for (const lv of body.levels.filter((l) => l.price > hi)) {
+  for (const lv of body.levels_above) {
     await expect(page.locator('#cmAbove')).toContainText(lv.abbrev + ' ' + lv.price_text);
   }
-  for (const lv of body.levels.filter((l) => l.price < lo)) {
+  for (const lv of body.levels_below) {
     await expect(page.locator('#cmBelow')).toContainText(lv.abbrev + ' ' + lv.price_text);
   }
+  // a level's readout names every level at its price, as served
+  await page.locator('.level-pill').first().hover();
+  const at = await page.locator('.level-pill').first().getAttribute('data-price');
+  await expect(page.locator('#cmRead')).toHaveText(body.level_names[at] + ' · ' + at);
   const font = await page.locator('.cm-page').evaluate((el) => getComputedStyle(el).fontSize);
   expect(font).toBe('13px');
   const opened = expiries.length;

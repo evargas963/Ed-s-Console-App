@@ -3808,6 +3808,45 @@ def _screen_levels(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return levels
 
 
+def _rail(levels: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The Confluence rail's levels against the shown strike rows (highest strike first).
+
+    `rail_lanes`: each lane's levels inside the rows, highest price first; `rail_lines`: one
+    price line per price inside, `session` when a session level sits at it; `levels_above` /
+    `levels_below`: the levels past the rows, in the levels' order; `level_names`: each price's
+    level titles, joined. With no rows nothing is inside, above or below.
+    """
+    names: dict[str, list[str]] = {}
+    for lv in levels:
+        names.setdefault(lv["price_text"], []).append(lv["title"])
+    rail: dict[str, Any] = {
+        "rail_lanes": {"session": [], "options": []},
+        "rail_lines": [],
+        "levels_above": [],
+        "levels_below": [],
+        "level_names": {p: " + ".join(t) for p, t in names.items()},
+    }
+    if not rows:
+        return rail
+    top, bottom = rows[0]["strike"], rows[-1]["strike"]
+    inside = [lv for lv in levels if bottom <= lv["price"] <= top]
+    rail["levels_above"] = [lv for lv in levels if lv["price"] > top]
+    rail["levels_below"] = [lv for lv in levels if lv["price"] < bottom]
+    for lane in ("session", "options"):
+        rail["rail_lanes"][lane] = sorted(
+            (lv for lv in inside if lv["lane"] == lane), key=lambda lv: -lv["price"]
+        )
+    lines: dict[str, dict[str, Any]] = {}
+    for lv in inside:
+        line = lines.setdefault(
+            lv["price_text"],
+            {"price": lv["price"], "price_text": lv["price_text"], "session": False},
+        )
+        line["session"] = line["session"] or lv["lane"] == "session"
+    rail["rail_lines"] = list(lines.values())
+    return rail
+
+
 def _level_named(levels: list[dict[str, Any]], abbrev: str) -> dict[str, Any] | None:
     for level in levels:
         if level["abbrev"] == abbrev:
@@ -3849,12 +3888,12 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     """Return the ranking of the priced chain, for the expiry the operator picks."""
     published = published_levels(tk)
     if published is None or not published.snap.books:  # a snapshot with a book has its price
-        return unavailable(tk, "no priced chain is held for this ticker")
+        return unavailable(tk, "no priced chain is held for this ticker", **_rail([], []))
     live = published.snap
     today = now.strftime("%Y-%m-%d")
     listed = [e for e in _confluence_expiries(live.books, live.expiry_dte) if e["expiry"] >= today]
     if not listed:
-        return unavailable(tk, "no expiry on this chain is still open")
+        return unavailable(tk, "no expiry on this chain is still open", **_rail([], []))
     chosen = expiry
     if not isinstance(chosen, str) or chosen < today:
         live_listed = [e for e in listed if e["dte"] is not None and e["dte"] >= 0]
@@ -3867,7 +3906,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             if absent
             else "that expiry did not carry days to expiration"
         )
-        return unavailable(tk, reason, expiries=listed)
+        return unavailable(tk, reason, expiries=listed, **_rail([], []))
     stored = _ranked_matrix(live, chosen, match["dte"])
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
@@ -3903,7 +3942,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             # the distances, the spot line and the pin candidate are from the live price: its mark
             **price_mark(tk, live_ts, now.timestamp()),
             "status_text": "Chain as of " + ct_label(fetched),
-            "levels": levels,
+            **_rail(levels, body["rows"]),
             "regime": live.regime,
             "flip_text": None if flip is None else flip["price_text"],
             "pin_text": None if pin is None else pin["price_text"],
