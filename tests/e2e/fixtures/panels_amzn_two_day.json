@@ -59877,276 +59877,6 @@
   "spot": 269.425,
   "spot_time_ct": "Thu 11/12 09:39 AM CT",
   "expiry": "2026-11-13",
-  "net_gex_by_strike": [
-   [
-    140.0,
-    97.35238329289199
-   ],
-   [
-    145.0,
-    40.059458940816
-   ],
-   [
-    150.0,
-    -779.9783689657891
-   ],
-   [
-    155.0,
-    -1063.80715614705
-   ],
-   [
-    160.0,
-    -362.765172832272
-   ],
-   [
-    165.0,
-    -534.100953802248
-   ],
-   [
-    170.0,
-    -923.4538648043941
-   ],
-   [
-    175.0,
-    -873.4042225868401
-   ],
-   [
-    180.0,
-    -606.878589640743
-   ],
-   [
-    185.0,
-    -2438.461311317892
-   ],
-   [
-    190.0,
-    -16820.042270851514
-   ],
-   [
-    195.0,
-    -2824.507632810843
-   ],
-   [
-    197.5,
-    -24774.47852740686
-   ],
-   [
-    200.0,
-    -112549.23928477356
-   ],
-   [
-    202.5,
-    -5117.045628350501
-   ],
-   [
-    205.0,
-    -44692.28919847555
-   ],
-   [
-    207.5,
-    -56789.18957736467
-   ],
-   [
-    210.0,
-    -557556.954625803
-   ],
-   [
-    212.5,
-    -11150.537039151553
-   ],
-   [
-    215.0,
-    -21016.796164782263
-   ],
-   [
-    217.5,
-    -9446.737487205375
-   ],
-   [
-    220.0,
-    -36443.39588316833
-   ],
-   [
-    222.5,
-    -21842.50419480881
-   ],
-   [
-    225.0,
-    -39995.8678890036
-   ],
-   [
-    227.5,
-    -15278.94942644045
-   ],
-   [
-    230.0,
-    -55295.01836327323
-   ],
-   [
-    232.5,
-    -76732.90706871967
-   ],
-   [
-    235.0,
-    -175220.8290953134
-   ],
-   [
-    237.5,
-    -85753.15185733353
-   ],
-   [
-    240.0,
-    -110093.3623008069
-   ],
-   [
-    242.5,
-    -124094.34210414033
-   ],
-   [
-    245.0,
-    -313087.57891963446
-   ],
-   [
-    247.5,
-    -275813.3056927415
-   ],
-   [
-    250.0,
-    -1791255.4406008918
-   ],
-   [
-    252.5,
-    -506751.58502407663
-   ],
-   [
-    255.0,
-    -4289036.683151046
-   ],
-   [
-    257.5,
-    -683665.9418290632
-   ],
-   [
-    260.0,
-    9013272.904522585
-   ],
-   [
-    262.5,
-    -2850871.4353821296
-   ],
-   [
-    265.0,
-    8021011.231363017
-   ],
-   [
-    267.5,
-    25637864.696994804
-   ],
-   [
-    270.0,
-    51735223.550918326
-   ],
-   [
-    272.5,
-    18763867.40571437
-   ],
-   [
-    275.0,
-    28147332.39961029
-   ],
-   [
-    277.5,
-    10193405.029544652
-   ],
-   [
-    280.0,
-    11494442.185467107
-   ],
-   [
-    282.5,
-    4916286.804891612
-   ],
-   [
-    285.0,
-    3153511.5837773355
-   ],
-   [
-    287.5,
-    355246.42819906346
-   ],
-   [
-    290.0,
-    576538.0574888713
-   ],
-   [
-    292.5,
-    61922.11409461181
-   ],
-   [
-    295.0,
-    377560.9202796691
-   ],
-   [
-    297.5,
-    84816.92170814675
-   ],
-   [
-    300.0,
-    91785.54929878436
-   ],
-   [
-    302.5,
-    18440.795974312092
-   ],
-   [
-    305.0,
-    47194.35535418556
-   ],
-   [
-    307.5,
-    3747.1114391486585
-   ],
-   [
-    310.0,
-    58722.634129981496
-   ],
-   [
-    312.5,
-    29347.91721081946
-   ],
-   [
-    315.0,
-    119793.3591370329
-   ],
-   [
-    317.5,
-    3634.4137220171556
-   ],
-   [
-    320.0,
-    7440.842691037351
-   ],
-   [
-    325.0,
-    87968.5160137268
-   ],
-   [
-    330.0,
-    34919.82106686612
-   ],
-   [
-    335.0,
-    9638.382478866622
-   ],
-   [
-    340.0,
-    2570.8374100992874
-   ],
-   [
-    345.0,
-    3809.4437365792924
-   ]
-  ],
   "spot_strike": 270.0,
   "adjusted_deliverable_symbols": [],
   "last_trading_day_et": {
@@ -63853,7 +63583,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 3809.4437365792924
    },
    {
     "strike": 340.0,
@@ -63910,7 +63641,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 2570.8374100992874
    },
    {
     "strike": 335.0,
@@ -63967,7 +63699,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 9638.382478866622
    },
    {
     "strike": 330.0,
@@ -64024,7 +63757,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 34919.82106686612
    },
    {
     "strike": 325.0,
@@ -64081,7 +63815,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 87968.5160137268
    },
    {
     "strike": 320.0,
@@ -64138,7 +63873,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 7440.842691037351
    },
    {
     "strike": 317.5,
@@ -64195,7 +63931,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 3634.4137220171556
    },
    {
     "strike": 315.0,
@@ -64252,7 +63989,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 119793.3591370329
    },
    {
     "strike": 312.5,
@@ -64309,7 +64047,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 29347.91721081946
    },
    {
     "strike": 310.0,
@@ -64366,7 +64105,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 58722.634129981496
    },
    {
     "strike": 307.5,
@@ -64423,7 +64163,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 3747.1114391486585
    },
    {
     "strike": 305.0,
@@ -64480,7 +64221,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 47194.35535418556
    },
    {
     "strike": 302.5,
@@ -64537,7 +64279,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 18440.795974312092
    },
    {
     "strike": 300.0,
@@ -64594,7 +64337,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 91785.54929878436
    },
    {
     "strike": 297.5,
@@ -64651,7 +64395,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 84816.92170814675
    },
    {
     "strike": 295.0,
@@ -64708,7 +64453,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 377560.9202796691
    },
    {
     "strike": 292.5,
@@ -64765,7 +64511,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 61922.11409461181
    },
    {
     "strike": 290.0,
@@ -64822,7 +64569,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 576538.0574888713
    },
    {
     "strike": 287.5,
@@ -64879,7 +64627,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 355246.42819906346
    },
    {
     "strike": 285.0,
@@ -64936,7 +64685,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 3153511.5837773355
    },
    {
     "strike": 282.5,
@@ -65007,7 +64757,8 @@
      "rho": 0.0
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 4916286.804891612
    },
    {
     "strike": 280.0,
@@ -65078,7 +64829,8 @@
      "rho": -0.0060668
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 11494442.185467107
    },
    {
     "strike": 277.5,
@@ -65149,7 +64901,8 @@
      "rho": -0.00604728
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 10193405.029544652
    },
    {
     "strike": 275.0,
@@ -65220,7 +64973,8 @@
      "rho": -0.00618363
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 28147332.39961029
    },
    {
     "strike": 272.5,
@@ -65291,7 +65045,8 @@
      "rho": -0.00571402
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 18763867.40571437
    },
    {
     "strike": 270.0,
@@ -65362,7 +65117,8 @@
      "rho": -0.00465442
     },
     "call_itm": false,
-    "put_itm": true
+    "put_itm": true,
+    "net_gex": 51735223.550918326
    },
    {
     "strike": 267.5,
@@ -65433,7 +65189,8 @@
      "rho": -0.00336533
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": 25637864.696994804
    },
    {
     "strike": 265.0,
@@ -65504,7 +65261,8 @@
      "rho": -0.00219354
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": 8021011.231363017
    },
    {
     "strike": 262.5,
@@ -65575,7 +65333,8 @@
      "rho": -0.00134305
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -2850871.4353821296
    },
    {
     "strike": 260.0,
@@ -65646,7 +65405,8 @@
      "rho": -0.00077281
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": 9013272.904522585
    },
    {
     "strike": 257.5,
@@ -65717,7 +65477,8 @@
      "rho": -0.00045213
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -683665.9418290632
    },
    {
     "strike": 255.0,
@@ -65774,7 +65535,8 @@
      "rho": -0.00026707
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -4289036.683151046
    },
    {
     "strike": 252.5,
@@ -65831,7 +65593,8 @@
      "rho": -0.00016387
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -506751.58502407663
    },
    {
     "strike": 250.0,
@@ -65888,7 +65651,8 @@
      "rho": -0.0001046
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -1791255.4406008918
    },
    {
     "strike": 247.5,
@@ -65945,7 +65709,8 @@
      "rho": -7.278e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -275813.3056927415
    },
    {
     "strike": 245.0,
@@ -66002,7 +65767,8 @@
      "rho": -6.575e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -313087.57891963446
    },
    {
     "strike": 242.5,
@@ -66059,7 +65825,8 @@
      "rho": -5.063e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -124094.34210414033
    },
    {
     "strike": 240.0,
@@ -66116,7 +65883,8 @@
      "rho": -4.632e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -110093.3623008069
    },
    {
     "strike": 237.5,
@@ -66173,7 +65941,8 @@
      "rho": -3.515e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -85753.15185733353
    },
    {
     "strike": 235.0,
@@ -66230,7 +65999,8 @@
      "rho": -4.015e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -175220.8290953134
    },
    {
     "strike": 232.5,
@@ -66287,7 +66057,8 @@
      "rho": -8.671e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -76732.90706871967
    },
    {
     "strike": 230.0,
@@ -66344,7 +66115,8 @@
      "rho": -2.055e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -55295.01836327323
    },
    {
     "strike": 227.5,
@@ -66401,7 +66173,8 @@
      "rho": -1.077e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -15278.94942644045
    },
    {
     "strike": 225.0,
@@ -66458,7 +66231,8 @@
      "rho": -1.876e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -39995.8678890036
    },
    {
     "strike": 222.5,
@@ -66515,7 +66289,8 @@
      "rho": -3.721e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -21842.50419480881
    },
    {
     "strike": 220.0,
@@ -66572,7 +66347,8 @@
      "rho": -9.22e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -36443.39588316833
    },
    {
     "strike": 217.5,
@@ -66629,7 +66405,8 @@
      "rho": -8.82e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -9446.737487205375
    },
    {
     "strike": 215.0,
@@ -66686,7 +66463,8 @@
      "rho": -8.42e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -21016.796164782263
    },
    {
     "strike": 212.5,
@@ -66743,7 +66521,8 @@
      "rho": -8.04e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -11150.537039151553
    },
    {
     "strike": 210.0,
@@ -66800,7 +66579,8 @@
      "rho": -0.00015987
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -557556.954625803
    },
    {
     "strike": 207.5,
@@ -66857,7 +66637,8 @@
      "rho": -0.00018149
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -56789.18957736467
    },
    {
     "strike": 205.0,
@@ -66914,7 +66695,8 @@
      "rho": -7.481e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -44692.28919847555
    },
    {
     "strike": 202.5,
@@ -66971,7 +66753,8 @@
      "rho": -0.00017469
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -5117.045628350501
    },
    {
     "strike": 200.0,
@@ -67028,7 +66811,8 @@
      "rho": -4.176e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -112549.23928477356
    },
    {
     "strike": 197.5,
@@ -67085,7 +66869,8 @@
      "rho": -0.0001616
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -24774.47852740686
    },
    {
     "strike": 195.0,
@@ -67142,7 +66927,8 @@
      "rho": -6.16e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -2824.507632810843
    },
    {
     "strike": 190.0,
@@ -67199,7 +66985,8 @@
      "rho": -2.268e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -16820.042270851514
    },
    {
     "strike": 185.0,
@@ -67256,7 +67043,8 @@
      "rho": -5.4e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -2438.461311317892
    },
    {
     "strike": 180.0,
@@ -67313,7 +67101,8 @@
      "rho": -1.301e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -606.878589640743
    },
    {
     "strike": 175.0,
@@ -67370,7 +67159,8 @@
      "rho": -4.79e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -873.4042225868401
    },
    {
     "strike": 170.0,
@@ -67427,7 +67217,8 @@
      "rho": -4.53e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -923.4538648043941
    },
    {
     "strike": 165.0,
@@ -67484,7 +67275,8 @@
      "rho": -4.28e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -534.100953802248
    },
    {
     "strike": 160.0,
@@ -67541,7 +67333,8 @@
      "rho": -4.06e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -362.765172832272
    },
    {
     "strike": 155.0,
@@ -67598,7 +67391,8 @@
      "rho": -3.86e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -1063.80715614705
    },
    {
     "strike": 150.0,
@@ -67655,7 +67449,8 @@
      "rho": -2.152e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": -779.9783689657891
    },
    {
     "strike": 145.0,
@@ -67712,7 +67507,8 @@
      "rho": -1.147e-05
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": 40.059458940816
    },
    {
     "strike": 140.0,
@@ -67769,7 +67565,8 @@
      "rho": -3.32e-06
     },
     "call_itm": true,
-    "put_itm": false
+    "put_itm": false,
+    "net_gex": 97.35238329289199
    }
   ],
   "n_strikes": 67,

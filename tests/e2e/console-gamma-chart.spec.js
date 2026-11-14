@@ -45,11 +45,13 @@ const BARS = { bars: [{ t: 1757000000, o: SPOT - 1, h: SPOT + 1, l: SPOT - 2, c:
 const CALL_SYM = 'CRWD  260918C00272500';
 const PUT_SYM = 'CRWD  260918P00272500';
 const CHAIN = { spot: SPOT, spot_strike: K, expiry: '2026-09-18', status: 'ok', scope: { kind: 'complete_single_expiry' },
-  net_gex_by_strike: [], adjusted_deliverable_symbols: [],
+  adjusted_deliverable_symbols: [],
   contracts: [
     { symbol: CALL_SYM, putCall: 'CALL', strikePrice: K, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12 },
     { symbol: PUT_SYM, putCall: 'PUT', strikePrice: K, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12 },
   ] };
+// server.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
+CHAIN.ladder = [{ strike: K, call: CHAIN.contracts[0], put: CHAIN.contracts[1], net_gex: null }];
 
 // the page's socket sends `terrain` (the flip and the walls), `strikes` (the profile) and `bars`
 // as the panels' bodies; returns those `panels`, read at each send

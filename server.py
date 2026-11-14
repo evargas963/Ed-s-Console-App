@@ -3412,8 +3412,9 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             resolved_expiry,
             not_on_ladder,
         )
-    # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
-    # Strike Detail shows it beside this expiry's contracts -- one value, one producer
+    # each ladder strike's net GEX in this expiry, as the heatmap publishes it (its column of the
+    # surface): Strike Detail shows it beside this expiry's contracts -- one value, one producer.
+    # No surface, no column for this expiry, or no value at the strike: unknown (None)
     surf = held.gamma_surface
     col = (
         None
@@ -3422,18 +3423,14 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             (i for i, e in enumerate(surf["expirations"]) if e["expiry"] == resolved_expiry), None
         )
     )
-    # no surface, or no column for this expiry: unknown (None), each strike drawn "-"
-    net_gex_by_strike = (
-        None
-        if col is None
-        else [[c["strike"], c["gex"][col]] for c in surf["cells"] if c["gex"][col] is not None]
-    )
+    net_gex = None if col is None else {c["strike"]: c["gex"][col] for c in surf["cells"]}
+    for row in ladder:
+        row["net_gex"] = None if net_gex is None else net_gex.get(row["strike"])
     return {
         "ticker": t,
         "spot": live_spot,
         "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
-        "net_gex_by_strike": net_gex_by_strike,
         "spot_strike": nearest_strike(
             {c.strike for c in response_contracts if c.strike is not None}, live_spot
         ),

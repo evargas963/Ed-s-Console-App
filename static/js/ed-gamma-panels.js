@@ -448,13 +448,12 @@
         "</div></div>";
       return;
     }
-    function pick(side) {
-      return cs.filter(function (c) {
-        return c.putCall === side && Math.abs(Number(c.strikePrice) - Number(strike)) < 0.01;
-      })[0];
-    }
-    var call = pick("CALL"),
-      put = pick("PUT");
+    // the served ladder's row at the selected strike (a strike Schwab sent, matched as sent)
+    var sd = d.ladder.filter(function (r) {
+        return r.strike === strike;
+      })[0],
+      call = sd ? sd.call : null,
+      put = sd ? sd.put : null;
     txt("sdCtx", px(strike, strike % 1 ? 2 : 0) + (expiry ? " · " + esc(expiry.slice(5)) : ""));
     // d2: decimals; none: every digit Schwab sent (its Greeks)
     function cell(c, k, d2) {
@@ -470,11 +469,7 @@
     // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "-"; the
     // NET row is this expiry's net GEX at this strike, served on the same chain panel --
     // the heatmap's own cell, not GEX-by-Strike's all-expiry total beside one expiry's contracts.
-    var net = null; // served null: this expiry has no surface column, so no strike has one
-    if (d.net_gex_by_strike !== null)
-      d.net_gex_by_strike.forEach(function (r) {
-        if (Math.abs(Number(r[0]) - Number(strike)) < 0.01) net = Number(r[1]);
-      });
+    var net = sd ? sd.net_gex : null; // served null: no surface value at this strike
     var netCls = net == null ? "" : net >= 0 ? "pos" : "neg";
     host.innerHTML =
       '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
