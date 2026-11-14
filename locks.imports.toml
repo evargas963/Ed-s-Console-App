@@ -10,8 +10,8 @@ root_packages = ["head"]
 include_external_packages = true
 
 # A protected name nothing imports stops the run: take it out here before its last import goes.
-# `feed` is the folder Feed's modules move into; `as_packages = false` lets an entry match nothing,
-# so the base's rules can judge the move out of the old name.
+# `feed` is the folder Feed's modules are in; `as_packages = false` lets an entry match nothing,
+# so the base's rules can judge a module's move into it.
 [[tool.importlinter.contracts]]
 name = "Only Feed talks to Schwab"
 type = "protected"
@@ -19,9 +19,24 @@ protected_modules = ["schwab", "authlib", "httpx"]
 as_packages = false
 allowed_importers = [
     "head.feed.**",
-    "head.schwab_client",
     "head.app.market_data.schwab.streaming.capture",
     "head.calibration.complete_chain_capture",
+]
+
+# Feed is protected as `schwab` is: `from feed import ...` is the outside name `feed` (the header
+# above), reached only by the daemon's stream and chain sweep, the operator's sign-in, the field
+# inventory and the tests
+[[tool.importlinter.contracts]]
+name = "Only the daemon reaches Feed"
+type = "protected"
+protected_modules = ["feed"]
+as_packages = false
+allowed_importers = [
+    "head.app.market_data.schwab.streaming.capture",
+    "head.calibration.complete_chain_capture",
+    "head.reauth_schwab",
+    "head.tools.schwab_field_inventory",
+    "head.tests.**",
 ]
 
 [[tool.importlinter.contracts]]

@@ -22,11 +22,11 @@ import sys
 from pathlib import Path
 
 import live_market_plane as lmp
-import schwab_client
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from config import schwab_live_blocked_for
+from feed import schwab_client
 from stream_spine import HealthRegistry, MessageBus
 
 REPO = Path(__file__).resolve().parent.parent

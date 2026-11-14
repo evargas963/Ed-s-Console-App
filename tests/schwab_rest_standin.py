@@ -38,8 +38,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-import schwab_client as sc
 import time_et
+from feed import schwab_client as sc
 
 FX = Path(__file__).resolve().parent / "fixtures"
 SPY = json.loads((FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))

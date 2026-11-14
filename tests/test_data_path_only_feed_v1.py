@@ -47,6 +47,7 @@ def test_every_module_of_the_repository_keeps_the_contract(head):
     assert done.returncode == 0, done.stdout
     assert "Only Feed talks to Schwab KEPT" in done.stdout
     assert "Feed has one HTTP client KEPT" in done.stdout
+    assert "Only the daemon reaches Feed KEPT" in done.stdout
 
 
 def test_a_schwab_client_outside_feed_is_refused_wherever_it_is_imported(head):
@@ -72,19 +73,21 @@ def test_a_schwab_client_outside_feed_is_refused_wherever_it_is_imported(head):
 
 
 def test_a_second_http_client_is_refused_in_feed_too(head):
-    client = head / "schwab_client.py"
+    client = head / "feed" / "schwab_client.py"
     client.write_text("import requests\n" + client.read_text(encoding="utf-8"), encoding="utf-8")
     done = _lint(head)
     assert done.returncode != 0
-    assert "head.schwab_client -> requests" in done.stdout
+    assert "head.feed.schwab_client -> requests" in done.stdout
 
 
-def test_feed_may_move_into_its_folder_under_the_contract_it_has_today(head):
-    (head / "feed").mkdir()
-    (head / "feed" / "__init__.py").write_text("", encoding="utf-8")
-    (head / "schwab_client.py").rename(head / "feed" / "schwab_client.py")
+def test_a_call_through_feeds_client_from_outside_feed_is_refused(head):
+    """The page's server reaching Feed's Schwab client is refused, as importing schwab is."""
+    server = head / "server.py"
+    reach = "\n\ndef _call():\n    from feed import schwab_client\n"
+    server.write_text(server.read_text(encoding="utf-8") + reach, encoding="utf-8")
     done = _lint(head)
-    assert done.returncode == 0, done.stdout
+    assert done.returncode != 0
+    assert "head.server -> feed" in done.stdout
 
 
 def test_schwab_fields_for_a_stream_service_come_from_feed():

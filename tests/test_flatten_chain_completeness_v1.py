@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from schwab_client import flatten_chain_contracts
+from feed.schwab_client import flatten_chain_contracts
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _CDE = json.loads(

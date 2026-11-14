@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import socket
 
-import schwab_client as sc
 import time_et
+from feed import schwab_client as sc
 
 
 def test_the_callback_port_is_ready_only_once_something_listens_on_it():

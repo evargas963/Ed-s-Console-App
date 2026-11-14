@@ -27,12 +27,12 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
-import schwab_client as sc
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import CaptureWriter
 from calibration import complete_chain_capture as cch
+from feed import schwab_client as sc
 from stream_spine import HealthRegistry, MessageBus
 from tests.feed_live_helper import daemon_status
 from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab
@@ -241,7 +241,7 @@ def test_a_new_sign_in_saved_while_signed_in_is_taken_when_the_refresh_is_due(tm
 _SAVER = """
 import json, os, sys, time
 sys.path.insert(0, sys.argv[1])
-import schwab_client as sc
+from feed import schwab_client as sc
 path, payload = sys.argv[2], json.loads(sys.argv[3])
 with sc.token_file_lock(path):
     seen = os.stat(path)
@@ -485,7 +485,7 @@ def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_not_live(tmp_pa
 _HOLDER = """
 import sys, time
 sys.path.insert(0, sys.argv[1])
-import schwab_client as sc
+from feed import schwab_client as sc
 with sc.token_file_lock(sys.argv[2]):
     print("held", flush=True)
     time.sleep(25)

@@ -22,10 +22,10 @@ from pathlib import Path
 import pytest
 
 import calibration.complete_chain_capture as cch
-import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
+from feed import schwab_client as sc
 from json_blob_codec import decode_json_blob
 from option_contract import read_chain
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus

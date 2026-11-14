@@ -17,9 +17,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import live_market_plane as lmp
 import live_price_rows
-import schwab_client as sc
 import server as srv
 import time_et
+from feed import schwab_client as sc
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, spy_minutes
 from tests.page_on_socket import Pages
 

@@ -5,7 +5,7 @@ One that names no port is refused with that reason, never a host or port filled 
 
 from __future__ import annotations
 
-from schwab_client import run_login_flow
+from feed.schwab_client import run_login_flow
 
 
 def test_a_callback_url_with_no_port_is_refused_by_name(tmp_path):

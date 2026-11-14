@@ -37,7 +37,7 @@ the token, logs) and worktrees.
 
 | Today | Goes to |
 |---|---|
-| `schwab_client.py`; the Schwab half of `app/market_data/schwab/streaming/capture.py` (the stream, the subscriptions, the watchlist check); `calibration/complete_chain_capture.py` (the chain sweep and price history requests) | `feed/` |
+| `feed/schwab_client.py`; the Schwab half of `app/market_data/schwab/streaming/capture.py` (the stream, the subscriptions, the watchlist check); `calibration/complete_chain_capture.py` (the chain sweep and price history requests) | `feed/` |
 | The option rule in `capture.py` (`shown_first`, `saved_window`, the choice in `pick_options`): which contracts stream and which are kept, computed from the chain and the price | `calc/`; Feed subscribes to what it chooses |
 | `app/market_data/schwab/streaming/capture_main.py` (the daemon's start, under `python` in its window); the rest of `capture.py`: the program's stop, `DailyLog`, the daily keep (`keep_sessions`) | `recorder/` (the keep) and the program's entry |
 | `app/market_data/schwab/streaming/live_ui.py` (`/ws` on the program's port: the price rows and heartbeat to the page), `app/options/order_flow/live_payload.py` | `push/` |
