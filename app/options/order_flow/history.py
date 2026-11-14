@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict, deque
+from collections.abc import Sequence
 from typing import Any
 
 from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
@@ -24,8 +25,17 @@ log = logging.getLogger(__name__)
 #: how long a venue's books are kept (the heatmap route's longest window)
 BOOKS_KEPT_SEC = 240 * 60
 
+#: one side of a kept book: each level's (price, TOTAL_VOLUME), as Schwab sent them
+Side = tuple[tuple[float, float], ...]
+#: a kept book: (Schwab's BOOK_TIME in seconds, bid levels, ask levels)
+KeptBook = tuple[float, Side, Side]
+#: one cell of the book heatmap: its time bucket, price, each side's size and the side shown
+Cell = dict[str, Any]
 
-def quoted(trade: float, top: dict | None, streamed: dict | None) -> dict[str, Any]:
+
+def quoted(
+    trade: float, top: dict[str, Any] | None, streamed: dict[str, Any] | None
+) -> dict[str, Any]:
     """Return what the live state held as a print at `trade` was received, kept with the print.
 
     Its top of book (`top`), its streamed volume, volatility and delta (`streamed`), and
@@ -52,7 +62,7 @@ def quoted(trade: float, top: dict | None, streamed: dict | None) -> dict[str, A
     }
 
 
-def recent_prints(contract: str, content: list, limit: int) -> list[dict[str, Any]]:
+def recent_prints(contract: str, content: Sequence[Any], limit: int) -> list[dict[str, Any]]:
     """Return the newest `limit` prints of `contract` as the tape names them, newest first.
 
     `content` is the live state's for the contract (state.get_content_for_symbol): each print it
@@ -101,7 +111,7 @@ def tape_row(printed: dict[str, Any], contract: OptionContract) -> dict[str, Any
     }
 
 
-def _held(record: dict | None, name: str) -> Any:
+def _held(record: dict[str, Any] | None, name: str) -> Any:
     """Return `record`'s value of `name`; None when the state holds no record or no such value."""
     return None if record is None else record.get(name)
 
@@ -112,7 +122,7 @@ def _held(record: dict | None, name: str) -> Any:
 DISPLAY_TAIL_SHARE = 0.01
 
 
-def _display_window(cells: list[dict]) -> tuple[float, float]:
+def _display_window(cells: list[Cell]) -> tuple[float, float]:
     """Return (lo, hi), the price window of displayed size, trimmed at each end.
 
     It holds all but DISPLAY_TAIL_SHARE of displayed size at each end.
@@ -151,7 +161,7 @@ class RecentBooks:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._books: dict[tuple[str, str], deque] = {}
+        self._books: dict[tuple[str, str], deque[KeptBook]] = {}
 
     def record(self, ticker: str, venue: str, book: Book) -> None:
         sym = ticker_storage_key(ticker)
@@ -186,7 +196,7 @@ class RecentBooks:
             for key in [k for k in self._books if k[0] == sym]:
                 del self._books[key]
 
-    def window(self, ticker: str, venue: str, minutes: float) -> list[tuple]:
+    def window(self, ticker: str, venue: str, minutes: float) -> list[KeptBook]:
         """Return the books of the `minutes` ending at the newest one, oldest first."""
         key = (ticker_storage_key(ticker), venue)
         with self._lock:
@@ -209,9 +219,9 @@ class RecentLean:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # every ticker's series, empty until its first readout
-        self._points: defaultdict[str, deque] = defaultdict(deque)
+        self._points: defaultdict[str, deque[tuple[float, dict[str, Any]]]] = defaultdict(deque)
 
-    def record(self, ticker: str, ts_recv: float, readout: dict) -> None:
+    def record(self, ticker: str, ts_recv: float, readout: dict[str, Any]) -> None:
         sym = ticker_storage_key(ticker)
         if not sym:
             return
@@ -229,7 +239,7 @@ class RecentLean:
         with self._lock:
             self._points.pop(ticker_storage_key(ticker), None)
 
-    def points(self, ticker: str) -> list[tuple[float, dict]]:
+    def points(self, ticker: str) -> list[tuple[float, dict[str, Any]]]:
         """Return the ticker's kept values, oldest first."""
         with self._lock:
             return list(self._points[ticker_storage_key(ticker)])
@@ -276,7 +286,7 @@ def book_heatmap_for_ticker(
                 # a side Schwab sent no level for at this price stays absent, never 0
                 cells.setdefault((bucket, px), {"bid": None, "ask": None})[side] = vol
 
-    def _dominant(bid, ask) -> str:
+    def _dominant(bid: float | None, ask: float | None) -> str:
         """Return the displayed side at this price and bucket (the cell's colour).
 
         The one Schwab sent, or the larger of the two.
@@ -287,7 +297,7 @@ def book_heatmap_for_ticker(
             return "ASK"
         return "BID" if bid > ask else "ASK" if ask > bid else "EVEN"
 
-    cell_list = sorted(
+    cell_list: list[Cell] = sorted(
         (
             {
                 "t": k[0],

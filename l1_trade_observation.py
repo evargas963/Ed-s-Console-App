@@ -16,6 +16,7 @@ are not native trade identity.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from numeric_contract import schwab_count, schwab_number
@@ -83,7 +84,7 @@ def extract_vendor_print(item: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def canonical_tape_prints(content_items: list) -> list[dict[str, Any]]:
+def canonical_tape_prints(content_items: Sequence[Any]) -> list[dict[str, Any]]:
     """Return the tape's prints among `content_items`, in receive order.
 
     Each one is what the live state recorded: a genuinely new print, an adjacent restatement

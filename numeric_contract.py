@@ -26,7 +26,7 @@ def float_finite_or_none(value: Any) -> float | None:
 
 
 #: Schwab's own "no value" marker (greeks, IV, and any field Schwab could not fill).
-SCHWAB_NO_VALUE = -999
+SCHWAB_NO_VALUE: float = -999
 
 
 def schwab_number(value: Any) -> float | None:

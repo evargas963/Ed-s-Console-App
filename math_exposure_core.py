@@ -11,7 +11,7 @@ import math
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -21,6 +21,9 @@ from time_et import time_to_expiry_years
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+#: one strike's fields, by name: a sum, a count or the `dollarized` flag; None is not known
+type Bucket = dict[str, float | None]
 
 # ── Black-Scholes Greeks per share: the one place their formulas live ──
 
@@ -35,7 +38,7 @@ def norm_pdf[Num: (float, NDArray[np.float64])](
 
 
 def d1_vt[Num: (float, NDArray[np.float64])](
-    spot: Num,
+    spot: Num | float,
     strike: Num,
     t_years: Num,
     sigma: Num,
@@ -191,7 +194,7 @@ def schwab_iv_to_sigma(iv: float | None) -> float | None:
     return iv / 100.0
 
 
-def book_net_gex(exposures: dict) -> float | None:
+def book_net_gex(exposures: dict[float, Bucket]) -> float | None:
     """Net dealer GEX per 1% move at spot: the sum of every strike's net_gex_1pct.
 
     Schwab's gamma as sent, +call/-put. The one gamma at spot (regime, headline, pin gate). None
@@ -219,7 +222,7 @@ _GREEK_FIELD_UNREPORTED = {
 }
 
 
-def bucket_metric(bucket: dict, key: str) -> float | None:
+def bucket_metric(bucket: Bucket, key: str) -> float | None:
     """One exposure-bucket field, or None when it is not known.
 
     Not known: absent, not finite, or a Greek field on a leg where a contract's term is not known
@@ -233,7 +236,7 @@ def bucket_metric(bucket: dict, key: str) -> float | None:
     return float_finite_or_none(bucket[key])
 
 
-def bucket_metric_abs(bucket: dict, key: str) -> float | None:
+def bucket_metric_abs(bucket: Bucket, key: str) -> float | None:
     v = bucket_metric(bucket, key)
     return abs(v) if v is not None else None
 
@@ -252,7 +255,7 @@ class ExposureDiagnostics:
 # ── Exposure primitives ──────────────────────────────────────────────────────
 
 
-def _empty_bucket(dollarized: bool) -> dict:
+def _empty_bucket(dollarized: bool) -> Bucket:
     """Return a strike's bucket before its first contract (copied from _EMPTY_BUCKET).
 
     Its dollar fields and vanna need spot (`dollarized`): None, not known, without it.
@@ -312,7 +315,7 @@ def compute_exposures_by_strike(
     spot: float | None = None,
     now: datetime,
     product: str = "EQO",
-) -> tuple[dict[float, dict], ExposureDiagnostics]:
+) -> tuple[dict[float, Bucket], ExposureDiagnostics]:
     """Produce per-strike aggregates over every listed contract with a strike and a side.
 
     The aggregates:
@@ -338,7 +341,7 @@ def compute_exposures_by_strike(
     rows = [c for c in contracts if c.strike is not None and c.side is not None]
     at = {k: i for i, k in enumerate(dict.fromkeys(c.strike for c in rows))}
     empty = _EMPTY_BUCKET[spot is not None]
-    exposures: dict[float, dict] = {k: dict(empty) for k in at}
+    exposures: dict[float, Bucket] = {k: dict(empty) for k in at}
     if not rows:
         return exposures, _diagnostics(len(contracts), 0, 0)
     # each contract's slot: its strike's call leg (2i) or put leg (2i + 1)
@@ -445,7 +448,7 @@ def _slot_sums(
     return out
 
 
-def _finish_bucket(b: dict) -> None:
+def _finish_bucket(b: Bucket) -> None:
     """Compute a strike bucket's net fields from its call and put legs, +call/-put.
 
     Dealer-signed (the same convention as net GEX and the terrain's dex_dollars -- one meaning of
@@ -478,14 +481,14 @@ def exposure_books(
     spot: float | None,
     now: datetime,
     product: str = "EQO",
-) -> dict[tuple[str | None, float | None], tuple[dict[float, dict], ExposureDiagnostics]]:
+) -> dict[tuple[str | None, float | None], tuple[dict[float, Bucket], ExposureDiagnostics]]:
     """Run compute_exposures_by_strike once per (expiry, days to expiry) group.
 
     Every contract is
     priced once; any subset of expiries is then a merge_exposure_books of its groups (the full
     book, 0DTE, the front expiry, <=7 / >7 days).
     """
-    groups: dict[tuple[str | None, float | None], list] = {}
+    groups: dict[tuple[str | None, float | None], list[OptionContract]] = {}
     for c in contracts:
         groups.setdefault((c.expiry, c.days_to_expiry), []).append(c)
     return {
@@ -494,7 +497,9 @@ def exposure_books(
     }
 
 
-def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]:
+def merge_exposure_books(
+    books: Iterable[tuple[dict[float, Bucket], ExposureDiagnostics]],
+) -> tuple[dict[float, Bucket], ExposureDiagnostics]:
     """Merge books over DISJOINT contracts into one book.
 
     Every leg field a sum of the books' legs (a
@@ -503,7 +508,7 @@ def merge_exposure_books(books) -> tuple[dict[float, dict], ExposureDiagnostics]
     sums one compute_exposures_by_strike call over all the contracts gives, up to float addition
     order.
     """
-    merged: dict[float, dict] = {}
+    merged: dict[float, Bucket] = {}
     total = used = missing = 0
     for exposures, diag in books:
         total += diag.contracts_total
@@ -536,9 +541,9 @@ _BUCKET_SUMS = tuple(
 
 def overlay_streamed_contract_fields(
     contracts: list[OptionContract],
-    streamed_by_symbol: dict[str, dict],
+    streamed_by_symbol: dict[str, dict[str, float | None]],
     held: set[str],
-    quoted: dict[str, tuple[float, dict]],
+    quoted: dict[str, tuple[float, dict[str, Any]]],
 ) -> tuple[list[OptionContract], int]:
     """Give each contract its newest values: the stream's when it is held, else /quotes'.
 
@@ -578,7 +583,7 @@ def overlay_streamed_contract_fields(
     return out, sum(1 for c in contracts if c.symbol in held)
 
 
-def strike_total_oi(bucket: dict) -> float | None:
+def strike_total_oi(bucket: Bucket) -> float | None:
     """Return THE total open interest at one strike, or None when it is not known.
 
     Known = every contract at the strike reported openInterest (oi_unreported == 0). A leg
@@ -592,7 +597,7 @@ def strike_total_oi(bucket: dict) -> float | None:
     return call_oi + put_oi
 
 
-def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
+def strike_oi_legs(bucket: Bucket) -> tuple[float, float] | None:
     """(call OI, put OI) at one strike when its OI is known (see strike_total_oi), else None.
 
     A leg with no contract listed is a known 0.0, the sum of none.
@@ -602,7 +607,7 @@ def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
     return bucket["call_oi"], bucket["put_oi"]
 
 
-def strike_volume_legs(bucket: dict) -> tuple[float, float] | None:
+def strike_volume_legs(bucket: Bucket) -> tuple[float, float] | None:
     """(call, put) session volume at one strike when every contract there reported totalVolume.
 
     0 is a real zero; else None. A leg with no listed contract is a known 0.0. THE one reader:
@@ -613,7 +618,7 @@ def strike_volume_legs(bucket: dict) -> tuple[float, float] | None:
     return bucket["call_volume"], bucket["put_volume"]
 
 
-def strike_total_volume(bucket: dict) -> float | None:
+def strike_total_volume(bucket: Bucket) -> float | None:
     """Return THE total session volume at one strike.
 
     None when a contract there did not report it.
@@ -625,7 +630,7 @@ def strike_total_volume(bucket: dict) -> float | None:
     return call_volume + put_volume
 
 
-def book_total_oi(exposures: dict[float, dict]) -> float | None:
+def book_total_oi(exposures: dict[float, Bucket]) -> float | None:
     """Total OI of the whole book, or None if ANY strike's OI is unknown."""
     if not exposures:
         return None
@@ -652,7 +657,7 @@ def _put_call_ratio(legs: Iterable[tuple[float, float] | None]) -> float | None:
     return puts / calls if calls > 0 else None
 
 
-def put_call_oi_ratio(exposures: dict[float, dict]) -> float | None:
+def put_call_oi_ratio(exposures: dict[float, Bucket]) -> float | None:
     """Total put OI / total call OI of the book -- the positions held.
 
     None if any strike's OI is unknown or call OI is 0.
@@ -660,7 +665,7 @@ def put_call_oi_ratio(exposures: dict[float, dict]) -> float | None:
     return _put_call_ratio(strike_oi_legs(b) for b in exposures.values())
 
 
-def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
+def put_call_volume_ratio(exposures: dict[float, Bucket]) -> float | None:
     """Total put volume / total call volume of the book -- today's trading.
 
     Cboe's convention (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
@@ -670,7 +675,7 @@ def put_call_volume_ratio(exposures: dict[float, dict]) -> float | None:
     return _put_call_ratio(strike_volume_legs(b) for b in exposures.values())
 
 
-def exposures_have_dollar_gex(exposures: dict[float, dict]) -> bool:
+def exposures_have_dollar_gex(exposures: dict[float, Bucket]) -> bool:
     """Return True when the book was built WITH spot (its dollar fields are real).
 
     Read from the
@@ -683,7 +688,7 @@ def exposures_have_dollar_gex(exposures: dict[float, dict]) -> bool:
     return False
 
 
-def key_level_strikes_with_oi(exposures: dict[float, dict]) -> list[float]:
+def key_level_strikes_with_oi(exposures: dict[float, Bucket]) -> list[float]:
     """Strikes whose OI is KNOWN and positive (strike_total_oi -- the one reader)."""
     out: list[float] = []
     for s, bucket in sorted(exposures.items()):
@@ -693,20 +698,20 @@ def key_level_strikes_with_oi(exposures: dict[float, dict]) -> list[float]:
     return out
 
 
-def total_gex_dollars_at_strike(bucket: dict) -> float | None:
+def total_gex_dollars_at_strike(bucket: Bucket) -> float | None:
     """Peak gamma concentration: |call GEX$| + |put GEX$| per 1% move."""
     c = bucket_metric_abs(bucket, "call_gex_1pct")
     p = bucket_metric_abs(bucket, "put_gex_1pct")
     return None if c is None or p is None else c + p
 
 
-def net_gex_dollars_at_strike(bucket: dict) -> float | None:
+def net_gex_dollars_at_strike(bucket: Bucket) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
 
 
 def strike_of_largest(
-    exposures: dict[float, dict],
-    metric_fn,
+    exposures: dict[float, Bucket],
+    metric_fn: Callable[[Bucket], float | None],
 ) -> tuple[float | None, float | None]:
     """Return (strike, value) where `metric_fn` of a strike's bucket is largest and above 0.
 
@@ -725,7 +730,7 @@ def strike_of_largest(
     return best_s, best_v
 
 
-def pick_pin_and_strength(exposures: dict[float, dict]) -> tuple[float | None, float | None]:
+def pick_pin_and_strength(exposures: dict[float, Bucket]) -> tuple[float | None, float | None]:
     """Max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its decisiveness.
 
     NOT a demonstrated magnet.
@@ -771,7 +776,7 @@ def pick_pin_and_strength(exposures: dict[float, dict]) -> tuple[float | None, f
     return s, (v - second) / v * 100.0
 
 
-def pick_key_delta_strike(exposures: dict[float, dict]) -> float | None:
+def pick_key_delta_strike(exposures: dict[float, Bucket]) -> float | None:
     """Key Delta Strike: largest total delta notional (|call DEX$| + |put DEX$|).
 
     Institutional only — no raw-delta fallback: delta notional needs spot, and a
@@ -780,7 +785,7 @@ def pick_key_delta_strike(exposures: dict[float, dict]) -> float | None:
     if not exposures_have_dollar_gex(exposures):
         return None
 
-    def _total_dex(b: dict) -> float | None:
+    def _total_dex(b: Bucket) -> float | None:
         c = bucket_metric_abs(b, "call_dex_dollars")
         p = bucket_metric_abs(b, "put_dex_dollars")
         return None if c is None or p is None else c + p
@@ -790,7 +795,7 @@ def pick_key_delta_strike(exposures: dict[float, dict]) -> float | None:
 
 
 def pick_volatility_point_strikes(
-    exposures: dict[float, dict],
+    exposures: dict[float, Bucket],
 ) -> tuple[float | None, float | None]:
     """(net put gamma peak, net call gamma peak): the most NEGATIVE / most POSITIVE net GEX$.
 
@@ -816,7 +821,7 @@ def pick_volatility_point_strikes(
 
 
 def pick_gamma_wall_strikes(
-    exposures: dict[float, dict],
+    exposures: dict[float, Bucket],
 ) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
     """Call/put gamma walls: max |side GEX$|; none without a dollarized book (no spot)."""
     if not exposures_have_dollar_gex(exposures):
@@ -828,7 +833,7 @@ def pick_gamma_wall_strikes(
 
 
 def pick_delta_wall_strikes(
-    exposures: dict[float, dict],
+    exposures: dict[float, Bucket],
 ) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
     """Call/put delta walls: max |side DEX$|; none without a dollarized book (no spot)."""
     if not exposures_have_dollar_gex(exposures):

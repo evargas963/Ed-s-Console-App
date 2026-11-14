@@ -37,8 +37,8 @@ MARKERS = re.compile(
     r"pytest\.mark\.skip|skipif|\bskip\(|unittest\.skip|importorskip|xfail"
     r"|\b(?:test|describe|it)\.(?:skip|fixme|fail)\b|\bx(?:it|describe)\b|\bTODO\b|\bFIXME\b"
 )
-#: what an assertion names: a function it calls, a value it reads by its key
-NAMED = re.compile(r"""(\w+)\(|['"](\w+)['"]""")
+#: what an assertion names: a function it calls, a value it reads by its key or its attribute
+NAMED = re.compile(r"""(\w+)\(|['"](\w+)['"]|\.(\w+)\b(?!\s*\()""")
 JS_TEST = re.compile(r"""\btest(?:\.\w+)?\(\s*(['"`])(.*?)(?<!\\)\1""", re.S)
 JS_EXPECT = re.compile(r"\bexpect(?:\.\w+)?\([^;]*;")
 #: the head's own attributes and drivers do not decide what the diff shows
@@ -142,6 +142,10 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
                 found.add(node.name)
             elif isinstance(node, ast.Dict):  # the values a record is built with, by their keys
                 found.update(k.value for k in node.keys if isinstance(k, ast.Constant))
+            elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store):
+                found.add(node.attr)  # a value an object is given (`self.name = ...`)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                found.add(node.target.id)  # a record's declared field
     return found
 
 

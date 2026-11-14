@@ -75,7 +75,7 @@ class OptionContract:
     sent: frozenset[str] = field(repr=False, default=frozenset())
 
 
-def _greek(raw: Mapping, name: str, void: bool) -> float | None:
+def _greek(raw: Mapping[str, Any], name: str, void: bool) -> float | None:
     return None if void else schwab_number(raw.get(name))
 
 
