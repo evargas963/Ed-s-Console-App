@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import functools
 import itertools
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
+from typing import Any
 
 import numpy as np
 
 from math_exposure_core import (
+    Bucket,
     bs_charm_array,
     bsm_gamma_delta,
     bucket_metric,
@@ -26,6 +29,10 @@ from math_exposure_core import (
 )
 from option_contract import OptionContract
 from time_et import time_to_expiry_years
+
+#: one contract's gamma-profile row (_profile_row): strike, open interest, multiplier, years
+#: to expiry, sigma, side sign, rate, dividend yield
+type ProfileRow = tuple[float, float, float, float, float, int, float, float]
 
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
@@ -40,7 +47,7 @@ def compute_charm_by_strike(
     now: datetime,
     t_years: float | None = None,
     product: str = "EQO",
-) -> dict[float, dict]:
+) -> dict[float, Bucket]:
     """Per-strike dealer CHARM exposure, in delta-shares per day. `t_years`: as _contract_inputs.
 
     Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
@@ -57,12 +64,14 @@ def compute_charm_by_strike(
     unknown gamma does in compute_exposures_by_strike. A contract with open interest 0 adds
     nothing, so a strike whose contracts all have none is 0. A settled one has no charm left.
     """
-    out: dict[float, dict] = {}
+    out: dict[float, Bucket] = {}
     if not contracts or not spot or spot <= 0:
         return out
     tte = _expiry_years(now, product)
     # each contract that counts: its strike, its side's slot, and its pricing inputs (NaN: it
     # cannot be priced, so its side's sum is not known)
+    slot: list[tuple[float, bool]]
+    inputs: list[tuple[float, ...]]
     slot, inputs = [], []
     for c in contracts:
         years = t_years if t_years is not None else tte(c.expiration, c.settlement)
@@ -94,7 +103,7 @@ def compute_charm_by_strike(
     return out
 
 
-def _add_charm(bucket: dict, side: str, exposure: float | None) -> None:
+def _add_charm(bucket: Bucket, side: str, exposure: float | None) -> None:
     """Add to one side of a strike. One unknown leaves that side and the strike's net unknown."""
     side_now = bucket[side]
     bucket[side] = None if side_now is None or exposure is None else side_now + exposure
@@ -102,13 +111,13 @@ def _add_charm(bucket: dict, side: str, exposure: float | None) -> None:
     bucket["net_charm"] = None if call is None or put is None else call - put
 
 
-def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
+def merge_charm_maps(maps: dict[str | None, dict[float, Bucket]]) -> dict[float, Bucket]:
     """Merge per-expiry maps of the same function into one strike map.
 
     A strike listed on more than one expiry is the sum of those expiries, +call/−put, the same
     as one call over every contract.
     """
-    out: dict[float, dict] = {}
+    out: dict[float, Bucket] = {}
     for part in maps.values():
         for strike, bucket in part.items():
             cur = out.get(strike)
@@ -125,7 +134,7 @@ def merge_charm_maps(maps: dict[str, dict[float, dict]]) -> dict[float, dict]:
 
 
 def pick_charm_wall_strikes(
-    charm_by_strike: dict[float, dict],
+    charm_by_strike: dict[float, Bucket],
 ) -> tuple[float | None, float | None]:
     """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side charm exposure.
 
@@ -147,13 +156,15 @@ _CHARM_SIDES = ("call_charm", "put_charm")
 
 def contract_inputs(
     contracts: list[OptionContract], now: datetime, product: str = "EQO"
-) -> tuple[list, dict]:
+) -> tuple[list[ProfileRow], dict[str, int]]:
     """(priced, unpriced): the gamma profile's inputs for every contract with open interest.
 
     Each priced row is the contract's _profile_row. They are parsed once for the gamma profile
     (compute_terrain); `unpriced` counts the contracts with open interest the profile could not
     price, by reason.
     """
+    priced: list[ProfileRow]
+    unpriced: dict[str, int]
     priced, unpriced = [], {}
     tte = _expiry_years(now, product)
     for c in contracts:
@@ -167,7 +178,7 @@ def contract_inputs(
 
 def _profile_row(
     c: OptionContract, now: datetime, t_years: float | None, product: str
-) -> tuple | str:
+) -> ProfileRow | str:
     """One contract's gamma-profile row, or the reason it cannot be priced.
 
     The row is _contract_inputs' (strike, oi, mult, t_years, sigma, sign) and then the contract's
@@ -184,7 +195,7 @@ def _profile_row(
 
 def repriced_to_close(
     contracts: list[OptionContract], spot: float, now: datetime, t_close: float, product: str
-) -> tuple[list[OptionContract], list]:
+) -> tuple[list[OptionContract], list[ProfileRow]]:
     """(contracts, priced): each contract as if it expired `t_close` years from `now`.
 
     Its gamma and delta are the Black-Scholes-Merton ones at that horizon (bsm_gamma_delta, on
@@ -202,7 +213,7 @@ def repriced_to_close(
     )
 
 
-def _expiry_years(now: datetime, product: str):
+def _expiry_years(now: datetime, product: str) -> Callable[[Any, Any], float | None]:
     """Return time_to_expiry_years at `now`, computed once per (expiration, settlement)."""
     return functools.cache(
         lambda expiration, settlement: time_to_expiry_years(
@@ -252,7 +263,9 @@ def _contract_inputs(
 FLIP_CUTS = 32
 
 
-def compute_gamma_profile(parsed: list, spot: float) -> list[tuple[float, float]]:
+def compute_gamma_profile(
+    parsed: list[ProfileRow], spot: float | None
+) -> list[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
     `parsed`: the contracts' priced rows (contract_inputs', or repriced_to_close's). One dealer
@@ -284,7 +297,7 @@ def compute_gamma_profile(parsed: list, spot: float) -> list[tuple[float, float]
 _GAMMA_PROFILE_BLOCK = 32
 
 
-def _gamma_profile_totals(parsed: list, grid: list[float]) -> list[float]:
+def _gamma_profile_totals(parsed: list[ProfileRow], grid: list[float]) -> list[float]:
     """Sum over contracts of side_sign * gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
 
     gamma is the Black-Scholes-Merton gamma with each contract's rate r and dividend yield q as
@@ -366,7 +379,7 @@ def compute_gamma_support_levels(
     *,
     phi: float = GSF_PHI,
     eps_frac: float = GSF_EPS_FRAC,
-) -> dict:
+) -> dict[str, float | str | None]:
     """Gamma Support Floor (GSF) + Gamma Resistance Ceiling (GRC) — ONE producer.
 
     On the repriced net-GEX profile N(s) (`compute_gamma_profile`; the SAME materialized
@@ -427,7 +440,7 @@ GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
 
 
-def gamma_at_price(profile: list[tuple[float, float]], price: float) -> float | None:
+def gamma_at_price(profile: list[tuple[float, float]], price: float | None) -> float | None:
     """Net dealer gamma at `price`, linearly interpolated from the profile.
 
     This -- not the flip -- is what determines the regime: positive means dealers are net
@@ -456,7 +469,7 @@ def gamma_at_price(profile: list[tuple[float, float]], price: float) -> float | 
 
 def compute_gamma_flip_v2(
     contracts: list[OptionContract], spot: float, *, profile: list[tuple[float, float]]
-) -> tuple[float | None, str, dict]:
+) -> tuple[float | None, str, dict[str, float | None]]:
     """Canonical gamma flip (profile zero-crossing) plus a CHAIN-COVERAGE verdict.
 
     `profile` is compute_gamma_profile's curve for the same contracts and spot.
@@ -497,7 +510,7 @@ def compute_gamma_flip_v2(
 # ── Max Pain — OI-weighted expiry settlement magnet ────────────────────────────
 
 
-def compute_max_pain(exposures_by_strike: dict[float, dict]) -> float | None:
+def compute_max_pain(exposures_by_strike: dict[float, Bucket]) -> float | None:
     """
     Classic max pain: settlement strike that minimizes total ITM option holder payout.
 

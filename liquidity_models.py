@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 from numeric_contract import schwab_count, schwab_number
 
@@ -44,7 +45,7 @@ class VolumeProfile:
     """
 
     tick_size: float
-    bins: tuple
+    bins: tuple[tuple[float, float], ...]
     poc: float
     vah: float
     val: float
@@ -92,7 +93,7 @@ def _value_area(vols: list[float], poc: int, target: float) -> tuple[int, int]:
 
 
 def volume_profile(
-    bars: list,
+    bars: list[dict[str, Any]],
     value_area_pct: float = 0.70,
     tick_size: float = 0.01,
     ndigits: int = 4,
@@ -184,8 +185,9 @@ class Zone:
     zone_low: float
     zone_high: float
     zone_mid: float
-    source_levels: list[dict] = field(default_factory=list)  # [{"label": str, "value": float}]
-    source_tags: list[str] = field(default_factory=list)
+    #: [{"label": str, "value": float}]
+    source_levels: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    source_tags: list[str] = field(default_factory=list[str])
     confluence_score: int = 0
     snapshot_type: SnapshotType = SnapshotType.PREMARKET
     interpretation_notes: str = ""
@@ -205,7 +207,7 @@ class SnapshotOutput:
 
     ticker: str
     snapshot_type: SnapshotType
-    zones: list[Zone] = field(default_factory=list)
+    zones: list[Zone] = field(default_factory=list[Zone])
     summary: SnapshotSummary | None = None
 
 

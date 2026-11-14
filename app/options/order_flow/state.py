@@ -11,6 +11,7 @@ import logging
 import threading
 from collections import defaultdict, deque
 from collections.abc import Iterable
+from typing import Any
 
 from app.options.order_flow import history
 from app.options.order_flow.engine import Book, read_book
@@ -31,7 +32,7 @@ MAX_TAPE_PRINTS = 500
 log = logging.getLogger(__name__)
 
 
-def streamed_volume(content: dict) -> float | None:
+def streamed_volume(content: dict[str, Any]) -> float | None:
     """Return a LEVELONE record's TOTAL_VOLUME as sent; None when not sent or not a count.
 
     The one reader of it (this state and the chain sweep); a reported 0 is 0 (AGENTS.md rule 2).
@@ -48,19 +49,19 @@ class OrderFlowState:
         # each symbol's newest book from each Schwab service, the newest arrival last: a book
         # Schwab has not changed stands, however many the other service sends
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
-        self._tape: dict[str, deque] = {}
-        self._top: dict[str, dict] = {}
+        self._tape: dict[str, deque[dict[str, Any]]] = {}
+        self._top: dict[str, dict[str, Any]] = {}
         self._prev_trade: dict[str, tuple[int | None, float | None, float | None]] = {}
         self._receive_seq: dict[str, int] = {}
-        self._stream_greeks: dict[str, dict] = {}
+        self._stream_greeks: dict[str, dict[str, Any]] = {}
 
-    def _get_tape(self, symbol: str) -> deque:
+    def _get_tape(self, symbol: str) -> deque[dict[str, Any]]:
         with self._lock:
             if symbol not in self._tape:
                 self._tape[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
             return self._tape[symbol]
 
-    def push_book(self, symbol: str, content_item: dict, service: str) -> Book | None:
+    def push_book(self, symbol: str, content_item: dict[str, Any], service: str) -> Book | None:
         """Apply one Schwab book observation to this state instance.
 
         It comes from `service`: NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK. The book as read once
@@ -81,9 +82,9 @@ class OrderFlowState:
     def push_level_one(
         self,
         symbol: str,
-        content_item: dict,
+        content_item: dict[str, Any],
         ts_recv: float | None = None,
-        field_received: dict | None = None,
+        field_received: dict[str, Any] | None = None,
     ) -> None:
         """Apply one Schwab L1 observation with canonical merge/freshness/tape semantics.
 
@@ -146,7 +147,9 @@ class OrderFlowState:
                 }
             )
 
-    def get_content_for_symbol(self, symbol: str, venue: str | None = None) -> list:
+    def get_content_for_symbol(
+        self, symbol: str, venue: str | None = None
+    ) -> list[Book | dict[str, Any]]:
         """Return the engine's input for one symbol.
 
         That is its newest book of each Schwab service (engine.Book) then its tape's prints
@@ -156,7 +159,7 @@ class OrderFlowState:
         sym = ticker_storage_key(symbol)
         if not sym:
             return []
-        out: list = []
+        out: list[Book | dict[str, Any]] = []
         with self._lock:
             out.extend(
                 book for book in self._book[sym].values() if venue is None or book.service == venue
@@ -201,7 +204,7 @@ class OrderFlowState:
             self._receive_seq.pop(sym, None)
             self._stream_greeks.pop(sym, None)
 
-    def push_option_top(self, symbol: str, content_item: dict) -> None:
+    def push_option_top(self, symbol: str, content_item: dict[str, Any]) -> None:
         """Merge an option contract's top of book (LEVELONE_OPTIONS BID/ASK price and size, MARK).
 
         It is merged per field as Schwab sends changes only; not a number clears the field.
@@ -217,13 +220,13 @@ class OrderFlowState:
                 else:
                     top[name] = v
 
-    def option_top(self, symbol: str) -> dict | None:
+    def option_top(self, symbol: str) -> dict[str, Any] | None:
         sym = ticker_storage_key(symbol)
         with self._lock:
             t = self._top.get(sym)
             return dict(t) if t else None
 
-    def get_stream_greeks(self, symbol: str) -> dict | None:
+    def get_stream_greeks(self, symbol: str) -> dict[str, Any] | None:
         """Return the latest streamed Greeks, OPEN_INTEREST and TOTAL_VOLUME for one contract.
 
         The contract is one OPTION contract symbol, each field paired with its own ``_ts_recv``
@@ -246,18 +249,18 @@ _LIVE_STATE = OrderFlowState()
 #: each option contract's newest /quotes answer: symbol -> (the time it was received, its values
 #: as option_contract.quote_values reads them). The sweep asks one request at a time, so each
 #: answer is the newest.
-_REST_QUOTES: dict[str, tuple[float, dict]] = {}
+_REST_QUOTES: dict[str, tuple[float, dict[str, Any]]] = {}
 _rest_lock = threading.Lock()
 
 
-def push_rest_quotes(answer: dict, received: float) -> None:
+def push_rest_quotes(answer: dict[str, Any], received: float) -> None:
     """Keep one /quotes answer (symbol -> Schwab's `quote`), received at `received`."""
     read = {sym: (received, quote_values(quote)) for sym, quote in answer.items()}
     with _rest_lock:
         _REST_QUOTES.update(read)
 
 
-def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, dict]]:
+def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, dict[str, Any]]]:
     """Return each of `symbols`' newest /quotes answer received at or after `since`.
 
     Each as (its receive time, its values). An answer received before `since` is left out: the
@@ -268,30 +271,30 @@ def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, 
     return {s: answer for s, answer in kept.items() if answer[0] >= since}
 
 
-def push_option_top(symbol: str, content_item: dict) -> None:
+def push_option_top(symbol: str, content_item: dict[str, Any]) -> None:
     _LIVE_STATE.push_option_top(symbol, content_item)
 
 
-def option_top(symbol: str) -> dict | None:
+def option_top(symbol: str) -> dict[str, Any] | None:
     return _LIVE_STATE.option_top(symbol)
 
 
-def push_book(symbol: str, content_item: dict, service: str) -> Book | None:
+def push_book(symbol: str, content_item: dict[str, Any], service: str) -> Book | None:
     """Apply a book observation to the live singleton: the book as read, or None."""
     return _LIVE_STATE.push_book(symbol, content_item, service)
 
 
 def push_level_one(
     symbol: str,
-    content_item: dict,
+    content_item: dict[str, Any],
     ts_recv: float | None = None,
-    field_received: dict | None = None,
+    field_received: dict[str, Any] | None = None,
 ) -> None:
     """Apply an L1 observation to the live singleton."""
     _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv, field_received=field_received)
 
 
-def get_content_for_symbol(symbol: str, venue: str | None = None) -> list:
+def get_content_for_symbol(symbol: str, venue: str | None = None) -> list[Book | dict[str, Any]]:
     """Return canonical engine content from the live singleton."""
     return _LIVE_STATE.get_content_for_symbol(symbol, venue)
 
@@ -315,7 +318,7 @@ def clear_symbol(symbol: str) -> None:
     _LIVE_STATE.clear_symbol(symbol)
 
 
-def get_stream_greeks(symbol: str) -> dict | None:
+def get_stream_greeks(symbol: str) -> dict[str, Any] | None:
     """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one contract.
 
     The contract is one option contract symbol; each value is paired with its own `_ts_recv`,
