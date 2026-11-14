@@ -505,7 +505,7 @@ class ChainSweep:
         return self.waiting
 
     def candles_due(self, ticker: str, now: datetime) -> list[str]:
-        """The series of `ticker`'s price history asked for at `now` (series_due)."""
+        """Return the series of `ticker`'s price history asked for at `now` (series_due)."""
         return [s for s in PRICE_HISTORY if self.series_due(ticker, s, now)]
 
     def series_due(self, ticker: str, series: str, now: datetime) -> bool:
