@@ -28,11 +28,11 @@ SPOT_SOURCE = "streaming_plane"
 def with_change(bar: dict[str, Any]) -> dict[str, Any]:
     """`bar` with its change over the bar (close - open) and that change as a percent of open.
 
-    THE bar-change computation for every bar served.
+    THE bar-change computation for every bar served. Every bar holds its open and close (a
+    Candle's); a percent of an open of 0 is not a number: None.
     """
-    o, c = bar.get("o"), bar.get("c")
-    bar["chg"] = c - o if c is not None and o is not None else None
-    bar["chg_pct"] = bar["chg"] / o * 100 if bar["chg"] is not None and o else None
+    bar["chg"] = bar["c"] - bar["o"]
+    bar["chg_pct"] = bar["chg"] / bar["o"] * 100 if bar["o"] else None
     return bar
 
 
