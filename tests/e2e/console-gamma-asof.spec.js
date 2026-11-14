@@ -21,11 +21,13 @@ const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, 
   // server.bars' newest minute, labelled by time_et.ct_label
   last_bar: { t: 1757000180, label: 'Thu 09/04 10:36 AM CT' } };
 const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
-  net_gex_by_strike: [], adjusted_deliverable_symbols: [],
+  adjusted_deliverable_symbols: [],
   scope: { kind: 'complete_single_expiry' },
   contracts: [
     { putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' } ] };
+// server.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
+CHAIN.ladder = [{ strike: 100, call: CHAIN.contracts[0], put: CHAIN.contracts[1], net_gex: null }];
 function routes(over = {}) {
   return async (page) => {
     await routeWatchlist(page, ['SPY']);

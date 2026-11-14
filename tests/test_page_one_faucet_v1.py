@@ -130,13 +130,24 @@ def test_strike_side_sums_split_at_the_live_spot(held):
 
 
 def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
-    """Strike Detail's Net row: this expiry's column of the published surface, verbatim."""
+    """Strike Detail's Net row: this expiry's column of the published surface, verbatim.
+
+    Each ladder row carries the surface's cell at its strike; a strike the surface has no value
+    for carries None (unknown), never 0.
+    """
     surf = held.gamma_surface
     col = [e["expiry"] for e in surf["expirations"]].index(EXPIRY)
-    expected = [[c["strike"], c["gex"][col]] for c in surf["cells"] if c["gex"][col] is not None]
-    assert expected, "the real chain yields net GEX cells for its expiry"
+    cells = {c["strike"]: c["gex"][col] for c in surf["cells"]}
+    assert any(v is not None for v in cells.values()), "the real chain yields net GEX cells"
     body = server.chain(TK, time_et.now(), {"expiry": EXPIRY})
-    assert body["net_gex_by_strike"] == expected
+    assert body["ladder"] and "net_gex_by_strike" not in body
+    for row in body["ladder"]:
+        assert row["net_gex"] == cells.get(row["strike"])
+    # every surface value of this expiry reaches the ladder row at its strike
+    shown = {r["strike"]: r["net_gex"] for r in body["ladder"]}
+    assert {k: v for k, v in cells.items() if v is not None and k in shown} == {
+        k: v for k, v in shown.items() if v is not None
+    }
 
 
 def test_oi_and_volume_cells_carry_the_served_total(held):

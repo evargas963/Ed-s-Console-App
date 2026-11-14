@@ -38,4 +38,4 @@ def test_the_chain_spot_carries_schwabs_trade_time():
     assert "spot_as_of_ts_utc" not in body
     assert body["spot_time_ct"] == "Fri 09/25 06:59 PM CT"
     # levels with no surface: this expiry's net GEX is unknown, not an empty list
-    assert body["net_gex_by_strike"] is None
+    assert body["ladder"] and all(r["net_gex"] is None for r in body["ladder"])

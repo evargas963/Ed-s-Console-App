@@ -482,9 +482,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('Strike Detail redraws on the program\'s next chain, not just on a new strike selection', async ({ page }) => {
-    // induced: the real chain with the volume of the call at the price changed
-    const withCallVolume = (vol) => Object.assign({}, CHAIN,
-      { contracts: CHAIN.contracts.map((c) => (c === CALL_K ? Object.assign({}, c, { totalVolume: vol }) : c)) });
+    // induced: the real chain with the volume of the call at the price changed, in its contracts
+    // and its ladder row (server.chain builds both from the same rows)
+    const withVol = (c, vol) => (c && c.symbol === CALL_K.symbol ? Object.assign({}, c, { totalVolume: vol }) : c);
+    const withCallVolume = (vol) => Object.assign({}, CHAIN, {
+      contracts: CHAIN.contracts.map((c) => withVol(c, vol)),
+      ladder: CHAIN.ladder.map((r) => Object.assign({}, r, { call: withVol(r.call, vol) })),
+    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator(CELL).click();
     await expect(page.locator('#sdCtx')).toContainText('270');
