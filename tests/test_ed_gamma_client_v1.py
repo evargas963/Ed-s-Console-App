@@ -36,7 +36,7 @@ def test_ed_gamma_node_script():
 
 
 def test_gamma_surface_is_the_sockets_panel_and_no_route():
-    paths = [getattr(route, "path", "") for route in srv.app.routes if hasattr(route, "path")]
+    paths = [route.path for route in srv.app.routes]
     assert "/api/options/gamma-surface" not in paths
     asked = Asked("ZZNOSURFACE", 0.0, {"scope": "auto", "centre": None, "shift": 0})
     assert srv.PAGE_PANELS["surface"](asked) == srv.gamma_surface(
