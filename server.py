@@ -3423,9 +3423,9 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             (i for i, e in enumerate(surf["expirations"]) if e["expiry"] == resolved_expiry), None
         )
     )
-    net_gex = {} if col is None else {c["strike"]: c["gex"][col] for c in surf["cells"]}
+    net_gex = None if col is None else {c["strike"]: c["gex"][col] for c in surf["cells"]}
     for row in ladder:
-        row["net_gex"] = net_gex.get(row["strike"])
+        row["net_gex"] = None if net_gex is None else net_gex.get(row["strike"])
     return {
         "ticker": t,
         "spot": live_spot,
