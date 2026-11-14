@@ -32,7 +32,8 @@
  "gamma_flip": 770.7699684126369,
  "grc": null,
  "gsf": null,
- "headline": "Short gamma \u2014 trend regime. Follow breaks, do not fade.",
+ "headline": "Dealer gamma is negative: research links this to larger price swings and some late-day continuation, not to a trade direction.",
+ "headline_source": "Estimate assumes dealers long calls, short puts (SqueezeMetrics 2017), the convention least reliable for single stocks (Garleanu, Pedersen & Poteshman 2009). Swings: Ni, Pearson, Poteshman & White, RFS 2021; late-day continuation: Baltussen, Da, Lammers & Martens, JFE 2021.",
  "hvp": 764.0,
  "implied_1d_move": null,
  "key_delta_strike": 772.0,
@@ -56,7 +57,6 @@
   "2026-10-22": 1.1502520957806701
  },
  "pin_candidate": null,
- "posture": "FOLLOW_BREAKS",
  "put_charm_wall": 765.0,
  "put_delta_wall": 772.0,
  "put_wall": 764.0,

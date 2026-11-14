@@ -40,8 +40,6 @@ from math_levels import (
 )
 from option_contract import read_chain
 from terrain_read import (
-    POSTURE_FADE,
-    POSTURE_STAND_ASIDE,
     REGIME_LONG_GAMMA,
     REGIME_UNAVAILABLE,
     build_terrain_read,
@@ -115,7 +113,7 @@ def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
         spot=100.0, flip_confidence=GAMMA_FLIP_LEVEL_APPROX, gamma_at_spot=5.0e9
     )
     assert read.regime == REGIME_LONG_GAMMA, "the regime survives the middle tier"
-    assert read.posture == POSTURE_FADE, "posture accompanies a resolved regime"
+    assert read.headline.startswith("Dealer gamma is positive"), read.headline
     assert read.confidence == GAMMA_FLIP_LEVEL_APPROX, "the level is disclosed as approximate"
 
 
@@ -128,14 +126,13 @@ def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside()
     # "not trustworthy". That is wrong in both directions: rewording the operator
     # sentence broke the test with zero behavior change, and -- the real hole -- if
     # the fail-closed tier guard were loosened to admit NARROW, the function would
-    # return a LIVE regime/posture off an untrustworthy chain and this still passed
-    # so long as any advisory line anywhere contained the phrase. The test's own
-    # name promises "stands everything aside", yet posture was never asserted.
+    # return a LIVE regime off an untrustworthy chain and this still passed
+    # so long as any advisory line anywhere contained the phrase.
     # Pinned to the withheld-state IDENTITIES instead of prose.
     assert read.regime == REGIME_UNAVAILABLE, (
         f"a NARROW chain must withhold the regime entirely, got {read.regime!r}"
     )
-    assert read.posture == POSTURE_STAND_ASIDE, (
-        f"a NARROW chain must stand aside, got {read.posture!r}"
+    assert read.headline.startswith("No estimate"), (
+        f"a NARROW chain must state no estimate, got {read.headline!r}"
     )
     assert read.confidence == GAMMA_FLIP_NARROW, "the confidence served says why it is withheld"
