@@ -169,5 +169,10 @@ def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute
         server._write_streamed_bar(_bar(T0 + 60 * m))
     body = server.bars(TK, T0 + 120.0, {"tf": "1", "limit": 1500})
     assert [b["t"] for b in body["bars"]] == [T0, T0 + 60]
+    # each bar's start as the chart's readout shows it, served
+    assert [b["time_ct"] for b in body["bars"]] == [
+        "Mon 09/21 09:14 AM CT",
+        "Mon 09/21 09:15 AM CT",
+    ]
     assert not any("forming" in b for b in body["bars"])
     assert body["last_bar"] == {"t": T0 + 60, "label": ct_label(T0 + 60)}

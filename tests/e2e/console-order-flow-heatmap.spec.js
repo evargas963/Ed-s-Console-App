@@ -40,6 +40,21 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
   await expect(plot.locator('.tvc-pin')).toBeVisible();
   await expect(plot.locator('.tvc-pin')).toContainText('Bid size');
+  // pinned on a served cell, the readout is that cell's: its bucket's served time
+  // (history.book_heatmap_for_ticker's bucket_ct) and its served size. The cell is hit in pixels:
+  // a book's levels sit a cent apart in a window dollars wide, each drawn at least a pixel tall
+  const st = await page.evaluate(() => window.EdBookHeatmap.state());
+  const t = Math.round((st.pinned.time - HEAT.since_ts) / HEAT.bucket_sec);
+  const mid = (st.priceTop + st.priceBottom) / 2;
+  const cell = HEAT.cells
+    .filter((c) => c.t === t && c.bid != null && c.price < st.priceTop && c.price > st.priceBottom)
+    .sort((a, b) => Math.abs(a.price - mid) - Math.abs(b.price - mid))[0];
+  const h = await plot.locator('.tvc-plot').evaluate((p) => p.clientHeight);
+  const y = ((st.priceTop - cell.price) / (st.priceTop - st.priceBottom)) * Math.max(1, h - 30);
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5); // a click un-pins
+  await page.mouse.click(box.x + box.width * 0.5, box.y + y);
+  await expect(plot.locator('.tvc-pin .tvc-pin-h span')).toHaveText(HEAT.bucket_ct[t]);
+  await expect(plot.locator('.tvc-pin')).toContainText('Bid size' + cell.bid);
   expect(errs).toEqual([]);
 });
 

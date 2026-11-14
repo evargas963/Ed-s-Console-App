@@ -135,3 +135,6 @@ def test_the_heatmap_the_browser_draws_is_the_producers_own(heat):
     )
     timed = [nat["BOOK_TIME"] / 1000 for _, svc, nat in _FX["rows"] if svc == "NASDAQ_BOOK"]
     assert (heat["since_ts"], heat["until_ts"]) == (min(timed), max(timed))
+    # each bucket's start as the screen shows it, the first at the window's start
+    assert len(heat["bucket_ct"]) == heat["n_buckets"]
+    assert heat["bucket_ct"][0] == heat["since_ct"] == "Fri 09/25 06:55 PM CT"

@@ -87,6 +87,7 @@
   var TF_SECONDS = { 1: 60, 3: 180, 5: 300, 15: 900, 30: 1800, 60: 3600, D: 86400 };
   var LEVEL_TITLE_W = 150; // px along the pane's right edge where the level lines' titles are drawn
   var LEVEL_LABEL_GAP = 18; // px: a level label's height; closer labels would overlap
+  var HIT_PX = 4; // px: how near a click a heatmap row drawn thinner than that still counts
   var PROFILE_FRAC = 0.16; // the volume profile's share of the pane's width, from the left edge
   var DOT_MAX_R = 19; // px: a profile dot's radius at full strength
   // event callouts sit in a strip above the candles: rows of numbers (and their labels) from
@@ -605,14 +606,27 @@
       self.step = isFinite(gap) ? gap : 0.01;
       if (self._req) self._req();
     };
-    // the served cell drawn under a time and price (hit-testing the drawing)
+    // the served cell drawn under a time and price (hit-testing the drawing, in pixels): in that
+    // time bucket, the nearest cell whose drawn row is within half its height, or HIT_PX, of it
     this.cellAt = function (time, price) {
       var h = self.h;
-      if (!h) return null;
+      if (!h || !self._series) return null;
       var t = Math.round((time - h.since_ts) / h.bucket_sec);
-      return h.cells.find(function (c) {
-        return c.t === t && Math.abs(c.price - price) <= self.step / 2;
+      var y = self._series.priceToCoordinate(price);
+      var best = null,
+        bestPx = Infinity;
+      h.cells.forEach(function (c) {
+        var cy = self._series.priceToCoordinate(c.price),
+          y1 = self._series.priceToCoordinate(c.price + self.step / 2),
+          y2 = self._series.priceToCoordinate(c.price - self.step / 2);
+        if (c.t !== t || y == null || cy == null || y1 == null || y2 == null) return;
+        var px = Math.abs(cy - y);
+        if (px <= Math.max(Math.abs(y2 - y1) / 2, HIT_PX) && px < bestPx) {
+          best = c;
+          bestPx = px;
+        }
       });
+      return best;
     };
   }
   // User trend lines (and the one being placed). Points are {time, price}; x comes from the
@@ -1037,8 +1051,8 @@
         pinBox.hidden = false;
         pinBox.innerHTML =
           '<div class="tvc-pin-h"><span>' +
-          esc(CT_FULL.format(new Date(S.pinned.time * 1000))) +
-          " CT</span>" +
+          esc(cell ? heat.h.bucket_ct[cell.t] : "-") + // the served bucket's time
+          "</span>" +
           '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
           '<div class="tvc-pin-g"><span>Price</span><b>' +
           num(S.pinned.price) +
@@ -1062,8 +1076,8 @@
         pct = b.chg_pct; // served per bar
       pinBox.innerHTML =
         '<div class="tvc-pin-h"><span>' +
-        esc(CT_FULL.format(new Date(b.t * 1000))) +
-        " CT</span>" +
+        esc(b.time_ct) + // served per bar
+        "</span>" +
         '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
         '<div class="tvc-pin-g"><span>Open</span><b>' +
         num(b.o) +
@@ -1452,6 +1466,7 @@
             v: b.v,
             chg: b.chg,
             chg_pct: b.chg_pct,
+            time_ct: b.time_ct,
           };
         });
         S.tf = tf;
@@ -1651,8 +1666,11 @@
           markers: S.markersShown,
           markerSelected: S.markerSel,
           callouts: callouts.centers,
-          priceTop: candles.coordinateToPrice(0),
-          priceBottom: candles.coordinateToPrice(Math.max(1, plot.clientHeight - 30)),
+          // on the series carrying the price axis, as a click reads it
+          priceTop: (heat.h ? timeline : candles).coordinateToPrice(0),
+          priceBottom: (heat.h ? timeline : candles).coordinateToPrice(
+            Math.max(1, plot.clientHeight - 30),
+          ),
         };
       },
       // where a price's profile row is drawn, in page coordinates (tests click it as a user would):
