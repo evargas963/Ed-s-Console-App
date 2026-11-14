@@ -614,18 +614,19 @@ def _merged_recent_crosses(ticker: str, n: int) -> list[dict[str, Any]]:
         raw = _crosses[ticker][::-1][: max(int(n) * 8, 64)] if ticker in _crosses else []
     merged: list[dict[str, Any]] = []
     seen: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
+    # each row has every LevelCrossEvent field and its cross_id (db.get_recent_crosses, or the
+    # row record_level_crosses returned)
     for r in raw:
-        key = (r.get("ts_utc"), r.get("level_value"), r.get("direction"))
+        key = (r["ts_utc"], r["level_value"], r["direction"])
         hit = seen.get(key)
         if hit is None:
             row = dict(r)
-            row["level_names"] = [r.get("level_name")]
+            row["level_names"] = [r["level_name"]]
             seen[key] = row
             merged.append(row)
             continue
-        nm = r.get("level_name")
-        if nm and nm not in hit["level_names"]:
-            hit["level_names"].append(nm)
+        if r["level_name"] not in hit["level_names"]:
+            hit["level_names"].append(r["level_name"])
     return merged[:n]
 
 
@@ -2942,21 +2943,20 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     start = _desk_window_start(tf, now)
     crosses = _merged_recent_crosses(tk, 200)
     in_window = sorted(
-        (c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
+        (c for c in crosses if c["ts_utc"] >= start),
         key=lambda c: c["ts_utc"],
     )
     items: list[dict[str, Any]] = []
     for i, c in enumerate(in_window):
         names = " + ".join(c["level_names"])
-        cid = c.get("cross_id")  # external-key-ok: ed_console.db level_crosses column
         items.append(
             {
-                "key": f"x{cid}",
+                "key": f"x{c['cross_id']}",
                 "n": i + 1,
                 "ts": c["ts_utc"],
                 "dom": "LEVELS",
-                "price": c.get("level_value"),
-                "dir": c.get("direction"),
+                "price": c["level_value"],
+                "dir": c["direction"],
                 "marker": False,
                 "title": f"Crossed {_CROSS_WORD[c['direction']]} {names}",
                 "detail": f"{price_text(c['level_value'])} · spot "
