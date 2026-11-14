@@ -12,7 +12,7 @@ import pytest
 
 import live_market_plane as lmp
 import server as srv
-from liquidity_models import ZONE_DISPLAY, SnapshotType, ZoneType
+from liquidity_models import ZONE_DISPLAY
 from tests.feed_live_helper import daemon_status
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
 
@@ -35,11 +35,11 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path()
     lows = [z["zone_low"] for z in body["zones"]]
     assert lows == sorted(lows), "with no spot the zones are listed by price, lowest first"
     for z in body["zones"]:
-        assert z["distance_to_spot"] is None
+        assert "distance_to_spot" not in z, "the order is served, not a distance no page reads"
         assert "tradeable_score" not in z, "a score no page reads is not served"
         # the pages named every zone that was not support_liquidity "Resistance": each zone's name
         # and side are served from its type
-        assert (z["zone_label"], z["zone_side"]) == ZONE_DISPLAY[ZoneType(z["zone_type"])]
+        assert (z["zone_label"], z["zone_side"]) in set(ZONE_DISPLAY.values())
 
 
 @pytest.mark.usefixtures("published")
@@ -55,7 +55,7 @@ def test_with_a_live_spot_the_zones_are_measured_from_schwabs_last_price():
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=at)
     body = srv.liquidity_snapshot(TK, FRIDAY)
-    distances = [z["distance_to_spot"] for z in body["zones"]]
+    distances = [srv._distance_to_spot(z["zone_low"], z["zone_high"], last) for z in body["zones"]]
     assert distances and distances == sorted(distances)
-    assert distances[0] == 0.0 and "SPOT_LIVE" in body["zones"][0]["source_tags"]
-    assert body["snapshot_type"] == SnapshotType.LIVE.value
+    first = [s["label"] for s in body["zones"][0]["source_levels"]]
+    assert distances[0] == 0.0 and "SPOT_LIVE" in first

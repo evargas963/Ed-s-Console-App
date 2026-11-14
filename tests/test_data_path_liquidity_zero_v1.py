@@ -59,8 +59,13 @@ def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> d
     return srv.liquidity_snapshot(TK, at)
 
 
+def _tags(zone: dict) -> list[str]:
+    """Return the tags of a served zone's levels, as each source level carries its tag."""
+    return [s["label"] for s in zone["source_levels"]]
+
+
 def _tags_at_zero(body: dict) -> set[str]:
-    return {t for z in body["zones"] if z["zone_low"] == 0 for t in z["source_tags"]}
+    return {t for z in body["zones"] if z["zone_low"] == 0 for t in _tags(z)}
 
 
 @pytest.mark.usefixtures("published")
@@ -71,7 +76,7 @@ def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones():
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": 0}, received_ts=at)
     body = srv.liquidity_snapshot(TK, FRIDAY)
-    tags = [t for z in body["zones"] for t in z["source_tags"]]
+    tags = [t for z in body["zones"] for t in _tags(z)]
     assert "SPOT_LIVE" in tags, tags
 
 
@@ -109,10 +114,10 @@ def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
         if getattr(snap, key) is not None
     }
     assert held >= {"GAMMA_CALL_WALL", "GAMMA_PUT_WALL", "ABS_GAMMA", "NET_CALL_PEAK", "MAX_PAIN"}
-    sent = {t for z in body["zones"] for t in z["source_tags"]}
+    sent = {t for z in body["zones"] for t in _tags(z)}
     assert held <= sent, held - sent
     for z in body["zones"]:
-        tags = set(z["source_tags"])
+        tags = set(_tags(z))
         if tags & held and "SPOT_LIVE" not in tags:
             assert z["interpretation_notes"].startswith("Confluence:"), z
     # each tag beside a session level in a zone of its own, as a level away from the others lands
