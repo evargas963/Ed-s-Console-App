@@ -1155,11 +1155,16 @@ TICKER = re.compile(
     r"^\$?(?:SPX|SPY|QQQ|IWM|NVDA|TSLA|AMD|META|AAPL|MSFT|AMZN|GOOGL?|NDX|VIX|"
     r"DJI|COMPX|VXN|RVX|RUT|DJX|XSP|OEX)$"
 )
+#: a return annotation that is a record held as a plain dict: bare, or keyed by `str`, alone or in
+#: a list or tuple
+RECORD_AS_DICT = r"(?:(?:list|tuple)\[)?(?:dict|Dict)(?:\[str\b|$|\]| \|)"
 for f in PRODUCT_PY:
     for node in ast.walk(trees[f]):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None:
             r = ast.unparse(node.returns)
-            if re.match(r"(dict|Dict|list\[dict|tuple\[dict)", r) and not node.name.startswith("_"):
+            # a record held as a dict is keyed by field names: a bare dict or one keyed by text.
+            # A map keyed by strike or expiry (dict[float, ...]) is a map, not a record.
+            if re.match(RECORD_AS_DICT, r) and not node.name.startswith("_"):
                 add(
                     S,
                     "public functions returning a plain dict, not a typed record",

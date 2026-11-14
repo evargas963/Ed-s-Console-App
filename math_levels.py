@@ -9,6 +9,7 @@ from __future__ import annotations
 import itertools
 from dataclasses import replace
 from datetime import datetime
+from typing import TypedDict
 
 import numpy as np
 
@@ -362,13 +363,21 @@ def _lerp(x: float, x0: float, x1: float, y0: float, y1: float) -> float:
     return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 
 
+class GammaSupport(TypedDict):
+    """The gamma support floor and resistance ceiling, None when not found, and their state."""
+
+    gsf: float | None
+    grc: float | None
+    state: str
+
+
 def compute_gamma_support_levels(
     profile: list[tuple[float, float]],
     spot: float | None,
     *,
     phi: float = GSF_PHI,
     eps_frac: float = GSF_EPS_FRAC,
-) -> dict[str, float | str | None]:
+) -> GammaSupport:
     """Gamma Support Floor (GSF) + Gamma Resistance Ceiling (GRC) — ONE producer.
 
     On the repriced net-GEX profile N(s) (`compute_gamma_profile`; the SAME materialized

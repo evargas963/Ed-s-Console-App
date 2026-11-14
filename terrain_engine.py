@@ -97,6 +97,15 @@ class PositioningMigration(TypedDict):
     volume_total: float | None
 
 
+class OneDayMove(TypedDict):
+    """compute_implied_one_day_move's band: its half-width, the ATM volatility, the expiry used."""
+
+    points: float
+    iv_pct_atm: float
+    dte_used: float
+    method: str
+
+
 @dataclass(frozen=True)
 class TerrainSnapshot:
     """Everything the terrain tab renders, computed from one chain."""
@@ -167,7 +176,7 @@ class TerrainSnapshot:
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
     #: one-sigma half-width; the client centers it on the live spot. The wall RANGE itself
     #: is the put_wall↔call_wall corridor — already carried above, drawn client-side.
-    implied_1d_move: dict[str, float | str] | None = None
+    implied_1d_move: OneDayMove | None = None
 
     #: Delta walls owned by THIS producer — same wide chain,
     #: one book. Concepts terrain does not compute (OI/vanna walls, inflections) do not
@@ -480,7 +489,7 @@ def atm_sigma_by_expiry(
 
 def compute_implied_one_day_move(
     contracts: list[OptionContract], spot: float | None, atm_sigma: dict[ExpiryKey, float | None]
-) -> dict[str, float | str] | None:
+) -> OneDayMove | None:
     """Compute the institutional sigma band: EM_1d = S x sigma_ATM x sqrt(1/252).
 
     THE STANDARD, named: SpotGamma — whose levels product ships on Bloomberg — treats the
