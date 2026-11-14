@@ -15139,7 +15139,6 @@
   "net_gex_at_spot": -7628715215.013743,
   "gsf": null,
   "grc": null,
-  "gsf_state": "BELOW_SUPPORT",
   "same_day": {
    "call_wall": 759.0,
    "put_wall": 756.0,

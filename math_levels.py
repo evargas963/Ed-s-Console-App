@@ -341,11 +341,8 @@ def gamma_flip_from_profile(profile: list[tuple[float, float]], spot: float) -> 
 GSF_PHI = 0.5
 #: eps guard: below this fraction of the profile's max |N|, the at-spot cushion is too small
 #: for a ratio to mean anything — the regime is effectively at/below zero support and the
-#: honest output is a STATE, not a fabricated price.
+#: honest output is no price, not a fabricated one.
 GSF_EPS_FRAC = 0.005
-GSF_STATE_OK = "OK"
-GSF_STATE_BELOW_SUPPORT = "BELOW_SUPPORT"
-GSF_STATE_UNAVAILABLE = "UNAVAILABLE"
 
 
 def _lerp(x: float, x0: float, x1: float, y0: float, y1: float) -> float:
@@ -360,11 +357,10 @@ def _lerp(x: float, x0: float, x1: float, y0: float, y1: float) -> float:
 
 
 class GammaSupport(TypedDict):
-    """The gamma support floor and resistance ceiling, None when not found, and their state."""
+    """The gamma support floor and resistance ceiling, None when not found."""
 
     gsf: float | None
     grc: float | None
-    state: str
 
 
 def compute_gamma_support_levels(
@@ -383,18 +379,18 @@ def compute_gamma_support_levels(
       GRC = the LOWEST s > spot where N(s) <= phi * N(spot)
 
     Both are measured geometry of the modelled profile (dealers taken as long calls, short
-    puts); that price holds at them is not tested. When N(spot) <= eps the state is
-    BELOW_SUPPORT with both levels None; an empty or unusable profile is UNAVAILABLE.
+    puts); that price holds at them is not tested. When N(spot) <= eps (no cushion at the price),
+    or the profile is empty or unusable, both levels are None.
     """
     if not profile or spot is None or spot <= 0:
-        return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE}
+        return {"gsf": None, "grc": None}
     n_spot = gamma_at_price(profile, float(spot))
     if n_spot is None:
-        return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE}
+        return {"gsf": None, "grc": None}
     max_abs = max(abs(v) for _, v in profile)
     eps = eps_frac * max_abs if max_abs > 0 else 0.0
     if n_spot <= eps:
-        return {"gsf": None, "grc": None, "state": GSF_STATE_BELOW_SUPPORT}
+        return {"gsf": None, "grc": None}
     target = phi * n_spot
 
     gsf: float | None = None
@@ -415,7 +411,7 @@ def compute_gamma_support_levels(
             grc = _lerp(target, prev_v, v, prev_p, p)
             break
         prev_p, prev_v = p, v
-    return {"gsf": gsf, "grc": grc, "state": GSF_STATE_OK}
+    return {"gsf": gsf, "grc": grc}
 
 
 #: The flip's verdict is chain coverage: how far the delivered strikes reach around spot. It does

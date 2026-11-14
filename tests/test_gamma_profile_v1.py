@@ -16,9 +16,6 @@ from pathlib import Path
 import time_et
 from math_levels import (
     GAMMA_FLIP_UNAVAILABLE,
-    GSF_STATE_BELOW_SUPPORT,
-    GSF_STATE_OK,
-    GSF_STATE_UNAVAILABLE,
     _gamma_profile_totals,
     compute_gamma_flip_v2,
     compute_gamma_profile,
@@ -272,7 +269,6 @@ def test_gsf_sits_between_flip_and_spot_and_grc_mirrors_above():
     """
     prof, spot = _tsla()
     out = compute_gamma_support_levels(prof, spot)
-    assert out["state"] == GSF_STATE_OK
     assert out["gsf"] is not None
     flip = gamma_flip_from_profile(prof, spot)
     assert flip is not None and out["gsf"] > flip  # above the flip
@@ -293,7 +289,6 @@ def test_grc_found_when_cushion_decays_above_spot():
     prof, spot = _tsla()
     out = compute_gamma_support_levels(prof, spot)
     peak = max(prof, key=lambda point: point[1])[0]
-    assert out["state"] == GSF_STATE_OK
     assert out["grc"] is not None and out["grc"] > peak > spot  # beyond the peak/wall
     half = 0.5 * gamma_at_price(prof, spot)
     under = max((p, v) for p, v in prof if p < out["grc"])
@@ -302,20 +297,20 @@ def test_grc_found_when_cushion_decays_above_spot():
 
 
 def test_below_support_state_never_fabricates_a_price():
-    """The whole real SPY chain is negative at spot: a state, both levels None."""
+    """The whole real SPY chain is negative at spot: both levels None."""
     chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
     assert gamma_at_price(prof, spot) < 0
     out = compute_gamma_support_levels(prof, spot)
-    assert out["state"] == GSF_STATE_BELOW_SUPPORT
     assert out["gsf"] is None and out["grc"] is None
 
 
 def test_unavailable_on_empty_or_bad_inputs():
     prof, spot = _tsla()
-    assert compute_gamma_support_levels([], spot)["state"] == GSF_STATE_UNAVAILABLE
-    assert compute_gamma_support_levels(prof, None)["state"] == GSF_STATE_UNAVAILABLE
-    assert compute_gamma_support_levels(prof, -5)["state"] == GSF_STATE_UNAVAILABLE
+    none = {"gsf": None, "grc": None}
+    assert compute_gamma_support_levels([], spot) == none
+    assert compute_gamma_support_levels(prof, None) == none
+    assert compute_gamma_support_levels(prof, -5) == none
 
 
 def test_the_flip_counts_the_contracts_it_could_not_price():
