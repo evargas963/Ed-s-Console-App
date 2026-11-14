@@ -829,14 +829,13 @@ def snapshot_input_fingerprint(
     A cache key shorter than its input is a claim of equality that cannot always hold.
     Every bar enters a stable digest, so no interior edit can survive it, and the digest
     is fixed-width so the key stays cheap to compare.
+
+    The bars are packed and hashed in one update: once a hash object has taken an update of
+    2 KiB or more, CPython releases the GIL on every later update, and a bar at a time then
+    waits out another thread's switch interval per bar.
     """
-    h = hashlib.blake2b(digest_size=16)
-    h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f{len(bars_norm)}".encode())
-    h.update(repr(prior).encode())  # the prior session's Schwab daily candle (a dataclass), or None
-    # the regular hours Schwab's /markets sent, every held day's (the build reads this session's
-    # and the prior one's): an answer that arrives later is a new input
-    h.update(repr(sorted((day, s.regular) for day, s in sessions.items())).encode())
     present, absent = _BAR_PRESENT.pack, _BAR_ABSENT.pack
+    packed = bytearray()
     for b in bars_norm:
         ts, o, hi, lo, c = (
             int(b["timestamp"]),
@@ -847,9 +846,16 @@ def snapshot_input_fingerprint(
         )
         vol = b["volume"]
         if vol is None:
-            h.update(absent(ts, o, hi, lo, c, 0))
+            packed += absent(ts, o, hi, lo, c, 0)
         else:
-            h.update(present(ts, o, hi, lo, c, float(vol), 1))
+            packed += present(ts, o, hi, lo, c, float(vol), 1)
+    h = hashlib.blake2b(digest_size=16)
+    h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f{len(bars_norm)}".encode())
+    h.update(repr(prior).encode())  # the prior session's Schwab daily candle (a dataclass), or None
+    # the regular hours Schwab's /markets sent, every held day's (the build reads this session's
+    # and the prior one's): an answer that arrives later is a new input
+    h.update(repr(sorted((day, s.regular) for day, s in sessions.items())).encode())
+    h.update(packed)
     return (ticker, session_date.isoformat(), bar_source, len(bars_norm), h.hexdigest())
 
 
