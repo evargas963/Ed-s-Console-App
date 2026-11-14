@@ -111,7 +111,9 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     assert rows, "a real chain must yield at least one vanna row"
 
     # the same chain at the same instant: the published rows are the faucet's own values
-    exposures, _ = compute_exposures_by_strike(_CONTRACTS, spot=_SPOT, now=CRWD.now)
+    exposures, _ = compute_exposures_by_strike(
+        _CONTRACTS, spot=_SPOT, now=CRWD.now, sessions=time_et.sessions()
+    )
     checked = 0
     for k, b in exposures.items():
         expected = bucket_metric(b, "net_vanna")
@@ -131,7 +133,7 @@ def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_stri
     assert rows, "a real chain must yield at least one charm row"
 
     # the same chain at the same instant: the published rows are the faucet's own values
-    per_ch = compute_charm_by_strike(_CONTRACTS, _SPOT, now=CRWD.now)
+    per_ch = compute_charm_by_strike(_CONTRACTS, _SPOT, now=CRWD.now, sessions=time_et.sessions())
     checked = 0
     for k, b in per_ch.items():
         if b.get("net_charm") is None:

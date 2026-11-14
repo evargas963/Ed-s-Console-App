@@ -183,7 +183,9 @@ def test_strikes_payload_carries_server_side_sums():
         lmp._by_ticker.pop(C.ticker, None)
         lmp._fields_by_ticker.pop(C.ticker, None)
         lmp.record_feed_down()
-    book = compute_exposures_by_strike(read_chain(C.chain), spot=C.spot, now=C.now)[0]
+    book = compute_exposures_by_strike(
+        read_chain(C.chain), spot=C.spot, now=C.now, sessions=time_et.sessions()
+    )[0]
     below = [b for k, b in book.items() if k < C.spot]
     above = [b for k, b in book.items() if k > C.spot]
     ss = body["today_side_sums"]

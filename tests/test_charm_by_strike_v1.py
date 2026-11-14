@@ -18,6 +18,7 @@ from math_levels import compute_charm_by_strike, pick_charm_wall_strikes
 from tests.one_contract_greeks import charm
 from tests.real_chains import SPY_0DTE, spy_0dte_book
 from tests.shared_helpers import norm_cdf
+from time_et import sessions
 
 #: a REAL same-day-expiry SPY chain captured 2026-10-07 12:32 ET, valued at its own capture time
 NOW = SPY_0DTE.now
@@ -57,7 +58,7 @@ def test_bs_charm_refuses_degenerate_inputs() -> None:
 def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:
     """net_charm must be call - put, matching the net-GEX dealer convention."""
     chain, spot = spy_0dte_book()
-    cbs = compute_charm_by_strike(chain, spot, now=NOW)
+    cbs = compute_charm_by_strike(chain, spot, now=NOW, sessions=sessions())
     assert cbs, "real chain must produce per-strike charm"
     for b in cbs.values():
         assert math.isfinite(b["call_charm"])
@@ -67,7 +68,7 @@ def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:
 
 def test_charm_walls_are_real_strikes_from_the_chain() -> None:
     chain, spot = spy_0dte_book()
-    cbs = compute_charm_by_strike(chain, spot, now=NOW)
+    cbs = compute_charm_by_strike(chain, spot, now=NOW, sessions=sessions())
     assert cbs, "real chain must produce per-strike charm"
     call_wall, put_wall = pick_charm_wall_strikes(cbs)
     strikes = set(cbs)
@@ -81,7 +82,7 @@ def test_two_strikes_with_the_same_charm_give_the_lower_strike_whatever_their_or
     The wall is the lower of the two in either order of the map, as every other level picks.
     """
     chain, spot = spy_0dte_book()
-    cbs = compute_charm_by_strike(chain, spot, now=NOW)
+    cbs = compute_charm_by_strike(chain, spot, now=NOW, sessions=sessions())
     call_wall, put_wall = pick_charm_wall_strikes(cbs)
     assert call_wall is not None
     higher = max(k for k in cbs if k > call_wall)
@@ -92,8 +93,9 @@ def test_two_strikes_with_the_same_charm_give_the_lower_strike_whatever_their_or
 
 
 def test_charm_by_strike_fails_closed() -> None:
-    assert compute_charm_by_strike([], 100.0, now=NOW) == {}
-    assert compute_charm_by_strike(None, 100.0, now=NOW) == {}
+    held = sessions()
+    assert compute_charm_by_strike([], 100.0, now=NOW, sessions=held) == {}
+    assert compute_charm_by_strike(None, 100.0, now=NOW, sessions=held) == {}
     chain, _ = spy_0dte_book()
-    assert compute_charm_by_strike(chain, 0.0, now=NOW) == {}
+    assert compute_charm_by_strike(chain, 0.0, now=NOW, sessions=held) == {}
     assert pick_charm_wall_strikes({}) == (None, None)

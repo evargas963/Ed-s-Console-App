@@ -17,6 +17,7 @@ from __future__ import annotations
 from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import SPY_0DTE
+from time_et import sessions
 
 TICKER, CHAIN, SPOT, NOW = SPY_0DTE.ticker, SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now
 
@@ -32,7 +33,7 @@ def _expected_volume_by_strike() -> dict[float, int]:
 
 def test_live_chain_volume_reaches_the_per_strike_rows():
     """The volume ON THE VENDOR CHAIN is the volume IN THE ROWS — call + put summed per strike."""
-    snap = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW)
+    snap = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW, sessions=sessions())
     assert snap.per_strike, "terrain produced no per-strike rows; the panel would have no source"
     expected = _expected_volume_by_strike()
     got = {r[0]: r[2] for r in snap.per_strike["all"]}
@@ -45,7 +46,7 @@ def test_rows_are_the_shape_the_panel_renders():
 
     Never rebuilt from these numbers into contracts and run through the exposure engine again.
     """
-    ps = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW).per_strike
+    ps = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW, sessions=sessions()).per_strike
     # the three GEX scopes, and the Chart view's DEX and OI rows
     assert set(ps) == {"all", "near", "far", "dex", "oi"}, (
         "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
@@ -63,6 +64,6 @@ def test_rows_are_the_shape_the_panel_renders():
 
 def test_absence_renders_as_absence_not_as_stale_data():
     """With no chain there must be no fabricated per-strike data."""
-    snap = compute_terrain(TICKER, [], SPOT, now=NOW)
+    snap = compute_terrain(TICKER, [], SPOT, now=NOW, sessions=sessions())
     assert not snap.per_strike["all"]
     assert snap.error

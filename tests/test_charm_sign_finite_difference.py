@@ -31,7 +31,7 @@ from option_contract import read_chain
 from tests.one_contract_greeks import charm, vanna
 from tests.real_chains import MRVL, SPY_0DTE, SPY_FULL, RealChain
 from tests.shared_helpers import norm_cdf
-from time_et import ET, option_close_product, time_to_expiry_years
+from time_et import ET, option_close_product, sessions, time_to_expiry_years
 
 SIGMA = 0.20
 K = 100.0
@@ -106,6 +106,7 @@ def _schwab_inputs(book: RealChain):
     dividendYield (percents), T the program's one time to expiry (tested on its own).
     """
     product = option_close_product(book.ticker)
+    held = sessions()
     rows = []
     for c in book.chain:
         oi, k, iv, mult = (
@@ -115,7 +116,11 @@ def _schwab_inputs(book: RealChain):
         if not oi or None in (k, iv, mult, r, q) or iv <= 0:
             continue
         t = time_to_expiry_years(
-            c["expirationDate"], book.now, settlement_type=c.get("settlementType"), product=product
+            c["expirationDate"],
+            book.now,
+            sessions=held,
+            settlement_type=c.get("settlementType"),
+            product=product,
         )
         if not t:
             continue
@@ -166,9 +171,12 @@ def test_the_per_strike_charm_and_vanna_are_those_derivatives_summed_on_spys_who
     (k, _t, _sigma, sign, _r, _q, size), charm_fd, vanna_fd = _finite_differences(SPY_FULL)
     contracts = read_chain(SPY_FULL.chain)
     product = option_close_product(SPY_FULL.ticker)
-    charm_by = compute_charm_by_strike(contracts, SPY_FULL.spot, now=SPY_FULL.now, product=product)
+    held = sessions()
+    charm_by = compute_charm_by_strike(
+        contracts, SPY_FULL.spot, now=SPY_FULL.now, sessions=held, product=product
+    )
     vanna_by, _ = compute_exposures_by_strike(
-        contracts, spot=SPY_FULL.spot, now=SPY_FULL.now, product=product
+        contracts, spot=SPY_FULL.spot, now=SPY_FULL.now, sessions=held, product=product
     )
     calls = sign > 0
     checked = 0
@@ -218,7 +226,9 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
     # a captured chain cannot pin call_vanna == put_vanna at equal OI.
     call = dict(base, putCall="CALL")
     put = dict(base, putCall="PUT")
-    per, _ = compute_exposures_by_strike(read_chain([call, put]), spot=98.0, now=now)
+    per, _ = compute_exposures_by_strike(
+        read_chain([call, put]), spot=98.0, now=now, sessions=sessions()
+    )
     b = per[100.0]
     assert b["call_vanna"] != 0.0, "call vanna did not compute"
     assert abs(b["call_vanna"] - b["put_vanna"]) < 1e-9, (
@@ -258,11 +268,15 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
             "dividendYield": 0.0,
         }
 
-    per_pct, _ = compute_exposures_by_strike(read_chain([one(20.0)]), spot=98.0, now=now)
+    held = sessions()
+    per_pct, _ = compute_exposures_by_strike(
+        read_chain([one(20.0)]), spot=98.0, now=now, sessions=held
+    )
     v_pct = per_pct[100.0]["call_vanna"]
     assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
     assert schwab_iv_to_sigma(20.0) == 0.20 and schwab_iv_to_sigma(0.20) == 0.002
-    v_dec = vanna(98.0, 100.0, time_to_expiry_years("2027-07-16", now), 0.20) * 0.01 * 100 * 100
+    t = time_to_expiry_years("2027-07-16", now, sessions=held)
+    v_dec = vanna(98.0, 100.0, t, 0.20) * 0.01 * 100 * 100
     # RELATIVE tolerance: these aggregates are ~1e3-1e4, where one float ULP is ~1e-12 relative but
     # ~1e-9 ABSOLUTE — an absolute 1e-9 bound is tighter than the arithmetic can hold and failed on
     # CI's platform while passing locally (got 4731.665262145597 vs 4731.665262144535). The claim
@@ -275,5 +289,7 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     # (the vanna path checks IV once, there); the same contract at IV 20.0 adds v_pct
     for bad in (None, 0.0, -5.0):
         assert schwab_iv_to_sigma(bad) is None, bad
-        per_bad, _ = compute_exposures_by_strike(read_chain([one(bad)]), spot=98.0, now=now)
+        per_bad, _ = compute_exposures_by_strike(
+            read_chain([one(bad)]), spot=98.0, now=now, sessions=held
+        )
         assert per_bad[100.0]["call_vanna"] == 0.0 != v_pct, bad

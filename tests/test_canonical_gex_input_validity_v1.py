@@ -18,7 +18,7 @@ from numeric_contract import SCHWAB_NO_VALUE
 from option_contract import read_chain, read_contract
 from server import project_gamma_surface
 from tests.real_chains import SPY_0DTE
-from time_et import ET
+from time_et import ET, sessions
 
 SPOT = 100.0
 #: the hand-built contracts below (expiring 2026-10-01, a date Schwab's /markets answers) are
@@ -70,14 +70,18 @@ def test_a_no_value_contract_leaves_its_leg_and_the_strikes_net_unknown():
     """
     none = _ct(100.0, "PUT", 700, iv=SCHWAB_NO_VALUE)
     call = _ct(100.0, "CALL", 500, gamma=0.04)
-    exp, diag = compute_exposures_by_strike(read_chain([none, call]), spot=SPOT, now=NOW)
+    exp, diag = compute_exposures_by_strike(
+        read_chain([none, call]), spot=SPOT, now=NOW, sessions=sessions()
+    )
     assert bucket_metric(exp[100.0], "call_gamma") == 0.04 * 500 * 100
     assert bucket_metric(exp[100.0], "put_gamma") is None
     for net in ("net_gex_1pct", "net_dex_dollars", "net_vanna"):
         assert bucket_metric(exp[100.0], net) is None, net
     assert diag.greeks_missing == 1
     no_oi = _ct(100.0, "PUT", 0, iv=SCHWAB_NO_VALUE)
-    exp, _ = compute_exposures_by_strike(read_chain([no_oi, call]), spot=SPOT, now=NOW)
+    exp, _ = compute_exposures_by_strike(
+        read_chain([no_oi, call]), spot=SPOT, now=NOW, sessions=sessions()
+    )
     assert bucket_metric(exp[100.0], "net_gex_1pct") == bucket_metric(exp[100.0], "call_gex_1pct")
 
 
@@ -88,7 +92,7 @@ def test_real_spy_capture_is_used_as_schwab_sent_it():
     reported; the 777 strike's call and put gamma are Schwab's own times open interest.
     """
     exp, diag = compute_exposures_by_strike(
-        read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=SPY_0DTE.now
+        read_chain(SPY_0DTE.chain), spot=SPY_0DTE.spot, now=SPY_0DTE.now, sessions=sessions()
     )
     assert diag.greeks_missing == 0
     assert bucket_metric(exp[767.0], "call_delta") == 1 * 1091 * 100.0
@@ -99,9 +103,10 @@ def test_real_spy_capture_is_used_as_schwab_sent_it():
 
 def test_a_strike_no_greek_reached_is_blank_not_zero():
     chain = read_chain([_ct(100.0, "CALL", 500, iv=SCHWAB_NO_VALUE)])
-    exp, _ = compute_exposures_by_strike(chain, spot=SPOT, now=NOW)
+    held = sessions()
+    exp, _ = compute_exposures_by_strike(chain, spot=SPOT, now=NOW, sessions=held)
     assert bucket_metric(exp[100.0], "net_gex_1pct") is None
-    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT, now=NOW))
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT, now=NOW, sessions=held))
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
     # no put is listed at the strike: its OI is the call's 500 (strike_oi_legs, the one reader)
     assert row["gex"] == [None] and row["oi"] == [{"call": 500, "put": 0, "total": 500}]
@@ -109,7 +114,8 @@ def test_a_strike_no_greek_reached_is_blank_not_zero():
 
 def test_genuine_balanced_zero_is_a_zero():
     chain = read_chain([_ct(100.0, "CALL", 500), _ct(100.0, "PUT", 500)])
-    exp, _ = compute_exposures_by_strike(chain, spot=SPOT, now=NOW)
+    held = sessions()
+    exp, _ = compute_exposures_by_strike(chain, spot=SPOT, now=NOW, sessions=held)
     assert bucket_metric(exp[100.0], "net_gex_1pct") == 0.0
-    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT, now=NOW))
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT, now=NOW, sessions=held))
     assert [r for r in surface["cells"] if r["strike"] == 100.0][0]["gex"] == [0]

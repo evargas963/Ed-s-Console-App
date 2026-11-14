@@ -7,7 +7,7 @@ scheduling live in the caller, so this stays trivially testable.
 from __future__ import annotations
 
 import bisect
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 from typing import Any, TypedDict
@@ -57,7 +57,7 @@ from terrain_read import (
     level_side,
     price_side,
 )
-from time_et import ET, option_close_product, time_to_expiry_years
+from time_et import ET, Session, option_close_product, time_to_expiry_years
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
 TERRAIN_SCHEMA_VERSION = 5
@@ -800,6 +800,7 @@ def same_day_levels(
     spot: float,
     *,
     now: datetime,
+    sessions: Mapping[str, Session],
     product: str,
     books: dict[ExpiryKey, Book],
     charm_by_expiry: dict[str | None, dict[float, Bucket]],
@@ -824,15 +825,19 @@ def same_day_levels(
     rows = expiry_rows[front]
     if front == today:
         front_books = (b for (e, _d), b in books.items() if e == front)
-        parsed, _unpriced = contract_inputs(rows, now, product=product)
+        parsed, _unpriced = contract_inputs(rows, now, sessions=sessions, product=product)
         charm = charm_by_expiry[front]
     else:
-        t_close = time_to_expiry_years(today, now, product=product)
+        t_close = time_to_expiry_years(today, now, sessions=sessions, product=product)
         if not t_close:
             return blank
-        rows, parsed = repriced_to_close(rows, spot, now, t_close, product)
-        front_books = exposure_books(rows, spot=spot, now=now, product=product).values()
-        charm = compute_charm_by_strike(rows, spot, now=now, t_years=t_close, product=product)
+        rows, parsed = repriced_to_close(rows, spot, t_close)
+        front_books = exposure_books(
+            rows, spot=spot, now=now, sessions=sessions, product=product
+        ).values()
+        charm = compute_charm_by_strike(
+            rows, spot, now=now, sessions=sessions, t_years=t_close, product=product
+        )
     exposures, _diag = merge_exposure_books(front_books)
     (call_wall, _), (put_wall, _) = pick_gamma_wall_strikes(exposures)
     pin, _strength = pick_pin_and_strength(exposures)
@@ -860,13 +865,19 @@ def same_day_levels(
 
 
 def compute_terrain(
-    ticker: str, contracts: list[OptionContract] | None, spot: float | None, *, now: datetime
+    ticker: str,
+    contracts: list[OptionContract] | None,
+    spot: float | None,
+    *,
+    now: datetime,
+    sessions: Mapping[str, Session],
 ) -> TerrainSnapshot:
     """Full terrain for one ticker. Fails closed — never invents a level.
 
     `now`: the valuation instant for every time-to-expiry in this snapshot, read once by the
     caller's entry point (the live reprice: its own instant; a replay of a stored chain: the
-    snapshot's time, so it reproduces what the live reprice saw).
+    snapshot's time, so it reproduces what the live reprice saw). `sessions`: Schwab's /markets
+    answers by ET date, the settlement of each expiry, read once by that entry point too.
 
     This is the ONE terrain engine. It must be
     fed the wide-capture multi-expiry chain — the full-chain
@@ -881,10 +892,9 @@ def compute_terrain(
         return _unavailable(ticker, spot, "no spot price")
 
     # ONE valuation instant for every book below, on this ticker's option close
-    _terrain_now = now
     product = option_close_product(ticker)
     # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
-    books = exposure_books(contracts, spot=spot, now=_terrain_now, product=product)
+    books = exposure_books(contracts, spot=spot, now=now, sessions=sessions, product=product)
     exposures, diag = merge_exposure_books(books.values())
     dated: dict[tuple[str, float | None], Book] = {
         k: b for k, b in books.items() if k[0] is not None
@@ -915,7 +925,7 @@ def compute_terrain(
     # every operator surface until this producer computes them.
     (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(exposures)
     # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
-    parsed, _unpriced = contract_inputs(contracts, _terrain_now, product=product)
+    parsed, _unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
     profile = compute_gamma_profile(parsed, spot)
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot, profile=profile)
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
@@ -948,7 +958,7 @@ def compute_terrain(
         expiry_rows.setdefault(c.expiry, []).append(c)
     for exp, rows in expiry_rows.items():
         charm_by_expiry[exp] = compute_charm_by_strike(
-            rows, float(spot), now=_terrain_now, product=product
+            rows, float(spot), now=now, sessions=sessions, product=product
         )
         iv_by_expiry[exp] = iv_by_strike(rows)
     charm_by_strike = merge_charm_maps(charm_by_expiry)
@@ -981,7 +991,8 @@ def compute_terrain(
         same_day=same_day_levels(
             expiry_rows,
             spot,
-            now=_terrain_now,
+            now=now,
+            sessions=sessions,
             product=product,
             books=books,
             charm_by_expiry=charm_by_expiry,

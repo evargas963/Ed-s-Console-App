@@ -40,7 +40,9 @@ NOW = SPY_0DTE.now
 def _profile(contracts: list[OptionContract], spot: float) -> list[tuple[float, float]]:
     """Return SPY's gamma profile as compute_terrain builds it: rows priced to its option close."""
     product = time_et.option_close_product("SPY")
-    priced, _unpriced = contract_inputs(contracts, NOW, product=product)
+    priced, _unpriced = contract_inputs(
+        contracts, NOW, sessions=time_et.sessions(), product=product
+    )
     return compute_gamma_profile(priced, spot)
 
 
@@ -51,7 +53,10 @@ def _one(symbol: str) -> list[tuple[float, float]]:
     """
     chain, spot = spy_0dte_book()
     priced, _unpriced = contract_inputs(
-        [c for c in chain if c.symbol == symbol], NOW, product=time_et.option_close_product("SPY")
+        [c for c in chain if c.symbol == symbol],
+        NOW,
+        sessions=time_et.sessions(),
+        product=time_et.option_close_product("SPY"),
     )
     grid = [spot * (0.85 + 0.30 * i / 240) for i in range(241)]
     return list(zip(grid, _gamma_profile_totals(priced, grid), strict=True))
@@ -68,7 +73,9 @@ def _tsla() -> tuple[list[tuple[float, float]], float]:
     data = json.loads((_REAL_CHAIN.parent / name).read_text(encoding="utf-8"))
     at = datetime.fromtimestamp(data["ts_utc"], time_et.ET)
     product = time_et.option_close_product("TSLA")
-    priced, _unpriced = contract_inputs(read_chain(data["chain"]), at, product=product)
+    priced, _unpriced = contract_inputs(
+        read_chain(data["chain"]), at, sessions=time_et.sessions(), product=product
+    )
     return compute_gamma_profile(priced, float(data["spot"])), float(data["spot"])
 
 
@@ -76,7 +83,9 @@ def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
     """The candidate prices are Schwab's: every strike holding a priced contract, and the price."""
     chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
-    priced, _unpriced = contract_inputs(chain, NOW, product=time_et.option_close_product("SPY"))
+    priced, _unpriced = contract_inputs(
+        chain, NOW, sessions=time_et.sessions(), product=time_et.option_close_product("SPY")
+    )
     prices = [p for p, _ in prof]
     assert prices == sorted(prices) and {row[0] for row in priced} <= set(prices)
     assert all(math.isfinite(v) for _, v in prof)
@@ -92,7 +101,9 @@ def test_the_curve_reaches_as_far_as_the_chain_does() -> None:
     2026-10-07 (tests/real_chains.py), price 269.04: the curve falls to half its value at the
     price at 337.68, 25.5% above it, and the flip stays where the old range also found it.
     """
-    snap = compute_terrain(CRWD.ticker, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now)
+    snap = compute_terrain(
+        CRWD.ticker, read_chain(CRWD.chain), CRWD.spot, now=CRWD.now, sessions=time_et.sessions()
+    )
     assert snap.profile[0][0] == 45.0 and snap.profile[-1][0] == 350.0  # the chain's strikes
     assert snap.grc is not None and snap.grc > CRWD.spot * 1.15
     assert round(snap.grc, 2) == 337.68
@@ -325,16 +336,17 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     now = datetime.fromtimestamp(nflx["ts_utc"], time_et.ET)
     nflx_chain = read_chain(nflx["chain"])
     nflx_close = time_et.option_close_product("NFLX")
-    priced, unpriced = contract_inputs(nflx_chain, now, product=nflx_close)
+    held = time_et.sessions()
+    priced, unpriced = contract_inputs(nflx_chain, now, sessions=held, product=nflx_close)
     assert (len(priced), unpriced) == (685, {"no_volatility": 8})
     far = next(ct for ct in nflx["chain"] if ct["expirationDate"].startswith("2028-01-21"))
     assert (
         time_et.time_to_expiry_years(
-            far["expirationDate"], now, settlement_type=far["settlementType"]
+            far["expirationDate"], now, sessions=held, settlement_type=far["settlementType"]
         )
         == (datetime.fromisoformat(far["expirationDate"]).timestamp() - now.timestamp())
         / time_et.YEAR_SECONDS
     )
     at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)
     spx_close = time_et.option_close_product("$SPX")
-    assert contract_inputs(read_chain(spx["chain"]), at, product=spx_close)[1] == {}
+    assert contract_inputs(read_chain(spx["chain"]), at, sessions=held, product=spx_close)[1] == {}

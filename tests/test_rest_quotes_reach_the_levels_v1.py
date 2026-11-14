@@ -158,7 +158,8 @@ def _quoted_chain(answer: dict) -> list:
 
 def _levels_of(chain: list, at: float) -> list:
     """Each strike's row of `chain` priced at the capture's spot as of `at`."""
-    return compute_terrain(TK, chain, _SPOT, now=datetime.fromtimestamp(at, ET)).per_strike
+    now = datetime.fromtimestamp(at, ET)
+    return compute_terrain(TK, chain, _SPOT, now=now, sessions=time_et.sessions()).per_strike
 
 
 def test_an_answer_received_after_the_chain_began_prices_the_levels_at_its_receive_time():

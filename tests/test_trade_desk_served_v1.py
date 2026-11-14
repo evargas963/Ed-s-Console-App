@@ -212,7 +212,11 @@ def _spy_close_at(msg):
     levels.
     """
     published = compute_terrain(
-        "SPY", read_chain(SPY_CLOSE.chain), SPY_CLOSE.spot, now=SPY_CLOSE.now
+        "SPY",
+        read_chain(SPY_CLOSE.chain),
+        SPY_CLOSE.spot,
+        now=SPY_CLOSE.now,
+        sessions=time_et.sessions(),
     ).to_dict()
     assert (published["put_wall"], published["call_wall"]) == (764.0, 765.0)
     price = msg["native"]["LAST_PRICE"]

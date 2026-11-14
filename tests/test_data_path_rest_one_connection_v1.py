@@ -46,7 +46,7 @@ from tests.schwab_rest_standin import (
     delivered,
 )
 from tests.shared_helpers import et_ts
-from time_et import ET
+from time_et import ET, sessions
 
 _STREAM = next(
     c
@@ -223,16 +223,19 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     assert (kept.bid, kept.ask, kept.volume) == (spy[HELD].bid, spy[HELD].ask, spy[HELD].volume)
     # so the chain as delivered, with nothing laid over it (the close values), has a put/call
     # volume ratio: one contract without a volume leaves it unknown
+    held = sessions()
     book, _diag = compute_exposures_by_strike(
         list(spy.values()),
         spot=SPY["spot"],
         now=datetime.fromtimestamp(et_ts("2026-10-01 10:15"), ET),
+        sessions=held,
     )
     assert put_call_volume_ratio(book) is not None
     unknown, _diag = compute_exposures_by_strike(
         [replace(ct, volume=None) if sym == HELD else ct for sym, ct in spy.items()],
         spot=SPY["spot"],
         now=datetime.fromtimestamp(et_ts("2026-10-01 10:15"), ET),
+        sessions=held,
     )
     assert put_call_volume_ratio(unknown) is None
     assert all(

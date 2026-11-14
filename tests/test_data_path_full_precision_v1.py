@@ -14,6 +14,7 @@ from math_levels import GAMMA_FLIP_NARROW
 from option_contract import read_chain
 from terrain_engine import compute_terrain
 from tests.real_chains import SPY_0DTE
+from time_et import sessions
 
 
 def test_the_flip_is_the_profiles_full_zero_crossing():
@@ -25,7 +26,7 @@ def test_the_flip_is_the_profiles_full_zero_crossing():
     Schwab's own gamma summed over the book: both negative.
     """
     chain, spot = read_chain(SPY_0DTE.chain), SPY_0DTE.spot
-    snap = compute_terrain(SPY_0DTE.ticker, chain, spot, now=SPY_0DTE.now)
+    snap = compute_terrain(SPY_0DTE.ticker, chain, spot, now=SPY_0DTE.now, sessions=sessions())
     flip, confidence = snap.gamma_flip, snap.confidence
     assert confidence == GAMMA_FLIP_NARROW
     assert flip == 779.015982542143

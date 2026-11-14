@@ -18,6 +18,7 @@ from time_et import (
     MIN_TIME_TO_EXPIRY_YEARS,
     YEAR_SECONDS,
     elapsed,
+    sessions,
     set_within,
     time_to_expiry_years,
 )
@@ -60,7 +61,7 @@ def test_time_to_expiry_years_uses_timestamp_elapsed_not_civil_timedelta():
     # civil wall-clock one. Monday's close is the 16:00 ET Schwab's /markets sent for EQO.
     fri = datetime(2026, 10, 30, 10, 30, tzinfo=ET)
     mon_close = datetime(2026, 11, 2, 16, 0, tzinfo=ET)
-    tte = time_to_expiry_years("2026-11-02", now=fri)
+    tte = time_to_expiry_years("2026-11-02", now=fri, sessions=sessions())
     stamp_years = (mon_close.timestamp() - fri.timestamp()) / YEAR_SECONDS
     civil_years = (mon_close - fri).total_seconds() / YEAR_SECONDS
     assert tte is not None
@@ -99,12 +100,13 @@ def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
         datetime(2026, 10, 16, 9, 30, tzinfo=ET),
         datetime(2026, 10, 16, 16, 0, tzinfo=ET),
     )
-    t_am = contract_inputs(am, now=thu_close)[0][0][3]
-    t_pm = contract_inputs(pm, now=thu_close)[0][0][3]
+    held = sessions()
+    t_am = contract_inputs(am, now=thu_close, sessions=held)[0][0][3]
+    t_pm = contract_inputs(pm, now=thu_close, sessions=held)[0][0][3]
     assert round(t_am * 365 * 24, 2) == round((fri_open - thu_close).total_seconds() / 3600, 2)
     assert round(t_pm * 365 * 24, 2) == round((fri_close - thu_close).total_seconds() / 3600, 2)
 
     fri_ten = datetime(2026, 10, 16, 10, 0, tzinfo=ET)
-    assert contract_inputs(am, now=fri_ten) == ([], {"settled": len(am)})
-    assert len(contract_inputs(pm, now=fri_ten)[0]) == len(pm)
-    assert len(contract_inputs(equity, now=fri_ten)[0]) == len(equity)
+    assert contract_inputs(am, now=fri_ten, sessions=held) == ([], {"settled": len(am)})
+    assert len(contract_inputs(pm, now=fri_ten, sessions=held)[0]) == len(pm)
+    assert len(contract_inputs(equity, now=fri_ten, sessions=held)[0]) == len(equity)

@@ -49,7 +49,8 @@ _CONTRACTS = [c for cs in _COLUMNS.values() for c in cs]
 
 def _surface() -> dict:
     records = read_chain(_CONTRACTS)
-    return server.project_gamma_surface(records, exposure_books(records, spot=_SPOT, now=_AT))
+    books = exposure_books(records, spot=_SPOT, now=_AT, sessions=time_et.sessions())
+    return server.project_gamma_surface(records, books)
 
 
 def _by_strike(contracts) -> dict[float, list]:

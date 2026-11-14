@@ -1474,7 +1474,7 @@ def _publish_levels(
     ]
     # a contract the stream does not hold was given its /quotes answer: that answer's receive time
     quoted_ts = [quoted[s][0] for s in live_syms if s not in held]
-    snap = compute_terrain(tk, priced, spot, now=valued_at)
+    snap = compute_terrain(tk, priced, spot, now=valued_at, sessions=sessions())
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
     captures_key = (
@@ -2144,6 +2144,7 @@ def _prior_day(tk: str, captures: list[dict[str, Any]], chain_ts: float) -> Terr
         prior["contracts"],
         float(prior["spot"]),
         now=datetime.fromtimestamp(prior["ts_utc"], ET),
+        sessions=sessions(),
     )
 
 
@@ -2580,8 +2581,13 @@ def _forces_from_captures(
             product = option_close_product(tk)
             clock1 = valuation_instant(datetime.fromtimestamp(t1, ET), product)
             clock0 = valuation_instant(datetime.fromtimestamp(t0, ET), product)
-            per1 = compute_exposures_by_strike(c1, spot=float(s1), now=clock1, product=product)[0]
-            per0 = compute_exposures_by_strike(c0, spot=float(s0), now=clock0, product=product)[0]
+            held = sessions()
+            per1 = compute_exposures_by_strike(
+                c1, spot=float(s1), now=clock1, sessions=held, product=product
+            )[0]
+            per0 = compute_exposures_by_strike(
+                c0, spot=float(s0), now=clock0, sessions=held, product=product
+            )[0]
 
             dex1 = {k: bucket_metric(v, "net_dex_dollars") for k, v in per1.items()}
             spot1 = float(s1)
@@ -2605,7 +2611,9 @@ def _forces_from_captures(
                 if isinstance(charm_by_strike, dict):
                     per_ch = charm_by_strike
                 else:
-                    per_ch = compute_charm_by_strike(c1, spot1, now=clock1, product=product)
+                    per_ch = compute_charm_by_strike(
+                        c1, spot1, now=clock1, sessions=held, product=product
+                    )
 
                 charm_below = side_total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
                 charm_above = side_total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
@@ -2884,7 +2892,7 @@ def terrain(tk: str, now: float) -> dict[str, Any]:
         return out | levels_mark(out, tk, now)
     spot, spot_source, spot_ts = resolve_spot(tk, now=now)
     _why = _terrain_refresh_last_error.get(tk)
-    empty = compute_terrain(tk, None, spot, now=at).to_dict()
+    empty = compute_terrain(tk, None, spot, now=at, sessions=sessions()).to_dict()
     mark = price_mark(tk, spot_ts, now)
     return (
         empty

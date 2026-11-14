@@ -377,26 +377,33 @@ def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
     """
     year = time_et.YEAR_SECONDS
     at = _et("2026-11-27 10:00")
-    assert time_et.time_to_expiry_years("2026-11-27T21:00:00.000+00:00", at) == 3 * 3600 / year
+    held = time_et.sessions()
+    assert (
+        time_et.time_to_expiry_years("2026-11-27T21:00:00.000+00:00", at, sessions=held)
+        == 3 * 3600 / year
+    )
     assert (
         time_et.time_to_expiry_years(
-            "2026-11-27T21:00:00.000+00:00", _et("2026-11-27 09:00"), settlement_type="A"
+            "2026-11-27T21:00:00.000+00:00",
+            _et("2026-11-27 09:00"),
+            sessions=held,
+            settlement_type="A",
         )
         == 1800 / year
     )
-    assert time_et.time_to_expiry_years("2026-11-26T21:00:00.000+00:00", at) is None
+    assert time_et.time_to_expiry_years("2026-11-26T21:00:00.000+00:00", at, sessions=held) is None
     far = "2027-12-17T21:00:00.000+00:00"  # $SPX's, as Schwab sent it
     for settlement in ("P", "A"):
         assert (
-            time_et.time_to_expiry_years(far, at, settlement_type=settlement)
+            time_et.time_to_expiry_years(far, at, sessions=held, settlement_type=settlement)
             == (datetime.fromisoformat(far).timestamp() - at.timestamp()) / year
         )
     unanswered = "2027-11-19T21:00:00.000+00:00"  # within a year of `at`, after the held answers
     assert (
-        time_et.time_to_expiry_years(unanswered, at, settlement_type="P")
+        time_et.time_to_expiry_years(unanswered, at, sessions=held, settlement_type="P")
         == (datetime.fromisoformat(unanswered).timestamp() - at.timestamp()) / year
     )
-    assert time_et.time_to_expiry_years(unanswered, at, settlement_type="A") is None
+    assert time_et.time_to_expiry_years(unanswered, at, sessions=held, settlement_type="A") is None
 
 
 # ── question 2: the screen shows what Schwab streams, whatever the label says ────────────────

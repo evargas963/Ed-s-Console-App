@@ -40,7 +40,9 @@ def test_a_strike_of_gex_not_known_leaves_its_side_gex_unknown():
 
     So GEX below has no total, and GEX above is the sum of its strikes.
     """
-    book = compute_exposures_by_strike(read_chain(NFLX.chain), spot=NFLX.spot, now=NFLX.now)[0]
+    book = compute_exposures_by_strike(
+        read_chain(NFLX.chain), spot=NFLX.spot, now=NFLX.now, sessions=time_et.sessions()
+    )[0]
     below = {k: b for k, b in book.items() if k < NFLX.spot}
     assert any(net_gex_dollars_at_strike(b) is None for b in below.values())
     sums = _published(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now)["today_side_sums"]

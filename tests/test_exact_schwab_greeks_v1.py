@@ -72,7 +72,7 @@ def _column(records: list[OptionContract]) -> dict:
 
     {strike: (cell's gex, its contracts)}.
     """
-    snap = compute_terrain("SPY", records, _SPOT, now=_CAPTURED)
+    snap = compute_terrain("SPY", records, _SPOT, now=_CAPTURED, sessions=time_et.sessions())
     surface = server.project_gamma_surface(records, snap.books)
     j = [e["expiry"] for e in surface["expirations"]].index("2026-11-20")
     by_k = {}

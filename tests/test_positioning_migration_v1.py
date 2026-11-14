@@ -37,6 +37,7 @@ def two_days():
             read_chain(day["contracts"]),
             day["spot"],
             now=datetime.fromtimestamp(day["ts_utc"], time_et.ET),
+            sessions=time_et.sessions(),
         )
         rows.append((snap.per_strike, snap))
     return rows

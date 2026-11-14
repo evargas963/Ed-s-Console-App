@@ -25,7 +25,7 @@ from pathlib import Path
 
 from math_exposure_core import compute_exposures_by_strike
 from option_contract import OptionContract, read_chain
-from time_et import ET
+from time_et import ET, sessions
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -63,7 +63,9 @@ NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")
 
 def crwd_exposures(chain: list[dict]) -> dict[float, dict]:
     """Return the per-strike exposures of `chain` (CRWD's or a copy) at CRWD's price, capture."""
-    return compute_exposures_by_strike(read_chain(chain), spot=CRWD.spot, now=CRWD.now)[0]
+    return compute_exposures_by_strike(
+        read_chain(chain), spot=CRWD.spot, now=CRWD.now, sessions=sessions()
+    )[0]
 
 
 def spy_0dte_book() -> tuple[list[OptionContract], float]:

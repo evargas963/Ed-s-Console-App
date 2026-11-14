@@ -87,10 +87,11 @@ def test_each_value_is_computed_once_and_nothing_unread_is_computed():
     expiries = {(c.expiration, c.settlement) for c in chain}
     now = datetime.fromtimestamp(_SPY["capture_ts_utc"], ET)
     snap = None
+    held = time_et.sessions()
 
     def run():
         nonlocal snap
-        snap = compute_terrain("SPY", chain, _SPY["spot"], now=now)
+        snap = compute_terrain("SPY", chain, _SPY["spot"], now=now, sessions=held)
 
     counts = calls(
         {

@@ -19,6 +19,7 @@ from terrain_read import (
     build_terrain_read,
 )
 from tests.real_chains import CRWD, SPY_0DTE
+from time_et import sessions
 
 TRUSTED = GAMMA_FLIP_TRUSTED
 
@@ -72,7 +73,9 @@ def test_the_regime_is_read_by_one_rule_for_every_instrument():
     got = {}
     for real in (SPY_0DTE, CRWD):
         tk = real.ticker
-        snap = compute_terrain(tk, read_chain(real.chain), real.spot, now=real.now)
+        snap = compute_terrain(
+            tk, read_chain(real.chain), real.spot, now=real.now, sessions=sessions()
+        )
         g = snap.net_gex_at_spot
         got[tk] = (snap.confidence, snap.regime)
         if snap.confidence in (GAMMA_FLIP_NARROW, GAMMA_FLIP_UNAVAILABLE) or not g:
