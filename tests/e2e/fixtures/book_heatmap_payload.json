@@ -4,6 +4,8 @@
  "available": true,
  "since_ts": 1790380502.815,
  "until_ts": 1790380803.232,
+ "since_ct": "Fri 09/25 06:55 PM CT",
+ "until_ct": "Fri 09/25 07:00 PM CT",
  "n_buckets": 90,
  "bucket_sec": 3.3379666672812567,
  "display_lo": 350.0,

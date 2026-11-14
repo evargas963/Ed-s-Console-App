@@ -12,17 +12,6 @@
     var s = window.EdShell.getState();
     return s.workspace === "order-flow" && s.subview === "heatmap";
   }
-  function fmtCT(ts) {
-    try {
-      return new Date(ts * 1000).toLocaleTimeString("en-US", {
-        timeZone: "America/Chicago",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch (e) {
-      return "-";
-    }
-  }
 
   var _minutes = 60,
     _chart = null;
@@ -54,10 +43,10 @@
       ? ""
       : d.rows_scanned +
         " books · " +
-        fmtCT(d.since_ts) +
-        "–" +
-        fmtCT(d.until_ts) +
-        " CT, Schwab's book times — every cell is a captured book tick; nothing is interpolated between ticks.";
+        d.since_ct +
+        " – " +
+        d.until_ct +
+        ", Schwab's book times — every cell is a captured book tick; nothing is interpolated between ticks.";
   }
 
   // The grid is the `bookmap` panel (server.bookmap) on the page's socket while this view is on,

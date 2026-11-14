@@ -19,6 +19,7 @@ from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import canonical_tape_prints
 from option_contract import OptionContract
+from time_et import ct_clock, ct_label
 
 log = logging.getLogger(__name__)
 
@@ -98,11 +99,13 @@ def tape_row(printed: dict[str, Any], contract: OptionContract) -> dict[str, Any
 
     Expiry, side, strike and open interest are the chain record's (option_contract.read_contract,
     the one reader of them); premium = trade x size x that record's multiplier, unknown without
-    a size or a multiplier. Its time is Schwab's trade time; the receive time is not served.
+    a size or a multiplier. Its time is Schwab's trade time, and `trade_time_ct` that time as the
+    screen shows it (time_et.ct_clock, None when Schwab sent none); the receive time is not served.
     """
-    size, mult = printed["size"], contract.multiplier
+    size, mult, ms = printed["size"], contract.multiplier, printed["trade_time_ms"]
     return {
         **{k: v for k, v in printed.items() if k != "ts_recv"},
+        "trade_time_ct": None if ms is None else ct_clock(ms / 1000),
         "expiry": contract.expiry,
         "type": contract.side,
         "strike": contract.strike,
@@ -317,6 +320,9 @@ def book_heatmap_for_ticker(
         "available": True,
         "since_ts": t0,
         "until_ts": rows[-1][0],
+        # the window as the screen shows it
+        "since_ct": ct_label(t0),
+        "until_ct": ct_label(rows[-1][0]),
         "n_buckets": n_buckets,
         "bucket_sec": bucket_sec,
         # the default price window, and the largest displayed size (the colour scale's top)

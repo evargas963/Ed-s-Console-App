@@ -695,14 +695,6 @@
   function fmtOfSize(n) {
     return n == null || isNaN(n) ? "-" : String(n);
   }
-  // Schwab's own trade time (TRADE_TIME_MILLIS, as sent), in Central Time; '-' when it sent none
-  function fmtOfTime(tradeTimeMs) {
-    if (tradeTimeMs == null) return "-";
-    return new Date(tradeTimeMs).toLocaleTimeString("en-US", {
-      hour12: false,
-      timeZone: "America/Chicago",
-    });
-  }
   function renderOf(host, d) {
     var src = document.getElementById("ofSrc");
     if (src) src.textContent = "";
@@ -722,7 +714,7 @@
         return (
           "<tr>" +
           "<td>" +
-          fmtOfTime(r.trade_time_ms) +
+          esc(orDash(r.trade_time_ct)) +
           "</td>" +
           '<td class="of-sym">' +
           esc(orDash(r.symbol)) +

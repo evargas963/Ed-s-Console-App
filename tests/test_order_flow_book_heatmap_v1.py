@@ -160,6 +160,8 @@ def test_window_anchors_to_the_datas_own_latest_row_never_wallclock_now():
     assert d["available"] is True
     assert d["until_ts"] == _at(sent[-1]) == 1793631748.738 != sent[-1][0]
     assert d["since_ts"] == _at(sent[0]) == 1793631599.215 and "latest_captured_ts" not in d
+    # the window as the screen shows it, in Chicago time (CST, UTC-6, on 2026-11-02)
+    assert (d["since_ct"], d["until_ct"]) == ("Mon 11/02 08:59 AM CT", "Mon 11/02 09:02 AM CT")
 
 
 def test_a_book_with_no_book_time_or_older_than_the_newest_kept_is_not_placed(caplog):
