@@ -570,7 +570,7 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
     """No fallbacks: the book's top level is a DIFFERENT feed (one venue's depth).
 
     It does not stand in when L1 carries no price -- bid/ask stay absent.
-    # universal-scope-ok: book shape fixture, not a SPY-only product claim.
+    # book shape fixture, not a SPY-only product claim.
     """
     items = [
         {

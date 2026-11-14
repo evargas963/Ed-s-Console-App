@@ -459,7 +459,7 @@ def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in():
 
 def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
     db = tmp_path / "ed_console.db"
-    # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
+    # the reader returns stored contracts verbatim; none is priced.
     ct = lambda e: {"symbol": f"ZZ {e}", "expirationDate": f"{e}T20:00:00.000+00:00"}
 
     def put(when, spot, expiries, basis=cch.CAPTURE_BASIS):
@@ -496,7 +496,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     full prior day the forces numbers are absent.
     """
     db = tmp_path / "ed_console.db"
-    # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
+    # the reader returns stored contracts verbatim; none is priced.
     ct = {"symbol": "ZZ 2030-01-04", "expirationDate": "2030-01-04T20:00:00.000+00:00"}
     store_capture(
         db,

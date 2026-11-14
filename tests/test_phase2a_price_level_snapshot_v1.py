@@ -32,7 +32,7 @@ SESSION = datetime(2026, 10, 5, 12, 0, tzinfo=ET).date()
 
 
 def _bar(y, mo, d, h, mi, o, hi, lo, c, v=1000.0):
-    # institutional-synthetic-ok: window selection needs bars placed in known sessions
+    # window selection needs bars placed in known sessions
     return Candle(
         ts=datetime(y, mo, d, h, mi, tzinfo=ET).timestamp(),
         open=o,

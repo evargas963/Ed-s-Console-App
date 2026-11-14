@@ -59,7 +59,7 @@ def _verdict(span: float) -> str:
 
 
 def _chain(span: float, spot: float = 100.0, n: int = 41):
-    # institutional-synthetic-ok: a span-threshold discriminator needs chains built at EXACT
+    # a span-threshold discriminator needs chains built at EXACT
     # controlled spans around spot; no captured chain can be pinned to ±3%/±6%/±12% on demand.
     lo, hi = spot * (1 - span), spot * (1 + span)
     out = []

@@ -15,7 +15,7 @@ from option_contract import read_contract
 
 
 def _contract(symbol, **fields):
-    # institutional-synthetic-ok: overlay_streamed_contract_fields is pure dict-merge
+    # overlay_streamed_contract_fields is pure dict-merge
     # mechanics (which fields land where, mutation, which source a field comes from) with no
     # exposure math of its own -- compute_exposures_by_strike's own correctness is proven on real
     # chains elsewhere (test_gamma_surface_projection_v1.py). A synthetic contract with
@@ -155,7 +155,7 @@ def test_a_zero_volume_the_stream_sent_is_zero():
 
 
 def test_a_contract_with_no_symbol_field_is_untouched_never_raises():
-    # institutional-synthetic-ok: exercising the missing-'symbol'-key edge case needs a
+    # exercising the missing-'symbol'-key edge case needs a
     # contract that specifically lacks it -- a real captured chain's own contracts always
     # carry one, so this fail-closed shape cannot be sourced from tests/fixtures/.
     contracts = [read_contract({"strikePrice": 580.0, "putCall": "CALL"})]

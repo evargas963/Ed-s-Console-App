@@ -3,10 +3,6 @@
 Each trade is one LEVELONE message as Schwab sends it (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS),
 taken through the live state (state.push_level_one: the one reader, l1.extract_vendor_print, and
 the restatement rule) in receive order; the engine reads what the state recorded.
-
-# next-rth-ok: identity/ordering substrate; not a live-session residual
-# universal-scope-ok: enrolled-universe contract, not a SPY sample
-# chart-intent-ok: does not claim Chart Done
 """
 
 from __future__ import annotations

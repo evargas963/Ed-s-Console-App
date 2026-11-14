@@ -1,4 +1,4 @@
-# institutional-synthetic-ok: crafted command strings prove the action bans block and permit
+# crafted command strings prove the action bans block and permit
 # correctly.
 """operator_law_guard — the host-wide action bans, in both directions.
 

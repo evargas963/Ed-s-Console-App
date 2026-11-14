@@ -1,4 +1,4 @@
-# institutional-synthetic-ok: these tests INJECT banned shell / edit spellings to prove the
+# these tests INJECT banned shell / edit spellings to prove the
 # action bans BLOCK and the sanctioned forms flow — that is their entire purpose.
 """Action-ban controls for tools/operator_law_guard.py.
 

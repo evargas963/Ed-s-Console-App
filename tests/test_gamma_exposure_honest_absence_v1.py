@@ -30,7 +30,7 @@ def _ct(
     exp="2026-10-16T20:00:00.000+00:00",
     vol=0,
 ):
-    # institutional-synthetic-ok: honest-absence regression needs fully controlled OI/gamma
+    # honest-absence regression needs fully controlled OI/gamma
     # per leg to prove exact zero-vs-absent boundaries; no real capture can guarantee that.
     return {
         "strikePrice": strike,
