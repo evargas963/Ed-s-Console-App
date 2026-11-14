@@ -21,6 +21,7 @@ from pathlib import Path
 import runtime_layout
 import time_et
 from app.market_data.schwab.streaming import capture
+from feed import connection
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -232,7 +233,7 @@ def test_a_frame_the_daemon_cannot_take_is_logged_and_the_stream_goes_on(caplog)
     mix = json.loads((REPO / "tests/fixtures/real_stream_mix_2026_10_05_1400ct.json").read_text())
     sent = next(m for m in mix["messages"] if m["service"] == "LEVELONE_EQUITIES")
     bus, health = capture.MessageBus(), capture.HealthRegistry()
-    handler = capture._publisher("LEVELONE_EQUITIES", bus, health)
+    handler = connection._publisher("LEVELONE_EQUITIES", bus, health)
     nameless = {k: v for k, v in sent["item"].items() if k != "key"}
     with caplog.at_level(logging.WARNING, logger="capture"):
         handler({"timestamp": sent["schwab_ts"]})
@@ -262,7 +263,7 @@ def test_the_window_shows_each_second_what_schwab_streamed(caplog):
         await asyncio.sleep(0)
         for m in messages:
             frame = {"timestamp": m["schwab_ts"], "content": [m["item"]]}
-            capture._publisher(m["service"], bus, health)(frame)
+            connection._publisher(m["service"], bus, health)(frame)
         services = {m["service"] for m in messages}
         deadline = time_et.elapsed() + 10  # the window has shown a line for every service
         while time_et.elapsed() < deadline and services - {

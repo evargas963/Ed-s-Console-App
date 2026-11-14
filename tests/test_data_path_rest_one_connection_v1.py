@@ -66,7 +66,8 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
     """
     client = schwab.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "TSLA"])
-    daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})  # Schwab accepted it on this connection
+    # Schwab accepted it on this connection
+    daemon.connection.held["LEVELONE_OPTIONS"] = frozenset({HELD})
     for e in _STREAM["events"]:
         if e["kind"] == "l1":
             daemon.bus.publish(
@@ -374,8 +375,9 @@ def test_a_held_contracts_record_ends_with_its_connection(tmp_path):
     """
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-01 10:15"))
-    asyncio.run(daemon.disconnect())
-    daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})  # Schwab accepted it on the new one
+    asyncio.run(daemon.connection.disconnect())
+    # Schwab accepted it on the new one
+    daemon.connection.held["LEVELONE_OPTIONS"] = frozenset({HELD})
     assert daemon.option_record(HELD) is None
     try:
         assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
@@ -392,7 +394,7 @@ def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path)
     """
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
-    daemon.held["LEVELONE_OPTIONS"] = frozenset()  # as Daemon.disconnect leaves it
+    daemon.connection.held["LEVELONE_OPTIONS"] = frozenset()  # as Connection.disconnect leaves it
     try:
         assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
     finally:

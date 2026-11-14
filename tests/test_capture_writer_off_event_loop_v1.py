@@ -16,7 +16,7 @@ import threading
 from pathlib import Path
 
 import time_et
-from app.market_data.schwab.streaming import capture
+from feed import connection
 from stream_spine import LOG, CaptureWriter, MessageBus, quote_msg
 from tests.shared_helpers import TimerCountingLoop
 
@@ -28,7 +28,7 @@ _MIX = json.loads(
     )
 )
 _BURST = [
-    capture._message(m["service"], m["item"]["key"], m["item"], m["schwab_ts"])
+    connection._message(m["service"], m["item"]["key"], m["item"], m["schwab_ts"])
     for m in _MIX["messages"]
     if m["service"] in ("LEVELONE_EQUITIES", "LEVELONE_OPTIONS")
 ]

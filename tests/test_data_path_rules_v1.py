@@ -1,6 +1,6 @@
 """docs/DATA_FLOW.md §2, the data rules D1-D6, through the real code.
 
-Each Schwab frame enters where Schwab hands it to the daemon (capture._publisher, the
+Each Schwab frame enters where Schwab hands it to the daemon (connection._publisher, the
 schwab-py handler) and is read where the console reads it: the daemon's bus, as the console's
 _bus_loop subscribes to it in the same program, the console's own intake, and the console's
 routes. Real data: captured TSLA option quotes (tests/fixtures/real_options_stream_history_
@@ -32,6 +32,7 @@ from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow import live_payload
 from app.options.order_flow.state import push_option_top
 from db import get_db
+from feed import connection
 from feed import schwab_client as sc
 from feed.chain_sweep import (
     PRICE_HISTORY,
@@ -118,10 +119,10 @@ async def _daemon_then_console(
     """
     bus, health = MessageBus(), HealthRegistry()
     if not connected:
-        publish(lambda service: capture._publisher(service, bus, health))
+        publish(lambda service: connection._publisher(service, bus, health))
     sub = bus.subscribe("", policy=LATEST)
     if connected:
-        publish(lambda service: capture._publisher(service, bus, health))
+        publish(lambda service: connection._publisher(service, bus, health))
     return await _console_reads(bus, sub, read_for)
 
 
@@ -305,7 +306,7 @@ def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(t
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        h = capture._publisher("LEVELONE_OPTIONS", bus, health)
+        h = connection._publisher("LEVELONE_OPTIONS", bus, health)
         for e in _EVENTS:
             h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
         deadline = time_et.elapsed() + 10  # written while the writer runs, before any stop

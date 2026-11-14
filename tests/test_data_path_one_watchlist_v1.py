@@ -32,6 +32,7 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow import streaming as ofs
+from feed import connection
 from feed.chain_sweep import ChainSweep, chain_messages
 from feed.schwab_client import build_client_from_token, flatten_chain_contracts
 from option_contract import read_chain
@@ -103,9 +104,9 @@ async def _held_when_settled(daemon, stop: asyncio.Event, tasks: list) -> dict:
     Its logout, answered before run() ends, follows on the same connection every request it made:
     Schwab has received each one.
     """
-    daemon.ask()  # nothing changed: nothing is asked
-    await _until(lambda: not daemon.wake.is_set())  # the connection has taken what is queued
-    connected = dict(daemon.held)
+    daemon.connection.ask()  # nothing changed: nothing is asked
+    await _until(lambda: not daemon.connection.wake.is_set())  # it has taken what is queued
+    connected = dict(daemon.connection.held)
     stop.set()
     await asyncio.wait_for(asyncio.gather(*tasks), 10)
     return connected
@@ -202,7 +203,7 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         (r["service"], r["parameters"]["fields"])
         for r in schwab.streamer.requests
         if r["service"] != "ADMIN"
-    } == {(svc, ",".join(map(str, range(HIGHEST_FIELD[svc] + 1)))) for svc in capture.SERVICES}
+    } == {(svc, ",".join(map(str, range(HIGHEST_FIELD[svc] + 1)))) for svc in connection.SERVICES}
     sent = next(i for i in FIELD_REPLIES["level_one_equities_data"]["content"] if i["key"] == "SPY")
     published = []
     while not quotes.queue.empty():
@@ -242,7 +243,7 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
             asyncio.create_task(daemon.follow_market(stop)),
         ]
         _market(bus, "MRVL", contracts, mrvl["full"]["underlying"]["last"], mrvl["captured_utc"])
-        await _until(lambda: len(daemon.held["LEVELONE_OPTIONS"]) == len(symbols))
+        await _until(lambda: len(daemon.connection.held["LEVELONE_OPTIONS"]) == len(symbols))
         stop.set()
         await asyncio.wait_for(asyncio.gather(*tasks), 10)
 
@@ -295,7 +296,9 @@ def test_a_refusal_that_states_no_limit_is_recorded_and_not_asked_again(tmp_path
             asyncio.create_task(daemon.follow_market(stop)),
         ]
         _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
-        await _until(lambda: log.queue.qsize() == 1 and daemon.held["LEVELONE_OPTIONS"] == symbols)
+        await _until(
+            lambda: log.queue.qsize() == 1 and daemon.connection.held["LEVELONE_OPTIONS"] == symbols
+        )
         return await _held_when_settled(daemon, stop, tasks)
 
     try:
@@ -329,9 +332,9 @@ def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(t
     async def go():
         stop = asyncio.Event()
         run = asyncio.create_task(daemon.run(lambda: schwab.client, stop))
-        await _until(lambda: len(subs()) == 1 and daemon.held["NYSE_BOOK"])
-        await daemon.stream._socket.close()  # the socket is gone
-        await _until(lambda: len(subs()) == 2 and daemon.held["NYSE_BOOK"])
+        await _until(lambda: len(subs()) == 1 and daemon.connection.held["NYSE_BOOK"])
+        await daemon.connection.stream._socket.close()  # the socket is gone
+        await _until(lambda: len(subs()) == 2 and daemon.connection.held["NYSE_BOOK"])
         stop.set()
         await asyncio.wait_for(run, 10)
 
@@ -356,18 +359,20 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
     started = time_et.elapsed()
 
     async def go():
-        await daemon.run_connection(schwab.client, asyncio.Event())
+        await daemon.connection.run_connection(schwab.client, asyncio.Event())
 
     try:
         try:
-            asyncio.run(asyncio.wait_for(go(), capture.REQUEST_TIMEOUT_SEC + 10))
+            asyncio.run(asyncio.wait_for(go(), connection.REQUEST_TIMEOUT_SEC + 10))
             raise AssertionError("the connection did not end")
         except ConnectionError as e:
-            assert str(e) == f"no answer to NYSE_BOOK SUBS in {capture.REQUEST_TIMEOUT_SEC:.0f} s"
+            assert (
+                str(e) == f"no answer to NYSE_BOOK SUBS in {connection.REQUEST_TIMEOUT_SEC:.0f} s"
+            )
     finally:
         schwab.close()
-    assert time_et.elapsed() - started >= capture.REQUEST_TIMEOUT_SEC
-    assert daemon.stream is None, "the broken session is logged out and dropped"
+    assert time_et.elapsed() - started >= connection.REQUEST_TIMEOUT_SEC
+    assert daemon.connection.stream is None, "the broken session is logged out and dropped"
 
 
 #: How far behind Schwab's stream the daemon's reader ran, measured in production's log
@@ -392,9 +397,10 @@ def test_an_answer_schwab_sent_at_once_but_read_late_keeps_the_connection(tmp_pa
 
     async def go():
         stop = asyncio.Event()
-        run = asyncio.create_task(daemon.run_connection(schwab.client, stop))
-        await _until(lambda: run.done() or all(daemon.held[s] for s in EQUITY), 30)
-        held, answers = dict(daemon.held), [s.answers for s in daemon._sent.values()]
+        run = asyncio.create_task(daemon.connection.run_connection(schwab.client, stop))
+        await _until(lambda: run.done() or all(daemon.connection.held[s] for s in EQUITY), 30)
+        held = dict(daemon.connection.held)
+        answers = [s.answers for s in daemon.connection._sent.values()]
         stop.set()
         await asyncio.wait_for(run, 10)  # the connection's own error, raised
         return held, answers
@@ -404,7 +410,7 @@ def test_an_answer_schwab_sent_at_once_but_read_late_keeps_the_connection(tmp_pa
         held, answers = asyncio.run(go())
     finally:
         schwab.close()
-    assert time_et.elapsed() - started > READER_LAG_SEC > capture.REQUEST_TIMEOUT_SEC
+    assert time_et.elapsed() - started > READER_LAG_SEC > connection.REQUEST_TIMEOUT_SEC
     assert [r["command"] for r in schwab.streamer.requests].count("LOGIN") == 1, "one session"
     wanted = {svc: frozenset(want) for svc, want in daemon.wanted().items()}
     assert {svc: held[svc] for svc in wanted} == wanted, "every request answered and held"
@@ -441,20 +447,20 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
             asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
             asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
         ]
-        await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
+        await _until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY"})
         ofs.bind_daemon(daemon)  # the console in the daemon's program (capture.serve_console)
         assert ofs.start_order_flow_stream()
         records = bus.subscribe("watchlist", policy=LOG)
         try:
             beats = [daemon.status(time_et.now())]  # a beat built before the add
             added = json.loads((await server.post_watchlist("tsla")).body)
-            await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
+            await _until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
             swept_after_add = list(daemon.chains.watchlist)
             beats.append(daemon.status(time_et.now()))
             invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
             removed = json.loads((await server.delete_watchlist("TSLA")).body)
             beats.append(daemon.status(time_et.now()))
-            await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
+            await _until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY"})
         finally:
             ofs.stop_order_flow_stream()
             ofs.bind_daemon(None)

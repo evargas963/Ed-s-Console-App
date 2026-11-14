@@ -206,7 +206,8 @@ class _Market:
 
     def holds(self, want: dict[str, set[str]]) -> bool:
         return all(
-            set(self.daemon.held[s]) == want[s] == set(self.streamer.held[s]) for s in (L1, BOOK)
+            set(self.daemon.connection.held[s]) == want[s] == set(self.streamer.held[s])
+            for s in (L1, BOOK)
         )
 
     def run(self, steps) -> None:
@@ -405,7 +406,7 @@ def test_a_new_connection_is_asked_in_full_and_told_schwabs_limit_again(tmp_path
         await _until(lambda: m.holds(want))
         sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
         sent["answers"] = len(_answers(m.streamer, BOOK))
-        await m.daemon.stream._socket.close()  # the socket is gone
+        await m.daemon.connection.stream._socket.close()  # the socket is gone
         await _until(lambda: len(logins(m)) == 2 and m.holds(want))
 
     market.run(steps)
@@ -445,7 +446,7 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
         m.chain("MRVL", after)
         await m.taken()
         held.update(
-            {s: set(m.daemon.held[s]) for s in (L1, BOOK)},
+            {s: set(m.daemon.connection.held[s]) for s in (L1, BOOK)},
             recorded=(recorded, m.daemon.saved_options),
         )
         m.price("MRVL", MRVL_CLOSE)
@@ -571,7 +572,7 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
         ofs.bind_daemon(m.daemon)  # the console runs in this daemon's program
         answer = await server.post_flow_contract(server.FlowContract(contract=far))
         await _until(lambda: m.holds(want))
-        held.update({s: set(m.daemon.held[s]) for s in (L1, BOOK)})
+        held.update({s: set(m.daemon.connection.held[s]) for s in (L1, BOOK)})
         cleared = server.FlowContract(contract=None)  # Ed's selection cleared
         assert await server.post_flow_contract(cleared) == {"ok": True, "contract": None}
         await _until(lambda: m.daemon.flow_contract is None and m.holds(rule_alone))

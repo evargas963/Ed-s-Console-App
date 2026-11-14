@@ -13,6 +13,7 @@ import sqlite3
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
+from feed import connection
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 
 
@@ -26,7 +27,7 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
     bus, health = MessageBus(), HealthRegistry()
     health.beat("NEWS_HEADLINE", 990.0)
     daemon = capture.Daemon(bus, health)
-    daemon.stream = _Stream()
+    daemon.connection.stream = _Stream()
     log = bus.subscribe("", policy=LOG)  # as the database writer reads the bus
 
     async def go():
@@ -43,7 +44,7 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
             "SELECT ts, service, schwab_last_frame_ts, last_data_ts "
             "FROM stream_feed_status ORDER BY service"
         ).fetchall()
-    assert {r[1] for r in rows} == set(capture.SERVICES)
+    assert {r[1] for r in rows} == set(connection.SERVICES)
     assert len({r[0] for r in rows}) == 1, "every feed is checked at the same X"
     assert all(r[2] == 1000.0 for r in rows)
     news = [r for r in rows if r[1] == "NEWS_HEADLINE"][0]
@@ -85,7 +86,7 @@ class _StreamFailingOnce:
 def test_a_failed_round_is_logged_and_the_next_round_runs(caplog):
     bus, health = MessageBus(), HealthRegistry()
     daemon = capture.Daemon(bus, health)
-    daemon.stream = _StreamFailingOnce()
+    daemon.connection.stream = _StreamFailingOnce()
 
     async def go():
         stop = asyncio.Event()
@@ -93,7 +94,7 @@ def test_a_failed_round_is_logged_and_the_next_round_runs(caplog):
         # the round after the failed one has read the stream; a round runs with no pause in it,
         # so it has ended when this looks
         deadline = time_et.elapsed() + 10
-        while daemon.stream.reads < 2 and time_et.elapsed() < deadline:
+        while daemon.connection.stream.reads < 2 and time_et.elapsed() < deadline:
             await asyncio.sleep(0.01)
         stop.set()
         await task
@@ -101,6 +102,6 @@ def test_a_failed_round_is_logged_and_the_next_round_runs(caplog):
     asyncio.run(go())
     written = {topic for topic, _record in bus.current.values() if topic.startswith("feedstatus.")}
     assert "feed status round failed: RuntimeError: boom" in caplog.text
-    assert written == {f"feedstatus.{svc}" for svc in capture.SERVICES}, (
+    assert written == {f"feedstatus.{svc}" for svc in connection.SERVICES}, (
         "the round after the failure still wrote"
     )

@@ -7,7 +7,7 @@ browser read.
 Real data: captured LEVELONE_OPTIONS quotes
 (tests/fixtures/real_options_stream_history_samples.json) and a captured TSLA LEVELONE_EQUITIES item
 (tests/fixtures/real_equity_book.json, "quote") through the daemon's own handler
-(capture._publisher) and bus; the captured SPY 2026-11-20 chain and quotes
+(connection._publisher) and bus; the captured SPY 2026-11-20 chain and quotes
 (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json) through the real ChainSweep.
 STAND-INS: the local host for Schwab's (tests/schwab_rest_standin.py), serving a chain envelope
 rebuilt from the captured contracts. Each induced failure is named in its test.
@@ -40,6 +40,7 @@ from app.market_data.schwab.streaming.program_lock import (
     ask_to_stop,
     release_owner_lock,
 )
+from feed import connection
 from feed.chain_sweep import ChainSweep
 from option_contract import read_chain
 from stream_spine import (
@@ -94,7 +95,7 @@ def _beat(daemon: capture.Daemon) -> dict:
 
 
 def _publish_options(bus, health, events) -> None:
-    h = capture._publisher("LEVELONE_OPTIONS", bus, health)
+    h = connection._publisher("LEVELONE_OPTIONS", bus, health)
     for e in events:
         h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
 
@@ -237,7 +238,7 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        h = capture._publisher("LEVELONE_EQUITIES", bus, health)
+        h = connection._publisher("LEVELONE_EQUITIES", bus, health)
         h({"content": [big], "timestamp": 1})
         await _until(lambda: writer.status()["failures"] >= 1)  # kept as sent
         h({"content": [_TSLA["native"]], "timestamp": 2})
@@ -361,7 +362,7 @@ class _Defect(dict):
 
 
 def _tsla_quotes(bus, health, n: int) -> None:
-    h = capture._publisher("LEVELONE_EQUITIES", bus, health)
+    h = connection._publisher("LEVELONE_EQUITIES", bus, health)
     for i in range(n):
         h({"content": [dict(_TSLA["native"])], "timestamp": i})
 
@@ -1140,7 +1141,7 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
         for copy in range(8):  # each copy received earlier, in order
             for m in _MIX["messages"]:
                 key = m["item"]["key"].upper()
-                kind, msg = capture._message(m["service"], key, m["item"], m["schwab_ts"])
+                kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"])
                 msg["ts_recv"] = m["ts_recv"] - 3.0 * (8 - copy)
                 writer.insert(f"{kind}.{key}", msg, conn=conn)
         page = conn.execute("PRAGMA page_size").fetchone()[0]
@@ -1159,7 +1160,8 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         handlers = {
-            s: capture._publisher(s, bus, health) for s in {m["service"] for m in _MIX["messages"]}
+            s: connection._publisher(s, bus, health)
+            for s in {m["service"] for m in _MIX["messages"]}
         }
         for service, frame in _mix_frames():
             handlers[service](json.loads(frame))
@@ -1213,7 +1215,7 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        handlers = {s: capture._publisher(s, bus, health) for s in {s for s, _f in frames}}
+        handlers = {s: connection._publisher(s, bus, health) for s in {s for s, _f in frames}}
 
         async def publish() -> None:
             for i, (service, frame) in enumerate(frames):
