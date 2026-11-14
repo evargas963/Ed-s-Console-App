@@ -64,7 +64,7 @@ def _print_post_reauth_validation(token_path: str) -> None:
         sys.exit(1)
 
 
-def reauth():
+def reauth() -> None:
     redirect_url = _redirect_url_arg()
     manual = "--manual" in sys.argv or "-m" in sys.argv
     load_dotenv_file()

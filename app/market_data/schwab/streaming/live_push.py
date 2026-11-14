@@ -19,6 +19,8 @@ by each message's `src` (anything else published on the same topics is refused, 
 
 from __future__ import annotations
 
+from stream_spine import Payload
+
 #: The market context every page's header shows beside the selected ticker (Trade Desk): the
 #: daemon streams it whatever the watchlist holds.
 MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
@@ -38,7 +40,7 @@ _FORWARDED = {
 }
 
 
-def is_forwarded(topic: str, msg) -> bool:
+def is_forwarded(topic: str, msg: Payload) -> bool:
     """Tell whether a record came from Schwab (a chain: its parts)."""
     if isinstance(msg, list) and msg:
         msg = msg[0]

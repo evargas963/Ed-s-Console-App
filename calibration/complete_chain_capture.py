@@ -19,7 +19,7 @@ import json
 import logging
 import sqlite3
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -27,6 +27,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 from schwab.client import Client
 
 import time_et
@@ -108,7 +109,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 @contextmanager
-def capture_transaction(db_path: Path | str) -> Iterator[sqlite3.Connection]:
+def capture_transaction(db_path: Path | str) -> Generator[sqlite3.Connection]:
     """One transaction on the capture table.
 
     What is written in it commits together or not at all, so a reader finds a capture whole or
@@ -128,7 +129,7 @@ def persist_complete_chain_capture(
     *,
     ticker: str,
     expiry: str,
-    contracts: list[Any],
+    contracts: list[dict[str, Any]],
     spot: float | None,
     completeness_basis: str,
     ts_utc: float,
@@ -219,8 +220,12 @@ CHAIN_PART_CONTRACTS = 500
 
 
 def chain_messages(
-    ticker: str, contracts: list[dict], fetched_ts: float, spot: float | None, spot_ts: float | None
-) -> list[tuple[str, dict]]:
+    ticker: str,
+    contracts: list[dict[str, Any]],
+    fetched_ts: float,
+    spot: float | None,
+    spot_ts: float | None,
+) -> list[tuple[str, dict[str, Any]]]:
     """Return a fetched chain as its bus messages.
 
     Part i of n, CHAIN_PART_CONTRACTS contracts each, all with the time the chain began and the
@@ -272,8 +277,8 @@ BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
 
 
 def price_history_message(
-    ticker: str, series: str, answer: dict, fetched_ts: float
-) -> tuple[str, dict]:
+    ticker: str, series: str, answer: dict[str, Any], fetched_ts: float
+) -> tuple[str, dict[str, Any]]:
     """One series of a ticker's price history as its bus message.
 
     It is Schwab's whole answer as sent (its candles and every other field), recorded by the
@@ -309,7 +314,9 @@ def markets_last_day(today: date) -> date:
 MARKETS_ANSWERED = (200, 400)
 
 
-def markets_message(day: str, status: int, answer: dict, fetched_ts: float) -> tuple[str, dict]:
+def markets_message(
+    day: str, status: int, answer: dict[str, Any], fetched_ts: float
+) -> tuple[str, dict[str, Any]]:
     """Schwab's /markets answer for `day` as its bus message, as sent, with its status."""
     return f"markets.{day}", {
         "src": "schwab_markets",
@@ -320,7 +327,7 @@ def markets_message(day: str, status: int, answer: dict, fetched_ts: float) -> t
     }
 
 
-def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
+def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict[str, Any]]:
     """Return a failed fetch as its one bus message: part 0 of 1, with Schwab's answer or error."""
     return f"chain.{ticker}", {
         "src": "schwab_chain",
@@ -339,19 +346,31 @@ class _Chain:
     ticker: str
     started: float  # its first request
     spots: dict[str, float | None] = field(
-        default_factory=dict
+        default_factory=dict[str, float | None]
     )  # expiry -> Schwab's underlyingPrice in its answer
     spot: float | None = None  # the chain's one spot: LAST_PRICE when complete
     spot_ts: float | None = None  # that price's trade time
-    by_expiry: dict[str, list[dict]] = field(default_factory=dict)
-    unquoted: set[str] = field(default_factory=set)  # contracts whose quote is not in
-    named_invalid: set[str] = field(default_factory=set)  # contracts Schwab's quotes named invalid
+    by_expiry: dict[str, list[dict[str, Any]]] = field(
+        default_factory=dict[str, list[dict[str, Any]]]
+    )
+    unquoted: set[str] = field(default_factory=set[str])  # contracts whose quote is not in
+    # contracts Schwab's quotes named invalid
+    named_invalid: set[str] = field(default_factory=set[str])
     pushed: int = 0  # contracts whose Greeks the stream pushed (LEVELONE_OPTIONS)
     requested: int = 0  # contracts asked for on /quotes for their Greeks
     answers_age: float = 0.0  # seconds from its /chains answers' request to its own (fetch_chain)
 
-    def contracts(self) -> list[dict]:
+    def contracts(self) -> list[dict[str, Any]]:
         return [ct for cts in self.by_expiry.values() for ct in cts]
+
+
+#: a contract of a chain whose quote is not in, with its chain
+type _Queued = tuple[_Chain, dict[str, Any]]
+#: a ticker's /chains answers: (their capture window, when they were asked for, each expiry's
+#: underlyingPrice, each expiry's contracts as sent)
+type _Answers = tuple[float | None, float, dict[str, float | None], dict[str, list[dict[str, Any]]]]
+#: the daemon's Schwab client, built on each ask (capture.one_schwab_client): schwab-py's, untyped
+type _SchwabClient = Callable[[], Any]
 
 
 class ChainSweep:
@@ -399,11 +418,11 @@ class ChainSweep:
         self,
         db_path: Path | str,
         watchlist: list[str],
-        publish: Callable[[str, dict], object],
+        publish: Callable[[str, dict[str, Any]], object],
         clock: Callable[[], float] = time_et.now,
         *,
         failures: CaptureWriter,
-        streamed: Callable[[str], tuple[str, dict] | None],
+        streamed: Callable[[str], tuple[str, dict[str, Any]] | None],
         shown: Callable[[], list[str]] = list,
     ) -> None:
         self.db_path = db_path
@@ -421,15 +440,15 @@ class ChainSweep:
         self._fetched: dict[str, float] = {}  # ticker -> when its newest delivered chain began
         # (ticker, series) -> when its newest answered request began
         self._candled: dict[tuple[str, str], float] = {}
-        self._queue: list[tuple[_Chain, dict]] = []  # contracts whose quote is not asked for
+        self._queue: list[_Queued] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
         self._asking = ThreadPoolExecutor(QUOTES_AT_ONCE, thread_name_prefix="quotes")
         #: ticker -> its newest /chains answers: (their capture window, when they were asked for,
         #: each expiry's underlyingPrice, each expiry's contracts as sent)
-        self._answers: dict[str, tuple[float, float, dict, dict]] = {}
+        self._answers: dict[str, _Answers] = {}
 
-    def work(self, schwab_client, stop: threading.Event) -> None:
+    def work(self, schwab_client: _SchwabClient, stop: threading.Event) -> None:
         """Run the thread's life, until `stop`.
 
         On the daemon's client (`schwab_client()`), the market's sessions for today and the days
@@ -445,7 +464,7 @@ class ChainSweep:
             if not self.step(schwab_client, stop):
                 stop.wait(1.0)
 
-    def step(self, schwab_client, stop: threading.Event) -> bool:
+    def step(self, schwab_client: _SchwabClient, stop: threading.Event) -> bool:
         """One pass of `work`: whether it asked for any price history or chain."""
         if self.waits(schwab_client) is not None or not self.watchlist:
             return False
@@ -463,7 +482,7 @@ class ChainSweep:
         self.candles(schwab_client, candles, stop)  # of the tickers whose chain is not due
         return asked
 
-    def waits(self, schwab_client) -> str | None:
+    def waits(self, schwab_client: _SchwabClient) -> str | None:
         """Why the daemon holds no Schwab sign-in to ask with, kept as `waiting` for its status.
 
         Else None. Its client not built (capture.one_schwab_client: built again on each ask until
@@ -540,7 +559,7 @@ class ChainSweep:
             ticker not in self._fetched or self._fetched[ticker] < closed.timestamp()
         )
 
-    def fetch_markets(self, schwab_client, days: list[str]) -> None:
+    def fetch_markets(self, schwab_client: _SchwabClient, days: list[str]) -> None:
         """Schwab's GET /markets?markets=equity,option answer for each of `days` (YYYY-MM-DD).
 
         Each day not answered on this ET date and inside the year Schwab answers
@@ -574,7 +593,7 @@ class ChainSweep:
 
     def rotation(
         self,
-        schwab_client,
+        schwab_client: _SchwabClient,
         tickers: list[str],
         stop: threading.Event,
         candles: dict[str, list[str]] | None = None,
@@ -628,7 +647,9 @@ class ChainSweep:
         )
         return self._delivered
 
-    def candles(self, schwab_client, due: dict[str, list[str]], stop: threading.Event) -> None:
+    def candles(
+        self, schwab_client: _SchwabClient, due: dict[str, list[str]], stop: threading.Event
+    ) -> None:
         """Each ticker's due series of its price history (`due`), ticker by ticker.
 
         One removed from the watchlist meanwhile is not asked for.
@@ -639,7 +660,9 @@ class ChainSweep:
             if ticker in self.watchlist:
                 self.fetch_price_history(schwab_client, ticker, series)
 
-    def fetch_price_history(self, schwab_client, ticker: str, due: list[str]) -> None:
+    def fetch_price_history(
+        self, schwab_client: _SchwabClient, ticker: str, due: list[str]
+    ) -> None:
         """Fetch the `due` series of `ticker`'s price history (PRICE_HISTORY).
 
         Each is published as Schwab sent its candles; one Schwab does not answer 200 is not
@@ -674,7 +697,7 @@ class ChainSweep:
             self.publish(*price_history_message(ticker, series, answer, self.clock()))
             self._candled[(ticker, series)] = now
 
-    def fetch_chain(self, schwab_client, ticker: str, stop: threading.Event) -> None:
+    def fetch_chain(self, schwab_client: _SchwabClient, ticker: str, stop: threading.Event) -> None:
         """Fetch `ticker`'s chain, every expiry.
 
         Each contract's Greeks from the stream, or the contract queued for its quote; delivered
@@ -767,7 +790,7 @@ class ChainSweep:
         if not chain.unquoted:
             self.deliver(chain)
 
-    def send_quotes(self, schwab_client, at_once: int = 1) -> None:
+    def send_quotes(self, schwab_client: _SchwabClient, at_once: int = 1) -> None:
         """Ask for the quotes of the next queued contracts, `at_once` requests at a time.
 
         Each request is for QUOTES_BATCH_MAX contracts; the requests are sent together and
@@ -776,16 +799,16 @@ class ChainSweep:
         self._queue = [
             (chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist
         ]  # removed: not asked
-        asked = []
+        asked: list[tuple[list[_Queued], Future[httpx.Response]]] = []
         while self._queue and len(asked) < at_once:
             batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
-            symbols = [ct["symbol"] for _chain, ct in batch]
+            symbols: list[str] = [ct["symbol"] for _chain, ct in batch]
             ask = self._asking.submit(lambda s=symbols: safe_get_quotes(schwab_client(), s))
             asked.append((batch, ask))
         for batch, ask in asked:
             self.take_quotes(batch, ask)
 
-    def take_quotes(self, batch: list, ask: Future) -> None:
+    def take_quotes(self, batch: list[_Queued], ask: Future[httpx.Response]) -> None:
         """Take Schwab's answer to one quotes request (`ask`) for the contracts of `batch`.
 
         They take their quote's Greeks; each chain it completes is delivered. A request that
@@ -804,8 +827,8 @@ class ChainSweep:
                 )
                 return
             answer = resp.json()
-            errors = answer.pop("errors") if "errors" in answer else {}
-            named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
+            errors: dict[str, Any] = answer.pop("errors") if "errors" in answer else {}
+            named: set[str] = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
             quoted = {s: e["quote"] for s, e in answer.items()}
             # Schwab's quote per symbol as sent, to the console at once with its receive time
             self.publish(
@@ -1023,7 +1046,7 @@ def last_capture_per_day(
             if "chain_spot" in have
             else "NULL, NULL"
         )
-        out = []
+        out: list[dict[str, Any]] = []
         for day, ts in picked:
             rows = conn.execute(
                 f"SELECT {chain_spot}, completeness_basis, chain_json "

@@ -12,42 +12,102 @@
   /* the Trade Desk reference is set in one DIN-style face everywhere, with tabular
      figures for numeric columns; Bahnschrift is Windows' own DIN, so no font is fetched. Panel and
      card titles are the same face condensed, in capitals. */
-  --ed-sans: 'Bahnschrift', 'DIN Alternate', 'Barlow', 'Inter', system-ui, -apple-system, 'Segoe UI', roboto, arial, sans-serif;
+  --ed-sans: "Bahnschrift", "DIN Alternate", "Barlow", "Inter", system-ui, -apple-system,
+    "Segoe UI", roboto, arial, sans-serif;
   --ed-mono: var(--ed-sans);
-  --ed-title-stretch: 87.5%; --ed-title-spacing: .06em;
-  --ed-r: 4px; --ed-r-lg: 6px;
-  --ed-rail-w: 56px; --ed-rail-w-open: 234px;
-  --ed-header-h: 58px; --ed-subnav-h: 44px; --ed-viewbar-h: 42px;
+  --ed-title-stretch: 87.5%;
+  --ed-title-spacing: 0.06em;
+  --ed-r: 4px;
+  --ed-r-lg: 6px;
+  --ed-rail-w: 56px;
+  --ed-rail-w-open: 234px;
+  --ed-header-h: 58px;
+  --ed-subnav-h: 44px;
+  --ed-viewbar-h: 42px;
 }
 
 /* ================= DARK (approved primary) ================= */
 :root[data-theme="dark"] {
-  --ed-bg:#060a11; --ed-rail:#080d15; --ed-header:#0a1019;
-  --ed-panel:#0b121c; --ed-panel-2:#111a27; --ed-panel-3:#18243a;
-  --ed-edge:#1f2b3c; --ed-edge-soft:#172231; --ed-edge-strong:#2d3d55;
-  --ed-ink:#eef3f9; --ed-ink-2:#c9d4e2; --ed-ink-3:#9eaec2; --ed-ink-4:#6a7b91;
-  --ed-accent:#2f8cff; --ed-accent-2:#5aa7ff; --ed-accent-bg:#0c2544; --ed-accent-edge:#2466c2;
-  --ed-pos:#22c55e; --ed-pos-ink:#35d977; --ed-neg:#ef4444; --ed-neg-ink:#ff5d5d;
-  --ed-live:#22c55e; --ed-warn:#f2c230; --ed-stale:#f08c21; --ed-alert:#ff4d4f; --ed-quiet:#5f6f84;
-  --ed-native:#22c55e; --ed-derived:#2f8cff; --ed-proxy:#f2c230; --ed-research:#b44dff;
-  --ed-native-bg:#10281b; --ed-derived-bg:#0f2338; --ed-proxy-bg:#2c2410; --ed-research-bg:#241635;
-  --ed-heat-pos:#22c55e; --ed-heat-neg:#ef4444; --ed-heat-zero:#0f1723;
+  --ed-bg: #060a11;
+  --ed-rail: #080d15;
+  --ed-header: #0a1019;
+  --ed-panel: #0b121c;
+  --ed-panel-2: #111a27;
+  --ed-panel-3: #18243a;
+  --ed-edge: #1f2b3c;
+  --ed-edge-soft: #172231;
+  --ed-edge-strong: #2d3d55;
+  --ed-ink: #eef3f9;
+  --ed-ink-2: #c9d4e2;
+  --ed-ink-3: #9eaec2;
+  --ed-ink-4: #6a7b91;
+  --ed-accent: #2f8cff;
+  --ed-accent-2: #5aa7ff;
+  --ed-accent-bg: #0c2544;
+  --ed-accent-edge: #2466c2;
+  --ed-pos: #22c55e;
+  --ed-pos-ink: #35d977;
+  --ed-neg: #ef4444;
+  --ed-neg-ink: #ff5d5d;
+  --ed-live: #22c55e;
+  --ed-warn: #f2c230;
+  --ed-stale: #f08c21;
+  --ed-alert: #ff4d4f;
+  --ed-quiet: #5f6f84;
+  --ed-native: #22c55e;
+  --ed-derived: #2f8cff;
+  --ed-proxy: #f2c230;
+  --ed-research: #b44dff;
+  --ed-native-bg: #10281b;
+  --ed-derived-bg: #0f2338;
+  --ed-proxy-bg: #2c2410;
+  --ed-research-bg: #241635;
+  --ed-heat-pos: #22c55e;
+  --ed-heat-neg: #ef4444;
+  --ed-heat-zero: #0f1723;
 
   color-scheme: dark;
 }
 
 /* ================= LIGHT (professional light terminal — not generic SaaS white) ================= */
 :root[data-theme="light"] {
-  --ed-bg:#e4eaf2; --ed-rail:#dbe2eb; --ed-header:#dfe6ee;
-  --ed-panel:#f8fafc; --ed-panel-2:#eaeff4; --ed-panel-3:#d8e1ee;
-  --ed-edge:#aeb9ca; --ed-edge-soft:#c6cfdc; --ed-edge-strong:#8593aa;
-  --ed-ink:#08101b; --ed-ink-2:#2f3d53; --ed-ink-3:#4f5e74; --ed-ink-4:#828da0;
-  --ed-accent:#2f6fe0; --ed-accent-2:#1f5fd0; --ed-accent-bg:#dce7fb; --ed-accent-edge:#a6c2f0;
-  --ed-pos:#1a9e5c; --ed-pos-ink:#0f7a45; --ed-neg:#d63b3b; --ed-neg-ink:#b21e1e;
-  --ed-live:#16a34a; --ed-warn:#a9750a; --ed-stale:#b45309; --ed-alert:#cf2e2e; --ed-quiet:#8a94a4;
-  --ed-native:#0f7a45; --ed-derived:#1f5fd0; --ed-proxy:#8a6300; --ed-research:#6d28d9;
-  --ed-native-bg:#d8efe0; --ed-derived-bg:#dce7fb; --ed-proxy-bg:#f2e8cd; --ed-research-bg:#ebe0fb;
-  --ed-heat-pos:#1a9e5c; --ed-heat-neg:#d63b3b; --ed-heat-zero:#e6ebf1;
+  --ed-bg: #e4eaf2;
+  --ed-rail: #dbe2eb;
+  --ed-header: #dfe6ee;
+  --ed-panel: #f8fafc;
+  --ed-panel-2: #eaeff4;
+  --ed-panel-3: #d8e1ee;
+  --ed-edge: #aeb9ca;
+  --ed-edge-soft: #c6cfdc;
+  --ed-edge-strong: #8593aa;
+  --ed-ink: #08101b;
+  --ed-ink-2: #2f3d53;
+  --ed-ink-3: #4f5e74;
+  --ed-ink-4: #828da0;
+  --ed-accent: #2f6fe0;
+  --ed-accent-2: #1f5fd0;
+  --ed-accent-bg: #dce7fb;
+  --ed-accent-edge: #a6c2f0;
+  --ed-pos: #1a9e5c;
+  --ed-pos-ink: #0f7a45;
+  --ed-neg: #d63b3b;
+  --ed-neg-ink: #b21e1e;
+  --ed-live: #16a34a;
+  --ed-warn: #a9750a;
+  --ed-stale: #b45309;
+  --ed-alert: #cf2e2e;
+  --ed-quiet: #8a94a4;
+  --ed-native: #0f7a45;
+  --ed-derived: #1f5fd0;
+  --ed-proxy: #8a6300;
+  --ed-research: #6d28d9;
+  --ed-native-bg: #d8efe0;
+  --ed-derived-bg: #dce7fb;
+  --ed-proxy-bg: #f2e8cd;
+  --ed-research-bg: #ebe0fb;
+  --ed-heat-pos: #1a9e5c;
+  --ed-heat-neg: #d63b3b;
+  --ed-heat-zero: #e6ebf1;
 
   color-scheme: light;
 }

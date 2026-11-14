@@ -18,6 +18,7 @@ import struct
 import threading
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from instrument_identity import ticker_storage_key
 from liquidity_models import (
@@ -30,10 +31,19 @@ from liquidity_models import (
     ZoneType,
     volume_profile,
 )
+from micro_structure import Candle
 from numeric_contract import float_finite_or_none, float_positive_or_none
 from time_et import ET, session
 
 log = logging.getLogger(__name__)
+
+#: one normalized bar (bars_from_candles): timestamp (ms), _dt (its ET time), open, high, low,
+#: close, volume
+type Bar = dict[str, Any]
+#: one cluster of levels: (zone_low, zone_high, zone_mid, source_tags, [(price, tag), ...])
+type Cluster = tuple[float, float, float, list[str], list[tuple[float, str]]]
+#: one point of the session VWAP series: (bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)
+type VwapPoint = tuple[float, float, float, float, float, float]
 
 #: a prior session with fewer 1-minute RTH bars than this (of ~390) is disclosed as partial on the
 #: price levels built from it
@@ -80,7 +90,7 @@ LEVEL_NAMES = {
 }
 
 
-def bars_from_candles(candles) -> list[dict]:
+def bars_from_candles(candles: list[Candle]) -> list[Bar]:
     """Return the bars every level function takes, from the bar writer's Candles.
 
     Each field is already checked once as Schwab sent it, where it came in (server._schwab_bar):
@@ -105,7 +115,7 @@ def bars_from_candles(candles) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def prior_session(daily: list, session_date: date):
+def prior_session(daily: list[Candle], session_date: date) -> Candle | None:
     """Return THE prior session, for the previous-day levels and the overnight window.
 
     It is the newest of Schwab's daily candles (the bar writer's, server._series) dated before
@@ -117,7 +127,9 @@ def prior_session(daily: list, session_date: date):
     return max(before, key=lambda c: c.ts) if before else None
 
 
-def get_previous_day_levels(bars_norm: list, prior, config: PlaybookConfig) -> dict:
+def get_previous_day_levels(
+    bars_norm: list[Bar], prior: Candle | None, config: PlaybookConfig
+) -> dict[str, Any]:
     """Return the prior session's levels.
 
     Its high, low and close as Schwab sent them on its daily candle (`prior`, prior_session),
@@ -142,10 +154,10 @@ def get_previous_day_levels(bars_norm: list, prior, config: PlaybookConfig) -> d
 
 
 def get_overnight_levels(
-    bars_norm: list,
+    bars_norm: list[Bar],
     session_date: date,
     prev_session: date | None,
-) -> dict:
+) -> dict[str, float]:
     """Overnight range over normalized bars (bars_from_candles).
 
     The continuous interval from the prior session's (`prev_session`, prior_session's candle
@@ -161,7 +173,7 @@ def get_overnight_levels(
     session_open_dt = today[0]
     prev_close_dt = None if prev is None else prev[1]
 
-    overnight = []
+    overnight: list[Bar] = []
     for b in bars_norm:
         dt = b["_dt"]
         if dt >= session_open_dt:
@@ -186,10 +198,10 @@ def get_overnight_levels(
 
 
 def compute_opening_range(
-    bars_norm: list,
+    bars_norm: list[Bar],
     session_date: date,
     config: PlaybookConfig,
-) -> dict:
+) -> dict[str, float]:
     """The bars of the first N minutes (default 15) from the regular open Schwab sent for the date.
 
     From normalized bars (bars_from_candles). {} when the date has no regular session, when
@@ -216,9 +228,9 @@ def compute_opening_range(
 
 
 def compute_session_vwap_series(
-    bars_norm: list,
+    bars_norm: list[Bar],
     session_date: date,
-) -> list[tuple[float, float, float, float, float, float]]:
+) -> list[VwapPoint]:
     """Return running session VWAP and σ bands after each RTH bar.
 
     From normalized bars (bars_from_candles). Returns
@@ -230,7 +242,7 @@ def compute_session_vwap_series(
     """
     rth_bars = _filter_rth_bars(bars_norm, session_date)
     cum_tpv = cum_vol = cum_tp2v = 0.0
-    series: list[tuple[float, float, float, float, float, float]] = []
+    series: list[VwapPoint] = []
     for b in rth_bars:
         vol = b["volume"]  # a 0-volume minute adds nothing and keeps its VWAP point
         if vol is None:
@@ -247,7 +259,7 @@ def compute_session_vwap_series(
     return series
 
 
-def count_session_rth_positive_volume_bars(bars_norm: list, session_date: date) -> int:
+def count_session_rth_positive_volume_bars(bars_norm: list[Bar], session_date: date) -> int:
     """INPUT RTH bars with positive volume on session_date — independent of the VWAP series."""
     return sum(
         1
@@ -256,7 +268,7 @@ def count_session_rth_positive_volume_bars(bars_norm: list, session_date: date) 
     )
 
 
-def _filter_rth_bars(bars_norm: list, session_date: date) -> list:
+def _filter_rth_bars(bars_norm: list[Bar], session_date: date) -> list[Bar]:
     return [b for b in bars_norm if b["_dt"].date() == session_date and _in_rth(b["_dt"])]
 
 
@@ -266,7 +278,7 @@ def _filter_rth_bars(bars_norm: list, session_date: date) -> list:
 
 
 def compute_volume_profile_levels(
-    bars_norm: list,
+    bars_norm: list[Bar],
     session_date: date,
     config: PlaybookConfig,
 ) -> VolumeProfile | None:
@@ -290,7 +302,7 @@ def compute_volume_profile_levels(
 def cluster_price_levels_into_zones(
     levels: list[tuple[float, str]],
     config: PlaybookConfig,
-) -> list[tuple[float, float, float, list[str], list[tuple[float, str]]]]:
+) -> list[Cluster]:
     """Cluster nearby levels into zones.
 
     Returns list of (zone_low, zone_high, zone_mid, source_tags, source_pairs). source_pairs =
@@ -308,20 +320,20 @@ def cluster_price_levels_into_zones(
 
     max_width = float_positive_or_none(config.max_zone_width)
 
-    def _flush_current(cur):
+    def _flush_current(cur: list[float]) -> None:
         if not cur:
             return
         lo, hi = min(cur), max(cur)
         mid = (lo + hi) / 2
-        tags = []
-        source_pairs = []
+        tags: list[str] = []
+        source_pairs: list[tuple[float, str]] = []
         for p in cur:
             for t in tag_map[p]:  # every price clustered came with its tags
                 tags.append(t)
                 source_pairs.append((p, t))
         clusters.append((lo, hi, mid, list(dict.fromkeys(tags)), source_pairs))
 
-    clusters = []
+    clusters: list[Cluster] = []
     current = [prices[0]]
     for i in range(1, len(prices)):
         cand = current + [prices[i]]
@@ -358,7 +370,7 @@ def build_premarket_snapshot(
     levels = _held_levels(canonical, PREMARKET_LEVELS)
     families = {PHASE2A_LEVEL_IDS[lid][0] for _price, lid in levels}
     pdh, pdl = canonical.price("PDH"), canonical.price("PDL")
-    zones = []
+    zones: list[Zone] = []
     for cluster in cluster_price_levels_into_zones(levels, config):
         lo, hi, _mid, tags, _source_pairs = cluster
         if {"prior_day", "overnight"} <= families:
@@ -401,7 +413,9 @@ LIVE_LEVELS = (
 )
 
 
-def _held_levels(canonical: PriceLevelSnapshot, level_ids: tuple) -> list[tuple[float, str]]:
+def _held_levels(
+    canonical: PriceLevelSnapshot, level_ids: tuple[str, ...]
+) -> list[tuple[float, str]]:
     """(price, id) of each of `level_ids` the snapshot holds, in order; one not held is left out.
 
     Absent stays absent: never replaced by spot, zero or a neighbouring level.
@@ -409,7 +423,7 @@ def _held_levels(canonical: PriceLevelSnapshot, level_ids: tuple) -> list[tuple[
     return [(price, lid) for lid in level_ids if (price := canonical.price(lid)) is not None]
 
 
-def _zone(cluster: tuple, zone_type: ZoneType, notes: str, snapshot_type: SnapshotType) -> Zone:
+def _zone(cluster: Cluster, zone_type: ZoneType, notes: str, snapshot_type: SnapshotType) -> Zone:
     """Return the zone of one cluster (cluster_price_levels_into_zones)."""
     lo, hi, mid, tags, source_pairs = cluster
     return Zone(
@@ -684,7 +698,7 @@ class PriceLevelValue:
     def session_scope(self) -> str:
         return _SESSION_SCOPE_OF.get(self.semantic_scope, self.semantic_scope)
 
-    def to_contract_dict(self) -> dict:
+    def to_contract_dict(self) -> dict[str, Any]:
         label, short = LEVEL_NAMES.get(self.level_id, (self.level_id, self.level_id))
         return {
             "id": self.level_id,
@@ -737,12 +751,12 @@ class PriceLevelSnapshot:
         session_date: date,
         bar_source: str,
         as_of_ts_utc: float | None,
-        levels: dict,
-        vwap_path: list,
-        families_absent: list,
-        degraded: list,
+        levels: dict[str, PriceLevelValue],
+        vwap_path: list[tuple[float, float]],
+        families_absent: list[dict[str, str]],
+        degraded: list[str],
         bars_used: int,
-        vwap_series: list,
+        vwap_series: list[VwapPoint],
         session_rth_positive_volume_bars: int = 0,
         volume_profile: VolumeProfile | None = None,
     ) -> None:
@@ -775,8 +789,8 @@ _BAR_ABSENT = struct.Struct("<qddddB")
 
 
 def _snapshot_input_fingerprint(
-    ticker: str, session_date: date, bars_norm: list, bar_source: str, prior
-) -> tuple:
+    ticker: str, session_date: date, bars_norm: list[Bar], bar_source: str, prior: Candle | None
+) -> tuple[str, str, str, int, str]:
     """Identity of the INPUT. Same fingerprint ⇒ same result object.
 
     Bar identity, not wall-clock: re-asking with the same input must return the very
@@ -808,7 +822,7 @@ def _snapshot_input_fingerprint(
 
 def _put_levels(
     levels: dict[str, PriceLevelValue],
-    prices,
+    prices: tuple[tuple[str, float | None], ...],
     *,
     producer: str,
     window: str,
@@ -840,9 +854,9 @@ def _put_levels(
 def build_price_level_snapshot(
     ticker: str,
     session_date: date,
-    bars_norm: list,
+    bars_norm: list[Bar],
     *,
-    prior,
+    prior: Candle | None,
     bar_source: str,
     config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
@@ -860,10 +874,10 @@ def build_price_level_snapshot(
     cfg = config or PlaybookConfig()
     tk = ticker_storage_key(ticker)  # canonical liquidity snapshot/ledger identity
     levels: dict[str, PriceLevelValue] = {}
-    families_absent: list[dict] = []
+    families_absent: list[dict[str, str]] = []
     degraded: list[str] = []
     vwap_path: list[tuple[float, float]] = []
-    vwap_series: list[tuple] = []
+    vwap_series: list[VwapPoint] = []
 
     as_of: float | None = max((b["_dt"].timestamp() for b in bars_norm), default=None)
 
@@ -1022,9 +1036,9 @@ _MATERIALIZE_LOCK = threading.Lock()
 def materialize_price_level_snapshot(
     ticker: str,
     session_date: date,
-    bars_norm: list,
+    bars_norm: list[Bar],
     *,
-    daily: list,
+    daily: list[Candle],
     bar_source: str,
     config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
