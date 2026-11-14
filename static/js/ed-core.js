@@ -661,7 +661,9 @@
   function loadWL() {
     return _wl ? _wl.slice() : [];
   }
-  function wlFetch(url, opts) {
+  // the page's one request to the program besides its socket (an operator's command): its
+  // answer's status and JSON
+  function request(url, opts) {
     return fetch(url, opts).then(function (r) {
       return r.json().then(function (j) {
         return { ok: r.ok, j: j };
@@ -776,7 +778,7 @@
       return;
     }
     wlNotify("Checking " + sym + " with Schwab…");
-    wlFetch("/api/watchlist", {
+    request("/api/watchlist", {
       method: "POST",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
@@ -798,7 +800,7 @@
     return /^[$^]?[A-Z0-9][A-Z0-9.\-/]{0,11}$/.test(s) ? s : null;
   }
   function removeSymbol(sym) {
-    wlFetch("/api/watchlist/" + encodeURIComponent(sym), { method: "DELETE", cache: "no-store" })
+    request("/api/watchlist/" + encodeURIComponent(sym), { method: "DELETE", cache: "no-store" })
       .then(wlAnswer)
       .catch(function (e) {
         wlNotify(sym + " is not removed: " + e);
@@ -1567,6 +1569,7 @@
     emit: emit,
     esc: esc,
     orDash: orDash,
+    request: request,
     classTag: classTag,
     classOf: classOf,
     served: served,
