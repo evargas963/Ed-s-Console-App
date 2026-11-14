@@ -25,10 +25,12 @@ EdWebConsole/
 └── start_ed_console.bat (runs launch.py, which starts the one program)
 ```
 
-Imports flow one way, to be enforced by import-linter's layers from SHAPE step 1e, as these folders land: push → state → calc; feed → state; recorder ←
+Imports flow one way, to be enforced by import-linter's layers from SHAPE step 1e, as these
+folders land: push → state → calc; feed → state; recorder ←
 state; every part may use shared. Until then `locks.imports.toml` holds Feed alone: its contracts
 read the checkout as one package, because grimp takes no top-level module, so an import of a root
-module is an outside name and no layer can be drawn across them. Outside the repository: the runtime folder (the two databases,
+module is an outside name and no layer can be drawn across them. Outside the repository: the
+runtime folder (the two databases,
 the token, logs) and worktrees.
 
 ## 2. Where each file goes
@@ -58,7 +60,8 @@ move into their folders as the step that owns them lands; nothing is copied.
 ## 4. Failure domains
 
 The app and each capability fail separately. If Schwab (or its stream) is unavailable, the app
-still starts and serves; the Schwab-dependent panels draw "-" (operator 2026-10-12 and 2026-10-16), and nothing
+still starts and serves; the Schwab-dependent panels draw "-" (operator 2026-10-12 and
+2026-10-16), and nothing
 is filled in from elsewhere. The app refuses to start only when it cannot run at all (a broken
 Python environment, core code that will not load).
 

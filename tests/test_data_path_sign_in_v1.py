@@ -65,6 +65,15 @@ def _every_request(client) -> list:
     ]
 
 
+def _saved_whole(tmp_path, held: str):
+    """Save `held` as the token file whole, as every writer saves; return the file's path."""
+    token = tmp_path / "schwab_token.json"
+    bad = tmp_path / "not_a_sign_in.json"
+    bad.write_text(held)
+    bad.replace(token)
+    return token
+
+
 def _new_sign_in(token_path, access: str) -> int:
     """Save a new sign-in to the token file; return its creation time.
 
@@ -602,10 +611,7 @@ def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(
         client = schwab.client(tmp_path, 100)
         with pytest.raises(sc.SignInRefused):
             client.get_option_expiration_chain("SPY")
-        token = tmp_path / "schwab_token.json"
-        bad = tmp_path / "not_a_sign_in.json"
-        bad.write_text(held)
-        bad.replace(token)  # saved whole, as every writer saves
+        token = _saved_whole(tmp_path, held)
         sweep = _sweep(tmp_path)
         with caplog.at_level(logging.WARNING, logger=sc.log.name):
             assert _work(sweep, lambda: client, 20), "the sweep's thread ended"
@@ -631,10 +637,7 @@ def test_a_sign_in_a_client_cannot_use_is_not_taken(tmp_path, caplog):
         client = schwab.client(tmp_path, 100)
         with pytest.raises(sc.SignInRefused):
             client.get_option_expiration_chain("SPY")
-        token = tmp_path / "schwab_token.json"
-        bad = tmp_path / "not_a_sign_in.json"
-        bad.write_text(held)
-        bad.replace(token)
+        token = _saved_whole(tmp_path, held)
         assert "expires_at" in sc.sign_in_problem(sc.inspect_token_file(str(token)), str(token))
         sweep = _sweep(tmp_path)
         with caplog.at_level(logging.WARNING, logger=sc.log.name):

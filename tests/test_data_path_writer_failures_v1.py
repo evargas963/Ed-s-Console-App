@@ -569,6 +569,67 @@ async def _held_past_the_cap(writer, bus, health, daemon) -> dict:
     return _beat(daemon)["writer"]
 
 
+async def _spilled(writer: CaptureWriter, stop: asyncio.Event) -> tuple:
+    """Run `writer` as the daemon's, until the captured option quotes are held past its cap.
+
+    Return the bus, the health registry, the daemon, the writer's task and its status then.
+    """
+    bus, health = MessageBus(), HealthRegistry()
+    daemon = capture.Daemon(bus, health)
+    daemon.writer = writer
+    task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+    during = await _held_past_the_cap(writer, bus, health, daemon)
+    return bus, health, daemon, task, during
+
+
+def _small_cap_writer(db: Path) -> CaptureWriter:
+    """A writer on `db` whose hold cap is _SMALL_CAP and whose lock wait is 0.2 s."""
+    return CaptureWriter(
+        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
+    )
+
+
+def _locked(db: Path) -> sqlite3.Connection:
+    """INDUCED CONDITION: another connection holding `db`'s write lock (BEGIN IMMEDIATE)."""
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+    return holder
+
+
+def _last_record_start(path: Path, size: int) -> int:
+    """Return the byte where the last record of the spill file `path`, `size` bytes, starts."""
+    with open(path, "rb") as f:
+        last, at = 0, 0
+        while at < size:
+            last = at
+            f.seek(at)
+            at += 4 + int.from_bytes(f.read(4), "big")
+    return last
+
+
+def _spill_record(content: dict, ts_recv: float) -> bytes:
+    """One captured option quote as a spill file holds it (DATA_FLOW §2 D4's format)."""
+    return json.dumps(
+        {
+            "topic": f"optquote.{_CONTRACT}",
+            "msg": verbatim_msg(
+                symbol=_CONTRACT, content=content, src="schwab_stream", ts_recv=ts_recv
+            ),
+        }
+    ).encode()
+
+
+def _stored_quotes(db: Path) -> list:
+    """Return the option quotes the database holds, as Schwab sent them, in the order written."""
+    with closing(sqlite3.connect(db)) as conn, conn:
+        return [
+            json.loads(r[0])
+            for r in conn.execute(
+                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
+            )
+        ]
+
+
 def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_order(tmp_path):
     """INDUCED CONDITION: another connection holds the write lock while the quotes arrive.
 
@@ -580,18 +641,12 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
     file is gone once its rows are committed.
     """
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
+    writer = _small_cap_writer(db)
+    holder = _locked(db)
 
     async def go():
-        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health)
-        daemon.writer = writer
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        during = await _held_past_the_cap(writer, bus, health, daemon)
+        stop = asyncio.Event()
+        _bus, _health, daemon, task, during = await _spilled(writer, stop)
         on_disk = Path(during["spill"]["path"]).stat().st_size
         holder.execute("COMMIT")
         await _until(
@@ -624,13 +679,7 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
         f"spilled to disk: {spill['messages']} messages, {on_disk:,} bytes in {path.name}"
         in during["line"]
     )
-    with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            json.loads(r[0])
-            for r in conn.execute(
-                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
+    stored = _stored_quotes(db)
     assert stored == [e["content"] for e in _EVENTS], (
         "not every quote exactly once, in arrival order"
     )
@@ -666,17 +715,7 @@ def test_a_database_refusing_writes_at_start_never_stops_the_writer_starting(tmp
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    record = json.dumps(
-        {
-            "topic": f"optquote.{_CONTRACT}",
-            "msg": verbatim_msg(
-                symbol=_CONTRACT,
-                content=_EVENTS[0]["content"],
-                src="schwab_stream",
-                ts_recv=1790863200.0,
-            ),
-        }
-    ).encode()
+    record = _spill_record(_EVENTS[0]["content"], 1790863200.0)
     spill = db.with_name("stream_capture.1.spill")
     spill.write_bytes(len(record).to_bytes(4, "big") + record)
     with closing(sqlite3.connect(db)) as conn, conn:
@@ -718,18 +757,12 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
     writing it again.
     """
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
+    writer = _small_cap_writer(db)
+    holder = _locked(db)
 
     async def go():
-        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health)
-        daemon.writer = writer
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        during = await _held_past_the_cap(writer, bus, health, daemon)
+        stop = asyncio.Event()
+        bus, health, daemon, task, during = await _spilled(writer, stop)
         release = _undeletable(Path(during["spill"]["path"]))
         try:
             holder.execute("COMMIT")
@@ -773,20 +806,7 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    records = [
-        json.dumps(
-            {
-                "topic": f"optquote.{_CONTRACT}",
-                "msg": verbatim_msg(  # DATA_FLOW §2 D4's format
-                    symbol=_CONTRACT,
-                    content=e["content"],
-                    src="schwab_stream",
-                    ts_recv=1790863200.0 + i,
-                ),
-            }
-        ).encode()
-        for i, e in enumerate(_EVENTS)
-    ]
+    records = [_spill_record(e["content"], 1790863200.0 + i) for i, e in enumerate(_EVENTS)]
     older, newer = db.with_name("stream_capture.1.spill"), db.with_name("stream_capture.2.spill")
     older.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records) + b"\x00\x00\x01")
     newer.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records[:2]))
@@ -828,23 +848,12 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    record = json.dumps(
-        {
-            "topic": f"optquote.{_CONTRACT}",
-            "msg": verbatim_msg(
-                symbol=_CONTRACT,
-                content=_EVENTS[0]["content"],
-                src="schwab_stream",
-                ts_recv=1790863200.0,
-            ),
-        }
-    ).encode()
+    record = _spill_record(_EVENTS[0]["content"], 1790863200.0)
     db.with_name("stream_capture.1.1.spill").write_bytes(
         len(record).to_bytes(4, "big") + record + b"\x00\x00\x01"
     )
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
+    holder = _locked(db)
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -866,14 +875,8 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
         after = asyncio.run(go())
     finally:
         holder.close()
-    with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            json.loads(r[0])
-            for r in conn.execute(
-                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
-        kept = conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0]
+    stored = _stored_quotes(db)
+    kept = _count(db, "stream_write_failures")
     assert stored == [e["content"] for e in _EVENTS], (
         "a quote that arrived was not written as its own row"
     )
@@ -889,17 +892,7 @@ def test_a_found_spill_whose_cut_bytes_were_kept_is_deleted_without_keeping_them
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    record = json.dumps(
-        {
-            "topic": f"optquote.{_CONTRACT}",
-            "msg": verbatim_msg(
-                symbol=_CONTRACT,
-                content=_EVENTS[0]["content"],
-                src="schwab_stream",
-                ts_recv=1790863200.0,
-            ),
-        }
-    ).encode()
+    record = _spill_record(_EVENTS[0]["content"], 1790863200.0)
     spill = db.with_name("stream_capture.1.1.spill")
     spill.write_bytes(len(record).to_bytes(4, "big") + record + b"\x00\x00\x01")
     with closing(sqlite3.connect(db)) as conn, conn:
@@ -925,20 +918,7 @@ def test_a_damaged_length_found_at_start_keeps_every_byte_after_it(tmp_path):
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    records = [
-        json.dumps(
-            {
-                "topic": f"optquote.{_CONTRACT}",
-                "msg": verbatim_msg(
-                    symbol=_CONTRACT,
-                    content=e["content"],
-                    src="schwab_stream",
-                    ts_recv=1790863200.0 + i,
-                ),
-            }
-        ).encode()
-        for i, e in enumerate(_EVENTS)
-    ]
+    records = [_spill_record(e["content"], 1790863200.0 + i) for i, e in enumerate(_EVENTS)]
     framed = [len(r).to_bytes(4, "big") + r for r in records]
     rest = b"\xff\xff\xff\xff" + framed[1][4:] + b"".join(framed[2:])
     spill = db.with_name("stream_capture.1.spill")
@@ -971,25 +951,15 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
     after is written to the database.
     """
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
+    writer = _small_cap_writer(db)
+    holder = _locked(db)
 
     async def go():
-        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health)
-        daemon.writer = writer
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        during = await _held_past_the_cap(writer, bus, health, daemon)
+        stop = asyncio.Event()
+        bus, health, daemon, task, during = await _spilled(writer, stop)
         path = Path(during["spill"]["path"])
-        with open(path, "r+b") as f:  # where the last record starts
-            last, at = 0, 0
-            while at < during["spill"]["bytes"]:
-                last = at
-                f.seek(at)
-                at += 4 + int.from_bytes(f.read(4), "big")
+        last = _last_record_start(path, during["spill"]["bytes"])
+        with open(path, "r+b") as f:  # the last record's length
             f.seek(last)
             f.write(b"\xff\xff\xff\xff")
         holder.execute("COMMIT")
@@ -1005,14 +975,8 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
         after = asyncio.run(go())
     finally:
         holder.close()
-    with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            json.loads(r[0])
-            for r in conn.execute(
-                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
-        kept = conn.execute("SELECT COUNT(*) FROM stream_write_failures").fetchone()[0]
+    stored = _stored_quotes(db)
+    kept = _count(db, "stream_write_failures")
     assert stored == [e["content"] for e in _EVENTS[:-1]] + [_EVENTS[0]["content"]]
     assert (kept, after["state"], after["spill"]) == (1, "recording", None)
 
@@ -1047,15 +1011,11 @@ def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
     ]
     for path in taken:
         path.write_bytes(b"taken")
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
+    holder = _locked(db)
 
     async def go():
-        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health)
-        daemon.writer = writer
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        await _held_past_the_cap(writer, bus, health, daemon)
+        stop = asyncio.Event()
+        *_held, task, _during = await _spilled(writer, stop)
         stop.set()
         await task
 
@@ -1409,28 +1369,17 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
     the quote after it written; the file is deleted and the writer goes on recording.
     """
     db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(
-        db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=_SMALL_CAP
-    )
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
+    writer = _small_cap_writer(db)
+    holder = _locked(db)
 
     async def go():
-        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health)
-        daemon.writer = writer
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        during = await _held_past_the_cap(writer, bus, health, daemon)
+        stop = asyncio.Event()
+        bus, health, daemon, task, during = await _spilled(writer, stop)
         path = Path(during["spill"]["path"])
-        with open(path, "rb") as f:  # where the last record starts
-            last, at = 0, 0
-            while at < during["spill"]["bytes"]:
-                last = at
-                f.seek(at)
-                at += 4 + int.from_bytes(f.read(4), "big")
         with open(path, "r+b") as f:
             f.seek(during["spill"]["bytes"] - 2)
             f.write(b"\xff\xff")
+        last = _last_record_start(path, during["spill"]["bytes"])  # the lengths are not damaged
         _publish_options(bus, health, _EVENTS[:1])  # behind the damaged record
         await _until(
             lambda: writer.status()["spill"]["messages"] == during["spill"]["messages"] + 1
@@ -1453,13 +1402,8 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
         holder.close()
 
     path = Path(during["spill"]["path"])
+    stored = _stored_quotes(db)
     with closing(sqlite3.connect(db)) as conn, conn:
-        stored = [
-            json.loads(r[0])
-            for r in conn.execute(
-                "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid"
-            )
-        ]
         kept = conn.execute("SELECT topic, error FROM stream_write_failures").fetchall()
     assert stored == [e["content"] for e in _EVENTS[:-1]] + [_EVENTS[0]["content"]], (
         "not every good record, in order, the one received after the damaged record included"

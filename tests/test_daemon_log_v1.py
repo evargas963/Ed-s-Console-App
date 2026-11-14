@@ -31,6 +31,19 @@ def _line(handler: logging.Handler, when: datetime, text: str) -> None:
     handler.handle(record)
 
 
+def _run_in_runtime(tmp_path: Path, script: str) -> subprocess.CompletedProcess:
+    """Run `script` in a Python of its own under the runtime root `tmp_path`; return its run."""
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+
+
 def test_the_day_changes_while_another_process_holds_the_log_open(tmp_path):
     before = datetime(2026, 10, 8, 23, 59, 59)
     handler = capture.DailyLog(tmp_path)
@@ -183,15 +196,7 @@ def test_a_window_line_reaches_the_window_and_not_the_days_file(tmp_path):
         "capture.log.warning('schwab: connected')\n"
         "logging.shutdown()\n"
     )
-    done = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=REPO,
-        env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=True,
-    )
+    done = _run_in_runtime(tmp_path, script)
     assert "PUSH LEVELONE_EQUITIES: 1 messages" in done.stderr
     (log,) = (tmp_path / "logs").glob("stream_capture.*.log")
     assert [line[24:] for line in log.read_text(encoding="utf-8").splitlines()] == [
@@ -211,15 +216,7 @@ def test_every_window_line_reaches_the_window_before_the_program_ends(tmp_path):
         "for i in range(2000):\n"
         "    capture.WINDOW_ONLY.info('PUSH line %d', i)\n"
     )
-    done = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=REPO,
-        env={**os.environ, "ED_RUNTIME_ROOT": str(tmp_path)},
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=True,
-    )
+    done = _run_in_runtime(tmp_path, script)
     shown = [line.split(" ", 2)[2] for line in done.stderr.splitlines() if " PUSH line " in line]
     assert shown == [f"PUSH line {i}" for i in range(2000)]
 

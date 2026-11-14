@@ -134,18 +134,15 @@ def _signed_walk(prints: list[dict[str, Any]], cutoff_ms: float | None):
 
 def iter_signed_cum_points(
     prints: list[dict[str, Any]],
-    window_sec: float | None = None,
-    now_ms: float | None = None,
+    cutoff_ms: float | None = None,
 ) -> list[tuple[float, float]]:
     """Return the cumulative signed size at each print of the walk (_signed_walk).
 
-    It is for CVD and its slope; with a window, the prints traded in the `window_sec` before
-    `now_ms`.
+    It is for CVD and its slope; with `cutoff_ms`, the prints traded at or after it.
     """
-    cutoff = None if window_sec is None else now_ms - int(window_sec * 1000)
     points: list[tuple[float, float]] = []
     cum = 0.0
-    for x, _size, signed in _signed_walk(prints, cutoff):
+    for x, _size, signed in _signed_walk(prints, cutoff_ms):
         if signed is not None:
             cum += signed
         points.append((x, cum))

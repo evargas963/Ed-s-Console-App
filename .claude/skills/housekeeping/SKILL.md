@@ -4,7 +4,8 @@ description: Use to clean up open pull requests, branches, worktrees, stashes an
 ---
 
 1. List, change nothing, and show each command's output:
-   - `gh pr list --state open --json number,title,headRefName,updatedAt` — each open PR, and whether its
+   - `gh pr list --state open --json number,title,headRefName,updatedAt` — each open PR, and
+     whether its
      change is already on `main` (`git log origin/main --grep` or a patch-id match).
    - `git branch -r --merged origin/main` and `git branch --merged origin/main` — branches whose work
      is on `main`.

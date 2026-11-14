@@ -76,6 +76,29 @@ async def _until(cond, limit: float = 10.0) -> None:
         await asyncio.sleep(0.05)
 
 
+def _spy_0dte() -> tuple[dict, list[dict]]:
+    """Return SPY's 2026-09-22 same-day chain capture and a copy of each of its contracts."""
+    fixture = json.loads(
+        (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
+    )
+    return fixture, [dict(c) for c in fixture["chain"]]
+
+
+async def _following(
+    daemon, bus, contracts: list, now: float
+) -> tuple[asyncio.Event, asyncio.Task]:
+    """Start the daemon's follow_market, then put SPY's `contracts` on its bus as the sweep does.
+
+    Return the event that stops it and its task.
+    """
+    stop = asyncio.Event()
+    task = asyncio.create_task(daemon.follow_market(stop))
+    await asyncio.sleep(0)
+    for topic, msg in chain_messages("SPY", contracts, now, None, None):
+        bus.publish(topic, msg)
+    return stop, task
+
+
 def test_a_page_is_refused_while_the_program_serves_no_prices():
     """The program's web server answers the page's price socket (/ws) only while it serves prices.
 
@@ -315,10 +338,7 @@ def test_a_chain_that_cannot_be_read_fails_where_the_sweep_reads_it():
     Text, not a contract, so reading the chain raises, where it is read once: as the sweep puts
     it on the bus (chain_messages), before any reader takes it.
     """
-    fixture = json.loads(
-        (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
-    )
-    contracts = [dict(c) for c in fixture["chain"]]
+    _fixture, contracts = _spy_0dte()
     contracts[0] = "not a contract"
     with pytest.raises(AttributeError, match="get"):
         chain_messages("SPY", contracts, time_et.now(), None, None)
@@ -331,21 +351,14 @@ def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
     and no blank symbol (rule 2: no symbol is no contract to stream or record), and
     follow_market keeps running.
     """
-    fixture = json.loads(
-        (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
-    )
-    contracts = [dict(c) for c in fixture["chain"]]
+    fixture, contracts = _spy_0dte()
     del contracts[0]["symbol"]
     bus = MessageBus()
     now = fixture["ts_utc"]
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: now)
 
     async def go():
-        stop = asyncio.Event()
-        task = asyncio.create_task(daemon.follow_market(stop))
-        await asyncio.sleep(0)
-        for topic, msg in chain_messages("SPY", contracts, now, None, None):
-            bus.publish(topic, msg)
+        stop, task = await _following(daemon, bus, contracts, now)
         for _ in range(100):
             if "SPY" in daemon._ladders or task.done():
                 break
@@ -370,10 +383,7 @@ def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price():
     the option rule orders the chain without it (rule 2: no side is no contract to stream), and
     follow_market keeps running.
     """
-    fixture = json.loads(
-        (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
-    )
-    contracts = [dict(c) for c in fixture["chain"]]
+    fixture, contracts = _spy_0dte()
     del contracts[0]["putCall"]
     no_side = contracts[0]["symbol"]
     bus = MessageBus()
@@ -381,11 +391,7 @@ def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price():
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: now)
 
     async def go():
-        stop = asyncio.Event()
-        task = asyncio.create_task(daemon.follow_market(stop))
-        await asyncio.sleep(0)
-        for topic, msg in chain_messages("SPY", contracts, now, None, None):
-            bus.publish(topic, msg)
+        stop, task = await _following(daemon, bus, contracts, now)
         await _until(lambda: "SPY" in daemon._ladders or task.done())  # the chain is taken first
         bus.publish(
             "quote.SPY",
@@ -422,9 +428,7 @@ def test_a_plane_row_listener_that_fails_ends_the_market_follower():
     Added through add_row_listener. SPY's price (its 2026-09-22 capture's) reaches the plane:
     follow_market ends on the listener's error instead of the plane swallowing it.
     """
-    fixture = json.loads(
-        (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
-    )
+    fixture, _contracts = _spy_0dte()
     bus = MessageBus()
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
 

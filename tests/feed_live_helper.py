@@ -8,6 +8,7 @@ exactly the symbols the daemon would hold -- through the production entry point.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import live_market_plane as lmp
@@ -15,6 +16,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from option_contract import read_chain
 from stream_spine import HealthRegistry, MessageBus
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -160,3 +162,23 @@ def mark_feed_live(*tickers: str, now: float | None = None) -> None:
 
 def mark_feed_down() -> None:
     lmp.record_feed_down()
+
+
+def publish_capture(
+    tk: str, chain: list, ts_utc: float, spot: float, et_date: str, now: datetime
+) -> None:
+    """`chain` published for `tk` as the stored capture it is, at the price Schwab sent in it."""
+    server._publish_levels(
+        tk,
+        captures=[
+            {
+                "contracts": read_chain(chain),
+                "ts_utc": ts_utc,
+                "spot": spot,
+                "et_date": et_date,
+                "basis": server.CAPTURE_BASIS,
+                "spot_ts": None,
+            }
+        ],
+        now=now,
+    )

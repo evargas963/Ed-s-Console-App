@@ -715,8 +715,7 @@ class ChainSweep:
         chain = _Chain(ticker, self.clock())
         window = capture_slot(chain.started)
         held = self._answers.get(ticker)
-        fresh = held is not None and chain.started - held[1] < CHAINS_AGAIN_SEC
-        if fresh and held[0] == window:
+        if held is not None and chain.started - held[1] < CHAINS_AGAIN_SEC and held[0] == window:
             chain.answers_age, chain.spots = chain.started - held[1], dict(held[2])
             chain.by_expiry = {e: [dict(ct) for ct in cts] for e, cts in held[3].items()}
             return self.take_greeks(chain)

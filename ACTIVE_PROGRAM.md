@@ -23,11 +23,13 @@ eleven strikes centred on the one nearest the live price; with no live price, th
 chain and the note saying so), chosen at each request from every strike the publication ranked,
 so it follows the price between chains (operator 2026-10-29: "for the confluence matrix it is not
 shifting so that we have 5+/- strikes around spot"; asked whether the matrix uses the same strike
-window as the heatmap and the other panels: "Yes, one window"). The strike column shows two decimals. Percentiles use the whole expiry. Each level is drawn at its own price on the rail.
+window as the heatmap and the other panels: "Yes, one window"). The strike column shows two
+decimals. Percentiles use the whole expiry. Each level is drawn at its own price on the rail.
 A price outside the visible strikes is a button above or below the matrix. The page's placement
 of those served prices, and of the spot line, is display geometry from the design spec. It is
 not a second price. The expiry, including
-0DTE, is chosen from a dropdown. With no priced chain, the page says so. A selected strike may name the missing input. Charm
+0DTE, is chosen from a dropdown. With no priced chain, the page says so. A selected strike may name
+the missing input. Charm
 for the chosen expiry uses that expiry's contracts at the book's valuation time. Known open
 interest of zero is zero charm.
 
@@ -111,11 +113,15 @@ The operator's answers to the live-path audit's questions, in his words:
 Command guards read commands through one quote-aware reader (operator 2026-10-11):
 `read` in `tools/shell_parse.py`; no guard splits, tokenizes or unquotes a command itself
 (`tests/test_shell_reader_v1.py`, `tests/test_guards_read_statements_v1.py`). The guards fail closed
-(operator 2026-10-11): a command the reader cannot see into — a program built at run time, text piped
-into a shell or interpreter, a PowerShell -EncodedCommand, Invoke-Expression — is refused with a message
+(operator 2026-10-11): a command the reader cannot see into — a program built at run time, text
+piped
+into a shell or interpreter, a PowerShell -EncodedCommand, Invoke-Expression — is refused with a
+message
 to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_refused` and
-`test_a_called_variable_a_built_program_word_or_text_piped_into_a_shell_is_refused` cover; the forms ENF-13 lists are open. `git branch --list` and `--contains` aimed at production are reads (operator
-2026-10-11). Python reading its program from stdin is refused; use a script file or python -c (operator 2026-10-11).
+`test_a_called_variable_a_built_program_word_or_text_piped_into_a_shell_is_refused` cover; the forms
+ENF-13 lists are open. `git branch --list` and `--contains` aimed at production are reads (operator
+2026-10-11). Python reading its program from stdin is refused; use a script file or python -c
+(operator 2026-10-11).
 
 ## Phase 1 — restore and stabilize
 
@@ -147,33 +153,48 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 #### server.py
 
 - S-23 `_side_sums`' sums use the live spot while the rows were priced at the snapshot's.
-- S-38 `_publish_levels` reads the database (`newest_capture_ts`) on every new chain to learn whether a newer capture exists; the daemon, which writes the captures, could carry that time on the chain it delivers.
-- S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the microstructure content build return None/{} after an exception with no reason.
-- S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
-- M-28 `gsf_state` (model curve at spot) and `regime` (Schwab's book) judge gamma at spot from two sources; `gsf_state` is documented as the regime and carries no basis.
+- S-38 `_publish_levels` reads the database (`newest_capture_ts`) on every new chain to learn
+  whether a newer capture exists; the daemon, which writes the captures, could carry that time on
+  the chain it delivers.
+- S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the
+  microstructure content build return None/{} after an exception with no reason.
+- S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the
+  terrain's time and stale flag, computed in the route.
+- M-28 `gsf_state` (model curve at spot) and `regime` (Schwab's book) judge gamma at spot from two
+  sources; `gsf_state` is documented as the regime and carries no basis.
 
 #### liquidity_value_engine.py, liquidity_models.py
 
 - M-02 `volume_profile` drops bars (`hi < lo`) without counting them.
 - M-05 `compute_session_vwap_series` skips volume-less bars without disclosing the count.
 - M-09 a missing poc, pd_poc or vwap yields `value_state="unchanged"` / `vwap_relation="at_value"`.
-- M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar); `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in `families_absent`.
-- M-12 fused option levels: the non-number rejection is gone (#646: no caller can send one). A level at 0 is no longer dropped, by the regular-session fusion or the clustering (a reported 0 is 0, rule 2); before the open, `build_premarket_snapshot` takes no option or spot levels at all. The liquidity zones are served nearest the live price first, and with no live price by price, lowest first (operator 2026-10-30: "By price"), not by the deleted score.
+- M-11 `cutoff_et` (now) is served as the values' time (they are as of the last bar);
+  `session_scope` relabels an unknown scope; prior-day POC/VAH/VAL missing is not in
+  `families_absent`.
+- M-12 fused option levels: the non-number rejection is gone (#646: no caller can send one). A level
+  at 0 is no longer dropped, by the regular-session fusion or the clustering (a reported 0 is 0,
+  rule 2); before the open, `build_premarket_snapshot` takes no option or spot levels at all. The
+  liquidity zones are served nearest the live price first, and with no live price by price, lowest
+  first (operator 2026-10-30: "By price"), not by the deleted score.
 
 #### math_exposure_core.py, math_levels.py
 
-- M-13 one strike validity rule for both files: core takes any strike Schwab sent, levels rejects ≤ 0 (`_contract_inputs`, counted "invalid").
+- M-13 one strike validity rule for both files: core takes any strike Schwab sent, levels rejects
+  ≤ 0 (`_contract_inputs`, counted "invalid").
 - M-14 contracts with no strike or side are dropped uncounted.
 - M-21 `pick_pin_and_strength` serves 100% with no runner-up.
 - M-22 `book_net_gex` sums only strikes with valid gamma, without saying how many it left out.
 - M-24 `compute_charm_by_strike` returns {} with no reason (no spot).
 - M-25 the flip profile turns a non-finite gamma into 0.
-- M-27 `gamma_at_price`, the one interpolator for gamma at a price, returns the end value off the profile.
+- M-27 `gamma_at_price`, the one interpolator for gamma at a price, returns the end value off the
+  profile.
 
 #### terrain_engine.py, terrain_atr.py, math_volatility.py, math_probabilities.py, time_et.py
 
-- M-32 per-expiry PCR/IV maps key by date alone while books key by (date, dte): same-date books overwrite.
-- M-36 the pin score clamps `oi_concentration` to [0, 1] and divides by an unsourced $50,000 (PIN-FLOOR).
+- M-32 per-expiry PCR/IV maps key by date alone while books key by (date, dte): same-date books
+  overwrite.
+- M-36 the pin score clamps `oi_concentration` to [0, 1] and divides by an unsourced $50,000
+  (PIN-FLOOR).
 - M-37 `time_to_expiry_years` floors T at 10 minutes.
 
 #### app/options/order_flow/, live_price_rows.py, live_market_plane.py
@@ -188,19 +209,28 @@ to write it plainly, in the forms `test_a_command_the_reader_cannot_see_into_is_
 #### The daemon and Schwab client
 
 - O-21 `stream_spine._now` substitutes `time.time()`; no capture builder passes the receive time.
-- O-22 symbols keyed with `.upper().strip()` instead of `ticker_storage_key` (stream_spine, capture, streaming).
-- O-23 flat L1 columns copied raw into `stream_quotes_raw` beside `native_json`, read by no product code.
+- O-22 symbols keyed with `.upper().strip()` instead of `ticker_storage_key` (stream_spine, capture,
+  streaming).
+- O-23 flat L1 columns copied raw into `stream_quotes_raw` beside `native_json`, read by no product
+  code.
 - D-14 `persist_complete_chain_capture` drops non-dict contracts uncounted.
 
 #### Page code (static/js)
 
-- P-02 ages formatted and thresholded on the page (`fmtAge`, `Math.round(trade_age_sec)`); the push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).
-- P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; the watchlist's sends in `ed-core.js` say a true failure without naming its status (the panels' HTTP reads are deleted: every panel comes on the socket, a failed one with its words).
+- P-02 ages formatted and thresholded on the page (`fmtAge`, `Math.round(trade_age_sec)`); the
+  push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).
+- P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal
+  values; the watchlist's sends in `ed-core.js` say a true failure without naming its status (the
+  panels' HTTP reads are deleted: every panel comes on the socket, a failed one with its words).
 - P-10 six or more page formatters for dollars and volume with different precision.
-- P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
-- P-14 the chart drops old tail revisions and markers with no bar uncounted, colours a missing change as up, and picks the levels shown.
-- P-16 Trade Desk ages, dates, percents and the LEVELS age are computed on the page; PD value-area picked by id.
-- P-18 Trade Desk labels first-of, a sign flipped on the page, and strike-to-wall matching on the page.
+- P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC
+  date and reads the raw contracts (a -999 prints).
+- P-14 the chart drops old tail revisions and markers with no bar uncounted, colours a missing
+  change as up, and picks the levels shown.
+- P-16 Trade Desk ages, dates, percents and the LEVELS age are computed on the page; PD value-area
+  picked by id.
+- P-18 Trade Desk labels first-of, a sign flipped on the page, and strike-to-wall matching on the
+  page.
 - P-22 the Flow header's strike and expiry come from page state.
 - P-24 the order book matches walls on the page and gives one reason for every no-book cause.
 
@@ -221,13 +251,17 @@ expiry's, labelled. The audit of 2026-10-23 found the rows below. Operator 2026-
 everything that you see and touch": a defect seen in a file a change touches is fixed in that
 change, not deferred. Operator 2026-10-23, on #589: merge it once CI is green; the stand-ins in its
 three test files and one shared price formatter are the next PR; the deploy restart waited for his
-word while the market was open (superseded 2026-11-03: no yes at any hour). Operator 2026-10-23, later: "you do not have to ask me to merge, you
+word while the market was open (superseded 2026-11-03: no yes at any hour). Operator 2026-10-23,
+later: "you do not have to ask me to merge, you
 have full authority to get everything into production": the one-producer PRs merge once CI is green
-(no reviewer verdict since 2026-11-05, AGENTS.md rule 14), and deploy, without a separate yes. Operator 2026-10-23, later still: "you do
+(no reviewer verdict since 2026-11-05, AGENTS.md rule 14), and deploy, without a separate yes.
+Operator 2026-10-23, later still: "you do
 not have to wait till after hours to deploy ... we get things done right away we don't wait": a
 merged PR deploys at once, in any session, with no yes (operator 2026-11-03: restarts in regular
-hours need no yes; the guard no longer asks); "no reason to ever wait": the work is done and deployed
-now, and only what needs a live market is tested in regular hours. Operator 2026-10-23, on ONE-22: every
+hours need no yes; the guard no longer asks); "no reason to ever wait": the work is done and
+deployed
+now, and only what needs a live market is tested in regular hours. Operator 2026-10-23, on ONE-22:
+every
 relation of the price to the levels is at the live price with one side rule, the pin candidate's
 gates included; each value computed from the live price is marked not live, with the price's time
 and age, when that price stops (`server.price_mark`), in the PR that moves it to the live price; a
@@ -250,7 +284,8 @@ ticker switch. Operator 2026-11-02, replacing his 2026-10-25 rule: "the ui shold
 market is open and we can receive data. during rth, pre market, after hours", and "it should start
 at 4 am et", then, on Schwab's Extended Hours agreement of 2026-10-30, "we keep to the schedule":
 a valid session is live, with none it reads CLOSED and the last value stays, and the sessions are
-the windows Schwab's /markets sends: stocks 07:00 to 20:00, options 07:30 to 16:15 ET. Operator 2026-11-02: the Schwab session's one connection stays open
+the windows Schwab's /markets sends: stocks 07:00 to 20:00, options 07:30 to 16:15 ET. Operator
+2026-11-02: the Schwab session's one connection stays open
 while idle ("Yes, keep it open"; no flake, and not closed after 60 s). Operator 2026-10-25: "we
 should not have multiple producers anywhere": the state's word (LIVE / OFFLINE / NOT LIVE) is served
 (`live_market_plane.live_state`), never chosen by the page. Operator 2026-10-25: "we use banking
@@ -267,7 +302,8 @@ the three readers of Schwab's option windows are one, `time_et.option_market_ope
 says is closed is outside every window, so Schwab's close counts stand on it, as after any close;
 `valuation_instant` keeps main's clock, the day's close only for the rest of that day, read through
 `option_market_open` and `options_closed_at`, the one close instant: a gap between two windows, if
-Schwab ever sends one, counts as closed, like the counts and the levels word); in PR B only the functions it changes lose their history notes, the
+Schwab ever sends one, counts as closed, like the counts and the levels word); in PR B only the
+functions it changes lose their history notes, the
 file-wide cleanup is a separate pass; AGENTS.md rule 2's wording ("a reported 0 is 0") against the
 closed-day count rule is the operator's to amend; the
 stand-ins PR B adds are recorded in STAND-INS, and the older stand-ins in the files it touches stay
@@ -276,7 +312,8 @@ without a second yes): a product file whose code is the same once comments and d
 aside needs no failing test (`check_end_to_end.code_identical`, read by
 `check_fails_before`), proven by tests of the two checkers; removing code nothing calls, a deleted
 file included, still needs a test or a no-callers proof (SIMPLIFY (2); superseded 2026-10-28 by
-"Yes, simpler form" and "Yes, both": a change that only removes whole undecorated Python functions or classes and the imports only they used is proven by the full suite and
+"Yes, simpler form" and "Yes, both": a change that only removes whole undecorated Python functions
+or classes and the imports only they used is proven by the full suite and
 the browser tests). Operator 2026-10-26, after
 both reviews: only `.py` (its syntax tree; a declared encoding other than UTF-8 is a change) and
 `.js` / `.mjs` (Babel's syntax tree, `tools/js_code_tree.js`) are judged so; an `.html` page is

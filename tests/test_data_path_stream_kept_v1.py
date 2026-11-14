@@ -296,6 +296,35 @@ def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> in
     return len(sent)
 
 
+def _status_while_locked(db, writer: CaptureWriter, ready) -> tuple[dict, int]:
+    """The mix's equity quotes handed to `writer` while another connection holds the write lock.
+
+    Once `ready(subscription, sent)` holds, the writer's status is read and the lock let go, and
+    every message is waited on until written. Return that status and how many were sent.
+    """
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    sent = _publish_mix(bus, {"LEVELONE_EQUITIES"})
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=stop))
+        await _until(lambda: ready(sub, sent))
+        during = writer.status()
+        holder.execute("COMMIT")
+        await _until(lambda: writer.status()["rows_written"] == sent)
+        stop.set()
+        await task
+        return during
+
+    try:
+        return asyncio.run(go()), sent
+    finally:
+        holder.close()
+
+
 def _old_rows(db) -> int:
     return _rows(
         db, f"SELECT COUNT(*) FROM stream_options_quotes_raw WHERE ts_recv < {_et(_FIVE_SESSIONS)}"
@@ -374,35 +403,17 @@ def test_every_message_a_round_has_taken_counts_as_held_until_it_is_written(tmp_
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, timeout_sec=5.0)
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
-    bus = MessageBus()
-    sub = bus.subscribe("", policy=LOG)
-    sent = _publish_mix(bus, {"LEVELONE_EQUITIES"})
 
-    async def go():
-        stop = asyncio.Event()
-        task = asyncio.create_task(writer.run(sub, stop=stop))
+    def taking(sub, sent: int) -> bool:
         # every message handed over, a round taking them (it waits on the lock), and none of
         # them between the queue and the round
-        await _until(
-            lambda: (
-                sub.queue.empty()
-                and writer.status()["queue_depth"] < sent
-                and writer.status()["held"] == sent
-            )
+        return (
+            sub.queue.empty()
+            and writer.status()["queue_depth"] < sent
+            and writer.status()["held"] == sent
         )
-        during = writer.status()
-        holder.execute("COMMIT")
-        await _until(lambda: writer.status()["rows_written"] == sent)
-        stop.set()
-        await task
-        return during
 
-    try:
-        during = asyncio.run(go())
-    finally:
-        holder.close()
+    during, sent = _status_while_locked(db, writer, taking)
     assert (during["state"], during["rows_written"]) == (WRITER_RECORDING, 0), (
         "the round was not still waiting"
     )
@@ -421,36 +432,16 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=1.0, hold_cap_bytes=1)
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
-    bus = MessageBus()
-    sub = bus.subscribe("", policy=LOG)
-    sent = _publish_mix(bus, {"LEVELONE_EQUITIES"})
 
-    async def go():
-        stop = asyncio.Event()
-        task = asyncio.create_task(writer.run(sub, stop=stop))
+    def admitted(_sub, sent: int) -> bool:  # every message spilled or queued: _admit has finished
+        s = writer.status()
+        return (
+            s["state"] == WRITER_BLOCKED
+            and s["spill"] is not None
+            and s["spill"]["messages"] + s["queue_depth"] == sent
+        )
 
-        def admitted() -> bool:  # every message spilled or queued: _admit has finished
-            s = writer.status()
-            return (
-                s["state"] == WRITER_BLOCKED
-                and s["spill"] is not None
-                and s["spill"]["messages"] + s["queue_depth"] == sent
-            )
-
-        await _until(admitted)
-        during = writer.status()
-        holder.execute("COMMIT")
-        await _until(lambda: writer.status()["rows_written"] == sent)
-        stop.set()
-        await task
-        return during
-
-    try:
-        during = asyncio.run(go())
-    finally:
-        holder.close()
+    during, sent = _status_while_locked(db, writer, admitted)
     assert during["state"] == WRITER_BLOCKED and during["spill"]["messages"] > 0
     assert during["held"] == during["queue_depth"] + during["waiting"] == during["queue_depth"], (
         f"held {during['held']}: {during['spill']['messages']} spilled, "

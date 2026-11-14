@@ -97,6 +97,26 @@ def _market(bus, ticker: str, contracts: list[dict], price: float, ts: float) ->
     )
 
 
+async def _held_when_settled(daemon, stop: asyncio.Event, tasks: list) -> dict:
+    """Ask once more with nothing changed, then stop the daemon; return what it held then.
+
+    Its logout, answered before run() ends, follows on the same connection every request it made:
+    Schwab has received each one.
+    """
+    daemon.ask()  # nothing changed: nothing is asked
+    await _until(lambda: not daemon.wake.is_set())  # the connection has taken what is queued
+    connected = dict(daemon.held)
+    stop.set()
+    await asyncio.wait_for(asyncio.gather(*tasks), 10)
+    return connected
+
+
+def _forget_price(ticker: str) -> None:
+    """Drop the plane row `ticker`'s price wrote."""
+    lmp._by_ticker.pop(ticker, None)
+    lmp._fields_by_ticker.pop(ticker, None)
+
+
 def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_request(tmp_path):
     """2026-10-07 (stream_capture.log 04:40:39): Schwab answered a refused ADD twice.
 
@@ -136,21 +156,13 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
         # the daemon has recorded each answer but the login's, and taken SPY's data entry (its
         # quote follows the one _market published)
         await _until(lambda: log.queue.qsize() == 9 and quotes.queue.qsize() >= 2)
-        daemon.ask()  # nothing changed: nothing is asked
-        await _until(lambda: not daemon.wake.is_set())  # the connection has taken what is queued
-        connected = dict(daemon.held)
-        stop.set()
-        # the daemon's logout, answered before run() ends, follows on the same connection every
-        # request it made: Schwab has received each one
-        await asyncio.wait_for(asyncio.gather(*tasks), 10)
-        return connected
+        return await _held_when_settled(daemon, stop, tasks)
 
     try:
         held = asyncio.run(go())
     finally:
         schwab.close()
-        lmp._by_ticker.pop("SPY", None)  # the plane row its price wrote
-        lmp._fields_by_ticker.pop("SPY", None)
+        _forget_price("SPY")
     asked = [
         (r["service"], r["command"], sorted(r["parameters"]["keys"].split(",")))
         for r in schwab.streamer.requests
@@ -238,8 +250,7 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
         asyncio.run(go())
     finally:
         schwab.close()
-        lmp._by_ticker.pop("MRVL", None)  # the plane row its price wrote
-        lmp._fields_by_ticker.pop("MRVL", None)
+        _forget_price("MRVL")
     commands = [c for c, _k in schwab.streamer.asked("LEVELONE_OPTIONS")]
     assert len(commands) > 1 and commands == ["SUBS"] + ["ADD"] * (len(commands) - 1)
     assert sorted(schwab.streamer.held["LEVELONE_OPTIONS"]) == symbols, "Schwab holds every part"
@@ -285,19 +296,13 @@ def test_a_refusal_that_states_no_limit_is_recorded_and_not_asked_again(tmp_path
         ]
         _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
         await _until(lambda: log.queue.qsize() == 1 and daemon.held["LEVELONE_OPTIONS"] == symbols)
-        daemon.ask()  # nothing changed: nothing is asked
-        await _until(lambda: not daemon.wake.is_set())  # the connection has taken what is queued
-        connected = dict(daemon.held)
-        stop.set()
-        await asyncio.wait_for(asyncio.gather(*tasks), 10)
-        return connected
+        return await _held_when_settled(daemon, stop, tasks)
 
     try:
         held = asyncio.run(go())
     finally:
         schwab.close()
-        lmp._by_ticker.pop("SPY", None)  # the plane row its price wrote
-        lmp._fields_by_ticker.pop("SPY", None)
+        _forget_price("SPY")
     asked = [(c, set(keys)) for c, keys in schwab.streamer.asked("OPTIONS_BOOK")]
     assert asked == [("SUBS", symbols)], "asked once, and not again"
     assert _answers(log) == [("OPTIONS_BOOK", "SUBS", code, msg)]
