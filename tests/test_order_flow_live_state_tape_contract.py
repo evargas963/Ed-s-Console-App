@@ -15,6 +15,7 @@ from pathlib import Path
 
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as live_state
+import l1_trade_observation as l1
 from tests.shared_helpers import sent
 
 _MIX = [
@@ -52,8 +53,9 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
 def test_live_state_present_last_size_reaches_order_flow_consumers():
     """SPY: 775.565 x 40, then 775.57 with no size, then 775.565 x 49.
 
-    The first print anchors the price; the second has no size and counts for nothing but its
-    price; the third is a downtick from it, so the cumulative delta is -49.
+    The first and third prints' sizes reach the consumers; the second has no size and counts for
+    nothing. These messages carry no bid or ask, so Lee and Ready signs none of them: the sized
+    prints' whole size is unsigned and the cumulative delta is no value, never 0.
     """
     sym = "SPY"
     prints = [
@@ -70,4 +72,8 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
     finally:
         live_state.clear_symbol(sym)
 
-    assert ofe._compute_cum_delta_proxy({"content": content}) == -49
+    assert [size for _x, size, _s in l1._signed_walk(l1.canonical_tape_prints(content), None)] == [
+        40,
+        49,
+    ]
+    assert ofe._compute_cum_delta_proxy({"content": content}) is None

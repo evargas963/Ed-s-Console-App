@@ -8,7 +8,9 @@ Real data: Schwab's LEVELONE_EQUITIES messages of 2026-10-05 14:00:00-14:00:03 C
 received them (real_stream_mix_2026_10_05_1400ct.json): RKLB's three prints with no LAST_SIZE then
 one with, $SPX's four prints (an index: never a size), SPY's three; and NVDA's print of
 2026-10-19 04:00:01 ET that Schwab sent with LAST_SIZE 0 (real_security_status_2026_10_19.json).
-Each expected number is the tick rule worked out here from the prices and sizes Schwab sent.
+Each expected number is Lee and Ready worked out here from the prices, sizes and quotes Schwab
+sent: RKLB's sized print 72.595 sits at the midpoint of 72.58 and 72.61, so the tick test signs it,
+a downtick; NVDA's 217.6777 is above the midpoint of 217.33 and 217.79.
 """
 
 from __future__ import annotations
@@ -47,9 +49,13 @@ def _prints(key: str) -> list[tuple]:
 
 
 def _data(messages: list[dict]) -> dict:
-    """Return the engine's input: the tape a fresh live state recorded from `messages`, in order."""
+    """Return the engine's input: the tape a fresh live state recorded from `messages`, in order.
+
+    Each message's top first, then its print, as the console takes it (streaming._apply_quote).
+    """
     state = OrderFlowState()
     for m in messages:
+        state.push_option_top(m["item"]["key"], m["item"])
         state.push_level_one(m["item"]["key"], m["item"], ts_recv=m["ts_recv"])
     (key,) = {m["item"]["key"] for m in messages}
     return {"content": state.get_content_for_symbol(key)}
@@ -94,9 +100,13 @@ def test_an_old_tape_has_no_current_window_pressure():
     So a tape whose last
     trade was an hour ago still reported "30-second" pressure as current. Windows end at now;
     prints outside them count for nothing. SPY's prints, judged at its last trade and an hour on.
+    These three seconds of SPY's messages carry no bid or ask, so its prints are unsigned: the
+    window holds them at its last trade (all of their size unsigned) and nothing an hour on.
     """
     data = _data(sent(_MIX, "SPY"))
     last = max(t for _p, _s, t in _prints("SPY")) / 1000
-    assert ofe._compute_tape_pressure(data, window_sec=30.0, now=last) is not None
+    assert ofe._compute_unsigned(data, 30.0, last) == 1.0
+    assert ofe._compute_tape_pressure(data, window_sec=30.0, now=last) is None  # none signed
+    assert ofe._compute_unsigned(data, 30.0, last + 3600) is None
     assert ofe._compute_tape_pressure(data, window_sec=30.0, now=last + 3600) is None
     assert ofe._compute_cum_delta_slope(data, now=last + 3600, window_sec=60.0) is None
