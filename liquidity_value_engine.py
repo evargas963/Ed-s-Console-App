@@ -1164,11 +1164,13 @@ def hold_counts(
     levels "hold" more than half the time, so a rate means something only beside them).
     """
     days = _closed_sessions(bars_norm, now, sessions)
-    swing: dict[tuple[int, int], float] = {}
+    moves: dict[tuple[int, int], list[float]] = {}
     for d, (_hours, rth) in days.items():
         o = rth[0]["open"]
-        move = max(max(b["high"] for b in rth) - o, o - min(b["low"] for b in rth))
-        swing[(d.year, d.month)] = max(swing.get((d.year, d.month), 0.0), move)
+        moves.setdefault((d.year, d.month), []).append(
+            max(max(b["high"] for b in rth) - o, o - min(b["low"] for b in rth))
+        )
+    swing = {month: max(m) for month, m in moves.items()}
     found = {lid: {m: [0, 0, 0, 0] for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
     for d, (hours, rth) in days.items():
         snap = build_price_level_snapshot(

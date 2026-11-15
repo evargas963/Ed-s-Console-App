@@ -53,26 +53,30 @@ def _expected(symbol: str, level_of, minutes: int, after_open: int = 0) -> tuple
         o, cl = s.regular[0][0], s.regular[-1][1]
         if o <= dt < cl and cl <= EVENING:
             days.setdefault(dt.date(), []).append({**c, "dt": dt})
+    found = [
+        _one_day(rth, level, rth[0]["dt"] + timedelta(minutes=after_open), minutes)
+        for d, rth in days.items()
+        if (level := level_of(d, rth)) is not None
+    ]
+    return sum(t for t, _h in found), sum(h for _t, h in found)
+
+
+def _one_day(rth: list[dict], level: float, start: datetime, minutes: int) -> tuple[int, int]:
+    close_at = {b["dt"]: b["close"] for b in rth}
     touches = holds = 0
-    for d, rth in days.items():
-        level = level_of(d, rth)
-        if level is None:
-            continue
-        start = rth[0]["dt"] + timedelta(minutes=after_open)
-        close_at = {b["dt"]: b["close"] for b in rth}
-        armed = True
-        for prev, bar in zip(rth, rth[1:], strict=False):
-            if not bar["low"] <= level <= bar["high"]:
-                armed = True
-            elif bar["dt"] < start or not armed:
-                armed = False
-            elif prev["close"] != level:
-                armed = False
-                side = 1 if prev["close"] > level else -1
-                later = bar["dt"] + timedelta(minutes=minutes)
-                if later in close_at:
-                    touches += 1
-                    holds += (close_at[later] - level) * side > 0
+    armed = True
+    for prev, bar in zip(rth, rth[1:], strict=False):
+        if not bar["low"] <= level <= bar["high"]:
+            armed = True
+        elif bar["dt"] < start or not armed:
+            armed = False
+        elif prev["close"] != level:
+            armed = False
+            side = 1 if prev["close"] > level else -1
+            later = bar["dt"] + timedelta(minutes=minutes)
+            if later in close_at:
+                touches += 1
+                holds += (close_at[later] - level) * side > 0
     return touches, holds
 
 
