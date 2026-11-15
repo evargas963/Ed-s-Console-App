@@ -123,23 +123,11 @@
     },
     {
       "category": "one value, several producers",
-      "item": "daily candle: Schwab daily, chart D roll-up, ATR's today candle"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "touch imbalance: book level 1 vs Level 1 sizes"
-    },
-    {
-      "category": "one value, several producers",
       "item": "prior close: stream field 12 and REST"
     },
     {
       "category": "one value, several producers",
       "item": "gross gamma (confluence) same as Abs gamma metric"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "distance to spot: 4 producers"
     },
     {
       "category": "one value, several names",

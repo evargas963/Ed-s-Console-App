@@ -59,6 +59,7 @@ import pytest
 from websockets.asyncio.client import connect
 
 import live_market_plane as lmp
+import live_price_rows
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
@@ -193,12 +194,30 @@ def test_an_unsubscribed_symbol_is_never_sent():
 
 
 def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
+    """The subscribe's own answer carries the new symbol's row, not a later beat.
+
+    The trade is first held by the program (the daemon's follower applies the bus message on its
+    own task), so the row the subscribe answers with is the one that trade made. A "quotes" frame
+    is sent only by the pump answering a subscribe or a push, never by a beat ("feed"), and no
+    AAPL push follows, so AAPL in a quotes frame is the subscribe's answer: "at once" by cause,
+    not by a wall-clock bound a loaded machine can miss.
+    """
+
     async def body(bus, ws, _feed, _stats):
-        bus.publish("quote.AAPL", _trade("AAPL", 230.5, time_et.now()))
+        traded = time_et.now()
+        bus.publish("quote.AAPL", _trade("AAPL", 230.5, traded))
+        for _ in range(500):  # up to 5 s for the follower to hold it
+            if live_price_rows.price_row("AAPL", traded)["spot"] == 230.5:
+                break
+            await asyncio.sleep(0.01)
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
-        msg, row = await _next_row(ws, "AAPL", lambda r: r["spot"] == 230.5, timeout=0.15)
-        assert msg["type"] == "quotes"
+        rows: list = []
+        while not rows:
+            msg = json.loads(await asyncio.wait_for(ws.recv(), 5))
+            if msg["type"] == "quotes":
+                rows = [r for r in msg["rows"] if r["ticker"] == "AAPL"]
+        assert [r["spot"] for r in rows] == [230.5]
 
     asyncio.run(_run(body))
 

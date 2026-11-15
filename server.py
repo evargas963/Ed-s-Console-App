@@ -2328,24 +2328,24 @@ def chart_bars(
     again yet; the daemon asks as each completes), which is rolled up (aggregate_bars) from
     Schwab's 1-minute bars; and today's daily candle (_daily_candles). Every other timeframe (3
     and 60 minutes, which Schwab does not send), or one whose series is not held yet, is rolled
-    up from the 1-minute bars.
+    up from the 1-minute bars. The daily bars are always _daily_candles', the ATR's own.
     """
+    if tf == "D":
+        first_day = datetime.fromtimestamp(minutes[0]["t"], ET).date() if minutes else None
+        return [
+            _bar_dict(c)
+            for c in _daily_candles(tk, now)
+            if first_day is None or first_day <= datetime.fromtimestamp(c.ts, ET).date()
+        ]
     key = (tk, SCHWAB_SERIES[tf]) if tf in SCHWAB_SERIES else None
     with _bars_lock:
         sent = list(_series[key]) if key in _series else []
     if not sent:
         return aggregate_bars(minutes, tf)
-    if tf != "D":
-        newest = sent[-1].ts
-        first = minutes[0]["t"] if minutes else sent[0].ts
-        schwab = [_bar_dict(c) for c in sent if first <= c.ts < newest]
-        return schwab + aggregate_bars([m for m in minutes if m["t"] >= newest], tf)
-    first_day = datetime.fromtimestamp(minutes[0]["t"], ET).date() if minutes else None
-    return [
-        _bar_dict(c)
-        for c in _daily_candles(tk, now)
-        if first_day is None or first_day <= datetime.fromtimestamp(c.ts, ET).date()
-    ]
+    newest = sent[-1].ts
+    first = minutes[0]["t"] if minutes else sent[0].ts
+    schwab = [_bar_dict(c) for c in sent if first <= c.ts < newest]
+    return schwab + aggregate_bars([m for m in minutes if m["t"] >= newest], tf)
 
 
 def aggregate_bars(bars: list[dict[str, Any]], tf: str) -> list[dict[str, Any]]:
