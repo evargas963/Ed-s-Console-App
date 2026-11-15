@@ -73,6 +73,15 @@ def elapsed() -> float:
     return time.monotonic()
 
 
+def worked() -> float:
+    """Return the seconds of CPU the calling thread has used: the work it did, not the wait.
+
+    Other threads and other programs do not move it; a span of it measures a piece of code's own
+    cost on a machine whatever else runs.
+    """
+    return time.thread_time()
+
+
 async def set_within(event: asyncio.Event, seconds: float) -> bool:
     """Wait up to `seconds` for `event`; True when it is set.
 
