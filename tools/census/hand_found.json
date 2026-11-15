@@ -167,10 +167,6 @@
       "item": "ACTIVE_PROGRAM.md:286-287 P2-5/P2-6 folders daemon/, producer/, console/ vs ARCHITECTURE.md:10-26 feed/, state/, calc/, push/, recorder/, shared/"
     },
     {
-      "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:122 rule 3 the pushed field is the producer vs DATA_FLOW.md:290-293,529 open interest is the chain's while the stream sends field 9"
-    },
-    {
       "category": "contradiction: doc vs doc",
       "item": "DATA_FLOW.md:497-500 no streamed tick replaces the chain's Greeks vs DATA_FLOW.md:559-566 a streamed contract's Greeks are the stream's newest"
     },
