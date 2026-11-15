@@ -183,10 +183,6 @@
       "item": "AGENTS.md:3,121 no bound of ours vs history.py:19 TAPE_KEPT = 500, :21 BOOKS_KEPT_SEC and server.py:194 BARS_KEPT"
     },
     {
-      "category": "contradiction: rule vs code",
-      "item": "AGENTS.md rule 11 the page reads no clock vs ed-core.js:745-746,798 PRICE_SILENCE_MS and :597 timers deciding WAITING or OFFLINE"
-    },
-    {
       "category": "contradiction: doc vs doc",
       "item": "AGENTS.md:163 no exception list vs AGENTS.md:130 and pyproject.toml:35 a per-file ignore of TID251 for time_et.py"
     },
