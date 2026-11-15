@@ -168,10 +168,6 @@
     },
     {
       "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:124 rule 5 age shown 'for any reason' vs DATA_FLOW.md:177-179 and ACTIVE_PROGRAM.md:226-228 trade time without an age while the push is down"
-    },
-    {
-      "category": "contradiction: rule vs doc",
       "item": "AGENTS.md:122 rule 3 the pushed field is the producer vs DATA_FLOW.md:290-293,529 open interest is the chain's while the stream sends field 9"
     },
     {
