@@ -24,8 +24,8 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
     """Schwab's socket closed, the daemon still holding the contract.
 
     At 11:00 ET the last spot and the last streamed volume stand, and the cell is not live. At
-    22:00 ET the close values stand: the strike's volume is the chain's as Schwab sent it, and
-    the volume pushed after the close does not replace it.
+    22:00 ET the last values while the market was open stand (operator 2026-11-15): the 11:00
+    volume, and neither the chain delivered then nor the volume pushed after the close replaces it.
     """
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
 
@@ -52,7 +52,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
     closed_row = next(r for r in closed.snap.per_strike["all"] if r[0] == strike)
     assert rth.snap.spot == _SPOT and rth.spot_source == server.SPOT_SOURCE_PLANE
     sent = sum(ct["totalVolume"] for ct in _CONTRACTS if round(ct["strikePrice"], 2) == strike)
-    assert rth_row[2] >= 999999 and closed_row[2] == sent
+    assert rth_row[2] >= 999999 and closed_row[2] == rth_row[2] != sent
     assert rth.gamma_surface["stream_overlay_contracts"] >= 1
     rth_states = states(rth.gamma_surface)
     assert rth_states and "live" not in rth_states

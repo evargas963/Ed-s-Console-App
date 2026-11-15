@@ -833,14 +833,16 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
 def test_an_expiry_settled_at_the_close_keeps_its_last_known_values_with_their_time():
     """Operator 2026-11-15: "yes the last known value. this gives me data to look at and study".
 
-    SPY's captured 0DTE chain published at 15:59 ET, while it had time left, then again after the
-    index close: the expiry, settled with no time left, keeps the 15:59 vanna, charm, score and
-    same-day levels, and the matrix says they are the last known, as of 15:59, with their age.
-    Never a value of a made-up time left.
+    SPY's captured 0DTE chain published at 16:12 ET, while it had time left, then delivered again
+    after the index close: the 15:59 publication stands, the last values computed while the market
+    was open (operator 2026-11-15: "we keep the last known data on the screen until we get new
+    data"), its vanna, charm and score with them, and the matrix says CLOSE (current at the 16:15
+    close, within two of the daemon's rounds) with the chain's time, 16:12, and its age. Nothing is
+    priced after the close, so never a value of a made-up time left.
     """
     held = SPY_0DTE
     tk = "SPY"
-    before = datetime(2026, 10, 7, 15, 59, tzinfo=ET)
+    before = datetime(2026, 10, 7, 16, 12, tzinfo=ET)
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
@@ -856,14 +858,14 @@ def test_an_expiry_settled_at_the_close_keeps_its_last_known_values_with_their_t
     finally:
         _forget(tk)
     assert _window_has(live_rows, "vanna_text") and _window_has(body["rows"], "vanna_text")
-    assert settled.last_known_ts == {expiry: before.timestamp()}
+    assert settled is alive
     assert settled.same_day == alive.same_day
     by_strike = {r["strike"]: (r["vanna_text"], r["charm_text"], r["score"]) for r in live_rows}
     for row in body["rows"]:
         if row["strike"] in by_strike:
             assert (row["vanna_text"], row["charm_text"], row["score"]) == by_strike[row["strike"]]
     assert body["status_text"] == (
-        f"CLOSE · settled: last known as of {ct_label(before.timestamp())}, "
+        f"CLOSE · chain as of {ct_label(before.timestamp())}, "
         f"{age_text(after.timestamp() - before.timestamp())} old"
     )
 
@@ -1063,21 +1065,28 @@ def _no_value_counts(chain):
 
 
 def test_a_no_value_count_after_the_close_is_not_the_last_count():
-    """Schwab's no-value code in the close values is no count. The count before it is not kept."""
+    """A chain after the close, here with Schwab's no-value code for its counts, replaces nothing.
+
+    The last values while the market was open stand (operator 2026-11-15): the 16:10 counts.
+    """
     inside = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     first, second = _spy_0dte_twice(_no_value_counts(SPY_0DTE.chain), inside, after, after)
     assert any(row["pc_vol_text"] is not None for row in first["rows"])
-    assert all(row["pc_vol_text"] is None for row in second["rows"])
+    assert second["rows"] == first["rows"]
 
 
 def test_a_chain_begun_inside_the_window_keeps_its_reported_zero():
-    """A chain fetched before the close and priced after it keeps the zero it reported."""
+    """A chain fetched before the close but reaching the pricing after it is priced no more.
+
+    The last values priced while the market was open stand (operator 2026-11-15): nothing is
+    priced after the close.
+    """
     inside = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
     after = datetime(2026, 10, 7, 16, 20, tzinfo=ET)
     first, second = _spy_0dte_twice(_zero_counts(SPY_0DTE.chain), inside, inside, after)
     assert any(row["pc_vol_text"] is not None for row in first["rows"])
-    assert all(row["pc_vol_text"] is None for row in second["rows"])
+    assert second["rows"] == first["rows"]
 
 
 def test_a_close_capture_of_zeros_is_the_balance_not_the_capture_before_it():
@@ -1217,12 +1226,15 @@ def _drop_counts(chain):
 
 
 def test_a_missing_count_after_the_close_is_not_the_last_count():
-    """A count Schwab did not send in the close values is no count. The one before is not kept."""
+    """A chain after the close, here with counts Schwab did not send, replaces nothing.
+
+    The last values while the market was open stand (operator 2026-11-15): the 16:10 counts.
+    """
     inside = datetime(2026, 10, 7, 16, 10, tzinfo=ET)
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     first, second = _spy_0dte_twice(_drop_counts(SPY_0DTE.chain), inside, after, after)
     assert any(row["pc_vol_text"] is not None for row in first["rows"])
-    assert all(row["pc_vol_text"] is None for row in second["rows"])
+    assert second["rows"] == first["rows"]
 
 
 def test_a_date_with_no_session_keeps_a_reported_zero():
@@ -1246,11 +1258,12 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
 
 
 def test_a_newer_capture_is_the_count_the_next_chain_keeps():
-    """SPY's 2026-10-23 expiry: an older close capture is not kept once a newer one is stored.
+    """SPY's 2026-10-23 expiry: after 2026-10-22's close, that session's values stand.
 
-    Its 2026-10-21 close capture, read before 2026-10-22's open, is not kept once that day's
-    close capture is stored. The chain is priced at SPY's quote at the first
-    capture (LAST_PRICE 773.50).
+    Its 2026-10-21 close capture is read before 2026-10-22's open; the chain priced at 12:32 in
+    that session reports zero volume, a reported 0; after the close neither the newer close
+    capture nor the chain delivered then replaces it (operator 2026-11-15: the last values while
+    the market was open stand). Priced at SPY's quote at the first capture (LAST_PRICE 773.50).
     """
     older, newer = _SPY_TWO_CLOSES["older"], _SPY_TWO_CLOSES["newer"]
     tk = "SPYNEW"
@@ -1295,7 +1308,7 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
         )
     finally:
         _forget(tk)
-    assert kept.volume == later[target["symbol"]] != target["totalVolume"]
+    assert kept.volume == 0.0 != later[target["symbol"]]
 
 
 def test_the_close_values_stand_until_the_next_open():

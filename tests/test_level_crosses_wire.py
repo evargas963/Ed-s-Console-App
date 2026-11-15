@@ -402,7 +402,7 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
     for route in ("strikes_next_close", "surface_next_close"):
         assert (served[route]["levels_state"], served[route]["levels_stale_reason"]) == (
             "STALE",
-            "this ticker's options are closed and its close values have not been fetched",
+            "this ticker's options are closed and its levels were not current at the close",
         ), route
 
 

@@ -103,7 +103,9 @@ def published():
             "STALE",
         ),  # its options open, no chain for 30 minutes
         ("TSLA", TSLA, _et(16, 1), _et(16, 5), "CLOSE"),  # fetched after its own 16:00 close
-        ("TSLA", TSLA, _et(15, 59), _et(16, 5), "STALE"),  # its close values never fetched
+        # its last chain, 10 minutes before its 16:00 close, was past two rounds (245 s): not
+        # current at the close
+        ("TSLA", TSLA, _et(15, 50), _et(16, 5), "STALE"),
         ("SPY", SPY_0DTE, _et(16, 4), _et(16, 5), "LIVE"),  # its options still open until 16:15
         ("SPY", SPY_0DTE, _et(16, 4), _et(16, 20), "STALE"),  # fetched before its own 16:15 close
         ("SPY", SPY_0DTE, _et(16, 16), _et(16, 20), "CLOSE"),
@@ -375,22 +377,24 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
     """TSLA's price live and its chain current: the page is not told.
 
     TSLA's price is live (its quote's receipt, the daemon holding it) and its chain current:
-    the page is not told, each new price and chain tell it. The same chain at 16:05, after
-    TSLA's own option close and fetched after it: the levels are CLOSE, so the page is told
-    each minute and the close values' age keeps counting.
+    the page is not told, each new price and chain tell it. The same chain at 15:58, then 16:05,
+    after TSLA's own 16:00 option close: the 15:58 values stand as the close values (current at
+    the close, within two of the daemon's rounds), the levels are CLOSE, so the page is told each
+    minute and the close values' age keeps counting.
     """
     quote = _QUOTES["TSLA"]
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     published("TSLA", TSLA, at)
     assert server.terrain("TSLA", at.timestamp())["levels_state"] == "LIVE"
     assert _told("TSLA", at) == set()
-    published("TSLA", TSLA, _et(16, 1))
+    published("TSLA", TSLA, _et(15, 58))
     later = _et(16, 5)
     lmp.record_feed_heartbeat(
         daemon_status(
             later.timestamp(),
             schwab_socket_open=True,
             held={"LEVELONE_EQUITIES": ["TSLA"]},
+            chain_round_sec=ROUND_SEC,
         )
     )
     assert server.terrain("TSLA", later.timestamp())["levels_state"] == "CLOSE"

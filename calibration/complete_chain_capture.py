@@ -172,7 +172,6 @@ def last_capture_per_day(
     days: int,
     *,
     before_et_date: str | None = None,
-    before_ts: float | None = None,
 ) -> list[dict[str, Any]]:
     """Return the last capture of each of the newest `days` market days (newest first).
 
@@ -182,8 +181,7 @@ def last_capture_per_day(
     complete. A capture stored without one has no spot (None, None): the underlyingPrice of its
     /chains answers is recorded beside it and read by nothing.
     `before_et_date` keeps only days before it (the previous market day for a day-over-day
-    view); `before_ts` only captures taken before that instant (the last while a market was
-    open).
+    view).
     """
     tk = ticker_storage_key(ticker)
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
@@ -200,8 +198,6 @@ def last_capture_per_day(
         ):
             day = datetime.fromtimestamp(ts, ET).date().isoformat()
             if before_et_date is not None and day >= before_et_date:
-                continue
-            if before_ts is not None and ts >= before_ts:
                 continue
             if picked and picked[-1][0] == day:
                 continue

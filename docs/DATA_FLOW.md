@@ -627,15 +627,19 @@ the program.
   day Schwab says is closed is outside every window (`time_et.option_market_open`) — the close
   values are the balance until the next open (operator 2026-11-09: "upon market close (when the
   bank closes) that is the balance until the bank opens again, post market, pre market, etc."):
-  the first chain begun at or after that ticker's close, the one this process published or the
-  ticker's newest capture stored after the close (`server._publish_levels`), priced as Schwab
-  sent it. A reported 0 is 0 in them, Schwab's no-value code and a missing count are no value,
-  and no earlier count or greek is carried in. Nothing Schwab sends after them replaces them: no
-  later chain, and no pushed value (no reprice, no streamed value over the chain; the chain panel
-  shows the contracts as the levels priced them). Until the close values are held, a chain is
-  priced as sent; one begun inside the window keeps its reported zero even when it is priced
-  after the close. During the window, Schwab's no-value code is not a greek and a count of zero
-  is the count. Enforced by: `tests/test_data_path_confluence_v1.py`
+  the last values this process computed while that market was open, with their time, stand
+  until its next session (operator 2026-11-15: "we keep the last known data on the screen until
+  we get new data", "yes, go with the simpler version"); nothing is priced after the close, so
+  no contract is valued with no time or a made-up time left, and an expiry that settled at the
+  close keeps its last values to study. They read CLOSE when current at the close (within two of
+  the daemon's rounds before it), else STALE, "its levels were not current at the close"
+  (`server._current_at`). Nothing Schwab sends after the close replaces them: no later chain,
+  and no pushed value. A process started after the close, holding nothing from the session,
+  takes the ticker's newest capture stored after the close, priced as Schwab sent it, a
+  contract settled at that close valued with no time left. During the window, Schwab's
+  no-value code is not a greek and a count of zero is the count. Time to expiry is the time left
+  to the second, with no floor of ours (`time_et.time_to_expiry_years`; operator 2026-11-15:
+  "yes the formula needs to account for time"). Enforced by: `tests/test_data_path_confluence_v1.py`
   (`test_the_close_values_stand_until_the_next_open`,
   `test_a_close_capture_of_zeros_is_the_balance_not_the_capture_before_it`,
   `test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture`) and

@@ -156,10 +156,6 @@
     },
     {
       "category": "contradiction: rule vs code",
-      "item": "AGENTS.md:3,121 no bound of ours vs time_et.py:349,400 a 10-minute time-to-expiry floor (DATA_FLOW.md:893 adopts it, ACTIVE_PROGRAM.md:145 M-37 calls it a defect)"
-    },
-    {
-      "category": "contradiction: rule vs code",
       "item": "AGENTS.md:3,121 no bound of ours vs history.py:19 TAPE_KEPT = 500, :21 BOOKS_KEPT_SEC and server.py:194 BARS_KEPT"
     },
     {

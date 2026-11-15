@@ -474,7 +474,7 @@ def test_a_refused_sign_in_is_why_the_screen_says_the_levels_are_not_live(tmp_pa
     assert past_due == ("STALE", "levels are 3600s old" + why)
     assert closed == (
         "STALE",
-        "this ticker's options are closed and its close values have not been fetched" + why,
+        "this ticker's options are closed and its levels were not current at the close" + why,
     )
     assert none_yet == ("STALE", "no terrain snapshot has been computed yet" + why)
     assert unknown == ("NOT LIVE", "the market session is unknown" + why)
