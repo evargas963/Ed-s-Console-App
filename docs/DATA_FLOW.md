@@ -38,9 +38,12 @@ The facts below hold today and in the design, except where a bullet says what to
   else: it refreshes
   the token when it is within 300 s of expiry, one request at a time (the others carry the token
   it returned), and writes it to the token file atomically. Its session holds as many connections as
-  the quotes requests it sends together for a ticker a page shows (`schwab_client.CONNECTIONS`,
-  `QUOTES_AT_ONCE`: two, operator 2026-11-12: "lets go up in step"), each kept through a pause
-  (operator 2026-11-02: "Yes, keep it open"): every other request is sent alone, in turn. Nothing of
+  the requests a chain round sends together, each ticker's /chains expiries and the queued
+  /quotes (`schwab_client.CONNECTIONS`, `REQUESTS_AT_ONCE`: four, operator 2026-11-15: "Yes, 4 at
+  a time", after two on 2026-11-12: "lets go up in step"; measured 2026-11-12/13 one at a time, a
+  round took a median 155-245 s, almost all of it waiting on Schwab's answers), each kept through
+  a pause (operator 2026-11-02: "Yes, keep it open"): every other request is sent alone, in turn.
+  Nothing of
   ours closes it. When Schwab closes it,
   the pool drops it before the next request; a request caught in that close fails, and its caller
   logs it and asks again, a watchlist add excepted, which reports NOT_CHECKED for the operator to

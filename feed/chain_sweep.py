@@ -32,8 +32,8 @@ from calibration.complete_chain_capture import (
     persist_complete_chain_capture,
 )
 from feed.schwab_client import (
-    QUOTES_AT_ONCE,
     QUOTES_BATCH_MAX,
+    REQUESTS_AT_ONCE,
     Answer,
     flatten_chain_contracts,
     get_market_hours,
@@ -265,8 +265,8 @@ type _SchwabClient = Callable[[], Any]
 class ChainSweep:
     """The one fetcher of option chains.
 
-    One thread, one request at a time on the daemon's one Schwab client (but the quotes of a
-    ticker a page has selected: QUOTES_AT_ONCE requests together), in one rotation
+    One thread on the daemon's one Schwab client, its /chains and /quotes requests sent
+    REQUESTS_AT_ONCE together (each ticker's expiries; the queued quotes), in one rotation
     (sorted, a ticker a page has selected before each other one, `rotation`): every watchlist
     ticker (`watchlist`, which the daemon replaces on
     each add or removal: an added ticker is in the next rotation, a removed one is asked for no
@@ -332,7 +332,7 @@ class ChainSweep:
         self._queue: list[_Queued] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
-        self._asking = ThreadPoolExecutor(QUOTES_AT_ONCE, thread_name_prefix="quotes")
+        self._asking = ThreadPoolExecutor(REQUESTS_AT_ONCE, thread_name_prefix="asking")
         #: ticker -> its newest /chains answers: (their capture window, when they were asked for,
         #: each expiry's underlyingPrice, each expiry's contracts as sent)
         self._answers: dict[str, _Answers] = {}
@@ -517,11 +517,16 @@ class ChainSweep:
                     self.candles(schwab_client, due, stop)
                 self.fetch_chain(schwab_client, asked, stop)
                 last = asked
-                whole, at_once = (1, QUOTES_AT_ONCE) if asked in shown else (QUOTES_BATCH_MAX, 1)
-                while len(self._queue) >= whole and not stop.is_set():
-                    self.send_quotes(schwab_client, at_once)
+                # a shown ticker's quotes now, the last request part-full; the others' only as
+                # full requests, the rest asked with the next chain's
+                if asked in shown:
+                    while self._queue and not stop.is_set():
+                        self.send_quotes(schwab_client, REQUESTS_AT_ONCE)
+                while len(self._queue) >= QUOTES_BATCH_MAX and not stop.is_set():
+                    full = len(self._queue) // QUOTES_BATCH_MAX
+                    self.send_quotes(schwab_client, min(REQUESTS_AT_ONCE, full))
         while self._queue and not stop.is_set():
-            self.send_quotes(schwab_client)
+            self.send_quotes(schwab_client, REQUESTS_AT_ONCE)
         took = self.clock() - started
         if set(self.watchlist) <= set(tickers):
             self.round_sec = took
@@ -612,7 +617,9 @@ class ChainSweep:
                     return self.fail([chain], f"expiration chain returned HTTP {resp.status_code}")
                 listed = self._expiries[ticker] = (today, expiries)
             self.fetch_markets(schwab_client, [expiry.isoformat() for expiry in listed[1]])
-            for expiry in listed[1]:
+
+            def ask(expiry: date) -> Answer | None:
+                """One expiry's /chains answer; None when a stop came before it was asked."""
                 if stop.is_set():
                     return None
                 resp = safe_get_chain(
@@ -622,6 +629,13 @@ class ChainSweep:
                     resp = safe_get_chain(
                         client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
                     )
+                return resp
+
+            # REQUESTS_AT_ONCE expiries asked together, their answers taken in expiry order
+            answers = list(self._asking.map(ask, listed[1]))
+            for expiry, resp in zip(listed[1], answers, strict=True):
+                if resp is None:
+                    return None
                 if resp.status_code != 200:
                     return self.fail(
                         [chain], f"chain for {expiry} returned HTTP {resp.status_code}"
