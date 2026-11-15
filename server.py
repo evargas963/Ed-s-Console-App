@@ -3963,6 +3963,17 @@ def _ranked_matrix(snap: TerrainSnapshot, chosen: str, dte: float) -> dict[str, 
     )
 
 
+def _chain_status(verdict: LevelsVerdict, fetched: float, now: float) -> str:
+    """The matrix's status line: the levels' word, the chain's time and age, and why."""
+    parts = [
+        verdict["levels_state"],
+        f"chain as of {ct_label(fetched)}, {age_text(now - fetched)} old",
+    ]
+    if verdict["levels_stale_reason"]:
+        parts.append(verdict["levels_stale_reason"])
+    return " · ".join(parts)
+
+
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, Any]:
     """Return the ranking of the priced chain, for the expiry the operator picks."""
     published = published_levels(tk)
@@ -4020,7 +4031,11 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             "spot_as_of_ts_utc": live_ts,
             # the distances and the spot line are from the live price: its mark
             **price_mark(tk, live_ts, now.timestamp()),
-            "status_text": "Chain as of " + ct_label(fetched),
+            # the levels' one verdict (terrain_staleness): its word, the chain's time and age,
+            # and why when it is not LIVE or CLOSE (AGENTS rule 5)
+            "status_text": _chain_status(
+                terrain_staleness(fetched, tk, now=now.timestamp()), fetched, now.timestamp()
+            ),
             **_rail(levels, body["rows"]),
             "regime": live.regime,
             "flip_text": None if flip is None else flip["price_text"],

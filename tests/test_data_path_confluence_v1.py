@@ -36,7 +36,7 @@ from stream_spine import verbatim_msg
 from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import daemon_status, publish_capture
+from tests.feed_live_helper import ROUND_SEC, daemon_status, publish_capture
 from tests.real_chains import (
     CRWD,
     MRVL,
@@ -49,7 +49,15 @@ from tests.real_chains import (
 )
 from tests.shared_helpers import fixture_json
 from tests.test_order_flow_book_payload_v1 import _same
-from time_et import ET, INDEX_OPTIONS, ct_label, record_markets, sessions, valuation_instant
+from time_et import (
+    ET,
+    INDEX_OPTIONS,
+    age_text,
+    ct_label,
+    record_markets,
+    sessions,
+    valuation_instant,
+)
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -76,7 +84,12 @@ def _chain_spot(tk: str, quote: dict) -> tuple:
     at = quote["ts_recv"]
     lmp.record_from_level_one_equity(tk, quote["native"], received_ts=at)
     lmp.record_feed_heartbeat(
-        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
+        daemon_status(
+            at,
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": [tk]},
+            chain_round_sec=ROUND_SEC,  # a running daemon reports its round of the watchlist
+        )
     )
     row = live_price_rows.price_row(tk, at)
     return row["spot"], row["trade_ts"]
@@ -582,8 +595,12 @@ def mrvl_answers() -> dict:
     """Return the confluence panel on MRVL's published chain, no live price row.
 
     Its first two expiries asked
-    at the capture instant, and the front one asked on Sunday, after it passed.
+    at the capture instant, and the front one asked on Sunday, after it passed. The daemon's last
+    status stands, its round of the watchlist reported (ROUND_SEC), its feed down: none left by
+    another test decides the verdict.
     """
+    lmp.record_feed_heartbeat(daemon_status(MRVL.now.timestamp(), chain_round_sec=ROUND_SEC))
+    lmp.record_feed_down()
     try:
         _publish_mrvl()
         by_expiry = {
@@ -808,6 +825,32 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     )
     shown = next(r for r in body["rows"] if blend.get(r["strike"]) is not None)
     assert shown["iv_text"] == f"{blend[shown['strike']]:.1f}"
+
+
+def test_the_matrix_says_the_levels_word_and_the_chains_time_and_age():
+    """AGENTS rule 5: every value is shown with its time, and its age once it has stopped.
+
+    SPY's captured chain, delivered after the index close and read an hour later: the matrix's
+    line says CLOSE (the levels' one verdict, server.terrain_staleness), the chain's time and its
+    age.
+    """
+    tk = "SPY"
+    at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    later = datetime(2026, 10, 7, 19, 0, tzinfo=ET)
+    expiry = str(SPY_0DTE.chain[0]["expirationDate"])[:10]
+    try:
+        spot = _chain_spot(tk, _AT_CAPTURE[SPY_0DTE.ticker])
+        server._publish_levels(
+            tk, read_chain(SPY_0DTE.chain), at.timestamp(), chain_spot=spot, now=at
+        )
+        body = server.confluence_payload(tk, expiry, later)
+        verdict = server.terrain_staleness(at.timestamp(), tk, now=later.timestamp())
+    finally:
+        _forget(tk)
+    assert verdict["levels_state"] == "CLOSE"
+    assert body["status_text"] == f"CLOSE · chain as of {ct_label(at.timestamp())}, " + (
+        f"{age_text(3600.0)} old"
+    )
 
 
 def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():

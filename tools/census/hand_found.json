@@ -86,28 +86,8 @@
       "item": "auction word (decision 25)"
     },
     {
-      "category": "one value, several producers",
-      "item": "net gamma at spot: book_net_gex vs gamma_at_price vs GSF interpolation"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "prior close: stream field 12 and REST"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "gross gamma (confluence) same as Abs gamma metric"
-    },
-    {
       "category": "one value, several names",
       "item": "max_pain_dte equals front expiry_dte"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "key delta strike 5.0 on TSLA and AMD"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "LVP/HVP at chain edges (SPY 800, QQQ 800, AMD 600)"
     },
     {
       "category": "wrong on screen",
@@ -175,28 +155,12 @@
       "item": "AGENTS.md:47 and CLAUDE.md:20 'no change reaches production without Ed's approval' vs AGENTS.md:290 merges and deploys without waiting on the operator"
     },
     {
-      "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:124 rule 5 every stopped value shows its time and age vs ACTIVE_PROGRAM.md:18-20,93 and DATA_FLOW.md:398-399 the matrix shows no chain age"
-    },
-    {
-      "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:124 rule 5 age shown 'for any reason' vs DATA_FLOW.md:177-179 and ACTIVE_PROGRAM.md:226-228 trade time without an age while the push is down"
-    },
-    {
-      "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:122 rule 3 the pushed field is the producer vs DATA_FLOW.md:290-293,529 open interest is the chain's while the stream sends field 9"
-    },
-    {
       "category": "contradiction: rule vs code",
       "item": "AGENTS.md:3,121 no bound of ours vs time_et.py:349,400 a 10-minute time-to-expiry floor (DATA_FLOW.md:893 adopts it, ACTIVE_PROGRAM.md:145 M-37 calls it a defect)"
     },
     {
       "category": "contradiction: rule vs code",
       "item": "AGENTS.md:3,121 no bound of ours vs history.py:19 TAPE_KEPT = 500, :21 BOOKS_KEPT_SEC and server.py:194 BARS_KEPT"
-    },
-    {
-      "category": "contradiction: rule vs code",
-      "item": "AGENTS.md rule 11 the page reads no clock vs ed-core.js:745-746,798 PRICE_SILENCE_MS and :597 timers deciding WAITING or OFFLINE"
     },
     {
       "category": "contradiction: doc vs doc",

@@ -17,6 +17,7 @@ from math_exposure_core import (
     strike_total_oi,
     strike_total_volume,
     strike_volume_legs,
+    total_gex_dollars_at_strike,
 )
 from numeric_contract import price_text, schwab_number
 from option_contract import OptionContract
@@ -258,7 +259,7 @@ def magnitudes(
         "FLOWM": None,
     }
     out["_net_gex"] = None if gex is None else net_gex
-    out["_gross"] = None if gex is None else gex[0] + gex[1]
+    out["_gross"] = total_gex_dollars_at_strike(bucket)  # the Abs Γ level's one producer
     out["_pc_gex"] = None if gex is None or gex[0] == 0 else gex[1] / gex[0]
     out["_dex"] = dex
     out["_vanna"] = None if vanna is None else vanna * spot
