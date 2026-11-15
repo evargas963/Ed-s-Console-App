@@ -58,6 +58,8 @@ def test_the_two_pin_metrics_are_different_quantities():
     }
 
     pin = pick_absolute_gamma_strike(exposures)
+    gross = {k: b["call_gex_1pct"] + b["put_gex_1pct"] for k, b in exposures.items()}
+    assert pin == max(gross, key=gross.__getitem__), "the strike of the largest call + put"
     no_put_peak, peak = pick_volatility_point_strikes(exposures)
     assert no_put_peak is None, "no strike of this book is net negative"
 
