@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 import server
+from liquidity_models import PlaybookConfig
 from liquidity_value_engine import HOLD_MIN_TOUCHES, bars_from_candles, hold_counts, wilson_interval
 from micro_structure import Candle
 from tests.feed_live_helper import price_history
@@ -96,6 +97,7 @@ def test_each_level_touch_and_hold_is_counted_by_the_stated_rule(symbol, minutes
         _candles(symbol, "1d"),
         EVENING,
         sessions=sessions(),
+        config=PlaybookConfig(),
     )
     for lid, field in (("PDH", "high"), ("PDL", "low"), ("PDC", "close")):
         want = _expected(symbol, lambda d, _r, f=field: _prior_daily(symbol, d, f), minutes)
@@ -110,8 +112,11 @@ def test_each_level_touch_and_hold_is_counted_by_the_stated_rule(symbol, minutes
 def test_a_session_still_open_is_not_counted():
     """At 12:00 ET on 2026-10-07 that day's session is open: the counts are the evening's."""
     bars, daily = bars_from_candles(_candles("SPY", "1m")), _candles("SPY", "1d")
-    noon = hold_counts(bars, daily, datetime(2026, 10, 7, 12, 0, tzinfo=ET), sessions=sessions())
-    assert noon == hold_counts(bars, daily, EVENING, sessions=sessions())
+    held, cfg = sessions(), PlaybookConfig()
+    noon = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
+    assert hold_counts(bars, daily, noon, sessions=held, config=cfg) == hold_counts(
+        bars, daily, EVENING, sessions=held, config=cfg
+    )
 
 
 def test_ten_days_are_too_few_touches_to_show_a_rate():
@@ -121,6 +126,7 @@ def test_ten_days_are_too_few_touches_to_show_a_rate():
         _candles("SPY", "1d"),
         EVENING,
         sessions=sessions(),
+        config=PlaybookConfig(),
     )
     assert all(by[15].touches < HOLD_MIN_TOUCHES for by in got.values())
     pdh = got["PDH"][15]
@@ -150,6 +156,7 @@ def test_the_liquidity_panel_serves_each_level_types_rate_with_its_note():
         list(server._series[("SPY", "1d")]),
         EVENING,
         sessions=sessions(),
+        config=PlaybookConfig(),
     )["PDH"]
     assert rows[0]["text"] == (
         server.hold_text(pdh[15]) + " [30 min: " + server.hold_text(pdh[30]) + "]"

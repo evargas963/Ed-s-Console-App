@@ -4299,7 +4299,9 @@ def hold_rates(tk: str, now: datetime) -> list[dict[str, str]]:
     with _bars_lock:
         bars = list(_bars[tk]) if tk in _bars else []
         daily = list(_series[(tk, "1d")]) if (tk, "1d") in _series else []
-    counts = hold_counts(bars_from_candles(bars), daily, now, sessions=sessions())
+    counts = hold_counts(
+        bars_from_candles(bars), daily, now, sessions=sessions(), config=PlaybookConfig()
+    )
     return [
         {
             "level": LEVEL_NAMES[lid][0],

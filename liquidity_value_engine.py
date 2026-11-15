@@ -1152,7 +1152,7 @@ def hold_counts(
     now: datetime,
     *,
     sessions: Mapping[str, Session],
-    config: PlaybookConfig | None = None,
+    config: PlaybookConfig,
 ) -> dict[str, dict[int, HoldCount]]:
     """Count each level type's touches and holds over the sessions whose close is past at `now`.
 
@@ -1163,56 +1163,54 @@ def hold_counts(
     session of the same month in the window, by the same rules from the open (Osler 2000: random
     levels "hold" more than half the time, so a rate means something only beside them).
     """
-    cfg = config or PlaybookConfig()
-    rth_by_day: dict[date, list[Bar]] = {}
-    for b in sorted(bars_norm, key=lambda b: b["_dt"]):
-        if _in_rth(sessions, b["_dt"]):
-            rth_by_day.setdefault(b["_dt"].date(), []).append(b)
-    closed = {d: r for d in rth_by_day if (r := _regular(sessions, d)) is not None and r[1] <= now}
-    days = sorted(closed)[-HOLD_WINDOW_SESSIONS:]
+    days = _closed_sessions(bars_norm, now, sessions)
     swing: dict[tuple[int, int], float] = {}
-    for d in days:
-        rth = rth_by_day[d]
+    for d, (_hours, rth) in days.items():
         o = rth[0]["open"]
         move = max(max(b["high"] for b in rth) - o, o - min(b["low"] for b in rth))
         swing[(d.year, d.month)] = max(swing.get((d.year, d.month), 0.0), move)
     found = {lid: {m: [0, 0, 0, 0] for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
-    for d in days:
-        rth = rth_by_day[d]
-        regular = closed[d]
+    for d, (hours, rth) in days.items():
         snap = build_price_level_snapshot(
             "",
             d,
-            [b for b in bars_norm if b["_dt"] < regular[1]],
+            [b for b in bars_norm if b["_dt"] < hours[1]],
             prior=prior_session(daily, d),
             bar_source="",
             sessions=sessions,
-            config=cfg,
+            config=config,
         )
         o, half = rth[0]["open"], swing[(d.year, d.month)]
         grid = [
             o + half * (2 * k + 1 - HOLD_BASELINE_LEVELS) / HOLD_BASELINE_LEVELS
             for k in range(HOLD_BASELINE_LEVELS)
         ]
+        after_range = hours[0] + timedelta(minutes=config.opening_range_minutes)
+        opened = {
+            lid: after_range if lid in _AFTER_OPENING_RANGE else hours[0] for lid in HOLD_LEVELS
+        }
         for m in HOLD_MINUTES:
-            base_t = base_h = 0
-            for g in grid:
-                t, h = _touch_outcomes(rth, g, regular[0], m)
-                base_t, base_h = base_t + t, base_h + h
+            base = [_touch_outcomes(rth, g, hours[0], m) for g in grid]
+            base_t, base_h = sum(t for t, _h in base), sum(h for _t, h in base)
             for lid in HOLD_LEVELS:
                 price = snap.price(lid)
-                if price is None:
-                    continue
-                start = regular[0]
-                if lid in _AFTER_OPENING_RANGE:
-                    start += timedelta(minutes=cfg.opening_range_minutes)
-                t, h = _touch_outcomes(rth, price, start, m)
-                row = found[lid][m]
-                row[0] += t
-                row[1] += h
-                row[2] += base_t
-                row[3] += base_h
+                if price is not None:
+                    t, h = _touch_outcomes(rth, price, opened[lid], m)
+                    row = found[lid][m]
+                    row[:] = [row[0] + t, row[1] + h, row[2] + base_t, row[3] + base_h]
     return {lid: {m: HoldCount(*found[lid][m]) for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
+
+
+def _closed_sessions(
+    bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]
+) -> dict[date, tuple[tuple[datetime, datetime], list[Bar]]]:
+    """The newest HOLD_WINDOW_SESSIONS sessions closed at `now`: their hours and regular bars."""
+    rth_by_day: dict[date, list[Bar]] = {}
+    for b in sorted(bars_norm, key=lambda b: b["_dt"]):
+        if _in_rth(sessions, b["_dt"]):
+            rth_by_day.setdefault(b["_dt"].date(), []).append(b)
+    closed = {d: r for d in rth_by_day if (r := _regular(sessions, d)) is not None and r[1] <= now}
+    return {d: (closed[d], rth_by_day[d]) for d in sorted(closed)[-HOLD_WINDOW_SESSIONS:]}
 
 
 def wilson_interval(holds: int, touches: int) -> tuple[float, float]:
