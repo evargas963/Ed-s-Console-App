@@ -152,6 +152,7 @@ PRICE_HISTORY: dict[str, tuple[str, int | None, str, int]] = {
     "1d": ("year", 2, "daily", 1),
     "1w": ("year", 2, "weekly", 1),
     "1mo": ("year", 2, "monthly", 1),
+    "5m365": ("day", None, "minute", 5),
 }
 #: the minute series asked again as each of their bars completes, by the bar's minutes
 BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
@@ -160,9 +161,14 @@ BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
 #: (liquidity_value_engine.hold_counts; operator 2026-11-15: "Yes, request it"). Schwab documents
 #: startDate for every frequency but not how far back it answers minute bars: its answers of
 #: 2026-11-15 began 2026-09-29, 34 sessions
-HISTORY_DAYS_BACK = {"1m60": 90}
+HISTORY_DAYS_BACK = {"1m60": 90, "5m365": 365}
+#: the series asked from a start date with extended hours, the pre-market's bars among them: a
+#: year of 5-minute bars, as far back as Schwab answers, recorded for the study of the open
+#: (ACTIVE_PROGRAM OPEN-5MIN; operator 2026-11-15: "we just simply need to query schwab for it");
+#: no screen reads it, so the console holds none (server._write_price_history)
+EXTENDED_FROM_START = ("5m365",)
 #: the series asked once per ET date
-DAILY_ONCE = ("1m", "1m60")
+DAILY_ONCE = ("1m", "1m60", "5m365")
 
 
 def price_history_message(
@@ -574,7 +580,14 @@ class ChainSweep:
                 else None
             )
             try:
-                resp = get_price_history(schwab_client(), ticker, PRICE_HISTORY[series], end, start)
+                resp = get_price_history(
+                    schwab_client(),
+                    ticker,
+                    PRICE_HISTORY[series],
+                    end,
+                    start,
+                    extended=start is None or series in EXTENDED_FROM_START,
+                )
                 if resp.status_code != 200:
                     continue
                 answer = resp.json()

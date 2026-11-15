@@ -700,12 +700,14 @@ def get_price_history(
     shape: tuple[str, int | None, str, int],
     end: datetime,
     start: datetime | None = None,
+    *,
+    extended: bool,
 ) -> httpx.Response:
     """One request to Schwab's price history endpoint for `ticker`.
 
     `shape` is (period type, period, frequency type, frequency), as schwab-py names them; the
-    candles end at `end`. With a `start` (and no period) they begin there and are the regular
-    session's only; without one, extended hours are included. Schwab's response.
+    candles end at `end`, and with a `start` (and no period) begin there; `extended` asks for
+    the extended hours' candles too (needExtendedHoursData). Schwab's response.
     """
     period_type, period, frequency_type, frequency = shape
     return client.get_price_history(
@@ -716,7 +718,7 @@ def get_price_history(
         frequency=frequency,
         start_datetime=start,
         end_datetime=end,
-        need_extended_hours_data=start is None,
+        need_extended_hours_data=extended,
     )
 
 

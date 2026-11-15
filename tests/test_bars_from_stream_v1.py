@@ -177,6 +177,25 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
     )
 
 
+def test_a_series_no_screen_reads_is_recorded_by_the_daemon_and_not_held_by_the_console():
+    """The year of 5-minute bars with extended hours (5m365) is for the study of the open.
+
+    The daemon records it as Schwab sent it; no screen reads it, so the console's memory holds
+    none of it. Real data: Schwab's SPY /pricehistory answer of 2026-10-07 (feed_live_helper),
+    carried as that series.
+    """
+    a = price_history("SPY", "1m")
+    msg = {
+        "src": "schwab_pricehistory",
+        "symbol": "SPY",
+        "series": "5m365",
+        "ts_recv": a["answered_utc"],
+        "answer": a["body"],
+    }
+    assert server._write_price_history(msg) is None
+    assert ("SPY", "5m365") not in server._series
+
+
 def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute():
     for m in (0, 1):
         server._write_streamed_bar(_bar(T0 + 60 * m))
