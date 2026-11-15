@@ -145,16 +145,22 @@ def clock_from(start: float):
     return lambda: start + time_et.elapsed() - began
 
 
+#: a round of the watchlist's chains as the daemon's log of 2026-11-06 reports it (245 s): the round
+#: a running daemon's heartbeat carries, which the levels are judged by
+ROUND_SEC = 245.0
+
+
 def mark_feed_live(*tickers: str, now: float | None = None) -> None:
     """Record the daemon's heartbeat stamped `now`, holding `tickers` on LEVELONE_EQUITIES.
 
-    `now` is the wall clock when not given.
+    `now` is the wall clock when not given; the daemon reports its last round (ROUND_SEC).
     """
     lmp.record_feed_heartbeat(
         daemon_status(
             time_et.now() if now is None else now,
             schwab_socket_open=True,
             held={"LEVELONE_EQUITIES": list(tickers)},
+            chain_round_sec=ROUND_SEC,
         )
     )
 
