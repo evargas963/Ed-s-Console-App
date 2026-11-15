@@ -3781,11 +3781,12 @@ def pin_note(snap: TerrainSnapshot) -> str | None:
     if snap.pin_candidate is None or z is None or snap.pin_minutes_to_close is None:
         return None
     side = "at" if z == 0 else "above" if z > 0 else "below"
-    shown = "-" if widths is None else f"{abs(widths):.1f}"
+    distance = f"{abs(z):.2f} expected moves"
+    if widths is not None:  # an expiry listing one strike has no strike width
+        distance += f" ({abs(widths):.1f} strike widths)"
     return (
         f"Most open interest within one expected move, of the expiry settling at today's close. "
-        f"Price {abs(z):.2f} expected moves ({shown} strike widths) {side} it; "
-        f"{snap.pin_minutes_to_close:.0f} minutes to the close."
+        f"Price {distance} {side} it; {snap.pin_minutes_to_close:.0f} minutes to the close."
     )
 
 
