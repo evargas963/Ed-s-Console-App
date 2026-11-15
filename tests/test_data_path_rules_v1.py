@@ -605,6 +605,41 @@ def test_d5_the_quotes_of_the_ticker_a_page_shows_are_asked_two_requests_togethe
     )
 
 
+def test_d5_a_tickers_expiries_are_asked_four_together_and_taken_in_expiry_order(tmp_path):
+    """Operator 2026-11-15: "Yes, 4 at a time": a ticker's /chains requests, four at once.
+
+    TSLA lists four expiries (its captured 2026-10-09 and three more, STAND-IN: each answered
+    with the captured contracts). INDUCED: Schwab's host answers a chain request only once four
+    are waiting together, and 503 to one left alone. All four are answered, each was sent before
+    any was answered, and the chain is delivered, not failed. The session never holds more than
+    four (tests/test_instant_ui_blockers_a_v1.py).
+    """
+    swept = _Swept(tmp_path, "2026-10-01 10:00", ["TSLA"])
+    swept.schwab.more_expiries = ["2026-10-16", "2026-10-23", "2026-10-30"]
+    swept.schwab.chains_together = threading.Barrier(sc.REQUESTS_AT_ONCE)
+    failed: list = []
+    publish = swept.sweep.publish
+    swept.sweep.publish = lambda topic, msg: (
+        failed.append(msg["failed"]) if "failed" in msg else None,
+        publish(topic, msg),
+    )
+    try:
+        chains = swept.until(1)
+        asked = [r for r in swept.schwab.requests if r[0] == "/marketdata/v1/chains"]
+    finally:
+        swept.close()
+    assert set(chains) == {"TSLA"} and failed == []  # one delivery, its messages one per expiry
+    assert sorted(q["fromDate"] for _p, q, *_ in asked) == [
+        "2026-10-09",
+        "2026-10-16",
+        "2026-10-23",
+        "2026-10-30",
+    ]
+    assert max(started for _p, _q, started, *_ in asked) < min(a for _p, _q, _s, a, *_ in asked), (
+        "every expiry was sent before any was answered"
+    )
+
+
 def test_d5_after_the_close_the_ticker_a_page_shows_is_asked_first_and_only_once(tmp_path):
     """After the option close each chain is asked once more (its close values).
 

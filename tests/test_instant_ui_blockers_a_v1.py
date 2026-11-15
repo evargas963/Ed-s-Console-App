@@ -65,10 +65,10 @@ def test_every_token_refresh_writes_atomically(tmp_path):
 
 
 def test_the_client_never_sends_more_requests_at_once_than_its_setting(tmp_path):
-    """Operator 2026-11-12: "lets go up in step", replacing 2026-10-06's one at a time.
+    """Operator 2026-11-15: "Yes, 4 at a time" (2026-11-12: "lets go up in step", two).
 
     The client the daemon builds, asked for 20 requests at once from 20 threads, sends them
-    QUOTES_AT_ONCE at a time (the server never holds more) over as many connections (client
+    REQUESTS_AT_ONCE at a time (the server never holds more) over as many connections (client
     ports).
     """
     n = 20
@@ -105,8 +105,8 @@ def test_the_client_never_sends_more_requests_at_once_than_its_setting(tmp_path)
     finally:
         httpd.shutdown()
     assert codes == [200] * n
-    assert seen["most"] == sc.QUOTES_AT_ONCE, f"{seen['most']} requests at once"
-    assert len(seen["ports"]) == sc.QUOTES_AT_ONCE, f"{len(seen['ports'])} connections"
+    assert seen["most"] == sc.REQUESTS_AT_ONCE == 4, f"{seen['most']} requests at once"
+    assert len(seen["ports"]) == sc.REQUESTS_AT_ONCE, f"{len(seen['ports'])} connections"
 
 
 # ── PR C: server-side bar roll-up; quote_tick carries the screen's numbers; heatmap demand ──
