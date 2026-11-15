@@ -115,9 +115,10 @@ test.describe('D — Gamma Levels view', () => {
   });
 
   test('the pin row shows the served note on hover', async ({ page }) => {
-    // SPY's levels panel at 15:39 CT on 2026-10-22, as the route served it (held to the route by
-    // tests/test_level_crosses_wire.py): its expiry closes that day, so it has a pin
-    const served = require('../fixtures/real_spy_levels_at_a_stopped_price_2026_10_22.json');
+    // SPY's levels panel during its session, as the route served it (held to the route by
+    // tests/test_e2e_panels_two_day_v1.py): its expiry closes that day with time left, so it has a
+    // pin (after the close a pin has no time left and no value)
+    const served = require('./fixtures/panels_spy_two_day.json').levels['1'];
     const pin = served.levels.find((r) => r.id === 'pin_candidate');
     expect(pin.note).toContain('expected moves');
     panels.levels = served;
