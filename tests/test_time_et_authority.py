@@ -11,11 +11,13 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
+from math_exposure_core import bs_vanna_array
 from math_levels import contract_inputs
 from option_contract import read_chain
 from time_et import (
     ET,
-    MIN_TIME_TO_EXPIRY_YEARS,
     YEAR_SECONDS,
     elapsed,
     sessions,
@@ -65,9 +67,32 @@ def test_time_to_expiry_years_uses_timestamp_elapsed_not_civil_timedelta():
     stamp_years = (mon_close.timestamp() - fri.timestamp()) / YEAR_SECONDS
     civil_years = (mon_close - fri).total_seconds() / YEAR_SECONDS
     assert tte is not None
-    assert tte == max(stamp_years, MIN_TIME_TO_EXPIRY_YEARS)
+    assert tte == stamp_years
     assert stamp_years > civil_years
     assert round((stamp_years - civil_years) * YEAR_SECONDS / 3600.0, 1) == 1.0
+
+
+def test_the_last_minutes_are_the_time_left_as_it_is_and_settlement_is_no_time():
+    """Operator 2026-11-15: "yes the formula needs to account for time": no floor of ours.
+
+    Monday 2026-11-02, whose EQO close Schwab's /markets sent at 16:00 ET: five minutes and one
+    second before it, the time left is those seconds, not ten minutes; at the close, none. A
+    contract with no time left has no vanna (math_exposure_core.bs_vanna_array takes T = 0 as not
+    priced); one minute before, its vanna is the formula's own and finite.
+    """
+    held = sessions()
+    for left in (300.0, 1.0, 60.0):
+        at = datetime(2026, 11, 2, 16, 0, tzinfo=ET).timestamp() - left
+        assert (
+            time_to_expiry_years("2026-11-02", now=datetime.fromtimestamp(at, ET), sessions=held)
+            == left / YEAR_SECONDS
+        )
+    close = datetime(2026, 11, 2, 16, 0, tzinfo=ET)
+    assert time_to_expiry_years("2026-11-02", now=close, sessions=held) == 0.0
+    one = np.array([1.0])
+    for t, priced in ((0.0, False), (60.0 / YEAR_SECONDS, True)):
+        v = bs_vanna_array(100.0, 100.0 * one, t * one, 0.2 * one, 0.04 * one, 0.0 * one)
+        assert bool(np.isfinite(v[0])) is priced, t
 
 
 def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():

@@ -976,16 +976,21 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     Ticker ZZCLOSED has no chain failure recorded.
     """
     sat, monday_early = et_ts("2026-10-03 12:00"), et_ts("2026-10-05 03:00")
+    # the daemon's last status stands, its round of the watchlist reported (ROUND_SEC, 245 s)
+    lmp.record_feed_heartbeat(daemon_status(et_ts("2026-10-02 16:14"), chain_round_sec=ROUND_SEC))
     for now in (sat, monday_early):
         st = server.terrain_staleness(et_ts("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
         assert (st["levels_state"], st["levels_stale_reason"]) == ("CLOSE", ""), st
-        # ZZCLOSED's options are stock options, whose own market closes at 16:00: a chain fetched at
-        # 16:14 is its close values, one fetched at 15:59 is not
+        # ZZCLOSED's options are stock options, whose own market closes at 16:00: its last values
+        # while open are its close values (operator 2026-11-15) when current at the close, within
+        # two rounds of it, as one fetched at 16:14 or 15:59 is; one from 15:30 was not
         st = server.terrain_staleness(et_ts("2026-10-02 16:14"), "ZZCLOSED", now=now)
         assert st["levels_state"] == "CLOSE", st
         st = server.terrain_staleness(et_ts("2026-10-02 15:59"), "ZZCLOSED", now=now)
+        assert st["levels_state"] == "CLOSE", st
+        st = server.terrain_staleness(et_ts("2026-10-02 15:30"), "ZZCLOSED", now=now)
         assert st["levels_state"] == "STALE" and st["levels_stale_reason"] == (
-            "this ticker's options are closed and its close values have not been fetched"
+            "this ticker's options are closed and its levels were not current at the close"
         ), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
         assert st["levels_state"] == "STALE" and st["levels_age_text"] is None  # absent, not zero

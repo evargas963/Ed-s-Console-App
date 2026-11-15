@@ -766,6 +766,18 @@ def _in_first_round(
     return float(computed_ts_utc) < opened and (stale_after is None or now - opened <= stale_after)
 
 
+def _current_at(computed_ts_utc: float, close: float, stale_after: float | None) -> bool:
+    """Whether levels computed at `computed_ts_utc` were current at the option `close`.
+
+    Its last values while it was open are the close values (operator 2026-11-15: "keep the last
+    known data on the screen until we get new data"): current when computed at or after the
+    close, or within two of the daemon's rounds (`stale_after`) before it; with no round
+    reported, only at or after it.
+    """
+    behind = close - float(computed_ts_utc)
+    return behind <= 0 or (stale_after is not None and behind <= stale_after)
+
+
 def _levels_state(
     computed_ts_utc: float | None, ticker: str, now: float, failure: str | None
 ) -> tuple[str, str]:
@@ -800,10 +812,11 @@ def _levels_state(
         or (closed is not None and closed.date() == at.date())  # its own market has closed today
         or _in_first_round(computed_ts_utc, options_opened(at).timestamp(), now, stale_after)
     ):
-        if closed is None or float(computed_ts_utc) < closed.timestamp():
+        if closed is None or not _current_at(computed_ts_utc, closed.timestamp(), stale_after):
             return (
                 LEVELS_STALE,
-                "this ticker's options are closed and its close values have not been fetched" + sep,
+                "this ticker's options are closed and its levels were not current at the close"
+                + sep,
             )
         return LEVELS_CLOSE, ""
     if stale_after is None:
@@ -1427,11 +1440,12 @@ def _publish_levels(
     product = option_close_product(tk)
     closed = _closed_since(now, product)
     if closed is not None:
-        # the close values stand, and a value pushed after the close (no chain) changes nothing
-        if previous is not None and (
-            previous.computed_ts_utc >= closed.timestamp() or (chain is None and not captures)
-        ):
+        # its market has closed: the last values computed while it was open stand, with their
+        # time, until its next session; nothing is priced after the close (operator 2026-11-15)
+        if previous is not None:
             return previous.snap
+        # nothing held from the session (a start after the close): Schwab's close values, a
+        # contract settled at the close valued with no time left
         captures = captures or _close_capture(tk, closed)
     capture = captures[0] if captures else None
     if capture is not None:

@@ -4884,7 +4884,7 @@
   "spot_as_of_ts_utc": null,
   "spot_time_ct": null,
   "spot_not_live_text": "not live",
-  "status_text": "STALE \u00b7 chain as of Wed 10/07 09:31 AM CT, 4d old \u00b7 this ticker's options are closed and its close values have not been fetched",
+  "status_text": "STALE \u00b7 chain as of Wed 10/07 09:31 AM CT, 4d old \u00b7 this ticker's options are closed and its levels were not current at the close",
   "rail_lanes": {
    "session": [],
    "options": [

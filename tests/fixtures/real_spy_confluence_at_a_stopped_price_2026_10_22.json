@@ -9,12 +9,11 @@
   }
  ],
  "expiry": "2026-10-22",
- "flip_text": "770.77",
+ "flip_text": null,
  "level_names": {
   "763.00": "Call \u0394 wall + 0DTE Call \u0394 wall",
-  "764.00": "Put wall + Pin candidate + Net put \u0393 peak + 0DTE Put wall + 0DTE Net put \u0393 peak",
-  "765.00": "Call wall + Abs \u0393 + Call charm wall + Put charm wall + 0DTE Call wall + 0DTE Abs \u0393 + 0DTE Call charm wall + 0DTE Put charm wall",
-  "770.77": "\u0393 flip + 0DTE \u0393 flip",
+  "764.00": "Put wall + Net put \u0393 peak + 0DTE Put wall + 0DTE Net put \u0393 peak",
+  "765.00": "Call wall + Abs \u0393 + 0DTE Call wall + 0DTE Abs \u0393",
   "771.00": "Max pain",
   "772.00": "Key \u0394 strike + Put \u0394 wall + 0DTE Key \u0394 strike + 0DTE Put \u0394 wall",
   "776.00": "Net call \u0393 peak + 0DTE Net call \u0393 peak"
@@ -43,13 +42,6 @@
    "title": "Abs \u0393"
   },
   {
-   "abbrev": "Pin",
-   "lane": "options",
-   "price": 764.0,
-   "price_text": "764.00",
-   "title": "Pin candidate"
-  },
-  {
    "abbrev": "Net P\u0393",
    "lane": "options",
    "price": 764.0,
@@ -62,20 +54,6 @@
    "price": 763.0,
    "price_text": "763.00",
    "title": "Call \u0394 wall"
-  },
-  {
-   "abbrev": "CCh",
-   "lane": "options",
-   "price": 765.0,
-   "price_text": "765.00",
-   "title": "Call charm wall"
-  },
-  {
-   "abbrev": "PCh",
-   "lane": "options",
-   "price": 765.0,
-   "price_text": "765.00",
-   "title": "Put charm wall"
   },
   {
    "abbrev": "0D CW",
@@ -111,26 +89,12 @@
    "price": 763.0,
    "price_text": "763.00",
    "title": "0DTE Call \u0394 wall"
-  },
-  {
-   "abbrev": "0D CCh",
-   "lane": "options",
-   "price": 765.0,
-   "price_text": "765.00",
-   "title": "0DTE Call charm wall"
-  },
-  {
-   "abbrev": "0D PCh",
-   "lane": "options",
-   "price": 765.0,
-   "price_text": "765.00",
-   "title": "0DTE Put charm wall"
   }
  ],
  "move_text": null,
  "notes": [],
  "peaks": {
-  "charm": 4056885.002748519,
+  "charm": null,
   "dex": 633515384.1419919,
   "gross": 1555131160.7514024,
   "iv": 1273.28951484,
@@ -138,12 +102,12 @@
   "oi": 18268.0,
   "pc_gex_lean": 13.830912026140926,
   "pc_vol_lean": 969.5,
-  "vanna": 2312664.0964845996,
+  "vanna": 0.0,
   "vol_oi": 258.3359489946052,
   "volume": 1053494.0
  },
- "pin_note": "Most open interest within one expected move, of the expiry settling at today's close. Price 0.07 expected moves (0.0 strike widths) above it; 10 minutes to the close.",
- "pin_text": "764.00",
+ "pin_note": null,
+ "pin_text": null,
  "preset": "0DTE",
  "rail_lanes": {
   "options": [
@@ -195,30 +159,11 @@
     "price": 771.0,
     "price_text": "771.00",
     "title": "Max pain"
-   },
-   {
-    "abbrev": "Flip",
-    "lane": "options",
-    "price": 770.7699684126369,
-    "price_text": "770.77",
-    "title": "\u0393 flip"
-   },
-   {
-    "abbrev": "0D Flip",
-    "lane": "options",
-    "price": 770.7699684126369,
-    "price_text": "770.77",
-    "title": "0DTE \u0393 flip"
    }
   ],
   "session": []
  },
  "rail_lines": [
-  {
-   "price": 770.7699684126369,
-   "price_text": "770.77",
-   "session": false
-  },
   {
    "price": 771.0,
    "price_text": "771.00",
@@ -236,92 +181,20 @@
   }
  ],
  "reason": null,
- "regime": "SHORT_GAMMA_TREND",
+ "regime": "UNAVAILABLE",
  "rows": [
   {
-   "charm": -1026.488529830075,
-   "charm_reason": null,
-   "charm_text": "-1.03",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.59",
-     "raw_text": "7113",
-     "text": "5.9",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.09",
-     "raw_text": "5.62",
-     "text": "1.4",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.21",
-     "raw_text": "82.30",
-     "text": "1.1",
-     "weight_text": "0.05"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 82297668.41265623,
    "dex_reason": null,
    "dex_text": "+82.30",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "+4.87",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.59",
-     "raw_text": "7113",
-     "text": "5.9",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.09",
-     "raw_text": "5.62",
-     "text": "1.4",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.21",
-     "raw_text": "82.30",
-     "text": "1.1",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.02",
-     "raw_text": "1.03",
-     "text": "0.3",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.03",
-     "raw_text": "17001",
-     "text": "0.3",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.06",
-     "raw_text": "88.1",
-     "text": "0.3",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.00",
-     "raw_text": "0.00",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 8007763.696105112,
@@ -331,7 +204,10 @@
    "iv": 88.09376849999998,
    "iv_reason": null,
    "iv_text": "88.1",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": 5617988.353640684,
    "net_gex_text": "+5.62",
    "net_reason": null,
@@ -344,14 +220,14 @@
    "pc_vol_lean": 0.9765215820841611,
    "pc_vol_reason": null,
    "pc_vol_text": "0.02",
-   "score": 9.380829636717486,
-   "score_text": "9",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 778.0,
    "strike_text": "778.00",
-   "vanna": 123.98794750032141,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 2.3901307465204553,
    "vol_oi_reason": null,
    "vol_oi_text": "2.39",
@@ -360,89 +236,17 @@
    "volume_text": "17001"
   },
   {
-   "charm": -1002.5550114213439,
-   "charm_reason": null,
-   "charm_text": "-1.00",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.48",
-     "raw_text": "5714",
-     "text": "4.8",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.09",
-     "raw_text": "5.28",
-     "text": "1.3",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.16",
-     "raw_text": "60.69",
-     "text": "0.8",
-     "weight_text": "0.05"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 60686030.090697356,
    "dex_reason": null,
    "dex_text": "+60.69",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "+3.87",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.48",
-     "raw_text": "5714",
-     "text": "4.8",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.09",
-     "raw_text": "5.28",
-     "text": "1.3",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.16",
-     "raw_text": "60.69",
-     "text": "0.8",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.04",
-     "raw_text": "20667",
-     "text": "0.4",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.02",
-     "raw_text": "1.00",
-     "text": "0.3",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.05",
-     "raw_text": "82.5",
-     "text": "0.3",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.00",
-     "raw_text": "0.00",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 7257204.812803805,
@@ -452,7 +256,10 @@
    "iv": 82.46053025,
    "iv_reason": null,
    "iv_text": "82.5",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": 5275141.800939364,
    "net_gex_text": "+5.28",
    "net_reason": null,
@@ -465,14 +272,14 @@
    "pc_vol_lean": 0.9717398875565949,
    "pc_vol_reason": null,
    "pc_vol_text": "0.03",
-   "score": 7.87983600173188,
-   "score_text": "8",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 777.0,
    "strike_text": "777.00",
-   "vanna": 129.27974229982067,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 3.6169058452922647,
    "vol_oi_reason": null,
    "vol_oi_text": "3.62",
@@ -481,89 +288,17 @@
    "volume_text": "20667"
   },
   {
-   "charm": -4596.977688002715,
-   "charm_reason": null,
-   "charm_text": "-4.60",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "18268",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.39",
-     "raw_text": "23.17",
-     "text": "5.8",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.07",
-     "raw_text": "4.60",
-     "text": "1.5",
-     "weight_text": "0.22"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 90300734.63002223,
    "dex_reason": null,
    "dex_text": "+90.30",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "+2.87",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "18268",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.39",
-     "raw_text": "23.17",
-     "text": "5.8",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.07",
-     "raw_text": "4.60",
-     "text": "1.5",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.23",
-     "raw_text": "90.30",
-     "text": "1.2",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.07",
-     "raw_text": "35540",
-     "text": "0.7",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.05",
-     "raw_text": "76.8",
-     "text": "0.2",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.02",
-     "raw_text": "0.00",
-     "text": "0.1",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 26423339.48784439,
@@ -573,7 +308,10 @@
    "iv": 76.7831855,
    "iv_reason": null,
    "iv_text": "76.8",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": 23173260.295047093,
    "net_gex_text": "+23.17",
    "net_reason": null,
@@ -586,14 +324,14 @@
    "pc_vol_lean": 0.9613350089136978,
    "pc_vol_reason": null,
    "pc_vol_text": "0.04",
-   "score": 19.499403444489165,
-   "score_text": "19",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 776.0,
    "strike_text": "776.00",
-   "vanna": 635.6894377683723,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 1.945478432231224,
    "vol_oi_reason": null,
    "vol_oi_text": "1.95",
@@ -602,89 +340,17 @@
    "volume_text": "35540"
   },
   {
-   "charm": -2516.3501719976634,
-   "charm_reason": null,
-   "charm_text": "-2.52",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "13047",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.20",
-     "raw_text": "12.16",
-     "text": "3.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.57",
-     "raw_text": "221.70",
-     "text": "2.9",
-     "weight_text": "0.05"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 221701804.985222,
    "dex_reason": null,
    "dex_text": "+221.70",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "+1.87",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "13047",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.20",
-     "raw_text": "12.16",
-     "text": "3.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.57",
-     "raw_text": "221.70",
-     "text": "2.9",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.10",
-     "raw_text": "54431",
-     "text": "1.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.04",
-     "raw_text": "2.52",
-     "text": "0.8",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.04",
-     "raw_text": "71.1",
-     "text": "0.2",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.01",
-     "raw_text": "0.00",
-     "text": "0.1",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 21733750.85404105,
@@ -694,7 +360,10 @@
    "iv": 71.05778218999998,
    "iv_reason": null,
    "iv_text": "71.1",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": 12158454.964166764,
    "net_gex_text": "+12.16",
    "net_reason": null,
@@ -707,14 +376,14 @@
    "pc_vol_lean": 0.9284181513928537,
    "pc_vol_reason": null,
    "pc_vol_text": "0.07",
-   "score": 18.03902741344285,
-   "score_text": "18",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 775.0,
    "strike_text": "775.00",
-   "vanna": 376.9201254846592,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 4.171916915766077,
    "vol_oi_reason": null,
    "vol_oi_text": "4.17",
@@ -723,89 +392,17 @@
    "volume_text": "54431"
   },
   {
-   "charm": -1123.006755521792,
-   "charm_reason": null,
-   "charm_text": "-1.12",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.85",
-     "raw_text": "10140",
-     "text": "8.5",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.74",
-     "raw_text": "286.00",
-     "text": "3.7",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.19",
-     "raw_text": "99846",
-     "text": "1.9",
-     "weight_text": "0.10"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 285999696.57460755,
    "dex_reason": null,
    "dex_text": "+286.00",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "+0.87",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.85",
-     "raw_text": "10140",
-     "text": "8.5",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.74",
-     "raw_text": "286.00",
-     "text": "3.7",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.19",
-     "raw_text": "99846",
-     "text": "1.9",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.09",
-     "raw_text": "5.20",
-     "text": "1.3",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.02",
-     "raw_text": "1.12",
-     "text": "0.4",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.04",
-     "raw_text": "65.3",
-     "text": "0.2",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.01",
-     "raw_text": "0.00",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 19710963.264153287,
@@ -815,7 +412,10 @@
    "iv": 65.27983513,
    "iv_reason": null,
    "iv_text": "65.3",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": 5197339.936038183,
    "net_gex_text": "+5.20",
    "net_reason": null,
@@ -828,14 +428,14 @@
    "pc_vol_lean": 0.9621645219632871,
    "pc_vol_reason": null,
    "pc_vol_text": "0.04",
-   "score": 15.954652807383724,
-   "score_text": "16",
+   "score": null,
+   "score_text": null,
    "spot_line": true,
    "strike": 774.0,
    "strike_text": "774.00",
-   "vanna": 184.17953394906968,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 9.846745562130177,
    "vol_oi_reason": null,
    "vol_oi_text": "9.85",
@@ -844,89 +444,17 @@
    "volume_text": "99846"
   },
   {
-   "charm": -203.05005152926788,
-   "charm_reason": null,
-   "charm_text": "-0.20",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.89",
-     "raw_text": "10648",
-     "text": "8.9",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "391.24",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.18",
-     "raw_text": "95213",
-     "text": "1.8",
-     "weight_text": "0.10"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 391240382.3916644,
    "dex_reason": null,
    "dex_text": "+391.24",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "-0.13",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.89",
-     "raw_text": "10648",
-     "text": "8.9",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "391.24",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.18",
-     "raw_text": "95213",
-     "text": "1.8",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.02",
-     "raw_text": "0.94",
-     "text": "0.2",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.03",
-     "raw_text": "59.4",
-     "text": "0.2",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.00",
-     "raw_text": "0.20",
-     "text": "0.1",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.00",
-     "raw_text": "0.00",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 24529076.938697465,
@@ -936,7 +464,10 @@
    "iv": 59.442114090000004,
    "iv_reason": null,
    "iv_text": "59.4",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": 938375.7204155028,
    "net_gex_text": "+0.94",
    "net_reason": null,
@@ -949,14 +480,14 @@
    "pc_vol_lean": 0.9417367818519301,
    "pc_vol_reason": null,
    "pc_vol_text": "0.06",
-   "score": 16.190127441859428,
-   "score_text": "16",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 773.0,
    "strike_text": "773.00",
-   "vanna": 38.721025356205246,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 8.94186701728024,
    "vol_oi_reason": null,
    "vol_oi_text": "8.94",
@@ -965,89 +496,17 @@
    "volume_text": "95213"
   },
   {
-   "charm": 2672.8293603492502,
-   "charm_reason": null,
-   "charm_text": "+2.67",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "12716",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "633.52",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.30",
-     "raw_text": "156732",
-     "text": "3.0",
-     "weight_text": "0.10"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 633515384.1419919,
    "dex_reason": null,
    "dex_text": "+633.52",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "-1.13",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "12716",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "633.52",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.30",
-     "raw_text": "156732",
-     "text": "3.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.18",
-     "raw_text": "10.89",
-     "text": "2.7",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.04",
-     "raw_text": "2.67",
-     "text": "0.9",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.02",
-     "raw_text": "53.5",
-     "text": "0.1",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.02",
-     "raw_text": "0.00",
-     "text": "0.1",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 35419723.10164882,
@@ -1057,7 +516,10 @@
    "iv": 53.54043275,
    "iv_reason": null,
    "iv_text": "53.5",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": -10893452.32429789,
    "net_gex_text": "-10.89",
    "net_reason": null,
@@ -1070,14 +532,14 @@
    "pc_vol_lean": 0.9371363469910893,
    "pc_vol_reason": null,
    "pc_vol_text": "0.06",
-   "score": 21.824203739288272,
-   "score_text": "22",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 772.0,
    "strike_text": "772.00",
-   "vanna": -525.2301029873569,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 12.32557407989934,
    "vol_oi_reason": null,
    "vol_oi_text": "12.33",
@@ -1086,89 +548,17 @@
    "volume_text": "156732"
   },
   {
-   "charm": -1247.8225276817284,
-   "charm_reason": null,
-   "charm_text": "-1.25",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "12531",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "425.55",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.44",
-     "raw_text": "230826",
-     "text": "4.4",
-     "weight_text": "0.10"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 425552983.4363241,
    "dex_reason": null,
    "dex_text": "+425.55",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "-2.13",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "12531",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "425.55",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.44",
-     "raw_text": "230826",
-     "text": "4.4",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.08",
-     "raw_text": "4.85",
-     "text": "1.2",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.02",
-     "raw_text": "1.25",
-     "text": "0.4",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.02",
-     "raw_text": "47.6",
-     "text": "0.1",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.01",
-     "raw_text": "0.00",
-     "text": "0.1",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 43258744.03778574,
@@ -1178,7 +568,10 @@
    "iv": 47.56518825,
    "iv_reason": null,
    "iv_text": "47.6",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": 4846865.9310600385,
    "net_gex_text": "+4.85",
    "net_reason": null,
@@ -1191,14 +584,14 @@
    "pc_vol_lean": 0.9682416938955216,
    "pc_vol_reason": null,
    "pc_vol_text": "0.03",
-   "score": 21.18663200250845,
-   "score_text": "21",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 771.0,
    "strike_text": "771.00",
-   "vanna": 281.7122767425952,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 18.420397414412257,
    "vol_oi_reason": null,
    "vol_oi_text": "18.42",
@@ -1207,89 +600,17 @@
    "volume_text": "230826"
   },
   {
-   "charm": 1524.525215232903,
-   "charm_reason": null,
-   "charm_text": "+1.52",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "14748",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.56",
-     "raw_text": "291441",
-     "text": "5.6",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "609.15",
-     "text": "5.0",
-     "weight_text": "0.05"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 609154940.1111223,
    "dex_reason": null,
    "dex_text": "+609.15",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "-3.13",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "1.00",
-     "raw_text": "14748",
-     "text": "10.0",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.56",
-     "raw_text": "291441",
-     "text": "5.6",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "609.15",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.09",
-     "raw_text": "5.38",
-     "text": "1.3",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.02",
-     "raw_text": "1.52",
-     "text": "0.5",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.01",
-     "raw_text": "0.00",
-     "text": "0.1",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.01",
-     "raw_text": "41.5",
-     "text": "0.1",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 65170526.19663647,
@@ -1299,7 +620,10 @@
    "iv": 41.50331569000001,
    "iv_reason": null,
    "iv_text": "41.5",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": -5379257.901601046,
    "net_gex_text": "-5.38",
    "net_reason": null,
@@ -1312,14 +636,14 @@
    "pc_vol_lean": 0.944864813983462,
    "pc_vol_reason": null,
    "pc_vol_text": "0.06",
-   "score": 22.560963792194702,
-   "score_text": "23",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 770.0,
    "strike_text": "770.00",
-   "vanna": -384.2080009805681,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 19.76139137510171,
    "vol_oi_reason": null,
    "vol_oi_text": "19.76",
@@ -1328,89 +652,17 @@
    "volume_text": "291441"
   },
   {
-   "charm": 5057.698026133875,
-   "charm_reason": null,
-   "charm_text": "+5.06",
-   "contributions": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.61",
-     "raw_text": "7291",
-     "text": "6.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.55",
-     "raw_text": "288663",
-     "text": "5.5",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.99",
-     "raw_text": "383.77",
-     "text": "4.9",
-     "weight_text": "0.05"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 383768692.52198106,
    "dex_reason": null,
    "dex_text": "+383.77",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "-4.13",
-   "factors": [
-    {
-     "label": "open interest",
-     "normalized_text": "0.61",
-     "raw_text": "7291",
-     "text": "6.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.55",
-     "raw_text": "288663",
-     "text": "5.5",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "0.99",
-     "raw_text": "383.77",
-     "text": "4.9",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "net gamma",
-     "normalized_text": "0.27",
-     "raw_text": "16.52",
-     "text": "4.1",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.08",
-     "raw_text": "5.06",
-     "text": "1.7",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.06",
-     "raw_text": "0.00",
-     "text": "0.3",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.01",
-     "raw_text": "35.3",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 43053484.68965499,
@@ -1420,7 +672,10 @@
    "iv": 35.33542604000001,
    "iv_reason": null,
    "iv_text": "35.3",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": -16523703.255162042,
    "net_gex_text": "-16.52",
    "net_reason": null,
@@ -1433,14 +688,14 @@
    "pc_vol_lean": 0.8939818309303315,
    "pc_vol_reason": null,
    "pc_vol_text": "0.11",
-   "score": 22.671942571404188,
-   "score_text": "23",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 769.0,
    "strike_text": "769.00",
-   "vanna": -1514.5149570113279,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 39.59168838293787,
    "vol_oi_reason": null,
    "vol_oi_text": "39.59",
@@ -1449,89 +704,17 @@
    "volume_text": "288663"
   },
   {
-   "charm": 13537.41721547699,
-   "charm_reason": null,
-   "charm_text": "+13.54",
-   "contributions": [
-    {
-     "label": "net gamma",
-     "normalized_text": "0.66",
-     "raw_text": "39.93",
-     "text": "10.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.81",
-     "raw_text": "422376",
-     "text": "8.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.61",
-     "raw_text": "7291",
-     "text": "6.1",
-     "weight_text": "0.10"
-    }
-   ],
+   "charm": null,
+   "charm_reason": "charm is missing",
+   "charm_text": null,
+   "contributions": [],
    "dex": 456844947.09737736,
    "dex_reason": null,
    "dex_text": "+456.84",
    "dgex_reason": "no change in gamma is produced",
    "dgex_text": null,
    "distance_text": "-5.13",
-   "factors": [
-    {
-     "label": "net gamma",
-     "normalized_text": "0.66",
-     "raw_text": "39.93",
-     "text": "10.0",
-     "weight_text": "0.15"
-    },
-    {
-     "label": "volume",
-     "normalized_text": "0.81",
-     "raw_text": "422376",
-     "text": "8.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "open interest",
-     "normalized_text": "0.61",
-     "raw_text": "7291",
-     "text": "6.1",
-     "weight_text": "0.10"
-    },
-    {
-     "label": "delta",
-     "normalized_text": "1.00",
-     "raw_text": "456.84",
-     "text": "5.0",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "charm",
-     "normalized_text": "0.20",
-     "raw_text": "13.54",
-     "text": "4.5",
-     "weight_text": "0.22"
-    },
-    {
-     "label": "vanna",
-     "normalized_text": "0.19",
-     "raw_text": "0.00",
-     "text": "0.9",
-     "weight_text": "0.05"
-    },
-    {
-     "label": "volatility",
-     "normalized_text": "0.00",
-     "raw_text": "29.0",
-     "text": "0.0",
-     "weight_text": "0.05"
-    }
-   ],
+   "factors": [],
    "flow_reason": "no signed flow is produced",
    "flow_text": null,
    "gross": 61245159.777759045,
@@ -1541,7 +724,10 @@
    "iv": 29.039157100000004,
    "iv_reason": null,
    "iv_text": "29.0",
-   "missing": [],
+   "missing": [
+    "charm",
+    "vanna"
+   ],
    "net_gex": -39931287.640042946,
    "net_gex_text": "-39.93",
    "net_reason": null,
@@ -1554,14 +740,14 @@
    "pc_vol_lean": 0.9174093240344172,
    "pc_vol_reason": null,
    "pc_vol_text": "0.08",
-   "score": 34.561012247733935,
-   "score_text": "35",
+   "score": null,
+   "score_text": null,
    "spot_line": false,
    "strike": 768.0,
    "strike_text": "768.00",
-   "vanna": -4939.860543427189,
-   "vanna_reason": null,
-   "vanna_text": "0.00",
+   "vanna": null,
+   "vanna_reason": "vanna is missing",
+   "vanna_text": null,
    "vol_oi": 57.93114799067343,
    "vol_oi_reason": null,
    "vol_oi_text": "57.93",

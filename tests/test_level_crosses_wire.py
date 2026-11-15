@@ -23,6 +23,7 @@ import server
 import time_et
 from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
+from option_contract import read_chain
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import clock_from, daemon_status, mark_feed_live, publish_capture
@@ -30,6 +31,7 @@ from tests.page_on_socket import pages
 from tests.real_chains import (
     SPY_AFTER_HOURS_PRINT,
     SPY_CLOSE,
+    SPY_FULL,
     SPY_PRINT_A_STRIKE_AWAY,
     SPY_PRINT_ON_A_STRIKE,
 )
@@ -39,8 +41,10 @@ ON_A_STRIKE = SPY_PRINT_ON_A_STRIKE["native"]["LAST_PRICE"]
 STRIKE_AWAY = SPY_PRINT_A_STRIKE_AWAY["native"]["LAST_PRICE"]
 AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
 #: the watched levels between 764.00 and 773.1269: the call wall and the largest gamma strike,
-#: both 765, and the gamma flip 770.77 (the put wall is at 764.00 itself)
-BETWEEN = {"Call wall", "Abs Γ", "Γ flip"}
+#: both 765 (the put wall is at 764.00 itself). The close capture holds only the 2026-10-22
+#: expiry, settled at that close: no time left, so no gamma curve and no flip (operator
+#: 2026-11-15: no floor of ours on the time left; a value not known is "-")
+BETWEEN = {"Call wall", "Abs Γ"}
 
 
 def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
@@ -127,7 +131,10 @@ def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prin
     assert _named(up) == {n: (CROSSED_UP, levels[n], STRIKE_AWAY) for n in BETWEEN}
     assert _named(down) == {n: (CROSSED_DOWN, levels[n], AFTER_HOURS) for n in BETWEEN}
     # each stored cross is held for the live readers, newest last
-    assert sorted(c["cross_id"] for c in held[-6:]) == sorted(c["cross_id"] for c in up + down)
+    stored = up + down
+    assert sorted(c["cross_id"] for c in held[-len(stored) :]) == sorted(
+        c["cross_id"] for c in stored
+    )
 
 
 def test_only_the_four_watched_levels_are_crossed_each_under_its_listed_name():
@@ -137,11 +144,19 @@ def test_only_the_four_watched_levels_are_crossed_each_under_its_listed_name():
     then no level is really important". On SPY's published close the price is run through every
     option level the program lists: the four watched ones are crossed under the name the one
     list gives them, and no other level (the net gamma peaks, max pain, the delta and charm
-    walls, the key delta strike) names a cross.
+    walls, the key delta strike) names a cross. The levels are SPY's whole chain, every expiry,
+    priced mid-session (2026-11-09 11:06 ET), where every level has a value.
     """
     _forget()
     levels = _publish_close()
     try:
+        server._publish_levels(
+            "SPY",
+            read_chain(SPY_FULL.chain),
+            SPY_FULL.now.timestamp(),
+            chain_spot=(SPY_FULL.spot, SPY_FULL.now.timestamp()),
+            now=SPY_FULL.now,
+        )
         snap = server.published_levels("SPY").snap
     finally:
         _forget()
@@ -387,7 +402,7 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
     for route in ("strikes_next_close", "surface_next_close"):
         assert (served[route]["levels_state"], served[route]["levels_stale_reason"]) == (
             "STALE",
-            "this ticker's options are closed and its close values have not been fetched",
+            "this ticker's options are closed and its levels were not current at the close",
         ), route
 
 
