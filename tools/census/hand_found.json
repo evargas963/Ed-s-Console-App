@@ -155,10 +155,6 @@
       "item": "AGENTS.md:47 and CLAUDE.md:20 'no change reaches production without Ed's approval' vs AGENTS.md:290 merges and deploys without waiting on the operator"
     },
     {
-      "category": "contradiction: rule vs code",
-      "item": "AGENTS.md:3,121 no bound of ours vs history.py:19 TAPE_KEPT = 500, :21 BOOKS_KEPT_SEC and server.py:194 BARS_KEPT"
-    },
-    {
       "category": "contradiction: doc vs doc",
       "item": "AGENTS.md:163 no exception list vs AGENTS.md:130 and pyproject.toml:35 a per-file ignore of TID251 for time_et.py"
     },
