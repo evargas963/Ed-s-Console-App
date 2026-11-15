@@ -70453,16 +70453,12 @@
   "ticker": "AMZN",
   "zones": [
    {
-    "zone_label": "Pivot / value",
-    "zone_side": "value",
-    "zone_low": 269.425,
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
+    "zone_low": 269.6149373906041,
     "zone_high": 270.1575,
-    "anchor": 269.79125,
+    "anchor": 269.8862186953021,
     "source_levels": [
-     {
-      "label": "SPOT_LIVE",
-      "value": 269.425
-     },
      {
       "label": "VWAP_M1",
       "value": 269.6149373906041
@@ -70492,8 +70488,8 @@
       "value": 270.1575
      }
     ],
-    "confluence_score": 8,
-    "interpretation_notes": "Live spot (from console cache)"
+    "confluence_score": 7,
+    "interpretation_notes": "Above the price"
    },
    {
     "zone_label": "Resistance",
@@ -70512,11 +70508,11 @@
      }
     ],
     "confluence_score": 2,
-    "interpretation_notes": "Resistance / upper structure"
+    "interpretation_notes": "Above the price"
    },
    {
-    "zone_label": "Resistance",
-    "zone_side": "resistance",
+    "zone_label": "Support",
+    "zone_side": "support",
     "zone_low": 267.37,
     "zone_high": 267.835,
     "anchor": 267.60249999999996,
@@ -70531,11 +70527,11 @@
      }
     ],
     "confluence_score": 2,
-    "interpretation_notes": "Resistance / upper structure"
+    "interpretation_notes": "Below the price"
    },
    {
-    "zone_label": "Pivot / value",
-    "zone_side": "value",
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
     "zone_low": 271.74,
     "zone_high": 271.74,
     "anchor": 271.74,
@@ -70546,11 +70542,11 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Fair value / pivot"
+    "interpretation_notes": "Above the price"
    },
    {
-    "zone_label": "Pivot / value",
-    "zone_side": "value",
+    "zone_label": "Support",
+    "zone_side": "support",
     "zone_low": 266.54,
     "zone_high": 266.54,
     "anchor": 266.54,
@@ -70561,7 +70557,7 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Fair value / pivot"
+    "interpretation_notes": "Below the price"
    },
    {
     "zone_label": "Resistance",
@@ -70580,7 +70576,7 @@
      }
     ],
     "confluence_score": 2,
-    "interpretation_notes": "Resistance / upper structure"
+    "interpretation_notes": "Above the price"
    },
    {
     "zone_label": "Support",
@@ -70599,7 +70595,7 @@
      }
     ],
     "confluence_score": 2,
-    "interpretation_notes": "Support / lower structure"
+    "interpretation_notes": "Below the price"
    },
    {
     "zone_label": "Resistance",
@@ -70614,11 +70610,11 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Resistance / upper structure"
+    "interpretation_notes": "Above the price"
    },
    {
-    "zone_label": "Pivot / value",
-    "zone_side": "value",
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
     "zone_low": 274.87,
     "zone_high": 275.0,
     "anchor": 274.935,
@@ -70633,7 +70629,7 @@
      }
     ],
     "confluence_score": 2,
-    "interpretation_notes": "Confluence: mixed positioning + session levels"
+    "interpretation_notes": "Above the price"
    },
    {
     "zone_label": "Support",
@@ -70648,11 +70644,11 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Support / lower structure"
+    "interpretation_notes": "Below the price"
    },
    {
-    "zone_label": "Pivot / value",
-    "zone_side": "value",
+    "zone_label": "Support",
+    "zone_side": "support",
     "zone_low": 260.0,
     "zone_high": 260.0,
     "anchor": 260.0,
@@ -70663,11 +70659,11 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Confluence: mixed positioning + session levels"
+    "interpretation_notes": "Below the price"
    },
    {
-    "zone_label": "Resistance",
-    "zone_side": "resistance",
+    "zone_label": "Support",
+    "zone_side": "support",
     "zone_low": 250.0,
     "zone_high": 250.0,
     "anchor": 250.0,
@@ -70678,11 +70674,11 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Confluence: overhead positioning / supply"
+    "interpretation_notes": "Below the price"
    },
    {
-    "zone_label": "Pivot / value",
-    "zone_side": "value",
+    "zone_label": "Support",
+    "zone_side": "support",
     "zone_low": 243.91411813739333,
     "zone_high": 243.91411813739333,
     "anchor": 243.91411813739333,
@@ -70693,11 +70689,11 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Confluence: mixed positioning + session levels"
+    "interpretation_notes": "Below the price"
    },
    {
-    "zone_label": "Pivot / value",
-    "zone_side": "value",
+    "zone_label": "Support",
+    "zone_side": "support",
     "zone_low": 240.0,
     "zone_high": 240.0,
     "anchor": 240.0,
@@ -70708,7 +70704,7 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Confluence: mixed positioning + session levels"
+    "interpretation_notes": "Below the price"
    }
   ],
   "summary": {
@@ -70716,9 +70712,9 @@
    "vwap_relation": "inside_value"
   },
   "spot_location": {
-   "inside": 0,
-   "above": null,
-   "below": null
+   "inside": null,
+   "above": 0,
+   "below": 2
   },
   "hold_rates": [
    {

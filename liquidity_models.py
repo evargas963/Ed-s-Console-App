@@ -161,19 +161,20 @@ class ZoneType(str, Enum):
     overnight window. No name claims a mechanism (resting stop orders pooling beyond it).
     """
 
-    LOW_EXTREME = "low_extreme"
     SUPPORT_LIQUIDITY = "support_liquidity"
     PIVOT_VALUE = "pivot_value"
     RESISTANCE_LIQUIDITY = "resistance_liquidity"
+    #: a live zone while no live price is held: which side of the price it is on is not known
+    SIDE_UNKNOWN = "side_unknown"
 
 
 #: each zone type's name on screen and the side of price it is drawn as: support, resistance or
 #: value (neither)
 ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
-    ZoneType.LOW_EXTREME: ("Low extreme", "support"),
     ZoneType.SUPPORT_LIQUIDITY: ("Support", "support"),
     ZoneType.PIVOT_VALUE: ("Pivot / value", "value"),
     ZoneType.RESISTANCE_LIQUIDITY: ("Resistance", "resistance"),
+    ZoneType.SIDE_UNKNOWN: ("-", "value"),
 }
 
 

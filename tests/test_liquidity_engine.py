@@ -309,7 +309,8 @@ def _overnight_under_prior_low_zones(session_date: date):
         bar_source="test",
         sessions=sessions(),
     )
-    return build_premarket_snapshot("SPY", PlaybookConfig(), canonical=snap).zones
+    # the price: the last overnight close, under the prior low
+    return build_premarket_snapshot("SPY", PlaybookConfig(), canonical=snap, price=96.0).zones
 
 
 def test_no_pool_language_in_rendered_zone_payload():
@@ -360,7 +361,7 @@ def test_no_lookahead_premarket():
         sessions=sessions(),
         config=cfg,
     )
-    out = build_premarket_snapshot("SPY", cfg, canonical=snap)
+    out = build_premarket_snapshot("SPY", cfg, canonical=snap, price=500.0)
     labels = {s["label"] for z in out.zones for s in z.source_levels}
     assert labels & {"PDH", "PDL", "PDC"}
     # No today POC/VAH/VAL in the premarket zones: every poc-shaped level is the

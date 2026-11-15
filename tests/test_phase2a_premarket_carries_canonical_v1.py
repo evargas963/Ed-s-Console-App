@@ -97,7 +97,7 @@ def test_premarket_carries_every_phase2a_level_unchanged():
     bars = _bars(session)
     canon = _canonical(session, bars)
 
-    carried = build_premarket_snapshot("SPY", PlaybookConfig(), canonical=canon)
+    carried = build_premarket_snapshot("SPY", PlaybookConfig(), canonical=canon, price=None)
     got = _published(carried)
     for level_id in _PHASE2A_IDS:
         want = canon.price(level_id)
@@ -127,6 +127,7 @@ def test_the_live_builder_before_the_open_carries_the_snapshot():
         canonical=canon,
         now=pre_open,
         extra_levels=[],
+        price=None,
         sessions=sessions(),
     )
     assert out.snapshot_type.value == "premarket"

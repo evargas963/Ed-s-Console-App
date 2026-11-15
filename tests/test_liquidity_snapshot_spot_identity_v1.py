@@ -57,5 +57,13 @@ def test_with_a_live_spot_the_zones_are_measured_from_schwabs_last_price():
     body = srv.liquidity_snapshot(TK, FRIDAY)
     distances = [srv._distance_to_spot(z["zone_low"], z["zone_high"], last) for z in body["zones"]]
     assert distances and distances == sorted(distances)
-    first = [s["label"] for s in body["zones"][0]["source_levels"]]
-    assert distances[0] == 0.0 and "SPOT_LIVE" in first
+    z = body["zones"][0]
+    first = [s["label"] for s in z["source_levels"]]
+    side = (
+        "Resistance"
+        if z["zone_low"] > last
+        else "Support"
+        if z["zone_high"] < last
+        else "Pivot / value"
+    )
+    assert z["zone_label"] == side and "SPOT_LIVE" not in first  # typed by side; not a level

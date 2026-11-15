@@ -4314,21 +4314,25 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
     """Return the market session's liquidity & value zones for the ticker at `now`.
 
     Built from the one price-level snapshot (canonical_price_level_snapshot, the same values the
-    `levels` panel sends) with the terrain's option levels and the live price fused in. It
-    computes no level of its own.
+    `levels` panel sends) with the terrain's option levels fused in, each zone typed by its side
+    of the live price. It computes no level of its own; the price is not a level.
     """
     ticker_upper = ticker_storage_key(ticker)
     config = PlaybookConfig(max_zone_width=2.0)
     extra = _liquidity_option_levels(ticker_upper)
     # the one spot (resolve_spot), the header's own
     spot_for_zones, _, _ = resolve_spot(ticker_upper, now=now.timestamp())
-    if spot_for_zones is not None:
-        extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
     _canon = canonical_price_level_snapshot(ticker_upper, now)
     if _canon is None:
         return unavailable(ticker_upper, NO_PRICE_LEVELS_REASON, zones=[])
     out = build_live_snapshot(
-        ticker_upper, config, canonical=_canon, now=now, extra_levels=extra, sessions=sessions()
+        ticker_upper,
+        config,
+        canonical=_canon,
+        now=now,
+        extra_levels=extra,
+        price=spot_for_zones,
+        sessions=sessions(),
     )
     zones_payload = [
         {
