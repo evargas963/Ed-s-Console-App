@@ -158,7 +158,8 @@ BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
 #: the series asked from a start date instead of a period, by calendar days back, the regular
 #: session's bars only: 90 days, about 60 sessions, of 1-minute bars for the levels' hold rates
 #: (liquidity_value_engine.hold_counts; operator 2026-11-15: "Yes, request it"). Schwab documents
-#: startDate for every frequency; how far back it answers minute bars it does not say
+#: startDate for every frequency but not how far back it answers minute bars: its answers of
+#: 2026-11-15 began 2026-09-29, 34 sessions
 HISTORY_DAYS_BACK = {"1m60": 90}
 #: the series asked once per ET date
 DAILY_ONCE = ("1m", "1m60")
