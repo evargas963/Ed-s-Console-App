@@ -130,7 +130,31 @@
     h.querySelector(".liqm-zones").innerHTML =
       '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored)</div>' +
       (zones.length ? zones.map(zoneRow).join("") : '<div class="sm">' + none + "</div>") +
-      "</div>";
+      "</div>" +
+      holdSection(snap);
+  }
+
+  // each level type's measured hold rate, as the server wrote it; what it is, on hover
+  function holdSection(snap) {
+    var rows = snap && snap.hold_rates ? snap.hold_rates : [];
+    if (!rows.length) return "";
+    return (
+      '<div class="fl-sec liqm-hold" title="' +
+      esc(snap.hold_note) +
+      '"><div class="fl-sec-h">How often each level held</div>' +
+      rows
+        .map(function (r) {
+          return (
+            '<div class="fl-row"><span class="k">' +
+            esc(r.level) +
+            '</span><span class="v">' +
+            esc(r.text) +
+            "</span></div>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
   }
 
   // The zones, the levels and the bars at the toolbar's timeframe: the `liquidity:map`,

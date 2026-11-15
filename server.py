@@ -75,14 +75,21 @@ from instrument_identity import display_symbol, ticker_storage_key, vendor_optio
 from l1_trade_observation import canonical_tape_prints
 from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 from liquidity_value_engine import (
+    HOLD_BASELINE_LEVELS,
+    HOLD_MIN_TOUCHES,
+    HOLD_WINDOW_SESSIONS,
+    LEVEL_NAMES,
     OPTION_LEVEL_TAGS,
     Bar,
+    HoldCount,
     PriceLevelSnapshot,
     bars_from_candles,
     build_live_snapshot,
     build_price_level_snapshot,
+    hold_counts,
     prior_session,
     snapshot_input_fingerprint,
+    wilson_interval,
 )
 from math_exposure_core import (
     Bucket,
@@ -4256,6 +4263,54 @@ def _distance_to_spot(lo: float, hi: float, spot: float | None) -> float | None:
     return 0.0 if within(lo, hi, spot) else min(abs(spot - lo), abs(spot - hi))
 
 
+#: what the hold rates are, shown on hover beside them
+HOLD_NOTE = (
+    f"Over the last {HOLD_WINDOW_SESSIONS} completed sessions held: a touch is a 1-minute bar "
+    "reaching the level from one side, once per approach; it held when the close 15 minutes "
+    "later (30 in brackets) is still on that side. Random is the same count for "
+    f"{HOLD_BASELINE_LEVELS} levels a session spread over the open +- the month's largest move "
+    "(Osler 2000): random levels hold about half the time, so only the difference means anything. "
+    f"'-' below {HOLD_MIN_TOUCHES} touches. A past frequency, not a forecast."
+)
+
+
+def hold_text(c: HoldCount) -> str:
+    """One horizon's hold rate in words: the rate, the random levels' and the 95% interval.
+
+    "-" with the touches counted when they are fewer than HOLD_MIN_TOUCHES (or the random levels
+    were never touched), for no rate is shown on so few.
+    """
+    if c.touches < HOLD_MIN_TOUCHES or c.baseline_touches == 0:
+        return f"- ({c.touches} touches)"
+    rate, base = c.holds / c.touches, c.baseline_holds / c.baseline_touches
+    lo, hi = wilson_interval(c.holds, c.touches)
+    return (
+        f"held {rate:.0%} of {c.touches} touches; random {base:.0%}; "
+        f"{(rate - base) * 100:+.0f} points (95%: {lo:.0%} to {hi:.0%})"
+    )
+
+
+def hold_rates(tk: str, now: datetime) -> list[dict[str, str]]:
+    """Each fixed level type's hold rate at 15 and 30 minutes over the ticker's held bars.
+
+    liquidity_value_engine.hold_counts over every 1-minute bar the bar writer holds and Schwab's
+    daily candles.
+    """
+    with _bars_lock:
+        bars = list(_bars[tk]) if tk in _bars else []
+        daily = list(_series[(tk, "1d")]) if (tk, "1d") in _series else []
+    counts = hold_counts(
+        bars_from_candles(bars), daily, now, sessions=sessions(), config=PlaybookConfig()
+    )
+    return [
+        {
+            "level": LEVEL_NAMES[lid][0],
+            "text": hold_text(by[15]) + " [30 min: " + hold_text(by[30]) + "]",
+        }
+        for lid, by in counts.items()
+    ]
+
+
 def _spot_location(zones: list[dict[str, Any]], spot: float | None) -> dict[str, int | None] | None:
     """Where spot sits among the zones, by index into `zones`.
 
@@ -4323,4 +4378,6 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
             "vwap_relation": out.summary.vwap_relation,
         },
         "spot_location": _spot_location(zones_payload, spot_for_zones),
+        "hold_rates": hold_rates(ticker_upper, now),
+        "hold_note": HOLD_NOTE,
     }

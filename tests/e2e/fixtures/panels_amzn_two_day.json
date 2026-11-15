@@ -70719,7 +70719,54 @@
    "inside": 0,
    "above": null,
    "below": null
-  }
+  },
+  "hold_rates": [
+   {
+    "level": "Prior day high",
+    "text": "- (3 touches) [30 min: - (3 touches)]"
+   },
+   {
+    "level": "Prior day low",
+    "text": "- (11 touches) [30 min: - (8 touches)]"
+   },
+   {
+    "level": "Prior day close",
+    "text": "- (1 touches) [30 min: - (1 touches)]"
+   },
+   {
+    "level": "Prior day POC (est. from 1-min bars)",
+    "text": "- (0 touches) [30 min: - (0 touches)]"
+   },
+   {
+    "level": "Prior day VAH (est. from 1-min bars)",
+    "text": "- (0 touches) [30 min: - (0 touches)]"
+   },
+   {
+    "level": "Prior day VAL (est. from 1-min bars)",
+    "text": "- (0 touches) [30 min: - (0 touches)]"
+   },
+   {
+    "level": "Overnight high",
+    "text": "- (0 touches) [30 min: - (0 touches)]"
+   },
+   {
+    "level": "Overnight low",
+    "text": "- (0 touches) [30 min: - (0 touches)]"
+   },
+   {
+    "level": "Opening range high",
+    "text": "- (0 touches) [30 min: - (0 touches)]"
+   },
+   {
+    "level": "Opening range low",
+    "text": "- (5 touches) [30 min: - (5 touches)]"
+   },
+   {
+    "level": "Opening range mid",
+    "text": "- (0 touches) [30 min: - (0 touches)]"
+   }
+  ],
+  "hold_note": "Over the last 60 completed sessions held: a touch is a 1-minute bar reaching the level from one side, once per approach; it held when the close 15 minutes later (30 in brackets) is still on that side. Random is the same count for 100 levels a session spread over the open +- the month's largest move (Osler 2000): random levels hold about half the time, so only the difference means anything. '-' below 100 touches. A past frequency, not a forecast."
  },
  "forces": {
   "ticker": "AMZN",

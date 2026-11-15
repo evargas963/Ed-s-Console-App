@@ -14,9 +14,11 @@ from __future__ import annotations
 import functools
 import hashlib
 import logging
+import math
 import struct
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -1065,3 +1067,162 @@ def build_price_level_snapshot(
         )
 
     return snapshot(session_rth_vol_n, profile)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HOLD RATES (Osler 2000, Federal Reserve Bank of New York Economic Policy Review 6(2))
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: the levels fixed for a whole session, measured from when each is known: the prior day's and
+#: the overnight levels from the open, the opening range's once it is complete. VWAP and the
+#: day's own value area move during the session and are not measured.
+HOLD_LEVELS = (
+    "PDH",
+    "PDL",
+    "PDC",
+    "PD_POC",
+    "PD_VAH",
+    "PD_VAL",
+    "OVERNIGHT_HIGH",
+    "OVERNIGHT_LOW",
+    "ORB_HIGH",
+    "ORB_LOW",
+    "ORB_MID",
+)
+_AFTER_OPENING_RANGE = frozenset({"ORB_HIGH", "ORB_LOW", "ORB_MID"})
+#: minutes after a touch at which the close is read: Osler's 15, and her 30 as the check
+HOLD_MINUTES = (15, 30)
+#: the most recent completed sessions measured (Chung & Bellotti 2021: the effect decays)
+HOLD_WINDOW_SESSIONS = 60
+#: below this many touches the rate is not shown: its 95% interval is wider than +-10 points
+HOLD_MIN_TOUCHES = 100
+#: random levels per session for the baseline, evenly spaced over open +- the month's largest
+#: open-to-high or open-to-low move (Osler's draw, as a grid so it reads no random generator)
+HOLD_BASELINE_LEVELS = 100
+_WILSON_Z = 1.959963984540054  # the two-sided 95% normal quantile
+
+
+@dataclass(frozen=True)
+class HoldCount:
+    """Touches and holds of one level type at one horizon, and of the baseline's random levels.
+
+    The baseline is counted over the same sessions as the level (the sessions it existed).
+    """
+
+    touches: int
+    holds: int
+    baseline_touches: int
+    baseline_holds: int
+
+
+def _touch_outcomes(rth: list[Bar], level: float, start: datetime, minutes: int) -> tuple[int, int]:
+    """(touches, holds) of `level` in one session's regular-hours bars, oldest first.
+
+    A touch: a bar from `start` on whose range reaches the level while the bar before it closed
+    strictly on one side (the side it came from). One touch per approach: after a touch, the
+    next counts only once a bar's whole range has been off the level (a bar touching it before
+    `start` also waits for that). A hold: the close of the bar `minutes` later is strictly on the
+    side it came from. A touch with no bar that many minutes later in the session is not counted.
+    """
+    at = {b["_dt"]: b for b in rth}
+    touches = holds = 0
+    armed = True
+    for prev, bar in zip(rth, rth[1:], strict=False):
+        if not bar["low"] <= level <= bar["high"]:
+            armed = True
+            continue
+        if bar["_dt"] < start or not armed:
+            armed = False
+            continue
+        side = (prev["close"] > level) - (prev["close"] < level)
+        if side == 0:
+            continue
+        armed = False
+        later = at.get(bar["_dt"] + timedelta(minutes=minutes))
+        if later is None:
+            continue
+        touches += 1
+        holds += (later["close"] - level) * side > 0
+    return touches, holds
+
+
+def hold_counts(
+    bars_norm: list[Bar],
+    daily: list[Candle],
+    now: datetime,
+    *,
+    sessions: Mapping[str, Session],
+    config: PlaybookConfig,
+) -> dict[str, dict[int, HoldCount]]:
+    """Count each level type's touches and holds over the sessions whose close is past at `now`.
+
+    The newest HOLD_WINDOW_SESSIONS such sessions with regular-hours bars. Each session's levels are
+    the one level producer's (build_price_level_snapshot) over the bars to that session's close,
+    with Schwab's daily candle of the session before. The baseline: HOLD_BASELINE_LEVELS levels
+    evenly spaced over the session's open +- the largest open-to-high or open-to-low move of a
+    session of the same month in the window, by the same rules from the open (Osler 2000: random
+    levels "hold" more than half the time, so a rate means something only beside them).
+    """
+    days = _closed_sessions(bars_norm, now, sessions)
+    moves: dict[tuple[int, int], list[float]] = {}
+    for d, (_hours, rth) in days.items():
+        o = rth[0]["open"]
+        moves.setdefault((d.year, d.month), []).append(
+            max(max(b["high"] for b in rth) - o, o - min(b["low"] for b in rth))
+        )
+    swing = {month: max(m) for month, m in moves.items()}
+    found = {lid: {m: [0, 0, 0, 0] for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
+    for d, (hours, rth) in days.items():
+        snap = build_price_level_snapshot(
+            "",
+            d,
+            [b for b in bars_norm if b["_dt"] < hours[1]],
+            prior=prior_session(daily, d),
+            bar_source="",
+            sessions=sessions,
+            config=config,
+        )
+        o, half = rth[0]["open"], swing[(d.year, d.month)]
+        grid = [
+            o + half * (2 * k + 1 - HOLD_BASELINE_LEVELS) / HOLD_BASELINE_LEVELS
+            for k in range(HOLD_BASELINE_LEVELS)
+        ]
+        after_range = hours[0] + timedelta(minutes=config.opening_range_minutes)
+        opened = {
+            lid: after_range if lid in _AFTER_OPENING_RANGE else hours[0] for lid in HOLD_LEVELS
+        }
+        for m in HOLD_MINUTES:
+            base = [_touch_outcomes(rth, g, hours[0], m) for g in grid]
+            base_t, base_h = sum(t for t, _h in base), sum(h for _t, h in base)
+            for lid in HOLD_LEVELS:
+                price = snap.price(lid)
+                if price is not None:
+                    t, h = _touch_outcomes(rth, price, opened[lid], m)
+                    row = found[lid][m]
+                    row[:] = [row[0] + t, row[1] + h, row[2] + base_t, row[3] + base_h]
+    return {lid: {m: HoldCount(*found[lid][m]) for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
+
+
+def _closed_sessions(
+    bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]
+) -> dict[date, tuple[tuple[datetime, datetime], list[Bar]]]:
+    """The newest HOLD_WINDOW_SESSIONS sessions closed at `now`: their hours and regular bars."""
+    rth_by_day: dict[date, list[Bar]] = {}
+    for b in sorted(bars_norm, key=lambda b: b["_dt"]):
+        if _in_rth(sessions, b["_dt"]):
+            rth_by_day.setdefault(b["_dt"].date(), []).append(b)
+    closed = {d: r for d in rth_by_day if (r := _regular(sessions, d)) is not None and r[1] <= now}
+    return {d: (closed[d], rth_by_day[d]) for d in sorted(closed)[-HOLD_WINDOW_SESSIONS:]}
+
+
+def wilson_interval(holds: int, touches: int) -> tuple[float, float]:
+    """The Wilson score 95% interval of holds / touches (Brown, Cai & DasGupta 2001)."""
+    p = holds / touches
+    z2 = _WILSON_Z * _WILSON_Z
+    centre = (p + z2 / (2 * touches)) / (1 + z2 / touches)
+    half = (
+        _WILSON_Z
+        * math.sqrt(p * (1 - p) / touches + z2 / (4 * touches * touches))
+        / (1 + z2 / touches)
+    )
+    return centre - half, centre + half
