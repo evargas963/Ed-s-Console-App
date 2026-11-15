@@ -467,9 +467,9 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute(
             "CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
-            "ts_utc REAL NOT NULL, spot REAL, n_contracts INTEGER NOT NULL, "
-            "completeness_basis TEXT NOT NULL, chain_json TEXT NOT NULL, source TEXT NOT NULL, "
-            "created_at TEXT, refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))"
+            "ts_utc REAL NOT NULL, spot REAL, completeness_basis TEXT NOT NULL, "
+            "chain_json TEXT NOT NULL, chain_spot REAL, chain_spot_ts REAL, "
+            "refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))"
         )
     failures_db = tmp_path / "stream_capture.db"
     published: list = []

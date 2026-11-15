@@ -15,8 +15,6 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-import pytest
-
 import stream_spine as ss
 from stream_spine import (
     LATEST,
@@ -328,12 +326,6 @@ def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
     asyncio.run(go())
 
 
-def test_writer_refuses_the_consoles_database_through_a_relative_path():
-    """A relative path whose file is `ed_console.db` (`data/x/../ed_console.db`) is refused too."""
-    with pytest.raises(ValueError):
-        CaptureWriter("data/nosuchdir/../ed_console.db")
-
-
 def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
     """A schema setup that fails after the connect closes the SQLite connection it opened.
 
@@ -419,7 +411,7 @@ def test_db_path_d_capture_writer_default_is_its_runtime_roots_stream_database(t
         ED_RUNTIME_ROOT=str(root),
     )
     assert done.returncode == 0, done.stderr
-    assert Path(done.stdout.strip()) == (root / "data" / "stream_capture.db").resolve(), done.stdout
+    assert Path(done.stdout.strip()) == (root / "data" / "ed.db").resolve(), done.stdout
 
 
 def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):

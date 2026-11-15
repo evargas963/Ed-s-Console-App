@@ -16,9 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
 import threading
-from contextlib import closing
 from pathlib import Path
 
 import db_authority
@@ -28,7 +26,7 @@ from db import EdDB, LevelCrossEvent
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.test_data_path_rules_v1 import _EVENTS
-from tests.test_data_path_writer_failures_v1 import _publish_options, _until
+from tests.test_data_path_writer_failures_v1 import _count, _publish_options, _until
 
 SPY = json.loads(
     (Path(__file__).parent / "fixtures" / "real_spy_2026_11_20_chain_and_quotes.json").read_text(
@@ -103,11 +101,10 @@ def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(
     asyncio.run(go())
 
     assert "blocked" not in states
-    with closing(sqlite3.connect(db)) as conn:
-        counts = {
-            t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-            for t in ("stream_options_quotes_raw", "complete_chain_captures", "level_crosses")
-        }
+    counts = {
+        t: _count(db, t)
+        for t in ("stream_options_quotes_raw", "complete_chain_captures", "level_crosses")
+    }
     assert counts == {
         "stream_options_quotes_raw": 20 * len(_EVENTS),
         "complete_chain_captures": 1,
