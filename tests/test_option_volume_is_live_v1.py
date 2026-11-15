@@ -47,14 +47,14 @@ def test_rows_are_the_shape_the_panel_renders():
     Never rebuilt from these numbers into contracts and run through the exposure engine again.
     """
     ps = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW, sessions=sessions()).per_strike
-    # the three GEX scopes, and the Chart view's DEX and OI rows
-    assert set(ps) == {"all", "near", "far", "dex", "oi"}, (
+    # the three GEX scopes, the Chart view's DEX and OI rows, and the Vanna panel's rows
+    assert set(ps) == {"all", "near", "far", "dex", "oi", "vanna"}, (
         "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
         f"empty panel on that chip. got {sorted(ps)}"
     )
     for scope, rows in ps.items():
         for r in rows:
-            assert len(r) == (2 if scope in ("dex", "oi") else 3), (
+            assert len(r) == (2 if scope in ("dex", "oi", "vanna") else 3), (
                 f"{scope}: row {r} has the wrong shape"
             )
             assert all(isinstance(x, (int, float)) for x in r), f"{scope}: non-numeric row {r}"

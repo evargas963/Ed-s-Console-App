@@ -63,6 +63,6 @@ def test_per_strike_is_excluded_from_to_dict_but_timestamp_is_not():
 def test_snapshot_defaults_are_absent_not_fabricated():
     snap = TerrainSnapshot(ticker="SPY", spot=740.0)
     assert snap.per_strike == per_strike_view({}, {}), "no book priced: the producer's own view"
-    assert set(snap.per_strike) == {"all", "near", "far", "dex", "oi"}
+    assert set(snap.per_strike) == {"all", "near", "far", "dex", "oi", "vanna"}
     assert all(rows == [] for rows in snap.per_strike.values()), "no row is fabricated"
     assert snap.computed_ts_utc is None, "absence must read as absence, never a fake timestamp"
