@@ -3,7 +3,12 @@
 **The first rule (operator 2026-11-04): "we simply wire up what schwab gives us, plain and simple.
 end of story."** Schwab's value goes to the screen as Schwab sent it, read once; no special rule,
 bound, default or substitute of ours sits in between, and only the math Schwab does not send is
-computed (the derived register). Enforced by: rule 2's tests (a field as sent),
+computed (the derived register). Its meaning (operator 2026-11-15): "i don't want any unnecessary
+coding, no unnecessary interpretations, nothing that would interfere with the just and right data
+coming directly from schwab", so the data stays current and accurate and every calculation honest.
+A live screen's window in memory (the tape's prints, the books, the bars) is no bound between: it
+changes no value, every message is recorded in full, and each window covers the longest one its
+screen reads (`tests/test_memory_windows_cover_the_screen_v1.py`). Enforced by: rule 2's tests (a field as sent),
 `tools/check_one_reader.py` in `hardening` (one reader of each Schwab field) and
 `tools/check_end_to_end.py` in `locks` (no missing value filled in) (in force); a rule of ours
 added between Schwab and the screen — the builder's audit (rule 14), no machine check.
