@@ -1524,7 +1524,7 @@ def _publish_levels(
         spot_as_of_ts_utc=spot_ts,
         priced_at=priced_at,
         gamma_surface=surface,
-        vanna_rows=_vanna_rows(snap),
+        vanna_rows=snap.per_strike["vanna"],
         charm_rows=_charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         chain=chain,
@@ -1605,22 +1605,6 @@ def _log_level_crosses(
             held.extend(logged)
             del held[:-CROSSES_KEPT]
         _levels_changed(tk)
-
-
-def _vanna_rows(snap: TerrainSnapshot) -> list[list[float]]:
-    """[strike, net dealer vanna] for every strike whose vanna is known, from the published book.
-
-    Each strike's net_vanna exactly as compute_exposures_by_strike computed it (+call/-put).
-    """
-    exposures, _diag = merge_exposure_books(snap.books.values())
-    rows: list[list[float]] = []
-    for k, b in exposures.items():
-        net = bucket_metric(b, "net_vanna")
-        if net is None:
-            continue
-        rows.append([float(k), net])
-    rows.sort(key=lambda r: r[0])
-    return rows
 
 
 def _charm_rows(snap: TerrainSnapshot) -> list[list[float]]:
@@ -2344,24 +2328,24 @@ def chart_bars(
     again yet; the daemon asks as each completes), which is rolled up (aggregate_bars) from
     Schwab's 1-minute bars; and today's daily candle (_daily_candles). Every other timeframe (3
     and 60 minutes, which Schwab does not send), or one whose series is not held yet, is rolled
-    up from the 1-minute bars.
+    up from the 1-minute bars. The daily bars are always _daily_candles', the ATR's own.
     """
+    if tf == "D":
+        first_day = datetime.fromtimestamp(minutes[0]["t"], ET).date() if minutes else None
+        return [
+            _bar_dict(c)
+            for c in _daily_candles(tk, now)
+            if first_day is None or first_day <= datetime.fromtimestamp(c.ts, ET).date()
+        ]
     key = (tk, SCHWAB_SERIES[tf]) if tf in SCHWAB_SERIES else None
     with _bars_lock:
         sent = list(_series[key]) if key in _series else []
     if not sent:
         return aggregate_bars(minutes, tf)
-    if tf != "D":
-        newest = sent[-1].ts
-        first = minutes[0]["t"] if minutes else sent[0].ts
-        schwab = [_bar_dict(c) for c in sent if first <= c.ts < newest]
-        return schwab + aggregate_bars([m for m in minutes if m["t"] >= newest], tf)
-    first_day = datetime.fromtimestamp(minutes[0]["t"], ET).date() if minutes else None
-    return [
-        _bar_dict(c)
-        for c in _daily_candles(tk, now)
-        if first_day is None or first_day <= datetime.fromtimestamp(c.ts, ET).date()
-    ]
+    newest = sent[-1].ts
+    first = minutes[0]["t"] if minutes else sent[0].ts
+    schwab = [_bar_dict(c) for c in sent if first <= c.ts < newest]
+    return schwab + aggregate_bars([m for m in minutes if m["t"] >= newest], tf)
 
 
 def aggregate_bars(bars: list[dict[str, Any]], tf: str) -> list[dict[str, Any]]:
@@ -3962,13 +3946,6 @@ def _move_text(low: dict[str, Any] | None, high: dict[str, Any] | None) -> str |
     return low["price_text"] + "–" + high["price_text"]
 
 
-def _inside_move(strike: float, low: float | None, high: float | None) -> bool:
-    """Whether this strike sits between the book's one-day move. Display only."""
-    if not isinstance(low, (int, float)) or not isinstance(high, (int, float)):
-        return False
-    return float(low) <= float(strike) <= float(high)
-
-
 def _ranked_matrix(snap: TerrainSnapshot, chosen: str, dte: float) -> dict[str, Any]:
     """Return the ranking of one expiry of a priced chain: the one the matrix request shows.
 
@@ -4032,7 +4009,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     if em_up is not None:
         high = em_up["price"]
     for row in body["rows"]:
-        row["inside"] = _inside_move(row["strike"], low, high)
+        row["inside"] = within(low, high, row["strike"])  # inside the one-day move
     body.update(
         {
             "ticker": tk,

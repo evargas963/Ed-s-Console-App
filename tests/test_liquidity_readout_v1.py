@@ -503,20 +503,18 @@ def test_crossed_withholds_the_sentence_and_locked_keeps_it():
             for v in got["views"].values():
                 assert v["pct"] is not None and v["bid_total"] is not None
                 if state == "CROSSED":
-                    assert (
-                        v["sentence"]
-                        == "Book crossed — bid and ask overlap, no balancing sentence."
-                    )
+                    assert v["sentence"] == "Book crossed — the best bid is above the best offer."
                 else:
                     diff = abs(v["bid_total"] - v["ask_total"])
+                    more = (
+                        "bid than offered"
+                        if v["bid_total"] > v["ask_total"]
+                        else ("offered than bid")
+                    )
                     assert v["sentence"] == (
-                        "Balanced — no shares needed to balance."
+                        "Equal shares bid and offered."
                         if diff == 0
-                        else f"Nearly balanced — {diff:,.0f} shares would even the book."
-                        if v["zone"] == "BALANCED"
-                        else "To balance, market makers"
-                        f" {'sell' if v['bid_total'] > v['ask_total'] else 'buy'}"
-                        f" {diff:,.0f} shares."
+                        else f"{diff:,.0f} more shares {more}."
                     )
         assert card["venues"]["NASDAQ_BOOK"]["touch_flag"] is None
 
@@ -641,19 +639,13 @@ def test_the_sentence_four_cases_from_the_flat_shares():
     NASDAQ_BOOK's then (100 bid, 70 ask) and the composite's top five then (780 bid, 2,110 ask).
     """
     rows, pair = _replayed()[1], _pair_readout()
-    assert _steady(rows[16][1], "NYSE_BOOK", "1")["sentence"] == (
-        "Balanced — no shares needed to balance."
-    )
+    assert _steady(rows[16][1], "NYSE_BOOK", "1")["sentence"] == "Equal shares bid and offered."
     assert _steady(rows[2][1], "NYSE_BOOK", "weighted")["sentence"] == (
-        "Nearly balanced — 240 shares would even the book."
+        "240 more shares offered than bid."
     )
-    assert _steady(pair, "NYSE_BOOK", "1")["sentence"] == "To balance, market makers buy 40 shares."
-    assert _steady(pair, e.COMPOSITE, "5")["sentence"] == (
-        "To balance, market makers buy 1,330 shares."
-    )
-    assert _steady(pair, "NASDAQ_BOOK", "1")["sentence"] == (
-        "To balance, market makers sell 30 shares."
-    )
+    assert _steady(pair, "NYSE_BOOK", "1")["sentence"] == "40 more shares offered than bid."
+    assert _steady(pair, e.COMPOSITE, "5")["sentence"] == "1,330 more shares offered than bid."
+    assert _steady(pair, "NASDAQ_BOOK", "1")["sentence"] == "30 more shares bid than offered."
     assert _steady(_NO_BOOK, "NYSE_BOOK", "1")["sentence"] is None
 
 
@@ -838,13 +830,13 @@ def test_a_flip_is_a_change_of_side(runs, flips):
 @pytest.mark.parametrize(
     ("runs", "lean"),
     [
-        ((("bid", 10),), "BUYERS"),
-        ((("offer", 10),), "SELLERS"),
+        ((("bid", 10),), "BID_HEAVY"),
+        ((("offer", 10),), "OFFER_HEAVY"),
         # a window touching zero is gold
         ((("bid", 10), ("bal", 10)), "MIXED"),
         ((("bid", 10), ("offer", 10)), "MIXED"),
         # an unknown value is not drawn
-        ((("none", 5), ("bid", 10)), "BUYERS"),
+        ((("none", 5), ("bid", 10)), "BID_HEAVY"),
         ((("none", 5),), None),
     ],
 )

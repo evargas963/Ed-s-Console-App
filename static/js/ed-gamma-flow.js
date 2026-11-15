@@ -7,11 +7,11 @@
      d.top_of_book / d.mark / d.microprice / d.spread_pts / d.depth / d.ages — book microstructure,
        classified by d.classification (engine keys, e.g. "top_of_book.bid", "mark", "depth.*.imbalance");
      d.flow.{tape_pressure_30s,tape_pressure_2m,tape_pressure_5m,cum_delta_proxy,cum_delta_slope,
-       top_book_pressure} — classified by d.flow.classification; d.flow.native_aggressor_available;
+       top_book_pressure} — classified by d.flow.classification; d.flow.estimate_note, what the
+       estimated flow is, on hover;
      d.streaming_plane — producer binding / feed health (no classification concept).
    Every NATIVE/DERIVED/PROXY tag is the backend's own string, verbatim; a served value the backend
-   did not classify is tagged UNKNOWN. Nothing is classified, inferred, or defaulted here.
-   native_aggressor_available=false => no signed buys/sells are ever shown. */
+   did not classify is tagged UNKNOWN. Nothing is classified, inferred, or defaulted here. */
 (function () {
   "use strict";
 
@@ -77,12 +77,6 @@
     return { label: s, cls: "stale" };
   }
 
-  // The backend's classification string for one canonical key, verbatim — or null when the
-  // backend served no classification for it. Never defaulted, never inferred from the key.
-  function bool3(v) {
-    return v === true ? "true" : v === false ? "false" : "-";
-  }
-
   function render(h, desired, d) {
     // each always served: streaming_plane (server.options_microstructure), the book
     // (engine.compute_book_microstructure) and the ONE flow block (live_payload.flow_block)
@@ -109,7 +103,7 @@
     ];
     var rowsBook = [
       ["Mark", num(d.mark), "mark", bk("mark")],
-      ["Microprice", num(d.microprice), "microprice", bk("microprice")],
+      ["Weighted mid", num(d.microprice), "microprice", bk("microprice")],
       ["Spread (pts)", num(d.spread_pts), "spread_pts", bk("spread_pts")],
       [
         "Depth 1 · imbalance",
@@ -196,14 +190,14 @@
       '<div class="fl-grid">' +
       section("Top of book" + (d.top_outage ? " · " + d.top_feed_label : ""), rowsTob, "") +
       section("Book microstructure", rowsBook, dim) +
-      section("Flow observations", rowsFlow, dim) +
-      section("Freshness / health", fresh, "") +
+      // what the estimated flow is, the served note, on hover
+      '<div class="fl-est"' +
+      (flow.estimate_note ? ' title="' + esc(flow.estimate_note) + '"' : "") +
+      ">" +
+      section("Flow observations (estimated)", rowsFlow, dim) +
       "</div>" +
-      '<div class="fl-foot">signed aggressor classification NOT PROVEN — native_aggressor_available=' +
-      bool3(flow.native_aggressor_available) +
-      "; tape_classification=" +
-      esc(orDash(flow.tape_classification)) +
-      "; no signed buys/sells, CVD, or bull/bear verdict is canonical.</div>";
+      section("Freshness / health", fresh, "") +
+      "</div>";
   }
 
   function header(desired, ss, putCall) {

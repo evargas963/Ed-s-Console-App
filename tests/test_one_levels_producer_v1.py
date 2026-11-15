@@ -150,7 +150,7 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation():
     _daemon()
     snap = _put_chain()
     c = _cached()
-    assert c.snap.per_strike is snap.per_strike and c.vanna_rows == server._vanna_rows(snap)
+    assert c.snap.per_strike is snap.per_strike and c.vanna_rows == snap.per_strike["vanna"]
     assert c.snap.gamma_flip == snap.gamma_flip and c.snap.call_wall == snap.call_wall
     full, _ = merge_exposure_books(snap.books.values())
     checked = 0

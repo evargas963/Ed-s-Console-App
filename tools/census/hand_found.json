@@ -123,47 +123,11 @@
     },
     {
       "category": "one value, several producers",
-      "item": "daily candle: Schwab daily, chart D roll-up, ATR's today candle"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "bar roll-up: terrain_atr.roll_up and server.aggregate_bars"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "68% value expansion: two copies, ties broken opposite ways"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "whole-book merge: terrain_engine and server"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "touch imbalance: book level 1 vs Level 1 sizes"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "nearest strike: 3 rules (lower on tie, lowest above, bisect)"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "ATM IV computed twice"
-    },
-    {
-      "category": "one value, several producers",
       "item": "prior close: stream field 12 and REST"
     },
     {
       "category": "one value, several producers",
       "item": "gross gamma (confluence) same as Abs gamma metric"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "distance to spot: 4 producers"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "pin: pin_candidate, absolute_gamma_strike, 0DTE Abs gamma"
     },
     {
       "category": "one value, several names",
