@@ -143,6 +143,8 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody .fl-est')).toContainText('Flow observations (estimated)');
     expect(FIXTURE.flow.estimate_note).toContain('tick test');
     await expect(page.locator('#flowBody .fl-est')).toHaveAttribute('title', FIXTURE.flow.estimate_note);
+    expect(FIXTURE.flow.estimate_note).toContain('Lee and Ready 1991');           // the method's source, named
+    await expect(page.locator('#flowBody .fl-foot')).toHaveCount(0);                // no raw flags under the panel
     expect(ctx.posts).toEqual([SELECTED]);
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.screenshot({ path: 'test-results/gamma-flow-1672x941.png', fullPage: false });
@@ -247,6 +249,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowV(page, 'flow.cum_delta_slope')).toHaveText(fmt(FIXTURE.flow.cum_delta_slope, 3));   // value still served
     await expect(rowTag(page, 'flow.tape_pressure_2m')).toHaveText(FIXTURE.flow.classification.tape_pressure_2m);   // untouched rows unchanged
     await expect(page.locator('#flowBody .fl-est')).not.toHaveAttribute('title', /tick test/);
+    await expect(page.locator('#flowBody .fl-est')).toContainText('Flow observations (estimated)');   // still named an estimate
   });
 
   test('a held contract whose feed is down reads OFFLINE and keeps the bid', async ({ page }) => {
