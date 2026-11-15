@@ -1,0 +1,157 @@
+"""How often each fixed level held: liquidity_value_engine.hold_counts and the liquidity rows.
+
+Osler (2000, Federal Reserve Bank of New York Economic Policy Review 6(2)): a touch is a 1-minute
+bar reaching the level from one side, once per approach; it held when the close 15 minutes later is
+still on that side; random levels counted the same way are the baseline.
+
+Real data: Schwab's /pricehistory answers for SPY and TSLA captured 2026-10-07 (10 days of 1-minute
+bars with extended hours, and daily candles;
+tests/fixtures/real_pricehistory_spy_tsla_2026_10_07.json), and Schwab's /markets answers
+(tests/conftest.py). The expected counts are worked out here from the raw candles, apart from the
+code under test.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import date, datetime, timedelta
+
+import pytest
+
+import server
+from liquidity_value_engine import HOLD_MIN_TOUCHES, bars_from_candles, hold_counts, wilson_interval
+from micro_structure import Candle
+from tests.feed_live_helper import price_history
+from time_et import ET, session, sessions
+
+#: after the 2026-10-06 close and before the 2026-10-07 open: every captured day but the 7th closed
+EVENING = datetime(2026, 10, 7, 8, 0, tzinfo=ET)
+
+
+def _answer(symbol: str, series: str) -> dict:
+    body = price_history(symbol, series)["body"]
+    return body if isinstance(body, dict) else json.loads(body)
+
+
+def _candles(symbol: str, series: str) -> list[Candle]:
+    return [
+        Candle(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+        for c in _answer(symbol, series)["candles"]
+    ]
+
+
+def _expected(symbol: str, level_of, minutes: int, after_open: int = 0) -> tuple[int, int]:
+    """(touches, holds) of a level per closed session, from the raw candles by the stated rule."""
+    raw = _answer(symbol, "1m")["candles"]
+    days: dict[date, list[dict]] = {}
+    for c in sorted(raw, key=lambda c: c["datetime"]):
+        dt = datetime.fromtimestamp(c["datetime"] / 1000, ET)
+        s = session(dt.date().isoformat())
+        if s is None or not s.regular:
+            continue
+        o, cl = s.regular[0][0], s.regular[-1][1]
+        if o <= dt < cl and cl <= EVENING:
+            days.setdefault(dt.date(), []).append({**c, "dt": dt})
+    touches = holds = 0
+    for d, rth in days.items():
+        level = level_of(d, rth)
+        if level is None:
+            continue
+        start = rth[0]["dt"] + timedelta(minutes=after_open)
+        close_at = {b["dt"]: b["close"] for b in rth}
+        armed = True
+        for prev, bar in zip(rth, rth[1:], strict=False):
+            if not bar["low"] <= level <= bar["high"]:
+                armed = True
+            elif bar["dt"] < start or not armed:
+                armed = False
+            elif prev["close"] != level:
+                armed = False
+                side = 1 if prev["close"] > level else -1
+                later = bar["dt"] + timedelta(minutes=minutes)
+                if later in close_at:
+                    touches += 1
+                    holds += (close_at[later] - level) * side > 0
+    return touches, holds
+
+
+def _prior_daily(symbol: str, d: date, field: str) -> float | None:
+    before = [
+        c
+        for c in _answer(symbol, "1d")["candles"]
+        if datetime.fromtimestamp(c["datetime"] / 1000, ET).date() < d
+    ]
+    return max(before, key=lambda c: c["datetime"])[field] if before else None
+
+
+def _first_15_high(_d: date, rth: list[dict]) -> float:
+    return max(b["high"] for b in rth if b["dt"] < rth[0]["dt"] + timedelta(minutes=15))
+
+
+@pytest.mark.parametrize("symbol", ["SPY", "TSLA"])
+@pytest.mark.parametrize("minutes", [15, 30])
+def test_each_level_touch_and_hold_is_counted_by_the_stated_rule(symbol, minutes):
+    got = hold_counts(
+        bars_from_candles(_candles(symbol, "1m")),
+        _candles(symbol, "1d"),
+        EVENING,
+        sessions=sessions(),
+    )
+    for lid, field in (("PDH", "high"), ("PDL", "low"), ("PDC", "close")):
+        want = _expected(symbol, lambda d, _r, f=field: _prior_daily(symbol, d, f), minutes)
+        assert (got[lid][minutes].touches, got[lid][minutes].holds) == want, lid
+    want = _expected(symbol, _first_15_high, minutes, after_open=15)
+    assert (got["ORB_HIGH"][minutes].touches, got["ORB_HIGH"][minutes].holds) == want
+    for lid, by in got.items():
+        c = by[minutes]
+        assert 0 <= c.holds <= c.touches and 0 <= c.baseline_holds <= c.baseline_touches, lid
+
+
+def test_a_session_still_open_is_not_counted():
+    """At 12:00 ET on 2026-10-07 that day's session is open: the counts are the evening's."""
+    bars, daily = bars_from_candles(_candles("SPY", "1m")), _candles("SPY", "1d")
+    noon = hold_counts(bars, daily, datetime(2026, 10, 7, 12, 0, tzinfo=ET), sessions=sessions())
+    assert noon == hold_counts(bars, daily, EVENING, sessions=sessions())
+
+
+def test_ten_days_are_too_few_touches_to_show_a_rate():
+    """Schwab's 10 days of minute bars give fewer than HOLD_MIN_TOUCHES on every level: '-'."""
+    got = hold_counts(
+        bars_from_candles(_candles("SPY", "1m")),
+        _candles("SPY", "1d"),
+        EVENING,
+        sessions=sessions(),
+    )
+    assert all(by[15].touches < HOLD_MIN_TOUCHES for by in got.values())
+    pdh = got["PDH"][15]
+    assert server.hold_text(pdh) == f"- ({pdh.touches} touches)"
+
+
+def test_the_wilson_interval():
+    """Brown, Cai & DasGupta (2001): 0 of n has a lower bound of 0; the interval holds the rate."""
+    lo, hi = wilson_interval(0, 120)
+    assert lo == pytest.approx(0.0, abs=1e-12) and 0 < hi < 0.04
+    lo, hi = wilson_interval(72, 120)
+    assert lo < 72 / 120 < hi
+    assert (lo, hi) == pytest.approx((0.5106, 0.6832), abs=1e-4)
+
+
+def test_the_liquidity_panel_serves_each_level_types_rate_with_its_note():
+    """The console holds Schwab's 1-minute history and daily candles as the daemon pushes them."""
+    for series in ("1m", "1d"):
+        server._write_price_history(
+            {"symbol": "SPY", "series": series, "answer": _answer("SPY", series)}
+        )
+    rows = server.hold_rates("SPY", EVENING)
+    names = [r["level"] for r in rows]
+    assert names[0] == "Prior day high" and "Opening range high" in names
+    pdh = hold_counts(
+        bars_from_candles(server._bars_1m("SPY", server.BARS_KEPT)),
+        list(server._series[("SPY", "1d")]),
+        EVENING,
+        sessions=sessions(),
+    )["PDH"]
+    assert rows[0]["text"] == (
+        server.hold_text(pdh[15]) + " [30 min: " + server.hold_text(pdh[30]) + "]"
+    )
+    assert "Osler 2000" in server.HOLD_NOTE and "not a forecast" in server.HOLD_NOTE

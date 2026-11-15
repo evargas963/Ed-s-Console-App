@@ -109,6 +109,11 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.liqm-zones')).toContainText('Resistance 0.00');
   await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(AT_ZERO.zones.length);
+  // each level type's hold rate as served, and what it is on hover
+  const hold = page.locator('.liqm-hold');
+  await expect(hold).toHaveAttribute('title', AT_ZERO.hold_note);
+  await expect(hold.locator('.fl-row')).toHaveCount(AT_ZERO.hold_rates.length);
+  await expect(hold.locator('.fl-row').first()).toContainText(AT_ZERO.hold_rates[0].level + AT_ZERO.hold_rates[0].text);
   await page.addInitScript(() => { localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('#tdmAgree')).toContainText('VALUElower');
