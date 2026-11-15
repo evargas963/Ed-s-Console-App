@@ -86,28 +86,8 @@
       "item": "auction word (decision 25)"
     },
     {
-      "category": "one value, several producers",
-      "item": "net gamma at spot: book_net_gex vs gamma_at_price vs GSF interpolation"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "prior close: stream field 12 and REST"
-    },
-    {
-      "category": "one value, several producers",
-      "item": "gross gamma (confluence) same as Abs gamma metric"
-    },
-    {
       "category": "one value, several names",
       "item": "max_pain_dte equals front expiry_dte"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "key delta strike 5.0 on TSLA and AMD"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "LVP/HVP at chain edges (SPY 800, QQQ 800, AMD 600)"
     },
     {
       "category": "wrong on screen",
