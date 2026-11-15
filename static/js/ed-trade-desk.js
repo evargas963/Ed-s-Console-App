@@ -210,7 +210,6 @@
     // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
-      ["Posture", orDash(d.posture)],
       ["Confidence", orDash(d.confidence)],
       ["Call wall", num(d.call_wall)],
       ["Put wall", num(d.put_wall)],
@@ -241,11 +240,9 @@
   function contextSummary(terrain, snap, levelsD) {
     var lines = [];
     if (terrain) {
-      lines.push([
-        "Regime",
-        orDash(terrain.regime) + (terrain.posture ? " · " + terrain.posture : ""),
-      ]);
-      if (terrain.headline) lines.push(["Read", terrain.headline]);
+      lines.push(["Regime", orDash(terrain.regime)]);
+      // the served headline, its served sources on hover
+      if (terrain.headline) lines.push(["Read", terrain.headline, terrain.headline_source]);
     }
     var sl = snap && snap.spot_location,
       zones = sl && snap.zones; // served
@@ -323,7 +320,9 @@
           return (
             '<div class="td-ctx-row"><span class="lbl">' +
             esc(l[0]) +
-            '</span><span class="val">' +
+            '</span><span class="val"' +
+            (l[2] ? ' title="' + esc(l[2]) + '"' : "") + // a line's sources, on hover
+            ">" +
             esc(l[1]) +
             "</span></div>"
           );

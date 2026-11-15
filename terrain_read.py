@@ -4,12 +4,17 @@ Rules, never generative: identical inputs give identical output.
 
 The regime is the sign of dealer gamma at spot, which needs strikes near spot; the flip level is
 what needs a wide chain. So:
-  * confidence TRUSTED or LEVEL_APPROX: the regime and its posture are issued; the confidence is
-    served beside them and says when the flip level is approximate.
+  * confidence TRUSTED or LEVEL_APPROX: the regime is issued; the confidence is served beside it
+    and says when the flip level is approximate.
   * confidence NARROW or UNAVAILABLE, a missing spot, or dealer gamma at spot absent or exactly
-    zero: no regime (UNAVAILABLE) and the posture is to stand aside. The coverage floor is a
-    bound below which the read declines to speak, not proof the sign is right above it
-    (math_levels.GAMMA_FLIP_MIN_SPAN_PCT).
+    zero: no regime (UNAVAILABLE). The coverage floor is a bound below which the read declines
+    to speak, not proof the sign is right above it (math_levels.GAMMA_FLIP_MIN_SPAN_PCT).
+
+The headline says only what published evidence supports: the sign goes with the size of price
+swings, not with a trade direction; the sign is a model (it assumes dealers long calls and short
+puts), said once in the hover with the sources rather than on the headline (Ni, Pearson,
+Poteshman & White, RFS 2021; Baltussen, Da, Lammers & Martens, JFE 2021; Amaya, Garcia-Ares,
+Pearson & Vasquez 2025).
 """
 
 from __future__ import annotations
@@ -22,10 +27,6 @@ from numeric_contract import price_text
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
 REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
 REGIME_UNAVAILABLE = "UNAVAILABLE"
-
-POSTURE_FADE = "FADE_EDGES"
-POSTURE_FOLLOW = "FOLLOW_BREAKS"
-POSTURE_STAND_ASIDE = "STAND_ASIDE"
 
 #: where a level sits against a price (level_side)
 LEVEL_ABOVE, LEVEL_AT, LEVEL_BELOW = "ABOVE", "AT", "BELOW"
@@ -117,36 +118,51 @@ def flip_note(curve_agrees: bool | None) -> str | None:
 
 @dataclass(frozen=True)
 class TerrainRead:
-    """The regime, its posture, the flip's confidence and the headline."""
+    """The regime, the flip's confidence, the headline and its sources (shown on hover)."""
 
     regime: str
-    posture: str
     confidence: str
     headline: str
+    headline_source: str
 
 
 def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
     """Return the regime: the one rule for the sign of dealer gamma.
 
-    Positive dealer gamma is LONG_GAMMA_CHOP (dealers damp moves); negative is
-    SHORT_GAMMA_TREND (dealers amplify). None when the sign is absent or exactly zero.
+    Positive estimated dealer gamma is LONG_GAMMA_CHOP; negative is SHORT_GAMMA_TREND (the
+    codes' names are kept; what each means is the headline). None when the sign is absent or
+    exactly zero.
     """
     if signed_gamma is None or signed_gamma == 0:
         return None
     return REGIME_LONG_GAMMA if signed_gamma > 0 else REGIME_SHORT_GAMMA
 
 
-#: each regime's posture and headline
+#: the assumption every estimate rests on (the hover's first line)
+_ASSUMPTION = (
+    "Estimate assumes dealers long calls, short puts (SqueezeMetrics 2017), the convention "
+    "least reliable for single stocks (Garleanu, Pedersen & Poteshman 2009)."
+)
+#: each regime's headline (what the evidence supports, no trade instruction) and its sources,
+#: shown on hover
 _READS = {
     REGIME_LONG_GAMMA: (
-        POSTURE_FADE,
-        "Long gamma — chop regime. Fade the edges, do not chase breakouts.",
+        "Dealer gamma is positive: research links this to smaller price swings, "
+        "not to a trade direction.",
+        _ASSUMPTION + " Swings: Ni, Pearson, Poteshman & White, RFS 2021; Amaya, Garcia-Ares, "
+        "Pearson & Vasquez 2025.",
     ),
     REGIME_SHORT_GAMMA: (
-        POSTURE_FOLLOW,
-        "Short gamma — trend regime. Follow breaks, do not fade.",
+        "Dealer gamma is negative: research links this to larger price swings and "
+        "some late-day continuation, not to a trade direction.",
+        _ASSUMPTION + " Swings: Ni, Pearson, Poteshman & White, RFS 2021; late-day "
+        "continuation: Baltussen, Da, Lammers & Martens, JFE 2021.",
     ),
-    REGIME_UNAVAILABLE: (POSTURE_STAND_ASIDE, "Terrain unavailable — stand aside."),
+    REGIME_UNAVAILABLE: (
+        "No estimate: the chain does not cover enough strikes around the price, or there is "
+        "no price.",
+        "",
+    ),
 }
 
 
@@ -168,7 +184,7 @@ def build_terrain_read(
     regime = regime_from_signed_gamma(gamma_at_spot) if speaks else None
     if regime is None:
         regime = REGIME_UNAVAILABLE
-    posture, headline = _READS[regime]
+    headline, source = _READS[regime]
     return TerrainRead(
-        regime=regime, posture=posture, confidence=flip_confidence, headline=headline
+        regime=regime, confidence=flip_confidence, headline=headline, headline_source=source
     )
