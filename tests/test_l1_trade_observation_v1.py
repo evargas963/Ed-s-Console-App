@@ -67,15 +67,32 @@ def test_out_of_order_vendor_timestamps_preserve_receive_order():
 
 
 def test_tick_rule_bullish_bearish_sign_mutation():
-    assert l1.tick_rule_signed_size(500.0, 500.1, 10) == 10.0
-    assert l1.tick_rule_signed_size(500.1, 500.0, 10) == -10.0
-    assert l1.tick_rule_signed_size(500.0, 500.0, 10) == 0.0
-    flipped = l1.tick_rule_signed_size(500.0, 500.1, 10)
-    assert flipped != l1.tick_rule_signed_size(500.1, 500.0, 10)
+    """Up-tick +1, down-tick -1; a zero tick takes the last change's sign (Lee and Ready 1991)."""
+    assert l1.tick_rule_sign(500.0, 500.1, None) == 1
+    assert l1.tick_rule_sign(500.1, 500.0, None) == -1
+    assert l1.tick_rule_sign(500.0, 500.0, 1) == 1 and l1.tick_rule_sign(500.0, 500.0, -1) == -1
+    assert l1.tick_rule_sign(500.0, 500.0, None) is None  # no change seen yet
+    flipped = l1.tick_rule_sign(500.0, 500.1, None)
+    assert flipped != l1.tick_rule_sign(500.1, 500.0, None)
+
+
+def test_a_zero_tick_is_signed_by_the_last_price_change():
+    """500.00, 500.10 (+4), 500.10 (+6, zero up-tick), 500.00 (-2), 500.00 (-3): 4 + 6 - 2 - 3."""
+    content = _tape(
+        "L1Z",
+        (500.0, 10, 1000),
+        (500.1, 4, 2000),
+        (500.1, 6, 3000),
+        (500.0, 2, 4000),
+        (500.0, 3, 5000),
+    )
+    prints = l1.canonical_tape_prints(content)
+    assert [c for _t, c in l1.iter_signed_cum_points(prints)] == [0.0, 4.0, 10.0, 8.0, 5.0]
+    assert ofe._compute_tape_pressure({"content": content}, window_sec=60.0, now=5.0) == 5 / 25
 
 
 def test_missing_size_remains_unavailable():
-    assert l1.tick_rule_signed_size(500.0, 500.1, None) is None
+    assert l1.tick_rule_sign(500.0, None, 1) is None
     assert l1.extract_vendor_print({"LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1}) is None
     assert l1.compute_cum_delta_proxy([{"price": 1.0, "size": None, "time_millis": 1}]) is None
 

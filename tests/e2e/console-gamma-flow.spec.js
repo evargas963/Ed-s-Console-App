@@ -139,10 +139,10 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody .fl-tag.native').first()).toBeVisible();  // NATIVE/DERIVED/PROXY labels
     await expect(page.locator('#flowBody .fl-tag.derived').first()).toBeVisible();
     await expect(page.locator('#flowBody .fl-tag.proxy').first()).toBeVisible();
-    await expect(page.locator('#flowBody .fl-foot')).toContainText('NOT PROVEN');  // no signed buys/sells
-    expect(FIXTURE.flow.native_aggressor_available).toBe(false);                  // the backend's own truth...
-    await expect(page.locator('#flowBody .fl-foot')).toContainText('native_aggressor_available=false');   // ...rendered verbatim
-    await expect(page.locator('#flowBody .fl-foot')).toContainText('tape_classification=' + FIXTURE.flow.tape_classification);
+    // the flow is an estimate: the section says so, and the served note says how, on hover
+    await expect(page.locator('#flowBody .fl-est')).toContainText('Flow observations (estimated)');
+    expect(FIXTURE.flow.estimate_note).toContain('tick test');
+    await expect(page.locator('#flowBody .fl-est')).toHaveAttribute('title', FIXTURE.flow.estimate_note);
     expect(ctx.posts).toEqual([SELECTED]);
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.screenshot({ path: 'test-results/gamma-flow-1672x941.png', fullPage: false });
@@ -150,7 +150,7 @@ test.describe('D — Gamma Flow subview', () => {
 
   test('NEGATIVE CONTROL: nested-only payload (no flattened flow fields) renders the real flow values', async ({ page }) => {
     // The fixture is the real route response: flow fields exist ONLY under `flow`.
-    for (const k of ['tape_pressure_30s', 'tape_pressure_2m', 'tape_pressure_5m', 'cum_delta_proxy', 'cum_delta_slope', 'top_book_pressure', 'native_aggressor_available']) {
+    for (const k of ['tape_pressure_30s', 'tape_pressure_2m', 'tape_pressure_5m', 'cum_delta_proxy', 'cum_delta_slope', 'top_book_pressure', 'estimate_note']) {
       expect(FIXTURE[k]).toBeUndefined();
       expect(FIXTURE.flow[k]).not.toBeUndefined();
     }
@@ -183,7 +183,7 @@ test.describe('D — Gamma Flow subview', () => {
     ctx.mutate = (d) => {
       d.tape_pressure_30s = 0.999; d.tape_pressure_2m = 0.999; d.tape_pressure_5m = 0.999;
       d.cum_delta_proxy = -9999; d.cum_delta_slope = -9.999; d.top_book_pressure = 0.888;
-      d.native_aggressor_available = true;          // a flattened decoy claiming native aggressor
+      d.estimate_note = 'decoy note';               // a flattened decoy note
       d.streaming_plane.book_age_sec = 1;           // an age at the old (wrong) location
     };
     await setup(page, ctx);
@@ -196,7 +196,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody')).not.toContainText('0.999');
     await expect(page.locator('#flowBody')).not.toContainText('0.888');
     await expect(page.locator('#flowBody')).not.toContainText('-9999');
-    await expect(page.locator('#flowBody .fl-foot')).toContainText('native_aggressor_available=false');
+    await expect(page.locator('#flowBody .fl-est')).toHaveAttribute('title', FIXTURE.flow.estimate_note);
   });
 
   test('every classification tag equals the backend classification EXACTLY (flow + book)', async ({ page }) => {
@@ -233,7 +233,7 @@ test.describe('D — Gamma Flow subview', () => {
       d.classification.mark = 'PROXY';                           // was NATIVE
       d.classification['top_of_book.bid'] = 'DERIVED-HEURISTIC (test)';   // an arbitrary backend string, verbatim
       delete d.flow.classification.cum_delta_slope;              // served value, no classification
-      delete d.flow.native_aggressor_available;                  // absent => not fabricated as false
+      delete d.flow.estimate_note;                               // absent => no note is made up
     };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
@@ -246,8 +246,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(rowTag(page, 'flow.cum_delta_slope')).toHaveClass(/unknown/);
     await expect(rowV(page, 'flow.cum_delta_slope')).toHaveText(fmt(FIXTURE.flow.cum_delta_slope, 3));   // value still served
     await expect(rowTag(page, 'flow.tape_pressure_2m')).toHaveText(FIXTURE.flow.classification.tape_pressure_2m);   // untouched rows unchanged
-    await expect(page.locator('#flowBody .fl-foot')).toContainText('native_aggressor_available=-');
-    await expect(page.locator('#flowBody .fl-foot')).not.toContainText('native_aggressor_available=false');
+    await expect(page.locator('#flowBody .fl-est')).not.toHaveAttribute('title', /tick test/);
   });
 
   test('a held contract whose feed is down reads OFFLINE and keeps the bid', async ({ page }) => {

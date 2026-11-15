@@ -3962,13 +3962,6 @@ def _move_text(low: dict[str, Any] | None, high: dict[str, Any] | None) -> str |
     return low["price_text"] + "–" + high["price_text"]
 
 
-def _inside_move(strike: float, low: float | None, high: float | None) -> bool:
-    """Whether this strike sits between the book's one-day move. Display only."""
-    if not isinstance(low, (int, float)) or not isinstance(high, (int, float)):
-        return False
-    return float(low) <= float(strike) <= float(high)
-
-
 def _ranked_matrix(snap: TerrainSnapshot, chosen: str, dte: float) -> dict[str, Any]:
     """Return the ranking of one expiry of a priced chain: the one the matrix request shows.
 
@@ -4032,7 +4025,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     if em_up is not None:
         high = em_up["price"]
     for row in body["rows"]:
-        row["inside"] = _inside_move(row["strike"], low, high)
+        row["inside"] = within(low, high, row["strike"])  # inside the one-day move
     body.update(
         {
             "ticker": tk,

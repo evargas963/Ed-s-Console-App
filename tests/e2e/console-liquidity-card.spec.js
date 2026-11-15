@@ -218,7 +218,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('.liq-body')).toContainText('BOOK CROSSED');
     await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
     await expect(card(page).locator('.liq-body')).toContainText(c.views.weighted.ask_text);
-    await expect(card(page).locator('.liq-sent')).toHaveText('Book crossed — bid and ask overlap, no balancing sentence.');
+    await expect(card(page).locator('.liq-sent')).toHaveText('Book crossed — the best bid is above the best offer.');
     expect(errs).toEqual([]);
   });
 

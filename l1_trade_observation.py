@@ -22,10 +22,17 @@ from typing import Any
 from numeric_contract import schwab_count, schwab_number
 
 # Source classification — mechanical, not aspirational.
-NATIVE_AGGRESSOR_AVAILABLE = False
 TAPE_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
 TAPE_COMPLETENESS = "INCOMPLETE_OBSERVATION"
 
+#: what the tape's pressure and cumulative delta are, shown on hover beside them
+TAPE_NOTE = (
+    "Estimated, not Schwab's: Schwab sends no buyer or seller side. Each last trade is signed by "
+    "the tick test: above the trade before it counts as buying, below as selling, at the same "
+    "price the last change's side (Lee and Ready 1991). The test is right about 78% of the time "
+    "on Nasdaq (Ellis, Michaely and O'Hara 2000) and less on unchanged prices; Schwab's stream "
+    "is not every trade. Pressure: signed size over all size in the window, -1 to +1."
+)
 VENDOR_TRADE_TIME = "TRADE_TIME_MILLIS"
 VENDOR_LAST_PRICE = "LAST_PRICE"
 VENDOR_LAST_SIZE = "LAST_SIZE"
@@ -94,40 +101,41 @@ def canonical_tape_prints(content_items: Sequence[Any]) -> list[dict[str, Any]]:
     return [item for item in content_items if isinstance(item, dict)]
 
 
-def tick_rule_signed_size(
-    prev_price: float | None,
-    price: float | None,
-    size: float | None,
-) -> float | None:
-    """Return the PROXY tick-rule signed size.
+def tick_rule_sign(prev_price: float | None, price: float | None, last: int | None) -> int | None:
+    """Return the tick test's sign of a print: +1 above the price before, -1 below it.
 
-    Not native aggressor. None without a size or a price to compare (Schwab sent none); a size
-    of 0 signs 0.
+    At an unchanged price (a zero tick) the sign of the last price change, `last` (Lee and Ready
+    1991, Journal of Finance 46(2)); None while no change has been seen, or without a price to
+    compare (Schwab sent none). An estimate, not Schwab's: no aggressor field exists.
     """
-    if size is None or price is None or prev_price is None:
+    if price is None or prev_price is None:
         return None
     if price > prev_price:
-        return float(size)
+        return 1
     if price < prev_price:
-        return -float(size)
-    return 0.0
+        return -1
+    return last
 
 
 def _signed_walk(prints: list[dict[str, Any]], cutoff_ms: float | None):
-    """Walk the prints by the tick rule; THE one tick-rule walk.
+    """Walk the prints by the tick test (tick_rule_sign); THE one tick-test walk.
 
     Each print with a size, traded at or after `cutoff_ms` (every one when None; a print with
     no trade time cannot be placed after it), as (x, size, signed size or None). x is the
-    trade time in seconds, else the receive index (not a trade id). A
-    print before the window still sets the price the first one in it is signed against.
+    trade time in seconds, else the receive index (not a trade id). A print before the window
+    still sets the price and the last change the first one in it is signed by.
     """
     prev_price: float | None = None
+    last: int | None = None
     for i, p in enumerate(prints):
         t, price, size = p.get("time_millis"), p.get("price"), p.get("size")
+        sign = tick_rule_sign(prev_price, price, last)
         in_window = cutoff_ms is None or (t is not None and t >= cutoff_ms)
         if in_window and size is not None:
             x = float(i) if t is None else t / 1000.0
-            yield x, size, tick_rule_signed_size(prev_price, price, size)
+            yield x, size, None if sign is None else sign * float(size)
+        if sign is not None:
+            last = sign
         if price is not None:
             prev_price = price
 

@@ -12,7 +12,7 @@ from typing import Any
 import live_market_plane as lmp
 from app.options.order_flow.engine import OrderFlowEngine
 from app.options.order_flow.state import get_content_for_symbol, option_top
-from l1_trade_observation import NATIVE_AGGRESSOR_AVAILABLE, TAPE_CLASSIFICATION
+from l1_trade_observation import TAPE_NOTE
 
 _FLOW_KEYS = (
     "tape_pressure_30s",
@@ -39,8 +39,7 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
         "cum_delta_slope": "PROXY",
         "top_book_pressure": "DERIVED",
     }
-    flow["tape_classification"] = TAPE_CLASSIFICATION
-    flow["native_aggressor_available"] = NATIVE_AGGRESSOR_AVAILABLE
+    flow["estimate_note"] = TAPE_NOTE
     return flow
 
 

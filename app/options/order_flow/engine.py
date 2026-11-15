@@ -555,7 +555,7 @@ READOUT_DETAIL = {
     " NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
 }
 _DIVERGENCE = "Touch and deeper book disagree"
-_CROSSED_SENTENCE = "Book crossed — bid and ask overlap, no balancing sentence."
+_CROSSED_SENTENCE = "Book crossed — the best bid is above the best offer."
 _TOUCH_FLAG: dict[str | None, str] = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 
 Levels = list[tuple[float, float]]
@@ -777,27 +777,27 @@ def _lean(values: list[float | None]) -> str | None:
     if not known:
         return None
     return (
-        "BUYERS"
+        "BID_HEAVY"
         if all(v > 0 for v in known)
-        else "SELLERS"
+        else "OFFER_HEAVY"
         if all(v < 0 for v in known)
         else "MIXED"
     )
 
 
-def _sentence(zone: str | None, bid: float | None, ask: float | None) -> str | None:
-    """Return arithmetic about the displayed book.
+def _sentence(bid: float | None, ask: float | None) -> str | None:
+    """Return arithmetic about the displayed book: how many more shares one side shows.
 
-    The flat shares one side would need to match the other.
+    Displayed shares only, not who will trade: displayed orders are mostly cancelled and partly
+    hidden or off the book.
     """
-    if zone is None or bid is None or ask is None:
+    if bid is None or ask is None:
         return None
     diff = abs(bid - ask)
     if diff == 0:
-        return "Balanced — no shares needed to balance."
-    if zone == "BALANCED":
-        return f"Nearly balanced — {shares_text(diff)} shares would even the book."
-    return f"To balance, market makers {'sell' if bid > ask else 'buy'} {shares_text(diff)} shares."
+        return "Equal shares bid and offered."
+    more, fewer = ("bid", "offered") if bid > ask else ("offered", "bid")
+    return f"{shares_text(diff)} more shares {more} than {fewer}."
 
 
 def _opposite(a: float | None, b: float | None) -> bool:
@@ -850,7 +850,7 @@ def readout_card(
                 else f"HELD {'≥' if since == known_from else ''}{held}s",
                 "sentence": _CROSSED_SENTENCE
                 if r.get("touch_state") == "CROSSED"
-                else _sentence(zone, bid, ask),
+                else _sentence(bid, ask),
                 "divergence": _DIVERGENCE
                 if view == "weighted" and _opposite(sm[-1], snap.get("imbalance"))
                 else None,

@@ -175,7 +175,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -303,7 +303,7 @@
         ]
        },
        "5m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -373,7 +373,7 @@
       },
       "pct": 60.0,
       "pct_text": "+60%",
-      "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
+      "sentence": "Book crossed \u2014 the best bid is above the best offer.",
       "side_word": "BID HEAVY",
       "span_ask_text": "0.00",
       "span_bid_text": "0.00",
@@ -395,7 +395,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -523,7 +523,7 @@
         ]
        },
        "5m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -593,7 +593,7 @@
       },
       "pct": 33.33333333333333,
       "pct_text": "+33%",
-      "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
+      "sentence": "Book crossed \u2014 the best bid is above the best offer.",
       "side_word": "BID HEAVY",
       "span_ask_text": "0.04",
       "span_bid_text": "0.03",
@@ -615,7 +615,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -743,7 +743,7 @@
         ]
        },
        "5m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -813,7 +813,7 @@
       },
       "pct": 35.84905660377358,
       "pct_text": "+36%",
-      "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
+      "sentence": "Book crossed \u2014 the best bid is above the best offer.",
       "side_word": "BID HEAVY",
       "span_ask_text": "0.08",
       "span_bid_text": "0.05",
@@ -835,7 +835,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -963,7 +963,7 @@
         ]
        },
        "5m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -1033,7 +1033,7 @@
       },
       "pct": 42.11152564043665,
       "pct_text": "+42%",
-      "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
+      "sentence": "Book crossed \u2014 the best bid is above the best offer.",
       "side_word": "BID HEAVY",
       "span_ask_text": "0.08",
       "span_bid_text": "0.05",
@@ -1077,7 +1077,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "SELLERS",
+        "lean": "OFFER_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -1205,7 +1205,7 @@
         ]
        },
        "5m": {
-        "lean": "SELLERS",
+        "lean": "OFFER_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -1275,7 +1275,7 @@
       },
       "pct": -28.57142857142857,
       "pct_text": "-29%",
-      "sentence": "To balance, market makers buy 40 shares.",
+      "sentence": "40 more shares offered than bid.",
       "side_word": "OFFER HEAVY",
       "span_ask_text": "0.00",
       "span_bid_text": "0.00",
@@ -1297,7 +1297,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "SELLERS",
+        "lean": "OFFER_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -1425,7 +1425,7 @@
         ]
        },
        "5m": {
-        "lean": "SELLERS",
+        "lean": "OFFER_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -1495,7 +1495,7 @@
       },
       "pct": -13.333333333333334,
       "pct_text": "-13%",
-      "sentence": "To balance, market makers buy 40 shares.",
+      "sentence": "40 more shares offered than bid.",
       "side_word": "OFFER HEAVY",
       "span_ask_text": "6.66",
       "span_bid_text": "6.93",
@@ -1517,7 +1517,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "SELLERS",
+        "lean": "OFFER_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -1645,7 +1645,7 @@
         ]
        },
        "5m": {
-        "lean": "SELLERS",
+        "lean": "OFFER_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -1715,7 +1715,7 @@
       },
       "pct": -19.230769230769234,
       "pct_text": "-19%",
-      "sentence": "To balance, market makers buy 100 shares.",
+      "sentence": "100 more shares offered than bid.",
       "side_word": "OFFER HEAVY",
       "span_ask_text": "15.10",
       "span_bid_text": "13.14",
@@ -1737,7 +1737,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "SELLERS",
+        "lean": "OFFER_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -1865,7 +1865,7 @@
         ]
        },
        "5m": {
-        "lean": "SELLERS",
+        "lean": "OFFER_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -1935,7 +1935,7 @@
       },
       "pct": -20.53236305201623,
       "pct_text": "-21%",
-      "sentence": "To balance, market makers buy 100 shares.",
+      "sentence": "100 more shares offered than bid.",
       "side_word": "OFFER HEAVY",
       "span_ask_text": "15.10",
       "span_bid_text": "13.14",
@@ -1979,7 +1979,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -2107,7 +2107,7 @@
         ]
        },
        "5m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -2177,7 +2177,7 @@
       },
       "pct": 60.0,
       "pct_text": "+60%",
-      "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
+      "sentence": "Book crossed \u2014 the best bid is above the best offer.",
       "side_word": "BID HEAVY",
       "span_ask_text": "0.00",
       "span_bid_text": "0.00",
@@ -2199,7 +2199,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -2327,7 +2327,7 @@
         ]
        },
        "5m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -2397,7 +2397,7 @@
       },
       "pct": 33.33333333333333,
       "pct_text": "+33%",
-      "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
+      "sentence": "Book crossed \u2014 the best bid is above the best offer.",
       "side_word": "BID HEAVY",
       "span_ask_text": "0.04",
       "span_bid_text": "0.03",
@@ -2419,7 +2419,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -2547,7 +2547,7 @@
         ]
        },
        "5m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -2617,7 +2617,7 @@
       },
       "pct": 35.84905660377358,
       "pct_text": "+36%",
-      "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
+      "sentence": "Book crossed \u2014 the best bid is above the best offer.",
       "side_word": "BID HEAVY",
       "span_ask_text": "0.08",
       "span_bid_text": "0.05",
@@ -2639,7 +2639,7 @@
       "held_text": "HELD \u22650s",
       "lean": {
        "2m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 120,
         "step": 1,
         "values": [
@@ -2767,7 +2767,7 @@
         ]
        },
        "5m": {
-        "lean": "BUYERS",
+        "lean": "BID_HEAVY",
         "seconds": 300,
         "step": 5,
         "values": [
@@ -2837,7 +2837,7 @@
       },
       "pct": 42.11152564043665,
       "pct_text": "+42%",
-      "sentence": "Book crossed \u2014 bid and ask overlap, no balancing sentence.",
+      "sentence": "Book crossed \u2014 the best bid is above the best offer.",
       "side_word": "BID HEAVY",
       "span_ask_text": "0.08",
       "span_bid_text": "0.05",
