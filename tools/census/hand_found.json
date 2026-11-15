@@ -155,22 +155,6 @@
       "item": "AGENTS.md:47 and CLAUDE.md:20 'no change reaches production without Ed's approval' vs AGENTS.md:290 merges and deploys without waiting on the operator"
     },
     {
-      "category": "contradiction: doc vs doc",
-      "item": "DATA_FLOW.md:807 Calculators on one pricing thread (a pool measured no better) vs DATA_FLOW.md:852-854 and SHAPE step 3, a worker pool"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:284 P2-2 levels producer in its own process vs DATA_FLOW.md:852-853 decision 2 superseded by one program"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:286-287 P2-5/P2-6 folders daemon/, producer/, console/ vs ARCHITECTURE.md:10-26 feed/, state/, calc/, push/, recorder/, shared/"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "DATA_FLOW.md:497-500 no streamed tick replaces the chain's Greeks vs DATA_FLOW.md:559-566 a streamed contract's Greeks are the stream's newest"
-    },
-    {
       "category": "contradiction: rule vs code",
       "item": "AGENTS.md:3,121 no bound of ours vs time_et.py:349,400 a 10-minute time-to-expiry floor (DATA_FLOW.md:893 adopts it, ACTIVE_PROGRAM.md:145 M-37 calls it a defect)"
     },
@@ -193,14 +177,6 @@
     {
       "category": "contradiction: rule vs doc",
       "item": "AGENTS.md:54,128 no fake data, no stand-ins vs ACTIVE_PROGRAM.md:95 STAND-INS records operator-allowed made-up values"
-    },
-    {
-      "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:212-213 every change carries a test forcing each failure vs pull_request_template.md:13-14 'or why the change needs none'"
-    },
-    {
-      "category": "contradiction: doc vs code",
-      "item": "ACTIVE_PROGRAM.md:243-244 code_identical read by check_fails_before vs ACTIVE_PROGRAM.md:260 check_fails_before removed 2026-11-05"
     },
     {
       "category": "contradiction: doc vs code",
