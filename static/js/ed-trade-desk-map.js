@@ -843,8 +843,10 @@
         " " +
         (14 - (v / 100) * 14).toFixed(1);
     });
-    var col =
-      { BID_HEAVY: "#3fb950", OFFER_HEAVY: "#f85149", MIXED: "#c9a227" }[w.lean] || "#8fa1c4";
+    // each served lean's colour; null (no value known in the window) is the neutral one
+    var col = { BID_HEAVY: "#3fb950", OFFER_HEAVY: "#f85149", MIXED: "#c9a227", null: "#8fa1c4" }[
+      w.lean
+    ];
     return (
       '<svg viewBox="0 0 96 28" preserveAspectRatio="none"><line x1="0" y1="14" x2="96" y2="14" stroke="#2c3d63"/>' +
       (d
