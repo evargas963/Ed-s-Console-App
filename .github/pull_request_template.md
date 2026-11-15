@@ -11,7 +11,7 @@ Deleted:
 <!-- what this replaces, removed in this PR -->
 
 End-to-end test:
-<!-- the test that failed on the old code, or why the change needs none -->
+<!-- the test that failed on the old code (AGENTS.md "Before writing code": every change carries one) -->
 
 ## Failure modes
 <!-- each way it can fail in real use (block, stall, crash, restart halfway, late, twice, never,
