@@ -615,7 +615,7 @@ def test_d5_a_tickers_expiries_are_asked_four_together_and_taken_in_expiry_order
     four (tests/test_instant_ui_blockers_a_v1.py).
     """
     swept = _Swept(tmp_path, "2026-10-01 10:00", ["TSLA"])
-    swept.schwab.more_expiries = {"TSLA": ["2026-10-16", "2026-10-23", "2026-10-30"]}
+    swept.schwab.more_expiries = ["2026-10-16", "2026-10-23", "2026-10-30"]
     swept.schwab.chains_together = threading.Barrier(sc.REQUESTS_AT_ONCE)
     failed: list = []
     publish = swept.sweep.publish

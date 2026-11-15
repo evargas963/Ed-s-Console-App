@@ -150,9 +150,9 @@ class LocalSchwab:
     whose next chain request is answered 429; `withheld`: symbols the
     quotes answer leaves out; `quotes_together`: while set, a quotes request is answered only
     once that many are waiting together (a barrier), and 503 after 5 seconds alone;
-    `chains_together`: the same for a chain request; `more_expiries`: ticker -> expiry dates its
-    expiration chain lists beside its captured one (STAND-IN: each answered with the captured
-    contracts); `invalid`:
+    `chains_together`: the same for a chain request; `more_expiries`: expiry dates every
+    expiration chain lists beside the ticker's captured one (STAND-IN: each answered with the
+    captured contracts); `invalid`:
     SPY contracts (their /chains entries) served in SPY's
     chain answer, which the quotes answer names in Schwab's errors entry
     (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them; `stream_url`: the streamer
@@ -177,7 +177,7 @@ class LocalSchwab:
         self.withheld: set[str] = set()
         self.quotes_together: threading.Barrier | None = None
         self.chains_together: threading.Barrier | None = None
-        self.more_expiries: dict[str, list[str]] = {}
+        self.more_expiries: list[str] = []
         self.invalid: list[dict] = []
         outer = self
 
@@ -288,7 +288,7 @@ class LocalSchwab:
         return by_path.get(path, self._quotes)(query)
 
     def _expirations(self, query: dict) -> tuple[int, dict]:
-        dates = [PASSED, CHAINS[query["symbol"]][0], *self.more_expiries.get(query["symbol"], [])]
+        dates = [PASSED, CHAINS[query["symbol"]][0], *self.more_expiries]
         return 200, {"expirationList": [{"expirationDate": d} for d in dates]}
 
     def _chain(self, query: dict) -> tuple[int, dict]:

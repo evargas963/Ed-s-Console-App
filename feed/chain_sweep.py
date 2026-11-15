@@ -517,14 +517,7 @@ class ChainSweep:
                     self.candles(schwab_client, due, stop)
                 self.fetch_chain(schwab_client, asked, stop)
                 last = asked
-                # a shown ticker's quotes now, the last request part-full; the others' only as
-                # full requests, the rest asked with the next chain's
-                if asked in shown:
-                    while self._queue and not stop.is_set():
-                        self.send_quotes(schwab_client, REQUESTS_AT_ONCE)
-                while len(self._queue) >= QUOTES_BATCH_MAX and not stop.is_set():
-                    full = len(self._queue) // QUOTES_BATCH_MAX
-                    self.send_quotes(schwab_client, min(REQUESTS_AT_ONCE, full))
+                self.ask_queued(schwab_client, asked in shown, stop)
         while self._queue and not stop.is_set():
             self.send_quotes(schwab_client, REQUESTS_AT_ONCE)
         took = self.clock() - started
@@ -537,6 +530,19 @@ class ChainSweep:
             took,
         )
         return self._delivered
+
+    def ask_queued(self, schwab_client: _SchwabClient, shown: bool, stop: threading.Event) -> None:
+        """Ask for the queued quotes after a chain, REQUESTS_AT_ONCE requests together.
+
+        After a ticker a page shows (`shown`), every one now, the last request part-full;
+        otherwise only full requests, the rest asked with the next chain's.
+        """
+        if shown:
+            while self._queue and not stop.is_set():
+                self.send_quotes(schwab_client, REQUESTS_AT_ONCE)
+        while len(self._queue) >= QUOTES_BATCH_MAX and not stop.is_set():
+            full = len(self._queue) // QUOTES_BATCH_MAX
+            self.send_quotes(schwab_client, min(REQUESTS_AT_ONCE, full))
 
     def candles(
         self, schwab_client: _SchwabClient, due: dict[str, list[str]], stop: threading.Event
@@ -617,22 +623,10 @@ class ChainSweep:
                     return self.fail([chain], f"expiration chain returned HTTP {resp.status_code}")
                 listed = self._expiries[ticker] = (today, expiries)
             self.fetch_markets(schwab_client, [expiry.isoformat() for expiry in listed[1]])
-
-            def ask(expiry: date) -> Answer | None:
-                """One expiry's /chains answer; None when a stop came before it was asked."""
-                if stop.is_set():
-                    return None
-                resp = safe_get_chain(
-                    client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
-                )
-                if resp.status_code == 429:  # one refused expiry does not cost the ticker a round
-                    resp = safe_get_chain(
-                        client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
-                    )
-                return resp
-
             # REQUESTS_AT_ONCE expiries asked together, their answers taken in expiry order
-            answers = list(self._asking.map(ask, listed[1]))
+            answers = list(
+                self._asking.map(lambda e: self.ask_expiry(client, ticker, e, stop), listed[1])
+            )
             for expiry, resp in zip(listed[1], answers, strict=True):
                 if resp is None:
                     return None
@@ -651,6 +645,21 @@ class ChainSweep:
         sent = {e: [dict(ct) for ct in cts] for e, cts in chain.by_expiry.items()}
         self._answers[ticker] = (window, chain.started, dict(chain.spots), sent)
         return self.take_greeks(chain)
+
+    @staticmethod
+    def ask_expiry(client: Any, ticker: str, expiry: date, stop: threading.Event) -> Answer | None:
+        """One expiry's /chains answer (fetch_chain); None when a stop came before it was asked.
+
+        A 429 is asked once more: one refused expiry does not cost the ticker a round.
+        """
+        if stop.is_set():
+            return None
+        resp = safe_get_chain(client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry)
+        if resp.status_code == 429:
+            resp = safe_get_chain(
+                client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
+            )
+        return resp
 
     def take_greeks(self, chain: _Chain) -> None:
         """Each contract of a fetched chain takes its Greeks from the stream, or queues for them.
