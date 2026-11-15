@@ -288,3 +288,41 @@ def test_every_change_of_folder_is_refused_in_every_shell(cmd, powershell):
 )
 def test_naming_a_folder_without_moving_there_is_allowed(cmd, powershell):
     assert not any(FOLDER in b for b in bash_violations(cmd, powershell=powershell)), cmd
+
+
+#: the description of #1058 as it was opened, with no group named (its first lines)
+_PR_1058 = (
+    "## On screen\nThe levels get a new chain sooner: a chain round sends its requests four at a "
+    "time.\n\n## Failure modes\n- A 429 on one expiry is asked once more.\n\n## Census before "
+    "and after\npatch shapes, repo wide: 123 -> 123\n"
+)
+GROUP = "a pull request is opened for a group"
+
+
+def test_a_pull_request_is_opened_only_for_a_named_group_or_his_override(tmp_path):
+    """Operator 2026-11-15: "just open up pr's for groups and with the ability for me to override".
+
+    #1058's description, which named no group, is refused; the same with a '## Group' section
+    naming what it finishes, or quoting his override, is opened. Real data: #1058's description.
+    """
+    alone = tmp_path / "alone.md"
+    alone.write_text(_PR_1058, encoding="utf-8")
+    grouped = tmp_path / "grouped.md"
+    grouped.write_text(
+        _PR_1058 + "\n## Group\nThe census's doc contradictions, closed whole; orders 211, 213.\n",
+        encoding="utf-8",
+    )
+    override = tmp_path / "override.md"
+    override.write_text(
+        '## Group\nOperator 2026-11-15, override: "PR this now"\n\n' + _PR_1058, encoding="utf-8"
+    )
+    empty = tmp_path / "empty.md"
+    empty.write_text(_PR_1058 + "\n## Group\n<!-- what it finishes -->\n", encoding="utf-8")
+    pr = "gh pr create --base main --head b --title t "
+    for body in (alone, empty):
+        assert any(GROUP in b for b in bash_violations(pr + f"--body-file {body.as_posix()}"))
+    assert any(GROUP in b for b in bash_violations(pr + "--body 'one small fix'"))
+    assert any(GROUP in b for b in bash_violations(pr.strip())), "no description at all"
+    for body in (grouped, override):
+        assert not any(GROUP in b for b in bash_violations(pr + f"--body-file {body.as_posix()}"))
+    assert not any(GROUP in b for b in bash_violations("gh pr view 1058"))
