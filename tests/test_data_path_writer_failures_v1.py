@@ -27,8 +27,6 @@ import tracemalloc
 from contextlib import closing
 from pathlib import Path
 
-import pytest
-
 import live_market_plane as lmp
 import server
 import time_et
@@ -111,23 +109,6 @@ def _writable(db: Path) -> None:
     for path in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         if path.exists():
             os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
-
-
-def test_the_writer_handed_the_consoles_database_refuses_it_naming_the_file(tmp_path):
-    """The one writer records into stream_capture.db only.
-
-    Handed a file named ed_console.db, it refuses before opening it, and says which file in
-    plain words. INDUCED CONDITION: the writer handed a file named ed_console.db (in a temp
-    folder), which the daemon's own path (resolve_stream_db_path) never resolves to.
-    """
-    db = tmp_path / "ed_console.db"
-    with pytest.raises(ValueError) as refused:
-        CaptureWriter(db)
-    assert (
-        str(refused.value)
-        == f"the stream writer never writes the console's database ({db.resolve()})"
-    )
-    assert not db.exists(), "the refused file was created"
 
 
 def test_a_writer_whose_thread_is_not_running_records_on_connections_it_closes(tmp_path):

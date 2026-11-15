@@ -625,7 +625,7 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         runtime = tmp_path / f"runtime_{uuid.uuid4().hex}"
         (runtime / "data").mkdir(parents=True)
         if lock is not None:
-            (runtime / "data" / "stream_capture.lock").write_text(lock, encoding="utf-8")
+            (runtime / "data" / "ed.lock").write_text(lock, encoding="utf-8")
         return runtime
 
     try:

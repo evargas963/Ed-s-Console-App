@@ -103,7 +103,7 @@ def test_runtime_root_cannot_be_a_linked_worktree(tmp_path):
 
 
 def test_a_runtime_root_set_after_the_imports_places_the_token_and_the_databases(tmp_path):
-    """The token and both databases follow ED_RUNTIME_ROOT as it is when they are asked for.
+    """The token and the database follow ED_RUNTIME_ROOT as it is when they are asked for.
 
     Not as it was when their modules were imported: an entry point that loads `.env` after its
     imports gets `.env`'s runtime.
@@ -116,18 +116,17 @@ os.environ["ED_RUNTIME_ROOT"] = {str(sandbox)!r}
 print(json.dumps([
     str(runtime_layout.runtime_root()),
     config.token_path(),
-    str(db_authority.default_console_db_path()),
-    str(db_authority.canonical_stream_db_path()),
+    str(db_authority.canonical_db_path()),
 ]))
 """
     env = {k: v for k, v in os.environ.items() if k not in ("ED_RUNTIME_ROOT", "SCHWAB_TOKEN_PATH")}
     result = _python(script, env)
     assert result.returncode == 0, result.stderr
-    root, token, console_db, stream_db = json.loads(result.stdout.strip().splitlines()[-1])
+    root, token, db = json.loads(result.stdout.strip().splitlines()[-1])
     assert Path(root) == sandbox.resolve()
     assert Path(token) == sandbox.resolve() / "schwab_token.json"
-    assert Path(console_db).parent == sandbox.resolve() / "data"
-    assert Path(stream_db).is_relative_to(sandbox.resolve())
+    assert Path(db).parent == sandbox.resolve() / "data"
+    assert Path(db).name == "ed.db"
 
 
 def _pytest_path_probe(worker: str | None) -> dict:
@@ -136,7 +135,7 @@ import json, runpy, shutil
 state = runpy.run_path("tests/conftest.py")
 import db_authority, runtime_layout
 payload = {
-    "db": str(db_authority.default_console_db_path()),
+    "db": str(db_authority.canonical_db_path()),
     "runtime": str(runtime_layout.runtime_root()),
     "worker": __import__("os").environ.get("PYTEST_XDIST_WORKER"),
 }

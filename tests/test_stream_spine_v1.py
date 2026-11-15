@@ -371,7 +371,7 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
 
 
 def test_db_path_a_resolves_the_canonical_default():
-    assert ss.resolve_stream_db_path() == ss.canonical_stream_db_path()
+    assert ss.resolve_stream_db_path() == ss.canonical_db_path()
 
 
 def _in_own_python(code: str, **env: str) -> subprocess.CompletedProcess:
@@ -394,7 +394,7 @@ def test_db_path_b_ambient_override_cannot_move_production(tmp_path):
     """A process started with STREAM_CAPTURE_DB_PATH set still resolves the canonical path."""
     done = _in_own_python(
         "import stream_spine as ss\n"
-        "print(ss.resolve_stream_db_path() == ss.canonical_stream_db_path(),"
+        "print(ss.resolve_stream_db_path() == ss.canonical_db_path(),"
         " ss.resolve_stream_db_path())\n",
         STREAM_CAPTURE_DB_PATH=str(tmp_path / "override.db"),
     )

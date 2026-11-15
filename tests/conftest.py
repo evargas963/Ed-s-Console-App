@@ -26,7 +26,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane
 import time_et
-from db_authority import canonical_console_db_path, canonical_stream_db_path
+from db_authority import canonical_db_path
 from time_et import ET, now, record_markets, session
 
 # Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
@@ -63,8 +63,8 @@ pytest_plugins = ["tests.liquidity_friday"]
 def pytest_configure() -> None:
     """Hold the import-time runtime boundary in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
-    assert _PYTEST_RUNTIME_ROOT in canonical_console_db_path().parents
-    assert _PYTEST_RUNTIME_ROOT in canonical_stream_db_path().parents
+    assert _PYTEST_RUNTIME_ROOT in canonical_db_path().parents
+    assert canonical_db_path().name == "ed.db"
 
 
 @pytest.fixture(scope="session", autouse=True)

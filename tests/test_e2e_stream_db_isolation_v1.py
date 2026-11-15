@@ -59,7 +59,7 @@ def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
         [
             sys.executable,
             "-c",
-            "import db_authority; print(db_authority.default_console_db_path())",
+            "import db_authority; print(db_authority.canonical_db_path())",
         ],
         cwd=ROOT,
         env=server_env,

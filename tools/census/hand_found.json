@@ -183,10 +183,6 @@
       "item": ".cursor/rules/00-always.mdc:2 AGENTS.md is the single law vs CLAUDE.md:6-23 rules found nowhere in AGENTS.md"
     },
     {
-      "category": "contradiction: doc vs doc",
-      "item": "ACTIVE_PROGRAM.md:107 keeps each day's 0DTE contracts vs DATA_FLOW.md:96-103 and stream-db-switch SKILL.md:11 five strikes each side of the soonest expiry"
-    },
-    {
       "category": "contradiction: value disagrees",
       "item": "ACTIVE_PROGRAM.md:68 ENF-23 second readers 19 and :273 12 vs check_one_reader --list 4"
     },

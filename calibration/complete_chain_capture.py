@@ -36,30 +36,21 @@ CREATE TABLE IF NOT EXISTS complete_chain_captures (
     expiry TEXT NOT NULL,
     ts_utc REAL NOT NULL,
     spot REAL,
-    n_contracts INTEGER NOT NULL,
     completeness_basis TEXT NOT NULL,
     chain_json TEXT NOT NULL,
-    source TEXT NOT NULL DEFAULT 'schwab_chain_strike_range_all',
-    created_at TEXT DEFAULT (datetime('now')),
+    chain_spot REAL,
+    chain_spot_ts REAL,
     PRIMARY KEY (ticker, expiry, ts_utc)
 );
 CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
     ON complete_chain_captures(ticker, expiry, ts_utc DESC);
 """
-
-
-#: the chain's one spot (Schwab's LAST_PRICE when the chain was complete) and its trade time; a
-#: capture written before them has neither. `spot` is each expiry's own underlyingPrice, recorded
-CHAIN_SPOT_COLUMNS = (("chain_spot", "REAL"), ("chain_spot_ts", "REAL"))
+# `spot` is each expiry's own underlyingPrice as Schwab sent it; `chain_spot` / `chain_spot_ts`
+# the chain's one spot (Schwab's LAST_PRICE when the chain was complete) and its trade time.
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(TABLE_SQL)
-    have = {row[1] for row in conn.execute("PRAGMA table_info(complete_chain_captures)")}
-    for name, kind in CHAIN_SPOT_COLUMNS:
-        if name not in have:
-            conn.execute(f"ALTER TABLE complete_chain_captures ADD COLUMN {name} {kind}")
-    conn.commit()
 
 
 @contextmanager
@@ -87,7 +78,6 @@ def persist_complete_chain_capture(
     spot: float | None,
     completeness_basis: str,
     ts_utc: float,
-    source: str = "schwab_chain_strike_range_all",
     chain_spot: float | None = None,
     chain_spot_ts: float | None = None,
 ) -> dict[str, Any]:
@@ -119,17 +109,15 @@ def persist_complete_chain_capture(
     ts = float(ts_utc)
     conn.execute(
         "INSERT INTO complete_chain_captures "
-        "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source, "
-        "chain_spot, chain_spot_ts) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "(ticker, expiry, ts_utc, spot, completeness_basis, chain_json, chain_spot, "
+        "chain_spot_ts) VALUES (?,?,?,?,?,?,?,?)",
         (
             tk,
             exp,
             ts,
             spot,
-            len(clean),
             str(completeness_basis),
             encode_json_blob(clean, default=str),
-            str(source),
             chain_spot,
             chain_spot_ts,
         ),
@@ -204,16 +192,10 @@ def last_capture_per_day(
             picked.append((day, ts))
             if len(picked) == days:
                 break
-        have = {row[1] for row in conn.execute("PRAGMA table_info(complete_chain_captures)")}
-        chain_spot = (
-            ", ".join(name for name, _kind in CHAIN_SPOT_COLUMNS)
-            if "chain_spot" in have
-            else "NULL, NULL"
-        )
         out: list[dict[str, Any]] = []
         for day, ts in picked:
             rows = conn.execute(
-                f"SELECT {chain_spot}, completeness_basis, chain_json "
+                "SELECT chain_spot, chain_spot_ts, completeness_basis, chain_json "
                 "FROM complete_chain_captures "
                 "WHERE ticker=? AND completeness_basis=? AND ts_utc=? ORDER BY expiry",
                 (tk, CAPTURE_BASIS, ts),

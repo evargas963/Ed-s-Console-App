@@ -1,4 +1,4 @@
-"""db.py — the console database: level crosses."""
+"""db.py — the level crosses in the one database (db_authority.canonical_db_path)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from db_authority import (
-    default_console_db_path,
+    canonical_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
@@ -64,7 +64,7 @@ def configure_sqlite_connection(conn: sqlite3.Connection, *, busy_timeout_ms: in
 
 
 # ── Database location (ONE APP, ONE MAIN, ONE DB) ───────────────────────────
-# Default: data/ed_console.db, for every process and every worktree. No setting selects the
+# Default: data/ed.db, for every process and every worktree. No setting selects the
 # production database: recovery and tests pass explicit paths to EdDB; runtime placement
 # belongs only to runtime_layout.
 
@@ -157,7 +157,7 @@ class EdDB:
     def __init__(
         self, db_path: Path | None = None, *, allow_noncanonical: bool | None = None
     ) -> None:
-        self.db_path = Path(db_path or default_console_db_path()).resolve()
+        self.db_path = Path(db_path or canonical_db_path()).resolve()
         if not is_canonical_db_path(self.db_path) and not eddb_allow_noncanonical_path(
             allow_noncanonical
         ):
@@ -200,8 +200,7 @@ class EdDB:
                 spot_at_cross   REAL    NOT NULL,
                 zone_before     TEXT,
                 zone_after      TEXT,
-                timeframe       TEXT,
-                created_at      TEXT DEFAULT (datetime('now'))
+                timeframe       TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_cross_ticker_ts
                 ON level_crosses(ticker, ts_utc);

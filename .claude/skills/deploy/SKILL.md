@@ -7,8 +7,8 @@ Production is the `EdWebConsole` checkout: `start_ed_console.bat` runs `launch.p
 checkout to `origin/main` and starts Ed Console, one program, in its own window: the capture daemon,
 which serves the console's pages on port 8000 itself. Python 3.13, the project `.venv`; live
 needs `schwab_token.json` (`python reauth_schwab.py`). Probe
-`127.0.0.1`, never `localhost` (Windows tries IPv6 first, about 2 s per probe). `ed_console.db` and
-`stream_capture.db` are delete-protected: `evarg:(DENY)(DE)` on each, `(DENY)(DC)` on its folder (a folder's
+`127.0.0.1`, never `localhost` (Windows tries IPv6 first, about 2 s per probe). `ed.db` is
+delete-protected: `evarg:(DENY)(DE)` on it, `(DENY)(DC)` on its folder (a folder's
 Full control overrides the file's deny); the agent never lifts it
 (`tools/operator_law_guard.py` refuses it
 on a file; on `data/` itself, ENF-13). To move one aside, both stopped, Ed runs

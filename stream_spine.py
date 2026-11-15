@@ -6,7 +6,7 @@ feed health, and the database writer.
   - Every Schwab message is published once on the MessageBus and becomes its topic's current
     record (the newest by Schwab's time); the writer reads every message (LOG), the console
     socket and the browser socket read each changed topic's current record (LATEST).
-  - Raw stream data goes ONLY to stream_capture.db -- ed_console.db is never written here.
+  - Every message goes to the one database (db_authority.canonical_db_path).
   - The writer runs on its own thread with its own SQLite connection, so a slow disk can
     never stall the Schwab socket.
   - A message the writer cannot store as a row is kept as sent, with its error, in
@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import IO, Any
 
 import time_et
-from db_authority import canonical_stream_db_path
+from db_authority import canonical_db_path
 from time_et import ct_label
 
 log = logging.getLogger(__name__)
@@ -50,10 +50,10 @@ type Outcome = RowWritten | KeptFailure | None
 
 
 def resolve_stream_db_path(default: Path | str | None = None) -> Path:
-    """Return the one stream-database path (runtime_layout). `default` is for tests."""
+    """Return the one database's path (runtime_layout). `default` is for tests."""
     if default is not None:
         return Path(default).resolve()
-    return canonical_stream_db_path()
+    return canonical_db_path()
 
 
 STREAM_SCHEMA_SQL = """
@@ -1096,11 +1096,10 @@ class _Spill:
 
 
 class CaptureWriter:
-    """Writes every bus message to stream_capture.db from its own thread, in batches.
+    """Writes every bus message to the one database from its own thread, in batches.
 
     Each round writes up to `batch_rows` queued messages, and commits once the batch has
-    `batch_rows` rows or
-    `batch_sec` has passed. Never points at ed_console.db. A message
+    `batch_rows` rows or `batch_sec` has passed. A message
     whose row is refused is kept as sent in stream_write_failures, in the same batch. While the
     database refuses every write (DATABASE_REFUSALS, each wait `timeout_sec`), the open batch
     is rolled back and its messages, and every one after, are held in order and written again,
@@ -1128,8 +1127,6 @@ class CaptureWriter:
         clock: Callable[[], float] = time_et.now,
     ) -> None:
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
-        if p.name == "ed_console.db":
-            raise ValueError(f"the stream writer never writes the console's database ({p})")
         p.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = p
         self.batch_rows = int(batch_rows)

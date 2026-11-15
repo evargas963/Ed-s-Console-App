@@ -66,7 +66,7 @@ class Ports:
 
 def owner_lock_path(db_path: str | Path | None = None) -> Path:
     """Beside the stream database, so a worktree and production can never both stream."""
-    return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
+    return resolve_stream_db_path(db_path).with_name("ed.lock")
 
 
 def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:

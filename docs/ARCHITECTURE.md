@@ -30,7 +30,7 @@ folders land: push → state → calc; feed → state; recorder ←
 state; every part may use shared. Until then `locks.imports.toml` holds Feed alone: its contracts
 read the checkout as one package, because grimp takes no top-level module, so an import of a root
 module is an outside name and no layer can be drawn across them. Outside the repository: the
-runtime folder (the two databases,
+runtime folder (the one database,
 the token, logs) and worktrees.
 
 ## 2. Where each file goes

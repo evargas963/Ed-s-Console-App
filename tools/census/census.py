@@ -1437,7 +1437,7 @@ S = "F. Databases"
 # a column named only where its table is created is written and read by nothing
 product_use = re.sub(r"(?is)CREATE TABLE IF NOT EXISTS \w+ \(.*?\n\s*\);", "", all_product_py)
 product_use = re.sub(r"(?is)CREATE (?:UNIQUE )?INDEX[^;]*;", "", product_use)
-for name in ("ed_console.db", "stream_capture.db"):
+for name in ("ed.db",):
     p = DATA / name
     if not p.exists():
         add(

@@ -1,15 +1,13 @@
 """
-Canonical SQLite database authority — classification, env policy, CLI enforcement.
+The one database: its path, and who may open another.
 
 Policy (encoded here and in db.EdDB / stream_spine):
 
-- **Permanent production files:** exactly ``ed_console.db`` and ``stream_capture.db``
-  under ``runtime_layout.data_dir()``. Linked source worktrees resolve to the primary
-  worktree's runtime root.
-- **Ambient DB overrides:** never select a production authority. Recovery and tests pass
+- **The production file:** exactly ``ed.db`` under ``runtime_layout.data_dir()``, the record
+  of everything kept: the stream's messages, the chain history and the level crosses. Linked
+  source worktrees resolve to the primary worktree's runtime root.
+- **Ambient DB overrides:** never select the production file. Recovery and tests pass
   explicit paths to the owning API, with explicit non-canonical acknowledgement.
-- **Harness / proof:** Must never be targeted by mistake. CLI tools default
-  to canonical; ``--allow-noncanonical-db`` opts in with explicit acknowledgement.
 - **Tests:** ``tests/conftest.py`` sets ``ED_CONSOLE_ALLOW_NONCANONICAL_DB`` so ``EdDB``
   against temp paths works without per-call flags.
 """
@@ -22,31 +20,17 @@ from pathlib import Path
 from runtime_layout import data_dir
 
 
-def canonical_console_db_path() -> Path:
-    """Return the one intended canonical production database file on disk.
+def canonical_db_path() -> Path:
+    """Return the one production database file on disk.
 
     Rooted in the RUNTIME root, not the source checkout: with `ED_RUNTIME_ROOT` unset, a
     standalone checkout is its own runtime root and a linked worktree uses its primary's.
     """
-    return (data_dir() / "ed_console.db").resolve()
-
-
-def canonical_stream_db_path() -> Path:
-    """Return the one permanent raw receive-time market-event database."""
-    return (data_dir() / "stream_capture.db").resolve()
-
-
-def default_console_db_path() -> Path:
-    """Return the resolved default DB for this process: the canonical one, for every process.
-
-    No agent role or directory name selects another; ``EdDB.__init__`` admits only the canonical
-    path unless its caller opts in (``allow_noncanonical``, ``ED_CONSOLE_ALLOW_NONCANONICAL_DB``).
-    """
-    return canonical_console_db_path()
+    return (data_dir() / "ed.db").resolve()
 
 
 def is_canonical_db_path(p: Path | str) -> bool:
-    return Path(p).resolve() == canonical_console_db_path()
+    return Path(p).resolve() == canonical_db_path()
 
 
 def env_allows_noncanonical_db() -> bool:

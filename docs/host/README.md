@@ -10,5 +10,4 @@ copy to `.env`) and
 `python reauth_schwab.py`).
 
 - Per-worktree venv: `python tools/bootstrap_worktree_venv.py`.
-- Every linked worktree resolves the primary checkout's `data/ed_console.db` and
-  `data/stream_capture.db`.
+- Every linked worktree resolves the primary checkout's `data/ed.db`.

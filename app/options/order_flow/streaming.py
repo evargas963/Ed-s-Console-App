@@ -5,8 +5,8 @@ It reads the capture daemon's one bus
 the daemon holds the one Schwab socket and is the one producer.
 
 Each Schwab record on the bus is applied the moment it changes (_bus_loop -> _ingest_pushed) to
-the console's planes. The database is not in the live path: stream_capture.db is the daemon's
-record, and no screen value is read from it.
+the console's planes. The database is not in the live path: it is the daemon's record, and no
+screen value is read from it.
 
 The daemon streams every ticker on its watchlist (capture.Daemon.watchlist, the one list), and
 picks the option contracts it streams itself (capture.Daemon.pick_options, the option rule). This
