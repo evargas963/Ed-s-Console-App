@@ -17,8 +17,9 @@ weekly distance check that would later move a weight is not part of this.
 
 A negative gamma leg leaves that factor missing. When open interest plus volume weights sum to
 zero, the volatility blend is the simple mean of the contracts that have a volatility. The header
-chip is the only not-live mark. The matrix shows the chain's time. It does not show chain age or a
-STALE word. The window is every per-strike panel's (`docs/DATA_FLOW.md` "Strike windows", Auto:
+chip marks a price not live. The matrix's line is the levels' one verdict (`server.terrain_staleness`:
+LIVE, CLOSE, STALE or NOT LIVE), the chain's time and age, and why when not LIVE or CLOSE (AGENTS
+rule 5; `tests/test_data_path_confluence_v1.py`). The window is every per-strike panel's (`docs/DATA_FLOW.md` "Strike windows", Auto:
 eleven strikes centred on the one nearest the live price; with no live price, the middle of the
 chain and the note saying so), chosen at each request from every strike the publication ranked,
 so it follows the price between chains (operator 2026-10-29: "for the confluence matrix it is not

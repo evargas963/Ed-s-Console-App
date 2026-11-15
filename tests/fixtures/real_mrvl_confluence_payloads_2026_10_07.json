@@ -1465,7 +1465,7 @@
    "spot_as_of_ts_utc": null,
    "spot_time_ct": null,
    "spot_not_live_text": "not live",
-   "status_text": "Chain as of Wed 10/07 09:31 AM CT",
+   "status_text": "LIVE \u00b7 chain as of Wed 10/07 09:31 AM CT, 0s old",
    "rail_lanes": {
     "session": [],
     "options": [
@@ -3189,7 +3189,7 @@
    "spot_as_of_ts_utc": null,
    "spot_time_ct": null,
    "spot_not_live_text": "not live",
-   "status_text": "Chain as of Wed 10/07 09:31 AM CT",
+   "status_text": "LIVE \u00b7 chain as of Wed 10/07 09:31 AM CT, 0s old",
    "rail_lanes": {
     "session": [],
     "options": [
@@ -4884,7 +4884,7 @@
   "spot_as_of_ts_utc": null,
   "spot_time_ct": null,
   "spot_not_live_text": "not live",
-  "status_text": "Chain as of Wed 10/07 09:31 AM CT",
+  "status_text": "STALE \u00b7 chain as of Wed 10/07 09:31 AM CT, 4d old \u00b7 this ticker's options are closed and its close values have not been fetched",
   "rail_lanes": {
    "session": [],
    "options": [

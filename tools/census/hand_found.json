@@ -168,10 +168,6 @@
     },
     {
       "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:124 rule 5 every stopped value shows its time and age vs ACTIVE_PROGRAM.md:18-20,93 and DATA_FLOW.md:398-399 the matrix shows no chain age"
-    },
-    {
-      "category": "contradiction: rule vs doc",
       "item": "AGENTS.md:124 rule 5 age shown 'for any reason' vs DATA_FLOW.md:177-179 and ACTIVE_PROGRAM.md:226-228 trade time without an age while the push is down"
     },
     {
