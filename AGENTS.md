@@ -310,6 +310,14 @@ then the rule binds with no machine check.
   with `main`; its deploy follows (operator 2026-10-29: "i don't want for you to wait on my yes for
   merges, etc. you are allowed to continue until you finish"). No CODEOWNERS file. Enforced by:
   branch protection (green CI, current with `main`).
+- A pull request is opened for a group, never for one small fix: what it finishes whole (a census
+  category, an order of the operator's) with every fix found along the way, named in its
+  description's `## Group` section; his override is his word in chat, quoted there (operator
+  2026-11-15: "we cannot do a merge for each and every small little fix. this needs to be
+  enforced", "just open up pr's for groups and with the ability for me to override"). Enforced
+  by: `tools/operator_law_guard.py` refuses the agent's `gh pr create` without it
+  (`tests/test_operator_law_guard_action_bans_v1.py`); that the group is whole — the builder's
+  audit (rule 14), no machine check.
 - Work continues until SHAPE is finished: a stop is refused while its row is IN PROGRESS, unless
   the rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes
   to a change of request rates, limits or settings, CLAUDE.md item 5;

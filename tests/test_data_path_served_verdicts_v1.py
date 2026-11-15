@@ -26,7 +26,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import ROUND_SEC, daemon_status
 from tests.page_on_socket import pages
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET, age_text, record_markets
@@ -61,12 +61,18 @@ def _publish(tk: str, chain, delivered: datetime) -> None:
     """Publish `chain` by the levels producer as delivered at `delivered`.
 
     It is published at the price the daemon's price row gave from Schwab's quote at that
-    chain's capture.
+    chain's capture, the daemon reporting a round of the watchlist of 245 s (its log of
+    2026-11-06, ROUND_SEC).
     """
     quote = _QUOTES[tk]
     lmp.record_from_level_one_equity(tk, quote["native"], received_ts=quote["ts_recv"])
     lmp.record_feed_heartbeat(
-        daemon_status(quote["ts_recv"], schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
+        daemon_status(
+            quote["ts_recv"],
+            schwab_socket_open=True,
+            held={"LEVELONE_EQUITIES": [tk]},
+            chain_round_sec=ROUND_SEC,
+        )
     )
     row = live_price_rows.price_row(tk, quote["ts_recv"])
     server._publish_levels(
@@ -133,6 +139,37 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
     assert body["levels_state"] == state
     assert body["levels_age_text"] == age_text(at.timestamp() - delivered.timestamp())
     assert body["levels_time_ct"] is not None
+
+
+@pytest.mark.parametrize(
+    "round_sec, after, state, why",
+    [
+        (40.0, 80, "LIVE", ""),  # two rounds of 40 s: due by 80 s
+        (
+            40.0,
+            81,
+            "STALE",
+            "levels are 81s old; the daemon's chain sweep has not delivered this ticker in two "
+            "of its rounds (40s each)",
+        ),  # no number of ours holds it LIVE to 180 s
+        (None, 30, "NOT LIVE", "the daemon's first round of the watchlist is in progress"),
+    ],
+)
+def test_the_levels_are_due_by_two_of_the_daemons_rounds_and_nothing_of_ours(
+    published, round_sec, after, state, why
+):
+    """Operator 2026-11-15: "yes remove the floor".
+
+    A chain is overdue past two of the daemon's reported rounds, however short, and before the
+    daemon has reported a round the levels say its first is in progress. STAND-IN: the round.
+    """
+    delivered = _et(13, 0)
+    published("TSLA", TSLA, delivered)
+    lmp.record_feed_heartbeat(
+        daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=round_sec)
+    )
+    body = server.terrain("TSLA", delivered.timestamp() + after)
+    assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)
 
 
 def test_in_schwabs_option_pre_market_the_levels_are_live_and_stand_through_the_gap(published):

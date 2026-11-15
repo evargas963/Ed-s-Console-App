@@ -52,6 +52,7 @@ from stream_spine import (
     verbatim_msg,
 )
 from tests.feed_live_helper import (
+    ROUND_SEC,
     daemon_bars,
     daemon_status,
     forget_bars,
@@ -864,6 +865,8 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
         "each expiry once more after the 16:15 close"
     )
 
+    # the daemon reports its rounds (ROUND_SEC), which a chain in the session is judged by
+    lmp.record_feed_heartbeat(daemon_status(et_ts("2026-10-07 16:10"), chain_round_sec=ROUND_SEC))
     stands = server.terrain_staleness(
         et_ts("2026-10-07 16:20"), "SPY", now=et_ts("2026-10-07 17:00")
     )
@@ -986,6 +989,8 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
         ), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
         assert st["levels_state"] == "STALE" and st["levels_age_text"] is None  # absent, not zero
+    # in session the daemon reports its rounds (ROUND_SEC), which a chain is judged by
+    lmp.record_feed_heartbeat(daemon_status(et_ts("2026-10-01 11:00"), chain_round_sec=ROUND_SEC))
     st = server.terrain_staleness(
         et_ts("2026-10-01 10:00"), "ZZCLOSED", now=et_ts("2026-10-01 11:00")
     )

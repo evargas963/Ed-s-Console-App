@@ -35,7 +35,7 @@ from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from stream_spine import book_msg
 from tests.capture_store import store_capture
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import ROUND_SEC, daemon_status
 from tests.test_order_flow_book_payload_v1 import _same
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -160,6 +160,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                 at,
                 schwab_socket_open=True,
                 held={"LEVELONE_EQUITIES": [tk], **{venue: [tk] for venue in real.venues}},
+                chain_round_sec=ROUND_SEC,
             )
         )
         for row in real.desk["book"]:

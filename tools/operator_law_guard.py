@@ -37,6 +37,7 @@ import ast
 import json
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from tools.hook_chain import BASH_TOOLS  # the ONE shell-tool roster
@@ -287,6 +288,41 @@ def _gh_refused(st: Statement) -> bool:
     return not args or args[0] not in _GH_ALLOWED.get(group, ())
 
 
+#: the section a pull request's description names its group in: what it finishes whole (a census
+#: category, an order), or the operator's override in his words (operator 2026-11-15: "just open
+#: up pr's for groups and with the ability for me to override")
+GROUP = "## Group"
+
+
+def _group_named(body: str) -> bool:
+    """Whether `body` has a GROUP section with something written in it."""
+    lines = body.replace("\r", "").split("\n")
+    if GROUP not in lines:
+        return False
+    after = lines[lines.index(GROUP) + 1 :]
+    section = after[: next((i for i, ln in enumerate(after) if ln.startswith("## ")), len(after))]
+    return any(ln.strip() and not ln.strip().startswith("<!--") for ln in section)
+
+
+def _pr_body(args: list[str]) -> str | None:
+    """The description a `gh pr create` gives (its --body or --body-file); None when none."""
+    for flag, value in zip(args, args[1:], strict=False):
+        if flag in ("--body", "-b"):
+            return value
+        if flag in ("--body-file", "-F"):
+            path = Path(value)
+            return path.read_text(encoding="utf-8") if path.is_file() else None
+    return None
+
+
+def _pr_without_group(st: Statement) -> bool:
+    """Whether a `gh pr create` names no group its pull request finishes (GROUP)."""
+    if st.program != "gh" or tuple(st.words[1:3]) != ("pr", "create"):
+        return False
+    body = _pr_body(list(st.words[3:]))
+    return body is None or not _group_named(body)
+
+
 #: an option that makes sed edit its files in place: -i, -i.bak, -ni, -Ei, --in-place[=SUF]
 _SED_IN_PLACE = re.compile(r"^(?:-[A-Za-z]*i|--in-place(?:=|$))")
 #: redirects of the statement's output (not 2> / &>, which carry no sed output)
@@ -313,6 +349,51 @@ def _sed_writes(st: Statement) -> list[str]:
     ]
 
 
+#: each statement-level ban and what it says, in the order they are reported
+_BANS: tuple[tuple[Callable[[Statement], bool], str], ...] = (
+    (
+        _blind_stage,
+        "ACTION BLOCKED: blind staging (git add -A/--all/.) sweeps another agent's "
+        "in-flight files into a commit. Stage EXPLICIT paths — a commit asserts "
+        "authorship of everything in it.",
+    ),
+    (
+        _destroys_protected,
+        "ACTION BLOCKED: this deletes, moves or truncates something under data/. That "
+        "tree is gitignored -- there is NO history and NO undo. Test destructive "
+        "behaviour against a COPY in a temp directory, never the real artefact. "
+        "Restores INTO it stay legal; removal from it is operator-only.",
+    ),
+    (
+        _disables_a_lock,
+        "ACTION BLOCKED: this disables a mechanical lock. Only the operator may.",
+    ),
+    (
+        _takes_an_unsafe_fix,
+        "ACTION BLOCKED: ruff's unsafe fixes change what code does; none is taken, in any "
+        'file (AGENTS.md "Fix what you find").',
+    ),
+    (
+        _gh_refused,
+        "ACTION BLOCKED: this `gh` is outside what the agent may run. Write every word out, "
+        "or ask the operator.",
+    ),
+    (
+        _pr_without_group,
+        "ACTION BLOCKED: a pull request is opened for a group, never one small fix (operator "
+        f"2026-11-15). Its description needs a '{GROUP}' section naming what it finishes "
+        "whole (a census category, an order of his), or his override quoted in his words.",
+    ),
+    (
+        lambda st: bool(PYTHON.fullmatch(st.program)) and reads_stdin(st),
+        "ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
+        "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
+        "console and Python 3.13's REPL retries forever. Put the code in a script file and "
+        "run it, or use `python -c`.",
+    ),
+)
+
+
 def bash_violations(cmd: str | None, powershell: bool = False) -> list[str]:
     """Return every host-wide ban that fires on `cmd` (a PowerShell command when `powershell`).
 
@@ -320,39 +401,7 @@ def bash_violations(cmd: str | None, powershell: bool = False) -> list[str]:
     exempts nothing host-wide); no rule reads a repository.
     """
     statements = read(cmd or "", powershell=powershell)
-    out: list[str] = []
-    if any(_blind_stage(st) for st in statements):
-        out.append(
-            "ACTION BLOCKED: blind staging (git add -A/--all/.) sweeps another agent's "
-            "in-flight files into a commit. Stage EXPLICIT paths — a commit asserts "
-            "authorship of everything in it."
-        )
-    if any(_destroys_protected(st) for st in statements):
-        out.append(
-            "ACTION BLOCKED: this deletes, moves or truncates something under data/. That "
-            "tree is gitignored -- there is NO history and NO undo. Test destructive "
-            "behaviour against a COPY in a temp directory, never the real artefact. "
-            "Restores INTO it stay legal; removal from it is operator-only."
-        )
-    if any(_disables_a_lock(st) for st in statements):
-        out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
-    if any(_takes_an_unsafe_fix(st) for st in statements):
-        out.append(
-            "ACTION BLOCKED: ruff's unsafe fixes change what code does; none is taken, in any "
-            'file (AGENTS.md "Fix what you find").'
-        )
-    if any(_gh_refused(st) for st in statements):
-        out.append(
-            "ACTION BLOCKED: this `gh` is outside what the agent may run. Write every word out, "
-            "or ask the operator."
-        )
-    if any(PYTHON.fullmatch(st.program) and reads_stdin(st) for st in statements):
-        out.append(
-            "ACTION BLOCKED: this python reads its program from stdin (`python -`, a heredoc, "
-            "a pipe or </dev/null). On Windows an empty heredoc or </dev/null looks like a "
-            "console and Python 3.13's REPL retries forever. Put the code in a script file and "
-            "run it, or use `python -c`."
-        )
+    out = [message for refused, message in _BANS if any(refused(st) for st in statements)]
     sed = [w for st in statements for w in _sed_writes(st)]
     if sed:
         out.append(

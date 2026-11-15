@@ -179,10 +179,6 @@
       "item": "DATA_FLOW.md:497-500 no streamed tick replaces the chain's Greeks vs DATA_FLOW.md:559-566 a streamed contract's Greeks are the stream's newest"
     },
     {
-      "category": "contradiction: doc vs code",
-      "item": "DATA_FLOW.md:440,577-579 STALE after two delivered rounds vs server.py:619,735-737 an undocumented 180 s floor"
-    },
-    {
       "category": "contradiction: rule vs code",
       "item": "AGENTS.md:3,121 no bound of ours vs time_et.py:349,400 a 10-minute time-to-expiry floor (DATA_FLOW.md:893 adopts it, ACTIVE_PROGRAM.md:145 M-37 calls it a defect)"
     },

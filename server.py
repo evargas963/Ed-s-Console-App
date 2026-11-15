@@ -722,11 +722,6 @@ def terrain_cache_get(ticker: str, now: float) -> tuple[PublishedLevels | None, 
     )
 
 
-#: The least age at which a terrain snapshot stops calling itself current (terrain_staleness also
-#: allows two of the loop's delivered cycles).
-TERRAIN_STALE_AFTER_SEC: float = 180.0
-
-
 def terrain_staleness(
     computed_ts_utc: float | None,
     ticker: str,
@@ -760,6 +755,17 @@ def terrain_staleness(
     }
 
 
+def _in_first_round(
+    computed_ts_utc: float, opened: float, now: float, stale_after: float | None
+) -> bool:
+    """Whether a chain from before today's open stands while the day's first round runs.
+
+    The round runs until two of the daemon's reported rounds have passed since the open; with
+    none reported yet, it is still running. Yesterday's close values stand meanwhile.
+    """
+    return float(computed_ts_utc) < opened and (stale_after is None or now - opened <= stale_after)
+
+
 def _levels_state(
     computed_ts_utc: float | None, ticker: str, now: float, failure: str | None
 ) -> tuple[str, str]:
@@ -782,25 +788,17 @@ def _levels_state(
         return lmp.NOT_LIVE, "the market session is unknown" + sep
     age = now - float(computed_ts_utc)
     # judged against the round the daemon's chain sweep last reported (every watchlist ticker
-    # once): a chain's age is its own, and a late heartbeat does not shorten the round
+    # once), and nothing of ours: a chain is overdue past two of them (one missed round is
+    # jitter, two a gap). A chain's age is its own, and a late heartbeat does not shorten the
+    # round; with no round reported yet, the first is in progress.
     last = lmp.last_beat()
     round_sec = None if last is None else last["chain_round_sec"]
-    # Stale only past the floor *and* past two delivered rounds — one missed round is normal
-    # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness;
-    # with no round delivered (or no current status) the floor alone.
-    stale_after = (
-        float(TERRAIN_STALE_AFTER_SEC)
-        if round_sec is None
-        else max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
-    )
+    stale_after = None if round_sec is None else 2.0 * float(round_sec)
     closed = options_closed_at(at, product)
-    opened = options_opened(at)
     if (
         not market_open
         or (closed is not None and closed.date() == at.date())  # its own market has closed today
-        or (
-            float(computed_ts_utc) < opened.timestamp() and now - opened.timestamp() <= stale_after
-        )  # the day's first round
+        or _in_first_round(computed_ts_utc, options_opened(at).timestamp(), now, stale_after)
     ):
         if closed is None or float(computed_ts_utc) < closed.timestamp():
             return (
@@ -808,30 +806,32 @@ def _levels_state(
                 "this ticker's options are closed and its close values have not been fetched" + sep,
             )
         return LEVELS_CLOSE, ""
+    if stale_after is None:
+        return lmp.NOT_LIVE, "the daemon's first round of the watchlist is in progress" + sep
     if age <= stale_after:
         return lmp.LIVE, ""
     if waiting:
         return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
+    return LEVELS_STALE, _overdue_why(computed_ts_utc, at, now, stale_after, failure)
+
+
+def _overdue_why(
+    computed_ts_utc: float, at: datetime, now: float, stale_after: float, failure: str | None
+) -> str:
+    """Why levels past two of the daemon's rounds (`stale_after`) are overdue (_levels_state)."""
+    age = now - float(computed_ts_utc)
     if failure:
-        return (
-            LEVELS_STALE,
-            f"levels are {age:.0f}s old and every chain since has failed — {failure}",
-        )
+        return f"levels are {age:.0f}s old and every chain since has failed — {failure}"
     began = option_window_began(at).timestamp()
     if float(computed_ts_utc) < began and now - began <= stale_after:
         # no chain is asked for between two of Schwab's option windows: the first since is due
-        return LEVELS_STALE, (
+        return (
             f"levels are {age:.0f}s old: Schwab's option session reopened {ct_label(began)} and "
             "its first chain since has not arrived"
         )
-    return LEVELS_STALE, (
+    return (
         f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
-        + (
-            f"ticker in two of its rounds ({float(round_sec):.0f}s each)"
-            if round_sec is not None
-            else f"ticker in {float(TERRAIN_STALE_AFTER_SEC):.0f}s (the daemon reports no round "
-            "of its sweep)"
-        )
+        f"ticker in two of its rounds ({stale_after / 2:.0f}s each)"
     )
 
 
