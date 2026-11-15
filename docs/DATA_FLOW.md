@@ -1089,8 +1089,9 @@ behavior (AGENTS.md).
    daemon is the only Schwab client; every watchlist ticker is fetched in its turn, none first.
    Enforced by: `tests/test_schwab_client_import_boundary.py`.
 2. **The levels producer runs in its own process**, not inside the daemon. Superseded by SHAPE
-   (operator 2026-10-29): the Calculators run in a worker pool the one program owns, off its event
-   loop (§4.1). Enforced by: not built — SHAPE step 3.
+   (operator 2026-10-29): the Calculators run on one pricing thread the one program owns, off its
+   event loop; a process pool, measured, lowered no worst wait (§4.1). Enforced by:
+   `tests/test_stream_reader_keeps_up_v1.py`.
 3. **The browser is never pushed a whole chain.** Enforced by: no machine check — ENF-16.
 4. **One shell, two connections** (operator 2026-09-27). One page; tabs switch what is shown;
    the daemon pushes prices and bars, the console pushes that levels, flow or liquidity changed.
