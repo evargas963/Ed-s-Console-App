@@ -274,6 +274,8 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
+    if msg["series"] not in {*MINUTE_SERIES, *SCHWAB_SERIES.values(), "1w", "1mo"}:
+        return None  # a series no screen reads: the daemon records it, the console holds none
     if msg["series"] not in MINUTE_SERIES:
         key = (tk, msg["series"])
         candles = [
