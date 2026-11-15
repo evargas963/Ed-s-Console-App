@@ -756,6 +756,7 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
     ), "the chain once after the option close"
     assert history_at("2026-10-01 17:00") == [
         "minute1",
+        "minute1",  # 1m60: 90 days of the regular session's bars
         "minute5",
         "minute15",
         "minute30",
@@ -767,6 +768,7 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
         "the bars that ended the session"
     )
     assert history_at("2026-10-02 03:30") == [
+        "minute1",
         "minute1",
         "daily1",
         "weekly1",

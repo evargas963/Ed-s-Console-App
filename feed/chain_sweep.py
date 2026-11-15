@@ -143,8 +143,9 @@ def chain_messages(
 #: time one of theirs completes in a session (BAR_MINUTES); two years of daily, weekly and monthly
 #: candles, each as Schwab sends it, once per ET date and again after the regular close, for that
 #: day's (ATR(14) needs 15 candles).
-PRICE_HISTORY = {
+PRICE_HISTORY: dict[str, tuple[str, int | None, str, int]] = {
     "1m": ("day", 10, "minute", 1),
+    "1m60": ("day", None, "minute", 1),
     "5m": ("day", 10, "minute", 5),
     "15m": ("day", 10, "minute", 15),
     "30m": ("day", 10, "minute", 30),
@@ -154,6 +155,13 @@ PRICE_HISTORY = {
 }
 #: the minute series asked again as each of their bars completes, by the bar's minutes
 BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
+#: the series asked from a start date instead of a period, by calendar days back, the regular
+#: session's bars only: 90 days, about 60 sessions, of 1-minute bars for the levels' hold rates
+#: (liquidity_value_engine.hold_counts; operator 2026-11-15: "Yes, request it"). Schwab documents
+#: startDate for every frequency; how far back it answers minute bars it does not say
+HISTORY_DAYS_BACK = {"1m60": 90}
+#: the series asked once per ET date
+DAILY_ONCE = ("1m", "1m60")
 
 
 def price_history_message(
@@ -397,7 +405,7 @@ class ChainSweep:
         session not known (Schwab's /markets answer not held) is asked as an open one, as the
         chain is (chain_due). The daily, weekly and monthly
         candles: once per ET date, and once after today's regular window Schwab sent has ended.
-        The 1-minute bars: once per ET date.
+        The 1-minute bars (DAILY_ONCE): once per ET date.
         """
         if (ticker, series) not in self._candled:
             return True
@@ -411,7 +419,7 @@ class ChainSweep:
             return now.timestamp() // span > asked // span and in_session
         if datetime.fromtimestamp(asked, ET).date() < now.date():
             return True
-        if series == "1m":
+        if series in DAILY_ONCE:
             return False
         today = session(now.date().isoformat())
         if today is None or not today.regular:
@@ -547,10 +555,14 @@ class ChainSweep:
         """
         for series in due:
             now = self.clock()
+            end = datetime.fromtimestamp(now, UTC)
+            start = (
+                end - timedelta(days=HISTORY_DAYS_BACK[series])
+                if series in HISTORY_DAYS_BACK
+                else None
+            )
             try:
-                resp = get_price_history(
-                    schwab_client(), ticker, PRICE_HISTORY[series], datetime.fromtimestamp(now, UTC)
-                )
+                resp = get_price_history(schwab_client(), ticker, PRICE_HISTORY[series], end, start)
                 if resp.status_code != 200:
                     continue
                 answer = resp.json()

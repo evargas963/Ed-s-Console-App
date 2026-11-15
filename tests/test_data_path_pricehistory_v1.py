@@ -91,8 +91,11 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
     finally:
         schwab.close()
 
-    assert [(q["periodType"], q["period"], q["frequencyType"], q["frequency"]) for q in first] == [
+    assert [
+        (q["periodType"], q.get("period"), q["frequencyType"], q["frequency"]) for q in first
+    ] == [
         ("day", "10", "minute", "1"),
+        ("day", None, "minute", "1"),  # from a start date: 90 days of regular-session bars
         ("day", "10", "minute", "5"),
         ("day", "10", "minute", "15"),
         ("day", "10", "minute", "30"),
@@ -103,17 +106,26 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
     for q, (series, (period_type, period, frequency_type, frequency)) in zip(
         first, PRICE_HISTORY.items()
     ):
-        assert (q["symbol"], q["periodType"], q["period"], q["frequencyType"], q["frequency"]) == (
+        assert (
+            q["symbol"],
+            q["periodType"],
+            q.get("period"),
+            q["frequencyType"],
+            q["frequency"],
+        ) == (
             "SPY",
             period_type,
-            str(period),
+            None if period is None else str(period),
             frequency_type,
             str(frequency),
         ), series
-        assert q["endDate"] == str(int(et_ts("2026-10-01 09:05") * 1000)), (
-            "each request ends at the clock"
-        )
-        assert q["needExtendedHoursData"] == "true"
+        end = int(et_ts("2026-10-01 09:05") * 1000)
+        assert q["endDate"] == str(end), "each request ends at the clock"
+        if series == "1m60":  # 90 calendar days back, the regular session only
+            assert q["startDate"] == str(end - 90 * 86_400_000)
+            assert q["needExtendedHoursData"] == "false"
+        else:
+            assert "startDate" not in q and q["needExtendedHoursData"] == "true", series
     assert later_today == [
         [],
         ["5m"],
@@ -132,6 +144,7 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
     assert session_end == ["minute5", "minute15", "minute30"], "the bars that end the session"
     assert closed == [], "closed then and now: nothing is asked"
     assert next_day == [
+        "minute1",
         "minute1",
         "daily1",
         "weekly1",
@@ -514,8 +527,8 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
 
     docs/DATA_FLOW.md §2 D4: the daemon's chain sweep (capture.run_chains, on its thread)
     publishes each series on the daemon's bus, and the one writer (CaptureWriter, the bus's LOG
-    reader) writes each answer whole, as sent, into stream_pricehistory_raw: SPY's 1-, 5-, 15-
-    and 30-minute and daily answers.
+    reader) writes each answer whole, as sent, into stream_pricehistory_raw: SPY's 1-minute
+    answers (10 days, and 90 days of the regular session) and its 5-, 15- and 30-minute ones.
     """
     db = tmp_path / "stream_capture.db"
     schwab = LocalSchwab()
@@ -560,10 +573,10 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
     recorded = rows()[:5]
     assert [(symbol, series, src) for symbol, series, _n, src in recorded] == [
         ("SPY", "1m", "schwab_pricehistory"),
+        ("SPY", "1m60", "schwab_pricehistory"),
         ("SPY", "5m", "schwab_pricehistory"),
         ("SPY", "15m", "schwab_pricehistory"),
         ("SPY", "30m", "schwab_pricehistory"),
-        ("SPY", "1d", "schwab_pricehistory"),
     ]
     for _s, series, native, _src in recorded:
         assert json.loads(native) == HISTORY[("SPY", *_SERIES[series])]["body"], (
