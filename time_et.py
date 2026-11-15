@@ -446,10 +446,6 @@ def sessions_since(now: datetime, n: int) -> datetime | None:
 
 #: Seconds in a 365-day year (ACT/365, the standard option-pricing day-count).
 YEAR_SECONDS: float = 365.0 * 24.0 * 3600.0
-#: Sub-floor on time-to-expiry (10 minutes) — guards the exact-expiry 1/sqrt(T) singularity
-#: WITHOUT flattening the genuine near-expiry gamma/charm spike (which desks hedge minute by
-#: minute).
-MIN_TIME_TO_EXPIRY_YEARS: float = 600.0 / YEAR_SECONDS
 
 
 #: Schwab's `settlementType` for an AM-settled contract (the $SPX monthly: its value is set from
@@ -481,10 +477,12 @@ def time_to_expiry_years(
     Validated against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
-    0.0 after settlement: no time is left. None when the time left is not known: an AM-settled
-    contract within the year /markets answers whose date it has not, a date it answers with no
-    regular option session, and an expirationDate without its time. At the settlement instant the
-    10-minute floor guards the exact-expiry singularity.
+    The time left as it is, to the second, however short (operator 2026-11-15: "yes the formula
+    needs to account for time"): the near-expiry gamma, vanna and charm are the formula's own;
+    0.0 at and after settlement, no time left, which every greek takes as no value. None when the
+    time left is not known: an AM-settled contract within the year /markets answers whose date it
+    has not, a date it answers with no regular option session, and an expirationDate without its
+    time.
     """
     s = sessions.get(str(expiration_date)[:10])
     if s is None:
@@ -500,7 +498,4 @@ def time_to_expiry_years(
             return None
         settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
-    t = (settles.timestamp() - now.timestamp()) / YEAR_SECONDS
-    if t < 0.0:
-        return 0.0
-    return max(t, MIN_TIME_TO_EXPIRY_YEARS)
+    return max((settles.timestamp() - now.timestamp()) / YEAR_SECONDS, 0.0)

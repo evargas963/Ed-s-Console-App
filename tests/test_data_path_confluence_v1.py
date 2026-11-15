@@ -741,9 +741,11 @@ def _window_has(rows: list, key: str) -> bool:
 
 
 def test_the_close_keeps_the_vanna_a_settled_clock_drops():
-    """SPY's captured 0DTE chain, valued at the index close, still has vanna, charm, and a score.
+    """SPY's captured 0DTE chain settles at the index close: no time left, no vanna, charm or score.
 
-    The same chain priced after that close has no time left, and those three are missing.
+    Operator 2026-11-15: no floor of ours on the time left ("yes the formula needs to account for
+    time"), and a settled value is "-" like every value not known ("no settled just a dash"). At
+    the close and after it alike, those three are missing.
     """
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -757,7 +759,7 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
         chain, spot=held.spot, now=at, sessions=on_file, product=INDEX_OPTIONS
     )
     strike = min(at_close, key=lambda s: abs(s - held.spot))
-    assert bucket_metric(at_close[strike], "net_vanna") is not None
+    assert bucket_metric(at_close[strike], "net_vanna") is None
     assert bucket_metric(after[strike], "net_vanna") is None
     iv = iv_by_strike(chain)
     charm_close = compute_charm_by_strike(
@@ -770,9 +772,9 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     late = build_matrix(after, charm_late, iv, held.spot, 0.0)
     close_rows = window_rows(close, _around(sorted(close["ranked"]), held.spot))
     late_rows = window_rows(late, _around(sorted(late["ranked"]), held.spot))
-    assert _window_has(close_rows, "vanna_text")
-    assert _window_has(close_rows, "charm_text")
-    assert _window_has(close_rows, "score")
+    assert not _window_has(close_rows, "vanna_text")
+    assert not _window_has(close_rows, "charm_text")
+    assert not _window_has(close_rows, "score")
     assert not _window_has(late_rows, "vanna_text")
     assert not _window_has(late_rows, "charm_text")
     assert not _window_has(late_rows, "score")
@@ -800,8 +802,9 @@ def test_spy_keeps_vanna_until_the_index_close():
 def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     """The page reads the publication.
 
-    SPY's captured chain, delivered after the index
-    close, is valued at that close, so vanna, charm, and the score are on the matrix.
+    SPY's captured 0DTE chain, delivered after the index close, is valued at that close: Schwab's
+    own fields fill the matrix (its implied volatility below), and the contracts, settled with no
+    time left, have no vanna, charm or score: "-" (operator 2026-11-15).
     """
     held = SPY_0DTE
     tk = "SPY"
@@ -817,14 +820,52 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
         _forget(tk)
     assert snap is not None
     assert body["available"] is True
-    assert _window_has(body["rows"], "vanna_text")
-    assert _window_has(body["rows"], "charm_text")
-    assert _window_has(body["rows"], "score")
+    assert not _window_has(body["rows"], "vanna_text")
+    assert not _window_has(body["rows"], "charm_text")
+    assert not _window_has(body["rows"], "score")
     blend = iv_by_strike(
         read_chain([ct for ct in held.chain if str(ct.get("expirationDate"))[:10] == expiry])
     )
     shown = next(r for r in body["rows"] if blend.get(r["strike"]) is not None)
     assert shown["iv_text"] == f"{blend[shown['strike']]:.1f}"
+
+
+def test_an_expiry_settled_at_the_close_keeps_its_last_known_values_with_their_time():
+    """Operator 2026-11-15: "yes the last known value. this gives me data to look at and study".
+
+    SPY's captured 0DTE chain published at 15:59 ET, while it had time left, then again after the
+    index close: the expiry, settled with no time left, keeps the 15:59 vanna, charm, score and
+    same-day levels, and the matrix says they are the last known, as of 15:59, with their age.
+    Never a value of a made-up time left.
+    """
+    held = SPY_0DTE
+    tk = "SPY"
+    before = datetime(2026, 10, 7, 15, 59, tzinfo=ET)
+    after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    try:
+        spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
+        alive = server._publish_levels(
+            tk, read_chain(held.chain), before.timestamp(), chain_spot=spot, now=before
+        )
+        live_rows = server.confluence_payload(tk, expiry, before)["rows"]
+        settled = server._publish_levels(
+            tk, read_chain(held.chain), after.timestamp(), chain_spot=spot, now=after
+        )
+        body = server.confluence_payload(tk, expiry, after)
+    finally:
+        _forget(tk)
+    assert _window_has(live_rows, "vanna_text") and _window_has(body["rows"], "vanna_text")
+    assert settled.last_known_ts == {expiry: before.timestamp()}
+    assert settled.same_day == alive.same_day
+    by_strike = {r["strike"]: (r["vanna_text"], r["charm_text"], r["score"]) for r in live_rows}
+    for row in body["rows"]:
+        if row["strike"] in by_strike:
+            assert (row["vanna_text"], row["charm_text"], row["score"]) == by_strike[row["strike"]]
+    assert body["status_text"] == (
+        f"CLOSE · settled: last known as of {ct_label(before.timestamp())}, "
+        f"{age_text(after.timestamp() - before.timestamp())} old"
+    )
 
 
 def test_the_matrix_says_the_levels_word_and_the_chains_time_and_age():
@@ -856,8 +897,9 @@ def test_the_matrix_says_the_levels_word_and_the_chains_time_and_age():
 def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     """TSLA's captured Friday chain, delivered after that Friday's equity close, is valued then.
 
-    It is valued at that close. The same publication fills vanna, charm, and the score. The
-    request reads it.
+    It is valued at that close, when its contracts (all Friday's) settle: no time is left, so no
+    vanna, charm or score, "-" (operator 2026-11-15). Asked again, the request reads the same
+    publication.
     """
     held = TSLA
     tk = "TSLA"
@@ -875,9 +917,9 @@ def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     assert snap is not None
     assert expiry == "2026-10-09"
     assert body["available"] is True
-    assert _window_has(body["rows"], "vanna_text")
-    assert _window_has(body["rows"], "charm_text")
-    assert _window_has(body["rows"], "score")
+    assert not _window_has(body["rows"], "vanna_text")
+    assert not _window_has(body["rows"], "charm_text")
+    assert not _window_has(body["rows"], "score")
     assert again["rows"] == body["rows"]
 
 
@@ -896,15 +938,16 @@ def _no_value_quote(chain):
 def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
     """SPY's captured chain is published after the index close, valued at that close.
 
-    A later quote that sends Schwab's no-value code does not erase that quote's gamma, vanna, or
-    charm.
+    A later quote that sends Schwab's no-value code does not erase that quote's gamma (net GEX,
+    Schwab's gamma as sent). Its contracts, settled at that close with no time left, have no
+    vanna, charm or score: "-" both times (operator 2026-11-15).
     """
     held = SPY_0DTE
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     first, second = _spy_0dte_twice(_no_value_quote(held.chain), after, after, after)
     near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
     kept = (near["net_gex_text"], near["vanna_text"], near["charm_text"], near["score_text"])
-    assert None not in kept
+    assert kept[0] is not None and kept[1:] == (None, None, None)
     again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
     assert (
         again["net_gex_text"],
@@ -939,14 +982,15 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
     """SPY's captured chain is published after the index close: the close values.
 
     They are the balance until the next open: a later chain that reports zero open interest and
-    zero volume does not replace those counts, or the score they carry.
+    zero volume does not replace those counts. Its contracts, settled at that close with no time
+    left, have no score or vanna: "-" both times (operator 2026-11-15).
     """
     held = SPY_0DTE
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     first, second = _spy_0dte_twice(_zero_counts(held.chain), after, after, after)
     near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
     kept = (near["oi_text"], near["volume_text"], near["score_text"], near["vanna_text"])
-    assert None not in kept
+    assert None not in kept[:2] and kept[2:] == (None, None)
     again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
     assert (
         again["oi_text"],
@@ -1304,7 +1348,8 @@ def test_an_after_hours_print_keeps_the_close_book():
 
     The capture was begun 16:17:04 ET, after the index close. SPY's after-hours print at 18:00
     ET (LAST_PRICE as the daemon received it), with no new chain, reprices nothing: the strike's
-    gamma, vanna and charm and the publication's price stay the close's.
+    gamma (Schwab's, as sent), vanna and charm and the publication's price stay the close's. Its
+    contracts settled at that close, so vanna and charm are "-" both times (operator 2026-11-15).
     """
     held, print_ = SPY_CLOSE, SPY_AFTER_HOURS_PRINT
     tk = "SPY"
@@ -1315,7 +1360,7 @@ def test_an_after_hours_print_keeps_the_close_book():
         first = server.confluence_payload(tk, expiry, held.now)
         near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
         close_texts = (near["net_gex_text"], near["vanna_text"], near["charm_text"])
-        assert None not in close_texts
+        assert close_texts[0] is not None and close_texts[1:] == (None, None)
         lmp.record_from_level_one_equity(tk, print_["native"], received_ts=print_["ts_recv"])
         lmp.record_feed_heartbeat(
             daemon_status(at.timestamp(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
@@ -1360,11 +1405,12 @@ def _two_day_captures(chain: list) -> list[dict]:
 def test_a_close_capture_keeps_its_charm_in_the_forces():
     """SPY's captured 0DTE chain, banked after the index close, is valued at that close.
 
-    The forces charm sums include it.
+    Its contracts settled at that close with no time left, so they carry no charm: the forces'
+    charm sums are "-", never a charm of a made-up time left (operator 2026-11-15).
     """
     forces = server._forces_from_captures("SPY", _two_day_captures(read_chain(SPY_0DTE.chain)))
-    assert forces["charm_below"] is not None
-    assert forces["charm_above"] is not None
+    assert forces["charm_below"] is None
+    assert forces["charm_above"] is None
 
 
 def test_the_forces_read_the_charm_map_of_the_capture_just_priced():

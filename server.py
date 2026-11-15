@@ -1357,15 +1357,6 @@ def _closed_since(now: datetime, product: str) -> datetime | None:
     return closed
 
 
-def _close_capture(tk: str, closed: datetime) -> list[dict[str, Any]] | None:
-    """Return the ticker's stored close values, or None when none is stored.
-
-    Its two newest market days' captures, when the newest was taken at or after `closed`.
-    """
-    stored = last_capture_per_day(get_db().db_path, tk, 2)
-    return stored if stored and stored[0]["ts_utc"] >= closed.timestamp() else None
-
-
 def _priced_at(
     tk: str,
     new_chain: bool,
@@ -1427,12 +1418,11 @@ def _publish_levels(
     product = option_close_product(tk)
     closed = _closed_since(now, product)
     if closed is not None:
-        # the close values stand, and a value pushed after the close (no chain) changes nothing
-        if previous is not None and (
-            previous.computed_ts_utc >= closed.timestamp() or (chain is None and not captures)
-        ):
+        # its market has closed: the last values computed while it was open stand, with their
+        # time, until its next session; nothing is priced after the close (operator 2026-11-15)
+        if previous is not None:
             return previous.snap
-        captures = captures or _close_capture(tk, closed)
+        captures = last_capture_per_day(get_db().db_path, tk, 2, before_ts=closed.timestamp())
     capture = captures[0] if captures else None
     if capture is not None:
         chain, fetched_ts = capture["contracts"], capture["ts_utc"]
