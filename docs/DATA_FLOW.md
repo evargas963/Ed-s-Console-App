@@ -753,10 +753,12 @@ the program.
   checks every GET route that answers a ticker and every page panel that serves a price). Every
   relation of the price to the levels is at
   that live price, computed when served, never stored with the publication: each wall's state
-  and lean, the price's side of the flip and the pin candidate
-  (`terrain_engine.price_relations`, a `PriceRelations` record, on the terrain panel, the levels
-  panel
-  and the chart's markers; the read's advice sentences, which no page read, are no longer made:
+  and lean and the price's side of the flip
+  (`terrain_engine.price_relations`, a `PriceRelations` record, on the terrain panel;
+  the pin is a level of the publication, `terrain_engine.pin_by_open_interest`: of the expiry
+  settling at today's close, the strike with the most open interest within one expected move
+  of the price, its distance in expected moves and strike widths and its minutes to the close
+  on hover, `server.pin_note`; the read's advice sentences, which no page read, are no longer made:
   operator 2026-11-13, "if they do not then proceed with your recommendation"). The flip's note
   (`flip_note`, `terrain_read.flip_note`: the flip's modelled curve and Schwab's gamma disagree
   on the sign at the chain's price) is published with the levels and drawn beside the flip on
@@ -775,9 +777,8 @@ the program.
   the confluence panel) serves the price's mark beside them (`server.price_mark`: whether Schwab's
   feed delivers the price, why not, its trade time and age, and the words the page prints,
   `spot_not_live_text`, "not live · last trade Thu 10/22 03:39 PM CT, 81m old", from the one age
-  formatter `time_et.age_text`); the levels panel puts it on the pin candidate's row too
-  (`not_live_text`). When the price stops, every relation stands, marked with it: the desk's wall
-  labels, GAMMA cell, pin candidate, nearest level and Walls line, and the confluence screen's spot.
+  formatter `time_et.age_text`). When the price stops, every relation stands, marked with it: the
+  desk's wall labels, GAMMA cell, nearest level and Walls line, and the confluence screen's spot.
   While the price stays stopped, the levels loop tells each open page on that ticker to read
   again every minute (`server.refresh_not_live_pages`, its owner `server._terrain_loop`; when that
   loop stops, the age stays as of the page's last read and the trade time beside it stays true),

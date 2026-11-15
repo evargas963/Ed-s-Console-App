@@ -7,8 +7,10 @@ scheduling live in the caller, so this stays trivially testable.
 from __future__ import annotations
 
 import bisect
+import math
+import statistics
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import asdict, dataclass, field, fields, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any, TypedDict
 
@@ -17,23 +19,21 @@ from math_exposure_core import (
     Bucket,
     ExposureDiagnostics,
     book_net_gex,
-    book_total_oi,
     bucket_metric,
     exposure_books,
     exposures_have_dollar_gex,
     merge_exposure_books,
     net_gex_dollars_at_strike,
+    pick_absolute_gamma_strike,
     pick_delta_wall_strikes,
     pick_gamma_wall_strikes,
     pick_key_delta_strike,
-    pick_pin_and_strength,
     pick_volatility_point_strikes,
     put_call_oi_ratio,
     put_call_volume_ratio,
     schwab_iv_to_sigma,
     strike_total_oi,
     strike_total_volume,
-    total_gex_dollars_at_strike,
 )
 from math_levels import (
     compute_charm_by_strike,
@@ -46,7 +46,6 @@ from math_levels import (
     pick_charm_wall_strikes,
     repriced_to_close,
 )
-from math_probabilities import compute_pin_score
 from numeric_contract import float_finite_or_none
 from option_contract import OptionContract
 from terrain_read import (
@@ -57,10 +56,16 @@ from terrain_read import (
     level_side,
     price_side,
 )
-from time_et import ET, Session, option_close_product, time_to_expiry_years
+from time_et import (
+    ET,
+    SETTLEMENT_AM,
+    Session,
+    option_close_product,
+    time_to_expiry_years,
+)
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
-TERRAIN_SCHEMA_VERSION = 5
+TERRAIN_SCHEMA_VERSION = 6
 
 #: an exposure book's key: (expiry, days to expiry)
 type ExpiryKey = tuple[str | None, float | None]
@@ -133,18 +138,17 @@ class TerrainSnapshot:
     #: book. A GROSS GAMMA CONCENTRATION (SpotGamma's "Absolute Gamma" measure): where the
     #: most dealer re-hedging activity sits. It is a pin CANDIDATE input, NOT a demonstrated
     #: magnet — magnitude sets the SIZE of the hedging flow while the unobservable dealer
-    #: SIGN decides pin vs repel. The raw value carries the metric's name; the word "pin" is
-    #: reserved for `pin_candidate` below, which must earn it. Strength = leader's margin
-    #: over the runner-up on the same metric (a 1% lead is a coin flip; the label says so).
+    #: SIGN decides pin vs repel. The raw value carries the metric's name; the pin is
+    #: `pin_candidate` below, read on open interest.
     absolute_gamma_strike: float | None = None
-    absolute_gamma_strength_pct: float | None = None
-    #: GEX$ / OI at absolute_gamma_strike plus book OI, from the SAME exposures
-    #: book that picked the strike. pin_score reads these so strike and magnitude cannot
-    #: split onto the analytics selected-expiry book. None = fail-closed
-    #: (absent/stale/undollarized).
-    absolute_gamma_gex_dollars: float | None = None
-    absolute_gamma_oi: float | None = None
-    book_oi_total: float | None = None
+    #: The pin strike (pin_by_open_interest): of an expiry settling at today's close, the strike
+    #: with the most open interest within one expected move of the price, with its distance in
+    #: expected moves (z = ln(price/strike) / (sigma * sqrt(T))), in strike widths, and the
+    #: minutes to the close. None when nothing expires at today's close or no strike is that near.
+    pin_candidate: float | None = None
+    pin_expected_moves: float | None = None
+    pin_strike_widths: float | None = None
+    pin_minutes_to_close: float | None = None
     #: Max pain is defined PER EXPIRY (standard: the settlement price minimising intrinsic
     #: payout on ONE expiry's open interest): the FRONT expiry only, and max_pain_dte says
     #: which.
@@ -172,6 +176,9 @@ class TerrainSnapshot:
     #: The levels on a 0DTE basis (same_day_levels). Keys are SAME_DAY_LEVELS.
     #: absolute_gamma_strike in this dict is the one 0DTE pin.
     same_day: dict[str, float | None] = field(default_factory=dict)
+    #: the expiry the same-day levels were re-priced from to today's close (a model, said on
+    #: hover); None when they are today's own expiry as held, or absent
+    same_day_repriced_from: str | None = None
 
     #: The institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
     #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
@@ -618,42 +625,26 @@ class PriceRelations:
     call_wall_lean: str | None
     put_wall_lean: str | None
     flip_relation: str | None
-    pin_candidate: float | None
 
     def to_dict(self) -> dict[str, str | float | None]:
         return asdict(self)
 
 
-#: the names of the relations served beside the levels
-PRICE_RELATIONS = frozenset(f.name for f in fields(PriceRelations))
-
-
 def price_relations(terrain: dict[str, Any], price: float | None) -> PriceRelations:
     """Return every relation of `price` to the published levels (`terrain`, a snapshot's to_dict).
 
-    Each wall's state and lean, the price's side of the flip and the pin candidate. The levels
-    are the publication's; the price is the one given, the live price on every panel. A
-    level's distance from the price is served with the level (the levels panel).
+    Each wall's state and lean and the price's side of the flip. The levels are the
+    publication's; the price is the one given, the live price on every panel. A level's
+    distance from the price is served with the level (the levels panel).
     """
     call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
     call_lean, put_lean = wall_lean(call, put, price, terrain["regime"], terrain["confidence"])
-    pin, _blockers = qualify_pin_candidate(
-        spot=price,
-        absolute_gamma_strike=terrain["absolute_gamma_strike"],
-        absolute_gamma_strength_pct=terrain["absolute_gamma_strength_pct"],
-        absolute_gamma_gex_dollars=terrain["absolute_gamma_gex_dollars"],
-        absolute_gamma_oi=terrain["absolute_gamma_oi"],
-        book_oi_total=terrain["book_oi_total"],
-        net_gex_at_spot=terrain["net_gex_at_spot"],
-        front_dte=terrain["max_pain_dte"],
-    )
     return PriceRelations(
         call_wall_state=wall_geometry_state(price, call, "call"),
         put_wall_state=wall_geometry_state(price, put, "put"),
         call_wall_lean=call_lean,
         put_wall_lean=put_lean,
         flip_relation=price_side(flip, price),
-        pin_candidate=pin,
     )
 
 
@@ -685,87 +676,81 @@ def wall_lean(
     return one(call_wall, "call", "DEALERS SELL"), one(put_wall, "put", "DEALERS BUY")
 
 
-#: Pin-candidate qualification thresholds. Hardwired, not configurable.
-#: — proximity: strike within 0.5% of spot — the "strike near spot" cut of a pin-residence
-#:   study that is not in this repository, so the value is NOT_PROVEN here.
-PIN_CANDIDATE_PROXIMITY_MAX_FRAC = 0.005
-#: — DTE: pinning is an expiration effect (expiration-date clustering turns on positioning
-#:   into expiry — Ni, Pearson & Poteshman, JFE 2005, doi:10.1016/j.jfineco.2004.08.005);
-#:   the cut is dte <= 1 (from the same study, NOT_PROVEN here).
-PIN_CANDIDATE_DTE_MAX = 1.0
+#: How far from the price a strike may be to be the pin strike, in expected moves: within one
+#: (|z| <= 1, the distance measure of Avellaneda & Lipkin 2003's pinning model; pin_research.md).
+PIN_MAX_EXPECTED_MOVES = 1.0
+#: minutes in a year of ACT/365 (time_et.YEAR_SECONDS / 60)
+_MINUTES_PER_YEAR = 365.0 * 24.0 * 60.0
 
 
-def qualify_pin_candidate(
+@dataclass(frozen=True)
+class PinStrike:
+    """The pin strike and how far it is: in expected moves, in strike widths, in minutes left."""
+
+    strike: float
+    expected_moves: float
+    strike_widths: float | None  # None: the expiry lists no other strike
+    minutes_to_close: float
+
+
+def pin_by_open_interest(
+    contracts: list[OptionContract],
+    spot: float,
     *,
-    spot: float | None,
-    absolute_gamma_strike: float | None,
-    absolute_gamma_strength_pct: float | None,
-    absolute_gamma_gex_dollars: float | None,
-    absolute_gamma_oi: float | None,
-    book_oi_total: float | None,
-    net_gex_at_spot: float | None,
-    front_dte: float | None,
-) -> tuple[float | None, list[str]]:
-    """Publish `pin_candidate` ONLY after qualification.
+    now: datetime,
+    sessions: Mapping[str, Session],
+    product: str,
+) -> PinStrike | None:
+    """Return the strike with the most open interest near the price, of an expiry closing today.
 
-    The qualification is regime, proximity, DTE, liquidity and completeness.
-
-    The raw absolute-gamma strike is a gross gamma concentration — a pin CANDIDATE input,
-    never a demonstrated magnet (magnitude sizes the hedging flow; the unobservable
-    dealer sign decides pin vs repel). This gate is the difference between the metric and
-    the claim. Gates, each fail-closed (missing input = gate failed, never assumed passed):
-
-    — completeness: the magnitude bundle (strike, strength, GEX$, OI, book OI) is
-      present from the SAME book that picked the strike.
-    — regime: dealers net LONG gamma at spot (net_gex_at_spot > 0). A long-gamma dealer
-      sells rallies and buys dips, which pins; short gamma repels.
-    — proximity: |strike − spot| / spot <= PIN_CANDIDATE_PROXIMITY_MAX_FRAC.
-    — DTE: front expiry of THIS book within PIN_CANDIDATE_DTE_MAX days (pinning is an
-      expiration effect); unknown maturity fails, never passes.
-    — liquidity: the committed pin-score thresholds (math_probabilities.compute_pin_score,
-      GEX magnitude × OI concentration) grade the strike above "negligible". No new
-      threshold is invented here — the gate reuses the one already on the operator's
-      screen as PIN SCORE.
-
-    Returns (pin_candidate, blockers): the strike with an EMPTY blockers list when every
-    gate passes, else (None, [failed gate names]) so absence renders with its reason.
+    The pinning studies' measure (pin_research.md: Ni, Pearson & Poteshman 2005; Golez &
+    Jackwerth 2012; Avellaneda & Lipkin 2003), from Schwab's chain alone and no dealer sign:
+    of today's expiry settled at today's close (an AM-settled one, Schwab's settlementType "A",
+    is out), each strike's open interest (calls plus puts, as Schwab sent it) and its distance
+    from the price in expected moves, z = ln(price/strike) / (sigma * sqrt(T)), sigma the strike's
+    implied volatility (the mean of its call's and put's, as sent) and T the time to today's
+    close. The strike with the most open interest with |z| <= PIN_MAX_EXPECTED_MOVES; on equal
+    open interest, the nearer. Its distance is also given in strike widths (the gap to its
+    nearest listed neighbour) and its minutes to the close. None when no expiry settles at
+    today's close, the close has passed, or no strike with known open interest and volatility is
+    that near. It says nothing about where the price will close.
     """
-    blockers: list[str] = []
-    complete = not (
-        spot is None
-        or absolute_gamma_strike is None
-        or absolute_gamma_strength_pct is None
-        or absolute_gamma_gex_dollars is None
-        or absolute_gamma_oi is None
-        or book_oi_total is None
-        or book_oi_total <= 0
+    today = now.astimezone(ET).date().isoformat()
+    t_close = time_to_expiry_years(today, now, sessions=sessions, product=product)
+    if not t_close or spot <= 0:
+        return None
+    listed: set[float] = set()
+    oi: dict[float, float] = {}
+    sigmas: dict[float, list[float]] = {}
+    unknown: set[float] = set()  # a strike with a contract whose open interest is not known
+    for c in contracts:
+        if c.expiry != today or c.settlement == SETTLEMENT_AM or c.strike is None:
+            continue
+        listed.add(c.strike)
+        if c.open_interest is None:
+            unknown.add(c.strike)
+            continue
+        oi[c.strike] = oi.get(c.strike, 0.0) + c.open_interest
+        sigma = schwab_iv_to_sigma(c.volatility)
+        if sigma is not None and sigma > 0:
+            sigmas.setdefault(c.strike, []).append(sigma)
+    near: list[tuple[float, float, float, float]] = []  # (open interest, -|z|, strike, z)
+    for k, k_oi in oi.items():
+        if k in unknown or k not in sigmas or k <= 0:
+            continue  # a strike whose open interest or volatility is not known is not ranked
+        z = math.log(spot / k) / (statistics.fmean(sigmas[k]) * math.sqrt(t_close))
+        if abs(z) <= PIN_MAX_EXPECTED_MOVES:
+            near.append((k_oi, -abs(z), k, z))
+    if not near:
+        return None
+    _oi, _neg_z, strike, z = max(near)
+    width = min((abs(strike - k) for k in listed if k != strike), default=None)
+    return PinStrike(
+        strike=strike,
+        expected_moves=z,
+        strike_widths=None if width is None else (spot - strike) / width,
+        minutes_to_close=t_close * _MINUTES_PER_YEAR,
     )
-    if not complete:
-        blockers.append("completeness")
-    if net_gex_at_spot is None or net_gex_at_spot <= 0:
-        blockers.append("regime")
-    if spot is not None and spot > 0 and absolute_gamma_strike is not None:
-        if (
-            abs(float(absolute_gamma_strike) - float(spot)) / float(spot)
-            > PIN_CANDIDATE_PROXIMITY_MAX_FRAC
-        ):
-            blockers.append("proximity")
-    elif "completeness" not in blockers:
-        blockers.append("completeness")
-    if front_dte is None or float(front_dte) > PIN_CANDIDATE_DTE_MAX:
-        blockers.append("dte")
-    if complete:
-        score = compute_pin_score(
-            absolute_gamma_gex_dollars,
-            (float(absolute_gamma_oi) / float(book_oi_total)),
-        )
-        if score["label"] in ("negligible", "missing_oi"):
-            blockers.append("liquidity")
-    else:
-        blockers.append("liquidity")
-    if blockers:
-        return None, blockers
-    return float(absolute_gamma_strike), []
 
 
 #: The terrain's price levels and the name each is shown under, in the order they are listed.
@@ -801,8 +786,11 @@ def same_day_levels(
     product: str,
     books: dict[ExpiryKey, Book],
     charm_by_expiry: dict[str | None, dict[float, Bucket]],
-) -> dict[str, float | None]:
+) -> tuple[dict[str, float | None], str | None]:
     """Return the whole book's levels on a 0DTE basis, read on the nearest listed expiry alone.
+
+    With the expiry they were re-priced from (None when an expiry listed today was read as held,
+    or when there are no levels): a re-priced set is a model, and the screen says so on hover.
 
     Every ticker, one function, the same producers as the whole book, over the book's contracts
     by expiry day (`expiry_rows`). An expiry listed today is read as the book holds it: its
@@ -818,8 +806,9 @@ def same_day_levels(
     today = now.astimezone(ET).date().isoformat()
     front = min((e for e in expiry_rows if e is not None and e >= today), default=None)
     if front is None:
-        return blank
+        return blank, None
     rows = expiry_rows[front]
+    repriced_from = None if front == today else front
     if front == today:
         front_books = (b for (e, _d), b in books.items() if e == front)
         parsed, _unpriced = contract_inputs(rows, now, sessions=sessions, product=product)
@@ -827,7 +816,7 @@ def same_day_levels(
     else:
         t_close = time_to_expiry_years(today, now, sessions=sessions, product=product)
         if not t_close:
-            return blank
+            return blank, None
         rows, parsed = repriced_to_close(rows, spot, t_close)
         front_books = exposure_books(
             rows, spot=spot, now=now, sessions=sessions, product=product
@@ -837,18 +826,18 @@ def same_day_levels(
         )
     exposures, _diag = merge_exposure_books(front_books)
     (call_wall, _), (put_wall, _) = pick_gamma_wall_strikes(exposures)
-    pin, _strength = pick_pin_and_strength(exposures)
+    abs_gamma = pick_absolute_gamma_strike(exposures)
     hvp, lvp = pick_volatility_point_strikes(exposures)
     profile = compute_gamma_profile(parsed, spot)
     flip, _confidence, _flip_diag = compute_gamma_flip_v2(rows, spot, profile=profile)
     support = compute_gamma_support_levels(profile, spot)
     call_charm, put_charm = pick_charm_wall_strikes(charm)
     (call_delta_wall, _), (put_delta_wall, _) = pick_delta_wall_strikes(exposures)
-    return {
+    levels: dict[str, float | None] = {
         "call_wall": call_wall,
         "put_wall": put_wall,
         "gamma_flip": flip,
-        "absolute_gamma_strike": pin,
+        "absolute_gamma_strike": abs_gamma,
         "gsf": support["gsf"],
         "grc": support["grc"],
         "hvp": hvp,
@@ -859,6 +848,7 @@ def same_day_levels(
         "call_charm_wall": call_charm,
         "put_charm_wall": put_charm,
     }
+    return levels, repriced_from
 
 
 def compute_terrain(
@@ -904,19 +894,8 @@ def compute_terrain(
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures)
     hvp, lvp = pick_volatility_point_strikes(exposures)
     # max TOTAL gamma — the absolute-gamma concentration, full book.
-    _abs_gamma_strike, _abs_gamma_strength = pick_pin_and_strength(exposures)
-    # pin_score GEX/OI from THIS same exposures book — never a second analytics book.
-    # OI from the ONE reader -- unknown (a contract that never reported OI) is None, never 0.
-
-    _book_oi_total = book_total_oi(exposures)
-    _abs_gamma_gex_dollars = None
-    _abs_gamma_oi = None
-    _abs_gamma_bucket = (
-        exposures.get(float(_abs_gamma_strike)) if _abs_gamma_strike is not None else None
-    )
-    if isinstance(_abs_gamma_bucket, dict):
-        _abs_gamma_gex_dollars = total_gex_dollars_at_strike(_abs_gamma_bucket)
-        _abs_gamma_oi = strike_total_oi(_abs_gamma_bucket)
+    _abs_gamma_strike = pick_absolute_gamma_strike(exposures)
+    pin = pin_by_open_interest(contracts, spot, now=now, sessions=sessions, product=product)
     # the SSOT producer owns the delta walls too — same wide
     # chain, same exposures, one book. OI/vanna walls stay unowned and therefore BLANK on
     # every operator surface until this producer computes them.
@@ -962,6 +941,15 @@ def compute_terrain(
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
     read = build_terrain_read(spot=spot, flip_confidence=confidence, gamma_at_spot=_gamma_at_spot)
+    same_day, same_day_repriced_from = same_day_levels(
+        expiry_rows,
+        spot,
+        now=now,
+        sessions=sessions,
+        product=product,
+        books=books,
+        charm_by_expiry=charm_by_expiry,
+    )
 
     return TerrainSnapshot(
         ticker=ticker,
@@ -974,25 +962,18 @@ def compute_terrain(
         call_wall=call_wall,
         put_wall=put_wall,
         absolute_gamma_strike=_abs_gamma_strike,
-        absolute_gamma_strength_pct=_abs_gamma_strength,
-        absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
-        absolute_gamma_oi=_abs_gamma_oi,
-        book_oi_total=_book_oi_total,
+        pin_candidate=None if pin is None else pin.strike,
+        pin_expected_moves=None if pin is None else pin.expected_moves,
+        pin_strike_widths=None if pin is None else pin.strike_widths,
+        pin_minutes_to_close=None if pin is None else pin.minutes_to_close,
         key_delta_strike=pick_key_delta_strike(exposures),
         hvp=hvp,
         lvp=lvp,
         net_gex_at_spot=_gamma_at_spot,
         gsf=_gsl["gsf"],
         grc=_gsl["grc"],
-        same_day=same_day_levels(
-            expiry_rows,
-            spot,
-            now=now,
-            sessions=sessions,
-            product=product,
-            books=books,
-            charm_by_expiry=charm_by_expiry,
-        ),
+        same_day=same_day,
+        same_day_repriced_from=same_day_repriced_from,
         implied_1d_move=compute_implied_one_day_move(contracts, spot, atm_sigma),
         call_delta_wall=call_delta_wall,  # one book for delta walls too
         put_delta_wall=put_delta_wall,

@@ -12,7 +12,7 @@
  "flip_text": "770.77",
  "level_names": {
   "763.00": "Call \u0394 wall + 0DTE Call \u0394 wall",
-  "764.00": "Put wall + Net put \u0393 peak + 0DTE Put wall + 0DTE Net put \u0393 peak",
+  "764.00": "Put wall + Pin candidate + Net put \u0393 peak + 0DTE Put wall + 0DTE Net put \u0393 peak",
   "765.00": "Call wall + Abs \u0393 + Call charm wall + Put charm wall + 0DTE Call wall + 0DTE Abs \u0393 + 0DTE Call charm wall + 0DTE Put charm wall",
   "770.77": "\u0393 flip + 0DTE \u0393 flip",
   "771.00": "Max pain",
@@ -41,6 +41,13 @@
    "price": 765.0,
    "price_text": "765.00",
    "title": "Abs \u0393"
+  },
+  {
+   "abbrev": "Pin",
+   "lane": "options",
+   "price": 764.0,
+   "price_text": "764.00",
+   "title": "Pin candidate"
   },
   {
    "abbrev": "Net P\u0393",
@@ -85,7 +92,7 @@
    "title": "0DTE Put wall"
   },
   {
-   "abbrev": "0D Pin",
+   "abbrev": "0D Abs \u0393",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
@@ -135,7 +142,8 @@
   "vol_oi": 258.3359489946052,
   "volume": 1053494.0
  },
- "pin_text": "765.00",
+ "pin_note": "Most open interest within one expected move, of the expiry settling at today's close. Price 0.07 expected moves (0.0 strike widths) above it; 10 minutes to the close.",
+ "pin_text": "764.00",
  "preset": "0DTE",
  "rail_lanes": {
   "options": [

@@ -101,7 +101,6 @@ from option_contract import OptionContract, chain_row
 from terrain_atr import Atr, compute_atrs
 from terrain_engine import (
     OPTION_LEVELS,
-    PRICE_RELATIONS,
     SAME_DAY_LEVELS,
     SCOPES,
     Book,
@@ -3738,7 +3737,6 @@ def _confluence_expiries(
 
 
 #: Pill text for the chain's option levels. Same-day copies take "0D " in front.
-#: The same-day absolute-gamma strike is the 0DTE pin.
 _OPTION_SHORT = {
     "Call wall": "CW",
     "Put wall": "PW",
@@ -3758,9 +3756,41 @@ _OPTION_SHORT = {
 }
 
 
+def same_day_note(snap: TerrainSnapshot) -> str | None:
+    """Return the same-day levels' note, shown on hover: what they are when they are a model.
+
+    None when they are today's own expiry as Schwab sent it (or there are none); with no expiry
+    listed today, they are the next one re-priced to today's close (terrain_engine.same_day_levels,
+    math_levels.repriced_to_close), and the note says so.
+    """
+    if snap.same_day_repriced_from is None:
+        return None
+    return (
+        f"Modeled: the {snap.same_day_repriced_from} expiry re-priced as if it expired at today's "
+        "close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)"
+    )
+
+
+def pin_note(snap: TerrainSnapshot) -> str | None:
+    """Return the pin's note, shown on hover: what it is and how far the price is from it.
+
+    The distance in expected moves and in strike widths and the minutes to the close are
+    terrain_engine.pin_by_open_interest's; this only writes them. None without a pin.
+    """
+    z, widths = snap.pin_expected_moves, snap.pin_strike_widths
+    if snap.pin_candidate is None or z is None or snap.pin_minutes_to_close is None:
+        return None
+    side = "at" if z == 0 else "above" if z > 0 else "below"
+    distance = f"{abs(z):.2f} expected moves"
+    if widths is not None:  # an expiry listing one strike has no strike width
+        distance += f" ({abs(widths):.1f} strike widths)"
+    return (
+        f"Most open interest within one expected move, of the expiry settling at today's close. "
+        f"Price {distance} {side} it; {snap.pin_minutes_to_close:.0f} minutes to the close."
+    )
+
+
 def _option_abbrev(label: str, same_day: bool) -> str:
-    if same_day and label == "Abs Γ":
-        return "0D Pin"
     base = _OPTION_SHORT[label] if label in _OPTION_SHORT else label
     if same_day:
         return "0D " + base
@@ -3792,9 +3822,8 @@ def _confluence_markers(
                     }
                 )
     served = live.to_dict()
-    at_spot = served | price_relations(served, spot).to_dict()  # the pin candidate: live price
     for gid, label in OPTION_LEVELS:
-        price = at_spot[gid]
+        price = served[gid]
         if price is not None:
             markers.append(
                 {
@@ -3976,7 +4005,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     markers = _confluence_markers(live, tk, now, live_spot)
     levels = _screen_levels(markers)
     flip = _level_named(levels, "Flip")
-    pin = _level_named(levels, "0D Pin")
+    pin = _level_named(levels, "Pin")
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
     body = {key: value for key, value in stored.items() if key not in ("ranked", "strikes")}
@@ -4002,13 +4031,14 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             "expiry": chosen,
             "expiries": listed,
             "spot_as_of_ts_utc": live_ts,
-            # the distances, the spot line and the pin candidate are from the live price: its mark
+            # the distances and the spot line are from the live price: its mark
             **price_mark(tk, live_ts, now.timestamp()),
             "status_text": "Chain as of " + ct_label(fetched),
             **_rail(levels, body["rows"]),
             "regime": live.regime,
             "flip_text": None if flip is None else flip["price_text"],
             "pin_text": None if pin is None else pin["price_text"],
+            "pin_note": pin_note(live),
             "move_text": _move_text(em_dn, em_up),
         }
     )
@@ -4071,12 +4101,9 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
             "as_of_time_ct": ct_label(as_of) if as_of is not None else None,
         }
         levels.append(row)
-    # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values),
-    # and the pin candidate at the live price (terrain_engine.price_relations)
+    # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
     published, verdict = terrain_cache_get(tk, now.timestamp())
     t = None if published is None else published.served()
-    if t is not None:
-        t |= price_relations(t, spot).to_dict()
     em = None if published is None else expected_move(published.snap.implied_1d_move, spot)
     carried = [
         (gid, label, "gamma", t[gid] if t is not None else None) for gid, label in OPTION_LEVELS
@@ -4088,11 +4115,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
     for gid, label, fam, price in carried:
         if price is not None:
             as_of = published.levels_ts_utc
-            producer = (
-                {"producer": "terrain_engine.price_relations", "carried": False}
-                if gid in PRICE_RELATIONS
-                else {"producer": "terrain_engine.compute_terrain", "carried": True}
-            )
             levels.append(
                 {
                     "id": gid,
@@ -4101,15 +4123,14 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
                     "label": label,
                     "short": label,
                     "evidence_tier": "DERIVED",
-                    "provenance": producer
+                    "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True}
                     if fam == "gamma"
                     else {"producer": "server.expected_move", "carried": False},
                     "staleness": {
                         "as_of_ts_utc": as_of,
                         "as_of_time_ct": ct_label(as_of),
                     },
-                    # a level placed at the live price (the pin candidate) is marked with it
-                    "not_live_text": mark["spot_not_live_text"] if gid in PRICE_RELATIONS else None,
+                    "note": pin_note(published.snap) if gid == "pin_candidate" else None,
                 }
             )
     for row in levels:
@@ -4178,6 +4199,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
                 "label": label,
                 # an unavailable snapshot holds no same-day level
                 "price": None if published is None else published.snap.same_day.get(gid),
+                "note": None if published is None else same_day_note(published.snap),
                 "carried": None if t is None else t[gid],
                 "staleness": {
                     "as_of_ts_utc": None if published is None else published.levels_ts_utc,

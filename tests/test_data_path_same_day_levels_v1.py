@@ -3,8 +3,9 @@
 The levels of the nearest listed expiry alone, by the whole book's own producers. An expiry that
 settles today is read from Schwab's gamma and delta as sent. With none today, the next listed
 expiry keeps its open interest and implied volatility; gamma and delta are rebuilt to that
-ticker's option close today. A name with no listed same-day expiry still gets them. That pin is
-the only 0DTE pin.
+ticker's option close today. A name with no listed same-day expiry still gets them. Their
+absolute-gamma strike is "0D Abs Γ", not a pin: the pin is read on open interest
+(tests/test_pin_by_open_interest_v1.py).
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import statistics
 
 import pytest
 
+import server
 import terrain_engine
 from option_contract import read_chain
 from terrain_engine import SAME_DAY_LEVELS, compute_terrain
@@ -56,7 +58,7 @@ def test_the_option_close_follows_the_ticker():
 def test_every_ticker_gets_same_day_levels_from_its_nearest_expiry():
     """SPY 2026-10-07 12:32 ET expires that day. MRVL, CRWD and TSLA that morning do not.
 
-    Each still gets a same-day pin. There is no second listed-expiry pin beside it.
+    Each still gets a same-day absolute-gamma strike, and no second listed-expiry one beside it.
     """
     for book in (SPY_0DTE, MRVL, CRWD, TSLA):
         snap = compute_terrain(
@@ -214,6 +216,31 @@ def test_with_no_expiry_today_the_next_one_is_priced_to_todays_close(book):
     expected = _front_walls(book, _at_todays_close)
     assert {name: same[name] for name in expected} == expected
     assert expected != _front_walls(book, _as_sent)
+
+
+@pytest.mark.parametrize(
+    ("book", "modeled"),
+    [(SPY_0DTE, False), (SPY_FULL, False), (CRWD, True), (MRVL, True), (NFLX, True), (TSLA, True)],
+    ids=["SPY-0dte", "SPY-full", "CRWD", "MRVL", "NFLX", "TSLA"],
+)
+def test_the_hover_says_modeled_exactly_when_the_levels_are_repriced(book, modeled):
+    """SPY's same-day expiry is read as sent: no note. The four with none today are re-priced.
+
+    Their note names the expiry re-priced (the front listed one) and says it is a model, on hover
+    (server.same_day_note, operator 2026-11-14: "label with a tooltip ... so it doesn't get in the
+    way").
+    """
+    snap = compute_terrain(
+        book.ticker, read_chain(book.chain), book.spot, now=book.now, sessions=sessions()
+    )
+    note = server.same_day_note(snap)
+    if not modeled:
+        assert snap.same_day_repriced_from is None and note is None
+        return
+    today = book.now.date().isoformat()
+    front = min(c["expirationDate"][:10] for c in book.chain if c["expirationDate"][:10] > today)
+    assert snap.same_day_repriced_from == front
+    assert note.startswith(f"Modeled: the {front} expiry re-priced"), note
 
 
 def _with_a_call_at(strike: float, book) -> dict:

@@ -6,8 +6,8 @@ from math_exposure_core import (
     compute_exposures_by_strike,
     exposures_have_dollar_gex,
     net_gex_dollars_at_strike,
+    pick_absolute_gamma_strike,
     pick_key_delta_strike,
-    pick_pin_and_strength,
     pick_volatility_point_strikes,
 )
 from option_contract import read_chain
@@ -39,10 +39,10 @@ def test_exposures_are_dollarized():
 
 
 def test_pin_fails_closed_without_dollarized_gex():
-    """No dollarized book -> (None, None); a raw-gamma fallback would silently change basis."""
+    """No dollarized book -> None; a raw-gamma fallback would silently change basis."""
     # the refusal path needs an un-dollarized bucket on purpose.
     raw_only = {700.0: {"net_gamma": 5.0, "call_gamma": 3.0, "put_gamma": 2.0}}
-    assert pick_pin_and_strength(raw_only) == (None, None)
+    assert pick_absolute_gamma_strike(raw_only) is None
 
 
 def test_key_delta_strike_is_the_total_dex_argmax_on_real_chain():
@@ -102,8 +102,9 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     # v3 (RC-292): gamma_pin* renamed absolute_gamma_*; + pin_candidate(+blockers). v4: the five
     # values no code read deleted (rr_25d, zero_dte_gamma_share_pct, vanna_agg, the wall ranges).
     # The v2 fields this test locks are all still carried.
-    # v5: net_gex_peak deleted (it always equalled hvp or lvp).
-    assert TERRAIN_SCHEMA_VERSION == 5 and d["schema_version"] == 5
+    # v5: net_gex_peak deleted (it always equalled hvp or lvp). v6: the pin read on open interest,
+    # its four gate inputs deleted.
+    assert TERRAIN_SCHEMA_VERSION == 6 and d["schema_version"] == 6
     for fld in (
         "net_gex_at_spot",
         "key_delta_strike",

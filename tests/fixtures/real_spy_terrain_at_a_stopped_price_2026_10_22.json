@@ -1,7 +1,4 @@
 {
- "absolute_gamma_gex_dollars": 1555131160.7514024,
- "absolute_gamma_oi": 10872.0,
- "absolute_gamma_strength_pct": 3.081142324397618,
  "absolute_gamma_strike": 765.0,
  "atm_iv_pct_by_expiry": {
   "2026-10-22": 17.55400877
@@ -9,7 +6,6 @@
  "atr_daily": null,
  "atr_monthly": null,
  "atr_weekly": null,
- "book_oi_total": 379360.0,
  "call_charm_wall": 765.0,
  "call_delta_wall": 763.0,
  "call_wall": 765.0,
@@ -56,7 +52,10 @@
  "pcr_volume_by_expiry": {
   "2026-10-22": 1.1502520957806701
  },
- "pin_candidate": null,
+ "pin_candidate": 764.0,
+ "pin_expected_moves": 0.06837646293726152,
+ "pin_minutes_to_close": 10.0,
+ "pin_strike_widths": 0.03999999999996362,
  "put_charm_wall": 765.0,
  "put_delta_wall": 772.0,
  "put_wall": 764.0,
@@ -78,7 +77,8 @@
   "put_delta_wall": 772.0,
   "put_wall": 764.0
  },
- "schema_version": 5,
+ "same_day_repriced_from": null,
+ "schema_version": 6,
  "spot": 773.1269,
  "spot_as_of_ts_utc": 1792701541.652,
  "spot_not_live_text": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",

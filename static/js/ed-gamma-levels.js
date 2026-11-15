@@ -58,14 +58,16 @@
     if (when == null || when === "") return "";
     return '<div class="lv-age">' + esc(when) + "</div>";
   }
-  function pairRow(name, nowPrice, nowWhen, sameDay, sameWhen, paired) {
+  function pairRow(name, nowPrice, nowWhen, sameDay, sameWhen, paired, note) {
     var cls = paired ? "lv-row zd-row" : "lv-row";
     var third = paired ? px(sameDay) : "-";
     var thirdWhen = paired ? timeHtml(sameWhen) : "";
     return (
       '<tr class="' +
       cls +
-      '"><td>' +
+      '"' +
+      (note ? ' title="' + esc(note) + '"' : "") + // the served note, on hover
+      "><td>" +
       esc(name) +
       "</td>" +
       '<td class="lv-px">' +
@@ -89,7 +91,7 @@
         if (r.id != null) shown[r.id] = true;
         var st = r.staleness != null ? r.staleness : null;
         var when = st != null && st.as_of_time_ct != null ? st.as_of_time_ct : null;
-        body += pairRow(levelName(r), r.carried, when, r.price, when, true);
+        body += pairRow(levelName(r), r.carried, when, r.price, when, true, r.note);
       });
     }
     if (levels != null) {
@@ -98,7 +100,7 @@
         if (r.id != null && shown[r.id]) return;
         var st = r.staleness != null ? r.staleness : null;
         var when = st != null && st.as_of_time_ct != null ? st.as_of_time_ct : null;
-        body += pairRow(levelName(r), r.price, when, null, null, false);
+        body += pairRow(levelName(r), r.price, when, null, null, false, r.note);
       });
     }
     if (!body) {

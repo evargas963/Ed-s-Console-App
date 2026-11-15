@@ -25,10 +25,10 @@ from pathlib import Path
 
 from math_exposure_core import (
     compute_exposures_by_strike,
-    pick_pin_and_strength,
+    pick_absolute_gamma_strike,
     pick_volatility_point_strikes,
 )
-from terrain_engine import compute_terrain, price_relations, qualify_pin_candidate
+from terrain_engine import compute_terrain, price_relations
 from tests.real_chains import SPY_0DTE, spy_0dte_book
 from time_et import sessions
 
@@ -45,11 +45,12 @@ NOW = SPY_0DTE.now
 FULL = "full_book"
 SEL = "selected_expiry"
 TODAY = "front_expiry_to_todays_close"
+SETTLING_TODAY = "expiry_settling_at_todays_close"
 
 DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     # terrain payload (the terrain panel, TerrainSnapshot.to_dict) — the levels SSOT
     ("terrain", "absolute_gamma_strike"): ("max_total_gamma", FULL),
-    ("terrain", "pin_candidate"): ("qualified_max_total_gamma", FULL),
+    ("terrain", "pin_candidate"): ("max_open_interest_within_one_expected_move", SETTLING_TODAY),
     ("terrain", "call_wall"): ("max_call_gamma", FULL),
     ("terrain", "put_wall"): ("max_put_gamma", FULL),
     ("terrain", "gamma_flip"): ("net_gamma_zero_cross", FULL),
@@ -76,7 +77,10 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
     # analytics summary rows (/api/state summary_rows[]) — the SELECTED-EXPIRY book.
     # KL overlay (analytics payload kl_* family) — stamped FROM terrain by the one writer
     ("kl_overlay", "kl_absolute_gamma_strike"): ("max_total_gamma", FULL),
-    ("kl_overlay", "kl_pin_candidate"): ("qualified_max_total_gamma", FULL),
+    ("kl_overlay", "kl_pin_candidate"): (
+        "max_open_interest_within_one_expected_move",
+        SETTLING_TODAY,
+    ),
     ("kl_overlay", "kl_hvl"): ("max_abs_net_gex", FULL),
     ("kl_overlay", "kl_call_gamma_wall"): ("max_call_gamma", FULL),
     ("kl_overlay", "kl_put_gamma_wall"): ("max_put_gamma", FULL),
@@ -119,7 +123,7 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     """
     chain, spot = spy_0dte_book()
     ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW, sessions=sessions())
-    total_leader, _strength = pick_pin_and_strength(ex)
+    total_leader = pick_absolute_gamma_strike(ex)
     net_leader, _net_call_peak = pick_volatility_point_strikes(ex)  # the net put gamma peak
     assert total_leader is not None and net_leader is not None
     assert total_leader != net_leader, (
@@ -132,7 +136,7 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
 
 
 def test_terrain_names_carry_their_declared_definitions():
-    """absolute_gamma_strike ≡ pick_pin_and_strength; hvp, lvp ≡ pick_volatility_point_strikes.
+    """absolute_gamma_strike ≡ pick_absolute_gamma_strike; hvp, lvp ≡ pick_volatility_point_strikes.
 
     Same book, same strikes, ONE faucet per definition.
     """
@@ -140,7 +144,7 @@ def test_terrain_names_carry_their_declared_definitions():
     held = sessions()
     snap = compute_terrain("SPY", chain, spot, now=NOW, sessions=held)
     ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW, sessions=held)
-    assert snap.absolute_gamma_strike == pick_pin_and_strength(ex)[0]
+    assert snap.absolute_gamma_strike == pick_absolute_gamma_strike(ex)
     assert (snap.hvp, snap.lvp) == pick_volatility_point_strikes(ex)
     # the cross-wire that RC-292 could never see: each name now refuses the other metric
     assert snap.absolute_gamma_strike not in (snap.hvp, snap.lvp)
@@ -149,46 +153,6 @@ def test_terrain_names_carry_their_declared_definitions():
     assert (d["hvp"], d["lvp"]) == (snap.hvp, snap.lvp)
     assert "net_gex_peak" not in d, "the level that only repeated one of the two peaks returned"
     assert "gamma_pin" not in d, "the retired two-definition name returned to the payload"
-
-
-def test_pin_candidate_is_published_only_through_the_qualification_gates():
-    """RC-292 operator disposition, executed: every gate flips the claim off.
-
-    All five passing publishes the strike; the real fixture withholds with named blockers.
-    """
-    passing = dict(
-        spot=100.0,
-        absolute_gamma_strike=100.2,
-        absolute_gamma_strength_pct=15.0,
-        absolute_gamma_gex_dollars=60_000.0,
-        absolute_gamma_oi=3_000.0,
-        book_oi_total=10_000.0,
-        net_gex_at_spot=5.0,
-        front_dte=0.0,
-    )
-    strike, blockers = qualify_pin_candidate(**passing)
-    assert (strike, blockers) == (100.2, [])
-    for gate, patch in (
-        ("regime", {"net_gex_at_spot": -5.0}),
-        ("proximity", {"absolute_gamma_strike": 102.0}),
-        ("dte", {"front_dte": 3.0}),
-        ("liquidity", {"absolute_gamma_oi": 1.0}),
-        ("completeness", {"book_oi_total": None}),
-    ):
-        strike, blockers = qualify_pin_candidate(**{**passing, **patch})
-        assert strike is None and gate in blockers, (
-            f"the {gate} gate did not withhold the pin claim: blockers={blockers}"
-        )
-    # The real book, valued at its capture (2026-10-07 12:32 ET): gamma at spot is -$2.44B, so the
-    # regime gate withholds the claim, and liquidity too; the measured concentration stays.
-    chain, spot = spy_0dte_book()
-    snap = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions())
-    served = price_relations(snap.to_dict(), spot).to_dict()
-    assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
-    assert served["pin_candidate"] is None
-    assert snap.absolute_gamma_strike is not None, (
-        "withholding the CLAIM must never delete the measured concentration (deliver, never delete)"
-    )
 
 
 def test_every_level_shaped_payload_name_is_declared():

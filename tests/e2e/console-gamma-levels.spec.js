@@ -114,6 +114,19 @@ test.describe('D — Gamma Levels view', () => {
     await expect(row.locator('.lv-px').nth(1).locator('.lv-age')).toHaveText('12:32:07 CT');
   });
 
+  test('the pin row shows the served note on hover', async ({ page }) => {
+    // SPY's levels panel at 15:39 CT on 2026-10-22, as the route served it (held to the route by
+    // tests/test_level_crosses_wire.py): its expiry closes that day, so it has a pin
+    const served = require('../fixtures/real_spy_levels_at_a_stopped_price_2026_10_22.json');
+    const pin = served.levels.find((r) => r.id === 'pin_candidate');
+    expect(pin.note).toContain('expected moves');
+    panels.levels = served;
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const row = page.locator('#levelsBody .lv-row', { hasText: 'Pin candidate' });
+    await expect(row).toHaveAttribute('title', pin.note);
+    await expect(row.locator('.lv-px').nth(0)).toContainText(pin.price.toFixed(2));
+  });
+
   test('the 0DTE table still shows when the canonical list is empty', async ({ page }) => {
     panels.levels = Object.assign({}, LEVELS, {
       levels: [],
