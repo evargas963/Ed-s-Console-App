@@ -78,10 +78,11 @@ type MigrationRow = tuple[float, float | None, float | None, float | None]
 
 
 class MeasureRows(TypedDict):
-    """The full book's DEX and OI rows, [strike, value] per known strike."""
+    """The full book's DEX, OI and net vanna rows, [strike, value] per known strike."""
 
     dex: list[list[float]]
     oi: list[list[float]]
+    vanna: list[list[float]]
 
 
 class PerStrikeView(MeasureRows):
@@ -546,14 +547,16 @@ def compute_implied_one_day_move(
 
 
 def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
-    """`{"dex": [[strike, net DEX $], …], "oi": [[strike, total OI], …]}` per known strike.
+    """`{"dex": [[strike, net DEX $], …], "oi": …, "vanna": [[strike, net vanna], …]}`.
 
     Every strike whose value is known, by the heatmap cell's own readers (net_dex_dollars of a
-    dollarized book; strike_total_oi). Open interest keeps every digit; the screen rounds the
-    count. A strike whose value is unknown has no row.
+    dollarized book; strike_total_oi; net_vanna, +call/-put as compute_exposures_by_strike
+    computed it). Open interest keeps every digit; the screen rounds the count. A strike whose
+    value is unknown has no row.
     """
     dex: list[list[float]] = []
     oi: list[list[float]] = []
+    vanna: list[list[float]] = []
     dollarized = bool(exposures) and exposures_have_dollar_gex(exposures)
     for k, b in exposures.items():
         sk = float_finite_or_none(k)
@@ -565,9 +568,12 @@ def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
         o = strike_total_oi(b)
         if o is not None:
             oi.append([sk, o])
-    dex.sort(key=lambda r: r[0])
-    oi.sort(key=lambda r: r[0])
-    return {"dex": dex, "oi": oi}
+        v = bucket_metric(b, "net_vanna")
+        if v is not None:
+            vanna.append([sk, v])
+    for rows in (dex, oi, vanna):
+        rows.sort(key=lambda r: r[0])
+    return {"dex": dex, "oi": oi, "vanna": vanna}
 
 
 def per_strike_view(books: dict[ExpiryKey, Book], exposures: dict[float, Bucket]) -> PerStrikeView:

@@ -1524,7 +1524,7 @@ def _publish_levels(
         spot_as_of_ts_utc=spot_ts,
         priced_at=priced_at,
         gamma_surface=surface,
-        vanna_rows=_vanna_rows(snap),
+        vanna_rows=snap.per_strike["vanna"],
         charm_rows=_charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         chain=chain,
@@ -1605,22 +1605,6 @@ def _log_level_crosses(
             held.extend(logged)
             del held[:-CROSSES_KEPT]
         _levels_changed(tk)
-
-
-def _vanna_rows(snap: TerrainSnapshot) -> list[list[float]]:
-    """[strike, net dealer vanna] for every strike whose vanna is known, from the published book.
-
-    Each strike's net_vanna exactly as compute_exposures_by_strike computed it (+call/-put).
-    """
-    exposures, _diag = merge_exposure_books(snap.books.values())
-    rows: list[list[float]] = []
-    for k, b in exposures.items():
-        net = bucket_metric(b, "net_vanna")
-        if net is None:
-            continue
-        rows.append([float(k), net])
-    rows.sort(key=lambda r: r[0])
-    return rows
 
 
 def _charm_rows(snap: TerrainSnapshot) -> list[list[float]]:
