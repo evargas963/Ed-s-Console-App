@@ -11,6 +11,7 @@
   "call_charm_wall",
   "put_charm_wall",
   "put_wall",
+  "pin_candidate",
   "hvp",
   "call_delta_wall"
  ],
@@ -33,7 +34,7 @@
    "from_spot_text": "2.87 above spot",
    "id": "lvp",
    "label": "Net call \u0393 peak",
-   "not_live_text": null,
+   "note": null,
    "price": 776.0,
    "provenance": {
     "carried": true,
@@ -53,7 +54,7 @@
    "from_spot_text": "1.13 below spot",
    "id": "key_delta_strike",
    "label": "Key \u0394 strike",
-   "not_live_text": null,
+   "note": null,
    "price": 772.0,
    "provenance": {
     "carried": true,
@@ -73,7 +74,7 @@
    "from_spot_text": "1.13 below spot",
    "id": "put_delta_wall",
    "label": "Put \u0394 wall",
-   "not_live_text": null,
+   "note": null,
    "price": 772.0,
    "provenance": {
     "carried": true,
@@ -93,7 +94,7 @@
    "from_spot_text": "2.13 below spot",
    "id": "max_pain",
    "label": "Max pain",
-   "not_live_text": null,
+   "note": null,
    "price": 771.0,
    "provenance": {
     "carried": true,
@@ -113,7 +114,7 @@
    "from_spot_text": "2.36 below spot",
    "id": "gamma_flip",
    "label": "\u0393 flip",
-   "not_live_text": null,
+   "note": null,
    "price": 770.7699684126369,
    "provenance": {
     "carried": true,
@@ -133,7 +134,7 @@
    "from_spot_text": "8.13 below spot",
    "id": "call_wall",
    "label": "Call wall",
-   "not_live_text": null,
+   "note": null,
    "price": 765.0,
    "provenance": {
     "carried": true,
@@ -153,7 +154,7 @@
    "from_spot_text": "8.13 below spot",
    "id": "absolute_gamma_strike",
    "label": "Abs \u0393",
-   "not_live_text": null,
+   "note": null,
    "price": 765.0,
    "provenance": {
     "carried": true,
@@ -173,7 +174,7 @@
    "from_spot_text": "8.13 below spot",
    "id": "call_charm_wall",
    "label": "Call charm wall",
-   "not_live_text": null,
+   "note": null,
    "price": 765.0,
    "provenance": {
     "carried": true,
@@ -193,7 +194,7 @@
    "from_spot_text": "8.13 below spot",
    "id": "put_charm_wall",
    "label": "Put charm wall",
-   "not_live_text": null,
+   "note": null,
    "price": 765.0,
    "provenance": {
     "carried": true,
@@ -213,7 +214,7 @@
    "from_spot_text": "9.13 below spot",
    "id": "put_wall",
    "label": "Put wall",
-   "not_live_text": null,
+   "note": null,
    "price": 764.0,
    "provenance": {
     "carried": true,
@@ -231,9 +232,29 @@
    "evidence_tier": "DERIVED",
    "family": "gamma",
    "from_spot_text": "9.13 below spot",
+   "id": "pin_candidate",
+   "label": "Pin candidate",
+   "note": "Most open interest within one expected move, of the expiry settling at today's close. Price 0.07 expected moves (0.0 strike widths) above it; 10 minutes to the close.",
+   "price": 764.0,
+   "provenance": {
+    "carried": true,
+    "producer": "terrain_engine.compute_terrain"
+   },
+   "short": "Pin candidate",
+   "side": "BELOW",
+   "staleness": {
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
+    "as_of_ts_utc": 1792700224.362402
+   }
+  },
+  {
+   "distance": -9.126899999999978,
+   "evidence_tier": "DERIVED",
+   "family": "gamma",
+   "from_spot_text": "9.13 below spot",
    "id": "hvp",
    "label": "Net put \u0393 peak",
-   "not_live_text": null,
+   "note": null,
    "price": 764.0,
    "provenance": {
     "carried": true,
@@ -253,7 +274,7 @@
    "from_spot_text": "10.13 below spot",
    "id": "call_delta_wall",
    "label": "Call \u0394 wall",
-   "not_live_text": null,
+   "note": null,
    "price": 763.0,
    "provenance": {
     "carried": true,

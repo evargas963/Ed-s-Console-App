@@ -43,7 +43,7 @@ the token, logs) and worktrees.
 | `app/market_data/schwab/streaming/live_ui.py` (`/ws` on the program's port: the price rows and heartbeat to the page), `app/options/order_flow/live_payload.py` | `push/` |
 | From `app/options/order_flow/streaming.py`: `assemble_chain_part` and the Flow panel's streaming state (`get_option_contract_streaming_diagnostics`) | `state/` |
 | `live_market_plane.py`, `live_price_rows.py`, `stream_spine.py` (the bus), the console's live stores (`server._terrain_cache`, `server._bars`, `server._crosses`, `app/options/order_flow/state.py`, `app/options/order_flow/history.py`) | `state/`, one store |
-| `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py`, `confluence_composite.py`, `liquidity_value_engine.py`, `liquidity_models.py`, `micro_structure.py`, `l1_trade_observation.py`, the order-flow engine | `calc/` |
+| `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_volatility.py`, `confluence_composite.py`, `liquidity_value_engine.py`, `liquidity_models.py`, `micro_structure.py`, `l1_trade_observation.py`, the order-flow engine | `calc/` |
 | `server.py` (the routes and startup), `static/` | `push/`, `static/` |
 | `stream_spine.py` (the writer, `CaptureWriter`), `db.py`, `db_authority.py`, `db_safety.py`, `json_blob_codec.py`, the chain history writes | `recorder/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `numeric_contract.py`, `option_contract.py` (the one reader of a chain contract and its typed record, which Feed, State, the Calculators and Push all take) | `shared/` |

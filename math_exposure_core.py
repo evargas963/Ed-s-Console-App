@@ -746,8 +746,8 @@ def strike_of_largest(
     return best_s, best_v
 
 
-def pick_pin_and_strength(exposures: dict[float, Bucket]) -> tuple[float | None, float | None]:
-    """Max TOTAL gamma — a GROSS GAMMA CONCENTRATION, plus its decisiveness.
+def pick_absolute_gamma_strike(exposures: dict[float, Bucket]) -> float | None:
+    """Max TOTAL gamma — a GROSS GAMMA CONCENTRATION.
 
     NOT a demonstrated magnet.
 
@@ -766,30 +766,20 @@ def pick_pin_and_strength(exposures: dict[float, Bucket]) -> tuple[float | None,
     Expiration-date clustering in the literature turns on NET positioning — Ni, Pearson and
     Poteshman, Journal of Financial Economics, doi:10.1016/j.jfineco.2004.08.005.
 
-    Treat the result as a pin CANDIDATE.
+    It is not the pin, which is read on open interest (terrain_engine.pin_by_open_interest).
 
     The NET book (calls minus puts) is a different question — where the signed book leans —
     and lives under its own names, the net call and net put gamma peaks
     (pick_volatility_point_strikes below).
 
-    strength_pct = the leader's margin over the runner-up on the same metric. A 1% lead is a
-    coin flip and the label should say so; a 40% lead is a decisive CONCENTRATION, which is
-    still not a claim about where price goes.
-    Fail-closed: no dollarized GEX -> (None, None), never a raw-gamma fallback.
+    Fail-closed: no dollarized GEX -> None, never a raw-gamma fallback.
     """
     if not exposures_have_dollar_gex(exposures):
-        return None, None
+        return None
     s, v = strike_of_largest(exposures, total_gex_dollars_at_strike)
     if s is None or v is None or v <= 0:
-        return None, None
-    second = 0.0
-    for k, bucket in exposures.items():
-        if float(k) == s:
-            continue
-        t = total_gex_dollars_at_strike(bucket)
-        if t is not None and t > second:
-            second = t
-    return s, (v - second) / v * 100.0
+        return None
+    return s
 
 
 def pick_key_delta_strike(exposures: dict[float, Bucket]) -> float | None:

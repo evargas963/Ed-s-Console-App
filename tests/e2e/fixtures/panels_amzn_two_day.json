@@ -3884,7 +3884,7 @@
  "terrain": {
   "ticker": "AMZN",
   "spot": 269.425,
-  "schema_version": 5,
+  "schema_version": 6,
   "regime": "LONG_GAMMA_CHOP",
   "posture": "FADE_EDGES",
   "confidence": "TRUSTED",
@@ -3893,10 +3893,10 @@
   "call_wall": 270.0,
   "put_wall": 270.0,
   "absolute_gamma_strike": 270.0,
-  "absolute_gamma_strength_pct": 19.578884212311877,
-  "absolute_gamma_gex_dollars": 291368765.1969657,
-  "absolute_gamma_oi": 191178.0,
-  "book_oi_total": 4818360.0,
+  "pin_candidate": null,
+  "pin_expected_moves": null,
+  "pin_strike_widths": null,
+  "pin_minutes_to_close": null,
   "max_pain": 260.0,
   "max_pain_dte": 1.0,
   "call_charm_wall": 275.0,
@@ -4082,7 +4082,6 @@
   "call_wall_lean": "TWO-SIDED \u2014 magnet, not a barrier",
   "put_wall_lean": "TWO-SIDED \u2014 magnet, not a barrier",
   "flip_relation": "ABOVE",
-  "pin_candidate": null,
   "atr_daily": 9.452408341900341,
   "atr_weekly": 17.39414267906555,
   "atr_monthly": 32.792381399428905,
@@ -70766,7 +70765,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 111.17614725715435,
      "side": "ABOVE",
      "from_spot_text": "111.18 above spot"
@@ -70786,7 +70785,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 6.843076566955176,
      "side": "ABOVE",
      "from_spot_text": "6.84 above spot"
@@ -70806,7 +70805,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 5.574999999999989,
      "side": "ABOVE",
      "from_spot_text": "5.57 above spot"
@@ -70826,7 +70825,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 5.574999999999989,
      "side": "ABOVE",
      "from_spot_text": "5.57 above spot"
@@ -71062,7 +71061,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -71082,7 +71081,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -71102,7 +71101,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -71122,7 +71121,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -71382,7 +71381,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -6.843076566955176,
      "side": "BELOW",
      "from_spot_text": "6.84 below spot"
@@ -71402,7 +71401,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -9.425000000000011,
      "side": "BELOW",
      "from_spot_text": "9.43 below spot"
@@ -71422,7 +71421,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -9.425000000000011,
      "side": "BELOW",
      "from_spot_text": "9.43 below spot"
@@ -71442,7 +71441,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -10.099691544661994,
      "side": "BELOW",
      "from_spot_text": "10.10 below spot"
@@ -71462,7 +71461,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -19.42500000000001,
      "side": "BELOW",
      "from_spot_text": "19.43 below spot"
@@ -71482,7 +71481,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -19.42500000000001,
      "side": "BELOW",
      "from_spot_text": "19.43 below spot"
@@ -71502,7 +71501,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -25.51088186260668,
      "side": "BELOW",
      "from_spot_text": "25.51 below spot"
@@ -71522,7 +71521,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -29.42500000000001,
      "side": "BELOW",
      "from_spot_text": "29.43 below spot"
@@ -75201,7 +75200,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 111.17614725715435,
      "side": "ABOVE",
      "from_spot_text": "111.18 above spot"
@@ -75221,7 +75220,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 6.843076566955176,
      "side": "ABOVE",
      "from_spot_text": "6.84 above spot"
@@ -75241,7 +75240,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 5.574999999999989,
      "side": "ABOVE",
      "from_spot_text": "5.57 above spot"
@@ -75261,7 +75260,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 5.574999999999989,
      "side": "ABOVE",
      "from_spot_text": "5.57 above spot"
@@ -75497,7 +75496,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -75517,7 +75516,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -75537,7 +75536,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -75557,7 +75556,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -75817,7 +75816,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -6.843076566955176,
      "side": "BELOW",
      "from_spot_text": "6.84 below spot"
@@ -75837,7 +75836,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -9.425000000000011,
      "side": "BELOW",
      "from_spot_text": "9.43 below spot"
@@ -75857,7 +75856,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -9.425000000000011,
      "side": "BELOW",
      "from_spot_text": "9.43 below spot"
@@ -75877,7 +75876,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -10.099691544661994,
      "side": "BELOW",
      "from_spot_text": "10.10 below spot"
@@ -75897,7 +75896,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -19.42500000000001,
      "side": "BELOW",
      "from_spot_text": "19.43 below spot"
@@ -75917,7 +75916,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -19.42500000000001,
      "side": "BELOW",
      "from_spot_text": "19.43 below spot"
@@ -75937,7 +75936,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -25.51088186260668,
      "side": "BELOW",
      "from_spot_text": "25.51 below spot"
@@ -75957,7 +75956,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -29.42500000000001,
      "side": "BELOW",
      "from_spot_text": "29.43 below spot"
@@ -79196,7 +79195,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 111.17614725715435,
      "side": "ABOVE",
      "from_spot_text": "111.18 above spot"
@@ -79216,7 +79215,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 6.843076566955176,
      "side": "ABOVE",
      "from_spot_text": "6.84 above spot"
@@ -79236,7 +79235,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 5.574999999999989,
      "side": "ABOVE",
      "from_spot_text": "5.57 above spot"
@@ -79256,7 +79255,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 5.574999999999989,
      "side": "ABOVE",
      "from_spot_text": "5.57 above spot"
@@ -79492,7 +79491,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -79512,7 +79511,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -79532,7 +79531,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -79552,7 +79551,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 0.5749999999999886,
      "side": "ABOVE",
      "from_spot_text": "0.57 above spot"
@@ -79812,7 +79811,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -6.843076566955176,
      "side": "BELOW",
      "from_spot_text": "6.84 below spot"
@@ -79832,7 +79831,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -9.425000000000011,
      "side": "BELOW",
      "from_spot_text": "9.43 below spot"
@@ -79852,7 +79851,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -9.425000000000011,
      "side": "BELOW",
      "from_spot_text": "9.43 below spot"
@@ -79872,7 +79871,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -10.099691544661994,
      "side": "BELOW",
      "from_spot_text": "10.10 below spot"
@@ -79892,7 +79891,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -19.42500000000001,
      "side": "BELOW",
      "from_spot_text": "19.43 below spot"
@@ -79912,7 +79911,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -19.42500000000001,
      "side": "BELOW",
      "from_spot_text": "19.43 below spot"
@@ -79932,7 +79931,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -25.51088186260668,
      "side": "BELOW",
      "from_spot_text": "25.51 below spot"
@@ -79952,7 +79951,7 @@
       "as_of_ts_utc": 1794497958.2236412,
       "as_of_time_ct": "Thu 11/12 09:39 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -29.42500000000001,
      "side": "BELOW",
      "from_spot_text": "29.43 below spot"

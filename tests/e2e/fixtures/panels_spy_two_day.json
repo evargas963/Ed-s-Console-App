@@ -15116,7 +15116,7 @@
  "terrain": {
   "ticker": "SPY",
   "spot": 757.075,
-  "schema_version": 5,
+  "schema_version": 6,
   "regime": "SHORT_GAMMA_TREND",
   "posture": "FOLLOW_BREAKS",
   "confidence": "TRUSTED",
@@ -15125,10 +15125,10 @@
   "call_wall": 775.0,
   "put_wall": 760.0,
   "absolute_gamma_strike": 760.0,
-  "absolute_gamma_strength_pct": 19.33161916737307,
-  "absolute_gamma_gex_dollars": 3412465763.242631,
-  "absolute_gamma_oi": 271665.0,
-  "book_oi_total": 18334009.0,
+  "pin_candidate": 756.0,
+  "pin_expected_moves": 0.31804243605527427,
+  "pin_strike_widths": 1.42999999999995,
+  "pin_minutes_to_close": 344.30109121799467,
   "max_pain": 757.0,
   "max_pain_dte": 0.0,
   "call_charm_wall": 765.0,
@@ -15364,7 +15364,6 @@
   "call_wall_lean": "DEALERS SELL",
   "put_wall_lean": "BREACHED \u2014 spot below",
   "flip_relation": "BELOW",
-  "pin_candidate": null,
   "atr_daily": 11.064105444079996,
   "atr_weekly": 19.863970115131707,
   "atr_monthly": 37.92614433481697,
@@ -47089,7 +47088,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -47109,7 +47108,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -47129,7 +47128,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -47149,7 +47148,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 8.391520212971159,
      "side": "ABOVE",
      "from_spot_text": "8.39 above spot"
@@ -47169,7 +47168,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 7.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "7.92 above spot"
@@ -47237,7 +47236,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 4.147505563218829,
      "side": "ABOVE",
      "from_spot_text": "4.15 above spot"
@@ -47305,7 +47304,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -47325,7 +47324,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -47345,7 +47344,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -47509,7 +47508,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -0.07500000000004547,
      "side": "BELOW",
      "from_spot_text": "0.08 below spot"
@@ -47584,6 +47583,26 @@
       "as_of_time_ct": "Thu 11/12 09:29 AM CT"
      },
      "distance": -1.0750000000000455,
+     "from_spot_text": "1.08 below spot"
+    },
+    {
+     "id": "pin_candidate",
+     "price": 756.0,
+     "family": "gamma",
+     "label": "Pin candidate",
+     "short": "Pin candidate",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT"
+     },
+     "note": "Most open interest within one expected move, of the expiry settling at today's close. Price 0.32 expected moves (1.4 strike widths) above it; 344 minutes to the close.",
+     "distance": -1.0750000000000455,
+     "side": "BELOW",
      "from_spot_text": "1.08 below spot"
     },
     {
@@ -47745,7 +47764,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -47765,7 +47784,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -47785,7 +47804,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -47805,7 +47824,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -8.391520212971159,
      "side": "BELOW",
      "from_spot_text": "8.39 below spot"
@@ -47820,6 +47839,7 @@
     "ORB_HIGH",
     "PD_VAL",
     "TODAY_VAL",
+    "pin_candidate",
     "ORB_MID",
     "VWAP_M1",
     "VWAP_P2",
@@ -51135,7 +51155,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -51155,7 +51175,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -51175,7 +51195,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -51195,7 +51215,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 8.391520212971159,
      "side": "ABOVE",
      "from_spot_text": "8.39 above spot"
@@ -51215,7 +51235,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 7.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "7.92 above spot"
@@ -51283,7 +51303,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 4.147505563218829,
      "side": "ABOVE",
      "from_spot_text": "4.15 above spot"
@@ -51351,7 +51371,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -51371,7 +51391,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -51391,7 +51411,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -51555,7 +51575,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -0.07500000000004547,
      "side": "BELOW",
      "from_spot_text": "0.08 below spot"
@@ -51630,6 +51650,26 @@
       "as_of_time_ct": "Thu 11/12 09:29 AM CT"
      },
      "distance": -1.0750000000000455,
+     "from_spot_text": "1.08 below spot"
+    },
+    {
+     "id": "pin_candidate",
+     "price": 756.0,
+     "family": "gamma",
+     "label": "Pin candidate",
+     "short": "Pin candidate",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT"
+     },
+     "note": "Most open interest within one expected move, of the expiry settling at today's close. Price 0.32 expected moves (1.4 strike widths) above it; 344 minutes to the close.",
+     "distance": -1.0750000000000455,
+     "side": "BELOW",
      "from_spot_text": "1.08 below spot"
     },
     {
@@ -51791,7 +51831,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -51811,7 +51851,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -51831,7 +51871,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -51851,7 +51891,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -8.391520212971159,
      "side": "BELOW",
      "from_spot_text": "8.39 below spot"
@@ -51866,6 +51906,7 @@
     "ORB_HIGH",
     "PD_VAL",
     "TODAY_VAL",
+    "pin_candidate",
     "ORB_MID",
     "VWAP_M1",
     "VWAP_P2",
@@ -54797,7 +54838,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -54817,7 +54858,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -54837,7 +54878,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 17.924999999999955,
      "side": "ABOVE",
      "from_spot_text": "17.92 above spot"
@@ -54857,7 +54898,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 8.391520212971159,
      "side": "ABOVE",
      "from_spot_text": "8.39 above spot"
@@ -54877,7 +54918,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 7.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "7.92 above spot"
@@ -54945,7 +54986,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 4.147505563218829,
      "side": "ABOVE",
      "from_spot_text": "4.15 above spot"
@@ -55013,7 +55054,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -55033,7 +55074,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -55053,7 +55094,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": 2.9249999999999545,
      "side": "ABOVE",
      "from_spot_text": "2.92 above spot"
@@ -55217,7 +55258,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -0.07500000000004547,
      "side": "BELOW",
      "from_spot_text": "0.08 below spot"
@@ -55292,6 +55333,26 @@
       "as_of_time_ct": "Thu 11/12 09:29 AM CT"
      },
      "distance": -1.0750000000000455,
+     "from_spot_text": "1.08 below spot"
+    },
+    {
+     "id": "pin_candidate",
+     "price": 756.0,
+     "family": "gamma",
+     "label": "Pin candidate",
+     "short": "Pin candidate",
+     "evidence_tier": "DERIVED",
+     "provenance": {
+      "producer": "terrain_engine.compute_terrain",
+      "carried": true
+     },
+     "staleness": {
+      "as_of_ts_utc": 1794497441.9345267,
+      "as_of_time_ct": "Thu 11/12 09:30 AM CT"
+     },
+     "note": "Most open interest within one expected move, of the expiry settling at today's close. Price 0.32 expected moves (1.4 strike widths) above it; 344 minutes to the close.",
+     "distance": -1.0750000000000455,
+     "side": "BELOW",
      "from_spot_text": "1.08 below spot"
     },
     {
@@ -55453,7 +55514,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -55473,7 +55534,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -55493,7 +55554,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -7.0750000000000455,
      "side": "BELOW",
      "from_spot_text": "7.08 below spot"
@@ -55513,7 +55574,7 @@
       "as_of_ts_utc": 1794497441.9345267,
       "as_of_time_ct": "Thu 11/12 09:30 AM CT"
      },
-     "not_live_text": null,
+     "note": null,
      "distance": -8.391520212971159,
      "side": "BELOW",
      "from_spot_text": "8.39 below spot"
@@ -55528,6 +55589,7 @@
     "ORB_HIGH",
     "PD_VAL",
     "TODAY_VAL",
+    "pin_candidate",
     "ORB_MID",
     "VWAP_M1",
     "VWAP_P2",

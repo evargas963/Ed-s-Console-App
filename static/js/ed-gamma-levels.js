@@ -65,16 +65,16 @@
     return (
       '<tr class="' +
       cls +
-      '"><td>' +
+      '"' +
+      (note ? ' title="' + esc(note) + '"' : "") + // the served note, on hover
+      "><td>" +
       esc(name) +
       "</td>" +
       '<td class="lv-px">' +
       px(nowPrice) +
       timeHtml(nowWhen) +
       "</td>" +
-      '<td class="lv-px"' +
-      (note ? ' title="' + esc(note) + '"' : "") + // the served note, on hover
-      ">" +
+      '<td class="lv-px">' +
       third +
       thirdWhen +
       "</td></tr>"
@@ -100,7 +100,7 @@
         if (r.id != null && shown[r.id]) return;
         var st = r.staleness != null ? r.staleness : null;
         var when = st != null && st.as_of_time_ct != null ? st.as_of_time_ct : null;
-        body += pairRow(levelName(r), r.price, when, null, null, false);
+        body += pairRow(levelName(r), r.price, when, null, null, false, r.note);
       });
     }
     if (!body) {

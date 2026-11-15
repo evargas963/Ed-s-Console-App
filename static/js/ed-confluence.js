@@ -491,12 +491,15 @@
       ["GAMMA REGIME · CHAIN", regimeWords(body.regime), ""],
       ["MODELED FLIP · CHAIN", body.flip_text, body.expiry ? body.expiry : ""],
       ["EXPECTED MOVE · LIVE PRICE", body.move_text, body.move_text ? "one day" : ""],
-      ["0DTE PIN · MODELED", body.pin_text, body.pin_text ? "same-day" : ""],
+      ["PIN · CHAIN", body.pin_text, body.pin_text ? "expiry closing today" : "", body.pin_note],
     ]
       .map(function (cell) {
         var small = cell[2] ? "<small>" + esc(cell[2]) + "</small>" : "";
+        var hover = cell[3] ? ' title="' + esc(cell[3]) + '"' : ""; // the served note
         return (
-          '<div class="stat"><label>' +
+          '<div class="stat"' +
+          hover +
+          "><label>" +
           esc(cell[0]) +
           "</label><strong>" +
           esc(text(cell[1])) +

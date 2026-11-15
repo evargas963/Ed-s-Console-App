@@ -415,7 +415,7 @@
       out.push({
         id: l.id,
         price: Number(l.price),
-        label: l.short + (l.not_live_text ? " · " + l.not_live_text : ""),
+        label: l.short,
         color: s[0],
         style: s[1],
         width: s[2],

@@ -17,7 +17,7 @@ only if nothing needs it at all.
 
 from __future__ import annotations
 
-from math_exposure_core import pick_pin_and_strength, pick_volatility_point_strikes
+from math_exposure_core import pick_absolute_gamma_strike, pick_volatility_point_strikes
 
 
 def test_the_two_pin_metrics_are_different_quantities():
@@ -28,7 +28,7 @@ def test_the_two_pin_metrics_are_different_quantities():
     is executed rather than asserted — and so the register's wording cannot quietly drift
     back to treating them as one.
 
-    It also pins what each one IS. `pick_pin_and_strength` maximises |call| + |put| GEX$: a
+    It also pins what each one IS. `pick_absolute_gamma_strike` maximises |call| + |put| GEX$: a
     gross CONCENTRATION, where the most hedging sits. `pick_volatility_point_strikes` maximises
     |call - put|: where the SIGNED book leans. The first discards the sign, and the sign is
     what decides whether hedging at a strike stabilises or repels — which is why neither is
@@ -57,7 +57,7 @@ def test_the_two_pin_metrics_are_different_quantities():
         },
     }
 
-    pin, strength = pick_pin_and_strength(exposures)
+    pin = pick_absolute_gamma_strike(exposures)
     no_put_peak, peak = pick_volatility_point_strikes(exposures)
     assert no_put_peak is None, "no strike of this book is net negative"
 
@@ -66,7 +66,4 @@ def test_the_two_pin_metrics_are_different_quantities():
     assert pin != peak, (
         "the two metrics returned the same strike on a book built to separate them — "
         "if this ever passes trivially the fixture has stopped testing anything"
-    )
-    assert strength is not None and 0.0 < strength <= 100.0, (
-        f"strength_pct is the margin over the runner-up, got {strength}"
     )
