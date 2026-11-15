@@ -107,25 +107,20 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
 
     Schwab's SPY and TSLA 1-minute price history as /pricehistory answered it at 2026-10-07
     09:57 UTC (10 days, extended hours: ~11,000 candles each), taken by the bar writer
-    (server._write_streamed_bars, as the daemon pushes it) beside a busy pure-Python thread: each
-    minute is Schwab's candle with every field as sent, the pre-market and after-hours minutes
-    included, in well under a second.
+    (server._write_streamed_bars, as the daemon pushes it): each minute is Schwab's candle with
+    every field as sent, the pre-market and after-hours minutes included. Prompt by two measures
+    no other program on the machine can move: the writer's own work (its thread's CPU time)
+    under a second, and beside a busy pure-Python thread at most 4 times its time alone (a
+    writer that waits on the other thread, as one that hashed its whole input piecemeal did
+    27 s, fails it; sharing the interpreter fairly is about 2 times).
     """
-    busy = threading.Event()
-
-    def price_options():
-        x = 0
-        while not busy.is_set():
-            for i in range(1000):
-                x += i * i
-
     answers = {tk: price_history(tk, "1m") for tk in ("SPY", "TSLA")}
-    for tk in answers:
-        server._bars.pop(tk, None)
-    t = threading.Thread(target=price_options, daemon=True)
-    t.start()
-    try:
-        t0 = time_et.elapsed()
+
+    def take() -> tuple[float, float, dict]:
+        """(seconds taken, seconds of the writer's own CPU, the bars read) of one write."""
+        for tk in answers:
+            server._bars.pop(tk, None)
+        t0, w0 = time_et.elapsed(), time_et.worked()
         server._write_streamed_bars(
             [
                 {
@@ -140,10 +135,26 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
             datetime.fromtimestamp(answers["SPY"]["answered_utc"], ET),
         )
         read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in answers}
-        took = time_et.elapsed() - t0
+        return time_et.elapsed() - t0, time_et.worked() - w0, read
+
+    busy = threading.Event()
+
+    def price_options():
+        x = 0
+        while not busy.is_set():
+            for i in range(1000):
+                x += i * i
+
+    try:
+        alone, _work, _read = take()
+        t = threading.Thread(target=price_options, daemon=True)
+        t.start()
+        try:
+            took, work, read = take()
+        finally:
+            busy.set()
+            t.join()
     finally:
-        busy.set()
-        t.join()
         for tk in answers:
             server._bars.pop(tk, None)
     for tk, a in answers.items():
@@ -159,8 +170,10 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
         assert any(datetime.fromtimestamp(ts, ET).hour >= 17 for ts, *_ in got), (
             f"{tk}: no after-hours minute kept"
         )
-    assert took < 1.0, (
-        f"{sum(len(v) for v in read.values())} candles took {took:.2f} s beside a busy thread"
+    candles = sum(len(v) for v in read.values())
+    assert work < 1.0, f"{candles} candles cost the writer {work:.2f} s of its own CPU"
+    assert took < 4 * alone, (
+        f"{candles} candles took {took:.2f} s beside a busy thread, {alone:.2f} s alone"
     )
 
 

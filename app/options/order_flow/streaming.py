@@ -330,10 +330,14 @@ def _answer_watchlist_request(msg: dict[str, Any]) -> None:
 
 
 def _apply_quote(sym: str, ts: float, msg: dict[str, Any], received: dict[str, Any] | None) -> None:
-    """Apply a LEVELONE_EQUITIES message: the order-flow state, then the equity's tick."""
+    """Apply a LEVELONE_EQUITIES message: the order-flow state, then the equity's tick.
+
+    The top first, as for a contract: a print is kept with the bid and ask its record holds.
+    """
     item: Payload = msg.get("native")
     if not isinstance(item, dict):
         return
+    push_option_top(sym, item)
     push_level_one(sym, item, ts_recv=ts, field_received=received)
     _flow(sym)
     _tick(sym)

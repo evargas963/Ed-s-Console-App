@@ -135,25 +135,28 @@
       ],
       [
         "Tape pressure 30s",
-        num(flow.tape_pressure_30s, 3),
+        num(flow.tape_pressure_30s, 3) + " · unsigned " + num(flow.tape_unsigned_30s, 2),
         "flow.tape_pressure_30s",
         fk("tape_pressure_30s"),
       ],
       [
         "Tape pressure 2m",
-        num(flow.tape_pressure_2m, 3),
+        num(flow.tape_pressure_2m, 3) + " · unsigned " + num(flow.tape_unsigned_2m, 2),
         "flow.tape_pressure_2m",
         fk("tape_pressure_2m"),
       ],
       [
         "Tape pressure 5m",
-        num(flow.tape_pressure_5m, 3),
+        num(flow.tape_pressure_5m, 3) + " · unsigned " + num(flow.tape_unsigned_5m, 2),
         "flow.tape_pressure_5m",
         fk("tape_pressure_5m"),
       ],
       [
         "Cum Δ (proxy)",
-        num(flow.cum_delta_proxy, 1) + (flow.cum_delta_window ? " · " + flow.cum_delta_window : ""),
+        num(flow.cum_delta_proxy, 1) +
+          " · unsigned " +
+          num(flow.cum_delta_unsigned, 2) +
+          (flow.cum_delta_window ? " · " + flow.cum_delta_window : ""),
         "flow.cum_delta_proxy",
         fk("cum_delta_proxy"),
       ],

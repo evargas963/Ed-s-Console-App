@@ -253,15 +253,6 @@ def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
     assert row["spot"] == 100.0
 
 
-def test_prior_close_is_the_streamed_close_price_and_stands_between_sends():
-    _rec("PCLOSE", {"key": "PCLOSE", "LAST_PRICE": 10.0, "CLOSE_PRICE": 9.5})
-    assert lmp.get_quote("PCLOSE")["prior_close"] == 9.5
-    _rec("PCLOSE", {"key": "PCLOSE", "LAST_PRICE": 10.1})  # CLOSE_PRICE not resent
-    assert lmp.get_quote("PCLOSE")["prior_close"] == 9.5
-    _rec("NOCLOSE", {"key": "NOCLOSE", "LAST_PRICE": 5.0})
-    assert lmp.get_quote("NOCLOSE")["prior_close"] is None  # never sent: unknown
-
-
 def test_last_price_is_carried_forward_only_from_a_streamed_row():
     """Only a streamed LAST_PRICE may carry.
 

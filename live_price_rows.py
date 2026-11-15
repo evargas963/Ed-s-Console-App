@@ -104,7 +104,6 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "open_price": field("open_price"),
         "high_price": field("high_price"),
         "low_price": field("low_price"),
-        "prior_close": field("prior_close"),
         "trade_ts": trade_ts,  # Schwab TRADE_TIME (epoch s)
         "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
         "trade_age_text": _trade_age_text(trade_ts, now),

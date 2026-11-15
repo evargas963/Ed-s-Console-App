@@ -1,3 +1,6 @@
+## Group
+<!-- what this finishes whole (a census category, an operator's order), or his override quoted -->
+
 ## On screen
 <!-- what the operator sees change -->
 

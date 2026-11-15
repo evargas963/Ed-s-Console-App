@@ -19,6 +19,7 @@ from l1_trade_observation import (
     canonical_tape_prints,
     cum_delta_window,
     iter_signed_cum_points,
+    unsigned_share,
 )
 from l1_trade_observation import (
     compute_cum_delta_proxy as _canonical_cum_delta,
@@ -912,10 +913,16 @@ def readout_card(
 
 
 def _compute_tape_pressure(data: dict[str, Any], window_sec: float, now: float) -> float | None:
-    """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
+    """PROXY L1 Lee and Ready pressure. ONE FAUCET: l1_trade_observation."""
     return _canonical_tape_pressure(
         canonical_tape_prints(data["content"]), window_sec, now * 1000.0
     )
+
+
+def _compute_unsigned(data: dict[str, Any], window_sec: float | None, now: float) -> float | None:
+    """The unsigned share of the size of a window (every print when None): l1_trade_observation."""
+    cutoff = None if window_sec is None else now * 1000.0 - int(window_sec * 1000)
+    return unsigned_share(canonical_tape_prints(data["content"]), cutoff)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -924,7 +931,7 @@ def _compute_tape_pressure(data: dict[str, Any], window_sec: float, now: float) 
 
 
 def _compute_cum_delta_proxy(data: dict[str, Any]) -> float | None:
-    """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
+    """PROXY L1 Lee and Ready signed size sum. ONE FAUCET: l1_trade_observation."""
     return _canonical_cum_delta(canonical_tape_prints(data["content"]))
 
 
@@ -981,6 +988,11 @@ class OrderFlowEngine:
             "tape_pressure_30s": tape_pressure_30s,
             "tape_pressure_2m": tape_pressure_2m,
             "tape_pressure_5m": tape_pressure_5m,
+            # each value's unsigned share of the size it covers, served beside it
+            "tape_unsigned_30s": _compute_unsigned(data, OF_TAPE_WINDOW_30S_SEC, now),
+            "tape_unsigned_2m": _compute_unsigned(data, OF_TAPE_WINDOW_2M_SEC, now),
+            "tape_unsigned_5m": _compute_unsigned(data, OF_TAPE_WINDOW_5M_SEC, now),
+            "cum_delta_unsigned": _compute_unsigned(data, None, now),
             "cum_delta_proxy": cum_delta_proxy,
             # the window the cumulative delta sums: the tape's first and last print (Schwab trade
             # time), served beside the number

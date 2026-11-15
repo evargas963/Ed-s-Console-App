@@ -1,4 +1,4 @@
-"""ORDER_FLOW_TRUSTED_VERTICAL_SLICE_1 — L1 identity, receive order, tick-rule PROXY.
+"""ORDER_FLOW_TRUSTED_VERTICAL_SLICE_1 — L1 identity, receive order, Lee and Ready PROXY.
 
 Each trade is one LEVELONE message as Schwab sends it (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS),
 taken through the live state (state.push_level_one: the one reader, l1.extract_vendor_print, and
@@ -20,15 +20,22 @@ def _tape(sym: str, *rows, state=None) -> list:
     """Each (price, size, trade time) as one LEVELONE message, pushed through the live state.
 
     Pushed through the live state (or `state`) in receive order: the content the engine reads.
+    Each message's bid and ask are at its price, so Lee and Ready's midpoint is the price and the
+    tick test signs it (Lee and Ready on a real quote: tests/test_tape_lee_ready_v1.py).
     """
     st = live_state._LIVE_STATE if state is None else state
     st.clear_symbol(sym)
     for i, (price, size, trade_ms) in enumerate(rows):
-        st.push_level_one(
-            sym,
-            {"key": sym, "LAST_PRICE": price, "LAST_SIZE": size, "TRADE_TIME_MILLIS": trade_ms},
-            ts_recv=1000.0 + i,
-        )
+        msg = {
+            "key": sym,
+            "LAST_PRICE": price,
+            "LAST_SIZE": size,
+            "TRADE_TIME_MILLIS": trade_ms,
+            "BID_PRICE": price,
+            "ASK_PRICE": price,
+        }
+        st.push_option_top(sym, msg)
+        st.push_level_one(sym, msg, ts_recv=1000.0 + i)
     return st.get_content_for_symbol(sym)
 
 
@@ -88,7 +95,10 @@ def test_a_zero_tick_is_signed_by_the_last_price_change():
     )
     prints = l1.canonical_tape_prints(content)
     assert [c for _t, c in l1.iter_signed_cum_points(prints)] == [0.0, 4.0, 10.0, 8.0, 5.0]
-    assert ofe._compute_tape_pressure({"content": content}, window_sec=60.0, now=5.0) == 5 / 25
+    # the first print is unsigned (no change seen): pressure is over the signed size, and the
+    # unsigned share is served beside it
+    assert ofe._compute_tape_pressure({"content": content}, window_sec=60.0, now=5.0) == 5 / 15
+    assert ofe._compute_unsigned({"content": content}, 60.0, 5.0) == 10 / 25
 
 
 def test_missing_size_remains_unavailable():
@@ -140,7 +150,7 @@ def test_mutation_first_per_ms_fails_current_keep():
     assert len(current) == 2
     assert len(old) == 1
     assert ofe._compute_cum_delta_proxy({"content": content}) == 4
-    assert l1.compute_cum_delta_proxy(old) == 0.0
+    assert l1.compute_cum_delta_proxy(old) is None  # its one print is unsigned: no value
 
 
 def test_mutation_vendor_time_sort_fails_receive_order():

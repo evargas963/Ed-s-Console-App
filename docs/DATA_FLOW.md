@@ -38,9 +38,12 @@ The facts below hold today and in the design, except where a bullet says what to
   else: it refreshes
   the token when it is within 300 s of expiry, one request at a time (the others carry the token
   it returned), and writes it to the token file atomically. Its session holds as many connections as
-  the quotes requests it sends together for a ticker a page shows (`schwab_client.CONNECTIONS`,
-  `QUOTES_AT_ONCE`: two, operator 2026-11-12: "lets go up in step"), each kept through a pause
-  (operator 2026-11-02: "Yes, keep it open"): every other request is sent alone, in turn. Nothing of
+  the requests a chain round sends together, each ticker's /chains expiries and the queued
+  /quotes (`schwab_client.CONNECTIONS`, `REQUESTS_AT_ONCE`: four, operator 2026-11-15: "Yes, 4 at
+  a time", after two on 2026-11-12: "lets go up in step"; measured 2026-11-12/13 one at a time, a
+  round took a median 155-245 s, almost all of it waiting on Schwab's answers), each kept through
+  a pause (operator 2026-11-02: "Yes, keep it open"): every other request is sent alone, in turn.
+  Nothing of
   ours closes it. When Schwab closes it,
   the pool drops it before the next request; a request caught in that close fails, and its caller
   logs it and asks again, a watchlist add excepted, which reports NOT_CHECKED for the operator to
@@ -542,7 +545,10 @@ the program.
   ticker's options are closed and its close values have not been fetched"; inside the option
   windows,
   after the day's first round, until its market closes, LIVE until two of the sweep's rounds pass
-  without its chain, then STALE; NOT LIVE when
+  without its chain, then STALE, by the round the daemon last reported and no number of ours
+  (operator 2026-11-15: "yes remove the floor", the 180 s it replaced held levels LIVE past two
+  rounds once a round was shorter than 90 s); NOT LIVE, "the daemon's first round of the
+  watchlist is in progress", before the daemon has reported a round, and NOT LIVE when
   Schwab's /markets answer for today is not held), never a zero or a
   value from elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and
   staleness tests). Each ticker's chain is asked for as Schwab documents it: its expiration chain
@@ -851,9 +857,15 @@ the program.
   every symbol reads feed down within 3 s; the last price row stands, marked not live. The
   contracts that beat last named keep their last streamed greeks on the levels; those cells are
   not live. The last watchlist stands; the page says the daemon is not reporting.
-- **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
+- **Tape.** Each print is signed by Lee and Ready against the bid and ask its LEVELONE record
+  held (`l1_trade_observation.trade_sign`; an equity's top is merged from its record as a
+  contract's is, `streaming._apply_quote`); a print with no bid and ask, or at their midpoint
+  before any price change, is unsigned, never 0, and its share of the size is served beside each
+  value (`tape_unsigned_30s`, `_2m`, `_5m`, `cum_delta_unsigned`). The cumulative delta (PROXY)
+  sums every signed print the tape holds, none signed being no value; no clock
   resets it, and the window it sums (its first and last print's Schwab trade time,
   `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
+  Enforced by: `tests/test_tape_lee_ready_v1.py` (SPY's captured stream, 2026-11-13).
   The options tape (`server.tape`) lists the newest trade first by Schwab's own trade time
   (`TRADE_TIME_MILLIS`), not by when a message arrived (operator 2026-11-12: "yes we should use
   schwab's data", after SPY's tape showed trades of 08:55 and 08:30 above trades of 15:14); a
@@ -1114,9 +1126,12 @@ behavior (AGENTS.md).
    axis: the server does not know the pan position. The panel draws the server's values
    unchanged; the visible maximum is never shown as a number, never a market metric, and never
    alters a displayed value. Enforced by: no machine check — ENF-16.
-9. **No trade side** (operator 2026-09-28, ONE-12). Schwab supplies no aggressor side, so no
-   inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
-   Enforced by: no machine check — ENF-16.
+9. **The trade side is estimated, and says so** (operator 2026-11-15: "buy/sell is important,
+   therefore if you have a better way for this to be more honest, then i'm all ears", "Yes for
+   the buy/sell. i agree build it"; it replaces a "no trade side" decision recorded 2026-09-28
+   with no words of his behind it). Schwab supplies no aggressor side, so each print is signed by
+   Lee and Ready on Schwab's own bid and ask, marked estimated, with its unsigned share beside
+   it (§3.4 Tape). Enforced by: `tests/test_tape_lee_ready_v1.py`.
 10. **Same-day levels, every ticker** (operator 2026-10-17; 2026-11-09: "schwab does not have a
     0DTE field that is one we compute ... we must have one producer at the source to compute all
     levels for all tickers on a 0dte basis"). One producer (`terrain_engine.same_day_levels`): the

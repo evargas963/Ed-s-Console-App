@@ -26,6 +26,8 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
     ).to_dict()
     srv._publish_levels(tk, read_chain(CRWD.chain), now, chain_spot=(CRWD.spot, now), now=CRWD.now)
     try:
+        mark_feed_live(tk, now=now)  # the daemon was running: its last round stands while down
+        lmp.record_feed_down()
         down = srv.terrain(tk, now)
         mark_feed_live(tk, now=now)  # the daemon's price row, read at `now`: its verdict LIVE
         live = srv.terrain(tk, now)
