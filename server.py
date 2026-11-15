@@ -225,15 +225,18 @@ CANDLE_1M_MAX_BARS: int = 390
 
 
 #: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT: Schwab's own
-#: 1-minute price history (its last 10 days, extended hours, from the capture daemon's
-#: /pricehistory request each ET date) with Schwab's streamed CHART_EQUITY bars on top, a streamed
-#: minute replacing Schwab's history of it. Owned by the bar writer (_bar_writer). Every live
-#: reader reads this, never a database (docs/DATA_FLOW.md §2 D6).
-BARS_KEPT = 24_000
+#: 1-minute price history (MINUTE_SERIES: its last 10 days with extended hours, and 90 days of the
+#: regular session, from the capture daemon's /pricehistory requests each ET date) with Schwab's
+#: streamed CHART_EQUITY bars on top, a streamed minute replacing Schwab's history of it. Owned by
+#: the bar writer (_bar_writer). Every live reader reads this, never a database (docs/DATA_FLOW.md
+#: §2 D6). 40,000 holds 62 sessions of 390 regular bars and 10 days of extended hours (~9,600).
+BARS_KEPT = 40_000
+#: the daemon's /pricehistory series of 1-minute bars, both kept in the ticker's bars
+MINUTE_SERIES = ("1m", "1m60")
 _bars: dict[str, list[Candle]] = {}
 #: every ticker's other series of Schwab's /pricehistory, each its newest answer as sent
 #: ((ticker, series) -> candles, oldest first; every series of the daemon's PRICE_HISTORY but
-#: "1m"). Owned by the bar writer; the bars panel and the ATR (_atr) read them.
+#: MINUTE_SERIES). Owned by the bar writer; the bars panel and the ATR (_atr) read them.
 _series: dict[tuple[str, str], list[Candle]] = {}
 _bars_lock = threading.Lock()
 #: where the bars come from, named in every level's provenance
@@ -271,7 +274,7 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
-    if msg["series"] != "1m":
+    if msg["series"] not in MINUTE_SERIES:
         key = (tk, msg["series"])
         candles = [
             b
