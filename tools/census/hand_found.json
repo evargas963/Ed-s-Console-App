@@ -215,10 +215,6 @@
       "item": "AGENTS.md:3,121 no bound of ours vs history.py:19 TAPE_KEPT = 500, :21 BOOKS_KEPT_SEC and server.py:194 BARS_KEPT"
     },
     {
-      "category": "contradiction: doc vs code",
-      "item": "DATA_FLOW.md:887-889 no inferred buy/sell side is computed or shown vs DATA_FLOW.md:673 and ed-gamma-flow.js:114 Cum delta (proxy, tick rule)"
-    },
-    {
       "category": "contradiction: rule vs code",
       "item": "AGENTS.md rule 11 the page reads no clock vs ed-core.js:745-746,798 PRICE_SILENCE_MS and :597 timers deciding WAITING or OFFLINE"
     },

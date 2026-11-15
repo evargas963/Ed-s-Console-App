@@ -213,7 +213,7 @@ class OrderFlowState:
             self._stream_greeks.pop(sym, None)
 
     def push_option_top(self, symbol: str, content_item: dict[str, Any]) -> None:
-        """Merge an option contract's top of book (LEVELONE_OPTIONS BID/ASK price and size, MARK).
+        """Merge a contract's or an equity's top of book (LEVELONE BID/ASK price and size, MARK).
 
         It is merged per field as Schwab sends changes only; not a number clears the field.
         """

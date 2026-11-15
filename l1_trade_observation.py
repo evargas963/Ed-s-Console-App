@@ -22,16 +22,19 @@ from typing import Any
 from numeric_contract import schwab_count, schwab_number
 
 # Source classification — mechanical, not aspirational.
-TAPE_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
+TAPE_CLASSIFICATION = "PROXY_LEE_READY_L1"
 TAPE_COMPLETENESS = "INCOMPLETE_OBSERVATION"
 
 #: what the tape's pressure and cumulative delta are, shown on hover beside them
 TAPE_NOTE = (
     "Estimated, not Schwab's: Schwab sends no buyer or seller side. Each last trade is signed by "
-    "the tick test: above the trade before it counts as buying, below as selling, at the same "
-    "price the last change's side (Lee and Ready 1991). The test is right about 78% of the time "
-    "on Nasdaq (Ellis, Michaely and O'Hara 2000) and less on unchanged prices; Schwab's stream "
-    "is not every trade. Pressure: signed size over all size in the window, -1 to +1."
+    "Lee and Ready (1991) against Schwab's bid and ask held with it: above their midpoint counts "
+    "as buying, below as selling, at it the tick test (above the trade before, buying; below, "
+    "selling; unchanged, the last change's side). A trade with no bid and ask, or at the "
+    "midpoint before any price change, is unsigned; its share of the size is shown beside each "
+    "value. On Nasdaq this method was right 81% of the time, the tick test alone 78% (Ellis, "
+    "Michaely and O'Hara 2000); Finucane (2000) found the two about equal. Schwab's stream is "
+    "not every trade. Pressure: signed size over the signed size in the window, -1 to +1."
 )
 VENDOR_TRADE_TIME = "TRADE_TIME_MILLIS"
 VENDOR_LAST_PRICE = "LAST_PRICE"
@@ -117,27 +120,56 @@ def tick_rule_sign(prev_price: float | None, price: float | None, last: int | No
     return last
 
 
+def trade_sign(price: float | None, bid: float | None, ask: float | None, tick: int | None):
+    """Return Lee and Ready's sign of a print against the bid and ask held with it.
+
+    +1 above their midpoint, -1 below it, at it the tick test's sign `tick` (Lee and Ready 1991,
+    Journal of Finance 46(2)). None without a price, a bid or an ask: no quote, no sign.
+    """
+    if price is None or bid is None or ask is None:
+        return None
+    mid = (bid + ask) / 2.0
+    if price > mid:
+        return 1
+    if price < mid:
+        return -1
+    return tick
+
+
 def _signed_walk(prints: list[dict[str, Any]], cutoff_ms: float | None):
-    """Walk the prints by the tick test (tick_rule_sign); THE one tick-test walk.
+    """Walk the prints by Lee and Ready (trade_sign); THE one signed-size walk.
 
     Each print with a size, traded at or after `cutoff_ms` (every one when None; a print with
     no trade time cannot be placed after it), as (x, size, signed size or None). x is the
     trade time in seconds, else the receive index (not a trade id). A print before the window
-    still sets the price and the last change the first one in it is signed by.
+    still sets the price and the last change the tick test of the first one in it reads.
     """
     prev_price: float | None = None
     last: int | None = None
     for i, p in enumerate(prints):
         t, price, size = p.get("time_millis"), p.get("price"), p.get("size")
-        sign = tick_rule_sign(prev_price, price, last)
+        tick = tick_rule_sign(prev_price, price, last)
+        sign = trade_sign(price, p.get("bid"), p.get("ask"), tick)
         in_window = cutoff_ms is None or (t is not None and t >= cutoff_ms)
         if in_window and size is not None:
             x = float(i) if t is None else t / 1000.0
             yield x, size, None if sign is None else sign * float(size)
-        if sign is not None:
-            last = sign
+        if tick is not None:
+            last = tick
         if price is not None:
             prev_price = price
+
+
+def unsigned_share(prints: list[dict[str, Any]], cutoff_ms: float | None = None) -> float | None:
+    """Return the share of the size traded at or after `cutoff_ms` that _signed_walk left unsigned.
+
+    0 to 1; None when no size traded in it.
+    """
+    walk = list(_signed_walk(prints, cutoff_ms))
+    total = sum(size for _x, size, _signed in walk)
+    if total <= 0:
+        return None
+    return sum(size for _x, size, signed in walk if signed is None) / total
 
 
 def iter_signed_cum_points(
@@ -158,14 +190,15 @@ def iter_signed_cum_points(
 
 
 def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> float | None:
-    """Sum the tick-rule signed size over every print with a size (a size of 0 adds 0).
+    """Sum the signed size over every print with a size (a size of 0 adds 0).
 
-    None when no print carried one. The prints it sums are cum_delta_window's.
+    None when no print was signed: nothing classified is no value, never 0. The prints it sums
+    are cum_delta_window's.
     """
-    points = iter_signed_cum_points(prints)
-    if not points:
+    walk = list(_signed_walk(prints, None))
+    if all(signed is None for _x, _size, signed in walk):
         return None
-    return points[-1][1]
+    return sum(signed for _x, _size, signed in walk if signed is not None)
 
 
 def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[float | None, float | None]:
@@ -186,12 +219,13 @@ def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[float | None, float 
 def compute_tape_pressure(
     prints: list[dict[str, Any]], window_sec: float, now_ms: float
 ) -> float | None:
-    """Return tick-rule signed size over total size for the prints traded in the window.
+    """Return the signed size over the size of the signed prints traded in the window.
 
-    The window is the `window_sec` before `now_ms` (_signed_walk); None when none traded in it.
+    The window is the `window_sec` before `now_ms` (_signed_walk); None when no signed print
+    traded in it. The unsigned prints' share is unsigned_share's, served beside it.
     """
-    walk = list(_signed_walk(prints, now_ms - int(window_sec * 1000)))
+    walk = [w for w in _signed_walk(prints, now_ms - int(window_sec * 1000)) if w[2] is not None]
     total_sz = sum(size for _x, size, _signed in walk)
     if total_sz <= 0:
         return None
-    return sum(signed for _x, _size, signed in walk if signed is not None) / total_sz
+    return sum(signed for _x, _size, signed in walk) / total_sz

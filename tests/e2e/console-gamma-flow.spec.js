@@ -143,7 +143,7 @@ test.describe('D — Gamma Flow subview', () => {
     await expect(page.locator('#flowBody .fl-est')).toContainText('Flow observations (estimated)');
     expect(FIXTURE.flow.estimate_note).toContain('tick test');
     await expect(page.locator('#flowBody .fl-est')).toHaveAttribute('title', FIXTURE.flow.estimate_note);
-    expect(FIXTURE.flow.estimate_note).toContain('Lee and Ready 1991');           // the method's source, named
+    expect(FIXTURE.flow.estimate_note).toContain('Lee and Ready (1991)');         // the method's source, named
     await expect(page.locator('#flowBody .fl-foot')).toHaveCount(0);                // no raw flags under the panel
     expect(ctx.posts).toEqual([SELECTED]);
     await page.setViewportSize({ width: 1672, height: 941 });
@@ -162,11 +162,12 @@ test.describe('D — Gamma Flow subview', () => {
     const ctx = makeContext(); await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
-    await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
-    await expect(rowV(page, 'flow.tape_pressure_2m')).toHaveText(fmt(FIXTURE.flow.tape_pressure_2m, 3));
-    await expect(rowV(page, 'flow.tape_pressure_5m')).toHaveText(fmt(FIXTURE.flow.tape_pressure_5m, 3));
-    // the cumulative delta with the window of prints it sums, served beside it
-    await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
+    // each pressure with the share of its size left unsigned, served beside it
+    await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3) + ' · unsigned ' + fmt(FIXTURE.flow.tape_unsigned_30s, 2));
+    await expect(rowV(page, 'flow.tape_pressure_2m')).toHaveText(fmt(FIXTURE.flow.tape_pressure_2m, 3) + ' · unsigned ' + fmt(FIXTURE.flow.tape_unsigned_2m, 2));
+    await expect(rowV(page, 'flow.tape_pressure_5m')).toHaveText(fmt(FIXTURE.flow.tape_pressure_5m, 3) + ' · unsigned ' + fmt(FIXTURE.flow.tape_unsigned_5m, 2));
+    // the cumulative delta with its unsigned share and the window of prints it sums, served beside it
+    await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · unsigned ' + fmt(FIXTURE.flow.cum_delta_unsigned, 2) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.cum_delta_slope')).toHaveText(fmt(FIXTURE.flow.cum_delta_slope, 3));
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
     await expect(rowV(page, 'mark')).toHaveText(fmt(FIXTURE.mark, 2));
@@ -191,8 +192,8 @@ test.describe('D — Gamma Flow subview', () => {
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('NOT LIVE');   // 2026-08-31: no /markets answer held
-    await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
-    await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
+    await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3) + ' · unsigned ' + fmt(FIXTURE.flow.tape_unsigned_30s, 2));
+    await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · unsigned ' + fmt(FIXTURE.flow.cum_delta_unsigned, 2) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
     await expect(rowV(page, 'ages.book_age_sec')).toHaveText(FIXTURE.book_when_age_text);
     await expect(page.locator('#flowBody')).not.toContainText('0.999');
