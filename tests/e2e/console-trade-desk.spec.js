@@ -107,7 +107,8 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
   deskPanels().liquidity = AT_ZERO;
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.liqm-zones')).toContainText('Resistance 0.00');
+  const atZero = AT_ZERO.zones.find((z) => z.zone_low === 0);   // the zone the 0 prices made
+  await expect(page.locator('.liqm-zones')).toContainText(atZero.zone_label + ' 0.00');
   await expect.poll(() => page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones)).toBe(AT_ZERO.zones.length);
   // each level type's hold rate as served, and what it is on hover
   const hold = page.locator('.liqm-hold');
@@ -669,9 +670,10 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('0.08 below spot');
     await expect(body).toContainText('Put wall ' + level('put_wall').from_spot_text + ', call wall ' +
       level('call_wall').from_spot_text);                         // the levels panel's own rows
-    // the price is inside the pivot zone 757.00-758.01 (the liquidity panel's own spot_location)
-    await expect(body).toContainText('Inside a Pivot / value zone (757.00–758.01, confluence 6)');
-    expect([INSIDE.zone_low, INSIDE.zone_high, INSIDE.confluence_score]).toEqual([757.0, 758.01, 6]);
+    // the price is inside the pivot zone 757.00-758.01 (the liquidity panel's own spot_location);
+    // its five levels, the price not among them
+    await expect(body).toContainText('Inside a Pivot / value zone (757.00–758.01, confluence 5)');
+    expect([INSIDE.zone_low, INSIDE.zone_high, INSIDE.confluence_score]).toEqual([757.0, 758.01, 5]);
     // the walls' and the flip's own moves since the prior close, as served (no drift word)
     await expect(body).toContainText('Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Γ flip 760.77 → 761.22 (+0.45)');
     await expect(body).toContainText('Gamma grew most at 775/770');

@@ -18,6 +18,7 @@ import pytest
 import liquidity_value_engine
 import live_market_plane as lmp
 import server as srv
+from liquidity_models import ZoneType
 from micro_structure import Candle
 from option_contract import read_chain
 from tests.feed_live_helper import daemon_status, price_history
@@ -69,24 +70,30 @@ def _tags_at_zero(body: dict) -> set[str]:
 
 
 @pytest.mark.usefixtures("published")
-def test_a_last_price_of_zero_is_the_live_spot_level_in_the_zones():
+def test_a_last_price_of_zero_is_a_price_every_zone_is_above():
+    """A reported 0 is 0 (rule 2): every zone of Friday's levels is above it, so each is resistance.
+
+    The price types each zone by its side; it is not a level of its own.
+    """
     at = FRIDAY.timestamp()
     lmp.record_feed_heartbeat(
         daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": 0}, received_ts=at)
     body = srv.liquidity_snapshot(TK, FRIDAY)
-    tags = [t for z in body["zones"] for t in _tags(z)]
-    assert "SPOT_LIVE" in tags, tags
+    assert body["zones"] and all(z["zone_low"] > 0 for z in body["zones"])
+    assert {z["zone_label"] for z in body["zones"]} == {"Resistance"}
+    assert all("SPOT_LIVE" not in _tags(z) for z in body["zones"]), "the price is not a level"
 
 
 @pytest.mark.usefixtures("published")
 def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
     """SPY's real close chain of 2026-10-22 published for the stand-in ticker, on Friday's bars.
 
-    Each option level the terrain holds reaches the zones under its tag, and the zone holding it
-    reads as a positioning zone. The tags are the one list the engine classifies by, so no tag
-    is sent that it does not know (ABS_GAMMA once was).
+    Each option level the terrain holds reaches the zones under its tag (ABS_GAMMA once did not).
+    No live price is held here, so no zone's side of it is known: each reads "-". A zone is typed
+    by its side of the price alone (above: resistance, below: support, around it: pivot), never by
+    the names of the levels in it.
     """
     srv._publish_levels(
         TK,
@@ -116,14 +123,13 @@ def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
     assert held >= {"GAMMA_CALL_WALL", "GAMMA_PUT_WALL", "ABS_GAMMA", "NET_CALL_PEAK", "MAX_PAIN"}
     sent = {t for z in body["zones"] for t in _tags(z)}
     assert held <= sent, held - sent
-    for z in body["zones"]:
-        tags = set(_tags(z))
-        if tags & held and "SPOT_LIVE" not in tags:
-            assert z["interpretation_notes"].startswith("Confluence:"), z
-    # each tag beside a session level in a zone of its own, as a level away from the others lands
-    for _level, tag in liquidity_value_engine.OPTION_LEVEL_TAGS:
-        _zone_type, notes = liquidity_value_engine._classify_live_cluster([tag, "VWAP"])
-        assert notes.startswith("Confluence:"), tag
+    assert {z["zone_label"] for z in body["zones"]} == {"-"}, "no price: no side"
+    z = body["zones"][0]
+    lo, hi = z["zone_low"], z["zone_high"]
+    classify = liquidity_value_engine._classify_live_cluster
+    assert classify(lo, hi, lo - 0.01)[0] == ZoneType.RESISTANCE_LIQUIDITY
+    assert classify(lo, hi, hi + 0.01)[0] == ZoneType.SUPPORT_LIQUIDITY
+    assert classify(lo, hi, lo)[0] == ZoneType.PIVOT_VALUE  # an edge is inside
 
 
 @pytest.mark.usefixtures("published")

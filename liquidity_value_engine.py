@@ -386,24 +386,23 @@ def build_premarket_snapshot(
     config: PlaybookConfig,
     *,
     canonical: PriceLevelSnapshot,
+    price: float | None,
 ) -> SnapshotOutput:
     """Premarket: PDH/PDL/PDC, PD POC/VAH/VAL, overnight high/low. No same-day RTH.
 
     The families are CARRIED from the one materialized snapshot (``canonical``); no level
     helper runs here. Absent stays absent: a family missing from the snapshot is missing here,
-    never replaced by spot, zero or a neighbouring level.
+    never replaced by spot, zero or a neighbouring level. Each zone is typed by its side of the
+    live ``price`` (_classify_live_cluster), as the live zones are.
     """
-    levels = _held_levels(canonical, PREMARKET_LEVELS)
-    families = {PHASE2A_LEVEL_IDS[lid][0] for _price, lid in levels}
-    pdh, pdl = canonical.price("PDH"), canonical.price("PDL")
-    zones: list[Zone] = []
-    for cluster in cluster_price_levels_into_zones(levels, config):
-        lo, hi, _mid, tags, _source_pairs = cluster
-        if {"prior_day", "overnight"} <= families:
-            zone_type, notes = _place_premarket_cluster(tags, lo, hi, pdh, pdl)
-        else:
-            zone_type, notes = _premarket_type_by_tags(tags), ""
-        zones.append(_zone(cluster, zone_type, notes, SnapshotType.PREMARKET))
+    zones = [
+        _zone(
+            cluster, *_classify_live_cluster(cluster[0], cluster[1], price), SnapshotType.PREMARKET
+        )
+        for cluster in cluster_price_levels_into_zones(
+            _held_levels(canonical, PREMARKET_LEVELS), config
+        )
+    ]
     return SnapshotOutput(ticker=ticker, snapshot_type=SnapshotType.PREMARKET, zones=zones)
 
 
@@ -465,46 +464,6 @@ def _zone(cluster: Cluster, zone_type: ZoneType, notes: str, snapshot_type: Snap
     )
 
 
-def _premarket_type_by_tags(tags: list[str]) -> ZoneType:
-    """Return the zone type a premarket cluster's tags alone give."""
-    if "PDL" in tags or "PD_VAL" in tags or "OVERNIGHT_LOW" in tags:
-        return ZoneType.SUPPORT_LIQUIDITY
-    if "PD_POC" in tags or "PDC" in tags:
-        return ZoneType.PIVOT_VALUE
-    return ZoneType.RESISTANCE_LIQUIDITY
-
-
-def _place_premarket_cluster(
-    tags: list[str], zone_low: float, zone_high: float, pdh: float | None, pdl: float | None
-) -> tuple[ZoneType, str]:
-    """Return a premarket cluster's zone type and note, placed against the prior day's range.
-
-    Canonical taxonomy: downside extremes -> low_extreme; PDL/VAL -> support_liquidity;
-    POC/balance -> pivot_value; PDH/overnight high -> resistance_liquidity. Notes state WHERE the
-    level came from -- never that stops rest there or that price is drawn to it.
-    """
-    high = "PDH" in tags or "OVERNIGHT_HIGH" in tags
-    low = "PDL" in tags or "PD_VAL" in tags
-    value = "PD_POC" in tags or "PDC" in tags
-    if pdl is not None and zone_low < pdl * 0.995:
-        return ZoneType.LOW_EXTREME, "Extreme low, below the prior-day low"
-    if value and (high or low):  # a prior-day POC or close keeps the type its tags give
-        return _premarket_type_by_tags(tags), ""
-    if high:
-        return ZoneType.RESISTANCE_LIQUIDITY, "Overhead structure at the prior-day high"
-    if "OVERNIGHT_LOW" in tags and not low:
-        return ZoneType.LOW_EXTREME, "Extreme low of the overnight window"
-    if low:
-        return ZoneType.SUPPORT_LIQUIDITY, "Underside structure at the prior-day low"
-    if value:
-        return ZoneType.PIVOT_VALUE, "Fair value reference from prior day POC/close"
-    if pdh is not None and zone_high >= pdh * 0.998:
-        return ZoneType.RESISTANCE_LIQUIDITY, "Overhead structure, above the prior-day high"
-    if pdl is not None and zone_low <= pdl * 1.002:
-        return ZoneType.SUPPORT_LIQUIDITY, "Underside structure at the prior-day low"
-    return _premarket_type_by_tags(tags), ""
-
-
 def value_area_relation(
     val: float | None, vah: float | None, prior_val: float | None, prior_vah: float | None
 ) -> str | None:
@@ -553,41 +512,20 @@ OPTION_LEVEL_TAGS = (
 )
 
 
-def _classify_live_cluster(tags: list[str]) -> tuple[ZoneType, str]:
-    """Map clustered level tags to zone type + note (live / fused playbook)."""
-    ts = " ".join(tags)
-    if "SPOT_LIVE" in ts:
-        return ZoneType.PIVOT_VALUE, "Live spot (from console cache)"
-    if not {tag for _level, tag in OPTION_LEVEL_TAGS}.isdisjoint(tags):
-        up = not {"GAMMA_CALL_WALL", "DELTA_CALL_WALL"}.isdisjoint(tags)
-        dn = not {"GAMMA_PUT_WALL", "DELTA_PUT_WALL"}.isdisjoint(tags)
-        if up and not dn:
-            return ZoneType.RESISTANCE_LIQUIDITY, "Confluence: overhead positioning / supply"
-        if dn and not up:
-            return ZoneType.SUPPORT_LIQUIDITY, "Confluence: downside positioning / demand"
-        return ZoneType.PIVOT_VALUE, "Confluence: mixed positioning + session levels"
+def _classify_live_cluster(lo: float, hi: float, price: float | None) -> tuple[ZoneType, str]:
+    """Type a live zone by its side of the live price: above it resistance, below it support.
 
-    if (
-        "ORB_HIGH" in ts
-        or "TODAY_VAH" in ts
-        or "PDH" in ts
-        or "OVERNIGHT_HIGH" in ts
-        or "PD_VAH" in ts
-    ):
-        return ZoneType.RESISTANCE_LIQUIDITY, "Resistance / upper structure"
-    if (
-        "ORB_LOW" in ts
-        or "TODAY_VAL" in ts
-        or "PDL" in ts
-        or "OVERNIGHT_LOW" in ts
-        or "PD_VAL" in ts
-    ):
-        return ZoneType.SUPPORT_LIQUIDITY, "Support / lower structure"
-    if "TODAY_POC" in ts or "VWAP" in ts or "ORB_MID" in ts or "PD_POC" in ts or "PDC" in ts:
-        return ZoneType.PIVOT_VALUE, "Fair value / pivot"
-    # The FALLTHROUGH note — no tag matched any branch above, so nothing is known about
-    # this cluster beyond the fact that it exists in this session.
-    return ZoneType.PIVOT_VALUE, "Unclassified session zone"
+    The definition: support is a level under the market, resistance one over it (Osler 2000,
+    docs/SOURCES.md osler-2000). The price inside the zone (an edge included): pivot / value.
+    With no live price the side is not known (SIDE_UNKNOWN, "-"); no level's name decides it.
+    """
+    if price is None:
+        return ZoneType.SIDE_UNKNOWN, "No live price: the side of the price is not known"
+    if lo > price:
+        return ZoneType.RESISTANCE_LIQUIDITY, "Above the price"
+    if hi < price:
+        return ZoneType.SUPPORT_LIQUIDITY, "Below the price"
+    return ZoneType.PIVOT_VALUE, "The price is inside it"
 
 
 def build_live_snapshot(
@@ -597,22 +535,24 @@ def build_live_snapshot(
     canonical: PriceLevelSnapshot,
     now: datetime,
     extra_levels: list[tuple[float, str]],
+    price: float | None,
     sessions: Mapping[str, Session],
 ) -> SnapshotOutput:
     """Build the session's zones from the one materialized price-level snapshot (``canonical``).
 
-    Optional ``extra_levels`` (the option levels and spot) are fused in; no level helper runs
-    here. Before the session's regular open it is the premarket shape, as it is while the session's
-    hours are not held: the regular session Schwab's /markets sent.
+    The option levels (``extra_levels``) are fused in; no level helper runs here. Each zone is
+    typed by its side of the live ``price`` (_classify_live_cluster). Before the session's regular
+    open it is the premarket shape, as it is while the session's hours are not held: the regular
+    session Schwab's /markets sent.
     """
     regular = _regular(sessions, canonical.session_date)
     if regular is None or now < regular[0]:
-        return build_premarket_snapshot(ticker, config, canonical=canonical)
+        return build_premarket_snapshot(ticker, config, canonical=canonical, price=price)
     levels = _held_levels(canonical, LIVE_LEVELS) + [
         (float(pair[0]), str(pair[1])) for pair in extra_levels
     ]
     zones = [
-        _zone(cluster, *_classify_live_cluster(cluster[3]), SnapshotType.LIVE)
+        _zone(cluster, *_classify_live_cluster(cluster[0], cluster[1], price), SnapshotType.LIVE)
         for cluster in cluster_price_levels_into_zones(levels, config)
     ]
     val, vah = canonical.price("TODAY_VAL"), canonical.price("TODAY_VAH")

@@ -50,14 +50,6 @@
       "item": "GSF/GRC half-gamma prices, empty on 6 of 8 (decision 9)"
     },
     {
-      "category": "computed value: wrong text",
-      "item": "posture and headline: wrong-side text (decision 10)"
-    },
-    {
-      "category": "computed value: home-made",
-      "item": "the read's lines (decision 11)"
-    },
-    {
       "category": "computed value: home-made weights",
       "item": "confluence score per strike: keep as ours or replace (decision 12)"
     },
@@ -82,28 +74,8 @@
       "item": "book slope, concentration (decision 17)"
     },
     {
-      "category": "computed value: home-made",
-      "item": "book wall candidates 3x median (decision 18)"
-    },
-    {
-      "category": "computed value: one producer",
-      "item": "top-of-book size imbalance (decision 19)"
-    },
-    {
-      "category": "computed value: conflicts with DATA_FLOW §6 item 9",
-      "item": "tape pressure, cumulative delta by tick rule (decision 20)"
-    },
-    {
       "category": "computed value: conflicts with DATA_FLOW §6 item 9",
       "item": "options trades at bid/ask/inside by quote rule (decision 21)"
-    },
-    {
-      "category": "computed value: wrong, three producers",
-      "item": "liquidity zones: one producer, typed by side of price (decision 22)"
-    },
-    {
-      "category": "computed value: no job",
-      "item": "zone extra fields except spot_location (decision 23)"
     },
     {
       "category": "computed value: register",
@@ -119,10 +91,6 @@
     },
     {
       "category": "one value, several producers",
-      "item": "front-expiry Black-Scholes gamma/delta (operator-decided, DF §6 item 10: confirm still wanted)"
-    },
-    {
-      "category": "one value, several producers",
       "item": "prior close: stream field 12 and REST"
     },
     {
@@ -132,26 +100,6 @@
     {
       "category": "one value, several names",
       "item": "max_pain_dte equals front expiry_dte"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "the live price is added as a level: +1 to every spot zone's score, label forced to Pivot / value (8 of 8)"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "zone label ignores side of price: SPY Resistance below price, NVDA Support above"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "options_level_count misses ABS_GAMMA, NET_GEX_PEAK, MAX_PAIN"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "zone persistence always 1, first/last_snapshot always live"
-    },
-    {
-      "category": "wrong on screen",
-      "item": "read text 'lower edge, wait at the put wall' with price already below it (SPY, TSLA)"
     },
     {
       "category": "wrong on screen",

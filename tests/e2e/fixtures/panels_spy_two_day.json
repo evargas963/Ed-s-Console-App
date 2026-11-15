@@ -46864,10 +46864,6 @@
       "value": 757.0
      },
      {
-      "label": "SPOT_LIVE",
-      "value": 757.075
-     },
-     {
       "label": "VWAP_P1",
       "value": 757.7035241802233
      },
@@ -46884,8 +46880,8 @@
       "value": 758.01
      }
     ],
-    "confluence_score": 6,
-    "interpretation_notes": "Live spot (from console cache)"
+    "confluence_score": 5,
+    "interpretation_notes": "The price is inside it"
    },
    {
     "zone_label": "Support",
@@ -46920,11 +46916,11 @@
      }
     ],
     "confluence_score": 6,
-    "interpretation_notes": "Support / lower structure"
+    "interpretation_notes": "Below the price"
    },
    {
-    "zone_label": "Support",
-    "zone_side": "support",
+    "zone_label": "Resistance",
+    "zone_side": "resistance",
     "zone_low": 760.0,
     "zone_high": 761.62,
     "anchor": 760.81,
@@ -46959,7 +46955,7 @@
      }
     ],
     "confluence_score": 7,
-    "interpretation_notes": "Confluence: downside positioning / demand"
+    "interpretation_notes": "Above the price"
    },
    {
     "zone_label": "Support",
@@ -46978,7 +46974,7 @@
      }
     ],
     "confluence_score": 2,
-    "interpretation_notes": "Support / lower structure"
+    "interpretation_notes": "Below the price"
    },
    {
     "zone_label": "Resistance",
@@ -46993,11 +46989,11 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Resistance / upper structure"
+    "interpretation_notes": "Above the price"
    },
    {
-    "zone_label": "Pivot / value",
-    "zone_side": "value",
+    "zone_label": "Support",
+    "zone_side": "support",
     "zone_low": 750.0,
     "zone_high": 750.0,
     "anchor": 750.0,
@@ -47008,7 +47004,7 @@
      }
     ],
     "confluence_score": 1,
-    "interpretation_notes": "Confluence: mixed positioning + session levels"
+    "interpretation_notes": "Below the price"
    },
    {
     "zone_label": "Resistance",
@@ -47031,7 +47027,7 @@
      }
     ],
     "confluence_score": 3,
-    "interpretation_notes": "Confluence: overhead positioning / supply"
+    "interpretation_notes": "Above the price"
    }
   ],
   "summary": {

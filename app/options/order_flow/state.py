@@ -19,6 +19,9 @@ from instrument_identity import ticker_storage_key
 from l1_trade_observation import (
     TAPE_CLASSIFICATION,
     TAPE_COMPLETENESS,
+    VENDOR_LAST_PRICE,
+    VENDOR_LAST_SIZE,
+    VENDOR_TRADE_TIME,
     extract_vendor_print,
     is_adjacent_restatement,
     vendor_triple,
@@ -28,6 +31,8 @@ from option_contract import quote_values, streamed_greeks, streamed_top
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
+#: a print's three fields: a new value of any makes a new print
+_PRINT_FIELDS = (VENDOR_LAST_PRICE, VENDOR_LAST_SIZE, VENDOR_TRADE_TIME)
 
 log = logging.getLogger(__name__)
 
@@ -137,8 +142,11 @@ class OrderFlowState:
                     **trade,
                     "receive_seq": self._receive_seq[sym],
                     # the daemon's receive time of the message that carried the trade, not the
-                    # console's clock, and not a later tick merged into the same record
-                    "server_received_ts": float(received("LAST_PRICE")),
+                    # console's clock: the newest of the print's own fields, since a trade at an
+                    # unchanged price carries a new time and size but no LAST_PRICE (Change)
+                    "server_received_ts": float(
+                        max(received(f) for f in _PRINT_FIELDS if f in content_item)
+                    ),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
                     **history.quoted(
