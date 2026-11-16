@@ -29,6 +29,7 @@ from math_levels import compute_charm_by_strike
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
+from push import surface as push_surface
 from push import tape as push_tape
 from push import terrain as push_terrain
 from state import level_store
@@ -181,8 +182,8 @@ def build_e2e_panels() -> dict:
                     "strikes_wider": push_strikes.strikes(TK, chain_at, {**AUTO, "scope": "wider"}),
                     "strikes_all": push_strikes.strikes(TK, chain_at, ALL),
                     "terrain": push_terrain.terrain(TK, chain_at),
-                    "surface": server.gamma_surface(
-                        TK, chain_at, {**AUTO, "cols": None, "expiry": None}
+                    "surface": push_surface.gamma_surface(
+                        TK, chain_at, {**AUTO, "cols": None, "expiry": None}, requested=False
                     ),
                     "tape": push_tape.tape(TK, chain_at),
                 }
