@@ -33,6 +33,7 @@ from numeric_contract import count_text, dollars_text, strike_text
 from option_contract import read_chain
 from push import expiries as push_expiries
 from push import strikes as push_strikes
+from push import surface as push_surface
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
@@ -232,7 +233,9 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     "route",
     [
         lambda: server.chain("SPY", time_et.now(), {"expiry": "2026-10-22"}),
-        lambda: server.gamma_surface("SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}),
+        lambda: push_surface.gamma_surface(
+            "SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}, requested=False
+        ),
         lambda: push_strikes.strikes("SPY", time_et.now(), AUTO),
     ],
     ids=["chain", "gamma-surface", "terrain-strikes"],
@@ -298,7 +301,9 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     )
     try:
         _publish(_AT.timestamp() - 10)
-        body = server.gamma_surface_payload(TK, "all", None, 0, None, None, _AT)
+        body = push_surface.gamma_surface_payload(
+            TK, "all", None, 0, None, None, _AT, requested=False
+        )
     finally:
         _forget()
     assert body["stream_by_expiry"][EXPIRY] == "partial"

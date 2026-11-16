@@ -5,8 +5,8 @@ panned centre), the columns the page fits, the row at the price and each measure
 
 Through the real code: the daemon's status and price row as the console holds them, the levels
 producer (server._publish_levels), the heatmap's and the per-strike panels' answers at a time
-(server.gamma_surface_payload, terrain_strikes_payload, strike_bar_payload). Real data: three SPY
-chain captures, one expiry each (10-14, 10-15, 11-20), published as one chain (no single capture
+(push.surface.gamma_surface_payload, terrain_strikes_payload, strike_bar_payload). Real data: three
+SPY chain captures, one expiry each (10-14, 10-15, 11-20), published as one chain (no single capture
 spans three expiries), valued on the captures' day (2026-10-01 12:00 ET). STAND-IN (named): the
 live price, the 10-15 capture's spot.
 """
@@ -26,6 +26,7 @@ from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strike_rows
 from push import strikes as push_strikes
+from push import surface as push_surface
 from state import level_store
 from terrain_engine import SCOPE_ROWS, strike_window
 from tests.feed_live_helper import daemon_status
@@ -85,8 +86,15 @@ def _published():
 
 def _heat(at=_AT, **kw):
     args = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None, **kw}
-    return server.gamma_surface_payload(
-        TK, args["scope"], args["centre"], args["shift"], args["cols"], args["expiry"], at
+    return push_surface.gamma_surface_payload(
+        TK,
+        args["scope"],
+        args["centre"],
+        args["shift"],
+        args["cols"],
+        args["expiry"],
+        at,
+        requested=False,
     )
 
 
@@ -212,7 +220,7 @@ def test_expired_columns_are_drawn_labelled_and_never_counted():
     only = _heat(later, expiry="2026-10-14")  # the expired column alone
     assert only["view"]["coverage"]["cells"] == 0
     assert (only["view"]["coverage"]["state"], only["view"]["coverage"]["label"]) == (
-        server.COVERAGE_EXPIRED,
+        push_surface.COVERAGE_EXPIRED,
         "EXPIRED",
     )
 
