@@ -1010,7 +1010,7 @@
     var spot = document.getElementById("klSpot");
     if (spot) spot.textContent = q.spot_disp == null ? "-" : q.spot_disp;
     if (ba) {
-      ba.textContent = fmt(q.bid) + " × " + fmt(q.ask);
+      ba.textContent = orDash(q.bidText) + " × " + orDash(q.askText); // served
       ba.title = q.quoteTime ? "quote " + q.quoteTime : "";
     }
     // Schwab's two change percents, each labelled: the regular session's and the last price's
@@ -1035,10 +1035,10 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "-" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct, chgPctText, tradeTime) {
+  function setWlRow(sym, spotText, chgPct, chgPctText, tradeTime) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
     if (pe) {
-      pe.textContent = spot == null ? "UNAVAILABLE" : fmt(spot);
+      pe.textContent = spotText == null ? "UNAVAILABLE" : spotText; // served: "740.65"
       pe.title = tradeTime ? "last trade " + tradeTime : "";
     }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
@@ -1256,9 +1256,8 @@
           : null;
       paintQuote({
         spot_disp: q.spot_disp,
-        spot: q.spot,
-        bid: q.bid,
-        ask: q.ask,
+        bidText: q.bid_text,
+        askText: q.ask_text,
         chgPct: q.chg_pct,
         chgPctRegular: q.chg_pct_regular,
         chgPctText: q.chg_pct_text,
@@ -1272,7 +1271,7 @@
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot, q.chg_pct, q.chg_pct_text, q.trade_time_ct);
+      setWlRow(wlSym, q.spot_disp, q.chg_pct, q.chg_pct_text, q.trade_time_ct);
       markWlHealthy();
     });
     window.dispatchEvent(new CustomEvent("ed:quote_tick", { detail: q }));
@@ -1319,10 +1318,9 @@
     if (_quoteShown) setFeed("stale", label, _tradeShown != null ? _tradeShown : age);
     else
       paintQuote({
-        spot: null,
         spot_disp: null,
-        bid: null,
-        ask: null,
+        bidText: null,
+        askText: null,
         chgPct: null,
         chgPctRegular: null,
         feedCls: "stale",

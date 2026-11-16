@@ -1191,7 +1191,7 @@
   // the index context and the data-trust row beside it.
   function vixText(vix) {
     if (!vix || vix.spot == null) return "waiting for the VIX stream";
-    var txt = num(vix.spot) + (vix.chg_pct_text != null ? " (" + esc(vix.chg_pct_text) + ")" : ""); // served
+    var txt = esc(vix.spot_disp) + (vix.chg_pct_text != null ? " (" + esc(vix.chg_pct_text) + ")" : ""); // served
     return vix.trade_time_ct != null ? txt + " · last trade " + esc(vix.trade_time_ct) : txt;
   }
   function paintHeader() {
@@ -1208,7 +1208,7 @@
         "<span>" +
         c.display +
         "</span><b>" +
-        (r && r.spot != null ? num(r.spot) : "-") +
+        esc(orDash(r && r.spot_disp)) + // served: "7425.50"
         "</b>" +
         (r && r.chg_pct != null
           ? '<em class="' +

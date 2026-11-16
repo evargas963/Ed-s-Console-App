@@ -831,7 +831,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('header paints the daemon price row the moment it arrives', async ({ page }) => {
     // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
     // (live_price_rows.price_row) straight to the page; the console is not in the path.
-    await socketWith(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
+    await socketWith(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25,
+      bid_text: '601.20', ask_text: '601.25', chg_pct: 0.5,
       chg_pct_regular: 0.4, chg_pct_text: '+0.50%', chg_pct_regular_text: '+0.40%' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
