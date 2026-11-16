@@ -193,7 +193,7 @@ def test_strikes_payload_carries_server_side_sums():
     assert ss["gex_above"] == sum(net_gex_dollars_at_strike(b) for b in above)
     drawn = body["today"]["all"]
     assert drawn, "the panel draws strikes of the real chain"
-    assert all(r[2] == strike_total_volume(book[r[0]]) for r in drawn)
+    assert all(r["volume"] == strike_total_volume(book[r["strike"]]) for r in drawn)
     assert live == C.spot, "sums must be computed against the one live spot"
 
 

@@ -15,6 +15,7 @@ import pytest
 import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
+from numeric_contract import dollars_text
 from option_contract import read_chain
 from terrain_engine import compute_terrain, level_moves, positioning_migration
 from tests.capture_store import store_capture
@@ -46,14 +47,14 @@ def two_days():
 def test_the_migration_matches_the_two_days_rows(two_days):
     (prior, prior_snap), (today, snap) = two_days
     m = positioning_migration(today["all"], prior["all"], snap.call_wall, snap.put_wall)
-    prior_gex = {r[0]: r[1] for r in prior["all"]}
+    prior_gex = {r.strike: r.value for r in prior["all"]}
     changes = {
-        r[0]: r[1] - prior_gex[r[0]]
+        r.strike: r.value - prior_gex[r.strike]
         for r in today["all"]
-        if r[1] is not None and prior_gex.get(r[0]) is not None
+        if r.value is not None and prior_gex.get(r.strike) is not None
     }
     assert m["compared"] and len(changes) > 10
-    assert {r[0]: r[3] for r in m["rows"] if r[3] is not None} == pytest.approx(changes)
+    assert {r.strike: r.change for r in m["rows"] if r.change is not None} == pytest.approx(changes)
     assert (
         m["grew"]
         == [k for k, _ in sorted(changes.items(), key=lambda kv: -kv[1]) if changes[k] > 0][:2]
@@ -80,21 +81,22 @@ def test_the_migration_matches_the_two_days_rows(two_days):
 def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     (_prior, _), (today, snap) = two_days
     m = positioning_migration(today["all"], [], snap.call_wall, snap.put_wall)
-    vols = {r[0]: r[2] for r in today["all"] if r[2]}
+    vols = {r.strike: r.volume for r in today["all"] if r.volume}
     assert m["busiest"] == sorted(sorted(vols, key=lambda k: -vols[k])[:2])
-    assert m["volume_total"] == sum(r[2] for r in today["all"] if r[2] is not None)
+    assert m["volume_total"] == sum(r.volume for r in today["all"] if r.volume is not None)
     # no prior day: nothing is compared, and no level's move is known
     assert not m["compared"] and [v["change"] for v in level_moves(snap, None)] == [None] * 3
 
 
 def _prior_gex(body: dict) -> dict:
     """Return the prior day's net GEX the migration compared, by strike."""
-    return {r[0]: r[2] for r in body["migration"]["all"]["rows"] if r[2] is not None}
+    rows = body["migration"]["all"]["rows"]
+    return {r["strike"]: r["prior"] for r in rows if r["prior"] is not None}
 
 
 def _gex(per_strike: dict) -> dict:
     """Return a day's own net GEX by strike, from its per-strike rows."""
-    return {r[0]: r[1] for r in per_strike["all"] if r[1] is not None}
+    return {r.strike: r.value for r in per_strike["all"] if r.value is not None}
 
 
 def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_days):
@@ -153,13 +155,25 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
     assert _prior_gex(body) == pytest.approx(_gex(thursday))
     m = body["migration"]["all"]
     assert (
-        m["compared"] and sum(1 for r in m["rows"] if r[3]) > 10
+        m["compared"] and sum(1 for r in m["rows"] if r["change"]) > 10
     )  # real changes, not self vs self
+    # each change as the screen shows it, its direction and size in dollars
+    for r in m["rows"]:
+        c = r["change"]
+        want = None if c is None else ("▲" if c >= 0 else "▼") + dollars_text(abs(c))
+        assert r["change_text"] == want
     # the migration panel's one scale: the largest |GEX| today or the prior day among the strikes
     # drawn (every today bar too, whether or not the prior day lists its strike)
-    drawn = {r[0] for r in body["today"]["all"]}
-    both = [abs(v) for r in m["rows"] if r[0] in drawn for v in (r[1], r[2]) if v is not None]
-    both += [abs(r[1]) for r in body["today"]["all"] if r[1] is not None]
+    today_rows = body["today"]["all"]
+    drawn = {r["strike"] for r in today_rows}
+    both = [
+        abs(v)
+        for r in m["rows"]
+        if r["strike"] in drawn
+        for v in (r["value"], r["prior"])
+        if v is not None
+    ]
+    both += [abs(r["value"]) for r in today_rows if r["value"] is not None]
     assert body["views"]["all"]["max_abs_with_prior"] == max(both)
     assert _gex(monday_prior) == pytest.approx(_gex(friday))
     # Monday's own rows are priced (the chain came with its spot) and compared with Friday's

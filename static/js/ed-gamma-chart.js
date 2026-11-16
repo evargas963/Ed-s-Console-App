@@ -19,8 +19,8 @@
       s.view === "chart"
     );
   }
-  // the served profile for the selected measure: {rows (the window), its scale (the window's
-  // largest |value|), max_abs_row, name}
+  // the served profile for the selected measure: {rows (the window, each {strike, value, text}),
+  // its scale (the window's largest |value|), max_abs_row, name}
   function served(sd) {
     if (sd === undefined || sd.failed != null || sd.available === false)
       return { rows: [], name: "GEX", signed: true }; // not sent, not produced, or no window: no rows
@@ -31,7 +31,6 @@
         rows: x.rows,
         scale: x.view.max_abs,
         max_abs_row: x.max_abs_row,
-        top_text: x.max_abs_row ? x.max_abs_row[2] : null, // [strike, value, its text]
         name: m === "oi" ? "OI" : "DEX",
         signed: m !== "oi",
       };
@@ -39,7 +38,6 @@
       rows: sd.today.all,
       scale: sd.views.all.max_abs,
       max_abs_row: sd.max_abs_row,
-      top_text: sd.max_abs_row ? sd.max_abs_row[3] : null, // [strike, GEX, volume, their texts]
       name: "GEX",
       signed: true,
     };
@@ -134,7 +132,7 @@
     var okBars = barsD && barsD.failed == null;
     var bars = okBars ? barsD.bars : [];
     var win = prof.rows.filter(function (r) {
-      return r[1] != null;
+      return r.value != null;
     }); // the served window; unknown: nothing drawn
     c.setBars(
       bars,
@@ -145,9 +143,9 @@
     c.setProfile(
       win.map(function (r) {
         return {
-          price: Number(r[0]),
-          value: Number(r[1]),
-          color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down,
+          price: r.strike,
+          value: r.value,
+          color: !prof.signed ? P.accent : r.value >= 0 ? P.up : P.down,
         };
       }),
       prof.scale,
@@ -223,7 +221,7 @@
           })
         : "");
     var top = prof.max_abs_row; // served: the largest-magnitude row
-    var shown = top ? orDash(prof.top_text) + (prof.signed ? "" : " contracts") : "";
+    var shown = top ? orDash(top.text) + (prof.signed ? "" : " contracts") : "";
     el.innerHTML =
       (asof ? '<div class="chart-asof">' + asof + "</div>" : "") +
       '<div class="chart-legend">' +
@@ -240,7 +238,7 @@
       window.EdShell.num(spot) +
       (tradeTime ? " · last trade " + esc(tradeTime) : "") +
       "</span>" +
-      (top ? "<span>largest |" + n + "| " + esc(top[0]) + " · " + esc(shown) + "</span>" : "") +
+      (top ? "<span>largest |" + n + "| " + esc(top.strike) + " · " + esc(shown) + "</span>" : "") +
       "</div>";
   }
 

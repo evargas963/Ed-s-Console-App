@@ -36,17 +36,17 @@
      "charm": 7554.741208367406,
      "pc_gex_lean": 0.6102021568401835,
      "pc_vol_lean": -0.8617021276595744,
-     "net_gex_text": "+3.26",
+     "net_gex_text": "$3.26M",
      "net_reason": null,
-     "oi_text": "4282",
+     "oi_text": "4,282",
      "oi_reason": null,
      "pc_gex_text": "0.39",
      "pc_gex_reason": null,
-     "gross_text": "7.43",
+     "gross_text": "$7.43M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
-     "volume_text": "1883",
+     "volume_text": "1,883",
      "volume_reason": null,
      "pc_vol_text": "1.86",
      "pc_vol_reason": null,
@@ -54,13 +54,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+72.80",
+     "dex_text": "$72.80M",
      "dex_reason": null,
-     "vanna_text": "-0.14",
+     "vanna_text": "-$138.84K",
      "vanna_reason": null,
-     "iv_text": "69.8",
+     "iv_text": "69.84",
      "iv_reason": null,
-     "charm_text": "+7.55",
+     "charm_text": "7.55K",
      "charm_reason": null,
      "score": 56.31189251346549,
      "score_text": "56",
@@ -69,21 +69,21 @@
       {
        "label": "net gamma",
        "text": "16.5",
-       "raw_text": "3.26",
+       "raw_text": "$3.26M",
        "normalized_text": "0.66",
        "weight_text": "0.25"
       },
       {
        "label": "open interest",
        "text": "12.1",
-       "raw_text": "4282",
+       "raw_text": "4,282",
        "normalized_text": "0.80",
        "weight_text": "0.15"
       },
       {
        "label": "volume",
        "text": "10.0",
-       "raw_text": "1883",
+       "raw_text": "1,883",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       }
@@ -92,49 +92,49 @@
       {
        "label": "net gamma",
        "text": "16.5",
-       "raw_text": "3.26",
+       "raw_text": "$3.26M",
        "normalized_text": "0.66",
        "weight_text": "0.25"
       },
       {
        "label": "open interest",
        "text": "12.1",
-       "raw_text": "4282",
+       "raw_text": "4,282",
        "normalized_text": "0.80",
        "weight_text": "0.15"
       },
       {
        "label": "volume",
        "text": "10.0",
-       "raw_text": "1883",
+       "raw_text": "1,883",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       },
       {
        "label": "charm",
        "text": "6.7",
-       "raw_text": "7.55",
+       "raw_text": "7.55K",
        "normalized_text": "0.83",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "6.1",
-       "raw_text": "0.14",
+       "raw_text": "$138.84K",
        "normalized_text": "0.87",
        "weight_text": "0.07"
       },
       {
        "label": "delta",
        "text": "5.0",
-       "raw_text": "72.80",
+       "raw_text": "$72.80M",
        "normalized_text": "1.00",
        "weight_text": "0.05"
       },
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "69.8",
+       "raw_text": "69.84",
        "normalized_text": "0.00",
        "weight_text": "0.05"
       }
@@ -157,13 +157,13 @@
      "charm": 1158.7968733884527,
      "pc_gex_lean": 0.20763371085454652,
      "pc_vol_lean": -7.095744680851064,
-     "net_gex_text": "+0.39",
+     "net_gex_text": "$385.15K",
      "net_reason": null,
-     "oi_text": "2153",
+     "oi_text": "2,153",
      "oi_reason": null,
      "pc_gex_text": "0.79",
      "pc_gex_reason": null,
-     "gross_text": "3.32",
+     "gross_text": "$3.32M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -175,13 +175,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+32.53",
+     "dex_text": "$32.53M",
      "dex_reason": null,
-     "vanna_text": "-0.02",
+     "vanna_text": "-$21.09K",
      "vanna_reason": null,
-     "iv_text": "70.0",
+     "iv_text": "70.05",
      "iv_reason": null,
-     "charm_text": "+1.16",
+     "charm_text": "1.16K",
      "charm_reason": null,
      "score": 17.18799995296726,
      "score_text": "17",
@@ -190,7 +190,7 @@
       {
        "label": "open interest",
        "text": "6.1",
-       "raw_text": "2153",
+       "raw_text": "2,153",
        "normalized_text": "0.40",
        "weight_text": "0.15"
       },
@@ -204,7 +204,7 @@
       {
        "label": "delta",
        "text": "2.7",
-       "raw_text": "32.53",
+       "raw_text": "$32.53M",
        "normalized_text": "0.54",
        "weight_text": "0.05"
       }
@@ -213,7 +213,7 @@
       {
        "label": "open interest",
        "text": "6.1",
-       "raw_text": "2153",
+       "raw_text": "2,153",
        "normalized_text": "0.40",
        "weight_text": "0.15"
       },
@@ -227,35 +227,35 @@
       {
        "label": "delta",
        "text": "2.7",
-       "raw_text": "32.53",
+       "raw_text": "$32.53M",
        "normalized_text": "0.54",
        "weight_text": "0.05"
       },
       {
        "label": "net gamma",
        "text": "1.9",
-       "raw_text": "0.39",
+       "raw_text": "$385.15K",
        "normalized_text": "0.08",
        "weight_text": "0.25"
       },
       {
        "label": "charm",
        "text": "1.0",
-       "raw_text": "1.16",
+       "raw_text": "1.16K",
        "normalized_text": "0.13",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "0.9",
-       "raw_text": "0.02",
+       "raw_text": "$21.09K",
        "normalized_text": "0.13",
        "weight_text": "0.07"
       },
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "70.0",
+       "raw_text": "70.05",
        "normalized_text": "0.00",
        "weight_text": "0.05"
       }
@@ -278,13 +278,13 @@
      "charm": 5310.675197038056,
      "pc_gex_lean": 0.32330217397016225,
      "pc_vol_lean": -3.2747252747252746,
-     "net_gex_text": "+1.40",
+     "net_gex_text": "$1.40M",
      "net_reason": null,
-     "oi_text": "5456",
+     "oi_text": "5,456",
      "oi_reason": null,
      "pc_gex_text": "0.68",
      "pc_gex_reason": null,
-     "gross_text": "7.26",
+     "gross_text": "$7.26M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -296,13 +296,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+87.12",
+     "dex_text": "$87.12M",
      "dex_reason": null,
-     "vanna_text": "-0.10",
+     "vanna_text": "-$95.05K",
      "vanna_reason": null,
-     "iv_text": "71.2",
+     "iv_text": "71.19",
      "iv_reason": null,
-     "charm_text": "+5.31",
+     "charm_text": "5.31K",
      "charm_reason": null,
      "score": 41.05962561107041,
      "score_text": "41",
@@ -311,14 +311,14 @@
       {
        "label": "open interest",
        "text": "15.0",
-       "raw_text": "5456",
+       "raw_text": "5,456",
        "normalized_text": "1.00",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "7.1",
-       "raw_text": "1.40",
+       "raw_text": "$1.40M",
        "normalized_text": "0.28",
        "weight_text": "0.25"
       },
@@ -334,14 +334,14 @@
       {
        "label": "open interest",
        "text": "15.0",
-       "raw_text": "5456",
+       "raw_text": "5,456",
        "normalized_text": "1.00",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "7.1",
-       "raw_text": "1.40",
+       "raw_text": "$1.40M",
        "normalized_text": "0.28",
        "weight_text": "0.25"
       },
@@ -355,28 +355,28 @@
       {
        "label": "delta",
        "text": "5.0",
-       "raw_text": "87.12",
+       "raw_text": "$87.12M",
        "normalized_text": "1.00",
        "weight_text": "0.05"
       },
       {
        "label": "charm",
        "text": "4.7",
-       "raw_text": "5.31",
+       "raw_text": "5.31K",
        "normalized_text": "0.59",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "4.2",
-       "raw_text": "0.10",
+       "raw_text": "$95.05K",
        "normalized_text": "0.60",
        "weight_text": "0.07"
       },
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "71.2",
+       "raw_text": "71.19",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -399,13 +399,13 @@
      "charm": -390.53093304908634,
      "pc_gex_lean": -0.1651268512412869,
      "pc_vol_lean": -3.8113207547169807,
-     "net_gex_text": "-0.09",
+     "net_gex_text": "-$93.54K",
      "net_reason": null,
-     "oi_text": "1091",
+     "oi_text": "1,091",
      "oi_reason": null,
      "pc_gex_text": "1.17",
      "pc_gex_reason": null,
-     "gross_text": "1.23",
+     "gross_text": "$1.23M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -417,13 +417,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+14.71",
+     "dex_text": "$14.71M",
      "dex_reason": null,
-     "vanna_text": "+0.01",
+     "vanna_text": "$6.88K",
      "vanna_reason": null,
-     "iv_text": "72.4",
+     "iv_text": "72.41",
      "iv_reason": null,
-     "charm_text": "-0.39",
+     "charm_text": "-391",
      "charm_reason": null,
      "score": 7.097162662097062,
      "score_text": "7",
@@ -432,7 +432,7 @@
       {
        "label": "open interest",
        "text": "3.1",
-       "raw_text": "1091",
+       "raw_text": "1,091",
        "normalized_text": "0.21",
        "weight_text": "0.15"
       },
@@ -446,7 +446,7 @@
       {
        "label": "delta",
        "text": "1.2",
-       "raw_text": "14.71",
+       "raw_text": "$14.71M",
        "normalized_text": "0.24",
        "weight_text": "0.05"
       }
@@ -455,7 +455,7 @@
       {
        "label": "open interest",
        "text": "3.1",
-       "raw_text": "1091",
+       "raw_text": "1,091",
        "normalized_text": "0.21",
        "weight_text": "0.15"
       },
@@ -469,35 +469,35 @@
       {
        "label": "delta",
        "text": "1.2",
-       "raw_text": "14.71",
+       "raw_text": "$14.71M",
        "normalized_text": "0.24",
        "weight_text": "0.05"
       },
       {
        "label": "net gamma",
        "text": "0.5",
-       "raw_text": "0.09",
+       "raw_text": "$93.54K",
        "normalized_text": "0.02",
        "weight_text": "0.25"
       },
       {
        "label": "charm",
        "text": "0.3",
-       "raw_text": "0.39",
+       "raw_text": "391",
        "normalized_text": "0.04",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "0.3",
-       "raw_text": "0.01",
+       "raw_text": "$6.88K",
        "normalized_text": "0.04",
        "weight_text": "0.07"
       },
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "72.4",
+       "raw_text": "72.41",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -520,17 +520,17 @@
      "charm": -3910.7302748938528,
      "pc_gex_lean": -0.5905172895502724,
      "pc_vol_lean": -46.76315789473684,
-     "net_gex_text": "-0.80",
+     "net_gex_text": "-$797.57K",
      "net_reason": null,
-     "oi_text": "3786",
+     "oi_text": "3,786",
      "oi_reason": null,
      "pc_gex_text": "1.59",
      "pc_gex_reason": null,
-     "gross_text": "3.50",
+     "gross_text": "$3.50M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
-     "volume_text": "1853",
+     "volume_text": "1,853",
      "volume_reason": null,
      "pc_vol_text": "47.76",
      "pc_vol_reason": null,
@@ -538,13 +538,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+44.87",
+     "dex_text": "$44.87M",
      "dex_reason": null,
-     "vanna_text": "+0.07",
+     "vanna_text": "$68.36K",
      "vanna_reason": null,
-     "iv_text": "72.9",
+     "iv_text": "72.87",
      "iv_reason": null,
-     "charm_text": "-3.91",
+     "charm_text": "-3.91K",
      "charm_reason": null,
      "score": 34.77579705377276,
      "score_text": "35",
@@ -553,21 +553,21 @@
       {
        "label": "open interest",
        "text": "10.7",
-       "raw_text": "3786",
+       "raw_text": "3,786",
        "normalized_text": "0.71",
        "weight_text": "0.15"
       },
       {
        "label": "volume",
        "text": "9.8",
-       "raw_text": "1853",
+       "raw_text": "1,853",
        "normalized_text": "0.98",
        "weight_text": "0.10"
       },
       {
        "label": "net gamma",
        "text": "4.0",
-       "raw_text": "0.80",
+       "raw_text": "$797.57K",
        "normalized_text": "0.16",
        "weight_text": "0.25"
       }
@@ -576,49 +576,49 @@
       {
        "label": "open interest",
        "text": "10.7",
-       "raw_text": "3786",
+       "raw_text": "3,786",
        "normalized_text": "0.71",
        "weight_text": "0.15"
       },
       {
        "label": "volume",
        "text": "9.8",
-       "raw_text": "1853",
+       "raw_text": "1,853",
        "normalized_text": "0.98",
        "weight_text": "0.10"
       },
       {
        "label": "net gamma",
        "text": "4.0",
-       "raw_text": "0.80",
+       "raw_text": "$797.57K",
        "normalized_text": "0.16",
        "weight_text": "0.25"
       },
       {
        "label": "delta",
        "text": "3.7",
-       "raw_text": "44.87",
+       "raw_text": "$44.87M",
        "normalized_text": "0.74",
        "weight_text": "0.05"
       },
       {
        "label": "charm",
        "text": "3.4",
-       "raw_text": "3.91",
+       "raw_text": "3.91K",
        "normalized_text": "0.43",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "3.0",
-       "raw_text": "0.07",
+       "raw_text": "$68.36K",
        "normalized_text": "0.43",
        "weight_text": "0.07"
       },
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "72.9",
+       "raw_text": "72.87",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -641,13 +641,13 @@
      "charm": -4283.199518352656,
      "pc_gex_lean": -1.8042549053215544,
      "pc_vol_lean": -28.4,
-     "net_gex_text": "-0.75",
+     "net_gex_text": "-$754.54K",
      "net_reason": null,
-     "oi_text": "2125",
+     "oi_text": "2,125",
      "oi_reason": null,
      "pc_gex_text": "2.80",
      "pc_gex_reason": null,
-     "gross_text": "1.59",
+     "gross_text": "$1.59M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -659,13 +659,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+19.06",
+     "dex_text": "$19.06M",
      "dex_reason": null,
-     "vanna_text": "+0.07",
+     "vanna_text": "$73.48K",
      "vanna_reason": null,
-     "iv_text": "74.2",
+     "iv_text": "74.17",
      "iv_reason": null,
-     "charm_text": "-4.28",
+     "charm_text": "-4.28K",
      "charm_reason": null,
      "score": 19.286434625871813,
      "score_text": "19",
@@ -674,21 +674,21 @@
       {
        "label": "open interest",
        "text": "6.0",
-       "raw_text": "2125",
+       "raw_text": "2,125",
        "normalized_text": "0.40",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "3.8",
-       "raw_text": "0.75",
+       "raw_text": "$754.54K",
        "normalized_text": "0.15",
        "weight_text": "0.25"
       },
       {
        "label": "charm",
        "text": "3.8",
-       "raw_text": "4.28",
+       "raw_text": "4.28K",
        "normalized_text": "0.47",
        "weight_text": "0.08"
       }
@@ -697,35 +697,35 @@
       {
        "label": "open interest",
        "text": "6.0",
-       "raw_text": "2125",
+       "raw_text": "2,125",
        "normalized_text": "0.40",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "3.8",
-       "raw_text": "0.75",
+       "raw_text": "$754.54K",
        "normalized_text": "0.15",
        "weight_text": "0.25"
       },
       {
        "label": "charm",
        "text": "3.8",
-       "raw_text": "4.28",
+       "raw_text": "4.28K",
        "normalized_text": "0.47",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "3.2",
-       "raw_text": "0.07",
+       "raw_text": "$73.48K",
        "normalized_text": "0.46",
        "weight_text": "0.07"
       },
       {
        "label": "delta",
        "text": "1.6",
-       "raw_text": "19.06",
+       "raw_text": "$19.06M",
        "normalized_text": "0.31",
        "weight_text": "0.05"
       },
@@ -739,7 +739,7 @@
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "74.2",
+       "raw_text": "74.17",
        "normalized_text": "0.02",
        "weight_text": "0.05"
       }
@@ -762,13 +762,13 @@
      "charm": -5783.42797174112,
      "pc_gex_lean": -1.2560986041270388,
      "pc_vol_lean": -3.2184873949579833,
-     "net_gex_text": "-1.01",
+     "net_gex_text": "-$1.01M",
      "net_reason": null,
-     "oi_text": "4490",
+     "oi_text": "4,490",
      "oi_reason": null,
      "pc_gex_text": "2.26",
      "pc_gex_reason": null,
-     "gross_text": "2.62",
+     "gross_text": "$2.62M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -780,13 +780,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+46.21",
+     "dex_text": "$46.21M",
      "dex_reason": null,
-     "vanna_text": "+0.10",
+     "vanna_text": "$97.47K",
      "vanna_reason": null,
-     "iv_text": "75.5",
+     "iv_text": "75.46",
      "iv_reason": null,
-     "charm_text": "-5.78",
+     "charm_text": "-5.78K",
      "charm_reason": null,
      "score": 34.389185004872076,
      "score_text": "34",
@@ -795,21 +795,21 @@
       {
        "label": "open interest",
        "text": "12.7",
-       "raw_text": "4490",
+       "raw_text": "4,490",
        "normalized_text": "0.84",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "5.1",
-       "raw_text": "1.01",
+       "raw_text": "$1.01M",
        "normalized_text": "0.20",
        "weight_text": "0.25"
       },
       {
        "label": "charm",
        "text": "5.1",
-       "raw_text": "5.78",
+       "raw_text": "5.78K",
        "normalized_text": "0.64",
        "weight_text": "0.08"
       }
@@ -818,35 +818,35 @@
       {
        "label": "open interest",
        "text": "12.7",
-       "raw_text": "4490",
+       "raw_text": "4,490",
        "normalized_text": "0.84",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "5.1",
-       "raw_text": "1.01",
+       "raw_text": "$1.01M",
        "normalized_text": "0.20",
        "weight_text": "0.25"
       },
       {
        "label": "charm",
        "text": "5.1",
-       "raw_text": "5.78",
+       "raw_text": "5.78K",
        "normalized_text": "0.64",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "4.3",
-       "raw_text": "0.10",
+       "raw_text": "$97.47K",
        "normalized_text": "0.61",
        "weight_text": "0.07"
       },
       {
        "label": "delta",
        "text": "3.8",
-       "raw_text": "46.21",
+       "raw_text": "$46.21M",
        "normalized_text": "0.76",
        "weight_text": "0.05"
       },
@@ -860,7 +860,7 @@
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "75.5",
+       "raw_text": "75.46",
        "normalized_text": "0.03",
        "weight_text": "0.05"
       }
@@ -883,13 +883,13 @@
      "charm": -2028.6008052517896,
      "pc_gex_lean": -2.9596975675062613,
      "pc_vol_lean": -71.0,
-     "net_gex_text": "-0.31",
+     "net_gex_text": "-$306.88K",
      "net_reason": null,
-     "oi_text": "1089",
+     "oi_text": "1,089",
      "oi_reason": null,
      "pc_gex_text": "3.96",
      "pc_gex_reason": null,
-     "gross_text": "0.51",
+     "gross_text": "$514.25K",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -901,13 +901,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+8.55",
+     "dex_text": "$8.55M",
      "dex_reason": null,
-     "vanna_text": "+0.03",
+     "vanna_text": "$32.85K",
      "vanna_reason": null,
-     "iv_text": "78.4",
+     "iv_text": "78.44",
      "iv_reason": null,
-     "charm_text": "-2.03",
+     "charm_text": "-2.03K",
      "charm_reason": null,
      "score": 9.146371147526912,
      "score_text": "9",
@@ -916,21 +916,21 @@
       {
        "label": "open interest",
        "text": "3.1",
-       "raw_text": "1089",
+       "raw_text": "1,089",
        "normalized_text": "0.20",
        "weight_text": "0.15"
       },
       {
        "label": "charm",
        "text": "1.8",
-       "raw_text": "2.03",
+       "raw_text": "2.03K",
        "normalized_text": "0.22",
        "weight_text": "0.08"
       },
       {
        "label": "net gamma",
        "text": "1.5",
-       "raw_text": "0.31",
+       "raw_text": "$306.88K",
        "normalized_text": "0.06",
        "weight_text": "0.25"
       }
@@ -939,35 +939,35 @@
       {
        "label": "open interest",
        "text": "3.1",
-       "raw_text": "1089",
+       "raw_text": "1,089",
        "normalized_text": "0.20",
        "weight_text": "0.15"
       },
       {
        "label": "charm",
        "text": "1.8",
-       "raw_text": "2.03",
+       "raw_text": "2.03K",
        "normalized_text": "0.22",
        "weight_text": "0.08"
       },
       {
        "label": "net gamma",
        "text": "1.5",
-       "raw_text": "0.31",
+       "raw_text": "$306.88K",
        "normalized_text": "0.06",
        "weight_text": "0.25"
       },
       {
        "label": "vanna",
        "text": "1.4",
-       "raw_text": "0.03",
+       "raw_text": "$32.85K",
        "normalized_text": "0.21",
        "weight_text": "0.07"
       },
       {
        "label": "delta",
        "text": "0.7",
-       "raw_text": "8.55",
+       "raw_text": "$8.55M",
        "normalized_text": "0.14",
        "weight_text": "0.05"
       },
@@ -981,7 +981,7 @@
       {
        "label": "volatility",
        "text": "0.2",
-       "raw_text": "78.4",
+       "raw_text": "78.44",
        "normalized_text": "0.04",
        "weight_text": "0.05"
       }
@@ -1004,13 +1004,13 @@
      "charm": -2218.441818036479,
      "pc_gex_lean": -2.796905521715743,
      "pc_vol_lean": -31.0,
-     "net_gex_text": "-0.40",
+     "net_gex_text": "-$396.32K",
      "net_reason": null,
-     "oi_text": "2063",
+     "oi_text": "2,063",
      "oi_reason": null,
      "pc_gex_text": "3.80",
      "pc_gex_reason": null,
-     "gross_text": "0.68",
+     "gross_text": "$679.72K",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -1022,13 +1022,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+19.98",
+     "dex_text": "$19.98M",
      "dex_reason": null,
-     "vanna_text": "+0.04",
+     "vanna_text": "$35.66K",
      "vanna_reason": null,
-     "iv_text": "79.0",
+     "iv_text": "78.97",
      "iv_reason": null,
-     "charm_text": "-2.22",
+     "charm_text": "-2.22K",
      "charm_reason": null,
      "score": 13.906783362197498,
      "score_text": "14",
@@ -1037,21 +1037,21 @@
       {
        "label": "open interest",
        "text": "5.8",
-       "raw_text": "2063",
+       "raw_text": "2,063",
        "normalized_text": "0.39",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "2.0",
-       "raw_text": "0.40",
+       "raw_text": "$396.32K",
        "normalized_text": "0.08",
        "weight_text": "0.25"
       },
       {
        "label": "charm",
        "text": "2.0",
-       "raw_text": "2.22",
+       "raw_text": "2.22K",
        "normalized_text": "0.24",
        "weight_text": "0.08"
       }
@@ -1060,35 +1060,35 @@
       {
        "label": "open interest",
        "text": "5.8",
-       "raw_text": "2063",
+       "raw_text": "2,063",
        "normalized_text": "0.39",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "2.0",
-       "raw_text": "0.40",
+       "raw_text": "$396.32K",
        "normalized_text": "0.08",
        "weight_text": "0.25"
       },
       {
        "label": "charm",
        "text": "2.0",
-       "raw_text": "2.22",
+       "raw_text": "2.22K",
        "normalized_text": "0.24",
        "weight_text": "0.08"
       },
       {
        "label": "delta",
        "text": "1.7",
-       "raw_text": "19.98",
+       "raw_text": "$19.98M",
        "normalized_text": "0.33",
        "weight_text": "0.05"
       },
       {
        "label": "vanna",
        "text": "1.6",
-       "raw_text": "0.04",
+       "raw_text": "$35.66K",
        "normalized_text": "0.22",
        "weight_text": "0.07"
       },
@@ -1102,7 +1102,7 @@
       {
        "label": "volatility",
        "text": "0.2",
-       "raw_text": "79.0",
+       "raw_text": "78.97",
        "normalized_text": "0.04",
        "weight_text": "0.05"
       }
@@ -1125,13 +1125,13 @@
      "charm": -1128.5923698460895,
      "pc_gex_lean": -4.291376321871279,
      "pc_vol_lean": -7.0,
-     "net_gex_text": "-0.22",
+     "net_gex_text": "-$217.05K",
      "net_reason": null,
-     "oi_text": "1261",
+     "oi_text": "1,261",
      "oi_reason": null,
      "pc_gex_text": "5.29",
      "pc_gex_reason": null,
-     "gross_text": "0.32",
+     "gross_text": "$318.20K",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -1143,13 +1143,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+12.54",
+     "dex_text": "$12.54M",
      "dex_reason": null,
-     "vanna_text": "+0.02",
+     "vanna_text": "$17.35K",
      "vanna_reason": null,
-     "iv_text": "82.6",
+     "iv_text": "82.60",
      "iv_reason": null,
-     "charm_text": "-1.13",
+     "charm_text": "-1.13K",
      "charm_reason": null,
      "score": 7.985994798310491,
      "score_text": "8",
@@ -1158,21 +1158,21 @@
       {
        "label": "open interest",
        "text": "3.6",
-       "raw_text": "1261",
+       "raw_text": "1,261",
        "normalized_text": "0.24",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "1.1",
-       "raw_text": "0.22",
+       "raw_text": "$217.05K",
        "normalized_text": "0.04",
        "weight_text": "0.25"
       },
       {
        "label": "delta",
        "text": "1.0",
-       "raw_text": "12.54",
+       "raw_text": "$12.54M",
        "normalized_text": "0.21",
        "weight_text": "0.05"
       }
@@ -1181,42 +1181,42 @@
       {
        "label": "open interest",
        "text": "3.6",
-       "raw_text": "1261",
+       "raw_text": "1,261",
        "normalized_text": "0.24",
        "weight_text": "0.15"
       },
       {
        "label": "net gamma",
        "text": "1.1",
-       "raw_text": "0.22",
+       "raw_text": "$217.05K",
        "normalized_text": "0.04",
        "weight_text": "0.25"
       },
       {
        "label": "delta",
        "text": "1.0",
-       "raw_text": "12.54",
+       "raw_text": "$12.54M",
        "normalized_text": "0.21",
        "weight_text": "0.05"
       },
       {
        "label": "charm",
        "text": "1.0",
-       "raw_text": "1.13",
+       "raw_text": "1.13K",
        "normalized_text": "0.12",
        "weight_text": "0.08"
       },
       {
        "label": "vanna",
        "text": "0.8",
-       "raw_text": "0.02",
+       "raw_text": "$17.35K",
        "normalized_text": "0.11",
        "weight_text": "0.07"
       },
       {
        "label": "volatility",
        "text": "0.3",
-       "raw_text": "82.6",
+       "raw_text": "82.60",
        "normalized_text": "0.06",
        "weight_text": "0.05"
       },
@@ -1246,13 +1246,13 @@
      "charm": -4993.267028743839,
      "pc_gex_lean": null,
      "pc_vol_lean": -3.0677966101694913,
-     "net_gex_text": "-0.72",
+     "net_gex_text": "-$715.77K",
      "net_reason": null,
-     "oi_text": "3681",
+     "oi_text": "3,681",
      "oi_reason": null,
      "pc_gex_text": null,
      "pc_gex_reason": "put/call gamma is missing",
-     "gross_text": "0.72",
+     "gross_text": "$715.77K",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -1264,13 +1264,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+24.92",
+     "dex_text": "$24.92M",
      "dex_reason": null,
-     "vanna_text": "+0.08",
+     "vanna_text": "$75.91K",
      "vanna_reason": null,
-     "iv_text": "83.5",
+     "iv_text": "83.50",
      "iv_reason": null,
-     "charm_text": "-4.99",
+     "charm_text": "-4.99K",
      "charm_reason": null,
      "score": 25.706576033822472,
      "score_text": "26",
@@ -1279,21 +1279,21 @@
       {
        "label": "open interest",
        "text": "10.4",
-       "raw_text": "3681",
+       "raw_text": "3,681",
        "normalized_text": "0.69",
        "weight_text": "0.15"
       },
       {
        "label": "charm",
        "text": "4.4",
-       "raw_text": "4.99",
+       "raw_text": "4.99K",
        "normalized_text": "0.55",
        "weight_text": "0.08"
       },
       {
        "label": "net gamma",
        "text": "3.6",
-       "raw_text": "0.72",
+       "raw_text": "$715.77K",
        "normalized_text": "0.14",
        "weight_text": "0.25"
       }
@@ -1302,35 +1302,35 @@
       {
        "label": "open interest",
        "text": "10.4",
-       "raw_text": "3681",
+       "raw_text": "3,681",
        "normalized_text": "0.69",
        "weight_text": "0.15"
       },
       {
        "label": "charm",
        "text": "4.4",
-       "raw_text": "4.99",
+       "raw_text": "4.99K",
        "normalized_text": "0.55",
        "weight_text": "0.08"
       },
       {
        "label": "net gamma",
        "text": "3.6",
-       "raw_text": "0.72",
+       "raw_text": "$715.77K",
        "normalized_text": "0.14",
        "weight_text": "0.25"
       },
       {
        "label": "vanna",
        "text": "3.3",
-       "raw_text": "0.08",
+       "raw_text": "$75.91K",
        "normalized_text": "0.48",
        "weight_text": "0.07"
       },
       {
        "label": "delta",
        "text": "2.1",
-       "raw_text": "24.92",
+       "raw_text": "$24.92M",
        "normalized_text": "0.41",
        "weight_text": "0.05"
       },
@@ -1344,7 +1344,7 @@
       {
        "label": "volatility",
        "text": "0.3",
-       "raw_text": "83.5",
+       "raw_text": "83.50",
        "normalized_text": "0.07",
        "weight_text": "0.05"
       }
@@ -1760,13 +1760,13 @@
      "charm": -966.698537896813,
      "pc_gex_lean": 0.9835283452503556,
      "pc_vol_lean": 0.953125,
-     "net_gex_text": "+0.45",
+     "net_gex_text": "$451.71K",
      "net_reason": null,
      "oi_text": "679",
      "oi_reason": null,
      "pc_gex_text": "0.02",
      "pc_gex_reason": null,
-     "gross_text": "0.47",
+     "gross_text": "$466.84K",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -1778,13 +1778,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+3.30",
+     "dex_text": "$3.30M",
      "dex_reason": null,
-     "vanna_text": "+0.08",
+     "vanna_text": "$78.66K",
      "vanna_reason": null,
-     "iv_text": "63.2",
+     "iv_text": "63.20",
      "iv_reason": null,
-     "charm_text": "-0.97",
+     "charm_text": "-967",
      "charm_reason": null,
      "score": 13.370762409847128,
      "score_text": "13",
@@ -1793,7 +1793,7 @@
       {
        "label": "net gamma",
        "text": "4.7",
-       "raw_text": "0.45",
+       "raw_text": "$451.71K",
        "normalized_text": "0.16",
        "weight_text": "0.30"
       },
@@ -1807,7 +1807,7 @@
       {
        "label": "vanna",
        "text": "2.5",
-       "raw_text": "0.08",
+       "raw_text": "$78.66K",
        "normalized_text": "0.25",
        "weight_text": "0.10"
       }
@@ -1816,7 +1816,7 @@
       {
        "label": "net gamma",
        "text": "4.7",
-       "raw_text": "0.45",
+       "raw_text": "$451.71K",
        "normalized_text": "0.16",
        "weight_text": "0.30"
       },
@@ -1830,7 +1830,7 @@
       {
        "label": "vanna",
        "text": "2.5",
-       "raw_text": "0.08",
+       "raw_text": "$78.66K",
        "normalized_text": "0.25",
        "weight_text": "0.10"
       },
@@ -1844,21 +1844,21 @@
       {
        "label": "charm",
        "text": "1.3",
-       "raw_text": "0.97",
+       "raw_text": "967",
        "normalized_text": "0.25",
        "weight_text": "0.05"
       },
       {
        "label": "delta",
        "text": "0.3",
-       "raw_text": "3.30",
+       "raw_text": "$3.30M",
        "normalized_text": "0.03",
        "weight_text": "0.10"
       },
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "63.2",
+       "raw_text": "63.20",
        "normalized_text": "0.02",
        "weight_text": "0.05"
       }
@@ -1881,13 +1881,13 @@
      "charm": 0.0,
      "pc_gex_lean": null,
      "pc_vol_lean": 1.0,
-     "net_gex_text": "0.00",
+     "net_gex_text": "$0",
      "net_reason": null,
      "oi_text": "0",
      "oi_reason": null,
      "pc_gex_text": null,
      "pc_gex_reason": "put/call gamma is missing",
-     "gross_text": "0.00",
+     "gross_text": "$0",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -1899,13 +1899,13 @@
      "vol_oi_reason": "volume/open interest is missing",
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "0.00",
+     "dex_text": "$0",
      "dex_reason": null,
-     "vanna_text": "0.00",
+     "vanna_text": "$0",
      "vanna_reason": null,
-     "iv_text": "62.7",
+     "iv_text": "62.73",
      "iv_reason": null,
-     "charm_text": "0.00",
+     "charm_text": "0",
      "charm_reason": null,
      "score": 0.4546327018136372,
      "score_text": "0",
@@ -1921,14 +1921,14 @@
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "62.7",
+       "raw_text": "62.73",
        "normalized_text": "0.02",
        "weight_text": "0.05"
       },
       {
        "label": "net gamma",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.30"
       }
@@ -1944,14 +1944,14 @@
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "62.7",
+       "raw_text": "62.73",
        "normalized_text": "0.02",
        "weight_text": "0.05"
       },
       {
        "label": "net gamma",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.30"
       },
@@ -1965,21 +1965,21 @@
       {
        "label": "vanna",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.10"
       },
       {
        "label": "delta",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.10"
       },
       {
        "label": "charm",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "0",
        "normalized_text": "0.00",
        "weight_text": "0.05"
       }
@@ -2002,13 +2002,13 @@
      "charm": -7342.192505445739,
      "pc_gex_lean": 0.9779150838968407,
      "pc_vol_lean": 0.9802631578947368,
-     "net_gex_text": "+4.02",
+     "net_gex_text": "$4.02M",
      "net_reason": null,
-     "oi_text": "5277",
+     "oi_text": "5,277",
      "oi_reason": null,
      "pc_gex_text": "0.02",
      "pc_gex_reason": null,
-     "gross_text": "4.20",
+     "gross_text": "$4.20M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -2020,13 +2020,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+31.88",
+     "dex_text": "$31.88M",
      "dex_reason": null,
-     "vanna_text": "+0.60",
+     "vanna_text": "$600.67K",
      "vanna_reason": null,
-     "iv_text": "62.7",
+     "iv_text": "62.66",
      "iv_reason": null,
-     "charm_text": "-7.34",
+     "charm_text": "-7.34K",
      "charm_reason": null,
      "score": 63.6915619547742,
      "score_text": "64",
@@ -2035,21 +2035,21 @@
       {
        "label": "net gamma",
        "text": "30.0",
-       "raw_text": "4.02",
+       "raw_text": "$4.02M",
        "normalized_text": "1.00",
        "weight_text": "0.30"
       },
       {
        "label": "open interest",
        "text": "10.5",
-       "raw_text": "5277",
+       "raw_text": "5,277",
        "normalized_text": "0.53",
        "weight_text": "0.20"
       },
       {
        "label": "vanna",
        "text": "10.0",
-       "raw_text": "0.60",
+       "raw_text": "$600.67K",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       }
@@ -2058,28 +2058,28 @@
       {
        "label": "net gamma",
        "text": "30.0",
-       "raw_text": "4.02",
+       "raw_text": "$4.02M",
        "normalized_text": "1.00",
        "weight_text": "0.30"
       },
       {
        "label": "open interest",
        "text": "10.5",
-       "raw_text": "5277",
+       "raw_text": "5,277",
        "normalized_text": "0.53",
        "weight_text": "0.20"
       },
       {
        "label": "vanna",
        "text": "10.0",
-       "raw_text": "0.60",
+       "raw_text": "$600.67K",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       },
       {
        "label": "charm",
        "text": "5.0",
-       "raw_text": "7.34",
+       "raw_text": "7.34K",
        "normalized_text": "1.00",
        "weight_text": "0.05"
       },
@@ -2093,14 +2093,14 @@
       {
        "label": "delta",
        "text": "3.3",
-       "raw_text": "31.88",
+       "raw_text": "$31.88M",
        "normalized_text": "0.33",
        "weight_text": "0.10"
       },
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "62.7",
+       "raw_text": "62.66",
        "normalized_text": "0.02",
        "weight_text": "0.05"
       }
@@ -2123,13 +2123,13 @@
      "charm": 0.0,
      "pc_gex_lean": null,
      "pc_vol_lean": 0.9545454545454546,
-     "net_gex_text": "0.00",
+     "net_gex_text": "$0",
      "net_reason": null,
      "oi_text": "0",
      "oi_reason": null,
      "pc_gex_text": null,
      "pc_gex_reason": "put/call gamma is missing",
-     "gross_text": "0.00",
+     "gross_text": "$0",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -2141,13 +2141,13 @@
      "vol_oi_reason": "volume/open interest is missing",
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "0.00",
+     "dex_text": "$0",
      "dex_reason": null,
-     "vanna_text": "0.00",
+     "vanna_text": "$0",
      "vanna_reason": null,
-     "iv_text": "62.3",
+     "iv_text": "62.25",
      "iv_reason": null,
-     "charm_text": "0.00",
+     "charm_text": "0",
      "charm_reason": null,
      "score": 0.40477062946722403,
      "score_text": "0",
@@ -2163,14 +2163,14 @@
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "62.3",
+       "raw_text": "62.25",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       },
       {
        "label": "net gamma",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.30"
       }
@@ -2186,14 +2186,14 @@
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "62.3",
+       "raw_text": "62.25",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       },
       {
        "label": "net gamma",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.30"
       },
@@ -2207,21 +2207,21 @@
       {
        "label": "vanna",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.10"
       },
       {
        "label": "delta",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.10"
       },
       {
        "label": "charm",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "0",
        "normalized_text": "0.00",
        "weight_text": "0.05"
       }
@@ -2244,13 +2244,13 @@
      "charm": -1291.782355084047,
      "pc_gex_lean": 0.939516237601036,
      "pc_vol_lean": 0.8153846153846154,
-     "net_gex_text": "+0.86",
+     "net_gex_text": "$857.77K",
      "net_reason": null,
-     "oi_text": "1069",
+     "oi_text": "1,069",
      "oi_reason": null,
      "pc_gex_text": "0.06",
      "pc_gex_reason": null,
-     "gross_text": "0.97",
+     "gross_text": "$968.21K",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -2262,13 +2262,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+8.37",
+     "dex_text": "$8.37M",
      "dex_reason": null,
-     "vanna_text": "+0.11",
+     "vanna_text": "$106.05K",
      "vanna_reason": null,
-     "iv_text": "62.2",
+     "iv_text": "62.16",
      "iv_reason": null,
-     "charm_text": "-1.29",
+     "charm_text": "-1.29K",
      "charm_reason": null,
      "score": 19.413490814550087,
      "score_text": "19",
@@ -2277,14 +2277,14 @@
       {
        "label": "net gamma",
        "text": "8.9",
-       "raw_text": "0.86",
+       "raw_text": "$857.77K",
        "normalized_text": "0.30",
        "weight_text": "0.30"
       },
       {
        "label": "vanna",
        "text": "3.4",
-       "raw_text": "0.11",
+       "raw_text": "$106.05K",
        "normalized_text": "0.34",
        "weight_text": "0.10"
       },
@@ -2300,14 +2300,14 @@
       {
        "label": "net gamma",
        "text": "8.9",
-       "raw_text": "0.86",
+       "raw_text": "$857.77K",
        "normalized_text": "0.30",
        "weight_text": "0.30"
       },
       {
        "label": "vanna",
        "text": "3.4",
-       "raw_text": "0.11",
+       "raw_text": "$106.05K",
        "normalized_text": "0.34",
        "weight_text": "0.10"
       },
@@ -2321,28 +2321,28 @@
       {
        "label": "open interest",
        "text": "2.1",
-       "raw_text": "1069",
+       "raw_text": "1,069",
        "normalized_text": "0.11",
        "weight_text": "0.20"
       },
       {
        "label": "charm",
        "text": "1.7",
-       "raw_text": "1.29",
+       "raw_text": "1.29K",
        "normalized_text": "0.33",
        "weight_text": "0.05"
       },
       {
        "label": "delta",
        "text": "0.9",
-       "raw_text": "8.37",
+       "raw_text": "$8.37M",
        "normalized_text": "0.09",
        "weight_text": "0.10"
       },
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "62.2",
+       "raw_text": "62.16",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -2365,13 +2365,13 @@
      "charm": 0.0,
      "pc_gex_lean": null,
      "pc_vol_lean": 0.6,
-     "net_gex_text": "0.00",
+     "net_gex_text": "$0",
      "net_reason": null,
      "oi_text": "0",
      "oi_reason": null,
      "pc_gex_text": null,
      "pc_gex_reason": "put/call gamma is missing",
-     "gross_text": "0.00",
+     "gross_text": "$0",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -2383,13 +2383,13 @@
      "vol_oi_reason": "volume/open interest is missing",
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "0.00",
+     "dex_text": "$0",
      "dex_reason": null,
-     "vanna_text": "0.00",
+     "vanna_text": "$0",
      "vanna_reason": null,
-     "iv_text": "61.7",
+     "iv_text": "61.67",
      "iv_reason": null,
-     "charm_text": "0.00",
+     "charm_text": "0",
      "charm_reason": null,
      "score": 0.13213239840134963,
      "score_text": "0",
@@ -2405,14 +2405,14 @@
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "61.7",
+       "raw_text": "61.67",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       },
       {
        "label": "net gamma",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.30"
       }
@@ -2428,14 +2428,14 @@
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "61.7",
+       "raw_text": "61.67",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       },
       {
        "label": "net gamma",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.30"
       },
@@ -2449,21 +2449,21 @@
       {
        "label": "vanna",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.10"
       },
       {
        "label": "delta",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "$0",
        "normalized_text": "0.00",
        "weight_text": "0.10"
       },
       {
        "label": "charm",
        "text": "0.0",
-       "raw_text": "0.00",
+       "raw_text": "0",
        "normalized_text": "0.00",
        "weight_text": "0.05"
       }
@@ -2486,17 +2486,17 @@
      "charm": -18349.517841404617,
      "pc_gex_lean": 0.9139905817933016,
      "pc_vol_lean": 0.9952813067150635,
-     "net_gex_text": "+15.48",
+     "net_gex_text": "$15.48M",
      "net_reason": null,
-     "oi_text": "18385",
+     "oi_text": "18,385",
      "oi_reason": null,
      "pc_gex_text": "0.09",
      "pc_gex_reason": null,
-     "gross_text": "18.40",
+     "gross_text": "$18.40M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
-     "volume_text": "2768",
+     "volume_text": "2,768",
      "volume_reason": null,
      "pc_vol_text": "0.00",
      "pc_vol_reason": null,
@@ -2504,13 +2504,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+174.28",
+     "dex_text": "$174.28M",
      "dex_reason": null,
-     "vanna_text": "+1.49",
+     "vanna_text": "$1.49M",
      "vanna_reason": null,
-     "iv_text": "62.2",
+     "iv_text": "62.23",
      "iv_reason": null,
-     "charm_text": "-18.35",
+     "charm_text": "-18.35K",
      "charm_reason": null,
      "score": 82.06095514380772,
      "score_text": "82",
@@ -2519,21 +2519,21 @@
       {
        "label": "net gamma",
        "text": "30.0",
-       "raw_text": "15.48",
+       "raw_text": "$15.48M",
        "normalized_text": "1.00",
        "weight_text": "0.30"
       },
       {
        "label": "open interest",
        "text": "20.0",
-       "raw_text": "18385",
+       "raw_text": "18,385",
        "normalized_text": "1.00",
        "weight_text": "0.20"
       },
       {
        "label": "vanna",
        "text": "10.0",
-       "raw_text": "1.49",
+       "raw_text": "$1.49M",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       }
@@ -2542,49 +2542,49 @@
       {
        "label": "net gamma",
        "text": "30.0",
-       "raw_text": "15.48",
+       "raw_text": "$15.48M",
        "normalized_text": "1.00",
        "weight_text": "0.30"
       },
       {
        "label": "open interest",
        "text": "20.0",
-       "raw_text": "18385",
+       "raw_text": "18,385",
        "normalized_text": "1.00",
        "weight_text": "0.20"
       },
       {
        "label": "vanna",
        "text": "10.0",
-       "raw_text": "1.49",
+       "raw_text": "$1.49M",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       },
       {
        "label": "delta",
        "text": "10.0",
-       "raw_text": "174.28",
+       "raw_text": "$174.28M",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       },
       {
        "label": "volume",
        "text": "7.0",
-       "raw_text": "2768",
+       "raw_text": "2,768",
        "normalized_text": "1.00",
        "weight_text": "0.07"
       },
       {
        "label": "charm",
        "text": "5.0",
-       "raw_text": "18.35",
+       "raw_text": "18.35K",
        "normalized_text": "1.00",
        "weight_text": "0.05"
       },
       {
        "label": "volatility",
        "text": "0.1",
-       "raw_text": "62.2",
+       "raw_text": "62.23",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -2607,13 +2607,13 @@
      "charm": -2062.2610209771715,
      "pc_gex_lean": 0.9796558867814134,
      "pc_vol_lean": 0.71875,
-     "net_gex_text": "+2.02",
+     "net_gex_text": "$2.02M",
      "net_reason": null,
-     "oi_text": "2006",
+     "oi_text": "2,006",
      "oi_reason": null,
      "pc_gex_text": "0.02",
      "pc_gex_reason": null,
-     "gross_text": "2.10",
+     "gross_text": "$2.10M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -2625,13 +2625,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+19.24",
+     "dex_text": "$19.24M",
      "dex_reason": null,
-     "vanna_text": "+0.17",
+     "vanna_text": "$168.30K",
      "vanna_reason": null,
-     "iv_text": "61.8",
+     "iv_text": "61.76",
      "iv_reason": null,
-     "charm_text": "-2.06",
+     "charm_text": "-2.06K",
      "charm_reason": null,
      "score": 35.67105695256668,
      "score_text": "36",
@@ -2640,21 +2640,21 @@
       {
        "label": "net gamma",
        "text": "21.0",
-       "raw_text": "2.02",
+       "raw_text": "$2.02M",
        "normalized_text": "0.70",
        "weight_text": "0.30"
       },
       {
        "label": "vanna",
        "text": "5.4",
-       "raw_text": "0.17",
+       "raw_text": "$168.30K",
        "normalized_text": "0.54",
        "weight_text": "0.10"
       },
       {
        "label": "open interest",
        "text": "4.0",
-       "raw_text": "2006",
+       "raw_text": "2,006",
        "normalized_text": "0.20",
        "weight_text": "0.20"
       }
@@ -2663,35 +2663,35 @@
       {
        "label": "net gamma",
        "text": "21.0",
-       "raw_text": "2.02",
+       "raw_text": "$2.02M",
        "normalized_text": "0.70",
        "weight_text": "0.30"
       },
       {
        "label": "vanna",
        "text": "5.4",
-       "raw_text": "0.17",
+       "raw_text": "$168.30K",
        "normalized_text": "0.54",
        "weight_text": "0.10"
       },
       {
        "label": "open interest",
        "text": "4.0",
-       "raw_text": "2006",
+       "raw_text": "2,006",
        "normalized_text": "0.20",
        "weight_text": "0.20"
       },
       {
        "label": "charm",
        "text": "2.7",
-       "raw_text": "2.06",
+       "raw_text": "2.06K",
        "normalized_text": "0.53",
        "weight_text": "0.05"
       },
       {
        "label": "delta",
        "text": "2.0",
-       "raw_text": "19.24",
+       "raw_text": "$19.24M",
        "normalized_text": "0.20",
        "weight_text": "0.10"
       },
@@ -2705,7 +2705,7 @@
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "61.8",
+       "raw_text": "61.76",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -2728,13 +2728,13 @@
      "charm": -1882.5262637871706,
      "pc_gex_lean": 0.8858475864794789,
      "pc_vol_lean": 0.9820627802690582,
-     "net_gex_text": "+2.19",
+     "net_gex_text": "$2.19M",
      "net_reason": null,
-     "oi_text": "2547",
+     "oi_text": "2,547",
      "oi_reason": null,
      "pc_gex_text": "0.11",
      "pc_gex_reason": null,
-     "gross_text": "2.76",
+     "gross_text": "$2.76M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -2746,13 +2746,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+28.28",
+     "dex_text": "$28.28M",
      "dex_reason": null,
-     "vanna_text": "+0.15",
+     "vanna_text": "$152.21K",
      "vanna_reason": null,
-     "iv_text": "61.9",
+     "iv_text": "61.88",
      "iv_reason": null,
-     "charm_text": "-1.88",
+     "charm_text": "-1.88K",
      "charm_reason": null,
      "score": 41.63561844365595,
      "score_text": "42",
@@ -2761,21 +2761,21 @@
       {
        "label": "net gamma",
        "text": "22.8",
-       "raw_text": "2.19",
+       "raw_text": "$2.19M",
        "normalized_text": "0.76",
        "weight_text": "0.30"
       },
       {
        "label": "open interest",
        "text": "5.1",
-       "raw_text": "2547",
+       "raw_text": "2,547",
        "normalized_text": "0.25",
        "weight_text": "0.20"
       },
       {
        "label": "vanna",
        "text": "4.9",
-       "raw_text": "0.15",
+       "raw_text": "$152.21K",
        "normalized_text": "0.49",
        "weight_text": "0.10"
       }
@@ -2784,21 +2784,21 @@
       {
        "label": "net gamma",
        "text": "22.8",
-       "raw_text": "2.19",
+       "raw_text": "$2.19M",
        "normalized_text": "0.76",
        "weight_text": "0.30"
       },
       {
        "label": "open interest",
        "text": "5.1",
-       "raw_text": "2547",
+       "raw_text": "2,547",
        "normalized_text": "0.25",
        "weight_text": "0.20"
       },
       {
        "label": "vanna",
        "text": "4.9",
-       "raw_text": "0.15",
+       "raw_text": "$152.21K",
        "normalized_text": "0.49",
        "weight_text": "0.10"
       },
@@ -2812,21 +2812,21 @@
       {
        "label": "delta",
        "text": "2.9",
-       "raw_text": "28.28",
+       "raw_text": "$28.28M",
        "normalized_text": "0.29",
        "weight_text": "0.10"
       },
       {
        "label": "charm",
        "text": "2.4",
-       "raw_text": "1.88",
+       "raw_text": "1.88K",
        "normalized_text": "0.49",
        "weight_text": "0.05"
       },
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "61.9",
+       "raw_text": "61.88",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -2849,13 +2849,13 @@
      "charm": -75.86526303579403,
      "pc_gex_lean": 0.38002832619599225,
      "pc_vol_lean": 0.8930232558139535,
-     "net_gex_text": "+0.11",
+     "net_gex_text": "$109.45K",
      "net_reason": null,
      "oi_text": "418",
      "oi_reason": null,
      "pc_gex_text": "0.62",
      "pc_gex_reason": null,
-     "gross_text": "0.47",
+     "gross_text": "$466.56K",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -2867,13 +2867,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+5.64",
+     "dex_text": "$5.64M",
      "dex_reason": null,
-     "vanna_text": "+0.01",
+     "vanna_text": "$6.10K",
      "vanna_reason": null,
-     "iv_text": "61.5",
+     "iv_text": "61.53",
      "iv_reason": null,
-     "charm_text": "-0.08",
+     "charm_text": "-76",
      "charm_reason": null,
      "score": 6.570874587390942,
      "score_text": "7",
@@ -2889,7 +2889,7 @@
       {
        "label": "net gamma",
        "text": "1.1",
-       "raw_text": "0.11",
+       "raw_text": "$109.45K",
        "normalized_text": "0.04",
        "weight_text": "0.30"
       },
@@ -2912,7 +2912,7 @@
       {
        "label": "net gamma",
        "text": "1.1",
-       "raw_text": "0.11",
+       "raw_text": "$109.45K",
        "normalized_text": "0.04",
        "weight_text": "0.30"
       },
@@ -2926,28 +2926,28 @@
       {
        "label": "delta",
        "text": "0.6",
-       "raw_text": "5.64",
+       "raw_text": "$5.64M",
        "normalized_text": "0.06",
        "weight_text": "0.10"
       },
       {
        "label": "vanna",
        "text": "0.2",
-       "raw_text": "0.01",
+       "raw_text": "$6.10K",
        "normalized_text": "0.02",
        "weight_text": "0.10"
       },
       {
        "label": "charm",
        "text": "0.1",
-       "raw_text": "0.08",
+       "raw_text": "76",
        "normalized_text": "0.02",
        "weight_text": "0.05"
       },
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "61.5",
+       "raw_text": "61.53",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -2970,13 +2970,13 @@
      "charm": -3750.666802187423,
      "pc_gex_lean": 0.8402701530010426,
      "pc_vol_lean": 0.8112874779541446,
-     "net_gex_text": "+7.08",
+     "net_gex_text": "$7.08M",
      "net_reason": null,
-     "oi_text": "8624",
+     "oi_text": "8,624",
      "oi_reason": null,
      "pc_gex_text": "0.16",
      "pc_gex_reason": null,
-     "gross_text": "9.77",
+     "gross_text": "$9.77M",
      "gross_reason": null,
      "dgex_text": null,
      "dgex_reason": "no change in gamma is produced",
@@ -2988,13 +2988,13 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "+110.01",
+     "dex_text": "$110.01M",
      "dex_reason": null,
-     "vanna_text": "+0.29",
+     "vanna_text": "$294.72K",
      "vanna_reason": null,
-     "iv_text": "61.8",
+     "iv_text": "61.85",
      "iv_reason": null,
-     "charm_text": "-3.75",
+     "charm_text": "-3.75K",
      "charm_reason": null,
      "score": 78.51821419178607,
      "score_text": "79",
@@ -3003,21 +3003,21 @@
       {
        "label": "net gamma",
        "text": "30.0",
-       "raw_text": "7.08",
+       "raw_text": "$7.08M",
        "normalized_text": "1.00",
        "weight_text": "0.30"
       },
       {
        "label": "open interest",
        "text": "17.2",
-       "raw_text": "8624",
+       "raw_text": "8,624",
        "normalized_text": "0.86",
        "weight_text": "0.20"
       },
       {
        "label": "delta",
        "text": "10.0",
-       "raw_text": "110.01",
+       "raw_text": "$110.01M",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       }
@@ -3026,28 +3026,28 @@
       {
        "label": "net gamma",
        "text": "30.0",
-       "raw_text": "7.08",
+       "raw_text": "$7.08M",
        "normalized_text": "1.00",
        "weight_text": "0.30"
       },
       {
        "label": "open interest",
        "text": "17.2",
-       "raw_text": "8624",
+       "raw_text": "8,624",
        "normalized_text": "0.86",
        "weight_text": "0.20"
       },
       {
        "label": "delta",
        "text": "10.0",
-       "raw_text": "110.01",
+       "raw_text": "$110.01M",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       },
       {
        "label": "vanna",
        "text": "9.4",
-       "raw_text": "0.29",
+       "raw_text": "$294.72K",
        "normalized_text": "0.94",
        "weight_text": "0.10"
       },
@@ -3061,14 +3061,14 @@
       {
        "label": "charm",
        "text": "4.9",
-       "raw_text": "3.75",
+       "raw_text": "3.75K",
        "normalized_text": "0.97",
        "weight_text": "0.05"
       },
       {
        "label": "volatility",
        "text": "0.0",
-       "raw_text": "61.8",
+       "raw_text": "61.85",
        "normalized_text": "0.01",
        "weight_text": "0.05"
       }
@@ -3460,13 +3460,13 @@
     "charm": -966.698537896813,
     "pc_gex_lean": 0.9835283452503556,
     "pc_vol_lean": 0.953125,
-    "net_gex_text": "+0.45",
+    "net_gex_text": "$451.71K",
     "net_reason": null,
     "oi_text": "679",
     "oi_reason": null,
     "pc_gex_text": "0.02",
     "pc_gex_reason": null,
-    "gross_text": "0.47",
+    "gross_text": "$466.84K",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -3478,13 +3478,13 @@
     "vol_oi_reason": null,
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "+3.30",
+    "dex_text": "$3.30M",
     "dex_reason": null,
-    "vanna_text": "+0.08",
+    "vanna_text": "$78.66K",
     "vanna_reason": null,
-    "iv_text": "63.2",
+    "iv_text": "63.20",
     "iv_reason": null,
-    "charm_text": "-0.97",
+    "charm_text": "-967",
     "charm_reason": null,
     "score": 13.370762409847128,
     "score_text": "13",
@@ -3493,7 +3493,7 @@
      {
       "label": "net gamma",
       "text": "4.7",
-      "raw_text": "0.45",
+      "raw_text": "$451.71K",
       "normalized_text": "0.16",
       "weight_text": "0.30"
      },
@@ -3507,7 +3507,7 @@
      {
       "label": "vanna",
       "text": "2.5",
-      "raw_text": "0.08",
+      "raw_text": "$78.66K",
       "normalized_text": "0.25",
       "weight_text": "0.10"
      }
@@ -3516,7 +3516,7 @@
      {
       "label": "net gamma",
       "text": "4.7",
-      "raw_text": "0.45",
+      "raw_text": "$451.71K",
       "normalized_text": "0.16",
       "weight_text": "0.30"
      },
@@ -3530,7 +3530,7 @@
      {
       "label": "vanna",
       "text": "2.5",
-      "raw_text": "0.08",
+      "raw_text": "$78.66K",
       "normalized_text": "0.25",
       "weight_text": "0.10"
      },
@@ -3544,21 +3544,21 @@
      {
       "label": "charm",
       "text": "1.3",
-      "raw_text": "0.97",
+      "raw_text": "967",
       "normalized_text": "0.25",
       "weight_text": "0.05"
      },
      {
       "label": "delta",
       "text": "0.3",
-      "raw_text": "3.30",
+      "raw_text": "$3.30M",
       "normalized_text": "0.03",
       "weight_text": "0.10"
      },
      {
       "label": "volatility",
       "text": "0.1",
-      "raw_text": "63.2",
+      "raw_text": "63.20",
       "normalized_text": "0.02",
       "weight_text": "0.05"
      }
@@ -3581,13 +3581,13 @@
     "charm": 0.0,
     "pc_gex_lean": null,
     "pc_vol_lean": 1.0,
-    "net_gex_text": "0.00",
+    "net_gex_text": "$0",
     "net_reason": null,
     "oi_text": "0",
     "oi_reason": null,
     "pc_gex_text": null,
     "pc_gex_reason": "put/call gamma is missing",
-    "gross_text": "0.00",
+    "gross_text": "$0",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -3599,13 +3599,13 @@
     "vol_oi_reason": "volume/open interest is missing",
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "0.00",
+    "dex_text": "$0",
     "dex_reason": null,
-    "vanna_text": "0.00",
+    "vanna_text": "$0",
     "vanna_reason": null,
-    "iv_text": "62.7",
+    "iv_text": "62.73",
     "iv_reason": null,
-    "charm_text": "0.00",
+    "charm_text": "0",
     "charm_reason": null,
     "score": 0.4546327018136372,
     "score_text": "0",
@@ -3621,14 +3621,14 @@
      {
       "label": "volatility",
       "text": "0.1",
-      "raw_text": "62.7",
+      "raw_text": "62.73",
       "normalized_text": "0.02",
       "weight_text": "0.05"
      },
      {
       "label": "net gamma",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.30"
      }
@@ -3644,14 +3644,14 @@
      {
       "label": "volatility",
       "text": "0.1",
-      "raw_text": "62.7",
+      "raw_text": "62.73",
       "normalized_text": "0.02",
       "weight_text": "0.05"
      },
      {
       "label": "net gamma",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.30"
      },
@@ -3665,21 +3665,21 @@
      {
       "label": "vanna",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.10"
      },
      {
       "label": "delta",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.10"
      },
      {
       "label": "charm",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "0",
       "normalized_text": "0.00",
       "weight_text": "0.05"
      }
@@ -3702,13 +3702,13 @@
     "charm": -7342.192505445739,
     "pc_gex_lean": 0.9779150838968407,
     "pc_vol_lean": 0.9802631578947368,
-    "net_gex_text": "+4.02",
+    "net_gex_text": "$4.02M",
     "net_reason": null,
-    "oi_text": "5277",
+    "oi_text": "5,277",
     "oi_reason": null,
     "pc_gex_text": "0.02",
     "pc_gex_reason": null,
-    "gross_text": "4.20",
+    "gross_text": "$4.20M",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -3720,13 +3720,13 @@
     "vol_oi_reason": null,
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "+31.88",
+    "dex_text": "$31.88M",
     "dex_reason": null,
-    "vanna_text": "+0.60",
+    "vanna_text": "$600.67K",
     "vanna_reason": null,
-    "iv_text": "62.7",
+    "iv_text": "62.66",
     "iv_reason": null,
-    "charm_text": "-7.34",
+    "charm_text": "-7.34K",
     "charm_reason": null,
     "score": 63.6915619547742,
     "score_text": "64",
@@ -3735,21 +3735,21 @@
      {
       "label": "net gamma",
       "text": "30.0",
-      "raw_text": "4.02",
+      "raw_text": "$4.02M",
       "normalized_text": "1.00",
       "weight_text": "0.30"
      },
      {
       "label": "open interest",
       "text": "10.5",
-      "raw_text": "5277",
+      "raw_text": "5,277",
       "normalized_text": "0.53",
       "weight_text": "0.20"
      },
      {
       "label": "vanna",
       "text": "10.0",
-      "raw_text": "0.60",
+      "raw_text": "$600.67K",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      }
@@ -3758,28 +3758,28 @@
      {
       "label": "net gamma",
       "text": "30.0",
-      "raw_text": "4.02",
+      "raw_text": "$4.02M",
       "normalized_text": "1.00",
       "weight_text": "0.30"
      },
      {
       "label": "open interest",
       "text": "10.5",
-      "raw_text": "5277",
+      "raw_text": "5,277",
       "normalized_text": "0.53",
       "weight_text": "0.20"
      },
      {
       "label": "vanna",
       "text": "10.0",
-      "raw_text": "0.60",
+      "raw_text": "$600.67K",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      },
      {
       "label": "charm",
       "text": "5.0",
-      "raw_text": "7.34",
+      "raw_text": "7.34K",
       "normalized_text": "1.00",
       "weight_text": "0.05"
      },
@@ -3793,14 +3793,14 @@
      {
       "label": "delta",
       "text": "3.3",
-      "raw_text": "31.88",
+      "raw_text": "$31.88M",
       "normalized_text": "0.33",
       "weight_text": "0.10"
      },
      {
       "label": "volatility",
       "text": "0.1",
-      "raw_text": "62.7",
+      "raw_text": "62.66",
       "normalized_text": "0.02",
       "weight_text": "0.05"
      }
@@ -3823,13 +3823,13 @@
     "charm": 0.0,
     "pc_gex_lean": null,
     "pc_vol_lean": 0.9545454545454546,
-    "net_gex_text": "0.00",
+    "net_gex_text": "$0",
     "net_reason": null,
     "oi_text": "0",
     "oi_reason": null,
     "pc_gex_text": null,
     "pc_gex_reason": "put/call gamma is missing",
-    "gross_text": "0.00",
+    "gross_text": "$0",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -3841,13 +3841,13 @@
     "vol_oi_reason": "volume/open interest is missing",
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "0.00",
+    "dex_text": "$0",
     "dex_reason": null,
-    "vanna_text": "0.00",
+    "vanna_text": "$0",
     "vanna_reason": null,
-    "iv_text": "62.3",
+    "iv_text": "62.25",
     "iv_reason": null,
-    "charm_text": "0.00",
+    "charm_text": "0",
     "charm_reason": null,
     "score": 0.40477062946722403,
     "score_text": "0",
@@ -3863,14 +3863,14 @@
      {
       "label": "volatility",
       "text": "0.1",
-      "raw_text": "62.3",
+      "raw_text": "62.25",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      },
      {
       "label": "net gamma",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.30"
      }
@@ -3886,14 +3886,14 @@
      {
       "label": "volatility",
       "text": "0.1",
-      "raw_text": "62.3",
+      "raw_text": "62.25",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      },
      {
       "label": "net gamma",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.30"
      },
@@ -3907,21 +3907,21 @@
      {
       "label": "vanna",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.10"
      },
      {
       "label": "delta",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.10"
      },
      {
       "label": "charm",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "0",
       "normalized_text": "0.00",
       "weight_text": "0.05"
      }
@@ -3944,13 +3944,13 @@
     "charm": -1291.782355084047,
     "pc_gex_lean": 0.939516237601036,
     "pc_vol_lean": 0.8153846153846154,
-    "net_gex_text": "+0.86",
+    "net_gex_text": "$857.77K",
     "net_reason": null,
-    "oi_text": "1069",
+    "oi_text": "1,069",
     "oi_reason": null,
     "pc_gex_text": "0.06",
     "pc_gex_reason": null,
-    "gross_text": "0.97",
+    "gross_text": "$968.21K",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -3962,13 +3962,13 @@
     "vol_oi_reason": null,
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "+8.37",
+    "dex_text": "$8.37M",
     "dex_reason": null,
-    "vanna_text": "+0.11",
+    "vanna_text": "$106.05K",
     "vanna_reason": null,
-    "iv_text": "62.2",
+    "iv_text": "62.16",
     "iv_reason": null,
-    "charm_text": "-1.29",
+    "charm_text": "-1.29K",
     "charm_reason": null,
     "score": 19.413490814550087,
     "score_text": "19",
@@ -3977,14 +3977,14 @@
      {
       "label": "net gamma",
       "text": "8.9",
-      "raw_text": "0.86",
+      "raw_text": "$857.77K",
       "normalized_text": "0.30",
       "weight_text": "0.30"
      },
      {
       "label": "vanna",
       "text": "3.4",
-      "raw_text": "0.11",
+      "raw_text": "$106.05K",
       "normalized_text": "0.34",
       "weight_text": "0.10"
      },
@@ -4000,14 +4000,14 @@
      {
       "label": "net gamma",
       "text": "8.9",
-      "raw_text": "0.86",
+      "raw_text": "$857.77K",
       "normalized_text": "0.30",
       "weight_text": "0.30"
      },
      {
       "label": "vanna",
       "text": "3.4",
-      "raw_text": "0.11",
+      "raw_text": "$106.05K",
       "normalized_text": "0.34",
       "weight_text": "0.10"
      },
@@ -4021,28 +4021,28 @@
      {
       "label": "open interest",
       "text": "2.1",
-      "raw_text": "1069",
+      "raw_text": "1,069",
       "normalized_text": "0.11",
       "weight_text": "0.20"
      },
      {
       "label": "charm",
       "text": "1.7",
-      "raw_text": "1.29",
+      "raw_text": "1.29K",
       "normalized_text": "0.33",
       "weight_text": "0.05"
      },
      {
       "label": "delta",
       "text": "0.9",
-      "raw_text": "8.37",
+      "raw_text": "$8.37M",
       "normalized_text": "0.09",
       "weight_text": "0.10"
      },
      {
       "label": "volatility",
       "text": "0.1",
-      "raw_text": "62.2",
+      "raw_text": "62.16",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      }
@@ -4065,13 +4065,13 @@
     "charm": 0.0,
     "pc_gex_lean": null,
     "pc_vol_lean": 0.6,
-    "net_gex_text": "0.00",
+    "net_gex_text": "$0",
     "net_reason": null,
     "oi_text": "0",
     "oi_reason": null,
     "pc_gex_text": null,
     "pc_gex_reason": "put/call gamma is missing",
-    "gross_text": "0.00",
+    "gross_text": "$0",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -4083,13 +4083,13 @@
     "vol_oi_reason": "volume/open interest is missing",
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "0.00",
+    "dex_text": "$0",
     "dex_reason": null,
-    "vanna_text": "0.00",
+    "vanna_text": "$0",
     "vanna_reason": null,
-    "iv_text": "61.7",
+    "iv_text": "61.67",
     "iv_reason": null,
-    "charm_text": "0.00",
+    "charm_text": "0",
     "charm_reason": null,
     "score": 0.13213239840134963,
     "score_text": "0",
@@ -4105,14 +4105,14 @@
      {
       "label": "volatility",
       "text": "0.0",
-      "raw_text": "61.7",
+      "raw_text": "61.67",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      },
      {
       "label": "net gamma",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.30"
      }
@@ -4128,14 +4128,14 @@
      {
       "label": "volatility",
       "text": "0.0",
-      "raw_text": "61.7",
+      "raw_text": "61.67",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      },
      {
       "label": "net gamma",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.30"
      },
@@ -4149,21 +4149,21 @@
      {
       "label": "vanna",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.10"
      },
      {
       "label": "delta",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "$0",
       "normalized_text": "0.00",
       "weight_text": "0.10"
      },
      {
       "label": "charm",
       "text": "0.0",
-      "raw_text": "0.00",
+      "raw_text": "0",
       "normalized_text": "0.00",
       "weight_text": "0.05"
      }
@@ -4186,17 +4186,17 @@
     "charm": -18349.517841404617,
     "pc_gex_lean": 0.9139905817933016,
     "pc_vol_lean": 0.9952813067150635,
-    "net_gex_text": "+15.48",
+    "net_gex_text": "$15.48M",
     "net_reason": null,
-    "oi_text": "18385",
+    "oi_text": "18,385",
     "oi_reason": null,
     "pc_gex_text": "0.09",
     "pc_gex_reason": null,
-    "gross_text": "18.40",
+    "gross_text": "$18.40M",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
-    "volume_text": "2768",
+    "volume_text": "2,768",
     "volume_reason": null,
     "pc_vol_text": "0.00",
     "pc_vol_reason": null,
@@ -4204,13 +4204,13 @@
     "vol_oi_reason": null,
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "+174.28",
+    "dex_text": "$174.28M",
     "dex_reason": null,
-    "vanna_text": "+1.49",
+    "vanna_text": "$1.49M",
     "vanna_reason": null,
-    "iv_text": "62.2",
+    "iv_text": "62.23",
     "iv_reason": null,
-    "charm_text": "-18.35",
+    "charm_text": "-18.35K",
     "charm_reason": null,
     "score": 82.06095514380772,
     "score_text": "82",
@@ -4219,21 +4219,21 @@
      {
       "label": "net gamma",
       "text": "30.0",
-      "raw_text": "15.48",
+      "raw_text": "$15.48M",
       "normalized_text": "1.00",
       "weight_text": "0.30"
      },
      {
       "label": "open interest",
       "text": "20.0",
-      "raw_text": "18385",
+      "raw_text": "18,385",
       "normalized_text": "1.00",
       "weight_text": "0.20"
      },
      {
       "label": "vanna",
       "text": "10.0",
-      "raw_text": "1.49",
+      "raw_text": "$1.49M",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      }
@@ -4242,49 +4242,49 @@
      {
       "label": "net gamma",
       "text": "30.0",
-      "raw_text": "15.48",
+      "raw_text": "$15.48M",
       "normalized_text": "1.00",
       "weight_text": "0.30"
      },
      {
       "label": "open interest",
       "text": "20.0",
-      "raw_text": "18385",
+      "raw_text": "18,385",
       "normalized_text": "1.00",
       "weight_text": "0.20"
      },
      {
       "label": "vanna",
       "text": "10.0",
-      "raw_text": "1.49",
+      "raw_text": "$1.49M",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      },
      {
       "label": "delta",
       "text": "10.0",
-      "raw_text": "174.28",
+      "raw_text": "$174.28M",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      },
      {
       "label": "volume",
       "text": "7.0",
-      "raw_text": "2768",
+      "raw_text": "2,768",
       "normalized_text": "1.00",
       "weight_text": "0.07"
      },
      {
       "label": "charm",
       "text": "5.0",
-      "raw_text": "18.35",
+      "raw_text": "18.35K",
       "normalized_text": "1.00",
       "weight_text": "0.05"
      },
      {
       "label": "volatility",
       "text": "0.1",
-      "raw_text": "62.2",
+      "raw_text": "62.23",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      }
@@ -4307,13 +4307,13 @@
     "charm": -2062.2610209771715,
     "pc_gex_lean": 0.9796558867814134,
     "pc_vol_lean": 0.71875,
-    "net_gex_text": "+2.02",
+    "net_gex_text": "$2.02M",
     "net_reason": null,
-    "oi_text": "2006",
+    "oi_text": "2,006",
     "oi_reason": null,
     "pc_gex_text": "0.02",
     "pc_gex_reason": null,
-    "gross_text": "2.10",
+    "gross_text": "$2.10M",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -4325,13 +4325,13 @@
     "vol_oi_reason": null,
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "+19.24",
+    "dex_text": "$19.24M",
     "dex_reason": null,
-    "vanna_text": "+0.17",
+    "vanna_text": "$168.30K",
     "vanna_reason": null,
-    "iv_text": "61.8",
+    "iv_text": "61.76",
     "iv_reason": null,
-    "charm_text": "-2.06",
+    "charm_text": "-2.06K",
     "charm_reason": null,
     "score": 35.67105695256668,
     "score_text": "36",
@@ -4340,21 +4340,21 @@
      {
       "label": "net gamma",
       "text": "21.0",
-      "raw_text": "2.02",
+      "raw_text": "$2.02M",
       "normalized_text": "0.70",
       "weight_text": "0.30"
      },
      {
       "label": "vanna",
       "text": "5.4",
-      "raw_text": "0.17",
+      "raw_text": "$168.30K",
       "normalized_text": "0.54",
       "weight_text": "0.10"
      },
      {
       "label": "open interest",
       "text": "4.0",
-      "raw_text": "2006",
+      "raw_text": "2,006",
       "normalized_text": "0.20",
       "weight_text": "0.20"
      }
@@ -4363,35 +4363,35 @@
      {
       "label": "net gamma",
       "text": "21.0",
-      "raw_text": "2.02",
+      "raw_text": "$2.02M",
       "normalized_text": "0.70",
       "weight_text": "0.30"
      },
      {
       "label": "vanna",
       "text": "5.4",
-      "raw_text": "0.17",
+      "raw_text": "$168.30K",
       "normalized_text": "0.54",
       "weight_text": "0.10"
      },
      {
       "label": "open interest",
       "text": "4.0",
-      "raw_text": "2006",
+      "raw_text": "2,006",
       "normalized_text": "0.20",
       "weight_text": "0.20"
      },
      {
       "label": "charm",
       "text": "2.7",
-      "raw_text": "2.06",
+      "raw_text": "2.06K",
       "normalized_text": "0.53",
       "weight_text": "0.05"
      },
      {
       "label": "delta",
       "text": "2.0",
-      "raw_text": "19.24",
+      "raw_text": "$19.24M",
       "normalized_text": "0.20",
       "weight_text": "0.10"
      },
@@ -4405,7 +4405,7 @@
      {
       "label": "volatility",
       "text": "0.0",
-      "raw_text": "61.8",
+      "raw_text": "61.76",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      }
@@ -4428,13 +4428,13 @@
     "charm": -1882.5262637871706,
     "pc_gex_lean": 0.8858475864794789,
     "pc_vol_lean": 0.9820627802690582,
-    "net_gex_text": "+2.19",
+    "net_gex_text": "$2.19M",
     "net_reason": null,
-    "oi_text": "2547",
+    "oi_text": "2,547",
     "oi_reason": null,
     "pc_gex_text": "0.11",
     "pc_gex_reason": null,
-    "gross_text": "2.76",
+    "gross_text": "$2.76M",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -4446,13 +4446,13 @@
     "vol_oi_reason": null,
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "+28.28",
+    "dex_text": "$28.28M",
     "dex_reason": null,
-    "vanna_text": "+0.15",
+    "vanna_text": "$152.21K",
     "vanna_reason": null,
-    "iv_text": "61.9",
+    "iv_text": "61.88",
     "iv_reason": null,
-    "charm_text": "-1.88",
+    "charm_text": "-1.88K",
     "charm_reason": null,
     "score": 41.63561844365595,
     "score_text": "42",
@@ -4461,21 +4461,21 @@
      {
       "label": "net gamma",
       "text": "22.8",
-      "raw_text": "2.19",
+      "raw_text": "$2.19M",
       "normalized_text": "0.76",
       "weight_text": "0.30"
      },
      {
       "label": "open interest",
       "text": "5.1",
-      "raw_text": "2547",
+      "raw_text": "2,547",
       "normalized_text": "0.25",
       "weight_text": "0.20"
      },
      {
       "label": "vanna",
       "text": "4.9",
-      "raw_text": "0.15",
+      "raw_text": "$152.21K",
       "normalized_text": "0.49",
       "weight_text": "0.10"
      }
@@ -4484,21 +4484,21 @@
      {
       "label": "net gamma",
       "text": "22.8",
-      "raw_text": "2.19",
+      "raw_text": "$2.19M",
       "normalized_text": "0.76",
       "weight_text": "0.30"
      },
      {
       "label": "open interest",
       "text": "5.1",
-      "raw_text": "2547",
+      "raw_text": "2,547",
       "normalized_text": "0.25",
       "weight_text": "0.20"
      },
      {
       "label": "vanna",
       "text": "4.9",
-      "raw_text": "0.15",
+      "raw_text": "$152.21K",
       "normalized_text": "0.49",
       "weight_text": "0.10"
      },
@@ -4512,21 +4512,21 @@
      {
       "label": "delta",
       "text": "2.9",
-      "raw_text": "28.28",
+      "raw_text": "$28.28M",
       "normalized_text": "0.29",
       "weight_text": "0.10"
      },
      {
       "label": "charm",
       "text": "2.4",
-      "raw_text": "1.88",
+      "raw_text": "1.88K",
       "normalized_text": "0.49",
       "weight_text": "0.05"
      },
      {
       "label": "volatility",
       "text": "0.0",
-      "raw_text": "61.9",
+      "raw_text": "61.88",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      }
@@ -4549,13 +4549,13 @@
     "charm": -75.86526303579403,
     "pc_gex_lean": 0.38002832619599225,
     "pc_vol_lean": 0.8930232558139535,
-    "net_gex_text": "+0.11",
+    "net_gex_text": "$109.45K",
     "net_reason": null,
     "oi_text": "418",
     "oi_reason": null,
     "pc_gex_text": "0.62",
     "pc_gex_reason": null,
-    "gross_text": "0.47",
+    "gross_text": "$466.56K",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -4567,13 +4567,13 @@
     "vol_oi_reason": null,
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "+5.64",
+    "dex_text": "$5.64M",
     "dex_reason": null,
-    "vanna_text": "+0.01",
+    "vanna_text": "$6.10K",
     "vanna_reason": null,
-    "iv_text": "61.5",
+    "iv_text": "61.53",
     "iv_reason": null,
-    "charm_text": "-0.08",
+    "charm_text": "-76",
     "charm_reason": null,
     "score": 6.570874587390942,
     "score_text": "7",
@@ -4589,7 +4589,7 @@
      {
       "label": "net gamma",
       "text": "1.1",
-      "raw_text": "0.11",
+      "raw_text": "$109.45K",
       "normalized_text": "0.04",
       "weight_text": "0.30"
      },
@@ -4612,7 +4612,7 @@
      {
       "label": "net gamma",
       "text": "1.1",
-      "raw_text": "0.11",
+      "raw_text": "$109.45K",
       "normalized_text": "0.04",
       "weight_text": "0.30"
      },
@@ -4626,28 +4626,28 @@
      {
       "label": "delta",
       "text": "0.6",
-      "raw_text": "5.64",
+      "raw_text": "$5.64M",
       "normalized_text": "0.06",
       "weight_text": "0.10"
      },
      {
       "label": "vanna",
       "text": "0.2",
-      "raw_text": "0.01",
+      "raw_text": "$6.10K",
       "normalized_text": "0.02",
       "weight_text": "0.10"
      },
      {
       "label": "charm",
       "text": "0.1",
-      "raw_text": "0.08",
+      "raw_text": "76",
       "normalized_text": "0.02",
       "weight_text": "0.05"
      },
      {
       "label": "volatility",
       "text": "0.0",
-      "raw_text": "61.5",
+      "raw_text": "61.53",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      }
@@ -4670,13 +4670,13 @@
     "charm": -3750.666802187423,
     "pc_gex_lean": 0.8402701530010426,
     "pc_vol_lean": 0.8112874779541446,
-    "net_gex_text": "+7.08",
+    "net_gex_text": "$7.08M",
     "net_reason": null,
-    "oi_text": "8624",
+    "oi_text": "8,624",
     "oi_reason": null,
     "pc_gex_text": "0.16",
     "pc_gex_reason": null,
-    "gross_text": "9.77",
+    "gross_text": "$9.77M",
     "gross_reason": null,
     "dgex_text": null,
     "dgex_reason": "no change in gamma is produced",
@@ -4688,13 +4688,13 @@
     "vol_oi_reason": null,
     "flow_text": null,
     "flow_reason": "no signed flow is produced",
-    "dex_text": "+110.01",
+    "dex_text": "$110.01M",
     "dex_reason": null,
-    "vanna_text": "+0.29",
+    "vanna_text": "$294.72K",
     "vanna_reason": null,
-    "iv_text": "61.8",
+    "iv_text": "61.85",
     "iv_reason": null,
-    "charm_text": "-3.75",
+    "charm_text": "-3.75K",
     "charm_reason": null,
     "score": 78.51821419178607,
     "score_text": "79",
@@ -4703,21 +4703,21 @@
      {
       "label": "net gamma",
       "text": "30.0",
-      "raw_text": "7.08",
+      "raw_text": "$7.08M",
       "normalized_text": "1.00",
       "weight_text": "0.30"
      },
      {
       "label": "open interest",
       "text": "17.2",
-      "raw_text": "8624",
+      "raw_text": "8,624",
       "normalized_text": "0.86",
       "weight_text": "0.20"
      },
      {
       "label": "delta",
       "text": "10.0",
-      "raw_text": "110.01",
+      "raw_text": "$110.01M",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      }
@@ -4726,28 +4726,28 @@
      {
       "label": "net gamma",
       "text": "30.0",
-      "raw_text": "7.08",
+      "raw_text": "$7.08M",
       "normalized_text": "1.00",
       "weight_text": "0.30"
      },
      {
       "label": "open interest",
       "text": "17.2",
-      "raw_text": "8624",
+      "raw_text": "8,624",
       "normalized_text": "0.86",
       "weight_text": "0.20"
      },
      {
       "label": "delta",
       "text": "10.0",
-      "raw_text": "110.01",
+      "raw_text": "$110.01M",
       "normalized_text": "1.00",
       "weight_text": "0.10"
      },
      {
       "label": "vanna",
       "text": "9.4",
-      "raw_text": "0.29",
+      "raw_text": "$294.72K",
       "normalized_text": "0.94",
       "weight_text": "0.10"
      },
@@ -4761,14 +4761,14 @@
      {
       "label": "charm",
       "text": "4.9",
-      "raw_text": "3.75",
+      "raw_text": "3.75K",
       "normalized_text": "0.97",
       "weight_text": "0.05"
      },
      {
       "label": "volatility",
       "text": "0.0",
-      "raw_text": "61.8",
+      "raw_text": "61.85",
       "normalized_text": "0.01",
       "weight_text": "0.05"
      }

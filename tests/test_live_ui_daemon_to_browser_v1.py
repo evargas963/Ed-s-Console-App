@@ -64,7 +64,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from instrument_identity import ticker_storage_key
-from numeric_contract import count_text, dollars_text
+from numeric_contract import compact_text, count_text, dollars_text
 from option_contract import read_chain
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import clock_from
@@ -781,9 +781,13 @@ async def _next(ws, kind) -> dict:
 def _published_rows(tk, key) -> list:
     """Return the rows the levels producer published for `tk` (its vanna_rows or charm_rows).
 
-    As the panel serves them: each with its value as the screen shows it (count_text).
+    As the panel serves them: each by name, with its value as the screen shows it (compact_text:
+    delta-shares).
     """
-    return [[*r, count_text(r[1])] for r in getattr(server.published_levels(tk), key)]
+    return [
+        {"strike": r.strike, "value": r.value, "text": compact_text(r.value)}
+        for r in getattr(server.published_levels(tk), key)
+    ]
 
 
 ALL = {"scope": "all", "centre": None, "shift": 0}
@@ -815,7 +819,7 @@ def test_the_panel_is_drawn_in_the_window_its_subscribe_asks():
     """The operator's pan: 11 rows (Auto) centred two rows past the strike the drag began on."""
     _publish(MRVL)
     rows = _published_rows(B, "vanna_rows")
-    strikes = [r[0] for r in rows]
+    strikes = [r["strike"] for r in rows]
     assert len(strikes) > 30
     asked = {"scope": "auto", "centre": strikes[10], "shift": 2}
 
@@ -1131,12 +1135,18 @@ AUTO = {"scope": "auto", "centre": None, "shift": 0}
 
 
 def _per_strike(tk) -> list:
-    """Today's rows [strike, net GEX $ per 1%, volume] the producer published for `tk`.
+    """Today's rows (strike, net GEX $ per 1%, volume) the producer published for `tk`.
 
-    As the panel serves them: each with its two numbers as the screen shows them.
+    As the panel serves them: each by name, with its two numbers as the screen shows them.
     """
     return [
-        [*r, dollars_text(r[1]), count_text(r[2])]
+        {
+            "strike": r.strike,
+            "value": r.value,
+            "volume": r.volume,
+            "text": dollars_text(r.value),
+            "volume_text": count_text(r.volume),
+        }
         for r in server.published_levels(tk).snap.per_strike["all"]
     ]
 
@@ -1158,7 +1168,7 @@ def test_each_strikes_reader_gets_its_own_window_at_once_with_no_get():
             assert seen["strikes:chart"]["today"]["all"] == rows
             gbs = seen["strikes:gbs"]["today"]["all"]
             assert len(gbs) == 11 and gbs == rows[rows.index(gbs[0]) : rows.index(gbs[0]) + 11]
-            drawn = max(abs(r[1]) for r in gbs if r[1] is not None)
+            drawn = max(abs(r["value"]) for r in gbs if r["value"] is not None)
             assert seen["strikes:gbs"]["views"]["all"]["max_abs"] == drawn
 
     asyncio.run(_serve_panels(body))

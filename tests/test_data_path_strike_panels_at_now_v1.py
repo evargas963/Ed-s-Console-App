@@ -60,7 +60,7 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         )
         last = _QUOTE["native"]["LAST_PRICE"]
         strikes = server.terrain_strikes_payload(tk, "auto", None, 0, at)
-        listed = [r[0] for r in strikes["today"]["all"]]
+        listed = [r["strike"] for r in strikes["today"]["all"]]
         assert strikes["spot_strike"] == min(listed, key=lambda k: abs(k - last))
         assert all(v["note"] is None for v in strikes["views"].values() if v["centre"] is not None)
         for key in server.STRIKE_BAR_METHODS:

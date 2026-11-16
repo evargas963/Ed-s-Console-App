@@ -474,24 +474,22 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('GEX-by-strike displays each row\'s own session volume, not just signed GEX$ (RC-UI-2 finding #5a)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED: "GEX-by-strike does not display its
-    // row's volume field" -- terrain_engine._per_strike_rows' own shape is
-    // [strike, net_gex_1pct$, session_volume]; the THIRD element was read into _lastGbs but
-    // never rendered anywhere. STRIKES.today.all above already carries real volume numbers
-    // (1200/5400/900) -- this proves they actually reach the DOM now.
+    // each row's served volume (terrain_engine.StrikeRow's volume and its text) reaches the DOM
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // AMZN's real rows: 32,975 contracts traded at 270, 2,260 at 257.5
     const rowK = page.locator('.gbs-row[data-strike="' + K + '"]');
-    await expect(rowK.locator('.gbs-vol')).toHaveText('32.98K');   // served, two decimals
+    await expect(rowK.locator('.gbs-vol')).toHaveText('32,975');   // served, every contract
     await expect(rowK).toHaveAttribute('data-volume', '32975');
     const rowLow = page.locator('.gbs-row[data-strike="257.5"]');
-    await expect(rowLow.locator('.gbs-vol')).toHaveText('2.26K');
+    await expect(rowLow.locator('.gbs-vol')).toHaveText('2,260');
   });
 
   test('Strike Detail redraws on the program\'s next chain, not just on a new strike selection', async ({ page }) => {
     // induced: the real chain with the volume of the call at the price changed, in its contracts
     // and its ladder row (server.chain builds both from the same rows)
-    const withVol = (c, vol) => (c && c.symbol === CALL_K.symbol ? Object.assign({}, c, { totalVolume: vol }) : c);
+    // the server serves the volume with its text (numeric_contract.count_text)
+    const withVol = (c, vol) => (c && c.symbol === CALL_K.symbol
+      ? Object.assign({}, c, { totalVolume: vol, volume_text: vol.toLocaleString('en-US') }) : c);
     const withCallVolume = (vol) => Object.assign({}, CHAIN, {
       contracts: CHAIN.contracts.map((c) => withVol(c, vol)),
       ladder: CHAIN.ladder.map((r) => Object.assign({}, r, { call: withVol(r.call, vol) })),
@@ -500,11 +498,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.locator(CELL).click();
     await expect(page.locator('#sdCtx')).toContainText('270');
     const callVolCell = page.locator('.sd tbody tr').first().locator('td').nth(2);   // Type, OI, Vol
-    await expect(callVolCell).toHaveText('13152');          // Schwab's totalVolume of that call
+    await expect(callVolCell).toHaveText('13,152');         // Schwab's totalVolume of that call
     const subscribes = sock.subscribes.length;
     panels.chain = chainAt(withCallVolume(999999));
     sock.changed('chain');                                  // the program prices the next chain
-    await expect(callVolCell).toHaveText('999999');
+    await expect(callVolCell).toHaveText('999,999');
     expect(sock.subscribes.length).toBe(subscribes);         // the page asked for nothing
   });
 

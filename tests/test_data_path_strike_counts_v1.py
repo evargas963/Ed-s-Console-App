@@ -32,4 +32,4 @@ def test_a_strike_keeps_every_digit_of_volume_and_open_interest():
             },
         }
     )["oi"]
-    assert oi == [[500.0, 3.6]]
+    assert oi == [(500.0, 3.6)]

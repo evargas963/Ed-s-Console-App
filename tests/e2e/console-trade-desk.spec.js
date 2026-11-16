@@ -19,7 +19,7 @@ const {
 // the composite of Schwab's two books, as the book panel's readout answers it
 const COMP = MICRO.readout.venues.COMPOSITE;
 // a strikes window as GEX by Strike lists it: highest strike first
-const listed = (strikes) => strikes.today.all.map((r) => String(r[0])).reverse();
+const listed = (strikes) => strikes.today.all.map((r) => String(r.strike)).reverse();
 // the zone the price is inside (the liquidity panel's own spot_location)
 const INSIDE = LIQ.zones[LIQ.spot_location.inside];
 
@@ -811,10 +811,12 @@ test.describe('Trade Desk renders served values', () => {
     await intercept(page);
     // induced: SPY's real rows with today's GEX and volume of the strike at the price (757) not known
     const K = STRIKES.spot_strike;
-    const today = STRIKES.today.all.map((r) => (r[0] === K ? [K, null, null] : r));
+    const today = STRIKES.today.all.map((r) => (r.strike === K
+      ? { strike: K, value: null, volume: null, text: null, volume_text: null } : r));
     deskPanels().strikes = Object.assign({}, STRIKES, { today: Object.assign({}, STRIKES.today, { all: today }),
       migration: Object.assign({}, STRIKES.migration, { all: Object.assign({}, STRIKES.migration.all,
-        { rows: STRIKES.migration.all.rows.map((r) => (r[0] === K ? [K, null, r[2], null] : r)) }) }) });
+        { rows: STRIKES.migration.all.rows.map((r) => (r.strike === K
+          ? { strike: K, value: null, prior: r.prior, change: null, change_text: null } : r)) }) }) });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
       localStorage.setItem('ed_sub', 'right-now'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -867,8 +869,10 @@ test.describe('Trade Desk renders served values', () => {
     await mockPriceSocket(page, [], [], undefined,
       { desk: tfAt(EVENTS), book: MICRO, liquidity: LIQ, bars: tfAt(BARS),
         forces: { ticker: 'SPY', available: true, doi_below: 1200, doi_above: null,
+          doi_below_text: '1,200', doi_above_text: null,
           dex_below_dollars: 5e8, dex_above_dollars: null, dex_below_text: '$500.00M', dex_above_text: null,
-          charm_below: 0.0123, charm_above: null, older_et_date: '2026-10-07' },
+          charm_below: -1234567, charm_above: null, charm_below_text: '-1.23M', charm_above_text: null,
+          older_et_date: '2026-10-07' },
         terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL', flip_note: 'the flip\'s note, as served' }),
         strikes: Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: null,
           gex_below_text: '-$1.20B', gex_above_text: null } }),
@@ -881,8 +885,8 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardOpt')).toContainText('GEX below / above');
     await expect(page.locator('#tdmCardOpt')).toContainText('Γ flip note the flip\'s note, as served');   // induced
     await expect(page.locator('#tdmCardOpt')).toContainText('-$1.20B / -');          // GEX, one side not known, as served
-    await expect(page.locator('#tdmCardOpt')).toContainText('ΔOI since 2026-10-07 below / above 1200 / -');   // from its served day
-    await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / -');           // charm, one side not known
+    await expect(page.locator('#tdmCardOpt')).toContainText('ΔOI since 2026-10-07 below / above 1,200 / -');   // from its served day
+    await expect(page.locator('#tdmCardOpt')).toContainText('-1.23M / -');           // charm, one side not known, as served
     await expect(page.locator('#tdmCardOpt')).toContainText('$500.00M / -');         // DEX, one side not known, as served
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);

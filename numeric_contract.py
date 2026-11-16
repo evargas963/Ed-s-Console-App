@@ -71,9 +71,18 @@ def price_text(value: float | None) -> str | None:
     return f"{float(value):.2f}"
 
 
-def shares_text(value: float | None) -> str | None:
-    """Return a count of shares as the screen shows it: whole, with thousands separators (5,100).
+def iv_text(value: float | None) -> str | None:
+    """Return an implied volatility (a percent) as the screen shows it: two decimals, as a price.
 
+    None when there is none.
+    """
+    return price_text(value)
+
+
+def count_text(value: float | None) -> str | None:
+    """Return a count (shares, contracts, open interest, volume) as the screen shows it.
+
+    Whole, with thousands separators, so every unit it moves by shows: 20,010, -1,200, 950.
     None when there is no count.
     """
     if value is None:
@@ -81,12 +90,11 @@ def shares_text(value: float | None) -> str | None:
     return f"{float(value):,.0f}"
 
 
-def count_text(value: float | None) -> str | None:
-    """Return a count (shares, contracts, a book's size) as the screen shows it, compact.
+def compact_text(value: float | None) -> str | None:
+    """Return an estimate (an exposure in delta-shares) as the screen shows it, compact.
 
-    Two decimals in thousands, millions and billions, whole below a thousand (operator
-    2026-11-16: "yes use two decimal points"): 1.23B, 4.56M, 7.89K, 950, -1.20K. None when there
-    is no count.
+    Two decimals in thousands, millions and billions, whole below a thousand: 1.23B, -4.56M,
+    7.89K, 950. None when there is none.
     """
     if value is None:
         return None
@@ -99,11 +107,11 @@ def count_text(value: float | None) -> str | None:
 
 
 def dollars_text(value: float | None) -> str | None:
-    """Return dollars as the screen shows them, compact as count_text: $1.23B, -$4.56M, $950.
+    """Return dollars as the screen shows them, compact as compact_text: $1.23B, -$4.56M, $950.
 
     None when there is no amount.
     """
-    text = count_text(value)
+    text = compact_text(value)
     if text is None:
         return None
     return f"-${text[1:]}" if text.startswith("-") else f"${text}"

@@ -98,7 +98,7 @@ test.describe('Desk: the Liquidity card draws the served order-imbalance readout
     // the whole source line shows, wrapped, never cut off
     expect(await card(page).locator('.tdm-src').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const text = await card(page).locator('.liq-body').innerText();
-    const span = (k, side) => '$' + READOUT_LIVE.readout.venues[k].views.weighted['span_' + side + '_text'];
+    const span = (k, side) => READOUT_LIVE.readout.venues[k].views.weighted['span_' + side + '_text'];
     const order = ['price levels per side, not timeframes', 'WEIGHTED TOP-5 HEADLINE', w.side_word, w.pct_text,
       'Bids', w.bid_text, 'Asks', w.ask_text,
       w.sentence, 'Difference: ' + w.difference_text + ' shares · Total depth: ' + w.total_text + ' shares',

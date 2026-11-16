@@ -38,8 +38,8 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 // tests/test_vanna_charm_by_strike_v1.py): eleven strikes around 270, with the DEX and OI measures
 const STRIKES = require('./fixtures/vanna_charm_panels_crwd.json').strikes;
 const SPOT = STRIKES.spot_strike;                                  // 270
-const K = STRIKES.today.all[6][0];                                 // 272.5, the strike a test clicks
-const TERRAIN = { spot: SPOT, gamma_flip: SPOT - 0.5, call_wall: K, put_wall: STRIKES.today.all[4][0],
+const K = STRIKES.today.all[6].strike;                             // 272.5, the strike a test clicks
+const TERRAIN = { spot: SPOT, gamma_flip: SPOT - 0.5, call_wall: K, put_wall: STRIKES.today.all[4].strike,
   regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
 const BARS = { bars: [{ t: 1757000000, o: SPOT - 1, h: SPOT + 1, l: SPOT - 2, c: SPOT, v: 1 }] };
 const CALL_SYM = 'CRWD  260918C00272500';
@@ -47,8 +47,10 @@ const PUT_SYM = 'CRWD  260918P00272500';
 const CHAIN = { spot: SPOT, spot_strike: K, expiry: '2026-09-18', status: 'ok', scope: { kind: 'complete_single_expiry' },
   adjusted_deliverable_symbols: [],
   contracts: [
-    { symbol: CALL_SYM, putCall: 'CALL', strikePrice: K, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12 },
-    { symbol: PUT_SYM, putCall: 'PUT', strikePrice: K, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12 },
+    { symbol: CALL_SYM, putCall: 'CALL', strikePrice: K, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12,
+      oi_text: '1,200', volume_text: '540', iv_text: '12.00' },
+    { symbol: PUT_SYM, putCall: 'PUT', strikePrice: K, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12,
+      oi_text: '980', volume_text: '410', iv_text: '12.00' },
   ] };
 // server.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
 CHAIN.ladder = [{ strike: K, call: CHAIN.contracts[0], put: CHAIN.contracts[1], net_gex: null }];
@@ -105,7 +107,7 @@ test.describe('Options/Gamma Chart subview', () => {
 
     // Strike Detail shows strike K's call AND put at this expiry, each its own contract's open
     // interest as served -- the complete workflow, not just the numeric strike+expiry handoff.
-    await expect(page.locator('#sdBody table.sd tbody tr').nth(0).locator('td').nth(1)).toHaveText('1200');
+    await expect(page.locator('#sdBody table.sd tbody tr').nth(0).locator('td').nth(1)).toHaveText('1,200');
     await expect(page.locator('#sdBody table.sd tbody tr').nth(1).locator('td').nth(1)).toHaveText('980');
   });
 
@@ -125,7 +127,8 @@ test.describe('Options/Gamma Chart subview', () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     // induced: the real rows with the GEX of the strike at the price not known
-    const today = { all: STRIKES.today.all.map((row) => (row[0] === SPOT ? [row[0], null, row[2]] : row)) };
+    const today = { all: STRIKES.today.all.map((row) => (row.strike === SPOT
+      ? Object.assign({}, row, { value: null, text: null }) : row)) };
     await intercept(page, TERRAIN, Object.assign({}, STRIKES, { today }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
@@ -164,7 +167,7 @@ test.describe('Options/Gamma Chart subview', () => {
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('#mvTitle')).toHaveText(title);
       await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(rows);
-      await expect(page.locator('#chartBody .chart-legend')).toContainText('largest |' + (sub === 'oi' ? 'OI' : 'DEX') + '| ' + STRIKES.measures[sub].max_abs_row[0]);
+      await expect(page.locator('#chartBody .chart-legend')).toContainText('largest |' + (sub === 'oi' ? 'OI' : 'DEX') + '| ' + STRIKES.measures[sub].max_abs_row.strike);
     }
   });
 });

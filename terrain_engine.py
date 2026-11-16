@@ -12,7 +12,7 @@ import statistics
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import Any, NamedTuple, TypedDict
 
 from confluence_composite import iv_by_strike
 from math_exposure_core import (
@@ -46,7 +46,7 @@ from math_levels import (
     pick_charm_wall_strikes,
     repriced_to_close,
 )
-from numeric_contract import count_text, dollars_text, float_finite_or_none
+from numeric_contract import count_text, dollars_text, float_finite_or_none, iv_text
 from option_contract import OptionContract
 from terrain_read import (
     LEVEL_ABOVE,
@@ -71,18 +71,38 @@ TERRAIN_SCHEMA_VERSION = 6
 type ExpiryKey = tuple[str | None, float | None]
 #: one (expiry, days to expiry) group's book with its diagnostics, as exposure_books holds it
 type Book = tuple[dict[float, Bucket], ExposureDiagnostics]
-#: a GEX-by-strike row, [strike, net GEX $, session volume]: a value not known is None
-type StrikeRow = tuple[float, float | None, float | None]
-#: a migration row, [strike, GEX today, GEX prior, change]: a value not known is None
-type MigrationRow = tuple[float, float | None, float | None, float | None]
+
+
+class StrikeValue(NamedTuple):
+    """One strike's value on a per-strike bar (net DEX $, open interest, net vanna or charm)."""
+
+    strike: float
+    value: float
+
+
+class StrikeRow(NamedTuple):
+    """A GEX-by-strike row: its value is the strike's net GEX $; a value not known is None."""
+
+    strike: float
+    value: float | None
+    volume: float | None
+
+
+class MigrationRow(NamedTuple):
+    """A strike's net GEX today against the prior session's; a value not known is None."""
+
+    strike: float
+    value: float | None
+    prior: float | None
+    change: float | None
 
 
 class MeasureRows(TypedDict):
-    """The full book's DEX, OI and net vanna rows, [strike, value] per known strike."""
+    """The full book's DEX, OI and net vanna rows, one per known strike."""
 
-    dex: list[list[float]]
-    oi: list[list[float]]
-    vanna: list[list[float]]
+    dex: list[StrikeValue]
+    oi: list[StrikeValue]
+    vanna: list[StrikeValue]
 
 
 class PerStrikeView(MeasureRows):
@@ -256,6 +276,9 @@ class TerrainSnapshot:
             **{k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS},
             "net_gex_at_spot_text": dollars_text(self.net_gex_at_spot),
             "contracts_used_text": count_text(self.contracts_used),
+            "atm_iv_text": None
+            if self.implied_1d_move is None
+            else iv_text(self.implied_1d_move["iv_pct_atm"]),
         }
 
 
@@ -292,7 +315,7 @@ def side_total(values: list[float | None]) -> float | None:
 
 
 def _per_strike_rows(exposures: dict[float, Bucket]) -> list[StrikeRow]:
-    """`[[strike, net_gex_1pct$, session_volume], …]` — the EXACT shape the panel renders.
+    """Each strike's StrikeRow: its net GEX $ (1% move) and session volume.
 
     THE one producer of GEX-by-strike rows (live panel AND the prior-day ghost).
 
@@ -315,8 +338,8 @@ def _per_strike_rows(exposures: dict[float, Bucket]) -> list[StrikeRow]:
             continue
         gf = float_finite_or_none(net_gex_dollars_at_strike(b))
         vol = strike_total_volume(b)
-        rows.append((sk, gf, vol))
-    rows.sort(key=lambda r: r[0])
+        rows.append(StrikeRow(sk, gf, vol))
+    rows.sort(key=lambda r: r.strike)
     return rows
 
 
@@ -349,26 +372,27 @@ def positioning_migration(
 ) -> PositioningMigration:
     """Return day-over-day positioning for one DTE scope.
 
-    It is built from GEX-by-strike rows [strike, net_gex_1pct$, volume] of today and of the
-    prior capture.
+    It is built from the GEX-by-strike rows of today and of the prior capture.
 
-    rows: [strike, gex today, gex prior, change] (None where either day has no value); grew /
-    shrank: the two strikes that gained / lost the most GEX; busiest: the two strikes with the
-    most volume and where they sit against the walls; volume_total: the scope's session volume
-    (side_total).
+    rows: each strike's MigrationRow (None where either day has no value); grew / shrank: the
+    two strikes that gained / lost the most GEX; busiest: the two strikes with the most volume
+    and where they sit against the walls; volume_total: the scope's session volume (side_total).
     """
-    prior_gex = {r[0]: r[1] for r in prior}
+    prior_gex = {r.strike: r.value for r in prior}
     rows: list[MigrationRow] = []
-    for k, gx, _vol in today:
-        gy = prior_gex.get(k)
-        rows.append((k, gx, gy, (gx - gy) if gx is not None and gy is not None else None))
+    for r in today:
+        gy = prior_gex.get(r.strike)
+        change = r.value - gy if r.value is not None and gy is not None else None
+        rows.append(MigrationRow(r.strike, r.value, gy, change))
     # each strike with a known change, largest gain first
     changes = sorted(
-        ((r[0], r[3]) for r in rows if r[3] is not None), key=lambda kc: kc[1], reverse=True
+        ((r.strike, r.change) for r in rows if r.change is not None),
+        key=lambda kc: kc[1],
+        reverse=True,
     )
     grew = [k for k, c in changes if c > 0][:2]
     shrank = [k for k, c in changes if c < 0][-2:]
-    vols = [(r[0], r[2]) for r in today if r[2]]
+    vols = [(r.strike, r.volume) for r in today if r.volume]
     busiest = sorted(k for k, _v in sorted(vols, key=lambda kv: kv[1], reverse=True)[:2])
     where = None
     if busiest:
@@ -552,16 +576,16 @@ def compute_implied_one_day_move(
 
 
 def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
-    """`{"dex": [[strike, net DEX $], …], "oi": …, "vanna": [[strike, net vanna], …]}`.
+    """Return each strike's net DEX $, open interest and net vanna, as StrikeValue rows.
 
     Every strike whose value is known, by the heatmap cell's own readers (net_dex_dollars of a
     dollarized book; strike_total_oi; net_vanna, +call/-put as compute_exposures_by_strike
     computed it). Open interest keeps every digit; the screen rounds the count. A strike whose
     value is unknown has no row.
     """
-    dex: list[list[float]] = []
-    oi: list[list[float]] = []
-    vanna: list[list[float]] = []
+    dex: list[StrikeValue] = []
+    oi: list[StrikeValue] = []
+    vanna: list[StrikeValue] = []
     dollarized = bool(exposures) and exposures_have_dollar_gex(exposures)
     for k, b in exposures.items():
         sk = float_finite_or_none(k)
@@ -569,15 +593,15 @@ def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
             continue
         d = float_finite_or_none(bucket_metric(b, "net_dex_dollars")) if dollarized else None
         if d is not None:
-            dex.append([sk, d])
+            dex.append(StrikeValue(sk, d))
         o = strike_total_oi(b)
         if o is not None:
-            oi.append([sk, o])
+            oi.append(StrikeValue(sk, o))
         v = bucket_metric(b, "net_vanna")
         if v is not None:
-            vanna.append([sk, v])
+            vanna.append(StrikeValue(sk, v))
     for rows in (dex, oi, vanna):
-        rows.sort(key=lambda r: r[0])
+        rows.sort(key=lambda r: r.strike)
     return {"dex": dex, "oi": oi, "vanna": vanna}
 
 

@@ -19,7 +19,14 @@ from math_exposure_core import (
     strike_volume_legs,
     total_gex_dollars_at_strike,
 )
-from numeric_contract import price_text, schwab_number
+from numeric_contract import (
+    compact_text,
+    count_text,
+    dollars_text,
+    iv_text,
+    price_text,
+    schwab_number,
+)
 from option_contract import OptionContract
 
 ABSENT = ("DGEXM", "FLOWM")
@@ -354,30 +361,6 @@ def _signed(n: float | None, digits: int) -> str | None:
     return "+" + shown
 
 
-def _millions(n: float | None) -> str | None:
-    if n is None:
-        return None
-    return f"{n / 1e6:.2f}"
-
-
-def _signed_millions(n: float | None) -> str | None:
-    if n is None:
-        return None
-    return _signed(float(n) / 1e6, 2)
-
-
-def _signed_thousands(n: float | None) -> str | None:
-    if n is None:
-        return None
-    return _signed(float(n) / 1000, 2)
-
-
-def _thousands(n: float | None) -> str | None:
-    if n is None:
-        return None
-    return f"{n / 1000:.2f}"
-
-
 def _peak(values: Iterable[float | None]) -> float | None:
     """Largest absolute value on this expiry: the column's scale, not a score."""
     peak = None
@@ -425,15 +408,18 @@ DGEX_REASON = "no change in gamma is produced"
 
 
 def _raw_text(name: str, raw: float | None) -> str | None:
+    """Return a factor's magnitude as the screen shows it.
+
+    Gamma, delta and vanna in dollars; volatility a percent; charm (delta-shares) compact; open
+    interest and volume whole.
+    """
     if name in ("GEXM", "DEXM", "VANNAM"):
-        return _millions(raw)
-    if name == "CHARMM":
-        return _thousands(raw)
+        return dollars_text(raw)
     if name == "IV":
-        return _text(raw, 1)
-    if raw is None:
-        return None
-    return f"{raw:.0f}"
+        return iv_text(raw)
+    if name == "CHARMM":
+        return compact_text(raw)
+    return count_text(raw)
 
 
 def _factor_row(part: FactorPart) -> dict[str, str | None]:
@@ -507,17 +493,17 @@ def _row(strike: float, ranked: RankedStrike) -> dict[str, Any]:
         "strike": strike,
         "strike_text": price_text(strike),
         **_shades(factors),
-        "net_gex_text": _signed_millions(factors["_net_gex"]),
+        "net_gex_text": dollars_text(factors["_net_gex"]),
         "net_reason": _absent(factors["_net_gex"], "net gamma is missing"),
-        "oi_text": None if factors["OI"] is None else f"{factors['OI']:.0f}",
+        "oi_text": count_text(factors["OI"]),
         "oi_reason": _absent(factors["OI"], "open interest is missing"),
         "pc_gex_text": _text(pc_gex, 2),
         "pc_gex_reason": _absent(pc_gex, "put/call gamma is missing"),
-        "gross_text": _millions(factors["_gross"]),
+        "gross_text": dollars_text(factors["_gross"]),
         "gross_reason": _absent(factors["_gross"], "gross gamma is missing"),
         "dgex_text": None,
         "dgex_reason": DGEX_REASON,
-        "volume_text": None if factors["VOL"] is None else f"{factors['VOL']:.0f}",
+        "volume_text": count_text(factors["VOL"]),
         "volume_reason": _absent(factors["VOL"], "volume is missing"),
         "pc_vol_text": _text(pc_vol, 2),
         "pc_vol_reason": _absent(pc_vol, "put/call volume is missing"),
@@ -525,13 +511,13 @@ def _row(strike: float, ranked: RankedStrike) -> dict[str, Any]:
         "vol_oi_reason": _absent(factors["_vol_oi"], "volume/open interest is missing"),
         "flow_text": None,
         "flow_reason": FLOW_REASON,
-        "dex_text": _signed_millions(factors["_dex"]),
+        "dex_text": dollars_text(factors["_dex"]),
         "dex_reason": _absent(factors["_dex"], "delta exposure is missing"),
-        "vanna_text": _signed_millions(factors["_vanna"]),
+        "vanna_text": dollars_text(factors["_vanna"]),
         "vanna_reason": _absent(factors["_vanna"], "vanna is missing"),
-        "iv_text": _text(factors["IV"], 1),
+        "iv_text": iv_text(factors["IV"]),
         "iv_reason": _absent(factors["IV"], "implied volatility is missing"),
-        "charm_text": _signed_thousands(factors["_charm"]),
+        "charm_text": compact_text(factors["_charm"]),
         "charm_reason": _absent(factors["_charm"], "charm is missing"),
         "score": score,
         "score_text": None if score is None else str(int(round(score))),

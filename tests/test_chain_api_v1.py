@@ -106,9 +106,24 @@ def _as_shown(contracts):
     """`contracts` as the screen shows them: the fields it shows as sent, bid and ask the quote's.
 
     No other /chains field is sent. The chain's own bid and ask are not used (the stream's, or
-    /quotes'); these captures carry no /quotes answer, so they show none.
+    /quotes'); these captures carry no /quotes answer, so they show none. Open interest and
+    volume are served whole with separators, the IV with two decimals (operator 2026-11-16).
     """
-    return [{**{k: c[k] for k in _SHOWN if k in c}, "bid": None, "ask": None} for c in contracts]
+
+    def text(v, fmt):
+        return None if v is None else format(v, fmt)
+
+    return [
+        {
+            **{k: c[k] for k in _SHOWN if k in c},
+            "bid": None,
+            "ask": None,
+            "oi_text": text(c.get("openInterest"), ",.0f"),
+            "volume_text": text(c.get("totalVolume"), ",.0f"),
+            "iv_text": text(c.get("volatility"), ".2f"),
+        }
+        for c in contracts
+    ]
 
 
 def _get(ticker, expiry=None):
@@ -189,7 +204,12 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
     overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
     assert overlaid["totalVolume"] == streamed
     assert srv.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
-    assert all(overlaid[k] == v for k, v in _as_shown([target])[0].items() if k != "totalVolume")
+    assert overlaid["volume_text"] == f"{streamed:,.0f}"  # the streamed volume, as shown
+    assert all(
+        overlaid[k] == v
+        for k, v in _as_shown([target])[0].items()
+        if k not in ("totalVolume", "volume_text")
+    )
     assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _as_shown(
         _TSLA_CONTRACTS[1:]
     )

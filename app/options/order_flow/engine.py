@@ -34,7 +34,6 @@ from numeric_contract import (
     price_text,
     schwab_count,
     schwab_number,
-    shares_text,
 )
 from time_et import ct_label
 
@@ -806,7 +805,7 @@ def _sentence(bid: float | None, ask: float | None) -> str | None:
     if diff == 0:
         return "Equal shares bid and offered."
     more, fewer = ("bid", "offered") if bid > ask else ("offered", "bid")
-    return f"{shares_text(diff)} more shares {more} than {fewer}."
+    return f"{count_text(diff)} more shares {more} than {fewer}."
 
 
 def _opposite(a: float | None, b: float | None) -> bool:
@@ -864,10 +863,11 @@ def readout_card(
                 if view == "weighted" and _opposite(sm[-1], snap.get("imbalance"))
                 else None,
                 "flips_2m": _flips(shown, first, last),
-                "bid_text": shares_text(bid),
-                "ask_text": shares_text(ask),
-                "difference_text": shares_text(snap.get("difference")),
-                "total_text": shares_text(snap.get("total_depth")),
+                "bid_text": count_text(bid),
+                "ask_text": count_text(ask),
+                "difference_text": count_text(snap.get("difference")),
+                "total_text": count_text(snap.get("total_depth")),
+                # how far the book's levels reach in price
                 "span_bid_text": price_text(snap.get("span_bid")),
                 "span_ask_text": price_text(snap.get("span_ask")),
                 "lean": {

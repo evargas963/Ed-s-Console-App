@@ -67,7 +67,8 @@ test.describe('the Gamma presentation scope', () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     // induced: the real rows with the GEX and volume of the strike at the price not known
-    const rows = WINDOW.auto.map((r) => (r[0] === SPOT ? [r[0], null, null] : r));
+    const rows = WINDOW.auto.map((r) => (r.strike === SPOT
+      ? { strike: r.strike, value: null, volume: null, text: null, volume_text: null } : r));
     panels.strikes = Object.assign({}, strikesFor('auto'), { today: { all: rows } });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const row = page.locator('#gbsBody .gbs-row[data-strike="' + SPOT + '"]');
@@ -87,8 +88,8 @@ test.describe('the Gamma presentation scope', () => {
       await expect.poll(() => asked[asked.length - 1]).toBe(scope);
       const rows = WINDOW[scope];
       await expect(gbs.locator('.gbs-row')).toHaveCount(rows.length);
-      await expect(gbs.locator('.gbs-row').first().locator('.gbs-k')).toHaveText(strikeText(rows[rows.length - 1][0]));
-      await expect(gbs.locator('.gbs-row').last().locator('.gbs-k')).toHaveText(strikeText(rows[0][0]));
+      await expect(gbs.locator('.gbs-row').first().locator('.gbs-k')).toHaveText(strikeText(rows[rows.length - 1].strike));
+      await expect(gbs.locator('.gbs-row').last().locator('.gbs-k')).toHaveText(strikeText(rows[0].strike));
       // rows keep a legible height at every count (never shrunk to fit)
       const rowH = await gbs.locator('.gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
       expect(rowH).toBeGreaterThanOrEqual(24);

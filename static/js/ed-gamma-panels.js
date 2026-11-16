@@ -253,10 +253,10 @@
     });
   }
   // A per-strike bar list (GEX, vanna, charm by strike): the window of `rows` the server sent
-  // ([strike, value, ...], ascending), drawn highest strike first, each bar's length its |value|
-  // against the served scale (view.max_abs). The strike labels pan the window (wireStrikeAxis ->
-  // `reload`); a pan is never silent. `opts`: `top` html above the list, `attrs(r)` and `cells(r)`
-  // a row's extra attributes and cells, `text(r)` the value's served text.
+  // ({strike, value, text, ...}, ascending), drawn highest strike first, each bar's length its
+  // |value| against the served scale (view.max_abs). The strike labels pan the window
+  // (wireStrikeAxis -> `reload`); a pan is never silent. `opts`: `top` html above the list,
+  // `attrs(r)` and `cells(r)` a row's extra attributes and cells.
   function drawStrikeBars(host, rows, view, pan, spotStrike, reload, opts) {
     window.EdShell.panServed(pan, view.centre);
     var maxAbs = view.max_abs; // at least |v| for every v drawn
@@ -274,8 +274,8 @@
       .reverse()
       .forEach(function (r) {
         // a strike with no value is unknown: no bar, '-' (never a $0 bar)
-        var k = r[0],
-          v = r[1] == null ? null : Number(r[1]);
+        var k = r.strike,
+          v = r.value;
         var s = window.EdShell.strength(v, maxAbs),
           w = s == null ? 0 : s * 100,
           pos = v != null && v >= 0;
@@ -298,7 +298,7 @@
           '<span class="gbs-v ' +
           (v == null ? "" : pos ? "pos" : "neg") +
           '">' +
-          esc(orDash(opts.text(r))) +
+          esc(orDash(r.text)) +
           "</span>" +
           (opts.cells ? opts.cells(r) : "") +
           "</div>";
@@ -351,30 +351,26 @@
     }
     // the strikes panel is aggregate across expiries; with one expiry selected, say so
     var expOn = window.EdShell.getExpiry();
-    // yesterday's change per strike as served (migration.all.rows: [strike, today, prior,
-    // change, its text])
+    // yesterday's change per strike as served (migration.all.rows' change_text)
     var chg = new Map(
       d.migration.all.rows.map(function (m) {
-        return [m[0], m[4]];
+        return [m.strike, m.change_text];
       }),
     );
-    // rows: [strike, net_gex_1pct$, session volume, their texts]; the volume is a count, never
-    // coloured
+    // rows: each strike's net GEX $ (value) and session volume with their texts; the volume is a
+    // count, never coloured
     drawStrikeBars(host, rows, d.views.all, _gbsPan, d.spot_strike, loadGbs, {
       top: expOn ? '<div class="gbs-allexp">all expiries</div>' : "",
-      text: function (r) {
-        return r[3];
-      },
       attrs: function (r) {
-        return ' data-volume="' + (r[2] == null ? "" : r[2]) + '"';
+        return ' data-volume="' + (r.volume == null ? "" : r.volume) + '"';
       },
       cells: function (r) {
         return (
           '<span class="gbs-vol" title="session volume">' +
-          esc(orDash(r[4])) +
+          esc(orDash(r.volume_text)) +
           "</span>" +
           '<span class="gbs-chg" title="net GEX change vs the previous session">' +
-          esc(orDash(chg.get(r[0]))) +
+          esc(orDash(chg.get(r.strike))) +
           "</span>"
         );
       },
@@ -457,16 +453,10 @@
       call = sd ? sd.call : null,
       put = sd ? sd.put : null;
     txt("sdCtx", px(strike, strike % 1 ? 2 : 0) + (expiry ? " · " + esc(expiry.slice(5)) : ""));
-    // d2: decimals; none: every digit Schwab sent (its Greeks)
-    function cell(c, k, d2) {
+    // a served text, or every digit Schwab sent (its Greeks)
+    function cell(c, k) {
       var v = c ? c[k] : null;
-      return v == null
-        ? "-"
-        : typeof v === "number"
-          ? d2 == null
-            ? String(v)
-            : v.toFixed(d2)
-          : esc(v);
+      return v == null ? "-" : esc(String(v));
     }
     // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "-"; the
     // NET row is this expiry's net GEX at this strike, served on the same chain panel --
@@ -476,26 +466,26 @@
     host.innerHTML =
       '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
       '<tr><td class="side c">Call</td><td>' +
-      cell(call, "openInterest", 0) +
+      cell(call, "oi_text") +
       "</td><td>" +
-      cell(call, "totalVolume", 0) +
+      cell(call, "volume_text") +
       "</td><td>" +
       cell(call, "gamma") +
       '</td><td class="dim">-</td><td>' +
       cell(call, "delta") +
       "</td><td>" +
-      cell(call, "volatility") +
+      cell(call, "iv_text") +
       "</td></tr>" +
       '<tr><td class="side p">Put</td><td>' +
-      cell(put, "openInterest", 0) +
+      cell(put, "oi_text") +
       "</td><td>" +
-      cell(put, "totalVolume", 0) +
+      cell(put, "volume_text") +
       "</td><td>" +
       cell(put, "gamma") +
       '</td><td class="dim">-</td><td>' +
       cell(put, "delta") +
       "</td><td>" +
-      cell(put, "volatility") +
+      cell(put, "iv_text") +
       "</td></tr>" +
       '<tr class="sd-net"><td class="side">Net</td><td>-</td><td>-</td><td>-</td><td class="' +
       netCls +
@@ -541,12 +531,7 @@
         return;
       }
       // vanna and charm are delta-shares (per vol point, per day), not dollars: no '$'
-      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, {
-        top: "",
-        text: function (r) {
-          return r[2]; // [strike, value, its text]
-        },
-      });
+      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, { top: "" });
     }
     function ask() {
       if (!inSub()) {
@@ -691,9 +676,6 @@
   function fmtOfPrice(n) {
     return px(n);
   }
-  function fmtOfSize(n) {
-    return n == null || isNaN(n) ? "-" : String(n);
-  }
   function renderOf(host, d) {
     var src = document.getElementById("ofSrc");
     if (src) src.textContent = "";
@@ -730,18 +712,18 @@
           "<td>" +
           fmtOfPrice(r.bid) +
           "×" +
-          fmtOfSize(r.bid_size) +
+          esc(orDash(r.bid_size_text)) +
           "</td>" +
           "<td>" +
           fmtOfPrice(r.ask) +
           "×" +
-          fmtOfSize(r.ask_size) +
+          esc(orDash(r.ask_size_text)) +
           "</td>" +
           "<td>" +
           fmtOfPrice(r.trade) +
           "</td>" +
           "<td>" +
-          fmtOfSize(r.size) +
+          esc(orDash(r.size_text)) +
           "</td>" +
           "<td>" +
           esc(orDash(r.premium_text)) +
@@ -750,10 +732,10 @@
           esc(orDash(r.volume_text)) +
           "</td>" +
           "<td>" +
-          fmtOfSize(r.oi) +
+          esc(orDash(r.oi_text)) +
           "</td>" +
           "<td>" +
-          px(r.iv, 1) +
+          esc(orDash(r.iv_text)) +
           "</td>" +
           "<td>" +
           px(r.delta, 3) +
