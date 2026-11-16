@@ -117,6 +117,7 @@ from push import forces as push_forces
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
 from push import tape as push_tape
+from push import terrain as push_terrain
 from push.answers import unavailable
 from push.asked import tf_asked, venue_asked
 from push.bars import aggregate_vwap
@@ -130,7 +131,6 @@ from push.verdict import (
 )
 from state import bar_store, cross_store, level_store
 from state.level_store import PublishedLevels, published_levels
-from terrain_atr import Atr, compute_atrs
 from terrain_engine import (
     OPTION_LEVELS,
     SAME_DAY_LEVELS,
@@ -143,7 +143,6 @@ from terrain_engine import (
     chain_ladder,
     compute_terrain,
     nearest_strike,
-    price_relations,
     side_total,
 )
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
@@ -173,13 +172,6 @@ APP_DIR = str(Path(__file__).parent.resolve())
 
 # Its lines go to the program's one log (capture._start_log: the day's file and the window).
 log = logging.getLogger("ed_server")
-
-
-class LevelsMark(TypedDict):
-    """The one word the Key Levels line shows, and why (levels_mark)."""
-
-    levels_mark: str
-    levels_mark_reason: str | None
 
 
 #: where the bars come from, named in every level's provenance
@@ -515,22 +507,6 @@ _CROSS_WORD = {"up": "above", "down": "below"}
 # ── THE LEVELS (from the chains the capture daemon fetches) ──────────────────
 _terrain_loop_running: bool = False
 _terrain_loop_thread: threading.Thread | None = None
-
-
-def levels_mark(levels: Mapping[str, Any], ticker: str, now: float) -> LevelsMark:
-    """Return the one word the Key Levels line shows, from the levels' verdict and their price's.
-
-    From terrain_staleness and price_state: the levels' state while it is not LIVE, else the
-    price's state (the walls stand and are LIVE only while the price they are measured from is
-    live), with why.
-    """
-    if levels["levels_state"] != lmp.LIVE:
-        return {
-            "levels_mark": levels["levels_state"],
-            "levels_mark_reason": levels["levels_stale_reason"],
-        }
-    label, outage = price_state(ticker, now)
-    return {"levels_mark": label, "levels_mark_reason": outage}
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
@@ -1676,29 +1652,6 @@ def stop_terrain_loop() -> None:
         _chains_waiting.clear()
 
 
-def _atr(ticker: str, now: datetime) -> Atr:
-    """Return the ticker's daily, weekly and monthly ATR at `now`, each from Schwab's candles.
-
-    The daily from push.bars.daily_candles, the daily chart's own; the weekly and monthly from
-    Schwab's own weekly and monthly /pricehistory series as the bar writer holds them
-    (state.bar_store). Too few reads as None.
-    """
-    tk = ticker_storage_key(ticker)
-    return compute_atrs(
-        push_bars.daily_candles(tk, now), bar_store.series(tk, "1w"), bar_store.series(tk, "1mo")
-    )
-
-
-def _atr_fields(tk: str, now: datetime) -> dict[str, float | str | None]:
-    """atr_daily / atr_weekly / atr_monthly at `now`, each with its text.
-
-    A horizon that cannot be computed is None.
-    """
-    a = _atr(tk, now)
-    atrs = {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly}
-    return atrs | {f"{name}_text": price_text(value) for name, value in atrs.items()}
-
-
 # ── Per-strike gamma and volume bars for the histogram panel ─────────────────
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
@@ -2057,50 +2010,6 @@ def gamma_surface_payload(
     )
 
 
-def terrain(tk: str, now: float) -> dict[str, Any]:
-    """Return `tk`'s published levels at `now`, at the live price (the `terrain` panel).
-
-    `tk` is the levels' own key ($SPX). The page's socket sends
-    them to Key Levels, the Gamma chart, the Trade Desk's Right Now and its map (live_ui,
-    PAGE_PANELS), at once and each time the levels change (_levels_changed).
-    """
-    at = datetime.fromtimestamp(now, ET)
-    cached, staleness = terrain_cache_get(tk, now)
-    if cached is not None:
-        # the levels as the producer published them; `spot` is the live price, and every relation
-        # of the price to the levels is at it (price_relations); internal fields (the kept chain,
-        # the heatmap grid, per-strike rows) are their own panels
-        out = cached.served() | staleness
-        out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
-        out.update(price_relations(out, out["spot"]).to_dict())
-        out.update(_atr_fields(tk, at))  # live: today's candle from the bars held now
-        # the chain's verdict is levels_state, above. The live price the relations are computed from
-        # is a separate fact: the numbers stay, marked with whether that price is live
-        out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
-        return out | levels_mark(out, tk, now)
-    spot, spot_source, spot_ts = resolve_spot(tk, now=now)
-    _why = level_store.chain_failure(tk)
-    empty = compute_terrain(tk, None, spot, now=at, sessions=sessions()).to_dict()
-    mark = price_mark(tk, spot_ts, now)
-    return (
-        empty
-        | price_relations(empty, spot).to_dict()
-        | mark
-        | levels_mark(staleness, tk, now)
-        | {
-            "spot_source": spot_source,
-            "spot_as_of_ts_utc": spot_ts,
-            **_atr_fields(tk, at),  # from the candles and bars, which do not wait for a chain
-            # not ready, with the producer's reason when it has one, and the levels' verdict
-            "error": (
-                "terrain_not_ready: no chain from the daemon yet for this ticker"
-                + (f" (last chain error: {_why})" if _why else "")
-            ),
-            **staleness,
-        }
-    )
-
-
 #: The Trade Desk's lookback per chart timeframe: seconds, or "session" (the latest regular
 #: session), with the words the page shows for it.
 DESK_LOOKBACK = {
@@ -2169,7 +2078,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     newest_at = {it["price"]: it for it in items}
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
-    t = terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
+    t = push_terrain.terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
     tts = t.get("levels_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
         if t.get(f"{side}_wall_state") == "breached":  # at the live price (price_relations)
@@ -3227,7 +3136,7 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "expiries": lambda a: push_expiries.expiries(a.ticker, a.now),
     "vanna": lambda a: push_strike_bars.strike_bars("vanna_rows", a.ticker, a.now, a.params),
     "charm": lambda a: push_strike_bars.strike_bars("charm_rows", a.ticker, a.now, a.params),
-    "terrain": lambda a: terrain(a.ticker, a.now),
+    "terrain": lambda a: push_terrain.terrain(a.ticker, a.now),
     "strikes": lambda a: push_strikes.strikes(a.ticker, a.now, a.params),
     "surface": lambda a: gamma_surface(a.ticker, a.now, a.params),
     "chain": lambda a: chain(a.ticker, a.now, a.params),

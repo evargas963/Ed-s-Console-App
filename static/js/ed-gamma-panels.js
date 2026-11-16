@@ -37,7 +37,7 @@
   };
   window.EdGammaRegime = REGIME;
 
-  // ---------- Key Levels rail: the `terrain:levels` panel (server.terrain), sent on the page's
+  // ---------- Key Levels rail: the `terrain:levels` panel (push.terrain), sent on the page's
   // socket while a Gamma tab is on, at once and each time the levels change ----------
   var _levels,
     _levelsTicker = null; // the panel as last sent for the ticker on screen

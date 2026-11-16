@@ -24,6 +24,7 @@ import live_price_rows
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
+from push import terrain as push_terrain
 from state import level_store
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
@@ -138,7 +139,7 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
     closed and a chain fetched after that close stands.
     """
     published(tk, chain, delivered)
-    body = server.terrain(tk, at.timestamp())
+    body = push_terrain.terrain(tk, at.timestamp())
     assert body["levels_state"] == state
     assert body["levels_age_text"] == age_text(at.timestamp() - delivered.timestamp())
     assert body["levels_time_ct"] is not None
@@ -171,7 +172,7 @@ def test_the_levels_are_due_by_two_of_the_daemons_rounds_and_nothing_of_ours(
     lmp.record_feed_heartbeat(
         daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=round_sec)
     )
-    body = server.terrain("TSLA", delivered.timestamp() + after)
+    body = push_terrain.terrain("TSLA", delivered.timestamp() + after)
     assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)
 
 
@@ -190,19 +191,19 @@ def test_in_schwabs_option_pre_market_the_levels_are_live_and_stand_through_the_
     record_markets(sent["body"])
     try:
         published("SPY", SPY_0DTE, _et(16, 16, "2026-10-30"))
-        before = server.terrain("SPY", _et(7, 29, day).timestamp())["levels_state"]
+        before = push_terrain.terrain("SPY", _et(7, 29, day).timestamp())["levels_state"]
         published("SPY", SPY_0DTE, _et(8, 0, day))
         in_pre_market = level_store.published_levels("SPY").computed_ts_utc
-        live = server.terrain("SPY", _et(8, 1, day).timestamp())["levels_state"]
+        live = push_terrain.terrain("SPY", _et(8, 1, day).timestamp())["levels_state"]
         published("SPY", SPY_0DTE, _et(9, 27, day))
         in_gap = level_store.published_levels("SPY").computed_ts_utc
-        gap = server.terrain("SPY", _et(9, 28, day).timestamp())["levels_state"]
+        gap = push_terrain.terrain("SPY", _et(9, 28, day).timestamp())["levels_state"]
         published("SPY", SPY_0DTE, _et(9, 31, day))
         at_open = level_store.published_levels("SPY").computed_ts_utc
         published("TSLA", TSLA, _et(16, 1, day))
         published("TSLA", TSLA, _et(16, 5, day))
         after_close = level_store.published_levels("TSLA").computed_ts_utc
-        closed = server.terrain("TSLA", _et(16, 6, day).timestamp())["levels_state"]
+        closed = push_terrain.terrain("TSLA", _et(16, 6, day).timestamp())["levels_state"]
     finally:
         record_markets(json.loads(held["body"]))
     assert (before, live, gap, closed) == ("CLOSE", "LIVE", "CLOSE", "CLOSE")
@@ -215,7 +216,7 @@ def test_in_schwabs_option_pre_market_the_levels_are_live_and_stand_through_the_
 def test_levels_with_no_markets_answer_held_are_not_live(published):
     """2026-09-20: no /markets answer held for that date, so the levels are not live."""
     published("TSLA", TSLA, _et(11, 0, "2026-09-20"))
-    body = server.terrain("TSLA", _et(11, 1, "2026-09-20").timestamp())
+    body = push_terrain.terrain("TSLA", _et(11, 1, "2026-09-20").timestamp())
     assert (body["levels_state"], body["levels_stale_reason"]) == (
         "NOT LIVE",
         "the market session is unknown",
@@ -249,7 +250,7 @@ def test_a_late_heartbeat_does_not_shorten_the_round_a_chain_is_judged_by(
     lmp.record_feed_heartbeat(
         daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=245.0)
     )
-    body = server.terrain("TSLA", delivered.timestamp() + after)
+    body = push_terrain.terrain("TSLA", delivered.timestamp() + after)
     assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)
 
 
@@ -346,7 +347,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
             )
     try:
         sent = {c.symbol: c for c in publish_sunday().priced_chain}
-        same_day = server.terrain("SPY", at.timestamp())["same_day"]
+        same_day = push_terrain.terrain("SPY", at.timestamp())["same_day"]
     finally:
         _forget()
     priced = {c.symbol: c for c in balance.priced_chain}
@@ -386,7 +387,7 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
     quote = _QUOTES["TSLA"]
     at = datetime.fromtimestamp(quote["ts_recv"], ET)
     published("TSLA", TSLA, at)
-    assert server.terrain("TSLA", at.timestamp())["levels_state"] == "LIVE"
+    assert push_terrain.terrain("TSLA", at.timestamp())["levels_state"] == "LIVE"
     assert _told("TSLA", at) == set()
     published("TSLA", TSLA, _et(15, 58))
     later = _et(16, 5)
@@ -398,5 +399,5 @@ def test_a_page_is_told_to_read_again_only_while_its_price_or_its_levels_are_not
             chain_round_sec=ROUND_SEC,
         )
     )
-    assert server.terrain("TSLA", later.timestamp())["levels_state"] == "CLOSE"
+    assert push_terrain.terrain("TSLA", later.timestamp())["levels_state"] == "CLOSE"
     assert _told("TSLA", later) == set(server.LEVELS_PANELS)
