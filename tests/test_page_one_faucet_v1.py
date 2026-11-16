@@ -29,7 +29,7 @@ import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
-from numeric_contract import count_text, dollars_text
+from numeric_contract import count_text, dollars_text, strike_text
 from option_contract import read_chain
 from push import expiries as push_expiries
 from state import level_store
@@ -365,6 +365,7 @@ def test_the_largest_gex_strike_is_served(held):
     # the row by name, with its net GEX and volume as the screen shows them
     assert body["max_abs_row"] == {
         "strike": top.strike,
+        "strike_text": strike_text(top.strike),
         "value": top.value,
         "volume": top.volume,
         "text": dollars_text(top.value),

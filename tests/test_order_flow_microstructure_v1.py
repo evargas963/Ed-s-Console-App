@@ -85,6 +85,8 @@ def test_top_of_book_is_native():
         "ask_size": 500,
         "bid_size_text": "300",
         "ask_size_text": "500",
+        "bid_text": "712.47",
+        "ask_text": "712.49",
     }
     for k in ("top_of_book.bid", "top_of_book.ask", "top_of_book.bid_size", "top_of_book.ask_size"):
         assert m["classification"][k] == "NATIVE"
@@ -124,14 +126,16 @@ def test_wall_candidates_are_flagged_heuristic():
     m = _micro(_data(), now_ts=1787233772.0)
     # median top-5 bid size = 80; the 1000-share touch is 12.5x median -> a candidate. None on ask.
     bid_walls = [w for w in m["wall_candidates"] if w["side"] == "bid"]
-    # its size served as the screen shows it, whole with separators
+    # its price, size and multiple served as the screen shows them
     assert bid_walls == [
         {
             "side": "bid",
             "price": 712.47,
+            "price_text": "712.47",
             "volume": 1000.0,
             "volume_text": "1,000",
             "median_mult": 12.5,
+            "median_mult_text": "12.5",
         }
     ]
     # The API must NOT imply an objective wall: the field is 'wall_candidates', each candidate
@@ -186,10 +190,14 @@ def test_every_emitted_metric_is_classified():
     cls = m["classification"]
     # Self-describing meta blocks, not emitted metrics: the classification map
     # itself, the explicit deferral list and the status flag.
+    # A metric's text (`<metric>_text`, as the screen shows it) is that metric: it is classified
+    # by the metric's entry, which must exist.
     meta = {"classification", "deferred", "status"}
+    metrics = {key.removesuffix("_text") for key in m}
+    assert {f"{k}_text" for k in ("mark", "microprice", "spread_pts")} <= set(m)
     unclassified = [
         key
-        for key in m
+        for key in metrics
         if key not in meta and key not in cls and not any(c.startswith(f"{key}.") for c in cls)
     ]
     assert unclassified == [], (

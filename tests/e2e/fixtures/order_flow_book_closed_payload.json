@@ -42,21 +42,24 @@
       "ask_total_text": "200",
       "bid_total": 160.0,
       "bid_total_text": "160",
-      "imbalance": -0.1111111111111111
+      "imbalance": -0.1111111111111111,
+      "imbalance_text": "-0.111"
     },
     "3": {
       "ask_total": 2080.0,
       "ask_total_text": "2,080",
       "bid_total": 400.0,
       "bid_total_text": "400",
-      "imbalance": -0.6774193548387096
+      "imbalance": -0.6774193548387096,
+      "imbalance_text": "-0.677"
     },
     "5": {
       "ask_total": 2160.0,
       "ask_total_text": "2,160",
       "bid_total": 800.0,
       "bid_total_text": "800",
-      "imbalance": -0.4594594594594595
+      "imbalance": -0.4594594594594595,
+      "imbalance_text": "-0.459"
     }
   },
   "depth_pressure": {
@@ -64,30 +67,35 @@
       {
         "cum": 200.0,
         "price": 767.41,
+        "price_text": "767.41",
         "volume": 200.0,
         "volume_text": "200"
       },
       {
         "cum": 520.0,
         "price": 767.42,
+        "price_text": "767.42",
         "volume": 320.0,
         "volume_text": "320"
       },
       {
         "cum": 2080.0,
         "price": 767.43,
+        "price_text": "767.43",
         "volume": 1560.0,
         "volume_text": "1,560"
       },
       {
         "cum": 2120.0,
         "price": 767.44,
+        "price_text": "767.44",
         "volume": 40.0,
         "volume_text": "40"
       },
       {
         "cum": 2160.0,
         "price": 767.6,
+        "price_text": "767.60",
         "volume": 40.0,
         "volume_text": "40"
       }
@@ -96,37 +104,44 @@
       {
         "cum": 160.0,
         "price": 767.39,
+        "price_text": "767.39",
         "volume": 160.0,
         "volume_text": "160"
       },
       {
         "cum": 280.0,
         "price": 767.38,
+        "price_text": "767.38",
         "volume": 120.0,
         "volume_text": "120"
       },
       {
         "cum": 400.0,
         "price": 767.37,
+        "price_text": "767.37",
         "volume": 120.0,
         "volume_text": "120"
       },
       {
         "cum": 760.0,
         "price": 767.36,
+        "price_text": "767.36",
         "volume": 360.0,
         "volume_text": "360"
       },
       {
         "cum": 800.0,
         "price": 767.35,
+        "price_text": "767.35",
         "volume": 40.0,
         "volume_text": "40"
       }
     ]
   },
   "mark": 760.18,
+  "mark_text": "760.18",
   "microprice": 760.1822222222222,
+  "microprice_text": "760.18",
   "provenance": {
     "book_source": "NYSE_BOOK",
     "book_time_ms": 1790346600097.0,
@@ -2865,6 +2880,7 @@
     }
   },
   "spread_pts": 0.010000000000104592,
+  "spread_pts_text": "0.01",
   "status": "ok",
   "ticker": "SPY",
   "top_feed_label": "NOT LIVE",
@@ -2872,23 +2888,29 @@
     "ask": 760.19,
     "ask_size": 280.0,
     "ask_size_text": "280",
+    "ask_text": "760.19",
     "bid": 760.18,
     "bid_size": 80.0,
-    "bid_size_text": "80"
+    "bid_size_text": "80",
+    "bid_text": "760.18"
   },
   "top_outage": "outside Schwab's market hours",
   "venue": "NYSE_BOOK",
   "wall_candidates": [
     {
       "median_mult": 3.0,
+      "median_mult_text": "3.0",
       "price": 767.36,
+      "price_text": "767.36",
       "side": "bid",
       "volume": 360.0,
       "volume_text": "360"
     },
     {
       "median_mult": 7.8,
+      "median_mult_text": "7.8",
       "price": 767.43,
+      "price_text": "767.43",
       "side": "ask",
       "volume": 1560.0,
       "volume_text": "1,560"

@@ -104,6 +104,11 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
         "size",
         "premium",
         "volume",
+        "strike_text",
+        "bid_text",
+        "ask_text",
+        "trade_text",
+        "delta_text",
         "premium_text",
         "bid_size_text",
         "ask_size_text",
@@ -121,6 +126,14 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     assert (r["premium_text"], r["volume_text"], r["iv_text"]) == ("$204", "4,391", "27.11")
     assert (r["bid_size_text"], r["ask_size_text"], r["size_text"]) == ("65", "74", "1")
     assert r["oi_text"] == "843"
+    # the strike as listed, the prices two decimals, the delta three
+    assert (r["strike_text"], r["bid_text"], r["ask_text"], r["trade_text"]) == (
+        "761",
+        "2.03",
+        "2.04",
+        "2.04",
+    )
+    assert r["delta_text"] == "0.459"
 
 
 def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice():

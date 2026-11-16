@@ -60,7 +60,7 @@ test.describe('#8 Gamma panel maximize', () => {
     expect(after.selStrike).toBe(K);
     expect(after.expiryFilter).toBe(E2);
     await expect(page.locator('#expSel')).toHaveValue(E2);
-    await expect(page.locator('#sdCtx')).toContainText('272.50');                 // Strike Detail context intact
+    await expect(page.locator('#sdCtx')).toContainText('272.5 · ');               // Strike Detail context intact, the strike as listed
   });
 
   test('the maximize choice persists across reload', async ({ page }) => {

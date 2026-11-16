@@ -146,11 +146,11 @@
     document.querySelectorAll("#tdmFamilies [data-fam]").forEach(function (b) {
       b.classList.toggle("on", S.fam[b.getAttribute("data-fam")] !== 0);
     });
-    var pd = pdValueArea(),
-      vw = levelPrice("VWAP");
+    var val = levelText("PD_VAL"),
+      vah = levelText("PD_VAH");
     var v = {
-      vwap: vw == null ? "" : num(vw),
-      prior_day: pd.val == null || pd.vah == null ? "" : "VA " + num(pd.val) + " – " + num(pd.vah),
+      vwap: levelText("VWAP"),
+      prior_day: val == null || vah == null ? "" : "VA " + val + " – " + vah,
     };
     document.querySelectorAll("#tdmFamilies [data-famv]").forEach(function (b) {
       b.textContent = v[b.getAttribute("data-famv")] || "";
@@ -388,6 +388,7 @@
         out.push({
           id: l.id,
           price: Number(l.price),
+          price_text: l.price_text,
           label: g[0] + (lean ? " · " + lean + notLive(S.terrain) : ""),
           color: g[1],
           style: g[2],
@@ -400,6 +401,7 @@
       out.push({
         id: l.id,
         price: Number(l.price),
+        price_text: l.price_text,
         label: l.short,
         color: s[0],
         style: s[1],
@@ -408,11 +410,19 @@
     });
     return out;
   }
-  function levelPrice(id) {
-    var l = (S.levels ? S.levels.levels : []).filter(function (x) {
+  function levelRow(id) {
+    return (S.levels ? S.levels.levels : []).filter(function (x) {
       return x.id === id;
     })[0];
+  }
+  function levelPrice(id) {
+    var l = levelRow(id);
     return l && l.price != null ? Number(l.price) : null;
+  }
+  // the level's price as served for the screen; none: no text
+  function levelText(id) {
+    var l = levelRow(id);
+    return l ? l.price_text : null;
   }
   function pdValueArea() {
     return { val: levelPrice("PD_VAL"), vah: levelPrice("PD_VAH") };
@@ -442,7 +452,7 @@
         : [],
       vp ? vp.max_volume : null,
       vp && vp.poc != null
-        ? { price: vp.poc, label: "POC est " + num(vp.poc), color: P.warn }
+        ? { price: vp.poc, label: "POC est " + levelText("TODAY_POC"), color: P.warn }
         : null,
     );
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
@@ -657,12 +667,12 @@
           "</span> <small>net dealer gamma at spot, per 1%</small>";
         src(c, "Schwab option chain · " + esc(chainAgeLabel(t)));
         c.querySelector(".tdm-rows").innerHTML =
-          row("Call wall", num(t.call_wall), "up") +
-          row("Put wall", num(t.put_wall), "dn") +
-          row("Γ flip", num(t.gamma_flip)) +
+          row("Call wall", orDash(t.call_wall_text), "up") +
+          row("Put wall", orDash(t.put_wall_text), "dn") +
+          row("Γ flip", orDash(t.gamma_flip_text)) +
           (t.flip_note != null ? row("Γ flip note", esc(t.flip_note)) : "") +
-          row("P/C OI", num(t.pcr_all, 2)) +
-          row("Max pain", num(t.max_pain)) +
+          row("P/C OI", orDash(t.pcr_all_text)) +
+          row("Max pain", orDash(t.max_pain_text)) +
           row("Contracts", orDash(t.contracts_used_text)) +
           forcesRows();
       }
@@ -681,16 +691,16 @@
       } else {
         state(c, "ATM IV " + esc(t.atm_iv_text) + "%", "");
         c.querySelector(".tdm-hero").innerHTML =
-          "±" + num(im.points, 2) + " <small>implied 1-day move, 1σ</small>";
+          "±" + t.move_points_text + " <small>implied 1-day move, 1σ</small>";
       }
       src(c, "Schwab option chain · " + (!t || why(t) ? "-" : esc(chainAgeLabel(t))));
       c.querySelector(".tdm-rows").innerHTML =
         (im && im.dte_used != null
-          ? row("Move from", "first expiry ≥1 day out (" + num(im.dte_used, 0) + "d)")
+          ? row("Move from", "first expiry ≥1 day out (" + t.move_dte_text + "d)")
           : "") +
-        row("ATR daily", num(t && t.atr_daily)) +
-        row("ATR weekly", num(t && t.atr_weekly)) +
-        row("ATR monthly", num(t && t.atr_monthly)) +
+        row("ATR daily", orDash(t && t.atr_daily_text)) +
+        row("ATR weekly", orDash(t && t.atr_weekly_text)) +
+        row("ATR monthly", orDash(t && t.atr_monthly_text)) +
         row("VIX", vixText(vix));
     }
     paintCardCharts();

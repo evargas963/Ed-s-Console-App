@@ -122,6 +122,8 @@ def _as_shown(contracts):
             "oi_text": text(c.get("openInterest"), ",.0f"),
             "volume_text": text(c.get("totalVolume"), ",.0f"),
             "iv_text": text(c.get("volatility"), ".2f"),
+            "bid_text": None,
+            "ask_text": None,
         }
         for c in contracts
     ]
