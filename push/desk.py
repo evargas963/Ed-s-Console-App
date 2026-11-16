@@ -7,7 +7,7 @@ price (push.terrain) and the book's size walls (push.book).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from numeric_contract import price_text
 from push.book import order_flow_microstructure
@@ -21,7 +21,7 @@ _CROSS_WORD = {"up": "above", "down": "below"}
 
 #: The Trade Desk's lookback per chart timeframe: seconds, or "session" (the latest regular
 #: session), with the words the page shows for it.
-DESK_LOOKBACK = {
+DESK_LOOKBACK: dict[str, tuple[int | Literal["session"], str]] = {
     "1": (900, "last 15 min"),
     "3": (1800, "last 30 min"),
     "5": ("session", "this session"),

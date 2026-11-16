@@ -24,6 +24,7 @@ import time_et
 from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
+from push import confluence as push_confluence
 from push import levels as push_levels
 from push import strikes as push_strikes
 from push import surface as push_surface
@@ -257,7 +258,7 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
         down = push_terrain.terrain("SPY", at)
         levels = push_levels.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
-        matrix = server.confluence_payload(
+        matrix = push_confluence.confluence_payload(
             "SPY", "2026-10-22", datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET)
         )
     finally:
@@ -353,7 +354,7 @@ def stopped_price_answers() -> dict:
         surface_next_close.pop("surface_seq")
         bodies = {
             "levels": push_levels.levels_payload("SPY", "1", at),
-            "confluence": server.confluence_payload("SPY", "2026-10-22", at),
+            "confluence": push_confluence.confluence_payload("SPY", "2026-10-22", at),
             "terrain": push_terrain.terrain("SPY", at.timestamp()),
             "strikes": push_strikes.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
             "surface": surface,

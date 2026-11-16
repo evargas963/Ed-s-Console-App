@@ -123,7 +123,7 @@ test('a level at 0 draws as a price: the map lists its zone, the desk its value 
 });
 
 test('Liquidity map: a failed request is named, and an empty snapshot shows the served reason', async ({ page }) => {
-  // server.liquidity_snapshot's answer with no price levels published (NO_PRICE_LEVELS_REASON), and
+  // push.liquidity.liquidity_snapshot's answer with no price levels published (NO_PRICE_LEVELS_REASON), and
   // the bars panel not produced (the program's words on the socket): the map says so for each,
   // never draws a failure as an empty answer
   const REASON = 'no price levels published for this ticker for the market\'s session yet (they are ' +

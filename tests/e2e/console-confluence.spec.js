@@ -91,7 +91,7 @@ test('the matrix redraws when the priced chain updates and keeps the expiry', as
   await expect(page.locator('#cmBody h1')).toHaveCount(0);
   await expect(page.locator('#cmBody')).not.toContainText('Hover a level to trace its price');
   await expect(page.locator('#cmExp')).toHaveValue(FRONT);
-  // the served rail (server._rail): each lane's levels inside the rows, those past them
+  // the served rail (push.confluence._rail): each lane's levels inside the rows, those past them
   const inside = [...body.rail_lanes.session, ...body.rail_lanes.options];
   expect(inside.length).toBeGreaterThan(0);
   for (const lv of inside) {

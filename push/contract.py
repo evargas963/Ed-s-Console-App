@@ -34,7 +34,8 @@ def options_microstructure(c: str, now: float) -> dict[str, Any]:
     payload["contract"] = c
     # the side of the contract's chain record; None while no chain the console holds lists it
     tk = level_store.listing_ticker(c)
-    payload["put_call"] = None if tk is None else published_levels(tk).contracts[c].side
+    listing = None if tk is None else published_levels(tk)
+    payload["put_call"] = None if listing is None else listing.contracts[c].side
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     stamp_book_times(payload)
