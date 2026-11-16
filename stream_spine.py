@@ -31,13 +31,15 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from datetime import time as dtime
 from pathlib import Path
 from typing import IO, Any
 
 import time_et
 from db_authority import canonical_db_path
-from json_blob_codec import encode_text_blob
-from time_et import ct_label
+from json_blob_codec import decode_text_blob, encode_text_blob
+from time_et import ET, ct_label
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +120,18 @@ CREATE TABLE IF NOT EXISTS rest_quotes_raw (
     body BLOB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_rqr_ts ON rest_quotes_raw(ts_recv);
+-- The rows of ARCHIVED tables received before the newest five sessions, moved here by the
+-- nightly keep in blocks: their table, the first and last receipt time, how many, the column
+-- names, and the rows (archive_block: a JSON list per row, gzip-compressed, lossless).
+CREATE TABLE IF NOT EXISTS stream_archive (
+    source TEXT NOT NULL,
+    first_ts REAL NOT NULL,
+    last_ts REAL NOT NULL,
+    rows INTEGER NOT NULL,
+    columns TEXT NOT NULL,
+    body BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sa_source_ts ON stream_archive(source, first_ts);
 -- Schwab's /markets answers, verbatim: one row per market date asked, its status and the whole
 -- answer.
 CREATE TABLE IF NOT EXISTS stream_markets_raw (
@@ -725,6 +739,43 @@ KEPT_BY_TIME = (
 )
 #: rows removed in one transaction, so a live write never waits behind a long delete
 PRUNE_ROWS = 20000
+#: the tables whose rows received before the newest five sessions move into stream_archive, each
+#: with the parts of the ET day kept (None: all of it); a row outside them is not kept. The order
+#: books keep the pre-market and the open (04:00-10:00) and the close (15:30-16:00) (operator
+#: 2026-11-15: "Yes, windows + compress"; ACTIVE_PROGRAM.md STORE-ENOUGH)
+BOOK_WINDOWS = ((dtime(4, 0), dtime(10, 0)), (dtime(15, 30), dtime(16, 0)))
+ARCHIVED: dict[str, tuple[tuple[dtime, dtime], ...] | None] = {
+    "stream_quotes_raw": None,
+    "stream_options_quotes_raw": None,
+    "stream_bars_raw": None,
+    "stream_news_raw": None,
+    "stream_book_raw": BOOK_WINDOWS,
+}
+#: rows taken into one archive block, in one transaction (a book block is about 13 MB before
+#: compression, a fraction of a second's work between rounds of live writes)
+ARCHIVE_ROWS = 5000
+
+
+def _in_windows(ts: float, windows: tuple[tuple[dtime, dtime], ...] | None) -> bool:
+    if windows is None:
+        return True
+    at = datetime.fromtimestamp(ts, ET).time()
+    return any(start <= at < end for start, end in windows)
+
+
+def archive_block(rows: list[tuple[Any, ...]]) -> bytes:
+    """Rows as one archive block: a JSON list per row, one per line, gzip-compressed (lossless)."""
+    return encode_text_blob("\n".join(json.dumps(list(r)) for r in rows))
+
+
+def archived_rows(conn: sqlite3.Connection, source: str) -> list[tuple[Any, ...]]:
+    """Every archived row of table `source`, in the order received, as its columns held it."""
+    out: list[tuple[Any, ...]] = []
+    for (body,) in conn.execute(
+        "SELECT body FROM stream_archive WHERE source = ? ORDER BY first_ts, rowid", (source,)
+    ):
+        out.extend(tuple(json.loads(line)) for line in decode_text_blob(body).split("\n"))
+    return out
 
 
 def _every_message(_topic: str, _msg: Any) -> bool:
@@ -1648,20 +1699,25 @@ class CaptureWriter:
         next one.
         """
         with self._lock:
-            self._prune_before, self._prune, self._pruned = before, list(KEPT_BY_TIME), Counter()
+            self._prune_before, self._pruned = before, Counter()
+            self._prune = [*KEPT_BY_TIME, *((t, "ts_recv") for t in ARCHIVED)]
 
     def _prune_part(self, conn: sqlite3.Connection) -> None:
         """Run the next part of the keep in progress (prune), in one transaction."""
         table, column = self._prune[0]
-        removed = conn.execute(
-            f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
-            f"WHERE {column} < ? LIMIT ?)",
-            (self._prune_before, PRUNE_ROWS),
-        ).rowcount
+        if table in ARCHIVED:
+            removed, part = self._archive_part(conn, table, column), ARCHIVE_ROWS
+        else:
+            removed = conn.execute(
+                f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
+                f"WHERE {column} < ? LIMIT ?)",
+                (self._prune_before, PRUNE_ROWS),
+            ).rowcount
+            part = PRUNE_ROWS
         conn.commit()
         with self._lock:
             self._pruned[table] += removed
-            if removed < PRUNE_ROWS:
+            if removed < part:
                 self._prune.pop(0)
             done = not self._prune
         if done:
@@ -1670,6 +1726,36 @@ class CaptureWriter:
                 ct_label(self._prune_before),
                 ", ".join(f"{t} {n}" for t, n in self._pruned.items()),
             )
+
+    def _archive_part(self, conn: sqlite3.Connection, table: str, column: str) -> int:
+        """Move the next ARCHIVE_ROWS rows received before the keep's time into stream_archive.
+
+        The rows in the table's kept parts of the day (ARCHIVED) become one block; every row
+        taken leaves the table, in the caller's transaction. Returns how many were taken.
+        """
+        cur = conn.execute(
+            f"SELECT rowid, * FROM {table} WHERE {column} < ? ORDER BY rowid LIMIT ?",
+            (self._prune_before, ARCHIVE_ROWS),
+        )
+        names = [d[0] for d in cur.description][1:]
+        taken = cur.fetchall()
+        at = names.index(column)
+        kept = [r[1:] for r in taken if _in_windows(r[1 + at], ARCHIVED[table])]
+        if kept:
+            conn.execute(
+                "INSERT INTO stream_archive(source, first_ts, last_ts, rows, columns, body) "
+                "VALUES (?,?,?,?,?,?)",
+                (
+                    table,
+                    min(r[at] for r in kept),
+                    max(r[at] for r in kept),
+                    len(kept),
+                    json.dumps(names),
+                    archive_block(kept),
+                ),
+            )
+        conn.executemany(f"DELETE FROM {table} WHERE rowid = ?", [(r[0],) for r in taken])
+        return len(taken)
 
     def _write_back(self, conn: sqlite3.Connection) -> None:
         """Write the next part of the oldest spill file into the database.
