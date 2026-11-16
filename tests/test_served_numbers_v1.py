@@ -162,7 +162,9 @@ def test_every_price_the_levels_panels_draw_is_served_with_two_decimals():
                     price(r["carried"]),
                 )
             vp = lv["volume_profile"]
-            assert vp is None or vp["poc_text"] == price(vp["poc"])
+            # the profile's POC is drawn with the TODAY_POC level's text: the same price
+            texts = {r["id"]: r["price_text"] for r in lv["levels"]}
+            assert vp is None or texts["TODAY_POC"] == price(vp["poc"])
         zones = p["liquidity"]["zones"]
         assert zones, name
         for z in zones:

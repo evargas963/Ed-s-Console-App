@@ -452,7 +452,7 @@
         : [],
       vp ? vp.max_volume : null,
       vp && vp.poc != null
-        ? { price: vp.poc, label: "POC est " + vp.poc_text, color: P.warn }
+        ? { price: vp.poc, label: "POC est " + levelText("TODAY_POC"), color: P.warn }
         : null,
     );
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);

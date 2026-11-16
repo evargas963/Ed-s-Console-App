@@ -4406,7 +4406,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
             # the largest bin's volume: the profile's scale
             "max_volume": max((v for _p, v in vp.bins), default=None),
             "poc": vp.poc,
-            "poc_text": price_text(vp.poc),
             "vah": vp.vah,
             "val": vp.val,
         },
