@@ -47,12 +47,13 @@ def test_the_bars_panel_serves_canonical_bars_shape():
         row = body["bars"][-1]
         # each bar carries its served change (live_price_rows.with_change: the bar change is
         # served, the page computes nothing), its served times (time_et.ct_label, ct_ticks) and
-        # its volume as the screen shows it
+        # its volume and prices as the screen shows them
         assert set(row) == {
             *("t", "o", "h", "l", "c", "v", "chg", "chg_pct"),
-            *("time_ct", "ticks", "v_text"),
+            *("time_ct", "ticks", "v_text", "o_text", "h_text", "l_text", "c_text"),
         }
         assert row["v_text"] == count_text(row["v"])
+        assert row["c_text"] == f"{rows[-1][4]:.2f}"
         assert (row["t"], row["c"]) == (rows[-1][0], rows[-1][4])
         ts = [b["t"] for b in body["bars"]]
         assert ts == sorted(ts), "bars must be newest-last (ascending time)"

@@ -8,7 +8,6 @@
 (function () {
   "use strict";
 
-  var px = window.EdShell.num;
   function txt(id, v) {
     var e = document.getElementById(id);
     if (e) e.textContent = v;
@@ -83,10 +82,10 @@
     var sent = {};
     if (d !== undefined && d.failed == null)
       d.levels.forEach(function (r) {
-        sent[r.id] = r.price;
+        sent[r.id] = r.price_text;
       });
     Object.keys(PRICE_LEVELS).forEach(function (id) {
-      txt(PRICE_LEVELS[id], px(sent[id]));
+      txt(PRICE_LEVELS[id], orDash(sent[id]));
     });
   }
   function renderLevels(d) {
@@ -133,24 +132,24 @@
       if (klb0) klb0.classList.add("recede");
       return;
     }
-    txt("klFlip", px(d.gamma_flip));
+    txt("klFlip", orDash(d.gamma_flip_text));
     txt("klFlipNote", d.flip_note != null ? d.flip_note : ""); // served: the flip's note
-    txt("klCall", px(d.call_wall));
-    txt("klPut", px(d.put_wall));
-    txt("klAbs", px(d.absolute_gamma_strike));
-    txt("klCallDelta", px(d.call_delta_wall));
-    txt("klPutDelta", px(d.put_delta_wall));
-    txt("klCallCharm", px(d.call_charm_wall));
-    txt("klPutCharm", px(d.put_charm_wall));
-    var z = d.same_day != null ? d.same_day : null;
-    txt("kl0Flip", px(z ? z.gamma_flip : null));
-    txt("kl0Call", px(z ? z.call_wall : null));
-    txt("kl0Put", px(z ? z.put_wall : null));
-    txt("kl0Abs", px(z ? z.absolute_gamma_strike : null));
-    txt("kl0CallDelta", px(z ? z.call_delta_wall : null));
-    txt("kl0PutDelta", px(z ? z.put_delta_wall : null));
-    txt("kl0CallCharm", px(z ? z.call_charm_wall : null));
-    txt("kl0PutCharm", px(z ? z.put_charm_wall : null));
+    txt("klCall", orDash(d.call_wall_text));
+    txt("klPut", orDash(d.put_wall_text));
+    txt("klAbs", orDash(d.absolute_gamma_strike_text));
+    txt("klCallDelta", orDash(d.call_delta_wall_text));
+    txt("klPutDelta", orDash(d.put_delta_wall_text));
+    txt("klCallCharm", orDash(d.call_charm_wall_text));
+    txt("klPutCharm", orDash(d.put_charm_wall_text));
+    var z = d.same_day_text; // served: each 0DTE level's text, none for a level not held
+    txt("kl0Flip", orDash(z.gamma_flip));
+    txt("kl0Call", orDash(z.call_wall));
+    txt("kl0Put", orDash(z.put_wall));
+    txt("kl0Abs", orDash(z.absolute_gamma_strike));
+    txt("kl0CallDelta", orDash(z.call_delta_wall));
+    txt("kl0PutDelta", orDash(z.put_delta_wall));
+    txt("kl0CallCharm", orDash(z.call_charm_wall));
+    txt("kl0PutCharm", orDash(z.put_charm_wall));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)
     var net = document.getElementById("klNet");
     if (net) {
@@ -197,12 +196,12 @@
     // the selected expiry, else the whole book -- both served on every terrain answer (TerrainSnapshot
     // fields); the page picks no expiry itself. A failed read (no d) is missing: "-"
     var ex = expiryFilter();
-    var v = !d ? null : ex ? d.pcr_by_expiry[ex] : d.pcr_all;
-    var vv = !d ? null : ex ? d.pcr_volume_by_expiry[ex] : d.pcr_volume_all;
+    var v = !d ? null : ex ? d.pcr_by_expiry_text[ex] : d.pcr_all_text;
+    var vv = !d ? null : ex ? d.pcr_volume_by_expiry_text[ex] : d.pcr_volume_all_text;
     var scope = ex ? "exp " + ex : "all exp";
-    txt("klPcr", px(v));
+    txt("klPcr", orDash(v));
     txt("klPcrScope", "OI · " + scope);
-    txt("klPcrVol", px(vv));
+    txt("klPcrVol", orDash(vv));
     txt("klPcrVolScope", "volume · " + scope);
   }
 
@@ -264,7 +263,7 @@
       opts.top +
       (pan.centre != null
         ? '<div class="gbs-allexp">Panned to ' +
-          px(pan.served, pan.served % 1 ? 2 : 0) +
+          view.centre_text +
           " · double-click a strike to follow the price</div>"
         : "") +
       (view.note ? '<div class="gbs-allexp">' + esc(view.note) + "</div>" : ""); // why not around the price
@@ -288,7 +287,7 @@
           (opts.attrs ? opts.attrs(r) : "") +
           ">" +
           '<span class="gbs-k">' +
-          px(k, k % 1 ? 2 : 0) +
+          r.strike_text +
           "</span>" +
           '<span class="gbs-track"><i class="gbs-bar ' +
           (pos ? "pos" : "neg") +
@@ -452,7 +451,7 @@
       })[0],
       call = sd ? sd.call : null,
       put = sd ? sd.put : null;
-    txt("sdCtx", px(strike, strike % 1 ? 2 : 0) + (expiry ? " · " + esc(expiry.slice(5)) : ""));
+    txt("sdCtx", (sd ? sd.strike_text : "-") + (expiry ? " · " + esc(expiry.slice(5)) : ""));
     // a served text, or every digit Schwab sent (its Greeks)
     function cell(c, k) {
       var v = c ? c[k] : null;
@@ -596,7 +595,7 @@
         ].join("");
         return (
           '<tr><td class="side">' +
-          px(k, k % 1 ? 2 : 0) +
+          r.strike_text +
           "</td>" +
           "<td>" +
           (rep.multiplier == null ? "-" : rep.multiplier) +
@@ -673,9 +672,6 @@
     outside_spread_high: "above ask",
     unknown: "-",
   };
-  function fmtOfPrice(n) {
-    return px(n);
-  }
   function renderOf(host, d) {
     var src = document.getElementById("ofSrc");
     if (src) src.textContent = "";
@@ -707,20 +703,20 @@
           esc(orDash(r.type)) +
           "</td>" +
           "<td>" +
-          (r.strike == null ? "-" : px(r.strike, r.strike % 1 ? 2 : 0)) +
+          esc(orDash(r.strike_text)) +
           "</td>" +
           "<td>" +
-          fmtOfPrice(r.bid) +
+          esc(orDash(r.bid_text)) +
           "×" +
           esc(orDash(r.bid_size_text)) +
           "</td>" +
           "<td>" +
-          fmtOfPrice(r.ask) +
+          esc(orDash(r.ask_text)) +
           "×" +
           esc(orDash(r.ask_size_text)) +
           "</td>" +
           "<td>" +
-          fmtOfPrice(r.trade) +
+          esc(orDash(r.trade_text)) +
           "</td>" +
           "<td>" +
           esc(orDash(r.size_text)) +
@@ -738,7 +734,7 @@
           esc(orDash(r.iv_text)) +
           "</td>" +
           "<td>" +
-          px(r.delta, 3) +
+          esc(orDash(r.delta_text)) +
           "</td>" +
           '<td><span class="of-cls ' +
           esc(r.classification || "unknown") +

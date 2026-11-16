@@ -14,7 +14,8 @@ from app.options.order_flow.engine import OrderFlowEngine
 from app.options.order_flow.state import get_content_for_symbol, option_top
 from l1_trade_observation import TAPE_NOTE
 
-_FLOW_KEYS = (
+#: the flow's numbers, each served with its text as the screen shows it (`<key>_text`)
+_FLOW_NUMBERS = (
     "tape_pressure_30s",
     "tape_pressure_2m",
     "tape_pressure_5m",
@@ -23,10 +24,10 @@ _FLOW_KEYS = (
     "tape_unsigned_5m",
     "cum_delta_unsigned",
     "cum_delta_proxy",
-    "cum_delta_window",
     "cum_delta_slope",
     "top_book_pressure",
 )
+_FLOW_KEYS = (*_FLOW_NUMBERS, *(f"{k}_text" for k in _FLOW_NUMBERS), "cum_delta_window")
 
 
 def flow_block(of: dict[str, Any]) -> dict[str, Any]:

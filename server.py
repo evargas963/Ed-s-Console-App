@@ -1172,7 +1172,7 @@ def _window(
     """
     lo, hi, c = strike_window(strikes, spot_strike if centre is None else centre, scope, shift)
     note = WINDOW_NO_PRICE if centre is None and spot_strike is None and strikes else None
-    return lo, hi, {"centre": c, "note": note}
+    return lo, hi, {"centre": c, "centre_text": strike_text(c), "note": note}
 
 
 def _surface_view(
@@ -1232,7 +1232,6 @@ def _surface_view(
     }
     return window, {
         **view,
-        "centre_text": strike_text(view["centre"]),
         "scope": scope,
         "coverage": _stream_coverage(cells, streams, bool(picked) and not streams),
         "max_abs": max_abs,
@@ -1998,10 +1997,20 @@ def _atr(ticker: str, now: datetime) -> Atr:
     )
 
 
-def _atr_fields(tk: str, now: datetime) -> dict[str, float | None]:
-    """atr_daily / atr_weekly / atr_monthly at `now`. A horizon that cannot be computed is None."""
+def _atr_fields(tk: str, now: datetime) -> dict[str, float | str | None]:
+    """atr_daily / atr_weekly / atr_monthly at `now`, each with its text.
+
+    A horizon that cannot be computed is None.
+    """
     a = _atr(tk, now)
-    return {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly}
+    return {
+        "atr_daily": a.daily,
+        "atr_weekly": a.weekly,
+        "atr_monthly": a.monthly,
+        "atr_daily_text": price_text(a.daily),
+        "atr_weekly_text": price_text(a.weekly),
+        "atr_monthly_text": price_text(a.monthly),
+    }
 
 
 # ── Per-strike gamma and volume bars for the histogram panel ─────────────────
@@ -2058,7 +2067,11 @@ def _served(row: BarRow, measure: str) -> dict[str, Any]:
 
     A GEX row's volume is served with its text too. The page draws the texts; it formats none.
     """
-    served = {**row._asdict(), "text": VALUE_TEXT[measure](row.value)}
+    served = {
+        **row._asdict(),
+        "strike_text": strike_text(row.strike),
+        "text": VALUE_TEXT[measure](row.value),
+    }
     if isinstance(row, StrikeRow):
         served["volume_text"] = count_text(row.volume)
     return served
@@ -2067,6 +2080,25 @@ def _served(row: BarRow, measure: str) -> dict[str, Any]:
 def _served_migration(row: MigrationRow) -> dict[str, Any]:
     """Return a migration row as the page draws it: its fields by name, its change's text."""
     return {**row._asdict(), "change_text": migration_change_text(row.change)}
+
+
+def served_level_move(move: dict[str, Any]) -> dict[str, Any]:
+    """Return one level's move since the prior day with its texts, as the screen shows them.
+
+    Each day as its strike (None: not known); the change signed ('+5', '-2.5'), 'unchanged' for
+    none, None unless both days are known.
+    """
+    change = move["change"]
+    return {
+        **move,
+        "prior_text": strike_text(move["prior"]),
+        "today_text": strike_text(move["today"]),
+        "change_text": None
+        if change is None
+        else "unchanged"
+        if change == 0
+        else ("+" if change > 0 else "-") + strike_text(abs(change)),
+    }
 
 
 def migration_change_text(change: float | None) -> str | None:
@@ -2191,13 +2223,21 @@ def terrain_strikes_payload(
         "spot_strike": nearest_strike([r.strike for r in today["all"]], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
         "max_abs_row": None if top is None else _served(top, "gex"),
-        # each row with its change as the screen shows it (_served_migration)
+        # each row with its change as the screen shows it (_served_migration), and the strikes
+        # that grew, shrank and traded most, each list as the screen shows it
         "migration": {
-            sc: {**m, "rows": [_served_migration(r) for r in m["rows"]]}
+            sc: {
+                **m,
+                "rows": [_served_migration(r) for r in m["rows"]],
+                "grew_text": "/".join(map(strike_text, m["grew"])),
+                "shrank_text": "/".join(map(strike_text, m["shrank"])),
+                "busiest_text": "–".join(map(strike_text, m["busiest"])),
+            }
             for sc, m in migration.items()
         },
-        # the call wall, put wall and gamma flip today against the prior day's own
-        "level_moves": level_moves(snap, prior_day),
+        # the call wall, put wall and gamma flip today against the prior day's own, each with its
+        # texts as the screen shows them
+        "level_moves": [served_level_move(v) for v in level_moves(snap, prior_day)],
         # the levels verdict these rows carry (LIVE, CLOSE, STALE, NOT LIVE), their time and age
         **verdict,
     }
@@ -2231,6 +2271,7 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
                 "time_ct": ct_label(b["t"]),
                 "ticks": ct_ticks(b["t"]),
                 "v_text": count_text(b["v"]),
+                **{f"{k}_text": price_text(b[k]) for k in "ohlc"},
             }
             for b in shown
         ],
@@ -2988,9 +3029,9 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
                 "dom": "LIQUIDITY",
                 "dir": "up" if w.get("side") == "bid" else "down",
                 "warn": not live_book,
-                "title": f"{venue} size wall · {w['side']} {price_text(w['price'])}"
+                "title": f"{venue} size wall · {w['side']} {w['price_text']}"
                 + ("" if live_book else " (not live)"),
-                "detail": f"{w['volume']} shown · {w['median_mult']:.1f}× the median level"
+                "detail": f"{w['volume_text']} shown · {w['median_mult_text']}× the median level"
                 + ("" if live_book else " · a past book, not the current one"),
                 "src": "equity book",
             }
@@ -3395,13 +3436,15 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     response_contracts = [c for c in held.priced_chain if c.expiry == resolved_expiry]
     if not response_contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
-    # each contract with its open interest, volume and IV as the screen shows them
+    # each contract with its open interest, volume, IV, bid and ask as the screen shows them
     shown = [
         {
             **chain_row(c),
             "oi_text": count_text(c.open_interest),
             "volume_text": count_text(c.volume),
             "iv_text": iv_text(c.volatility),
+            "bid_text": price_text(c.bid),
+            "ask_text": price_text(c.ask),
         }
         for c in response_contracts
     ]
@@ -3428,11 +3471,13 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     )
     net_gex = None if col is None else {c["strike"]: c["gex"][col] for c in surf["cells"]}
     for row in ladder:
+        row["strike_text"] = strike_text(row["strike"])
         row["net_gex"] = None if net_gex is None else net_gex.get(row["strike"])
         row["net_gex_text"] = dollars_text(row["net_gex"])
     return {
         "ticker": t,
         "spot": live_spot,
+        "spot_text": price_text(live_spot),
         "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
         "spot_strike": nearest_strike(
@@ -4263,6 +4308,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         row["distance"] = (price - spot) if price is not None and spot is not None else None
         row["side"] = level_side(price, spot)
         row["from_spot_text"] = from_spot_text(row["distance"], row["side"])
+        row["price_text"] = price_text(price)
     # the ladder in price order (highest first, unpriced last), and the order by distance to spot
     levels = sorted(
         (r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True
@@ -4300,6 +4346,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         "ticker": tk,
         "schema_version": 1,
         "spot": spot,
+        "spot_text": price_text(spot),
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
         **mark,  # each level's distance and side are from that price
@@ -4326,6 +4373,9 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
                 "price": None if published is None else published.snap.same_day.get(gid),
                 "note": None if published is None else same_day_note(published.snap),
                 "carried": None if t is None else t[gid],
+                # both as the screen shows them (TerrainSnapshot.to_dict's texts)
+                "price_text": None if t is None else t["same_day_text"].get(gid),
+                "carried_text": None if t is None else t[f"{gid}_text"],
                 "staleness": {
                     "as_of_ts_utc": None if published is None else published.levels_ts_utc,
                     "as_of_time_ct": None
@@ -4355,6 +4405,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
             # the largest bin's volume: the profile's scale
             "max_volume": max((v for _p, v in vp.bins), default=None),
             "poc": vp.poc,
+            "poc_text": price_text(vp.poc),
             "vah": vp.vah,
             "val": vp.val,
         },
@@ -4479,8 +4530,10 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
             "zone_side": ZONE_DISPLAY[z.zone_type][1],
             "zone_low": z.zone_low,
             "zone_high": z.zone_high,
+            "zone_low_text": price_text(z.zone_low),
+            "zone_high_text": price_text(z.zone_high),
             "anchor": z.zone_mid,
-            "source_levels": z.source_levels,
+            "source_levels": [{**s, "value_text": price_text(s["value"])} for s in z.source_levels],
             "confluence_score": z.confluence_score,
             "interpretation_notes": z.interpretation_notes,
         }

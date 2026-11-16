@@ -9,8 +9,7 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  var num = window.EdShell.num,
-    ticker = window.EdShell.ticker,
+  var ticker = window.EdShell.ticker,
     served = window.EdShell.served;
   function isMap() {
     var s = window.EdShell.getState();
@@ -47,16 +46,16 @@
   function zoneRow(z) {
     var tags = z.source_levels
       .map(function (l) {
-        return esc(l.label) + " " + num(l.value);
+        return esc(l.label) + " " + l.value_text;
       })
       .join(" · ");
     return (
       '<div class="fl-row"><span class="k">' +
       esc(z.zone_label) +
       " " +
-      num(z.zone_low) +
+      z.zone_low_text +
       "–" +
-      num(z.zone_high) +
+      z.zone_high_text +
       "</span>" +
       '<span class="v">confluence ' +
       esc(z.confluence_score) +
@@ -110,6 +109,7 @@
           return {
             id: l.id,
             price: Number(l.price),
+            price_text: l.price_text,
             label: l.short,
             color: P.stale,
             style: 2,

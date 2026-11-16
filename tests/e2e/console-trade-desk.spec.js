@@ -380,10 +380,11 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
     await page.locator('#tdmToolbar [data-tf="15"]').click();
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe('15');
-    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE' };
+    const far = { id: 'grc', price: 837.58, price_text: '837.58', family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE' };
     sock.frame('levels:map', 'SPY', Object.assign({}, LEVELS, { tf: '5', levels: LEVELS.levels.concat([far]),
       by_distance: LEVELS.by_distance.concat(['grc']) }));                                   // 5m's, late ...
-    sock.frame('terrain:map', 'SPY', Object.assign({}, TERRAIN, { call_wall: 776 }));       // ... and a panel behind it
+    sock.frame('terrain:map', 'SPY', Object.assign({}, TERRAIN,                              // ... and a panel behind it
+      { call_wall: 776, call_wall_text: '776.00' }));
     await expect(page.locator('#tdmCardOpt')).toContainText('776.00');
     await expect(page.locator('#tdmChart .tvc-edge-top')).not.toContainText('GRC');
     expect(errs).toEqual([]);
@@ -716,15 +717,16 @@ test.describe('Trade Desk renders served values', () => {
     // and strikes panels the program sends on the socket when they change, the levels with each
     // price row too
     // induced: each panel again with one value changed
-    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book, { bid: 757.0 }) });
+    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book,
+      { bid: 757.0, bid_text: '757.00' }) });
     sock.changed('book');
     await expect(body).toContainText('757.00 × 757.07');                  // DETECT's book
     deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.map((z) =>
-      (z === INSIDE ? Object.assign({}, z, { zone_high: 758.5 }) : z)) });
+      (z === INSIDE ? Object.assign({}, z, { zone_high: 758.5, zone_high_text: '758.50' }) : z)) });
     sock.changed('liquidity');
     await expect(body).toContainText('Inside a Pivot / value zone (757.00–758.50');  // FRAME's zones
     await expect(body).toContainText('Max pain 757.00');
-    deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771 });
+    deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771, max_pain_text: '771.00' });
     sock.changed('terrain');
     await expect(body).toContainText('Γ flip761.22Max pain (0DTE)771.00');   // CONFIRM's rows
     await expect(body).not.toContainText('Γ flip note');                    // this set's flip carries no note
@@ -751,7 +753,8 @@ test.describe('Trade Desk renders served values', () => {
     await page.evaluate(() => window.EdShell.setScope('wider'));
     await expect(strikes).toHaveText(listed(wider));
     for (const kind of ['strikes', 'liquidity']) sock.changed(kind);  // the program sends the panels again
-    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book, { bid: 757.0 }) });
+    deskPanels().book = Object.assign({}, MICRO, { top_of_book: Object.assign({}, MICRO.top_of_book,
+      { bid: 757.0, bid_text: '757.00' }) });
     sock.changed('book');
     await expect(page.locator('#tdBody')).toContainText('757.00 × 757.07');   // the push has been drawn
     await expect(strikes).toHaveText(listed(wider));                  // the window asked for, not the old one
@@ -812,7 +815,7 @@ test.describe('Trade Desk renders served values', () => {
     // induced: SPY's real rows with today's GEX and volume of the strike at the price (757) not known
     const K = STRIKES.spot_strike;
     const today = STRIKES.today.all.map((r) => (r.strike === K
-      ? { strike: K, value: null, volume: null, text: null, volume_text: null } : r));
+      ? { strike: K, strike_text: r.strike_text, value: null, volume: null, text: null, volume_text: null } : r));
     deskPanels().strikes = Object.assign({}, STRIKES, { today: Object.assign({}, STRIKES.today, { all: today }),
       migration: Object.assign({}, STRIKES.migration, { all: Object.assign({}, STRIKES.migration.all,
         { rows: STRIKES.migration.all.rows.map((r) => (r.strike === K
@@ -850,7 +853,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdMigration .gbs-k')).toHaveText(listed(REAL.strikes_wider));
     // induced: the zone the price is inside, its top moved
     deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.map((z) =>
-      (z === INSIDE ? Object.assign({}, z, { zone_high: 758.5 }) : z)) });
+      (z === INSIDE ? Object.assign({}, z, { zone_high: 758.5, zone_high_text: '758.50' }) : z)) });
     sock.changed('liquidity');                                       // ... and a panel of another kind lands after it
     await expect(page.locator('#tdBody')).toContainText('Inside a Pivot / value zone (757.00–758.50');
     // once the new window is drawn, every later draw is the new window: none goes back to the
@@ -863,8 +866,8 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
     const errs = watchErrors(page);
-    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };
-    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', };
+    const far = { id: 'grc', price: 837.58, price_text: '837.58', family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };
+    const wall = { id: 'call_wall', price: 772, price_text: '772.00', family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', };
     await routeWatchlist(page, ['SPY']);
     await mockPriceSocket(page, [], [], undefined,
       { desk: tfAt(EVENTS), book: MICRO, liquidity: LIQ, bars: tfAt(BARS),
@@ -873,7 +876,7 @@ test.describe('Trade Desk renders served values', () => {
           dex_below_dollars: 5e8, dex_above_dollars: null, dex_below_text: '$500.00M', dex_above_text: null,
           charm_below: -1234567, charm_above: null, charm_below_text: '-1.23M', charm_above_text: null,
           older_et_date: '2026-10-07' },
-        terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL', flip_note: 'the flip\'s note, as served' }),
+        terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_text: '772.00', call_wall_lean: 'DEALERS SELL', flip_note: 'the flip\'s note, as served' }),
         strikes: Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: null,
           gex_below_text: '-$1.20B', gex_above_text: null } }),
         levels: levelsAt(Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),

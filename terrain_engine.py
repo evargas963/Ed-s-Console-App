@@ -46,7 +46,14 @@ from math_levels import (
     pick_charm_wall_strikes,
     repriced_to_close,
 )
-from numeric_contract import count_text, dollars_text, float_finite_or_none, iv_text
+from numeric_contract import (
+    count_text,
+    dollars_text,
+    fixed_text,
+    float_finite_or_none,
+    iv_text,
+    price_text,
+)
 from option_contract import OptionContract
 from terrain_read import (
     LEVEL_ABOVE,
@@ -272,13 +279,24 @@ class TerrainSnapshot:
         the contracts used as the screen shows them.
         """
         light = replace(self, **{n: None for n in _HEAVY_FIELDS})
+        move = self.implied_1d_move
         return {
             **{k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS},
             "net_gex_at_spot_text": dollars_text(self.net_gex_at_spot),
             "contracts_used_text": count_text(self.contracts_used),
-            "atm_iv_text": None
-            if self.implied_1d_move is None
-            else iv_text(self.implied_1d_move["iv_pct_atm"]),
+            # each option level's price, and each on the 0DTE basis, as the screen shows it
+            **{f"{name}_text": price_text(getattr(self, name)) for name, _ in OPTION_LEVELS},
+            "same_day_text": {name: price_text(v) for name, v in self.same_day.items()},
+            # the put/call ratios, over the whole book and each expiry, as the screen shows them
+            "pcr_all_text": fixed_text(self.pcr_all, 2),
+            "pcr_volume_all_text": fixed_text(self.pcr_volume_all, 2),
+            "pcr_by_expiry_text": {ex: fixed_text(v, 2) for ex, v in self.pcr_by_expiry.items()},
+            "pcr_volume_by_expiry_text": {
+                ex: fixed_text(v, 2) for ex, v in self.pcr_volume_by_expiry.items()
+            },
+            "atm_iv_text": None if move is None else iv_text(move["iv_pct_atm"]),
+            "move_points_text": None if move is None else price_text(move["points"]),
+            "move_dte_text": None if move is None else count_text(move["dte_used"]),
         }
 
 

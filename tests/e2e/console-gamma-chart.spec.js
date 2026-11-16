@@ -39,9 +39,15 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 const STRIKES = require('./fixtures/vanna_charm_panels_crwd.json').strikes;
 const SPOT = STRIKES.spot_strike;                                  // 270
 const K = STRIKES.today.all[6].strike;                             // 272.5, the strike a test clicks
-const TERRAIN = { spot: SPOT, gamma_flip: SPOT - 0.5, call_wall: K, put_wall: STRIKES.today.all[4].strike,
+// each level with its text as the server serves it (two decimals, numeric_contract.price_text)
+const PUT_WALL = STRIKES.today.all[4].strike;
+const TERRAIN = { spot: SPOT, gamma_flip: SPOT - 0.5, call_wall: K, put_wall: PUT_WALL,
+  gamma_flip_text: (SPOT - 0.5).toFixed(2), call_wall_text: K.toFixed(2),
+  put_wall_text: PUT_WALL.toFixed(2), same_day_text: {},
   regime: 'LONG_GAMMA_CHOP', levels_state: 'LIVE', levels_mark: 'LIVE' };
-const BARS = { bars: [{ t: 1757000000, o: SPOT - 1, h: SPOT + 1, l: SPOT - 2, c: SPOT, v: 1 }] };
+const BARS = { bars: [{ t: 1757000000, o: SPOT - 1, h: SPOT + 1, l: SPOT - 2, c: SPOT, v: 1,
+  o_text: (SPOT - 1).toFixed(2), h_text: (SPOT + 1).toFixed(2), l_text: (SPOT - 2).toFixed(2),
+  c_text: SPOT.toFixed(2), v_text: '1' }] };
 const CALL_SYM = 'CRWD  260918C00272500';
 const PUT_SYM = 'CRWD  260918P00272500';
 const CHAIN = { spot: SPOT, spot_strike: K, expiry: '2026-09-18', status: 'ok', scope: { kind: 'complete_single_expiry' },
@@ -53,7 +59,8 @@ const CHAIN = { spot: SPOT, spot_strike: K, expiry: '2026-09-18', status: 'ok', 
       oi_text: '980', volume_text: '410', iv_text: '12.00' },
   ] };
 // server.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
-CHAIN.ladder = [{ strike: K, call: CHAIN.contracts[0], put: CHAIN.contracts[1], net_gex: null }];
+CHAIN.ladder = [{ strike: K, strike_text: String(K), call: CHAIN.contracts[0],
+  put: CHAIN.contracts[1], net_gex: null }];
 
 // the page's socket sends `terrain` (the flip and the walls), `strikes` (the profile) and `bars`
 // as the panels' bodies; returns those `panels`, read at each send

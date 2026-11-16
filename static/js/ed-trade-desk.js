@@ -16,8 +16,7 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  var num = window.EdShell.num,
-    ticker = window.EdShell.ticker,
+  var ticker = window.EdShell.ticker,
     classOf = window.EdShell.classOf,
     served = window.EdShell.served,
     notLive = window.EdShell.notLive,
@@ -112,9 +111,13 @@
     // Schwab's book time and its age, as served; neither sent shows "-"
     var bookAge = d.book_when_age_text == null ? "-" : d.book_when_age_text;
     var rows = [
-      ["Bid × Ask", num(tob.bid) + " × " + num(tob.ask), classOf(cls, "top_of_book.bid")],
-      ["Spread (pts)", num(d.spread_pts), classOf(cls, "spread_pts")],
-      ["Depth 1 imbalance", num(depth["1"].imbalance, 3), classOf(cls, "depth.*.imbalance")],
+      [
+        "Bid × Ask",
+        orDash(tob.bid_text) + " × " + orDash(tob.ask_text),
+        classOf(cls, "top_of_book.bid"),
+      ],
+      ["Spread (pts)", orDash(d.spread_pts_text), classOf(cls, "spread_pts")],
+      ["Depth 1 imbalance", orDash(depth["1"].imbalance_text), classOf(cls, "depth.*.imbalance")],
       ["Book age", bookAge, classOf(cls, "ages.book_age_sec")],
     ];
     // the Liquidity readout's served headline and side word for this book at depth 5: the one
@@ -175,9 +178,9 @@
       );
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) {
-      return [r.label || r.id, num(r.price), r.evidence_tier];
+      return [r.label || r.id, r.price_text, r.evidence_tier];
     });
-    var heroVal = (nearest.label || nearest.id) + " " + num(nearest.price);
+    var heroVal = (nearest.label || nearest.id) + " " + nearest.price_text;
     return stage(
       2,
       "td-accent-green",
@@ -209,13 +212,13 @@
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
       ["Confidence", orDash(d.confidence)],
-      ["Call wall", num(d.call_wall)],
-      ["Put wall", num(d.put_wall)],
-      ["Γ flip", num(d.gamma_flip)],
+      ["Call wall", orDash(d.call_wall_text)],
+      ["Put wall", orDash(d.put_wall_text)],
+      ["Γ flip", orDash(d.gamma_flip_text)],
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       [
         "Max pain" + (d.max_pain_dte != null ? " (" + d.max_pain_dte + "DTE)" : ""),
-        num(d.max_pain),
+        orDash(d.max_pain_text),
       ],
       ["Net GEX @ spot", orDash(d.net_gex_at_spot_text)],
     ];
@@ -258,9 +261,9 @@
         "Inside a " +
           esc(z.zone_label) +
           " zone (" +
-          num(z.zone_low) +
+          z.zone_low_text +
           "–" +
-          num(z.zone_high) +
+          z.zone_high_text +
           ", confluence " +
           z.confluence_score +
           ")",
@@ -271,7 +274,7 @@
         parts.push(
           esc(loc.above.zone_label) +
             " zone above at " +
-            num(loc.above.zone_low) +
+            loc.above.zone_low_text +
             " (confluence " +
             loc.above.confluence_score +
             ")",
@@ -280,7 +283,7 @@
         parts.push(
           esc(loc.below.zone_label) +
             " zone below at " +
-            num(loc.below.zone_high) +
+            loc.below.zone_high_text +
             " (confluence " +
             loc.below.confluence_score +
             ")",
@@ -351,19 +354,17 @@
   }
 
   var LEVEL_WORDS = { call_wall: "Call wall", put_wall: "Put wall", gamma_flip: "Γ flip" };
-  // one served level move {level, prior, today, change}: 'Call wall 755 → 760 (+5)'; a side not
-  // known is '-', and a change is said only when both days are known
+  // one served level move with its texts: 'Call wall 755 → 760 (+5)'; a side not known is '-',
+  // and a change is said only when both days are known
   function levelMove(v) {
-    var px = function (x) {
-      return x == null ? "-" : num(x, x % 1 ? 2 : 0);
-    };
-    var by =
-      v.change == null
-        ? ""
-        : v.change === 0
-          ? " (unchanged)"
-          : " (" + (v.change > 0 ? "+" : "") + num(v.change, v.change % 1 ? 2 : 0) + ")";
-    return LEVEL_WORDS[v.level] + " " + px(v.prior) + " → " + px(v.today) + by;
+    return (
+      LEVEL_WORDS[v.level] +
+      " " +
+      orDash(v.prior_text) +
+      " → " +
+      orDash(v.today_text) +
+      (v.change_text == null ? "" : " (" + v.change_text + ")")
+    );
   }
   var WALL_WORDS = {
     ABOVE_CALL_WALL: "ABOVE the call wall",
@@ -377,16 +378,8 @@
       out +=
         '<div class="mig-coach"><b>Migration view warming up</b>The first day-over-day comparison lands after the next wide morning capture.</div>';
     } else {
-      var grew = m.grew
-        .map(function (k) {
-          return num(k, 0);
-        })
-        .join("/");
-      var shrank = m.shrank
-        .map(function (k) {
-          return num(k, 0);
-        })
-        .join("/");
+      var grew = m.grew_text,
+        shrank = m.shrank_text;
       out +=
         '<div class="mig-coach"><b>Levels since the prior close: ' +
         esc(moves.map(levelMove).join(" · ")) +
@@ -398,11 +391,7 @@
     if (m && m.busiest && m.busiest.length) {
       out +=
         '<div class="mig-coach"><b>Heaviest option trading at ' +
-        m.busiest
-          .map(function (k) {
-            return num(k, 0);
-          })
-          .join("–") +
+        m.busiest_text +
         "</b>" +
         "That is " +
         esc(orDash(WALL_WORDS[m.busiest_vs_walls])) +
@@ -477,7 +466,7 @@
     var note =
       (_migPan.centre != null
         ? '<div class="gbs-allexp">Panned to ' +
-          num(_migPan.served, _migPan.served % 1 ? 2 : 0) +
+          view.centre_text +
           " · double-click a strike to follow the price</div>"
         : "") + (view.note ? '<div class="gbs-allexp">' + esc(view.note) + "</div>" : ""); // why not around the price
     var maxAbs = view.max_abs_with_prior; // served: today's and the prior day's bars, one scale
@@ -522,7 +511,7 @@
         rowCls +
         '">' +
         '<span class="gbs-k">' +
-        num(k, k % 1 ? 2 : 0) +
+        r.strike_text +
         "</span>" +
         '<span class="gbs-track mig-track"><i class="gbs-bar ' +
         (pos ? "pos" : "neg") +
@@ -645,7 +634,7 @@
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' +
       esc(tk) +
       '</span><span class="fl-meta">' +
-      (isFinite(spot) ? "spot " + num(spot) + when : "") +
+      (isFinite(spot) ? "spot " + levelsD.spot_text + when : "") +
       "</span></div></div>" +
       '<div class="td-grid">' +
       detectStage(_panels["book:desk"]) +
