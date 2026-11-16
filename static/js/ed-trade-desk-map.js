@@ -569,125 +569,19 @@
   function src(el, html) {
     el.querySelector(".tdm-src").innerHTML = html;
   }
-  // Each card's chart, as the reference draws them (line, area or bars), of one served series.
-  // sets: [{ys, xs (optional: served x values; else evenly spaced), color, kind: 'line'|'area'|'bars',
-  // colors (bars: one per y)}]. Scaling to the box and the axis ticks are drawing; a null y is a gap.
+  // Each card's chart of served series, drawn by the drawing module (EdDraw.sparkline); with no
+  // point to draw, the card's reason.
   function spark(card, sets, caption, reason) {
     var box = card.querySelector(".tdm-chartbox");
     box.querySelector("figcaption").textContent = caption;
     var plot = box.querySelector(".tdm-plot");
-    var pts = [];
-    sets.forEach(function (s) {
-      s.ys.forEach(function (y, i) {
-        if (y != null && isFinite(y)) pts.push([s.xs ? s.xs[i] : i, y]);
-      });
-    });
-    if (!pts.length) {
-      plot.innerHTML = '<div class="tdm-plot-none">' + esc(reason) + "</div>";
-      return;
-    }
     var W = 260,
       H = 64,
-      xs = pts.map(function (p) {
-        return p[0];
-      }),
-      ys = pts.map(function (p) {
-        return p[1];
-      });
-    var x0 = Math.min.apply(null, xs),
-      x1 = Math.max.apply(null, xs),
-      y0 = Math.min.apply(null, ys),
-      y1 = Math.max.apply(null, ys);
-    if (
-      sets.some(function (s) {
-        return s.kind !== "line";
-      })
-    ) {
-      y0 = Math.min(0, y0);
-      y1 = Math.max(0, y1);
-    }
-    if (x1 === x0) x1 = x0 + 1;
-    if (y1 === y0) y1 = y0 + 1;
-    function X(x) {
-      return ((x - x0) / (x1 - x0)) * W;
-    }
-    function Y(y) {
-      return H - ((y - y0) / (y1 - y0)) * H;
-    }
-    var svg = "";
-    sets.forEach(function (s) {
-      var n = s.ys.length;
-      if (s.kind === "bars") {
-        var bw = Math.max(1, (W / Math.max(1, n)) * 0.7);
-        s.ys.forEach(function (y, i) {
-          if (y == null) return;
-          var x = X(s.xs ? s.xs[i] : i) - bw / 2,
-            top = Math.min(Y(y), Y(0));
-          svg +=
-            '<rect x="' +
-            x.toFixed(1) +
-            '" y="' +
-            top.toFixed(1) +
-            '" width="' +
-            bw.toFixed(1) +
-            '" height="' +
-            Math.max(0.5, Math.abs(Y(y) - Y(0))).toFixed(1) +
-            '" fill="' +
-            (s.colors ? s.colors[i] : s.color) +
-            '"/>';
-        });
-        return;
-      }
-      var runs = [[]]; // a null breaks the line
-      s.ys.forEach(function (y, i) {
-        if (y == null || !isFinite(y)) {
-          if (runs[runs.length - 1].length) runs.push([]);
-          return;
-        }
-        runs[runs.length - 1].push([X(s.xs ? s.xs[i] : i), Y(y)]);
-      });
-      runs.forEach(function (r) {
-        if (!r.length) return;
-        var d = r
-          .map(function (p, k) {
-            return (k ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1);
-          })
-          .join("");
-        if (s.kind === "area")
-          svg +=
-            '<path d="' +
-            d +
-            "L" +
-            r[r.length - 1][0].toFixed(1) +
-            " " +
-            H +
-            "L" +
-            r[0][0].toFixed(1) +
-            " " +
-            H +
-            'Z" fill="' +
-            s.color +
-            '" opacity=".18"/>';
-        svg +=
-          '<path d="' +
-          d +
-          '" fill="none" stroke="' +
-          s.color +
-          '" stroke-width="1.6" vector-effect="non-scaling-stroke"/>';
-        if (r.length === 1)
-          svg +=
-            '<circle cx="' +
-            r[0][0].toFixed(1) +
-            '" cy="' +
-            r[0][1].toFixed(1) +
-            '" r="2" fill="' +
-            s.color +
-            '"/>';
-      });
-    });
-    // no axis numbers: a number the page derives from the series is not printed
+      svg = window.EdDraw.sparkline(sets, W, H);
     plot.innerHTML =
-      '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' + svg + "</svg>";
+      svg == null
+        ? '<div class="tdm-plot-none">' + esc(reason) + "</div>"
+        : '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' + svg + "</svg>";
   }
   function paintCards() {
     var m = S.micro,
@@ -845,7 +739,7 @@
   }
   function liqBar(side, label, text, shares, total) {
     // shares not sent: no bar; a total of 0 shares: an empty track
-    var s = window.EdShell.strength(shares, total);
+    var s = window.EdDraw.strength(shares, total);
     var fill = s == null ? "" : '<i class="' + side + '" style="width:' + s * 100 + '%"></i>';
     return (
       '<div class="liq-bar-h"><span>' +

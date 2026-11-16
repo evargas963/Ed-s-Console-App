@@ -39,17 +39,23 @@
   "depth": {
     "1": {
       "ask_total": 44.0,
+      "ask_total_text": "44",
       "bid_total": 289.0,
+      "bid_total_text": "289",
       "imbalance": 0.7357357357357357
     },
     "3": {
       "ask_total": 151.0,
+      "ask_total_text": "151",
       "bid_total": 301.0,
+      "bid_total_text": "301",
       "imbalance": 0.33185840707964603
     },
     "5": {
       "ask_total": 151.0,
+      "ask_total_text": "151",
       "bid_total": 301.0,
+      "bid_total_text": "301",
       "imbalance": 0.33185840707964603
     }
   },
@@ -58,29 +64,34 @@
       {
         "cum": 44.0,
         "price": 0.61,
-        "volume": 44.0
+        "volume": 44.0,
+        "volume_text": "44"
       },
       {
         "cum": 149.0,
         "price": 0.62,
-        "volume": 105.0
+        "volume": 105.0,
+        "volume_text": "105"
       },
       {
         "cum": 151.0,
         "price": 0.76,
-        "volume": 2.0
+        "volume": 2.0,
+        "volume_text": "2"
       }
     ],
     "bid": [
       {
         "cum": 289.0,
         "price": 0.58,
-        "volume": 289.0
+        "volume": 289.0,
+        "volume_text": "289"
       },
       {
         "cum": 301.0,
         "price": 0.55,
-        "volume": 12.0
+        "volume": 12.0,
+        "volume_text": "12"
       }
     ]
   },

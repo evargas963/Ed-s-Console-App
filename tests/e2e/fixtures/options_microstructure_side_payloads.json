@@ -40,17 +40,23 @@
     "depth": {
       "1": {
         "ask_total": null,
+        "ask_total_text": null,
         "bid_total": null,
+        "bid_total_text": null,
         "imbalance": null
       },
       "3": {
         "ask_total": null,
+        "ask_total_text": null,
         "bid_total": null,
+        "bid_total_text": null,
         "imbalance": null
       },
       "5": {
         "ask_total": null,
+        "ask_total_text": null,
         "bid_total": null,
+        "bid_total_text": null,
         "imbalance": null
       }
     },
@@ -162,17 +168,23 @@
     "depth": {
       "1": {
         "ask_total": null,
+        "ask_total_text": null,
         "bid_total": null,
+        "bid_total_text": null,
         "imbalance": null
       },
       "3": {
         "ask_total": null,
+        "ask_total_text": null,
         "bid_total": null,
+        "bid_total_text": null,
         "imbalance": null
       },
       "5": {
         "ask_total": null,
+        "ask_total_text": null,
         "bid_total": null,
+        "bid_total_text": null,
         "imbalance": null
       }
     },

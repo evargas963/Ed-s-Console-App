@@ -39,6 +39,7 @@
     }
    ],
    "strike": 768.0,
+   "strike_text": "768",
    "text": {
     "dex": [
      "$456.84M"
@@ -102,6 +103,7 @@
     }
    ],
    "strike": 769.0,
+   "strike_text": "769",
    "text": {
     "dex": [
      "$383.77M"
@@ -165,6 +167,7 @@
     }
    ],
    "strike": 770.0,
+   "strike_text": "770",
    "text": {
     "dex": [
      "$609.15M"
@@ -228,6 +231,7 @@
     }
    ],
    "strike": 771.0,
+   "strike_text": "771",
    "text": {
     "dex": [
      "$425.55M"
@@ -291,6 +295,7 @@
     }
    ],
    "strike": 772.0,
+   "strike_text": "772",
    "text": {
     "dex": [
      "$633.52M"
@@ -354,6 +359,7 @@
     }
    ],
    "strike": 773.0,
+   "strike_text": "773",
    "text": {
     "dex": [
      "$391.24M"
@@ -417,6 +423,7 @@
     }
    ],
    "strike": 774.0,
+   "strike_text": "774",
    "text": {
     "dex": [
      "$286.00M"
@@ -480,6 +487,7 @@
     }
    ],
    "strike": 775.0,
+   "strike_text": "775",
    "text": {
     "dex": [
      "$221.70M"
@@ -543,6 +551,7 @@
     }
    ],
    "strike": 776.0,
+   "strike_text": "776",
    "text": {
     "dex": [
      "$90.30M"
@@ -606,6 +615,7 @@
     }
    ],
    "strike": 777.0,
+   "strike_text": "777",
    "text": {
     "dex": [
      "$60.69M"
@@ -669,6 +679,7 @@
     }
    ],
    "strike": 778.0,
+   "strike_text": "778",
    "text": {
     "dex": [
      "$82.30M"
@@ -739,6 +750,7 @@
  "ticker": "SPY",
  "view": {
   "centre": 773.0,
+  "centre_text": "773",
   "coverage": {
    "cells": 0,
    "label": "EXPIRED",

@@ -9,7 +9,7 @@
   "use strict";
 
   // ---- theme colour: sign -> green/red, shade -> the shell's one strength rule against the
-  // served scale (EdShell.heatFill) ----
+  // served scale (EdDraw.heatFill) ----
   function _rgb(c) {
     return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
   }
@@ -18,7 +18,7 @@
       return { bg: "transparent", fg: "var(--ed-ink-3)", empty: true };
     var v = Number(n);
     if (v === 0) return { bg: _rgb(colors.zero), fg: "var(--ed-ink-3)", empty: false };
-    var mixed = window.EdShell.heatFill(v, maxAbs, colors); // the served scale is at least every |value| drawn
+    var mixed = window.EdDraw.heatFill(v, maxAbs, colors); // the served scale is at least every |value| drawn
     if (mixed == null) return { bg: "transparent", fg: "var(--ed-ink-3)", empty: false };
     return { bg: _rgb(mixed), fg: window.EdShell.heatInk(mixed), empty: false };
   }
@@ -185,7 +185,7 @@
           '><th class="hstrike' +
           (row.spot ? " spot" : "") +
           '">' +
-          fmtStrike(row.strike) +
+          escapeHtml(orDash(row.strike_text)) + // served
           "</th>";
         exps.forEach(function (e, j) {
           var v = mrow[j],
@@ -224,7 +224,7 @@
     var note =
       (_pan.centre != null
         ? '<div class="heat-pan">Panned to ' +
-          fmtStrike(_pan.served) +
+          escapeHtml(orDash(view.centre_text)) + // served: the centre strike panned to
           " · double-click the strikes to follow the price</div>"
         : "") + (view.note ? '<div class="heat-pan">' + escapeHtml(view.note) + "</div>" : ""); // why not around the price
     var MEASURE_LEGEND = {
@@ -316,10 +316,7 @@
     var w = (host && host.clientWidth) || 0;
     if (!w) return MAX_AUTO_COLS;
     var avail = w - 70 /* strike column */ - 64; /* magnitude legend */
-    return Math.max(MIN_AUTO_COLS, Math.min(MAX_AUTO_COLS, Math.floor(avail / MIN_COL_PX)));
-  }
-  function fmtStrike(k) {
-    return (Math.round(k * 100) / 100).toString();
+    return window.EdDraw.fitCount(avail, MIN_COL_PX, MIN_AUTO_COLS, MAX_AUTO_COLS);
   }
   var escapeHtml = window.EdShell.esc,
     orDash = window.EdShell.orDash;
