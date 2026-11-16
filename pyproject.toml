@@ -48,13 +48,10 @@ pythonVersion = "3.13"
 include = [
   "calc",
   "terrain_engine.py",
-  "terrain_read.py",
   "math_exposure_core.py",
   "math_levels.py",
   "liquidity_value_engine.py",
-  "liquidity_models.py",
   "micro_structure.py",
-  "l1_trade_observation.py",
   "app/options/order_flow/engine.py",
   "live_market_plane.py",
   "live_price_rows.py",

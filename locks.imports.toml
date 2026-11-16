@@ -52,13 +52,10 @@ type = "forbidden"
 source_modules = [
     "head.calc",
     "head.terrain_engine",
-    "head.terrain_read",
     "head.math_exposure_core",
     "head.math_levels",
     "head.liquidity_value_engine",
-    "head.liquidity_models",
     "head.micro_structure",
-    "head.l1_trade_observation",
     "head.app.options.order_flow.engine",
 ]
 forbidden_modules = [

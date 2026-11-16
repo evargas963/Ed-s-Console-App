@@ -15,6 +15,14 @@ from datetime import datetime
 from typing import Any, NamedTuple, TypedDict
 
 from calc.confluence_composite import iv_by_strike
+from calc.terrain_read import (
+    LEVEL_ABOVE,
+    LEVEL_BELOW,
+    build_terrain_read,
+    flip_note,
+    level_side,
+    price_side,
+)
 from math_exposure_core import (
     Bucket,
     ExposureDiagnostics,
@@ -56,14 +64,6 @@ from numeric_contract import (
     price_text,
 )
 from option_contract import OptionContract
-from terrain_read import (
-    LEVEL_ABOVE,
-    LEVEL_BELOW,
-    build_terrain_read,
-    flip_note,
-    level_side,
-    price_side,
-)
 from time_et import (
     ET,
     SETTLEMENT_AM,
@@ -225,7 +225,7 @@ class TerrainSnapshot:
     contracts_used: int = 0
     strikes_used: int = 0
     dollarized: bool = False
-    #: the note shown beside the gamma flip (terrain_read.flip_note), None for none
+    #: the note shown beside the gamma flip (calc.terrain_read.flip_note), None for none
     flip_note: str | None = None
     error: str = ""
 

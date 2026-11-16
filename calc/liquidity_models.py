@@ -1,4 +1,4 @@
-"""liquidity_models.py — Data models for Liquidity & Value Playbook Engine.
+"""Data models for the Liquidity & Value Playbook Engine.
 
 Enums and dataclasses for structural snapshots, zones, and price levels.
 Ticker-agnostic; works for any instrument.

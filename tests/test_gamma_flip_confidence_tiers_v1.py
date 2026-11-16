@@ -28,6 +28,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from calc.terrain_read import (
+    REGIME_LONG_GAMMA,
+    REGIME_UNAVAILABLE,
+    build_terrain_read,
+)
 from math_levels import (
     GAMMA_FLIP_LEVEL_APPROX,
     GAMMA_FLIP_MIN_SPAN_PCT,
@@ -39,11 +44,6 @@ from math_levels import (
     contract_inputs,
 )
 from option_contract import read_chain
-from terrain_read import (
-    REGIME_LONG_GAMMA,
-    REGIME_UNAVAILABLE,
-    build_terrain_read,
-)
 from time_et import EQUITY_OPTIONS, ET, sessions
 
 #: the chain here expires 2027-07-16 (a date Schwab's /markets answers); valued a month before

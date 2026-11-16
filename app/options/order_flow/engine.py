@@ -15,16 +15,16 @@ from typing import Any, TypedDict
 
 import numpy as np
 
-from l1_trade_observation import (
+from calc.l1_trade_observation import (
     canonical_tape_prints,
     cum_delta_window,
     iter_signed_cum_points,
     unsigned_share,
 )
-from l1_trade_observation import (
+from calc.l1_trade_observation import (
     compute_cum_delta_proxy as _canonical_cum_delta,
 )
-from l1_trade_observation import (
+from calc.l1_trade_observation import (
     compute_tape_pressure as _canonical_tape_pressure,
 )
 from numeric_contract import (

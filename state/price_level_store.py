@@ -9,8 +9,8 @@ from __future__ import annotations
 import threading
 from datetime import date, datetime
 
+from calc.liquidity_models import PlaybookConfig
 from instrument_identity import ticker_storage_key
-from liquidity_models import PlaybookConfig
 from liquidity_value_engine import (
     Bar,
     PriceLevelSnapshot,

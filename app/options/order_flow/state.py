@@ -15,8 +15,7 @@ from typing import Any
 
 from app.options.order_flow import history
 from app.options.order_flow.engine import Book, read_book
-from instrument_identity import ticker_storage_key
-from l1_trade_observation import (
+from calc.l1_trade_observation import (
     TAPE_CLASSIFICATION,
     TAPE_COMPLETENESS,
     VENDOR_LAST_PRICE,
@@ -26,6 +25,7 @@ from l1_trade_observation import (
     is_adjacent_restatement,
     vendor_triple,
 )
+from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count
 from option_contract import quote_values, streamed_greeks, streamed_top
 

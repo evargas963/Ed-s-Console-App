@@ -24,6 +24,7 @@ from app.options.order_flow.engine import (
     compute_book_microstructure,
     read_book,
 )
+from calc.terrain_read import level_side
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import LevelCrossEvent
 from liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
@@ -39,7 +40,6 @@ from terrain_engine import (
     price_relations,
     wall_lean,
 )
-from terrain_read import level_side
 from tests.feed_live_helper import daemon_status, price_history
 from tests.real_chains import (
     SPY_0DTE,

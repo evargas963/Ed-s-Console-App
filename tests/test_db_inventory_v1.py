@@ -10,9 +10,9 @@ import re
 
 import pytest
 
+from calc.terrain_read import CROSSED_UP
 from db import ColumnInventory, EdDB, LevelCrossEvent, inventory
 from stream_spine import RECEIPT_TIME_INDEXES, STREAM_SCHEMA_SQL, CaptureWriter
-from terrain_read import CROSSED_UP
 from tests.real_chains import SPY_PRINT_A_STRIKE_AWAY
 
 CREATED = re.findall(r"CREATE TABLE IF NOT EXISTS (\w+) \(", STREAM_SCHEMA_SQL)

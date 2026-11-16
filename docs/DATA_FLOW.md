@@ -774,7 +774,7 @@ the program.
   of the price, its distance in expected moves and strike widths and its minutes to the close
   on hover, `push.levels.pin_note`; the read's advice sentences, which no page read, are no longer made:
   operator 2026-11-13, "if they do not then proceed with your recommendation"). The flip's note
-  (`flip_note`, `terrain_read.flip_note`: the flip's modelled curve and Schwab's gamma disagree
+  (`flip_note`, `calc.terrain_read.flip_note`: the flip's modelled curve and Schwab's gamma disagree
   on the sign at the chain's price) is published with the levels and drawn beside the flip on
   Right Now, the desk map's Options card and Key Levels (`tests/test_gamma_as_sent_v1.py`); each
   level's distance (level minus price), side and the words for
@@ -783,8 +783,8 @@ the program.
   level and its Walls line print (each wall with its own side of the price; the line was
   labelled "Box", which a put wall above the price or both walls on one strike is not); the price
   inside, above or below each liquidity zone
-  (`terrain_read.within`); and the level crosses (below). One side rule, exact values:
-  `terrain_read.level_side` (ABOVE, AT, BELOW), with `price_side` (the price's side of a level),
+  (`calc.terrain_read.within`); and the level crosses (below). One side rule, exact values:
+  `calc.terrain_read.level_side` (ABOVE, AT, BELOW), with `price_side` (the price's side of a level),
   `within` and `crossed` built on it (`tests/test_level_crosses_wire.py`,
   `tests/test_trade_desk_served_v1.py`). Each answer serving them (the terrain panel, the levels
   panel,
@@ -866,7 +866,7 @@ the program.
   contracts that beat last named keep their last streamed greeks on the levels; those cells are
   not live. The last watchlist stands; the page says the daemon is not reporting.
 - **Tape.** Each print is signed by Lee and Ready against the bid and ask its LEVELONE record
-  held (`l1_trade_observation.trade_sign`; an equity's top is merged from its record as a
+  held (`calc.l1_trade_observation.trade_sign`; an equity's top is merged from its record as a
   contract's is, `streaming._apply_quote`); a print with no bid and ask, or at their midpoint
   before any price change, is unsigned, never 0, and its share of the size is served beside each
   value (`tape_unsigned_30s`, `_2m`, `_5m`, `cum_delta_unsigned`). The cumulative delta (PROXY)
@@ -897,7 +897,7 @@ the program.
   (`server._on_stream_tick`, on the event loop, the owner): each of those levels the price
   reached or passed going from the ticker's previous streamed price to this one
   (`server._last_tick_spot`, kept on every equity quote, since the price row holds only the
-  newest; `terrain_read.crossed`, the one side rule). No quote, no check; a new publication moves
+  newest; `calc.terrain_read.crossed`, the one side rule). No quote, no check; a new publication moves
   the levels, not the price, and is not a cross. Stored on the pricing thread as `LevelCrossEvent`
   records (`server._log_level_crosses`, `EdDB.record_level_crosses`): every cross of every
   watched level, one row per level, as it happened, with nothing held back (operator
@@ -1011,9 +1011,9 @@ the program.
    `_per_strike_measure_rows`), and so do the volume sums below and above spot
    (`server.terrain_strikes_payload`), and so does the book's top size
    (`app.options.order_flow.engine._extract_canonical_book`), and so does a tape print's
-   size (`l1_trade_observation.extract_vendor_print`); the screen rounds those counts
+   size (`calc.l1_trade_observation.extract_vendor_print`); the screen rounds those counts
    for display. The last trade Schwab streams (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) has
-   one reader, `l1_trade_observation.last_print`: the price row (`live_market_plane`) and the
+   one reader, `calc.l1_trade_observation.last_print`: the price row (`live_market_plane`) and the
    tape both take the three fields from it, a stock's and an option contract's alike
    (operator 2026-11-13: "this currently violates the one producer, one faucet rule",
    "whatever faucet we get water from then we need to keep getting from that faucet";

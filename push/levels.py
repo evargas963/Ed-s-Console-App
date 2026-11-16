@@ -9,7 +9,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from liquidity_models import VolumeProfile
+from calc.liquidity_models import VolumeProfile
+from calc.terrain_read import from_spot_text, level_side
 from liquidity_value_engine import PriceLevelSnapshot
 from numeric_contract import price_text
 from push.bars import aggregate_vwap
@@ -18,7 +19,6 @@ from push.verdict import terrain_cache_get
 from state.level_store import PublishedLevels
 from state.price_level_store import canonical_price_level_snapshot
 from terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, OneDayMove, TerrainSnapshot
-from terrain_read import from_spot_text, level_side
 from time_et import age_text, ct_label
 
 #: why a route serves no price levels for a ticker

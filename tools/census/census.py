@@ -861,7 +861,7 @@ SERVING = (
     "liquidity_value_engine.py",
     "terrain_engine.py",
     "calc/confluence_composite.py",
-    "liquidity_models.py",
+    "calc/liquidity_models.py",
 )
 served = {
     (k.value, f)

@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 import live_market_plane as lmp
-from liquidity_models import ZONE_DISPLAY
+from calc.liquidity_models import ZONE_DISPLAY
 from push import levels as push_levels
 from push import liquidity as push_liquidity
 from tests.feed_live_helper import daemon_status

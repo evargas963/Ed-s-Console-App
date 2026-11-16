@@ -15,7 +15,7 @@ from pathlib import Path
 
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as live_state
-import l1_trade_observation as l1
+import calc.l1_trade_observation as l1
 from tests.shared_helpers import sent
 
 _MIX = [
