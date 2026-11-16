@@ -1,5 +1,25 @@
 # Ed Console — rules for every change
 
+**The order of every decision (operator 2026-11-16: "best practices always this is an order. this
+is the number one order, two is simple coding"; the rest "perfect i agree with those orders and
+the order in which they are listed").** When two pull against each other, the higher wins:
+
+1. **Best practice.** Every choice rests on how the industry and the standard tools do it, the
+   source named.
+2. **Simple code.** The fewest files, functions and steps that do the job; a change deletes what
+   it replaces.
+3. **A wrong number is worse than "-".** Every number is Schwab's as sent or computed once by its
+   one producer; an unknown shows "-", never filled in.
+4. **Fix at the source, end to end.** The cause found down to the line with evidence, fixed there,
+   proved from Schwab to the screen; never a wrapper around a problem.
+5. **Verify before saying done.** A test that failed before passes after, CI green, and the live
+   screen shows it.
+6. **Ask before deciding for the operator.** A decision that is his (what the screen shows,
+   request rates, limits, money) comes to him as a short recommendation with its sources, and
+   waits; his thinking aloud is not an order.
+
+Enforced by: the builder's audit (rule 14), no machine check.
+
 **The first rule (operator 2026-11-04): "we simply wire up what schwab gives us, plain and simple.
 end of story."** Schwab's value goes to the screen as Schwab sent it, read once; no special rule,
 bound, default or substitute of ours sits in between, and only the math Schwab does not send is
