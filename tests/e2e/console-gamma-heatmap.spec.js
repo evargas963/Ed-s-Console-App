@@ -203,9 +203,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       }
       await page.waitForTimeout(40);
     }
-    await expect(cell).toHaveText('$' + call.toFixed(1) + 'K');
+    await expect(cell).toHaveText('$' + call + '.00K');   // the last frame's served text stands
     const finalText = await cell.textContent();
-    expect(finalText).toBe('$' + call.toFixed(1) + 'K');
+    expect(finalText).toBe('$' + call + '.00K');
   });
 
   test('a surface still on its way for an abandoned ticker does not block the newly selected one, and is never drawn under it', async ({ page }) => {
