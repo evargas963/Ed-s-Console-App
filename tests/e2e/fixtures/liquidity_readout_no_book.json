@@ -42,21 +42,24 @@
    "ask_total_text": null,
    "bid_total": null,
    "bid_total_text": null,
-   "imbalance": null
+   "imbalance": null,
+   "imbalance_text": null
   },
   "3": {
    "ask_total": null,
    "ask_total_text": null,
    "bid_total": null,
    "bid_total_text": null,
-   "imbalance": null
+   "imbalance": null,
+   "imbalance_text": null
   },
   "5": {
    "ask_total": null,
    "ask_total_text": null,
    "bid_total": null,
    "bid_total_text": null,
-   "imbalance": null
+   "imbalance": null,
+   "imbalance_text": null
   }
  },
  "depth_pressure": {
@@ -64,7 +67,9 @@
   "bid": []
  },
  "mark": 760.18,
+ "mark_text": "760.18",
  "microprice": 760.1822222222222,
+ "microprice_text": "760.18",
  "provenance": {
   "book_source": "unavailable",
   "book_time_ms": null,
@@ -212,6 +217,7 @@
   }
  },
  "spread_pts": 0.010000000000104592,
+ "spread_pts_text": "0.01",
  "status": "no_book",
  "ticker": "SPY",
  "top_feed_label": "LIVE",
@@ -219,9 +225,11 @@
   "ask": 760.19,
   "ask_size": 280.0,
   "ask_size_text": "280",
+  "ask_text": "760.19",
   "bid": 760.18,
   "bid_size": 80.0,
-  "bid_size_text": "80"
+  "bid_size_text": "80",
+  "bid_text": "760.18"
  },
  "top_outage": null,
  "venue": "NYSE_BOOK",

@@ -11,8 +11,7 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  var num = window.EdShell.num,
-    ticker = window.EdShell.ticker,
+  var ticker = window.EdShell.ticker,
     classOf = window.EdShell.classOf;
   function isBook() {
     var s = window.EdShell.getState();
@@ -82,7 +81,7 @@
         w +
         '%"></i></div>' +
         '<span class="dom-px">' +
-        num(l.price) +
+        l.price_text +
         '</span><span class="dom-sz">' +
         esc(orDash(l.volume_text)) +
         "</span></div>"
@@ -141,21 +140,29 @@
 
     var midHtml =
       '<div class="dom-mid"><span>mark ' +
-      num(d.mark) +
+      orDash(d.mark_text) +
       "</span><span>spread " +
-      num(d.spread_pts) +
+      orDash(d.spread_pts_text) +
       "</span><span>microprice " +
-      num(d.microprice) +
+      orDash(d.microprice_text) +
       "</span></div>";
 
     var rowsTob = [
-      ["Bid × size", num(tob.bid) + " × " + orDash(tob.bid_size_text), bk("top_of_book.bid")],
-      ["Ask × size", num(tob.ask) + " × " + orDash(tob.ask_size_text), bk("top_of_book.ask")],
+      [
+        "Bid × size",
+        orDash(tob.bid_text) + " × " + orDash(tob.bid_size_text),
+        bk("top_of_book.bid"),
+      ],
+      [
+        "Ask × size",
+        orDash(tob.ask_text) + " × " + orDash(tob.ask_size_text),
+        bk("top_of_book.ask"),
+      ],
     ];
     var rowsImb = [
-      ["Depth 1 imbalance", num(depth["1"].imbalance, 3), bk("depth.*.imbalance")],
-      ["Depth 3 imbalance", num(depth["3"].imbalance, 3), bk("depth.*.imbalance")],
-      ["Depth 5 imbalance", num(depth["5"].imbalance, 3), bk("depth.*.imbalance")],
+      ["Depth 1 imbalance", orDash(depth["1"].imbalance_text), bk("depth.*.imbalance")],
+      ["Depth 3 imbalance", orDash(depth["3"].imbalance_text), bk("depth.*.imbalance")],
+      ["Depth 5 imbalance", orDash(depth["5"].imbalance_text), bk("depth.*.imbalance")],
       ["Bid total (5)", orDash(depth["5"].bid_total_text), bk("depth.*.bid_total")],
       ["Ask total (5)", orDash(depth["5"].ask_total_text), bk("depth.*.ask_total")],
     ];
@@ -178,11 +185,11 @@
               '<div class="fl-row"><span class="k">' +
               esc(orDash(w.side)) +
               " @ " +
-              num(w.price) +
+              w.price_text +
               '</span><span class="v">' +
               esc(orDash(w.volume_text)) +
               ' <span class="sm">(' +
-              num(w.median_mult, 1) +
+              w.median_mult_text +
               "× median)</span></span></div>"
             );
           })

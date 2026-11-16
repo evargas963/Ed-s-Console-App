@@ -726,7 +726,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('PCR: a ticker whose terrain carries no ratio paints none, never a number', async ({ page }) => {
-    panels.terrain = Object.assign({}, TERRAIN, { pcr_by_expiry: {}, pcr_all: null });
+    panels.terrain = Object.assign({}, TERRAIN, { pcr_by_expiry: {}, pcr_all: null,
+      pcr_by_expiry_text: {}, pcr_all_text: null });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('243.91');
     await expect(page.locator('#klPcr')).toHaveText('-');
@@ -786,7 +787,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // induced: the real levels with the flip moved from 243.91 into the chart's price range (the
     // profile's strikes, 257.5 to 282.5; the chart draws only the levels inside it), far enough
     // from the walls at 270 that it keeps its own label
-    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 262.5 });
+    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 262.5, gamma_flip_text: '262.50' });
     await socketWith(page, [priceRow('SPY', 269.43, { trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
@@ -1090,7 +1091,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
 
     sock.frame('chain:detail', 'SPY', CHAIN);                                   // SPY's, late ...
-    sock.frame('terrain:levels', 'QQQ', Object.assign({}, TERRAIN, { gamma_flip: 123.45 }));   // ... and QQQ's behind it
+    sock.frame('terrain:levels', 'QQQ', Object.assign({}, TERRAIN,   // ... and QQQ's behind it
+      { gamma_flip: 123.45, gamma_flip_text: '123.45' }));
     await expect(page.locator('#klFlip')).toHaveText('123.45');
     await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
     await expect(page.locator('.sd')).toHaveCount(0);
@@ -1226,11 +1228,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('the Key Levels rail shows regular and 0DTE in the same row', async ({ page }) => {
-    panels.terrain = Object.assign({}, TERRAIN, {
-      same_day: { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
-        absolute_gamma_strike: 572.5, call_charm_wall: 572.5, put_charm_wall: 567.5,
-        call_delta_wall: 577.5, put_delta_wall: 562.5 },
-    });
+    // induced: a 0DTE basis, each level with its text as the server serves it (two decimals)
+    const sameDay = { gamma_flip: 571.25, call_wall: 575, put_wall: 570,
+      absolute_gamma_strike: 572.5, call_charm_wall: 572.5, put_charm_wall: 567.5,
+      call_delta_wall: 577.5, put_delta_wall: 562.5 };
+    const sameDayText = {};
+    for (const [k, v] of Object.entries(sameDay)) sameDayText[k] = v.toFixed(2);
+    panels.terrain = Object.assign({}, TERRAIN, { same_day: sameDay, same_day_text: sameDayText });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klBody .kl-pairs .h').nth(0)).toHaveText('Regular');
     await expect(page.locator('#klBody .kl-pairs .h').nth(1)).toHaveText('0DTE');
@@ -1265,8 +1269,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
         if (!req.panels || !req.panels['terrain:levels']) return;
         if (req.ticker === 'SPY') { ws.send(panelFrame('terrain:levels', 'SPY', TERRAIN)); return; }
-        ws.send(panelFrame('terrain:levels', 'SPY', Object.assign({}, TERRAIN, { gamma_flip: 111 })));
-        sendQqq = () => ws.send(panelFrame('terrain:levels', req.ticker, Object.assign({}, TERRAIN, { gamma_flip: 480.5 })));
+        ws.send(panelFrame('terrain:levels', 'SPY', Object.assign({}, TERRAIN,
+          { gamma_flip: 111, gamma_flip_text: '111.00' })));
+        sendQqq = () => ws.send(panelFrame('terrain:levels', req.ticker, Object.assign({}, TERRAIN,
+          { gamma_flip: 480.5, gamma_flip_text: '480.50' })));
       });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1284,7 +1290,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // the program sends the terrain panel again when the levels change (_levels_changed)
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('243.91');
-    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 590.00 });
+    panels.terrain = Object.assign({}, TERRAIN, { gamma_flip: 590.00, gamma_flip_text: '590.00' });
     sock.changed('terrain');
     await expect(page.locator('#klFlip')).toHaveText('590.00');
   });

@@ -2,21 +2,30 @@
  "level_moves": [
   {
    "change": null,
+   "change_text": null,
    "level": "call_wall",
    "prior": null,
-   "today": 765.0
+   "prior_text": null,
+   "today": 765.0,
+   "today_text": "765"
   },
   {
    "change": null,
+   "change_text": null,
    "level": "put_wall",
    "prior": null,
-   "today": 764.0
+   "prior_text": null,
+   "today": 764.0,
+   "today_text": "764"
   },
   {
    "change": null,
+   "change_text": null,
    "level": "gamma_flip",
    "prior": null,
-   "today": null
+   "prior_text": null,
+   "today": null,
+   "today_text": null
   }
  ],
  "levels_age_text": "24h",
@@ -25,6 +34,7 @@
  "levels_time_ct": "Thu 10/22 03:17 PM CT",
  "max_abs_row": {
   "strike": 764.0,
+  "strike_text": "764",
   "text": "-$1.32B",
   "value": -1316801139.68217,
   "volume": 814582.0,
@@ -34,68 +44,81 @@
   "dex": {
    "max_abs_row": {
     "strike": 772.0,
+    "strike_text": "772",
     "text": "$633.52M",
     "value": 633515384.1419919
    },
    "rows": [
     {
      "strike": 768.0,
+     "strike_text": "768",
      "text": "$456.84M",
      "value": 456844947.09737736
     },
     {
      "strike": 769.0,
+     "strike_text": "769",
      "text": "$383.77M",
      "value": 383768692.52198106
     },
     {
      "strike": 770.0,
+     "strike_text": "770",
      "text": "$609.15M",
      "value": 609154940.1111223
     },
     {
      "strike": 771.0,
+     "strike_text": "771",
      "text": "$425.55M",
      "value": 425552983.4363241
     },
     {
      "strike": 772.0,
+     "strike_text": "772",
      "text": "$633.52M",
      "value": 633515384.1419919
     },
     {
      "strike": 773.0,
+     "strike_text": "773",
      "text": "$391.24M",
      "value": 391240382.3916644
     },
     {
      "strike": 774.0,
+     "strike_text": "774",
      "text": "$286.00M",
      "value": 285999696.57460755
     },
     {
      "strike": 775.0,
+     "strike_text": "775",
      "text": "$221.70M",
      "value": 221701804.985222
     },
     {
      "strike": 776.0,
+     "strike_text": "776",
      "text": "$90.30M",
      "value": 90300734.63002223
     },
     {
      "strike": 777.0,
+     "strike_text": "777",
      "text": "$60.69M",
      "value": 60686030.090697356
     },
     {
      "strike": 778.0,
+     "strike_text": "778",
      "text": "$82.30M",
      "value": 82297668.41265623
     }
    ],
    "view": {
     "centre": 773.0,
+    "centre_text": "773",
     "max_abs": 633515384.1419919,
     "note": null
    }
@@ -103,68 +126,81 @@
   "oi": {
    "max_abs_row": {
     "strike": 776.0,
+    "strike_text": "776",
     "text": "18,268",
     "value": 18268.0
    },
    "rows": [
     {
      "strike": 768.0,
+     "strike_text": "768",
      "text": "7,291",
      "value": 7291.0
     },
     {
      "strike": 769.0,
+     "strike_text": "769",
      "text": "7,291",
      "value": 7291.0
     },
     {
      "strike": 770.0,
+     "strike_text": "770",
      "text": "14,748",
      "value": 14748.0
     },
     {
      "strike": 771.0,
+     "strike_text": "771",
      "text": "12,531",
      "value": 12531.0
     },
     {
      "strike": 772.0,
+     "strike_text": "772",
      "text": "12,716",
      "value": 12716.0
     },
     {
      "strike": 773.0,
+     "strike_text": "773",
      "text": "10,648",
      "value": 10648.0
     },
     {
      "strike": 774.0,
+     "strike_text": "774",
      "text": "10,140",
      "value": 10140.0
     },
     {
      "strike": 775.0,
+     "strike_text": "775",
      "text": "13,047",
      "value": 13047.0
     },
     {
      "strike": 776.0,
+     "strike_text": "776",
      "text": "18,268",
      "value": 18268.0
     },
     {
      "strike": 777.0,
+     "strike_text": "777",
      "text": "5,714",
      "value": 5714.0
     },
     {
      "strike": 778.0,
+     "strike_text": "778",
      "text": "7,113",
      "value": 7113.0
     }
    ],
    "view": {
     "centre": 773.0,
+    "centre_text": "773",
     "max_abs": 18268.0,
     "note": null
    }
@@ -176,9 +212,11 @@
     762.0,
     763.0
    ],
+   "busiest_text": "762\u2013763",
    "busiest_vs_walls": "BELOW_PUT_WALL",
    "compared": false,
    "grew": [],
+   "grew_text": "",
    "rows": [
     {
      "change": null,
@@ -1204,15 +1242,19 @@
     }
    ],
    "shrank": [],
+   "shrank_text": "",
    "volume_total": 9570957.0
   },
   "far": {
    "busiest": [],
+   "busiest_text": "",
    "busiest_vs_walls": null,
    "compared": false,
    "grew": [],
+   "grew_text": "",
    "rows": [],
    "shrank": [],
+   "shrank_text": "",
    "volume_total": null
   },
   "near": {
@@ -1220,9 +1262,11 @@
     762.0,
     763.0
    ],
+   "busiest_text": "762\u2013763",
    "busiest_vs_walls": "BELOW_PUT_WALL",
    "compared": false,
    "grew": [],
+   "grew_text": "",
    "rows": [
     {
      "change": null,
@@ -2248,6 +2292,7 @@
     }
    ],
    "shrank": [],
+   "shrank_text": "",
    "volume_total": 9570957.0
   }
  },
@@ -2257,6 +2302,7 @@
   "all": [
    {
     "strike": 768.0,
+    "strike_text": "768",
     "text": "-$39.93M",
     "value": -39931287.640042946,
     "volume": 422376.0,
@@ -2264,6 +2310,7 @@
    },
    {
     "strike": 769.0,
+    "strike_text": "769",
     "text": "-$16.52M",
     "value": -16523703.255162042,
     "volume": 288663.0,
@@ -2271,6 +2318,7 @@
    },
    {
     "strike": 770.0,
+    "strike_text": "770",
     "text": "-$5.38M",
     "value": -5379257.901601046,
     "volume": 291441.0,
@@ -2278,6 +2326,7 @@
    },
    {
     "strike": 771.0,
+    "strike_text": "771",
     "text": "$4.85M",
     "value": 4846865.9310600385,
     "volume": 230826.0,
@@ -2285,6 +2334,7 @@
    },
    {
     "strike": 772.0,
+    "strike_text": "772",
     "text": "-$10.89M",
     "value": -10893452.32429789,
     "volume": 156732.0,
@@ -2292,6 +2342,7 @@
    },
    {
     "strike": 773.0,
+    "strike_text": "773",
     "text": "$938.38K",
     "value": 938375.7204155028,
     "volume": 95213.0,
@@ -2299,6 +2350,7 @@
    },
    {
     "strike": 774.0,
+    "strike_text": "774",
     "text": "$5.20M",
     "value": 5197339.936038183,
     "volume": 99846.0,
@@ -2306,6 +2358,7 @@
    },
    {
     "strike": 775.0,
+    "strike_text": "775",
     "text": "$12.16M",
     "value": 12158454.964166764,
     "volume": 54431.0,
@@ -2313,6 +2366,7 @@
    },
    {
     "strike": 776.0,
+    "strike_text": "776",
     "text": "$23.17M",
     "value": 23173260.295047093,
     "volume": 35540.0,
@@ -2320,6 +2374,7 @@
    },
    {
     "strike": 777.0,
+    "strike_text": "777",
     "text": "$5.28M",
     "value": 5275141.800939364,
     "volume": 20667.0,
@@ -2327,6 +2382,7 @@
    },
    {
     "strike": 778.0,
+    "strike_text": "778",
     "text": "$5.62M",
     "value": 5617988.353640684,
     "volume": 17001.0,
@@ -2337,6 +2393,7 @@
   "near": [
    {
     "strike": 768.0,
+    "strike_text": "768",
     "text": "-$39.93M",
     "value": -39931287.640042946,
     "volume": 422376.0,
@@ -2344,6 +2401,7 @@
    },
    {
     "strike": 769.0,
+    "strike_text": "769",
     "text": "-$16.52M",
     "value": -16523703.255162042,
     "volume": 288663.0,
@@ -2351,6 +2409,7 @@
    },
    {
     "strike": 770.0,
+    "strike_text": "770",
     "text": "-$5.38M",
     "value": -5379257.901601046,
     "volume": 291441.0,
@@ -2358,6 +2417,7 @@
    },
    {
     "strike": 771.0,
+    "strike_text": "771",
     "text": "$4.85M",
     "value": 4846865.9310600385,
     "volume": 230826.0,
@@ -2365,6 +2425,7 @@
    },
    {
     "strike": 772.0,
+    "strike_text": "772",
     "text": "-$10.89M",
     "value": -10893452.32429789,
     "volume": 156732.0,
@@ -2372,6 +2433,7 @@
    },
    {
     "strike": 773.0,
+    "strike_text": "773",
     "text": "$938.38K",
     "value": 938375.7204155028,
     "volume": 95213.0,
@@ -2379,6 +2441,7 @@
    },
    {
     "strike": 774.0,
+    "strike_text": "774",
     "text": "$5.20M",
     "value": 5197339.936038183,
     "volume": 99846.0,
@@ -2386,6 +2449,7 @@
    },
    {
     "strike": 775.0,
+    "strike_text": "775",
     "text": "$12.16M",
     "value": 12158454.964166764,
     "volume": 54431.0,
@@ -2393,6 +2457,7 @@
    },
    {
     "strike": 776.0,
+    "strike_text": "776",
     "text": "$23.17M",
     "value": 23173260.295047093,
     "volume": 35540.0,
@@ -2400,6 +2465,7 @@
    },
    {
     "strike": 777.0,
+    "strike_text": "777",
     "text": "$5.28M",
     "value": 5275141.800939364,
     "volume": 20667.0,
@@ -2407,6 +2473,7 @@
    },
    {
     "strike": 778.0,
+    "strike_text": "778",
     "text": "$5.62M",
     "value": 5617988.353640684,
     "volume": 17001.0,
@@ -2423,18 +2490,21 @@
  "views": {
   "all": {
    "centre": 773.0,
+   "centre_text": "773",
    "max_abs": 39931287.640042946,
    "max_abs_with_prior": 39931287.640042946,
    "note": null
   },
   "far": {
    "centre": null,
+   "centre_text": null,
    "max_abs": null,
    "max_abs_with_prior": null,
    "note": null
   },
   "near": {
    "centre": 773.0,
+   "centre_text": "773",
    "max_abs": 39931287.640042946,
    "max_abs_with_prior": 39931287.640042946,
    "note": null

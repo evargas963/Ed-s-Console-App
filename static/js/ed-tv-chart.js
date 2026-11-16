@@ -22,8 +22,12 @@
   var LWC = window.LightweightCharts;
 
   var esc = window.EdShell.esc,
-    num = window.EdShell.num,
     orDash = window.EdShell.orDash;
+  // the price under the operator's click: a place on this chart's own scale, not a served value;
+  // none where the scale has no price (the library's coordinateToPrice gives null there)
+  function cursorPrice(p) {
+    return orDash(p == null ? null : p.toFixed(2));
+  }
   function tok(name, fallback) {
     var v = getComputedStyle(document.documentElement).getPropertyValue(name);
     return (v && v.trim()) || fallback;
@@ -992,19 +996,19 @@
         '<span>O <b class="' +
         cls +
         '">' +
-        num(b.o) +
+        b.o_text +
         '</b></span><span>H <b class="' +
         cls +
         '">' +
-        num(b.h) +
+        b.h_text +
         '</b></span><span>L <b class="' +
         cls +
         '">' +
-        num(b.l) +
+        b.l_text +
         '</b></span><span>C <b class="' +
         cls +
         '">' +
-        num(b.c) +
+        b.c_text +
         "</b></span><span>Vol <b>" +
         esc(orDash(b.v_text)) +
         "</b></span>"
@@ -1038,7 +1042,7 @@
           "</span>" +
           '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
           '<div class="tvc-pin-g"><span>Price</span><b>' +
-          num(S.pinned.price) +
+          cursorPrice(S.pinned.price) +
           "</b><span>Bid size</span><b>" +
           esc(orDash(cell ? cell.bid_text : null)) +
           "</b><span>Ask size</span><b>" +
@@ -1062,13 +1066,13 @@
         "</span>" +
         '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
         '<div class="tvc-pin-g"><span>Open</span><b>' +
-        num(b.o) +
+        b.o_text +
         "</b><span>High</span><b>" +
-        num(b.h) +
+        b.h_text +
         "</b><span>Low</span><b>" +
-        num(b.l) +
+        b.l_text +
         "</b><span>Close</span><b>" +
-        num(b.c) +
+        b.c_text +
         '</b><span>Bar change</span><b class="' +
         (chg == null ? "" : chg >= 0 ? "up" : "dn") +
         '">' +
@@ -1077,7 +1081,7 @@
         esc(orDash(b.v_text)) +
         "</b>" +
         (S.pinned.price != null
-          ? "<span>Price at click</span><b>" + num(S.pinned.price) + "</b>"
+          ? "<span>Price at click</span><b>" + cursorPrice(S.pinned.price) + "</b>"
           : "") +
         "</div>";
       pinBox.querySelector(".tvc-pin-x").addEventListener("click", function () {
@@ -1307,7 +1311,7 @@
               " " +
               esc(l.label) +
               " " +
-              num(l.price) +
+              l.price_text +
               "</span>"
             );
           })
@@ -1449,6 +1453,10 @@
             chg_text: b.chg_text,
             time_ct: b.time_ct,
             v_text: b.v_text,
+            o_text: b.o_text,
+            h_text: b.h_text,
+            l_text: b.l_text,
+            c_text: b.c_text,
           };
         });
         heldLabels(
