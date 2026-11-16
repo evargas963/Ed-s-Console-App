@@ -6,6 +6,7 @@ import live_market_plane as lmp
 import server as srv
 import time_et
 from option_contract import read_chain
+from state import level_store
 from tests.real_chains import CRWD
 
 
@@ -29,8 +30,8 @@ def test_the_chain_spot_carries_schwabs_trade_time():
     try:
         body = srv.chain(tk, time_et.now(), {"expiry": exp})
     finally:
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
     assert body["spot"] == 601.23

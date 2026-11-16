@@ -16,6 +16,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from option_contract import read_chain
+from state import bar_store
 from stream_spine import HealthRegistry, MessageBus
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -52,8 +53,8 @@ def newest_bars(rows: list[dict], tk: str) -> list[dict]:
 def forget_bars(*tickers: str) -> None:
     """No bar in memory or published level of `tickers` is left behind."""
     for tk in tickers:
-        server._bars.pop(tk, None)
-        server._series.pop((tk, "1d"), None)
+        bar_store._bars.pop(tk, None)
+        bar_store._series.pop((tk, "1d"), None)
         for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
             del server._MATERIALIZED_SNAPSHOTS[key]
 
@@ -110,7 +111,7 @@ def hold_schwab_daily(symbol: str, under: str | None = None) -> None:
     `under` (default `symbol`): Schwab's recorded /pricehistory daily answer, SPY's and TSLA's of
     2026-10-07 (real_pricehistory_spy_tsla_2026_10_07.json), $SPX's of 2026-11-03
     (real_schwab_daily_spx_2026_10.json, 2024-11-04 through 2026-11-02). The caller pops
-    server._series when done, as it pops server._bars.
+    state.bar_store's series when done, as it pops state.bar_store's bars.
     """
     if symbol == "$SPX":
         sent = json.loads(
@@ -125,9 +126,9 @@ def schwab_daily(symbol: str) -> list:
     """`symbol`'s daily candles as the bar writer holds them (hold_schwab_daily), taken out."""
     hold_schwab_daily(symbol)
     try:
-        return list(server._series[(symbol, "1d")])
+        return list(bar_store._series[(symbol, "1d")])
     finally:
-        server._series.pop((symbol, "1d"), None)
+        bar_store._series.pop((symbol, "1d"), None)
 
 
 #: Wednesday 2026-09-30, 11:00 ET: regular hours in Schwab's /markets answer held for that date

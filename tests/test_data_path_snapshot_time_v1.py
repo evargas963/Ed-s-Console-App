@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import server
+from state import bar_store
 from tests.feed_live_helper import daemon_bars, newest_bars, stream_daemon_bars
 from time_et import ET, ct_label
 
@@ -13,7 +14,7 @@ _BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 
 def _forget(*tickers: str) -> None:
     for tk in tickers:
-        server._bars.pop(tk, None)
+        bar_store._bars.pop(tk, None)
         for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
             del server._MATERIALIZED_SNAPSHOTS[key]
 

@@ -20,6 +20,7 @@ from liquidity_value_engine import (
     get_previous_day_levels,
     prior_session,
 )
+from state import bar_store
 from time_et import ET, sessions
 
 _FX = json.loads(
@@ -37,10 +38,10 @@ def _held(symbol: str) -> tuple[list, list]:
                 {"symbol": symbol, "series": a["series"], "answer": a["body"]}
             )
     try:
-        return list(server._series[(symbol, "1d")]), list(server._bars[symbol])
+        return list(bar_store._series[(symbol, "1d")]), list(bar_store._bars[symbol])
     finally:
-        server._series.pop((symbol, "1d"), None)
-        server._bars.pop(symbol, None)
+        bar_store._series.pop((symbol, "1d"), None)
+        bar_store._bars.pop(symbol, None)
 
 
 def _sent(symbol: str, day: date) -> dict:

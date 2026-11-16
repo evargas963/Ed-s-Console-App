@@ -23,6 +23,7 @@ import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
 from feed import chain_sweep as cs
+from state import level_store
 from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
 from tests.feed_live_helper import daemon_status
@@ -40,8 +41,8 @@ EXPIRY = CRWD.chain[0]["expirationDate"][:10]
 
 
 def _forget():
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
     with server._chains_waiting_lock:
         server._chains_delivered.discard(TK)
     ofs._chain_parts.pop(TK, None)
@@ -83,7 +84,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
             for done in ofs.assemble_chain_part(msg):
                 server._on_chain(*done)
         _drain()
-        held = server.published_levels(TK).served()
+        held = level_store.published_levels(TK).served()
     finally:
         _forget()
     assert (held["spot"], held["spot_as_of_ts_utc"], held["spot_source"]) == (
@@ -123,9 +124,9 @@ def test_a_capture_stored_without_the_chains_spot_has_no_price(tmp_path):
     published = []
     try:
         server._publish_levels(TK, captures=[read], now=CRWD.now)
-        published.append(server.published_levels(TK).served())
+        published.append(level_store.published_levels(TK).served())
         server._publish_levels(TK, now=CRWD.now)  # a reprice of the kept capture
-        published.append(server.published_levels(TK).served())
+        published.append(level_store.published_levels(TK).served())
     finally:
         _forget()
     for held in published:

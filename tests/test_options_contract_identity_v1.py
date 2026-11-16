@@ -16,6 +16,7 @@ from pathlib import Path
 
 import server
 from option_contract import read_chain
+from state import level_store
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -35,14 +36,14 @@ def test_every_contract_schwab_listed_for_a_ticker_is_that_tickers_and_no_others
         for tk, chain in _CHAINS.items():
             server._publish_levels(tk, read_chain(chain), _VALUED.timestamp(), now=_VALUED)
         owners = {
-            tk: {server._contract_ticker(c["symbol"]) for c in chain}
+            tk: {level_store.listing_ticker(c["symbol"]) for c in chain}
             for tk, chain in _CHAINS.items()
         }
-        unlisted = server._contract_ticker("ZZZ   261016C00001000")
+        unlisted = level_store.listing_ticker("ZZZ   261016C00001000")
     finally:
-        with server._terrain_cache_lock:
+        with level_store._lock:
             for tk in _CHAINS:
-                server._terrain_cache.pop(tk, None)
+                level_store._levels.pop(tk, None)
     assert owners == {
         tk: {tk} for tk in _CHAINS
     }  # CDE's contracts are never C's, SPXW's are $SPX's

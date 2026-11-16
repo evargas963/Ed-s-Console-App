@@ -14,6 +14,7 @@ import time_et
 from math_exposure_core import compute_exposures_by_strike, exposure_books
 from option_contract import read_chain
 from server import project_gamma_surface
+from state import level_store
 from terrain_engine import _per_strike_rows
 from tests.real_chains import CRWD
 
@@ -105,8 +106,8 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes():
         # no rows is shown absent with its reason, the one rule for the vanna and charm panels
         assert body["available"] is False and body["reason"]
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
 
 
 # ---------------------------------------------------------- 2. a genuine zero still renders ----

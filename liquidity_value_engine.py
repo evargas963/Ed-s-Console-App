@@ -126,7 +126,7 @@ def bars_from_candles(candles: list[Candle]) -> list[Bar]:
 def prior_session(daily: list[Candle], session_date: date) -> Candle | None:
     """Return THE prior session, for the previous-day levels and the overnight window.
 
-    It is the newest of Schwab's daily candles (the bar writer's, server._series) dated before
+    It is the newest of Schwab's daily candles (the bar writer's, state.bar_store) dated before
     `session_date`. Schwab sends a daily candle for each session that traded, so a weekend, a
     holiday or a closure has none. None: no such candle held (not received), never a guessed
     date.

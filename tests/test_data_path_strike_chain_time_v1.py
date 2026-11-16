@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import server as srv
 from option_contract import read_chain
+from state import level_store
 from tests.real_chains import CRWD
 
 
@@ -22,8 +23,8 @@ def test_the_strike_panel_carries_the_chain_time():
         )
         body = srv.terrain_strikes_payload(tk, "auto", None, 0, fetched + 21)
     finally:
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
     assert body["levels_age_text"] == "21s"
     assert body["levels_time_ct"] == "Fri 09/25 06:59 PM CT"
     # 2026-09-25 has no /markets answer held: the rows' verdict is NOT LIVE

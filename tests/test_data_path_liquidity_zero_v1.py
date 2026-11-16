@@ -21,6 +21,7 @@ import server as srv
 from liquidity_models import ZoneType
 from micro_structure import Candle
 from option_contract import read_chain
+from state import bar_store, level_store
 from tests.feed_live_helper import daemon_status, price_history
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
 from tests.real_chains import SPY_CLOSE
@@ -38,14 +39,14 @@ def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> d
 
     Those of the October days in `zero_days` with every price 0 but the bar at `keep`.
     """
-    srv._bars.pop(TK, None)
+    bar_store._bars.pop(TK, None)
     for b in friday_bars():
         ts = b["timestamp"] / 1000
         if ts >= at.timestamp():
             continue
         zero = datetime.fromtimestamp(ts, ET).day in zero_days and ts != keep
         o, h, lo, c = (0, 0, 0, 0) if zero else (b["open"], b["high"], b["low"], b["close"])
-        srv._keep_bar(TK, Candle(ts=ts, open=o, high=h, low=lo, close=c, volume=b["volume"]))
+        bar_store.keep_bar(TK, Candle(ts=ts, open=o, high=h, low=lo, close=c, volume=b["volume"]))
     # Schwab's SPY daily candles of the same days (the prior session's high, low and close), a
     # zeroed day's at 0 like its bars
     sent = [
@@ -110,11 +111,11 @@ def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
         now=SPY_CLOSE.now,
     )
     try:
-        snap = srv.published_levels(TK).snap
+        snap = level_store.published_levels(TK).snap
         body = srv.liquidity_snapshot(TK, FRIDAY)
     finally:
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(TK, None)
+        with level_store._lock:
+            level_store._levels.pop(TK, None)
     held = {
         tag
         for key, tag in liquidity_value_engine.OPTION_LEVEL_TAGS

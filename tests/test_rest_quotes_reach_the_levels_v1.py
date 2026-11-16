@@ -33,6 +33,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from option_contract import read_chain
+from state import level_store
 from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import daemon_status
@@ -72,8 +73,8 @@ def _reset() -> None:
     lmp.record_feed_down()
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
     with server._chains_waiting_lock:
         server._chains_delivered.discard(TK)
 
@@ -109,11 +110,11 @@ def _answered(answer: dict, received: float) -> None:
     ofs._ingest_pushed("optquotes", {"src": "schwab_quotes", "ts_recv": received, "answer": answer})
 
 
-def _cached() -> server.PublishedLevels:
-    return server.published_levels(TK)
+def _cached() -> level_store.PublishedLevels:
+    return level_store.published_levels(TK)
 
 
-def _repriced(answer: dict, received: float) -> server.PublishedLevels:
+def _repriced(answer: dict, received: float) -> level_store.PublishedLevels:
     """Return the levels once the reprice the ticks of `answer` queued has run, at `received`.
 
     The pricing job runs at its own instant (server._price_waiting_chain): here, `received`.

@@ -20,6 +20,7 @@ from pathlib import Path
 import server
 from micro_structure import Candle
 from open_gap import open_gap_record, today_open, wilson
+from state import bar_store
 from tests.page_on_socket import pages
 from time_et import ET, session
 
@@ -109,7 +110,7 @@ def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_design
             assert on_socket.told(other) == set(), "a page showing another ticker is not"
             assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None
             assert on_socket.told(page, 0.2) == set(), "the same answer again tells nothing"
-        assert ("TSLA", "5m365") not in server._series  # their candles are not held as series
+        assert ("TSLA", "5m365") not in bar_store._series  # their candles are not held as series
         weekend = server.experimental("TSLA", _et("2026-10-10 12:00"))
         before_open = server.experimental("TSLA", _et("2026-10-07 09:00"))
         spy = server.experimental("SPY", _et("2026-10-07 09:00"))
