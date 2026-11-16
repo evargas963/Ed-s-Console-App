@@ -154,23 +154,25 @@ def held_key(service: str, sym: str) -> str:
 
 
 def _message(
-    service: str, sym: str, item: dict[str, Any], schwab_ts: int | None
+    service: str, sym: str, item: dict[str, Any], schwab_ts: int | None, ts_recv: float
 ) -> tuple[str, dict[str, Any]]:
-    """(topic kind, bus message) for one Schwab item, with the timestamp of Schwab's frame."""
+    """(topic kind, bus message) for one Schwab item, with the timestamp of Schwab's frame and
+    the time it was received."""
     kind, src = SERVICE_TOPIC[service]
+    at = {"src": src, "schwab_ts": schwab_ts, "ts_recv": ts_recv}
     if service == "LEVELONE_EQUITIES":
         flat = {name: item.get(k) for k, name in LEVELONE_FIELDS.items()}
-        return kind, quote_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
+        return kind, quote_msg(symbol=sym, native=item, **at, **flat)
     if service == "CHART_EQUITY":
         flat = {name: item.get(k) for k, name in CHART_FIELDS.items()}
-        return kind, bar_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
+        return kind, bar_msg(symbol=sym, native=item, **at, **flat)
     if service in ("LEVELONE_OPTIONS", "NEWS_HEADLINE"):
-        return kind, verbatim_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
-    return kind, book_msg(symbol=sym, service=service, content=item, src=src, schwab_ts=schwab_ts)
+        return kind, verbatim_msg(symbol=sym, content=item, **at)
+    return kind, book_msg(symbol=sym, service=service, content=item, **at)
 
 
 def _publisher(
-    service: str, bus: MessageBus, health: HealthRegistry
+    service: str, bus: MessageBus, health: HealthRegistry, clock: Callable[[], float]
 ) -> Callable[[dict[str, Any]], None]:
     """schwab-py handler for one service: every item -> the bus.
 
@@ -181,7 +183,7 @@ def _publisher(
 
     def handler(msg: dict[str, Any]) -> None:
         published = False
-        schwab_ts = msg.get("timestamp")
+        now, schwab_ts = clock(), msg.get("timestamp")
         content = msg.get("content")
         if not isinstance(content, list):
             log.warning("%s: a frame with no list of items, not taken: %.500r", service, msg)
@@ -192,11 +194,11 @@ def _publisher(
                 log.warning("%s: an item with no symbol, not taken: %.500r", service, item)
                 continue
             sym = key.upper()
-            kind, out = _message(service, sym, item, schwab_ts)
+            kind, out = _message(service, sym, item, schwab_ts, now)
             bus.publish(f"{kind}.{sym}", out)
             published = True
         if published:
-            health.beat(service)
+            health.beat(service, now)
 
     return handler
 
@@ -253,7 +255,7 @@ class Connection:
         self.wake = asyncio.Event()  # a request is waiting: the connection sends it now
         self.stream: TimedStream | None = None
         #: each service's items -> the bus (_dispatch)
-        self.publishers = {svc: _publisher(svc, bus, health) for svc in SERVICES}
+        self.publishers = {svc: _publisher(svc, bus, health, clock) for svc in SERVICES}
         #: why Schwab is not connected, for /api/health (read while the socket is not open):
         #: SCHWAB_CONNECTING, or NOT CONNECTED since the first failure in a row (_down_since) with
         #: the last one's reason, as the log has it
@@ -342,6 +344,7 @@ class Connection:
                 symbols=sent.symbols,
                 code=code,
                 reason=msg,
+                ts=self.clock(),
             ),
         )
         svc = sent.service
@@ -363,7 +366,7 @@ class Connection:
         self.held[svc] = kept
 
     async def connect(self, client: object) -> None:
-        stream = TimedStream(client)
+        stream = TimedStream(client, self.clock)
         # every message Schwab sends, whatever its size: the websockets library caps a received
         # message at 1 MiB by default, and nothing of ours does
         await stream.login(websocket_connect_args={"max_size": None})

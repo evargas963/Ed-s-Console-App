@@ -189,7 +189,11 @@ class _Market:
         self.bus.publish(
             f"quote.{tk}",
             quote_msg(
-                symbol=tk, last=last, src="schwab_l1", native={"key": tk, "LAST_PRICE": last}
+                symbol=tk,
+                last=last,
+                src="schwab_l1",
+                ts_recv=self.daemon.clock(),
+                native={"key": tk, "LAST_PRICE": last},
             ),
         )
 

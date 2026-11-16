@@ -19,11 +19,17 @@ def test_the_console_and_the_daemon_hold_one_watchlist(tmp_path):
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db)
     writer.insert(
-        *capture.watchlist_message(["SPY", "TSLA"], op=capture.ADDED, ticker="TSLA", request_id=1)
+        *capture.watchlist_message(
+            ["SPY", "TSLA"], op=capture.ADDED, ticker="TSLA", request_id=1, ts_recv=time_et.now()
+        )
     )
     writer.insert(
         *capture.watchlist_message(
-            ["SPY", "TSLA", "$SPX"], op=capture.ADDED, ticker="$SPX", request_id=2
+            ["SPY", "TSLA", "$SPX"],
+            op=capture.ADDED,
+            ticker="$SPX",
+            request_id=2,
+            ts_recv=time_et.now(),
         )
     )
     d = capture.Daemon(MessageBus(), HealthRegistry(), capture.stored_watchlist(db))
