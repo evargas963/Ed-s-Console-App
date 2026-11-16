@@ -210,7 +210,7 @@ from Schwab to the screen (daemon, console, page), are these:
   the regular one starts the levels are from before the break: they stand, not live, with their
   age, and the reason says so ("Schwab's option session reopened ... and its first chain since
   has not arrived") until that chain arrives; past two of the sweep's rounds with none, the
-  reason is the sweep's (`server._levels_state`, `time_et.option_window_began`; operator
+  reason is the sweep's (`push.verdict._levels_state`, `time_et.option_window_began`; operator
   2026-11-13, asked what a bank would do: "i agree with bank analogy";
   `tests/test_markets_sessions_v1.py`). When it stops
   updating, for any reason (feed down, market closed, an input missing), the last value stands,
@@ -541,7 +541,7 @@ the program.
   options are listed (operator 2026-10-08). Then no chain is requested
   until its market opens again: the close values stand (D5), and a ticker not on the watchlist is
   not fetched — it shows
-  its levels absent with the reason (`server.terrain_staleness`, the one levels verdict every
+  its levels absent with the reason (`push.verdict.terrain_staleness`, the one levels verdict every
   screen shows, `levels_state`: once the ticker's own option market has closed (its
   `time_et.option_close_product`: stock options at 16:00 ET, index-close options at 16:15),
   After-Hours included, levels from a chain fetched after that close are its close values and read
@@ -567,7 +567,7 @@ the program.
   2026-10-15, the refused sign-in): once Schwab refuses the sign-in, nothing is sent until a new
   one is saved (§1, `OneRefreshSession`, `ChainSweep.waits`); the refusal and what to run ride the
   daemon's status (`chains_waiting`) to the levels' stale reason on every screen
-  (`server._levels_state`; `tests/test_data_path_sign_in_v1.py`). Enforced by:
+  (`push.verdict._levels_state`; `tests/test_data_path_sign_in_v1.py`). Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (the requests, one at a time on one
   connection, quotes across tickers, no pause after a 429, a 429 on an expiry asked once more) and
   `tests/test_data_path_rules_v1.py`
@@ -854,7 +854,7 @@ the program.
   LIVE (the feed down, the symbol not held, its market not trading); while it is LIVE, the
   quote's own state, the same verdict the daemon's price row carries (`live_price_rows.price_row`).
   The levels, the chain and the heatmap carry the levels verdict
-  (`server.terrain_staleness`, §3.4's chain sweep: LIVE / CLOSE / STALE / NOT LIVE with the
+  (`push.verdict.terrain_staleness`, §3.4's chain sweep: LIVE / CLOSE / STALE / NOT LIVE with the
   chain's time and age, its age kept counting by `server.refresh_not_live_pages` while it is not
   LIVE), and Key Levels its mark (`server.levels_mark`: the levels' word, or the price's while
   the levels are LIVE). A value's age is never the test: Schwab sends a
@@ -1019,7 +1019,7 @@ the program.
    "whatever faucet we get water from then we need to keep getting from that faucet";
    `tests/test_last_print_one_reader_v1.py`). Still
    blank: levels fetched before the option close are marked apart from a feed stop
-   (`server.terrain_staleness`); some calculations still drop
+   (`push.verdict.terrain_staleness`); some calculations still drop
    contracts. The §3 descriptions of these are today's behavior. Each remaining place is
    listed in PR #515's description and fixed by `ACTIVE_PROGRAM.md` NUMBERS.
 6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-";
