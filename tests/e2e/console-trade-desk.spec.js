@@ -186,7 +186,7 @@ test('Desk: an offline price keeps its last trade time on the map', async ({ pag
   await intercept(page);
   await deskSocket(page, [
     priceRow('$SPX', 5800.12, { trade_time_ct: '14:00:01 CT', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
-    priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
+    priceRow('$VIX', 16.4, { trade_time_ct: '14:00:02 CT', chg_pct: 1.2, chg_pct_text: '+1.20%', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH' }),
     priceRow('SPY', 771.3, { trade_time_ct: '14:00:03 CT', feed_live: false, feed_label: 'OFFLINE', outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', total_volume: 1000 }),
   ]);
   await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
