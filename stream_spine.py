@@ -60,10 +60,6 @@ STREAM_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS stream_quotes_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
-    bid REAL, ask REAL, last REAL,
-    bid_size INTEGER, ask_size INTEGER, last_size INTEGER,
-    total_volume INTEGER,
-    quote_time_ms INTEGER, trade_time_ms INTEGER,
     native_json TEXT,
     schwab_ts INTEGER
 );
@@ -83,12 +79,9 @@ CREATE TABLE IF NOT EXISTS stream_options_quotes_raw (
 CREATE TABLE IF NOT EXISTS stream_bars_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
-    bar_start_ms INTEGER,
-    open REAL, high REAL, low REAL, close REAL, volume INTEGER,
     native_json TEXT,
     schwab_ts INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_ms);
 -- NEWS_HEADLINE items, verbatim (not in Schwab's Streamer API,
 -- docs/schwab/schwab_streamer_api.pdf §1.1 "Services available"; answers code 0).
 CREATE TABLE IF NOT EXISTS stream_news_raw (
@@ -540,21 +533,10 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
         ),
     ),
     "quote": (
-        "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
-        "last_size,total_volume,quote_time_ms,trade_time_ms,native_json,schwab_ts) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO stream_quotes_raw(ts_recv,symbol,native_json,schwab_ts) VALUES(?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
-            m["bid"],
-            m["ask"],
-            m["last"],
-            m["bid_size"],
-            m["ask_size"],
-            m["last_size"],
-            m["total_volume"],
-            m["quote_time_ms"],
-            m["trade_time_ms"],
             _json(m["native"]),
             m["schwab_ts"],
         ),
@@ -581,17 +563,10 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
         ),
     ),
     "bar1m": (
-        "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
-        "volume,native_json,schwab_ts) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO stream_bars_raw(ts_recv,symbol,native_json,schwab_ts) VALUES(?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
-            m["bar_start_ms"],
-            m["open"],
-            m["high"],
-            m["low"],
-            m["close"],
-            m["volume"],
             _json(m["native"]),
             m["schwab_ts"],
         ),

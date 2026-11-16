@@ -207,20 +207,21 @@ def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches
 
 
 def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_path):
-    """INDUCED CONDITION: the captured TSLA quote's TOTAL_VOLUME set to 2**64.
+    """INDUCED CONDITION: the captured TSLA quote's frame timestamp set to 2**64.
 
-    That is more than SQLite's 64-bit INTEGER holds (OverflowError while binding). The captured
+    That is more than SQLite's 64-bit INTEGER holds (OverflowError while binding `schwab_ts`).
+    Schwab's item itself is stored as its JSON text, whatever a number in it holds. The captured
     quote after it is stored.
     """
     db = tmp_path / "stream_capture.db"
-    big = {**_TSLA["native"], "TOTAL_VOLUME": 2**64}
+    big = dict(_TSLA["native"])
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         h = connection._publisher("LEVELONE_EQUITIES", bus, health)
-        h({"content": [big], "timestamp": 1})
+        h({"content": [big], "timestamp": 2**64})
         await _until(lambda: writer.status()["failures"] >= 1)  # kept as sent
         h({"content": [_TSLA["native"]], "timestamp": 2})
         await _until(lambda: writer.status()["rows_written"] >= 1)  # and the writer goes on
@@ -337,7 +338,7 @@ class _Defect(dict):
     """
 
     def __getitem__(self, key):
-        if key == "bid":
+        if key == "native":
             raise RuntimeError("a defect in the writer")
         return dict.__getitem__(self, key)
 
@@ -1269,7 +1270,7 @@ class _ArmedDefect(dict):
         self.armed = armed
 
     def __getitem__(self, key):
-        if key == "bid" and self.armed.is_set():
+        if key == "native" and self.armed.is_set():
             raise RuntimeError("a defect in the writer")
         return dict.__getitem__(self, key)
 

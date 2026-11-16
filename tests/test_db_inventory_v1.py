@@ -31,21 +31,8 @@ def test_every_stream_table_the_writer_creates_is_counted_with_its_columns(tmp_p
     assert set(tables) == set(CREATED)
     assert all(t.rows == 0 for t in tables.values())
     quotes = [c.name for c in tables["stream_quotes_raw"].columns]
-    assert quotes == [
-        "ts_recv",
-        "symbol",
-        "bid",
-        "ask",
-        "last",
-        "bid_size",
-        "ask_size",
-        "last_size",
-        "total_volume",
-        "quote_time_ms",
-        "trade_time_ms",
-        "native_json",
-        "schwab_ts",
-    ]
+    # Schwab's item as sent, nothing copied out of it beside it (every row checked, ONE-DB)
+    assert quotes == ["ts_recv", "symbol", "native_json", "schwab_ts"]
     assert "src" not in quotes  # one value in every row: dropped (ONE-DB)
     for table, index in RECEIPT_TIME_INDEXES.items():
         name = index.split()[2]

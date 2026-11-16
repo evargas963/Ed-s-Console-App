@@ -439,9 +439,8 @@ the program.
   waiting has been written and pushed as `liquidity` (a `levels` push when the published
   snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a ticker with
   none yet for the market's session (the console's start, a new session). It reads the
-  console's bars (`_bars_1m`), whose one owner is the bar writer (`_bar_writer`): it loads them
-  from the daemon's record (`stream_bars_raw`, Schwab's newest bar of each minute) before it
-  takes any pushed bar (the push queue holds the bars that arrive meanwhile), then keeps each
+  console's bars (`_bars_1m`), whose one owner is the bar writer (`_bar_writer`): it takes
+  Schwab's price history the daemon pushes before any pushed bar (no database read) (the push queue holds the bars that arrive meanwhile), then keeps each
   pushed bar, and stops at the console's shutdown once the bars queued are kept
   (`stop_bar_writer`). The console's old bar store (`ed.db` `price_bars_1m`: bars its
   quote accumulator built and price-history re-seeds before 2026-09-26, then Schwab's streamed
