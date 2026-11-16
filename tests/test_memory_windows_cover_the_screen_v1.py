@@ -3,7 +3,7 @@
 Operator 2026-11-15: keep them, and know whether each keeps "too much of this data, too little or
 is it the right amount". Too little cuts a screen short; the records keep every message whatever
 the window (docs/DATA_FLOW.md §2 D4). The book heatmap's windows are refused past the books kept
-(server.bookmap), so its limit cannot cut a window short in silence.
+(push.bookmap), so its limit cannot cut a window short in silence.
 
 Real data: SPY's LEVELONE_EQUITIES messages of 2026-11-13 10:00:00-10:02:00 ET as the daemon
 recorded them (tests/fixtures/real_spy_levelone_2026_11_13_1000et.json), SPY's /pricehistory
