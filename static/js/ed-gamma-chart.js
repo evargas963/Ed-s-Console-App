@@ -9,8 +9,8 @@
 (function () {
   "use strict";
 
-  var usd = window.EdGamma.formatUsd;
-  var esc = window.EdShell.esc;
+  var esc = window.EdShell.esc,
+    orDash = window.EdShell.orDash;
   function isChart() {
     var s = window.EdShell.getState();
     return (
@@ -31,6 +31,7 @@
         rows: x.rows,
         scale: x.view.max_abs,
         max_abs_row: x.max_abs_row,
+        top_text: x.max_abs_row ? x.max_abs_row[2] : null, // [strike, value, its text]
         name: m === "oi" ? "OI" : "DEX",
         signed: m !== "oi",
       };
@@ -38,6 +39,7 @@
       rows: sd.today.all,
       scale: sd.views.all.max_abs,
       max_abs_row: sd.max_abs_row,
+      top_text: sd.max_abs_row ? sd.max_abs_row[3] : null, // [strike, GEX, volume, their texts]
       name: "GEX",
       signed: true,
     };
@@ -221,11 +223,7 @@
           })
         : "");
     var top = prof.max_abs_row; // served: the largest-magnitude row
-    var shown = top
-      ? prof.signed
-        ? usd(top[1])
-        : Number(top[1]).toLocaleString("en-US") + " contracts"
-      : "";
+    var shown = top ? orDash(prof.top_text) + (prof.signed ? "" : " contracts") : "";
     el.innerHTML =
       (asof ? '<div class="chart-asof">' + asof + "</div>" : "") +
       '<div class="chart-legend">' +

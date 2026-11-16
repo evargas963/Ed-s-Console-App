@@ -22,8 +22,6 @@
     served = window.EdShell.served,
     notLive = window.EdShell.notLive,
     tag = window.EdShell.classTag;
-  var usd = window.EdGamma.formatUsd,
-    fmtVol = window.EdGamma.formatCount;
   function isRightNow() {
     var s = window.EdShell.getState();
     return s.workspace === "trade-desk" && s.subview === "right-now";
@@ -219,7 +217,7 @@
         "Max pain" + (d.max_pain_dte != null ? " (" + d.max_pain_dte + "DTE)" : ""),
         num(d.max_pain),
       ],
-      ["Net GEX @ spot", usd(d.net_gex_at_spot)],
+      ["Net GEX @ spot", orDash(d.net_gex_at_spot_text)],
     ];
     if (d.flip_note != null) rows.push(["Γ flip note", d.flip_note]); // served: the flip's note
     return stage(
@@ -495,7 +493,6 @@
       // a strike with no GEX value is unknown, not a zero bar
       var k = r[0],
         gx = r[1],
-        vol = r[2],
         gy = prior(k);
       var hasGy = gy != null && gx != null;
       var sToday = window.EdShell.strength(gx, maxAbs),
@@ -516,8 +513,7 @@
           : '<span class="mig-delta ' +
             (delta >= 0 ? "pos" : "neg") +
             '">' +
-            (delta >= 0 ? "▲" : "▼") +
-            usd(Math.abs(delta)) +
+            esc(migRow[k][4]) + // served: "▲$1.23M" / "▼$1.23M"
             "</span>";
       var rowCls =
         "gbs-row mig-row" +
@@ -541,11 +537,11 @@
         '<span class="gbs-v ' +
         (gx == null ? "" : pos ? "pos" : "neg") +
         '">' +
-        usd(gx) +
+        esc(orDash(r[3])) + // served: net GEX $ as the screen shows it
         "</span>" +
         (_migGhost ? deltaHtml : "") +
         '<span class="gbs-vol" title="session volume">' +
-        fmtVol(vol) +
+        esc(orDash(r[4])) +
         "</span>" +
         (k === spotStrike ? migTag("SPOT", "spot") : "") +
         (cw != null && k === cw ? migTag("Call wall", "call") : "") +

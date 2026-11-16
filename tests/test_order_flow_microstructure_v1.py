@@ -78,7 +78,14 @@ def test_top_of_book_is_native():
     m = _micro(_data(), now_ts=1787233772.0)
     assert m["status"] == "ok"
     tob = m["top_of_book"]
-    assert tob == {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500}
+    assert tob == {
+        "bid": 712.47,
+        "ask": 712.49,
+        "bid_size": 300,
+        "ask_size": 500,
+        "bid_size_text": "300",
+        "ask_size_text": "500",
+    }
     for k in ("top_of_book.bid", "top_of_book.ask", "top_of_book.bid_size", "top_of_book.ask_size"):
         assert m["classification"][k] == "NATIVE"
 

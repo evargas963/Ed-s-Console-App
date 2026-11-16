@@ -81,6 +81,34 @@ def shares_text(value: float | None) -> str | None:
     return f"{float(value):,.0f}"
 
 
+def count_text(value: float | None) -> str | None:
+    """Return a count (shares, contracts, a book's size) as the screen shows it, compact.
+
+    Two decimals in thousands, millions and billions, whole below a thousand (operator
+    2026-11-16: "yes use two decimal points"): 1.23B, 4.56M, 7.89K, 950, -1.20K. None when there
+    is no count.
+    """
+    if value is None:
+        return None
+    v = float(value)
+    sign, a = ("-" if v < 0 else ""), abs(v)
+    for size, unit in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if a >= size:
+            return f"{sign}{a / size:.2f}{unit}"
+    return f"{sign}{a:.0f}"
+
+
+def dollars_text(value: float | None) -> str | None:
+    """Return dollars as the screen shows them, compact as count_text: $1.23B, -$4.56M, $950.
+
+    None when there is no amount.
+    """
+    text = count_text(value)
+    if text is None:
+        return None
+    return f"-${text[1:]}" if text.startswith("-") else f"${text}"
+
+
 def percent_text(value: float | None) -> str | None:
     """Return a signed percentage as the screen shows it, whole (+22%, -21%, 0%).
 

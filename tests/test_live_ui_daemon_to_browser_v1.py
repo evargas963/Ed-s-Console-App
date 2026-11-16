@@ -64,6 +64,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from instrument_identity import ticker_storage_key
+from numeric_contract import count_text, dollars_text
 from option_contract import read_chain
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import clock_from
@@ -778,8 +779,11 @@ async def _next(ws, kind) -> dict:
 
 
 def _published_rows(tk, key) -> list:
-    """Return the rows the levels producer published for `tk` (its vanna_rows or charm_rows)."""
-    return [list(r) for r in getattr(server.published_levels(tk), key)]
+    """Return the rows the levels producer published for `tk` (its vanna_rows or charm_rows).
+
+    As the panel serves them: each with its value as the screen shows it (count_text).
+    """
+    return [[*r, count_text(r[1])] for r in getattr(server.published_levels(tk), key)]
 
 
 ALL = {"scope": "all", "centre": None, "shift": 0}
@@ -1127,8 +1131,14 @@ AUTO = {"scope": "auto", "centre": None, "shift": 0}
 
 
 def _per_strike(tk) -> list:
-    """Today's rows [strike, net GEX $ per 1%, volume] the producer published for `tk`."""
-    return [list(r) for r in server.published_levels(tk).snap.per_strike["all"]]
+    """Today's rows [strike, net GEX $ per 1%, volume] the producer published for `tk`.
+
+    As the panel serves them: each with its two numbers as the screen shows them.
+    """
+    return [
+        [*r, dollars_text(r[1]), count_text(r[2])]
+        for r in server.published_levels(tk).snap.per_strike["all"]
+    ]
 
 
 @pytest.mark.usefixtures("no_levels")

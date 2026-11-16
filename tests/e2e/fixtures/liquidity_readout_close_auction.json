@@ -2856,8 +2856,10 @@
  "top_of_book": {
   "ask": 760.19,
   "ask_size": 280.0,
+  "ask_size_text": "280",
   "bid": 760.18,
-  "bid_size": 80.0
+  "bid_size": 80.0,
+  "bid_size_text": "80"
  },
  "top_outage": null,
  "venue": "NYSE_BOOK",

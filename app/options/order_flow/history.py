@@ -18,6 +18,7 @@ from typing import Any, Literal, TypedDict
 from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import canonical_tape_prints
+from numeric_contract import count_text, dollars_text
 from option_contract import OptionContract
 from time_et import ct_clock, ct_label
 
@@ -39,6 +40,9 @@ class Cell(TypedDict):
     price: float
     bid: float | None
     ask: float | None
+    #: each side's size as the screen shows it (numeric_contract.count_text)
+    bid_text: str | None
+    ask_text: str | None
     side: str
 
 
@@ -186,6 +190,7 @@ def tape_row(printed: TapePrint, contract: OptionContract) -> TapeRow:
     screen shows it (time_et.ct_clock, None when Schwab sent none); the receive time is not served.
     """
     size, mult, ms = printed["size"], contract.multiplier, printed["trade_time_ms"]
+    premium = None if size is None or mult is None else printed["trade"] * size * mult
     return {
         "trade_time_ms": ms,
         "trade_time_ct": None if ms is None else ct_clock(ms / 1000),
@@ -204,7 +209,10 @@ def tape_row(printed: TapePrint, contract: OptionContract) -> TapeRow:
         "type": contract.side,
         "strike": contract.strike,
         "oi": contract.open_interest,
-        "premium": None if size is None or mult is None else printed["trade"] * size * mult,
+        "premium": premium,
+        # the premium and the day's volume as the screen shows them
+        "premium_text": dollars_text(premium),
+        "volume_text": count_text(printed["volume"]),
     }
 
 
@@ -401,6 +409,8 @@ def book_heatmap_for_ticker(
                 "price": k[1],
                 "bid": v["bid"],
                 "ask": v["ask"],
+                "bid_text": count_text(v["bid"]),
+                "ask_text": count_text(v["ask"]),
                 "side": _dominant(v["bid"], v["ask"]),
             }
             for k, v in cells.items()

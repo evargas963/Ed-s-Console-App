@@ -29,6 +29,7 @@ import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
+from numeric_contract import count_text, dollars_text
 from option_contract import read_chain
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
@@ -358,7 +359,9 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
 def test_the_largest_gex_strike_is_served(held):
     rows = held.snap.per_strike["all"]
     body = server.strikes(TK, time_et.now(), AUTO)
-    assert body["max_abs_row"] == max(rows, key=lambda r: abs(r[1]))
+    top = max(rows, key=lambda r: abs(r[1]))
+    # the row, then its net GEX and volume as the screen shows them
+    assert body["max_abs_row"] == [*top, dollars_text(top[1]), count_text(top[2])]
 
 
 def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():

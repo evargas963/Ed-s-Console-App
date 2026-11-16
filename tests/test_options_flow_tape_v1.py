@@ -102,11 +102,15 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
         "size",
         "premium",
         "volume",
+        "premium_text",
+        "volume_text",
         "oi",
         "iv",
         "delta",
         "classification",
     }
+    # the premium and the day's volume as the screen shows them (operator 2026-11-16)
+    assert (r["premium_text"], r["volume_text"]) == ("$204", "4.39K")
 
 
 def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice():

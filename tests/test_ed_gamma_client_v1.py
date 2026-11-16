@@ -1,38 +1,12 @@
-"""RC-UI-1 — run Node assertions for the Options/Gamma heatmap presentation helpers.
+"""The Options/Gamma heatmap's surface is the page socket's panel, served by no route.
 
-The helpers are static/js/ed-gamma.js; also confirm the surface is the page socket's panel.
+Its cells' numbers are served as text (tests/test_served_numbers_v1.py); the page formats none.
 """
 
 from __future__ import annotations
 
-import shutil
-import subprocess
-from pathlib import Path
-
-import pytest
-
 import server as srv
 from app.market_data.schwab.streaming.live_ui import Asked
-
-ROOT = Path(__file__).resolve().parent.parent
-
-
-def test_ed_gamma_node_script():
-    node = shutil.which("node")
-    if not node:
-        pytest.fail(
-            "Node.js is required on PATH for this test (runs tests/ed_gamma_node.mjs). "
-            "Install Node.js LTS — same prerequisite as Playwright E2E (see docs/playwright.md)."
-        )
-    script = ROOT / "tests" / "ed_gamma_node.mjs"
-    r = subprocess.run(
-        [node, str(script)],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert r.returncode == 0, r.stdout + "\n" + r.stderr
 
 
 def test_gamma_surface_is_the_sockets_panel_and_no_route():

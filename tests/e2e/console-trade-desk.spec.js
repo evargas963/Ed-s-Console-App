@@ -867,9 +867,11 @@ test.describe('Trade Desk renders served values', () => {
     await mockPriceSocket(page, [], [], undefined,
       { desk: tfAt(EVENTS), book: MICRO, liquidity: LIQ, bars: tfAt(BARS),
         forces: { ticker: 'SPY', available: true, doi_below: 1200, doi_above: null,
-          dex_below_dollars: 5e8, dex_above_dollars: null, charm_below: 0.0123, charm_above: null, older_et_date: '2026-10-07' },
+          dex_below_dollars: 5e8, dex_above_dollars: null, dex_below_text: '$500.00M', dex_above_text: null,
+          charm_below: 0.0123, charm_above: null, older_et_date: '2026-10-07' },
         terrain: Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL', flip_note: 'the flip\'s note, as served' }),
-        strikes: Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: null } }),
+        strikes: Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: null,
+          gex_below_text: '-$1.20B', gex_above_text: null } }),
         levels: levelsAt(Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),
           by_distance: ['call_wall', 'max_pain', 'PDH', 'grc'] })) });
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
@@ -878,10 +880,10 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('GRC 837.58');
     await expect(page.locator('#tdmCardOpt')).toContainText('GEX below / above');
     await expect(page.locator('#tdmCardOpt')).toContainText('Γ flip note the flip\'s note, as served');   // induced
-    await expect(page.locator('#tdmCardOpt')).toContainText('−$1.20B / -');          // GEX, one side not known
+    await expect(page.locator('#tdmCardOpt')).toContainText('-$1.20B / -');          // GEX, one side not known, as served
     await expect(page.locator('#tdmCardOpt')).toContainText('ΔOI since 2026-10-07 below / above 1200 / -');   // from its served day
     await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / -');           // charm, one side not known
-    await expect(page.locator('#tdmCardOpt')).toContainText('+$500.0M / -');         // DEX, one side not known
+    await expect(page.locator('#tdmCardOpt')).toContainText('$500.00M / -');         // DEX, one side not known, as served
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);
     expect(errs).toEqual([]);

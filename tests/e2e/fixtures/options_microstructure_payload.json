@@ -139,8 +139,10 @@
   "top_of_book": {
     "ask": 0.61,
     "ask_size": 14.0,
+    "ask_size_text": "14",
     "bid": 0.58,
-    "bid_size": 55.0
+    "bid_size": 55.0,
+    "bid_size_text": "55"
   },
   "top_outage": "the market session is unknown",
   "wall_candidates": []

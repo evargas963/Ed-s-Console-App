@@ -47,21 +47,6 @@
     orDash = window.EdShell.orDash;
   var num = window.EdShell.num,
     notLive = window.EdShell.notLive;
-  function usd(n) {
-    if (n == null || isNaN(n)) return "-";
-    var a = Math.abs(n),
-      s = n < 0 ? "−" : "+";
-    if (a >= 1e9) return s + "$" + (a / 1e9).toFixed(2) + "B";
-    if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(1) + "M";
-    return s + "$" + a.toFixed(0);
-  }
-  function fmtVol(n) {
-    if (n == null || isNaN(n)) return "-";
-    var a = Math.abs(Number(n));
-    if (a >= 1e6) return (a / 1e6).toFixed(2) + "M";
-    if (a >= 1e3) return (a / 1e3).toFixed(1) + "K";
-    return String(Math.round(a));
-  }
   // Schwab's book time stands beside the age words. A book that is not live keeps that
   // time and says so. The words are unchanged when no book time was sent.
   function bookAgeLabel(m, word) {
@@ -560,12 +545,15 @@
     var ss = S.strikes && S.strikes.today_side_sums,
       f = S.forces || {};
     return (
-      row("GEX below / above", ss ? usd(ss.gex_below) + " / " + usd(ss.gex_above) : "-") +
+      row(
+        "GEX below / above",
+        ss ? orDash(ss.gex_below_text) + " / " + orDash(ss.gex_above_text) : "-",
+      ) +
       row(
         "ΔOI" + (f.older_et_date ? " since " + f.older_et_date : "") + " below / above",
         num(f.doi_below, 0) + " / " + num(f.doi_above, 0),
       ) +
-      row("DEX below / above", usd(f.dex_below_dollars) + " / " + usd(f.dex_above_dollars)) +
+      row("DEX below / above", orDash(f.dex_below_text) + " / " + orDash(f.dex_above_text)) +
       row("Charm below / above", num(f.charm_below, 4) + " / " + num(f.charm_above, 4))
     );
   }
@@ -720,8 +708,8 @@
         q && q.feed_live && !S.pushDown ? "" : "warn",
       );
       c.querySelector(".tdm-hero").innerHTML =
-        q && q.total_volume != null
-          ? fmtVol(q.total_volume) + " <small>shares, Schwab TOTAL_VOLUME</small>"
+        q && q.total_volume_text != null
+          ? esc(q.total_volume_text) + " <small>shares, Schwab TOTAL_VOLUME</small>"
           : "";
       // Schwab's trade time stands when the feed is down; OFFLINE is the card's state, and the
       // outage stays beside the time instead of replacing it.
@@ -739,14 +727,10 @@
           (tradeWhen && tradeWhy ? tradeWhen + " · " + tradeWhy : tradeWhen || tradeWhy),
       );
       c.querySelector(".tdm-rows").innerHTML =
-        row("Last trade size", q && q.last_size != null ? fmtVol(q.last_size) : "-") +
+        row("Last trade size", orDash(q && q.last_size_text)) +
         row(
           "Top of book",
-          tob
-            ? (tob.bid_size != null ? fmtVol(tob.bid_size) : "-") +
-                " × " +
-                (tob.ask_size != null ? fmtVol(tob.ask_size) : "-")
-            : "-",
+          tob ? orDash(tob.bid_size_text) + " × " + orDash(tob.ask_size_text) : "-",
         ) +
         row(
           "Crosses (" + esc(windowLabel()) + ")",
@@ -775,7 +759,7 @@
           '<span class="' +
           (ng == null ? "" : ng >= 0 ? "up" : "dn") +
           '">' +
-          usd(ng) +
+          orDash(t.net_gex_at_spot_text) +
           "</span> <small>net dealer gamma at spot, per 1%</small>";
         src(c, "Schwab option chain · " + esc(chainAgeLabel(t)));
         c.querySelector(".tdm-rows").innerHTML =
@@ -785,7 +769,7 @@
           (t.flip_note != null ? row("Γ flip note", esc(t.flip_note)) : "") +
           row("P/C OI", num(t.pcr_all, 2)) +
           row("Max pain", num(t.max_pain)) +
-          row("Contracts", t.contracts_used != null ? t.contracts_used.toLocaleString() : "-") +
+          row("Contracts", orDash(t.contracts_used_text)) +
           forcesRows();
       }
     }
@@ -1298,7 +1282,7 @@
                 " chain · " +
                 (t.strikes_used == null ? "-" : t.strikes_used) +
                 " strikes · " +
-                (t.contracts_used != null ? t.contracts_used.toLocaleString() : "-") +
+                orDash(t.contracts_used_text) +
                 " contracts"
             : "-",
         ) +

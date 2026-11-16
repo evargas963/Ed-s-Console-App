@@ -27,6 +27,8 @@ const TAPE_ROW = {
   bid: 1.17, bid_size: 187, ask: 1.19, ask_size: 180,
   trade: 1.18, size: 1, premium: 118.0,
   volume: 70984, oi: 901, iv: 7.16, delta: 0.357,
+  // as history.tape_row serves them (numeric_contract.dollars_text, count_text)
+  premium_text: '$118', volume_text: '70.98K',
   classification: 'inside_spread',
 };
 
@@ -70,8 +72,8 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
     await expect(row.locator('td').nth(6)).toHaveText('1.19×180');
     await expect(row.locator('td').nth(7)).toHaveText('1.18');
     await expect(row.locator('td').nth(8)).toHaveText('1');
-    await expect(row.locator('td').nth(9)).toContainText('118');
-    await expect(row.locator('td').nth(10)).toContainText('71.0K');
+    await expect(row.locator('td').nth(9)).toHaveText('$118');
+    await expect(row.locator('td').nth(10)).toHaveText('70.98K');
     await expect(row.locator('td').nth(11)).toHaveText('901');
     await expect(row.locator('td').nth(12)).toHaveText('7.2');
     await expect(row.locator('td').nth(13)).toHaveText('0.357');
