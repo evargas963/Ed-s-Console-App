@@ -29,6 +29,7 @@ from app.market_data.schwab.streaming import capture
 from feed import connection
 from feed.chain_sweep import chain_messages
 from stream_spine import (
+    ARCHIVED,
     LOG,
     PRUNE_ROWS,
     WRITER_BLOCKED,
@@ -37,6 +38,7 @@ from stream_spine import (
     CaptureWriter,
     HealthRegistry,
     MessageBus,
+    archived_rows,
     book_msg,
     quote_msg,
     verbatim_msg,
@@ -211,8 +213,12 @@ def _kept_at(tmp_path, clock: str, wait: float) -> str:
         await _until(lambda: writer.status()["rows_written"] == 8)
         keep = asyncio.create_task(capture.keep_sessions(daemon, stop))
         try:
-            await _until(
-                lambda: _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 1, wait
+            await _until(  # the keep's every part done: removed and archived
+                lambda: (
+                    _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 1
+                    and _rows(db, "SELECT COUNT(*) FROM stream_archive")[0][0] == 2
+                ),
+                wait,
             )
         except AssertionError:
             pass  # nothing was removed
@@ -227,6 +233,7 @@ def _kept_at(tmp_path, clock: str, wait: float) -> str:
             ("options", "stream_options_quotes_raw"),
             ("feed", "stream_feed_status"),
             ("watchlist", "stream_watchlist"),
+            ("archive", "stream_archive"),
         )
     )
     newest = datetime.fromtimestamp(
@@ -240,12 +247,13 @@ def test_after_the_last_option_close_rows_before_the_newest_five_sessions_are_re
 
     Schwab's /markets says the market was open 09-30, 10-01, 10-02, 10-05, 10-06 and 10-07, so the
     newest five sessions run from 2026-10-01 00:00 ET. Every row received before it is removed
-    from the daemon's operational tables (feed status here); Schwab's quotes, option quotes and
-    the watchlist are kept whole (operator 2026-11-15: "yes stop the delete").
+    from the daemon's operational tables (feed status here); Schwab's old quote and option quote
+    move into the archive, one block each (operator 2026-11-15: "yes stop the delete", "Yes,
+    windows + compress"); the watchlist stays whole.
     """
     assert (
         _kept_at(tmp_path, "2026-10-07 17:00", 30.0)
-        == "quotes:2 options:2 feed:1 watchlist:2 newest-watchlist:09-30 12:00"
+        == "quotes:1 options:1 feed:1 watchlist:2 archive:2 newest-watchlist:09-30 12:00"
     )
 
 
@@ -636,6 +644,52 @@ def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp
     2026-10-07 12:00 ET, the options open; and 2027-10-12, a date Schwab's held answers do not
     reach.
     """
-    untouched = "quotes:2 options:2 feed:2 watchlist:2 newest-watchlist:09-30 12:00"
+    untouched = "quotes:2 options:2 feed:2 watchlist:2 archive:0 newest-watchlist:09-30 12:00"
     assert _kept_at(tmp_path / "open", "2026-10-07 12:00", 1.5) == untouched
     assert _kept_at(tmp_path / "unknown", "2027-10-12 17:00", 1.5) == untouched
+
+
+def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_their_windows(
+    tmp_path,
+):
+    """The keep moves what Schwab cannot send again into stream_archive, row for row.
+
+    Operator 2026-11-15: "Yes, windows + compress". The mix (every message as Schwab sent it,
+    received 2026-10-05 15:00 ET), recorded twice a week earlier: INDUCED CONDITIONS: once at its
+    own time of day (15:00 ET, midday) and once 40 minutes later (15:40 ET, inside the close
+    window). After the keep, every quote, option quote, bar and news row of both is in the
+    archive exactly as it was stored, and so are the books of the close window alone; none of
+    them is left in its table.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+    conn = sqlite3.connect(db)
+    for shift in (0.0, 2400.0):
+        for m in _MIX["messages"]:
+            key = m["item"]["key"].upper()
+            kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"])
+            msg["ts_recv"] = m["ts_recv"] - 7 * 86_400 + shift
+            writer.insert(f"{kind}.{key}", msg, conn=conn)
+    conn.commit()
+    before = {t: conn.execute(f"SELECT * FROM {t} ORDER BY rowid").fetchall() for t in ARCHIVED}
+    conn.close()
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
+        writer.prune(_et(_FIVE_SESSIONS))
+        await _until(
+            lambda: all(_rows(db, f"SELECT COUNT(*) FROM {t}")[0][0] == 0 for t in ARCHIVED)
+        )
+        stop.set()
+        await task
+
+    asyncio.run(go())
+    with sqlite3.connect(db) as read:
+        archived = {t: archived_rows(read, t) for t in ARCHIVED}
+    close = _et("2026-09-28 15:30")
+    assert archived["stream_book_raw"] == [r for r in before["stream_book_raw"] if r[0] >= close]
+    assert before["stream_book_raw"] and archived["stream_book_raw"], "the window holds books"
+    assert {t: archived[t] for t in ARCHIVED if t != "stream_book_raw"} == {
+        t: before[t] for t in ARCHIVED if t != "stream_book_raw"
+    }

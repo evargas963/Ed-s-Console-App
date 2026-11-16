@@ -105,10 +105,14 @@ from Schwab to the screen (daemon, console, page), are these:
   and
   past it on disk, growing with Schwab's rate. Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D4. The stream's tables in `ed.db` are the record of what the operator trades.** What Schwab
-  cannot send again (quotes, books, option quotes, bars, news, market hours) is kept; what it can
-  (price history), every chain round's answers and the daemon's own operational tables are kept
-  five sessions (`stream_spine.KEPT_BY_TIME`; operator 2026-11-15, the keep table in
-  `ACTIVE_PROGRAM.md` STORE-ENOUGH). Its one writer records every message Schwab sends but option quotes and option books, which it
+  cannot send again is kept: quotes, option quotes, bars and news whole, the order books in the
+  pre-market and open (04:00-10:00 ET) and the close (15:30-16:00); after five sessions they move,
+  row for row, into `stream_archive` in gzip-compressed blocks (`stream_spine.ARCHIVED`,
+  `archived_rows` reads them back exactly), and a book row outside those windows goes. Market
+  hours and the watchlist stay in their tables. What Schwab can send again (price history), every
+  chain round's answers and the daemon's own operational tables are kept five sessions
+  (`stream_spine.KEPT_BY_TIME`). Operator 2026-11-15, the keep table in `ACTIVE_PROGRAM.md`
+  STORE-ENOUGH. Its one writer records every message Schwab sends but option quotes and option books, which it
   records only for the contracts the daemon keeps (`capture.Daemon.saves`, operator 2026-10-09):
   each watchlist ticker's soonest expiration not passed (today's when one is listed, else the
   nearest), at the strike nearest its price (the price row's) and the 5 listed strikes each side
