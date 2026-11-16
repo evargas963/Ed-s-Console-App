@@ -1059,8 +1059,7 @@
         return;
       }
       pinBox.hidden = false;
-      var chg = b.chg,
-        pct = b.chg_pct; // served per bar
+      var chg = b.chg; // served per bar: its colour
       pinBox.innerHTML =
         '<div class="tvc-pin-h"><span>' +
         esc(b.time_ct) + // served per bar
@@ -1077,8 +1076,7 @@
         '</b><span>Bar change</span><b class="' +
         (chg == null ? "" : chg >= 0 ? "up" : "dn") +
         '">' +
-        (chg == null ? "-" : (chg >= 0 ? "+" : "") + chg.toFixed(2)) +
-        (pct == null ? "" : " (" + (pct >= 0 ? "+" : "") + pct.toFixed(2) + "%)") +
+        esc(orDash(b.chg_text)) + // served: "+1.25 (+0.18%)"
         "</b><span>Volume</span><b>" +
         esc(orDash(b.v_text)) +
         "</b>" +
@@ -1452,7 +1450,7 @@
             c: b.c,
             v: b.v,
             chg: b.chg,
-            chg_pct: b.chg_pct,
+            chg_text: b.chg_text,
             time_ct: b.time_ct,
             v_text: b.v_text,
             o_text: b.o_text,
