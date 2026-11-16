@@ -84,7 +84,6 @@ from numeric_contract import (
     price_text,
     schwab_count,
     schwab_number,
-    strike_text,
 )
 from open_gap import (
     open_gap_record,
@@ -2442,7 +2441,7 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "surface": lambda a: push_surface.gamma_surface(
         a.ticker, a.now, a.params, requested=_gamma_surface_wanted(a.ticker)
     ),
-    "chain": lambda a: chain(a.ticker, a.now, a.params),
+    "chain": lambda a: push_chain.chain(a.ticker, a.now, a.params),
     "levels": lambda a: push_levels.levels_payload(a.ticker, tf_asked(a.params), a.at),
     "bars": lambda a: push_bars.bars(a.ticker, a.now, a.params),
     "tape": lambda a: push_tape.tape(a.ticker, a.now),

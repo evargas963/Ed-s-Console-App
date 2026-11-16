@@ -233,7 +233,7 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
 @pytest.mark.parametrize(
     "route",
     [
-        lambda: server.chain("SPY", time_et.now(), {"expiry": "2026-10-22"}),
+        lambda: push_chain.chain("SPY", time_et.now(), {"expiry": "2026-10-22"}),
         lambda: push_surface.gamma_surface(
             "SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}, requested=False
         ),
