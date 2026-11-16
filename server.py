@@ -41,22 +41,10 @@ from app.options.order_flow.streaming import (
     watchlist_request,
 )
 from calc.liquidity_models import PlaybookConfig
-from calc.math_forces import Forces, forces_absent
-from calc.math_levels import compute_charm_by_strike
-from calc.micro_structure import Candle
-from calc.terrain_read import crossed
-from calibration.complete_chain_capture import (
-    CAPTURE_BASIS,
-    last_capture_per_day,
-    newest_capture_ts,
-)
-from db import LevelCrossEvent, get_db
-from db_authority import canonical_db_path
-from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
-from liquidity_value_engine import (
+from calc.liquidity_value_engine import (
     bars_from_candles,
 )
-from math_exposure_core import (
+from calc.math_exposure_core import (
     Bucket,
     bucket_metric,
     compute_exposures_by_strike,
@@ -66,6 +54,28 @@ from math_exposure_core import (
     strike_total_oi,
     strike_volume_legs,
 )
+from calc.math_forces import Forces, forces_absent
+from calc.math_levels import compute_charm_by_strike
+from calc.micro_structure import Candle
+from calc.terrain_engine import (
+    OPTION_LEVELS,
+    SCOPES,
+    Book,
+    ExpiryKey,
+    StrikeValue,
+    TerrainSnapshot,
+    compute_terrain,
+    side_total,
+)
+from calc.terrain_read import crossed
+from calibration.complete_chain_capture import (
+    CAPTURE_BASIS,
+    last_capture_per_day,
+    newest_capture_ts,
+)
+from db import LevelCrossEvent, get_db
+from db_authority import canonical_db_path
+from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 from numeric_contract import (
     compact_text,
     count_text,
@@ -104,16 +114,6 @@ from state.level_store import PublishedLevels, published_levels
 from state.price_level_store import (
     canonical_price_level_snapshot,
     materialize_price_level_snapshot,
-)
-from terrain_engine import (
-    OPTION_LEVELS,
-    SCOPES,
-    Book,
-    ExpiryKey,
-    StrikeValue,
-    TerrainSnapshot,
-    compute_terrain,
-    side_total,
 )
 from time_et import (
     ET,
@@ -401,7 +401,7 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 _MARKET_CONTEXT_META = '<meta name="ed-market-context" content="">'
 _SCOPES_META = '<meta name="ed-scopes" content="">'
 _STREAM_WORDS_META = '<meta name="ed-stream-words" content="">'
-#: the scope control's words, one per terrain_engine.SCOPES
+#: the scope control's words, one per calc.terrain_engine.SCOPES
 SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 
 
@@ -413,7 +413,7 @@ def _with_page_settings(html: str) -> str:
     """Tell the page its market-context symbols, strike-window scopes and streaming-state words.
 
     The market-context symbols it always shows are live_push.MARKET_CONTEXT, each with its
-    display name; the scopes its strike windows take are terrain_engine.SCOPES, each with its
+    display name; the scopes its strike windows take are calc.terrain_engine.SCOPES, each with its
     word; and the words for each streaming state are STREAM_WORDS.
     """
     context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
@@ -1670,7 +1670,7 @@ def project_gamma_surface(
     strikes = sorted(strike_set)
     expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
     # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna (call - put,
-    # the dealer convention of math_exposure_core._finish_bucket), OI and volume -- so one grid
+    # the dealer convention of calc.math_exposure_core._finish_bucket), OI and volume -- so one grid
     # serves every heatmap measure; a measure with no value is None (_gamma_surface_cell_fields).
     cells: list[dict[str, Any]] = []
     for k in strikes:

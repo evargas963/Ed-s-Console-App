@@ -15,8 +15,8 @@ from collections import defaultdict, deque
 from collections.abc import Sequence
 from typing import Any, Literal, TypedDict
 
-from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from calc.l1_trade_observation import canonical_tape_prints
+from calc.order_flow import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from numeric_contract import (
     count_text,

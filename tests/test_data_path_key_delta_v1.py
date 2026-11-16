@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from math_exposure_core import bucket_metric_abs, compute_exposures_by_strike
+from calc.math_exposure_core import bucket_metric_abs, compute_exposures_by_strike
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, TSLA
 from time_et import sessions
 

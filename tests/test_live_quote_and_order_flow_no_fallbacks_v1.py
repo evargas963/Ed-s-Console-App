@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import live_market_plane as lmp
 import time_et
-from app.options.order_flow.engine import _resolve_quote_mark
+from calc.order_flow import _resolve_quote_mark
 
 
 def test_plane_change_percent_is_schwab_net_change_percent():

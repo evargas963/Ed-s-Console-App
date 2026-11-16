@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from calc.micro_structure import Candle
-from liquidity_value_engine import (
+from calc.liquidity_value_engine import (
     bars_from_candles,
     compute_session_vwap_series,
     count_session_rth_positive_volume_bars,
 )
+from calc.micro_structure import Candle
 from time_et import session, sessions
 
 FRIDAY = date(2026, 10, 2)

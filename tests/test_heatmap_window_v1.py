@@ -22,13 +22,13 @@ import pytest
 
 import live_market_plane as lmp
 import server
+from calc.terrain_engine import SCOPE_ROWS, strike_window
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strike_rows
 from push import strikes as push_strikes
 from push import surface as push_surface
 from state import level_store
-from terrain_engine import SCOPE_ROWS, strike_window
 from tests.feed_live_helper import daemon_status
 from time_et import ET
 

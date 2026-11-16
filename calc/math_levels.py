@@ -13,7 +13,7 @@ from typing import Literal, TypedDict
 
 import numpy as np
 
-from math_exposure_core import (
+from calc.math_exposure_core import (
     Bucket,
     bs_charm_array,
     bsm_gamma_delta,
@@ -252,7 +252,7 @@ def _contract_inputs(
     """(strike, oi, mult, t_years, sigma, sign), or the reason it cannot be priced.
 
     `t_years` is the contract's INTRADAY time-to-expiry, as its caller took it once
-    (math_exposure_core.expiry_years, time_et.time_to_expiry_years) or the horizon it prices at
+    (calc.math_exposure_core.expiry_years, time_et.time_to_expiry_years) or the horizon it prices at
     (repriced_to_close); None: not known, so the contract is not priced (NO_EXPIRY).
     """
     strike, oi, mult = c.strike, c.open_interest, c.multiplier

@@ -10,15 +10,15 @@ from datetime import datetime
 from typing import Any
 
 from calc.liquidity_models import VolumeProfile
+from calc.liquidity_value_engine import PriceLevelSnapshot
+from calc.terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, OneDayMove, TerrainSnapshot
 from calc.terrain_read import from_spot_text, level_side
-from liquidity_value_engine import PriceLevelSnapshot
 from numeric_contract import price_text
 from push.bars import aggregate_vwap
 from push.spot import price_mark, resolve_spot
 from push.verdict import terrain_cache_get
 from state.level_store import PublishedLevels
 from state.price_level_store import canonical_price_level_snapshot
-from terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, OneDayMove, TerrainSnapshot
 from time_et import age_text, ct_label
 
 #: why a route serves no price levels for a ticker
@@ -32,8 +32,8 @@ def same_day_note(snap: TerrainSnapshot) -> str | None:
     """Return the same-day levels' note, shown on hover: what they are when they are a model.
 
     None when they are today's own expiry as Schwab sent it (or there are none); with no expiry
-    listed today, they are the next one re-priced to today's close (terrain_engine.same_day_levels,
-    calc.math_levels.repriced_to_close), and the note says so.
+    listed today, they are the next one re-priced to today's close
+    (calc.terrain_engine.same_day_levels, calc.math_levels.repriced_to_close), and the note says so.
     """
     if snap.same_day_repriced_from is None:
         return None
@@ -47,7 +47,7 @@ def pin_note(snap: TerrainSnapshot) -> str | None:
     """Return the pin's note, shown on hover: what it is and how far the price is from it.
 
     The distance in expected moves and in strike widths and the minutes to the close are
-    terrain_engine.pin_by_open_interest's; this only writes them. None without a pin.
+    calc.terrain_engine.pin_by_open_interest's; this only writes them. None without a pin.
     """
     z, widths = snap.pin_expected_moves, snap.pin_strike_widths
     if snap.pin_candidate is None or z is None or snap.pin_minutes_to_close is None:
@@ -191,7 +191,7 @@ def _gamma(
             "label": label,
             "short": label,
             "evidence_tier": "DERIVED",
-            "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True}
+            "provenance": {"producer": "calc.terrain_engine.compute_terrain", "carried": True}
             if fam == "gamma"
             else {"producer": "push.levels.expected_move", "carried": False},
             "staleness": dict(stamp),

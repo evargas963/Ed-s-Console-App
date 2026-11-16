@@ -338,7 +338,7 @@ the program.
   imbalance is a different number, not shown (continuous trading runs through them).
   The books streamed are every watchlist ticker's. For each option contract the daemon holds
   (the option rule, below), each field has one producer, whichever arrived last: its volume is
-  the stream's (`math_exposure_core.overlay_streamed_contract_fields`; one the stream has not sent
+  the stream's (`calc.math_exposure_core.overlay_streamed_contract_fields`; one the stream has not sent
   shows "-"), its Greeks the stream's as the sweep took them (Option chain, below), and its open
   interest the chain's, for every contract: the stream does not send it for every contract it
   streams (measured 2026-11-05: none all day for 137 of 375 streamed, while the chain sent each
@@ -455,7 +455,7 @@ the program.
   bars to 2026-10-04) is neither written nor read. The levels loop builds nothing until that load is
   done. If the load fails, no level is built and the console window shows the error. Each bar
   is checked once, where it comes in (`server._schwab_bar`); the levels take the bar writer's
-  bars as kept (`liquidity_value_engine.bars_from_candles`), every level function the same.
+  bars as kept (`calc.liquidity_value_engine.bars_from_candles`), every level function the same.
   The panels serve what it published and build nothing. The confluence panel reads the ranking
   `_publish_levels` stored for the expiry the operator picks. It does not rank again. It does not
   read a
@@ -682,7 +682,7 @@ the program.
   (`server.strikes`, on `/ws`, one per reader in its own window: `strikes:gbs` GEX by Strike,
   `strikes:chart` the Gamma chart's profile, `strikes:migration` Right Now, `strikes:desk` the
   Desk map) serve that result and read no stored chain. The same publication carries each
-  strike's net DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap
+  strike's net DEX $ and total OI (`calc.terrain_engine._per_strike_measure_rows`, by the heatmap
   cell's readers), sent as the strikes panel's `measures` for the Chart view of Delta / DEX and Open
   Interest. The book's values at spot (gamma at spot, regime, confidence, headline and its source) are
   computed in that one publication at that publication's price; the terrain panel sends them as
@@ -730,7 +730,7 @@ the program.
   `tests/test_data_path_live_status_v1.py` (a push's reprice keeps a held contract live; the beat
   after a new surface stamps it). A streamed contract's Greeks and volatility are the stream's
   newest once the stream
-  holds all six, else the chain's (`math_exposure_core.overlay_streamed_contract_fields`); its
+  holds all six, else the chain's (`calc.math_exposure_core.overlay_streamed_contract_fields`); its
   volume, bid and ask are the stream's: the chain as delivered and as stored carries them as
   the stream held them when the chain was complete (`ChainSweep.take_greeks`,
   `option_contract.streamed_top`, `streamed_volume`), so the close values and a stored capture
@@ -768,8 +768,8 @@ the program.
   relation of the price to the levels is at
   that live price, computed when served, never stored with the publication: each wall's state
   and lean and the price's side of the flip
-  (`terrain_engine.price_relations`, a `PriceRelations` record, on the terrain panel;
-  the pin is a level of the publication, `terrain_engine.pin_by_open_interest`: of the expiry
+  (`calc.terrain_engine.price_relations`, a `PriceRelations` record, on the terrain panel;
+  the pin is a level of the publication, `calc.terrain_engine.pin_by_open_interest`: of the expiry
   settling at today's close, the strike with the most open interest within one expected move
   of the price, its distance in expected moves and strike widths and its minutes to the close
   on hover, `push.levels.pin_note`; the read's advice sentences, which no page read, are no longer made:
@@ -815,7 +815,7 @@ the program.
   count of cells withholds it.
 - **Strike windows.** Every per-strike panel (the heatmap, GEX by strike, the chart's profiles,
   vanna, charm, the migration, the confluence matrix at Auto) shows the window the server sends:
-  `terrain_engine.strike_window`
+  `calc.terrain_engine.strike_window`
   picks the scope's strikes (Auto 11, Wider 23, All every one) around the strike nearest the
   live price, or around the strike the operator panned to (`centre`, moved `shift` rows by a
   drag), and each answer carries its `view`: the centre, the largest |value| drawn (the bar and
@@ -884,7 +884,7 @@ the program.
   Enforced by: `tests/test_options_flow_tape_v1.py` (the put's messages received after calls
   that traded later; the call's first message, traded before it was received, is one row).
 - **Level crosses.** Four levels are watched, each under its name in the one list of option
-  levels (`server.CROSS_LEVELS`, drawn from `terrain_engine.OPTION_LEVELS`; operator 2026-11-13:
+  levels (`server.CROSS_LEVELS`, drawn from `calc.terrain_engine.OPTION_LEVELS`; operator 2026-11-13:
   "if we have all kinds of levels and we consider all levels important then no level is really
   important", the choice left to the research): the gamma flip, where the regime changes
   (`docs/SOURCES.md` baltussen-2021); the call and put walls, the range the industry reads
@@ -1007,10 +1007,10 @@ the program.
    heartbeat keeps the last streamed greeks on the levels; the cells are not live. A feed
    down while the market is closed keeps the last price and the book, and that panel says
    OFFLINE (`live_market_plane.outage`). A strike's session volume and open interest keep
-   every digit Schwab sent (`terrain_engine._per_strike_rows`,
+   every digit Schwab sent (`calc.terrain_engine._per_strike_rows`,
    `_per_strike_measure_rows`), and so do the volume sums below and above spot
    (`server.terrain_strikes_payload`), and so does the book's top size
-   (`app.options.order_flow.engine._extract_canonical_book`), and so does a tape print's
+   (`calc.order_flow._extract_canonical_book`), and so does a tape print's
    size (`calc.l1_trade_observation.extract_vendor_print`); the screen rounds those counts
    for display. The last trade Schwab streams (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) has
    one reader, `calc.l1_trade_observation.last_print`: the price row (`live_market_plane`) and the
@@ -1026,7 +1026,7 @@ the program.
    operator 2026-10-16: one producer, the number or nothing). An ATR that cannot be computed, a
    same-day absolute-gamma strike with no same-day book, the forces before two capture days and
    a forces side (charm, DEX, ΔOI) with a strike not known or no strike at all are absent
-   (`push.terrain._atr_fields`, `terrain_engine.compute_terrain`,
+   (`push.terrain._atr_fields`, `calc.terrain_engine.compute_terrain`,
    `server._forces_from_captures`; the forces side by
    `tests/test_data_path_charm_side_unknown_v1.py`); the screen draws "-". The levels with no price
    and the
@@ -1144,7 +1144,7 @@ behavior (AGENTS.md).
    it (§3.4 Tape). Enforced by: `tests/test_tape_lee_ready_v1.py`.
 10. **Same-day levels, every ticker** (operator 2026-10-17; 2026-11-09: "schwab does not have a
     0DTE field that is one we compute ... we must have one producer at the source to compute all
-    levels for all tickers on a 0dte basis"). One producer (`terrain_engine.same_day_levels`): the
+    levels for all tickers on a 0dte basis"). One producer (`calc.terrain_engine.same_day_levels`): the
     whole book's own producers read on the nearest listed expiry alone. An expiry listed today is
     read as the book holds it: Schwab's gamma and delta as sent, its flip, GSF and GRC from its
     gamma profile, its charm walls from its charm map. With none listed today, the next listed
@@ -1174,7 +1174,7 @@ behavior (AGENTS.md).
     (`zero_dte_abs_gamma_strike`) is not produced: it was a second pin.
     One name for each level on every screen (operator 2026-11-13: "make sure they all follow
     the same nomenclature. if you are going to use the greek symbols then do that where
-    applicable"): the name `terrain_engine.OPTION_LEVELS` gives it, in sentence case, with Γ
+    applicable"): the name `calc.terrain_engine.OPTION_LEVELS` gives it, in sentence case, with Γ
     for gamma and Δ for delta wherever a level's name holds one (Γ flip, Abs Γ, Net call Γ
     peak, Key Δ strike, Call Δ wall); charm has no letter, and the call and put walls keep the
     industry's name. The Key Levels card, the Levels tab, the Gamma chart, Right Now, the desk
@@ -1195,7 +1195,7 @@ behavior (AGENTS.md).
     a strike far in the money holds a delta near 1, so one can be the wall: AMD's and TSLA's
     call delta wall read 5.00 on 2026-11-13, AMD's $5 strike holding $2.6 billion of delta),
     each on the same-day basis too, as every level of the one list is
-    (`terrain_engine.OPTION_LEVELS`; operator 2026-11-13: "we need to ensure that we have 0dte
+    (`calc.terrain_engine.OPTION_LEVELS`; operator 2026-11-13: "we need to ensure that we have 0dte
     levels as well just as we have on the key levels card an the levels tab"); then the price
     levels, each the `levels` panel's own row
     (`levels:kl`): the expected move up and down, the prior day's high, low and close

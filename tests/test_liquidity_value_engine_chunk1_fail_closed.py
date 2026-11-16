@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, datetime
 
+from calc.liquidity_value_engine import bars_from_candles, compute_session_vwap_series
 from calc.micro_structure import Candle
-from liquidity_value_engine import bars_from_candles, compute_session_vwap_series
 from tests.feed_live_helper import daemon_bars
 from time_et import ET, sessions
 

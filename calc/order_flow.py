@@ -1,4 +1,4 @@
-"""Order Flow Engine (app/options/order_flow/engine.py).
+"""Order Flow Engine.
 
 The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 

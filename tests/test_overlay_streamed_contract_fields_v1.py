@@ -10,7 +10,7 @@ function: no network, no cache, no clock.
 
 from __future__ import annotations
 
-from math_exposure_core import overlay_streamed_contract_fields
+from calc.math_exposure_core import overlay_streamed_contract_fields
 from option_contract import read_contract
 
 

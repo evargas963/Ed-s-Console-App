@@ -14,9 +14,10 @@ from datetime import date, datetime
 from pathlib import Path
 
 import server
-from liquidity_value_engine import (
+from calc.liquidity_value_engine import (
     PlaybookConfig,
     bars_from_candles,
+    build_price_level_snapshot,
     get_previous_day_levels,
     prior_session,
 )
@@ -101,12 +102,17 @@ def test_no_daily_candle_before_the_session_leaves_the_prior_day_absent():
     daily, minutes = _held("SPY")
     first = min(datetime.fromtimestamp(c.ts, ET).date() for c in daily)
     assert prior_session(daily, first) is None
-    assert (
-        get_previous_day_levels(
-            bars_from_candles(minutes), None, PlaybookConfig(), sessions=sessions()
-        )
-        == {}
+    snap = build_price_level_snapshot(
+        "SPY",
+        first,
+        bars_from_candles(minutes),
+        prior=prior_session(daily, first),
+        bar_source="real_pricehistory_spy_tsla_2026_10_07.json",
+        sessions=sessions(),
     )
+    absent = {f["family"]: f["reason"] for f in snap.families_absent}
+    assert snap.price("PDH") is None
+    assert absent["prior_day"] == "no Schwab daily candle held for a prior session"
 
 
 def test_the_prior_value_area_is_estimated_from_that_sessions_regular_bars_only():

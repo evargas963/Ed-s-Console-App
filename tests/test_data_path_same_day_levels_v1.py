@@ -15,10 +15,10 @@ import statistics
 
 import pytest
 
-import terrain_engine
+from calc import terrain_engine
+from calc.terrain_engine import SAME_DAY_LEVELS, compute_terrain
 from option_contract import read_chain
 from push import levels as push_levels
-from terrain_engine import SAME_DAY_LEVELS, compute_terrain
 from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_FULL, TSLA
 from time_et import (
     EQUITY_OPTIONS,

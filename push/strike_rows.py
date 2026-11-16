@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Collection, Sequence
 from typing import Any
 
+from calc.terrain_engine import SCOPES, StrikeRow, StrikeValue, strike_window
 from numeric_contract import compact_text, count_text, dollars_text, strike_text
-from terrain_engine import SCOPES, StrikeRow, StrikeValue, strike_window
 
 #: why a strike window is not around the price
 WINDOW_NO_PRICE = "no live price: the middle strikes of the chain"

@@ -39,8 +39,6 @@ PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
     "db.py",
     "server.py",
     "time_et.py",
-    "math_exposure_core.py",
-    "liquidity_value_engine.py",
     "calc/",
     "static/",
     "calibration/",

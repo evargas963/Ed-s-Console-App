@@ -25,8 +25,8 @@ import numpy as np
 import pytest
 
 from calc.math_levels import contract_inputs
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_FULL, TSLA, RealChain
 from time_et import ET, option_close_product, sessions, time_to_expiry_years
 

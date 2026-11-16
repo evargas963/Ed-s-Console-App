@@ -25,11 +25,11 @@ import pytest
 
 import server
 import time_et
+from calc.terrain_engine import compute_terrain
 from feed.chain_sweep import ChainSweep
 from numeric_contract import schwab_number
 from option_contract import GREEK_FIELDS, OptionContract, read_chain
 from stream_spine import CaptureWriter
-from terrain_engine import compute_terrain
 from tests.schwab_rest_standin import SPY, SPY_QUOTES, LocalSchwab, delivered
 
 _SPOT = float(SPY["spot"])

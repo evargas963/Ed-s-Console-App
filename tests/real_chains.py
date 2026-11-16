@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from math_exposure_core import compute_exposures_by_strike
+from calc.math_exposure_core import compute_exposures_by_strike
 from option_contract import OptionContract, read_chain
 from time_et import ET, sessions
 

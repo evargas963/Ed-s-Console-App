@@ -23,8 +23,8 @@ import pytest
 
 from app.options.order_flow import state
 from app.options.order_flow import streaming as S
-from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import RecentBooks, book_heatmap_for_ticker
+from calc.order_flow import read_book
 from push import bookmap as push_bookmap
 from stream_spine import book_msg
 

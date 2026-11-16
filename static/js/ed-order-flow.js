@@ -1,6 +1,6 @@
 /* Ed Console — Order Flow / "Book · DOM" subview. PRESENTATION ONLY.
    Real L2 book microstructure for the UNDERLYING ticker itself (NASDAQ_BOOK/NYSE_BOOK): the
-   `book` panel on the page's socket, from the SAME app.options.order_flow.engine.
+   `book` panel on the page's socket, from the SAME calc.order_flow.
    compute_book_microstructure the options Flow tab reads. Reuses that view's .fl-* CSS grammar
    so a book reads the same whether it's an option contract's or the ticker's own.
 

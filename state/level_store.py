@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from calc.math_forces import Forces
+from calc.terrain_engine import StrikeValue, TerrainSnapshot
 from instrument_identity import ticker_storage_key
 from option_contract import OptionContract
-from terrain_engine import StrikeValue, TerrainSnapshot
 
 
 @dataclass(frozen=True)

@@ -12,8 +12,8 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
 
+from calc.terrain_engine import TerrainSnapshot, compute_terrain
 from option_contract import read_chain
-from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.real_chains import CRWD, MRVL, TSLA
 from time_et import ET, sessions
 

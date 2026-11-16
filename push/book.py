@@ -10,7 +10,10 @@ from datetime import datetime
 from typing import Any
 
 import live_market_plane as lmp
-from app.options.order_flow.engine import (
+from app.options.order_flow.history import LEAN
+from app.options.order_flow.state import get_content_for_symbol
+from app.options.order_flow.streaming import price_row, price_state
+from calc.order_flow import (
     BOOK_VENUES,
     COMPOSITE,
     book_age_sec,
@@ -18,9 +21,6 @@ from app.options.order_flow.engine import (
     compute_book_microstructure,
     readout_card,
 )
-from app.options.order_flow.history import LEAN
-from app.options.order_flow.state import get_content_for_symbol
-from app.options.order_flow.streaming import price_row, price_state
 from instrument_identity import ticker_storage_key
 from push.asked import venue_asked
 from time_et import CLOSE_AUCTION, ET, OPEN_AUCTION, age_text, auction, ct_label
@@ -63,7 +63,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, 
     Top-of-book, spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve,
     book slope, liquidity concentration, wall_candidates, and ages — every field classified
     NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
-    app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries
+    calc.order_flow.compute_book_microstructure keyed by this ticker, which carries
     the engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
     renders, never recomputes. `venue` is the one Schwab book the payload's book fields show:

@@ -47,10 +47,6 @@ omit = ["tests/*", "*/node_modules/*"]
 pythonVersion = "3.13"
 include = [
   "calc",
-  "terrain_engine.py",
-  "math_exposure_core.py",
-  "liquidity_value_engine.py",
-  "app/options/order_flow/engine.py",
   "live_market_plane.py",
   "live_price_rows.py",
   "state",

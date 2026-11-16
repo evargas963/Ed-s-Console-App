@@ -9,7 +9,7 @@ open is unknown.
 from datetime import datetime
 
 from calc.liquidity_models import PlaybookConfig
-from liquidity_value_engine import compute_opening_range
+from calc.liquidity_value_engine import compute_opening_range
 from time_et import ET, sessions
 
 

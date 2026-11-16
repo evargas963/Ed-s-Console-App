@@ -35,7 +35,6 @@ import time_et
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from app.market_data.schwab.streaming.live_ui import HEARTBEAT_SEC
 from app.options.order_flow import history as recent
-from app.options.order_flow.engine import BOOK_VENUES, book_readout
 from app.options.order_flow.state import (
     clear_all_live_state,
     newest_book,
@@ -44,6 +43,7 @@ from app.options.order_flow.state import (
     push_option_top,
     push_rest_quotes,
 )
+from calc.order_flow import BOOK_VENUES, book_readout
 from instrument_identity import ticker_storage_key
 from stream_spine import LATEST, MessageBus, Payload
 from time_et import record_markets

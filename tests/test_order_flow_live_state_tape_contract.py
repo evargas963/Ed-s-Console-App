@@ -13,9 +13,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as live_state
 import calc.l1_trade_observation as l1
+from calc import order_flow as ofe
 from tests.shared_helpers import sent
 
 _MIX = [

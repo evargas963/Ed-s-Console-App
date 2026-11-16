@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from terrain_engine import _per_strike_measure_rows, _per_strike_rows
+from calc.terrain_engine import _per_strike_measure_rows, _per_strike_rows
 
 
 def test_a_strike_keeps_every_digit_of_volume_and_open_interest():

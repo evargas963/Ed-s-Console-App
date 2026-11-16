@@ -10,15 +10,15 @@ import threading
 from datetime import date, datetime
 
 from calc.liquidity_models import PlaybookConfig
-from calc.micro_structure import Candle
-from instrument_identity import ticker_storage_key
-from liquidity_value_engine import (
+from calc.liquidity_value_engine import (
     Bar,
     PriceLevelSnapshot,
     build_price_level_snapshot,
     prior_session,
     snapshot_input_fingerprint,
 )
+from calc.micro_structure import Candle
+from instrument_identity import ticker_storage_key
 from time_et import market_session_date, sessions
 
 #: (ticker, session_date_iso) -> the ONE published price-level snapshot for its current bar input
@@ -39,7 +39,7 @@ def materialize_price_level_snapshot(
 ) -> PriceLevelSnapshot:
     """Build once per input; return the SAME object while the input is the same.
 
-    Built by the calculator (liquidity_value_engine.build_price_level_snapshot) from normalized
+    Built by the calculator (calc.liquidity_value_engine.build_price_level_snapshot) from normalized
     bars (bars_from_candles) and Schwab's daily candles (`daily`, state.bar_store), and held here,
     the one store of it. A new input (the bars, the prior session's candle or the regular hours
     Schwab's /markets sent changed) builds exactly once; every later ask with that input is a read,

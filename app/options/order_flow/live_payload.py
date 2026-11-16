@@ -10,9 +10,9 @@ from __future__ import annotations
 from typing import Any
 
 import live_market_plane as lmp
-from app.options.order_flow.engine import OrderFlowEngine
 from app.options.order_flow.state import get_content_for_symbol, option_top
 from calc.l1_trade_observation import TAPE_NOTE
+from calc.order_flow import OrderFlowEngine
 
 
 def flow_block(of: dict[str, Any]) -> dict[str, Any]:

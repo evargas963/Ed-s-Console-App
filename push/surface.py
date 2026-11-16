@@ -11,12 +11,12 @@ from datetime import datetime
 from typing import Any
 
 import live_market_plane as lmp
+from calc.terrain_engine import nearest_strike
 from numeric_contract import count_text, dollars_text, strike_text
 from push.answers import unavailable
 from push.spot import resolve_spot
 from push.strike_rows import window, window_asked
 from push.verdict import terrain_cache_get
-from terrain_engine import nearest_strike
 from time_et import ET
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is

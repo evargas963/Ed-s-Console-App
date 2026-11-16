@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import server as srv
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
 from push import terrain as push_terrain
 from state import level_store
-from terrain_engine import compute_terrain
 from tests.real_chains import CRWD
 from time_et import sessions
 

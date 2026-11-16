@@ -28,10 +28,10 @@ from pathlib import Path
 
 import live_market_plane as lmp
 import server
-import terrain_engine
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
+from calc import terrain_engine
 from feed import connection, stream
 from feed.chain_sweep import chain_messages
 from option_contract import read_chain, read_contract

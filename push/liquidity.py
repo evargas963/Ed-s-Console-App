@@ -10,9 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from calc.liquidity_models import ZONE_DISPLAY, PlaybookConfig
-from calc.terrain_read import LEVEL_ABOVE, LEVEL_BELOW, level_side, within
-from instrument_identity import ticker_storage_key
-from liquidity_value_engine import (
+from calc.liquidity_value_engine import (
     HOLD_BASELINE_LEVELS,
     HOLD_MIN_TOUCHES,
     HOLD_WINDOW_SESSIONS,
@@ -24,6 +22,8 @@ from liquidity_value_engine import (
     hold_counts,
     wilson_interval,
 )
+from calc.terrain_read import LEVEL_ABOVE, LEVEL_BELOW, level_side, within
+from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
 from push.answers import unavailable
 from push.levels import NO_PRICE_LEVELS_REASON
@@ -79,8 +79,8 @@ def hold_text(c: HoldCount) -> str:
 def hold_rates(tk: str, now: datetime) -> list[dict[str, str]]:
     """Each fixed level type's hold rate at 15 and 30 minutes over the ticker's held bars.
 
-    liquidity_value_engine.hold_counts over every 1-minute bar the bar writer holds and Schwab's
-    daily candles.
+    calc.liquidity_value_engine.hold_counts over every 1-minute bar the bar writer holds and
+    Schwab's daily candles.
     """
     counts = hold_counts(
         bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT)),

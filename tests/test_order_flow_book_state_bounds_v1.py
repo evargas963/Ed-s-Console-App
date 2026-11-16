@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.options.order_flow.engine import Book
 from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import OrderFlowState
+from calc.order_flow import Book
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE = FIXTURES / "real_options_stream_history_samples.json"

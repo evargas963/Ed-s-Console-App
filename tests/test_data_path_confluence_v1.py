@@ -27,9 +27,10 @@ from calc.confluence_composite import (
     under_strike,
     window_rows,
 )
+from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
 from calc.math_levels import compute_charm_by_strike
+from calc.terrain_engine import TerrainSnapshot, compute_terrain
 from calibration.complete_chain_capture import CAPTURE_BASIS
-from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
 from push import chain as push_chain
@@ -39,7 +40,6 @@ from push import strike_rows
 from push import verdict as push_verdict
 from state import level_store
 from stream_spine import verbatim_msg
-from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import ROUND_SEC, daemon_status, publish_capture
