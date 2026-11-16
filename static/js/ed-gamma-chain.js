@@ -25,7 +25,7 @@
   function curExpiry() {
     return window.EdShell.getExpiry();
   }
-  // The ladder is the `chain:ladder` panel (server.chain) the program sends on the page's socket
+  // The ladder is the `chain:ladder` panel (push.chain) the program sends on the page's socket
   // while the Chain tab is on, at the selected expiry (null: the chain's front one), at once and
   // each time a chain is priced. Nothing received yet for the ticker on screen is '-'; a frame
   // of an expiry no longer selected (sent before the page asked another) is not drawn.

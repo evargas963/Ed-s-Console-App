@@ -34,6 +34,7 @@ from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from push import bars as push_bars
+from push import chain as push_chain
 from push import forces as push_forces
 from push import strikes as push_strikes
 from push import tape as push_tape
@@ -224,7 +225,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         if real is AMZN
                         else {}
                     ),
-                    "chain": server.chain(tk, at, {"expiry": None}),
+                    "chain": push_chain.chain(tk, at, {"expiry": None}),
                     "book": {venue: server.book(tk, at, {"venue": venue}) for venue in real.venues},
                     "liquidity": server.liquidity_snapshot(tk, now),
                     "forces": push_forces.forces(tk),

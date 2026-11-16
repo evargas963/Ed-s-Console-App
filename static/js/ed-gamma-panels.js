@@ -395,7 +395,7 @@
     var s = window.EdShell.getState();
     return expiryFilter() || s.selExpiry;
   }
-  // The selected strike's contracts: the `chain:detail` panel (server.chain) the program sends on
+  // The selected strike's contracts: the `chain:detail` panel (push.chain) the program sends on
   // the page's socket while a strike is selected, at its expiry (null: the chain's front one), at
   // once and each time a chain is priced. loadStrike() records the desired (strike, expiry); a
   // new strike at the same expiry is drawn from the chain already sent. A frame of an expiry no
@@ -626,7 +626,7 @@
       "</tbody></table></div>" +
       '<div class="sd-src">vendor per-contract · the chain — no field here is inferred or defaulted</div>';
   }
-  // the `chain:structures` panel (server.chain) the program sends on the page's socket while the
+  // the `chain:structures` panel (push.chain) the program sends on the page's socket while the
   // Structures tab is on, at the selected expiry (null: the chain's front one); nothing received
   // yet for the ticker on screen is '-', and a frame of an expiry no longer selected is not drawn
   var _stTicker = null;

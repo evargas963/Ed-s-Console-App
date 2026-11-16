@@ -66,6 +66,7 @@ from app.market_data.schwab.streaming import capture, live_ui
 from instrument_identity import ticker_storage_key
 from numeric_contract import compact_text, count_text, dollars_text, strike_text
 from option_contract import read_chain
+from push import chain as push_chain
 from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import clock_from
@@ -1430,7 +1431,7 @@ def test_before_the_tickers_chain_the_chain_says_why_with_no_contract():
             await _select(ws, A, {"chain:ladder": {"expiry": None}})
             frame = await _next(ws, "chain:ladder")
             assert frame["status"] == "unavailable" and frame["contracts"] == []
-            assert frame["scope"]["reason"] == server.NO_CHAIN_YET
+            assert frame["scope"]["reason"] == push_chain.NO_CHAIN_YET
 
     asyncio.run(_serve_panels(body))
 
