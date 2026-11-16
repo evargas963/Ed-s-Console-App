@@ -16,6 +16,7 @@ import pytest
 import live_market_plane as lmp
 import server as srv
 from micro_structure import Candle
+from state import bar_store
 from tests.feed_live_helper import daemon_bars
 from time_et import ET
 
@@ -54,7 +55,7 @@ def published():
     """
 
     def forget():
-        srv._bars.pop(TK, None)
+        bar_store._bars.pop(TK, None)
         with lmp._lock:
             lmp._by_ticker.pop(TK, None)
             lmp._fields_by_ticker.pop(TK, None)
@@ -63,7 +64,7 @@ def published():
 
     forget()
     for b in friday_bars():
-        srv._keep_bar(
+        bar_store.keep_bar(
             TK,
             Candle(
                 ts=b["timestamp"] / 1000,

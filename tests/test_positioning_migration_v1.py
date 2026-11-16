@@ -17,6 +17,7 @@ import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
 from numeric_contract import dollars_text
 from option_contract import read_chain
+from state import level_store
 from terrain_engine import compute_terrain, level_moves, positioning_migration
 from tests.capture_store import store_capture
 
@@ -146,11 +147,11 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
             chain_spot=(newest["spot"], monday.timestamp()),
             now=monday,
         )
-        monday_prior = server.published_levels("PCG").prior_day.per_strike
+        monday_prior = level_store.published_levels("PCG").prior_day.per_strike
         monday_migration = server.strikes("PCG", monday.timestamp(), _AUTO)["migration"]["all"]
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop("PCG", None)
+        with level_store._lock:
+            level_store._levels.pop("PCG", None)
     (thursday, _), (friday, _) = two_days  # the captures of 2026-09-24 and 2026-09-25
     assert _prior_gex(body) == pytest.approx(_gex(thursday))
     m = body["migration"]["all"]

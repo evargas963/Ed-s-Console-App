@@ -23,6 +23,7 @@ import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from server import ticker_storage_key
+from state import level_store
 from tests.feed_live_helper import daemon_status
 from tests.page_on_socket import pages
 from time_et import ET
@@ -78,9 +79,9 @@ def published():
         )
     _daemon(_CRWD["spot"], time_et.now(), _ON, _OFF)  # live now, as the routes read it
     yield
-    with server._terrain_cache_lock:
+    with level_store._lock:
         for tk in (_ON, _OFF):
-            server._terrain_cache.pop(tk, None)
+            level_store._levels.pop(tk, None)
             lmp._by_ticker.pop(tk, None)
             lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_down()
@@ -90,7 +91,7 @@ def published():
 def test_the_live_surface_is_served_with_the_live_price():
     _daemon(206.0, _AT.timestamp(), _ON)  # the price has moved since
     d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
-    surface = server.published_levels(_ON).gamma_surface
+    surface = level_store.published_levels(_ON).gamma_surface
     # 2026-09-02 has no /markets answer held: the levels, and so the surface, are not live
     assert d["source"] == "terrain_live_cache" and d["levels_state"] == "NOT LIVE"
     assert [c["gex"] for c in d["cells"]] == [c["gex"] for c in surface["cells"]]  # served verbatim
@@ -156,7 +157,7 @@ def test_with_no_levels_the_atr_is_absent():
 
 def test_fallback_is_labelled_not_live_never_intraday():
     tk = ticker_storage_key("ZZTESTX")  # no live cache, no banked chain in the offline test DB
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with level_store._lock:
+        level_store._levels.pop(tk, None)
     d = _call(tk)
     assert (d["available"], d["source"]) == (False, "unavailable")

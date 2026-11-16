@@ -5,6 +5,7 @@ from __future__ import annotations
 import live_market_plane as lmp
 import server as srv
 from option_contract import read_chain
+from state import level_store
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
 from tests.real_chains import CRWD
@@ -32,8 +33,8 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
         mark_feed_live(tk, now=now)  # the daemon's price row, read at `now`: its verdict LIVE
         live = srv.terrain(tk, now)
     finally:
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
         lmp.record_feed_down()
     assert down["call_wall"] == live["call_wall"] == published["call_wall"] is not None
     assert down["levels_state"] == "LIVE"

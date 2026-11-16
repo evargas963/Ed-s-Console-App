@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import server
 from instrument_identity import BROKER_INDEX_BARE_ROOTS, ticker_storage_key
+from state import bar_store
 from tests.feed_live_helper import daemon_bars, stream_daemon_bars
 
 
@@ -22,13 +22,15 @@ def test_recorded_index_bars_are_held_and_served_under_the_index_key():
     newest = {}
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
         newest[r["bar_start_ms"]] = r
-    server._bars.pop("$SPX", None)
+    bar_store._bars.pop("$SPX", None)
     try:
         stream_daemon_bars(rows)
-        held = [b for b in server._bars_1m("$SPX", server.BARS_KEPT) if b.ts * 1000 in newest]
-        asked_bare = [b for b in server._bars_1m("spx", server.BARS_KEPT) if b.ts * 1000 in newest]
+        held = [b for b in bar_store.bars_1m("$SPX", bar_store.BARS_KEPT) if b.ts * 1000 in newest]
+        asked_bare = [
+            b for b in bar_store.bars_1m("spx", bar_store.BARS_KEPT) if b.ts * 1000 in newest
+        ]
     finally:
-        server._bars.pop("$SPX", None)
+        bar_store._bars.pop("$SPX", None)
     want = [
         (ms / 1000, r["open"], r["high"], r["low"], r["close"], r["volume"])
         for ms, r in sorted(newest.items())

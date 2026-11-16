@@ -22,6 +22,7 @@ import server
 from liquidity_models import PlaybookConfig
 from liquidity_value_engine import HOLD_MIN_TOUCHES, bars_from_candles, hold_counts, wilson_interval
 from micro_structure import Candle
+from state import bar_store
 from tests.feed_live_helper import price_history
 from time_et import ET, session, sessions
 
@@ -156,8 +157,8 @@ def test_the_liquidity_panel_serves_each_level_types_rate_with_its_note():
     names = [r["level"] for r in rows]
     assert names[0] == "Prior day high" and "Opening range high" in names
     pdh = hold_counts(
-        bars_from_candles(server._bars_1m("SPY", server.BARS_KEPT)),
-        list(server._series[("SPY", "1d")]),
+        bars_from_candles(bar_store.bars_1m("SPY", bar_store.BARS_KEPT)),
+        bar_store.series("SPY", "1d"),
         EVENING,
         sessions=sessions(),
         config=PlaybookConfig(),
