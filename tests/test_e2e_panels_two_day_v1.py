@@ -39,7 +39,7 @@ from push import levels as push_levels
 from push import strikes as push_strikes
 from push import tape as push_tape
 from push import terrain as push_terrain
-from state import bar_store, cross_store, level_store
+from state import bar_store, cross_store, level_store, price_level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
 from tests.feed_live_helper import ROUND_SEC, daemon_status
