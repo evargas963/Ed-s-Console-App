@@ -38,11 +38,7 @@ from app.options.order_flow.engine import (
     readout_card,
 )
 from app.options.order_flow.history import (
-    BOOKS_KEPT_SEC,
     LEAN,
-    BookHeatmap,
-    NoHeatmap,
-    book_heatmap_for_ticker,
     recent_prints,
     tape_row,
 )
@@ -118,9 +114,11 @@ from open_gap import (
     open_gap_record,
 )
 from option_contract import OptionContract, chain_row
+from push import bookmap as push_bookmap
 from push import experimental as push_experimental
 from push import expiries as push_expiries
 from push import forces as push_forces
+from push.asked import tf_asked, venue_asked
 from push.verdict import (
     LEVELS_STALE,
     LevelsVerdict,
@@ -2051,7 +2049,7 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     LEVEL_TIMEFRAMES or a `limit` not a count up to BARS_LIMIT_MAX raises: the socket sends that
     panel's words. `ticker` is the levels' own key.
     """
-    tf, limit = _tf_asked(params), params.get("limit")
+    tf, limit = tf_asked(params), params.get("limit")
     if type(limit) is not int or not 1 <= limit <= BARS_LIMIT_MAX:
         raise ValueError(f"limit {limit!r} is not a count from 1 to {BARS_LIMIT_MAX}")
     held = [_bar_dict(c) for c in bar_store.bars_1m(ticker, limit)]
@@ -2275,36 +2273,6 @@ def tape(ticker: str, now: float) -> dict[str, Any]:
         "rows": rows,
         "reason": None if rows else "no trade prints for these contracts since the console started",
     }
-
-
-def _venue_asked(params: dict[str, Any]) -> str:
-    """Return the Schwab book a panel's `params` name; another raises (the socket sends why)."""
-    venue = params.get("venue")
-    if venue not in BOOK_VENUES:
-        raise ValueError(f"venue {venue!r} is not one of {', '.join(BOOK_VENUES)}")
-    return venue
-
-
-def _tf_asked(params: dict[str, Any]) -> str:
-    """Return the chart timeframe a panel's `params` name; another raises."""
-    tf = params.get("tf")
-    if tf not in LEVEL_TIMEFRAMES:
-        raise ValueError(f"tf {tf!r} is not one of {', '.join(LEVEL_TIMEFRAMES)}")
-    return tf
-
-
-def bookmap(ticker: str, params: dict[str, Any]) -> BookHeatmap | NoHeatmap:
-    """Return the `bookmap` panel: the depth heatmap of the ticker's Schwab book `venue`.
-
-    history.book_heatmap_for_ticker bins the venue's recent books in the console's memory into a
-    time x price grid over the newest `minutes`. The window ends at the newest book, never at
-    the time of asking. A window not above 0, or longer than the books the console keeps
-    (history.BOOKS_KEPT_SEC), raises.
-    """
-    minutes = params.get("minutes")
-    if type(minutes) not in (int, float) or not 0 < minutes <= BOOKS_KEPT_SEC / 60:
-        raise ValueError(f"minutes {minutes!r} is not above 0 and at most {BOOKS_KEPT_SEC / 60:g}")
-    return book_heatmap_for_ticker(ticker, _venue_asked(params), minutes=minutes)
 
 
 def _forces_from_captures(
@@ -2823,7 +2791,7 @@ DESK_MARKERS = 6
 
 def book(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     """Return the `book` panel at `now`: the ticker's quote and Schwab book `venue`."""
-    return order_flow_microstructure(ticker, _venue_asked(params), now)
+    return order_flow_microstructure(ticker, venue_asked(params), now)
 
 
 def _when_age(when: str | None, sec: float | None) -> str | None:
@@ -3793,10 +3761,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     return body
 
 
-#: the chart timeframes the levels' VWAP curve is served in (aggregate_vwap)
-LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")
-
-
 #: every panel the page shows, sent by its socket for the page's selected ticker
 #: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
 #: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
@@ -3811,15 +3775,15 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "strikes": lambda a: strikes(a.ticker, a.now, a.params),
     "surface": lambda a: gamma_surface(a.ticker, a.now, a.params),
     "chain": lambda a: chain(a.ticker, a.now, a.params),
-    "levels": lambda a: levels_payload(a.ticker, _tf_asked(a.params), a.at),
+    "levels": lambda a: levels_payload(a.ticker, tf_asked(a.params), a.at),
     "bars": lambda a: bars(a.ticker, a.now, a.params),
     "tape": lambda a: tape(a.ticker, a.now),
     "book": lambda a: book(a.ticker, a.now, a.params),
-    "bookmap": lambda a: bookmap(a.ticker, a.params),
+    "bookmap": lambda a: push_bookmap.bookmap(a.ticker, a.params),
     "contract": lambda a: options_microstructure(_contract_asked(a.params), a.now),
     "forces": lambda a: push_forces.forces(a.ticker),
     "desk": lambda a: desk_events_payload(
-        a.ticker, _venue_asked(a.params), _tf_asked(a.params), a.at
+        a.ticker, venue_asked(a.params), tf_asked(a.params), a.at
     ),
     "confluence": lambda a: confluence_payload(a.ticker, a.params.get("expiry"), a.at),
     "liquidity": lambda a: liquidity_snapshot(a.ticker, a.at),
