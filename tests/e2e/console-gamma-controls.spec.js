@@ -49,7 +49,7 @@ test.describe('ticker / expiry / measure controls', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     const first = SETS.SPY.bars['1'].bars[0];
-    await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || {}).firstTime))
+    await expect.poll(() => page.evaluate(() => window.EdGammaChart.state()?.firstTime))
       .toEqual({ day: first.ticks[2], crosshair: first.time_ct });
     expect(first.ticks[2]).toMatch(/^Nov \d+$/);
   });

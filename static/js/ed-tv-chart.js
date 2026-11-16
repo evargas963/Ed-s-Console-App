@@ -695,9 +695,16 @@
       btnLog = host.querySelector(".tvc-log");
     // each time the chart holds, a bar's or a heatmap bucket's, and its served labels: the axis
     // marks by kind (`ticks`: year, month, day, time) and the crosshair's time (`full`)
-    var labels = { bars: new Map(), heat: new Map() };
+    var barLabels = [],
+      heatLabels = [],
+      labels = new Map();
     function served(t) {
-      return labels.bars.get(t) || labels.heat.get(t) || null;
+      return labels.get(t);
+    }
+    function heldLabels(bars, heat) {
+      barLabels = bars;
+      heatLabels = heat;
+      labels = new Map(barLabels.concat(heatLabels));
     }
     // the time axis's mark at `t` (its kind: 0 year, 1 month, 2 day, 3 time, 4 with seconds,
     // which the axis does not show), and the crosshair's time: as served, "-" where none was
@@ -1452,10 +1459,11 @@
             time_ct: b.time_ct,
           };
         });
-        labels.bars = new Map(
+        heldLabels(
           bars.map(function (b) {
             return [Number(b.t), { ticks: b.ticks, full: b.time_ct }];
           }),
+          heatLabels,
         );
         S.tf = tf;
         S.symbol = symbol;
@@ -1694,7 +1702,8 @@
       // display_hi} as served) or null: its buckets become the time axis
       setHeatmap: function (h) {
         heat.set(h, P.up, P.down, P.ink3);
-        labels.heat = new Map(
+        heldLabels(
+          barLabels,
           (h ? h.bucket_ts : []).map(function (t, i) {
             return [t, { ticks: h.bucket_ticks[i], full: h.bucket_ct[i] }];
           }),
