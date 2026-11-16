@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import server as srv
 from option_contract import read_chain
+from push import terrain as push_terrain
 from state import level_store
 from terrain_engine import compute_terrain
 from tests.real_chains import CRWD
@@ -40,7 +41,7 @@ def test_the_terrain_carries_the_chain_time():
         srv._publish_levels(
             tk, read_chain(CRWD.chain), fetched, chain_spot=(CRWD.spot, fetched), now=CRWD.now
         )
-        body = srv.terrain(tk, fetched)
+        body = push_terrain.terrain(tk, fetched)
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)
