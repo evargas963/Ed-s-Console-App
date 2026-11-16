@@ -2,10 +2,13 @@
 five minutes' direction, for one ticker (operator 2026-11-15: "build something experimental and
 continue to monitor it on a daily basis as we gather more data"; ACTIVE_PROGRAM.md OPEN-5MIN).
 
-From Schwab's 5-minute /pricehistory bars with extended hours, as sent. For each ET day that has
-a prior regular session, a pre-market bar (04:00-09:30 ET) and a 09:30 bar that moved:
+From two of Schwab's 5-minute /pricehistory answers, as sent: the regular session's bars alone
+(series 5m365r) and the bars with extended hours (5m365). Schwab's regular bars mark each day's
+session (AGENTS.md rule 8: no session time is typed): a day's first regular bar is its open, its
+last the day's close, and the extended bars of that date before the open are its pre-market. For
+each day with a prior regular session, a pre-market bar and an open bar that moved:
   gap         the pre-market's last close / the prior regular session's last close - 1
-  first five  the 09:30 bar's close - its open
+  first five  the open bar's close - its open
 The record: the opens, how many the gap's sign matched the first five minutes' sign, and the 95%
 Wilson interval of that share (one open per ticker per day). Registered in
 docs/derived_register.md. A calculator: no clock, no database.
@@ -17,16 +20,15 @@ import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime
 from typing import Any
 
 from time_et import ET
 
-PRE_MARKET = (time(4, 0), time(9, 30))
-OPEN_BAR = time(9, 30)
-REGULAR = (time(9, 30), time(16, 0))
 #: the 95% interval's z
 Z95 = 1.959964
+
+type Candle = Mapping[str, Any]
 
 
 @dataclass(frozen=True)
@@ -50,32 +52,35 @@ def wilson(matched: int, opens: int, z: float = Z95) -> tuple[float, float]:
     return centre - half, centre + half
 
 
-def open_gap_record(candles: Iterable[Mapping[str, Any]]) -> OpenGapRecord | None:
-    """The record over Schwab's 5-minute candles with extended hours; None when no open counts.
+def _by_day(candles: Iterable[Candle]) -> dict[date, list[Candle]]:
+    days: dict[date, list[Candle]] = defaultdict(list)
+    for c in sorted(candles, key=lambda c: c["datetime"]):
+        days[datetime.fromtimestamp(c["datetime"] / 1000, ET).date()].append(c)
+    return days
 
-    A candle's datetime is Schwab's epoch milliseconds; its open and close as sent. An open whose
-    gap is 0 or whose first five minutes did not move has no direction and is not counted.
+
+def open_gap_record(regular: Iterable[Candle], extended: Iterable[Candle]) -> OpenGapRecord | None:
+    """The record over Schwab's regular-session and extended-hours 5-minute candles.
+
+    A candle's datetime is Schwab's epoch milliseconds; its open and close as sent. None when no
+    open counts. An open whose gap is 0 or whose first five minutes did not move has no direction
+    and is not counted.
     """
-    by_day: dict[date, list[tuple[time, Mapping[str, Any]]]] = defaultdict(list)
-    for c in candles:
-        t = datetime.fromtimestamp(c["datetime"] / 1000, ET)
-        by_day[t.date()].append((t.time(), c))
+    sessions = _by_day(regular)
+    hours = _by_day(extended)
     prior: float | None = None
     days: list[date] = []
     matched = 0
-    for day in sorted(by_day):
-        bars = sorted(by_day[day], key=lambda x: x[0])
-        pre = [c for t, c in bars if PRE_MARKET[0] <= t < PRE_MARKET[1]]
-        first = [c for t, c in bars if t == OPEN_BAR]
-        regular = [c for t, c in bars if REGULAR[0] <= t < REGULAR[1]]
-        if prior is not None and pre and first:
+    for day in sorted(sessions):
+        opening = sessions[day][0]
+        pre = [c for c in hours[day] if c["datetime"] < opening["datetime"]]  # a day none: []
+        if prior is not None and pre:
             gap = pre[-1]["close"] / prior - 1
-            move = first[0]["close"] - first[0]["open"]
+            move = opening["close"] - opening["open"]
             if gap != 0 and move != 0:
                 days.append(day)
                 matched += (gap > 0) == (move > 0)
-        if regular:
-            prior = regular[-1]["close"]
+        prior = sessions[day][-1]["close"]
     if not days:
         return None
     low, high = wilson(matched, len(days))

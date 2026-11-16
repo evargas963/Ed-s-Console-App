@@ -240,10 +240,12 @@ _bars: dict[str, list[Candle]] = {}
 #: MINUTE_SERIES). Owned by the bar writer; the bars panel and the ATR (_atr) read them.
 _series: dict[tuple[str, str], list[Candle]] = {}
 _bars_lock = threading.Lock()
-#: the series the open-gap record is computed from (Schwab's 5-minute bars with extended hours,
-#: asked once a day), and each ticker's record from its newest answer (None: no open counted).
-#: Owned by the bar writer; the opengap panel reads it.
-OPEN_GAP_SERIES = "5m365"
+#: the series the open-gap record is computed from, in open_gap_record's order: Schwab's 5-minute
+#: bars of the regular session and with extended hours, each asked once a day; each ticker's
+#: newest answer of each, and its record from both (None: no open counted). Owned by the bar
+#: writer; the opengap panel reads the record.
+OPEN_GAP_SERIES = ("5m365r", "5m365")
+_open_gap_answers: dict[tuple[str, str], list[dict[str, Any]]] = {}
 _open_gap: dict[str, OpenGapRecord | None] = {}
 #: where the bars come from, named in every level's provenance
 BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
@@ -280,8 +282,12 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
-    if msg["series"] == OPEN_GAP_SERIES:  # the open-gap record's input, its candles not held
-        record = open_gap_record(sent)
+    if msg["series"] in OPEN_GAP_SERIES:  # the open-gap record's inputs, held until both are in
+        _open_gap_answers[(tk, msg["series"])] = sent
+        both = [(tk, s) for s in OPEN_GAP_SERIES if (tk, s) in _open_gap_answers]
+        if len(both) < len(OPEN_GAP_SERIES):
+            return None
+        record = open_gap_record(*(_open_gap_answers[k] for k in both))
         if tk in _open_gap and _open_gap[tk] == record:
             return None
         _open_gap[tk] = record
