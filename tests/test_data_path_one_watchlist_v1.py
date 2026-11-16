@@ -96,7 +96,7 @@ def _market(bus, ticker: str, contracts: list[dict], price: float, ts: float) ->
             symbol=ticker,
             last=price,
             src="schwab_l1",
-            ts_recv=time_et.now(),
+            ts_recv=ts,
             native={"key": ticker, "LAST_PRICE": price},
         ),
     )

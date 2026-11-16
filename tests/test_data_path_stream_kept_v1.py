@@ -25,7 +25,6 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
-import time_et
 from app.market_data.schwab.streaming import capture
 from feed import connection
 from feed.chain_sweep import chain_messages
@@ -312,15 +311,15 @@ def _old_file(tmp_path_factory) -> Path:
 
 
 def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> int:
-    """Publish the mix's messages of `services`, received now; return how many were published.
+    """Publish the mix's messages of `services`, each received at its recorded time; return how
+    many were published.
 
     Each frame is decoded from its JSON through the daemon's handler for its service.
     """
     health = HealthRegistry()
-    handlers = {s: connection._publisher(s, bus, health, time_et.now) for s in services}
     sent = [m for m in _MIX["messages"] if m["service"] in services][:limit]
     for m in sent:
-        handlers[m["service"]](
+        connection._publisher(m["service"], bus, health, lambda t=m["ts_recv"]: t)(
             json.loads(json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}))
         )
     return len(sent)

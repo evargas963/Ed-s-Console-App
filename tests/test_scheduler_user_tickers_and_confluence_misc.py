@@ -17,23 +17,20 @@ def test_the_console_and_the_daemon_hold_one_watchlist(tmp_path):
     the newest list its writer stored (stream_watchlist), in its order.
     """
     db = tmp_path / "stream_capture.db"
+    now = time_et.now()
     writer = CaptureWriter(db)
     writer.insert(
         *capture.watchlist_message(
-            ["SPY", "TSLA"], op=capture.ADDED, ticker="TSLA", request_id=1, ts_recv=time_et.now()
+            ["SPY", "TSLA"], op=capture.ADDED, ticker="TSLA", request_id=1, ts_recv=now
         )
     )
     writer.insert(
         *capture.watchlist_message(
-            ["SPY", "TSLA", "$SPX"],
-            op=capture.ADDED,
-            ticker="$SPX",
-            request_id=2,
-            ts_recv=time_et.now(),
+            ["SPY", "TSLA", "$SPX"], op=capture.ADDED, ticker="$SPX", request_id=2, ts_recv=now
         )
     )
     d = capture.Daemon(MessageBus(), HealthRegistry(), capture.stored_watchlist(db))
-    status = d.status(time_et.now())
+    status = d.status(now)
     lmp.record_feed_heartbeat(status)
     assert d.watchlist == server._watchlist() == ["SPY", "TSLA", "$SPX"]
 
