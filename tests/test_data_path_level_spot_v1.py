@@ -5,6 +5,7 @@ from __future__ import annotations
 import live_market_plane as lmp
 import server as srv
 from option_contract import read_chain
+from push import terrain as push_terrain
 from state import level_store
 from terrain_engine import compute_terrain
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live
@@ -29,9 +30,9 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
     try:
         mark_feed_live(tk, now=now)  # the daemon was running: its last round stands while down
         lmp.record_feed_down()
-        down = srv.terrain(tk, now)
+        down = push_terrain.terrain(tk, now)
         mark_feed_live(tk, now=now)  # the daemon's price row, read at `now`: its verdict LIVE
-        live = srv.terrain(tk, now)
+        live = push_terrain.terrain(tk, now)
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)
