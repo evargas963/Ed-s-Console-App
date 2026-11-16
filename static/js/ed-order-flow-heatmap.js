@@ -49,7 +49,7 @@
         ", Schwab's book times — every cell is a captured book tick; nothing is interpolated between ticks.";
   }
 
-  // The grid is the `bookmap` panel (server.bookmap) on the page's socket while this view is on,
+  // The grid is the `bookmap` panel (push.bookmap) on the page's socket while this view is on,
   // for the selected venue and window, at once and with each streamed quote or book.
   function load() {
     if (!isHeatmap()) {

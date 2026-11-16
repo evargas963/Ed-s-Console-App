@@ -31,6 +31,7 @@ from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from numeric_contract import count_text, dollars_text, strike_text
 from option_contract import read_chain
+from push import expiries as push_expiries
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
@@ -208,7 +209,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
     Not the browser's clock (it counted days in UTC, a day off after 7 PM Central).
     """
-    body = server.expiries(TK, time_et.now())
+    body = push_expiries.expiries(TK, time_et.now())
     assert body["expiries"] == [EXPIRY]
     assert body["dte"] == {EXPIRY: _CONTRACTS[0]["daysToExpiration"]}
     # the dropdown's texts are served (the page reformatted the date itself)
@@ -218,7 +219,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
-    body = server.expiries("ZZNOLEVELS", time_et.now())
+    body = push_expiries.expiries("ZZNOLEVELS", time_et.now())
     assert (
         body["expiries"] is None  # unknown, never an empty list standing for it
         and body["reason"]

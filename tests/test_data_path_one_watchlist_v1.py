@@ -616,7 +616,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
         with level_store._lock:
             level_store._levels.pop(off, None)
             level_store._levels.pop(on, None)
-        server._terrain_refresh_last_error.pop(on, None)
+        level_store.chain_priced(on)
         lmp.record_feed_down()
 
 

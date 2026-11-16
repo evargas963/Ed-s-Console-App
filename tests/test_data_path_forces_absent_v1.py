@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import server
 from option_contract import read_chain
+from push import forces as push_forces
 from tests.real_chains import CRWD
 
 
@@ -37,6 +38,6 @@ def test_forces_before_two_capture_days_are_absent():
 
 
 def test_forces_before_levels_are_published_are_absent():
-    body = server.forces("ZZNOFORCES")
+    body = push_forces.forces("ZZNOFORCES")
     assert body["doi_below"] is None and body["charm_above"] is None
     assert "reason" not in body

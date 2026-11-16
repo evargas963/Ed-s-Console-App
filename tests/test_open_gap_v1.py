@@ -20,6 +20,7 @@ from pathlib import Path
 import server
 from micro_structure import Candle
 from open_gap import open_gap_record, today_open, wilson
+from push import experimental as push_experimental
 from state import bar_store
 from tests.page_on_socket import pages
 from time_et import ET, session
@@ -96,9 +97,9 @@ def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_design
             "answer": {"candles": candles},
         }
 
-    for key in [k for k in server._open_gap_answers if k[0] == "TSLA"]:
-        del server._open_gap_answers[key]
-    server._open_gap.pop("TSLA", None)
+    for key in [k for k in bar_store._open_gap_answers if k[0] == "TSLA"]:
+        del bar_store._open_gap_answers[key]
+    bar_store._open_gap.pop("TSLA", None)
     try:
         with pages() as on_socket:
             page = on_socket.open("TSLA", "experimental")
@@ -111,13 +112,13 @@ def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_design
             assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None
             assert on_socket.told(page, 0.2) == set(), "the same answer again tells nothing"
         assert ("TSLA", "5m365") not in bar_store._series  # their candles are not held as series
-        weekend = server.experimental("TSLA", _et("2026-10-10 12:00"))
-        before_open = server.experimental("TSLA", _et("2026-10-07 09:00"))
-        spy = server.experimental("SPY", _et("2026-10-07 09:00"))
+        weekend = push_experimental.experimental("TSLA", _et("2026-10-10 12:00"))
+        before_open = push_experimental.experimental("TSLA", _et("2026-10-07 09:00"))
+        spy = push_experimental.experimental("SPY", _et("2026-10-07 09:00"))
     finally:
-        for key in [k for k in server._open_gap_answers if k[0] == "TSLA"]:
-            del server._open_gap_answers[key]
-        server._open_gap.pop("TSLA", None)
+        for key in [k for k in bar_store._open_gap_answers if k[0] == "TSLA"]:
+            del bar_store._open_gap_answers[key]
+        bar_store._open_gap.pop("TSLA", None)
     assert server.PAGE_PANELS["experimental"]
     assert weekend["today"]["when_text"] == "no regular session today in Schwab's market hours"
     assert before_open["today"]["label"] == "Today's gap · before the open"
