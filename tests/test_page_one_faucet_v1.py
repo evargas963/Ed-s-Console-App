@@ -359,9 +359,15 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
 def test_the_largest_gex_strike_is_served(held):
     rows = held.snap.per_strike["all"]
     body = server.strikes(TK, time_et.now(), AUTO)
-    top = max(rows, key=lambda r: abs(r[1]))
-    # the row, then its net GEX and volume as the screen shows them
-    assert body["max_abs_row"] == [*top, dollars_text(top[1]), count_text(top[2])]
+    top = max(rows, key=lambda r: abs(r.value))
+    # the row by name, with its net GEX and volume as the screen shows them
+    assert body["max_abs_row"] == {
+        "strike": top.strike,
+        "value": top.value,
+        "volume": top.volume,
+        "text": dollars_text(top.value),
+        "volume_text": count_text(top.volume),
+    }
 
 
 def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():

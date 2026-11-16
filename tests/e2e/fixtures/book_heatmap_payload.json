@@ -10465,7 +10465,7 @@
    "bid": null,
    "ask": 1000.0,
    "bid_text": null,
-   "ask_text": "1.00K",
+   "ask_text": "1,000",
    "side": "ASK"
   },
   {
@@ -10609,7 +10609,7 @@
    "bid": null,
    "ask": 1000.0,
    "bid_text": null,
-   "ask_text": "1.00K",
+   "ask_text": "1,000",
    "side": "ASK"
   },
   {
@@ -10762,7 +10762,7 @@
    "bid": null,
    "ask": 1000.0,
    "bid_text": null,
-   "ask_text": "1.00K",
+   "ask_text": "1,000",
    "side": "ASK"
   },
   {
@@ -10915,7 +10915,7 @@
    "bid": null,
    "ask": 1000.0,
    "bid_text": null,
-   "ask_text": "1.00K",
+   "ask_text": "1,000",
    "side": "ASK"
   },
   {
@@ -11041,7 +11041,7 @@
    "bid": null,
    "ask": 1000.0,
    "bid_text": null,
-   "ask_text": "1.00K",
+   "ask_text": "1,000",
    "side": "ASK"
   },
   {

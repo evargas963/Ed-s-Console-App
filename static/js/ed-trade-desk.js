@@ -332,9 +332,8 @@
 
   // ---- Positioning Migration & Volume: today's per-strike net GEX$ (solid) vs yesterday's
   // (ghost outline), plus today's per-strike option volume -- the SAME real fields
-  // the strikes panel already sends to GEX by Strike (today.{all,near,far} and
-  // prior.{all,near,far}, both [strike, net_gex_1pct$, volume] rows). No new backend computation:
-  // this is a second, in-context rendering of an already-canonical endpoint. ----
+  // the strikes panel already sends to GEX by Strike (today.{all,near,far} rows, each
+  // {strike, value, volume} with their texts, and migration.{all,near,far}). ----
   var _migScope = "all"; // 'all' | 'near' (<=7 DTE) | 'far' (monthly+) -- a DTE filter, distinct
   // from EdShell's own auto/wider/all row-DENSITY scope used below.
   var _migGhost = true;
@@ -465,15 +464,12 @@
         "</div></div></div>"
       );
     }
-    // served: day-over-day rows [strike, gex today, gex prior, change] and the verdicts
+    // served: day-over-day rows {strike, value, prior, change, change_text} and the verdicts
     var mig = strikesD.migration[_migScope];
     var migRow = {};
     mig.rows.forEach(function (r) {
-      migRow[r[0]] = r;
+      migRow[r.strike] = r;
     });
-    function prior(k) {
-      return migRow[k] ? migRow[k][2] : null;
-    }
     var view = strikesD.views[_migScope];
     window.EdShell.panServed(_migPan, view.centre);
     var win = todayAll.slice().reverse(); // the served window, high strikes on top
@@ -491,9 +487,10 @@
     var rows = "";
     win.forEach(function (r) {
       // a strike with no GEX value is unknown, not a zero bar
-      var k = r[0],
-        gx = r[1],
-        gy = prior(k);
+      var m = migRow[r.strike],
+        k = r.strike,
+        gx = r.value,
+        gy = m ? m.prior : null;
       var hasGy = gy != null && gx != null;
       var sToday = window.EdShell.strength(gx, maxAbs),
         sPrior = window.EdShell.strength(gy, maxAbs);
@@ -506,14 +503,14 @@
           (sPrior == null ? 0 : sPrior * 100).toFixed(1) +
           '%"></i>'
         : "";
-      var delta = migRow[k] ? migRow[k][3] : null; // served change
+      var delta = m ? m.change : null; // served change
       var deltaHtml =
         delta == null
           ? '<span class="mig-delta">-</span>'
           : '<span class="mig-delta ' +
             (delta >= 0 ? "pos" : "neg") +
             '">' +
-            esc(migRow[k][4]) + // served: "▲$1.23M" / "▼$1.23M"
+            esc(m.change_text) + // served: "▲$1.23M" / "▼$1.23M"
             "</span>";
       var rowCls =
         "gbs-row mig-row" +
@@ -537,11 +534,11 @@
         '<span class="gbs-v ' +
         (gx == null ? "" : pos ? "pos" : "neg") +
         '">' +
-        esc(orDash(r[3])) + // served: net GEX $ as the screen shows it
+        esc(orDash(r.text)) + // served: net GEX $ as the screen shows it
         "</span>" +
         (_migGhost ? deltaHtml : "") +
         '<span class="gbs-vol" title="session volume">' +
-        esc(orDash(r[4])) +
+        esc(orDash(r.volume_text)) +
         "</span>" +
         (k === spotStrike ? migTag("SPOT", "spot") : "") +
         (cw != null && k === cw ? migTag("Call wall", "call") : "") +

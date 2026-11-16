@@ -18,7 +18,7 @@ from typing import Any, Literal, TypedDict
 from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import canonical_tape_prints
-from numeric_contract import count_text, dollars_text
+from numeric_contract import count_text, dollars_text, iv_text
 from option_contract import OptionContract
 from time_et import ct_clock, ct_label, ct_ticks
 
@@ -91,6 +91,13 @@ class TapeRow(Printed):
     strike: float | None
     oi: Any
     premium: float | None
+    premium_text: str | None
+    bid_size_text: str | None
+    ask_size_text: str | None
+    size_text: str | None
+    volume_text: str | None
+    oi_text: str | None
+    iv_text: str | None
 
 
 class NoHeatmap(TypedDict):
@@ -213,9 +220,14 @@ def tape_row(printed: TapePrint, contract: OptionContract) -> TapeRow:
         "strike": contract.strike,
         "oi": contract.open_interest,
         "premium": premium,
-        # the premium and the day's volume as the screen shows them
+        # the premium, the sizes, the day's volume, open interest and IV as the screen shows them
         "premium_text": dollars_text(premium),
+        "bid_size_text": count_text(printed["bid_size"]),
+        "ask_size_text": count_text(printed["ask_size"]),
+        "size_text": count_text(size),
         "volume_text": count_text(printed["volume"]),
+        "oi_text": count_text(contract.open_interest),
+        "iv_text": iv_text(printed["iv"]),
     }
 
 

@@ -29,16 +29,16 @@
       false,
     ],
     ["Composite", "", "The score for this strike, up to the preset ceiling.", true],
-    ["Net GEX", "$M / 1%", "Net gamma exposure in millions of dollars per 1% move.", false],
+    ["Net GEX", "$ / 1%", "Net gamma exposure in dollars per 1% move.", false],
     ["OI", "contracts", "Open interest in contracts. Green intensity shows size.", false],
     ["P/C GEX", "ratio", "Put gamma divided by call gamma. Above 1 is put-heavy.", false],
     [
       "Gross GEX",
-      "$M / 1%",
-      "Call gamma plus put gamma, in millions per 1% move. Green shows size.",
+      "$ / 1%",
+      "Call gamma plus put gamma, in dollars per 1% move. Green shows size.",
       true,
     ],
-    ["ΔGEX", "$M / 1%", "No change in gamma is produced.", false],
+    ["ΔGEX", "$ / 1%", "No change in gamma is produced.", false],
     [
       "Opt Vol",
       "contracts",
@@ -47,11 +47,11 @@
     ],
     ["P/C vol", "ratio", "Put volume divided by call volume. Above 1 is put-heavy.", false],
     ["Vol/OI", "ratio", "Options volume divided by open interest.", false],
-    ["Flow", "signed $M", "No signed flow is produced.", true],
-    ["DEX", "$M", "Delta exposure in millions of dollars.", false],
-    ["Vanna", "$M / vol pt", "Vanna in millions of dollars per volatility point.", false],
+    ["Flow", "signed $", "No signed flow is produced.", true],
+    ["DEX", "$", "Delta exposure in dollars.", false],
+    ["Vanna", "$ / vol pt", "Vanna in dollars per volatility point.", false],
     ["IV", "%", "Implied volatility for the strike.", false],
-    ["Charm", "k shares/day", "Charm in thousands of delta-shares per day.", false],
+    ["Charm", "shares/day", "Charm in delta-shares per day.", false],
   ];
 
   function state() {

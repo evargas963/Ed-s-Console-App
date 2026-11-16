@@ -103,14 +103,22 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
         "premium",
         "volume",
         "premium_text",
+        "bid_size_text",
+        "ask_size_text",
+        "size_text",
         "volume_text",
+        "oi_text",
+        "iv_text",
         "oi",
         "iv",
         "delta",
         "classification",
     }
-    # the premium and the day's volume as the screen shows them (operator 2026-11-16)
-    assert (r["premium_text"], r["volume_text"]) == ("$204", "4.39K")
+    # the premium in dollars; the sizes, the day's volume and open interest whole; the IV two
+    # decimals, as the screen shows them (operator 2026-11-16)
+    assert (r["premium_text"], r["volume_text"], r["iv_text"]) == ("$204", "4,391", "27.11")
+    assert (r["bid_size_text"], r["ask_size_text"], r["size_text"]) == ("65", "74", "1")
+    assert r["oi_text"] == "843"
 
 
 def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice():

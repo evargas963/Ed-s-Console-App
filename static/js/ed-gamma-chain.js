@@ -135,10 +135,11 @@
       '<table class="chn chn-bodytbl">' +
       COLGROUP +
       "<tbody>";
+    // open interest, volume and IV: the served texts
     var CALL = [
-      ["openInterest", 0],
-      ["totalVolume", 0],
-      ["volatility", AS_SENT],
+      ["oi_text"],
+      ["volume_text"],
+      ["iv_text"],
       ["delta", AS_SENT],
       ["gamma", AS_SENT],
       ["bid", 2],
@@ -149,9 +150,9 @@
       ["ask", 2],
       ["gamma", AS_SENT],
       ["delta", AS_SENT],
-      ["volatility", AS_SENT],
-      ["totalVolume", 0],
-      ["openInterest", 0],
+      ["iv_text"],
+      ["volume_text"],
+      ["oi_text"],
     ];
     function side(c, cls, itm, cols) {
       // itm: served per row (strike vs the live spot)

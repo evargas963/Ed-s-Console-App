@@ -531,6 +531,7 @@ def test_the_spans_run_from_the_touch_to_the_depths_last_level():
         _pair_readout(), [(1.0, _pair_readout())], dict.fromkeys(_pair_readout(), 1.0)
     )
     nyse, nq = card["venues"]["NYSE_BOOK"]["views"], card["venues"]["NASDAQ_BOOK"]["views"]
+    # prices, as the screen shows them (two decimals, no "$")
     assert (nyse["5"]["span_bid_text"], nyse["5"]["span_ask_text"]) == ("0.04", "0.19")
     assert nyse["weighted"]["span_bid_text"] == nyse["5"]["span_bid_text"]
     assert (nyse["3"]["span_bid_text"], nyse["1"]["span_bid_text"]) == ("0.02", "0.00")

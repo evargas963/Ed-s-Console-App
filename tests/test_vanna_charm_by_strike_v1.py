@@ -107,7 +107,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     assert body["available"] is True
     # spot is the live price (the header's own), not the price the rows were computed at
     assert body["spot"] == _QUOTE["native"]["LAST_PRICE"] and "priced_at_spot" not in body
-    rows = {r[0]: r[1] for r in body["rows"]}
+    rows = {r["strike"]: r["value"] for r in body["rows"]}
     assert rows, "a real chain must yield at least one vanna row"
 
     # the same chain at the same instant: the published rows are the faucet's own values
@@ -129,7 +129,7 @@ def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_stri
     _put_live_chain()
     body = server.strike_bars("charm_rows", TK, time_et.now(), ALL)
     assert body["available"] is True
-    rows = {r[0]: r[1] for r in body["rows"]}
+    rows = {r["strike"]: r["value"] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"
 
     # the same chain at the same instant: the published rows are the faucet's own values
@@ -209,5 +209,5 @@ def test_vanna_and_charm_rows_are_sorted_by_strike_ascending():
     _put_live_chain()
     v_rows = server.strike_bars("vanna_rows", TK, time_et.now(), AUTO)["rows"]
     c_rows = server.strike_bars("charm_rows", TK, time_et.now(), AUTO)["rows"]
-    assert [r[0] for r in v_rows] == sorted(r[0] for r in v_rows)
-    assert [r[0] for r in c_rows] == sorted(r[0] for r in c_rows)
+    assert [r["strike"] for r in v_rows] == sorted(r["strike"] for r in v_rows)
+    assert [r["strike"] for r in c_rows] == sorted(r["strike"] for r in c_rows)

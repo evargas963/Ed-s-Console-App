@@ -232,7 +232,7 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
         view = body["measures"][name]["view"] if name in body["measures"] else body["views"][name]
         assert len(rows) == min(SCOPE_ROWS["auto"], len(every[name])), name
         assert all(r in every[name] for r in rows), name  # rows of the list, as published
-        known = [abs(r[1]) for r in rows if r[1] is not None]
+        known = [abs(r["value"]) for r in rows if r["value"] is not None]
         assert view["max_abs"] == (max(known) if known else None), name
         assert view["note"] is None or not rows, name
     # no prior day is stored here: the migration's scale is today's
@@ -245,9 +245,9 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
             return server.strike_bar_payload(TK, key, scope, centre, shift, _AT.timestamp())
 
         d = bars("auto")
-        rows = [r[0] for r in d["rows"]]
+        rows = [r["strike"] for r in d["rows"]]
         assert d["spot_strike"] is not None  # around the price
         panned = bars("auto", centre=d["view"]["centre"], shift=2)
-        every = [r[0] for r in bars("all")["rows"]]
+        every = [r["strike"] for r in bars("all")["rows"]]
         assert panned["view"]["centre"] == every[every.index(d["view"]["centre"]) + 2]
-        assert [r[0] for r in panned["rows"]] != rows and len(panned["rows"]) == len(rows)
+        assert [r["strike"] for r in panned["rows"]] != rows and len(panned["rows"]) == len(rows)

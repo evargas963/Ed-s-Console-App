@@ -15,9 +15,13 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 // tests/test_vanna_charm_by_strike_v1.py)
 const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
 
+// a contract as the server serves it: Schwab's fields and its counts and IV as the screen shows
+// them (numeric_contract.count_text, iv_text)
 function ct(side, strike, sym, oi, vol, iv, delta, expDate) {
   return { putCall: side, strikePrice: strike, symbol: sym, openInterest: oi, totalVolume: vol,
-    volatility: iv, delta: delta, gamma: 0.01, expirationDate: expDate || '2026-09-11' };
+    volatility: iv, delta: delta, gamma: 0.01, expirationDate: expDate || '2026-09-11',
+    oi_text: oi.toLocaleString('en-US'), volume_text: vol.toLocaleString('en-US'),
+    iv_text: iv.toFixed(2) };
 }
 // Real OSI-style symbol (root padded to 6 + YYMMDD + C/P + 8-digit strike*1000), matching the
 // vendor's own verbatim format -- used where a test needs the symbol's OWN expirationDate to

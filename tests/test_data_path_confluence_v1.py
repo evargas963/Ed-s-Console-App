@@ -49,6 +49,7 @@ from tests.real_chains import (
 )
 from tests.shared_helpers import fixture_json
 from tests.test_order_flow_book_payload_v1 import _same
+from tests.test_served_numbers_v1 import screen_text
 from time_et import (
     ET,
     INDEX_OPTIONS,
@@ -330,11 +331,11 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
         net = bucket_metric(bucket, "net_gex_1pct")
         call, put = bucket_metric(bucket, "call_gex_1pct"), bucket_metric(bucket, "put_gex_1pct")
         if net is not None and abs(net) >= 5_000:
-            assert row["net_gex_text"] == f"{net / 1e6:+.2f}"
+            assert row["net_gex_text"] == screen_text(net, "dollars")
             assert row["net_gex"] == net and abs(net) <= body["peaks"]["net_gex"]
             checked += 1
         if call is not None and put is not None and call >= 0 and put >= 0:
-            assert row["gross_text"] == f"{(call + put) / 1e6:.2f}"
+            assert row["gross_text"] == screen_text(call + put, "dollars")
             grossed += 1
     assert checked > 5 and grossed > 5
 
@@ -448,7 +449,7 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
         server._terrain_cache.pop("SPY", None)
     shown = [r for r in body["rows"] if r["strike"] in zero]
     assert len(shown) >= 4
-    assert all(r["charm_text"] == "0.00" and r["charm_reason"] is None for r in shown)
+    assert all(r["charm_text"] == "0" and r["charm_reason"] is None for r in shown)
     assert all(
         r["score"] is None and r["missing"] == ["no open interest and no volume"] for r in shown
     )
@@ -705,7 +706,7 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
         server._terrain_cache.pop("SPY", None)
     row = next(r for r in body["rows"] if r["strike"] == strike)
     assert earlier[strike]["net_charm"] != at_capture[strike]["net_charm"]
-    assert row["charm_text"] == f"{earlier[strike]['net_charm'] / 1000:+.2f}"
+    assert row["charm_text"] == screen_text(earlier[strike]["net_charm"], "compact")
 
 
 def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
@@ -731,9 +732,9 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
         for r in body["rows"]
         if r["strike"] in puts
         and r["strike"] in whole
-        and f"{puts[r['strike']]:.1f}" != f"{whole[r['strike']]:.1f}"
+        and f"{puts[r['strike']]:.2f}" != f"{whole[r['strike']]:.2f}"
     ]
-    assert differ and all(r["iv_text"] == f"{puts[r['strike']]:.1f}" for r in differ)
+    assert differ and all(r["iv_text"] == f"{puts[r['strike']]:.2f}" for r in differ)
 
 
 def _window_has(rows: list, key: str) -> bool:
@@ -827,7 +828,7 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
         read_chain([ct for ct in held.chain if str(ct.get("expirationDate"))[:10] == expiry])
     )
     shown = next(r for r in body["rows"] if blend.get(r["strike"]) is not None)
-    assert shown["iv_text"] == f"{blend[shown['strike']]:.1f}"
+    assert shown["iv_text"] == f"{blend[shown['strike']]:.2f}"
 
 
 def test_an_expiry_settled_at_the_close_keeps_its_last_known_values_with_their_time():

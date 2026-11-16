@@ -54,7 +54,7 @@ async function open(page, sub, answer) {
 function strikes(page, host) {
   return page.locator(host + ' .gbs-row').evaluateAll((rs) => rs.map((r) => Number(r.getAttribute('data-strike'))));
 }
-function sentStrikes(kind) { return PANELS[kind].rows.map((r) => r[0]).reverse(); }
+function sentStrikes(kind) { return PANELS[kind].rows.map((r) => r.strike).reverse(); }
 
 test.describe('Vanna and Charm by strike: the panels on the page\'s socket', () => {
   test('the Vanna tab names its panel and window on the subscribe and draws the bars sent, asking no route', async ({ page }) => {

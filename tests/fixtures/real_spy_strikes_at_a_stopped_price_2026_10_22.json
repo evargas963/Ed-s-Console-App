@@ -23,76 +23,76 @@
  "levels_stale_reason": "",
  "levels_state": "CLOSE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",
- "max_abs_row": [
-  764.0,
-  -1316801139.68217,
-  814582.0,
-  "-$1.32B",
-  "814.58K"
- ],
+ "max_abs_row": {
+  "strike": 764.0,
+  "text": "-$1.32B",
+  "value": -1316801139.68217,
+  "volume": 814582.0,
+  "volume_text": "814,582"
+ },
  "measures": {
   "dex": {
-   "max_abs_row": [
-    772.0,
-    633515384.1419919,
-    "$633.52M"
-   ],
+   "max_abs_row": {
+    "strike": 772.0,
+    "text": "$633.52M",
+    "value": 633515384.1419919
+   },
    "rows": [
-    [
-     768.0,
-     456844947.09737736,
-     "$456.84M"
-    ],
-    [
-     769.0,
-     383768692.52198106,
-     "$383.77M"
-    ],
-    [
-     770.0,
-     609154940.1111223,
-     "$609.15M"
-    ],
-    [
-     771.0,
-     425552983.4363241,
-     "$425.55M"
-    ],
-    [
-     772.0,
-     633515384.1419919,
-     "$633.52M"
-    ],
-    [
-     773.0,
-     391240382.3916644,
-     "$391.24M"
-    ],
-    [
-     774.0,
-     285999696.57460755,
-     "$286.00M"
-    ],
-    [
-     775.0,
-     221701804.985222,
-     "$221.70M"
-    ],
-    [
-     776.0,
-     90300734.63002223,
-     "$90.30M"
-    ],
-    [
-     777.0,
-     60686030.090697356,
-     "$60.69M"
-    ],
-    [
-     778.0,
-     82297668.41265623,
-     "$82.30M"
-    ]
+    {
+     "strike": 768.0,
+     "text": "$456.84M",
+     "value": 456844947.09737736
+    },
+    {
+     "strike": 769.0,
+     "text": "$383.77M",
+     "value": 383768692.52198106
+    },
+    {
+     "strike": 770.0,
+     "text": "$609.15M",
+     "value": 609154940.1111223
+    },
+    {
+     "strike": 771.0,
+     "text": "$425.55M",
+     "value": 425552983.4363241
+    },
+    {
+     "strike": 772.0,
+     "text": "$633.52M",
+     "value": 633515384.1419919
+    },
+    {
+     "strike": 773.0,
+     "text": "$391.24M",
+     "value": 391240382.3916644
+    },
+    {
+     "strike": 774.0,
+     "text": "$286.00M",
+     "value": 285999696.57460755
+    },
+    {
+     "strike": 775.0,
+     "text": "$221.70M",
+     "value": 221701804.985222
+    },
+    {
+     "strike": 776.0,
+     "text": "$90.30M",
+     "value": 90300734.63002223
+    },
+    {
+     "strike": 777.0,
+     "text": "$60.69M",
+     "value": 60686030.090697356
+    },
+    {
+     "strike": 778.0,
+     "text": "$82.30M",
+     "value": 82297668.41265623
+    }
    ],
    "view": {
     "centre": 773.0,
@@ -101,67 +101,67 @@
    }
   },
   "oi": {
-   "max_abs_row": [
-    776.0,
-    18268.0,
-    "18.27K"
-   ],
+   "max_abs_row": {
+    "strike": 776.0,
+    "text": "18,268",
+    "value": 18268.0
+   },
    "rows": [
-    [
-     768.0,
-     7291.0,
-     "7.29K"
-    ],
-    [
-     769.0,
-     7291.0,
-     "7.29K"
-    ],
-    [
-     770.0,
-     14748.0,
-     "14.75K"
-    ],
-    [
-     771.0,
-     12531.0,
-     "12.53K"
-    ],
-    [
-     772.0,
-     12716.0,
-     "12.72K"
-    ],
-    [
-     773.0,
-     10648.0,
-     "10.65K"
-    ],
-    [
-     774.0,
-     10140.0,
-     "10.14K"
-    ],
-    [
-     775.0,
-     13047.0,
-     "13.05K"
-    ],
-    [
-     776.0,
-     18268.0,
-     "18.27K"
-    ],
-    [
-     777.0,
-     5714.0,
-     "5.71K"
-    ],
-    [
-     778.0,
-     7113.0,
-     "7.11K"
-    ]
+    {
+     "strike": 768.0,
+     "text": "7,291",
+     "value": 7291.0
+    },
+    {
+     "strike": 769.0,
+     "text": "7,291",
+     "value": 7291.0
+    },
+    {
+     "strike": 770.0,
+     "text": "14,748",
+     "value": 14748.0
+    },
+    {
+     "strike": 771.0,
+     "text": "12,531",
+     "value": 12531.0
+    },
+    {
+     "strike": 772.0,
+     "text": "12,716",
+     "value": 12716.0
+    },
+    {
+     "strike": 773.0,
+     "text": "10,648",
+     "value": 10648.0
+    },
+    {
+     "strike": 774.0,
+     "text": "10,140",
+     "value": 10140.0
+    },
+    {
+     "strike": 775.0,
+     "text": "13,047",
+     "value": 13047.0
+    },
+    {
+     "strike": 776.0,
+     "text": "18,268",
+     "value": 18268.0
+    },
+    {
+     "strike": 777.0,
+     "text": "5,714",
+     "value": 5714.0
+    },
+    {
+     "strike": 778.0,
+     "text": "7,113",
+     "value": 7113.0
+    }
    ],
    "view": {
     "centre": 773.0,
@@ -180,1028 +180,1028 @@
    "compared": false,
    "grew": [],
    "rows": [
-    [
-     550.0,
-     -4643.875465896241,
-     null,
-     null,
-     null
-    ],
-    [
-     555.0,
-     -3767.299934530464,
-     null,
-     null,
-     null
-    ],
-    [
-     560.0,
-     -3539.84480967024,
-     null,
-     null,
-     null
-    ],
-    [
-     565.0,
-     -290.8511482659839,
-     null,
-     null,
-     null
-    ],
-    [
-     570.0,
-     -1494.3948810111358,
-     null,
-     null,
-     null
-    ],
-    [
-     575.0,
-     -1354.8302283790078,
-     null,
-     null,
-     null
-    ],
-    [
-     580.0,
-     -309.79990443312,
-     null,
-     null,
-     null
-    ],
-    [
-     585.0,
-     -3309.6401887672796,
-     null,
-     null,
-     null
-    ],
-    [
-     590.0,
-     -4162.491830711231,
-     null,
-     null,
-     null
-    ],
-    [
-     595.0,
-     -710.3623661326079,
-     null,
-     null,
-     null
-    ],
-    [
-     600.0,
-     -2761.98844513824,
-     null,
-     null,
-     null
-    ],
-    [
-     605.0,
-     -3023.89107774408,
-     null,
-     null,
-     null
-    ],
-    [
-     610.0,
-     -137.38723856855998,
-     null,
-     null,
-     null
-    ],
-    [
-     615.0,
-     -16.292661263855997,
-     null,
-     null,
-     null
-    ],
-    [
-     620.0,
-     -156.77381257689598,
-     null,
-     null,
-     null
-    ],
-    [
-     625.0,
-     -391.9170187285919,
-     null,
-     null,
-     null
-    ],
-    [
-     630.0,
-     -9175.821341296894,
-     null,
-     null,
-     null
-    ],
-    [
-     635.0,
-     -1530.6286855488481,
-     null,
-     null,
-     null
-    ],
-    [
-     640.0,
-     -31451.199191867516,
-     null,
-     null,
-     null
-    ],
-    [
-     645.0,
-     -42017.08634140319,
-     null,
-     null,
-     null
-    ],
-    [
-     650.0,
-     -22028.261785854913,
-     null,
-     null,
-     null
-    ],
-    [
-     655.0,
-     -69736.96838771568,
-     null,
-     null,
-     null
-    ],
-    [
-     660.0,
-     -3245.6895960959996,
-     null,
-     null,
-     null
-    ],
-    [
-     665.0,
-     -97896.62969915674,
-     null,
-     null,
-     null
-    ],
-    [
-     670.0,
-     -3135.0092458406393,
-     null,
-     null,
-     null
-    ],
-    [
-     675.0,
-     -9105.91058841408,
-     null,
-     null,
-     null
-    ],
-    [
-     680.0,
-     -51991.95443074618,
-     null,
-     null,
-     null
-    ],
-    [
-     685.0,
-     -20074.05309530189,
-     null,
-     null,
-     null
-    ],
-    [
-     690.0,
-     -30879.607568681666,
-     null,
-     null,
-     null
-    ],
-    [
-     695.0,
-     -31458.717983593728,
-     null,
-     null,
-     null
-    ],
-    [
-     700.0,
-     -40055.8842405334,
-     null,
-     null,
-     null
-    ],
-    [
-     705.0,
-     -35551.88281854374,
-     null,
-     null,
-     null
-    ],
-    [
-     710.0,
-     -146486.6694529243,
-     null,
-     null,
-     null
-    ],
-    [
-     715.0,
-     -126818.10572942822,
-     null,
-     null,
-     null
-    ],
-    [
-     720.0,
-     -287152.1712649656,
-     null,
-     null,
-     null
-    ],
-    [
-     725.0,
-     -246250.50468123078,
-     null,
-     null,
-     null
-    ],
-    [
-     729.0,
-     -237684.48770429968,
-     null,
-     null,
-     null
-    ],
-    [
-     730.0,
-     -555854.3075844918,
-     null,
-     null,
-     null
-    ],
-    [
-     731.0,
-     -276556.85108135885,
-     null,
-     null,
-     null
-    ],
-    [
-     732.0,
-     -48605.47429206269,
-     null,
-     null,
-     null
-    ],
-    [
-     733.0,
-     -354845.872975657,
-     null,
-     null,
-     null
-    ],
-    [
-     734.0,
-     -709079.5481827494,
-     null,
-     null,
-     null
-    ],
-    [
-     735.0,
-     -1013472.0870482037,
-     null,
-     null,
-     null
-    ],
-    [
-     736.0,
-     -357758.0329403268,
-     null,
-     null,
-     null
-    ],
-    [
-     737.0,
-     -983105.36848656,
-     null,
-     null,
-     null
-    ],
-    [
-     738.0,
-     -843419.3177234238,
-     null,
-     null,
-     null
-    ],
-    [
-     739.0,
-     -1595177.2906906372,
-     null,
-     null,
-     null
-    ],
-    [
-     740.0,
-     -3311938.919235859,
-     null,
-     null,
-     null
-    ],
-    [
-     741.0,
-     -1842735.1194456911,
-     null,
-     null,
-     null
-    ],
-    [
-     742.0,
-     -2370378.0156499124,
-     null,
-     null,
-     null
-    ],
-    [
-     743.0,
-     -2164492.599681384,
-     null,
-     null,
-     null
-    ],
-    [
-     744.0,
-     -1514335.1486493093,
-     null,
-     null,
-     null
-    ],
-    [
-     745.0,
-     -1684765.1243133533,
-     null,
-     null,
-     null
-    ],
-    [
-     746.0,
-     -1099785.527737155,
-     null,
-     null,
-     null
-    ],
-    [
-     747.0,
-     -3432805.1774551626,
-     null,
-     null,
-     null
-    ],
-    [
-     748.0,
-     -1137146.4505252521,
-     null,
-     null,
-     null
-    ],
-    [
-     749.0,
-     -5146601.261446944,
-     null,
-     null,
-     null
-    ],
-    [
-     750.0,
-     -3344600.387042512,
-     null,
-     null,
-     null
-    ],
-    [
-     751.0,
-     -3449544.331191045,
-     null,
-     null,
-     null
-    ],
-    [
-     752.0,
-     -5037103.836622793,
-     null,
-     null,
-     null
-    ],
-    [
-     753.0,
-     -3444581.233980774,
-     null,
-     null,
-     null
-    ],
-    [
-     754.0,
-     -2466747.910323521,
-     null,
-     null,
-     null
-    ],
-    [
-     755.0,
-     -4889838.207504378,
-     null,
-     null,
-     null
-    ],
-    [
-     756.0,
-     -4476637.059705549,
-     null,
-     null,
-     null
-    ],
-    [
-     757.0,
-     -8252026.776315569,
-     null,
-     null,
-     null
-    ],
-    [
-     758.0,
-     -10434533.618738405,
-     null,
-     null,
-     null
-    ],
-    [
-     759.0,
-     -31943123.320767276,
-     null,
-     null,
-     null
-    ],
-    [
-     760.0,
-     -60729170.27903403,
-     null,
-     null,
-     null
-    ],
-    [
-     761.0,
-     -88440750.57521853,
-     null,
-     null,
-     null
-    ],
-    [
-     762.0,
-     -179655618.00206193,
-     null,
-     null,
-     null
-    ],
-    [
-     763.0,
-     -279566862.5746526,
-     null,
-     null,
-     null
-    ],
-    [
-     764.0,
-     -1316801139.68217,
-     null,
-     null,
-     null
-    ],
-    [
-     765.0,
-     -430387634.2433901,
-     null,
-     null,
-     null
-    ],
-    [
-     766.0,
-     -235924646.15449694,
-     null,
-     null,
-     null
-    ],
-    [
-     767.0,
-     -59174433.31751149,
-     null,
-     null,
-     null
-    ],
-    [
-     768.0,
-     -39931287.640042946,
-     null,
-     null,
-     null
-    ],
-    [
-     769.0,
-     -16523703.255162042,
-     null,
-     null,
-     null
-    ],
-    [
-     770.0,
-     -5379257.901601046,
-     null,
-     null,
-     null
-    ],
-    [
-     771.0,
-     4846865.9310600385,
-     null,
-     null,
-     null
-    ],
-    [
-     772.0,
-     -10893452.32429789,
-     null,
-     null,
-     null
-    ],
-    [
-     773.0,
-     938375.7204155028,
-     null,
-     null,
-     null
-    ],
-    [
-     774.0,
-     5197339.936038183,
-     null,
-     null,
-     null
-    ],
-    [
-     775.0,
-     12158454.964166764,
-     null,
-     null,
-     null
-    ],
-    [
-     776.0,
-     23173260.295047093,
-     null,
-     null,
-     null
-    ],
-    [
-     777.0,
-     5275141.800939364,
-     null,
-     null,
-     null
-    ],
-    [
-     778.0,
-     5617988.353640684,
-     null,
-     null,
-     null
-    ],
-    [
-     779.0,
-     7009462.72695089,
-     null,
-     null,
-     null
-    ],
-    [
-     780.0,
-     11486891.022734197,
-     null,
-     null,
-     null
-    ],
-    [
-     781.0,
-     4128564.6081753843,
-     null,
-     null,
-     null
-    ],
-    [
-     782.0,
-     9990312.849225275,
-     null,
-     null,
-     null
-    ],
-    [
-     783.0,
-     4511990.803681879,
-     null,
-     null,
-     null
-    ],
-    [
-     784.0,
-     4985124.835762575,
-     null,
-     null,
-     null
-    ],
-    [
-     785.0,
-     3594090.4868954895,
-     null,
-     null,
-     null
-    ],
-    [
-     786.0,
-     1866685.4599301263,
-     null,
-     null,
-     null
-    ],
-    [
-     787.0,
-     1191402.4135509848,
-     null,
-     null,
-     null
-    ],
-    [
-     788.0,
-     1445119.8489757404,
-     null,
-     null,
-     null
-    ],
-    [
-     789.0,
-     818880.4508217056,
-     null,
-     null,
-     null
-    ],
-    [
-     790.0,
-     1028075.4077402902,
-     null,
-     null,
-     null
-    ],
-    [
-     791.0,
-     566442.1556769421,
-     null,
-     null,
-     null
-    ],
-    [
-     792.0,
-     141653.6333293448,
-     null,
-     null,
-     null
-    ],
-    [
-     793.0,
-     270535.8108396112,
-     null,
-     null,
-     null
-    ],
-    [
-     794.0,
-     211257.3825043402,
-     null,
-     null,
-     null
-    ],
-    [
-     795.0,
-     183310.01030774013,
-     null,
-     null,
-     null
-    ],
-    [
-     796.0,
-     123678.7241427468,
-     null,
-     null,
-     null
-    ],
-    [
-     797.0,
-     120815.63480171864,
-     null,
-     null,
-     null
-    ],
-    [
-     798.0,
-     231851.0494887206,
-     null,
-     null,
-     null
-    ],
-    [
-     799.0,
-     57532.02550486516,
-     null,
-     null,
-     null
-    ],
-    [
-     800.0,
-     73885.92872834821,
-     null,
-     null,
-     null
-    ],
-    [
-     801.0,
-     330038.01079230505,
-     null,
-     null,
-     null
-    ],
-    [
-     802.0,
-     384632.9907664066,
-     null,
-     null,
-     null
-    ],
-    [
-     803.0,
-     257933.31768180864,
-     null,
-     null,
-     null
-    ],
-    [
-     804.0,
-     490254.84622268274,
-     null,
-     null,
-     null
-    ],
-    [
-     805.0,
-     28105.45362512928,
-     null,
-     null,
-     null
-    ],
-    [
-     806.0,
-     227687.4368443359,
-     null,
-     null,
-     null
-    ],
-    [
-     807.0,
-     165293.99294463906,
-     null,
-     null,
-     null
-    ],
-    [
-     808.0,
-     552659.0721164155,
-     null,
-     null,
-     null
-    ],
-    [
-     809.0,
-     53420.01115245868,
-     null,
-     null,
-     null
-    ],
-    [
-     810.0,
-     156686.1089069468,
-     null,
-     null,
-     null
-    ],
-    [
-     815.0,
-     79326.55093923144,
-     null,
-     null,
-     null
-    ],
-    [
-     820.0,
-     11290.91349456288,
-     null,
-     null,
-     null
-    ],
-    [
-     825.0,
-     27439.47431295192,
-     null,
-     null,
-     null
-    ],
-    [
-     830.0,
-     49968.080165301406,
-     null,
-     null,
-     null
-    ],
-    [
-     835.0,
-     55456.646348581635,
-     null,
-     null,
-     null
-    ],
-    [
-     840.0,
-     4037.818822251119,
-     null,
-     null,
-     null
-    ],
-    [
-     845.0,
-     51196.36936243118,
-     null,
-     null,
-     null
-    ],
-    [
-     850.0,
-     406.21906820779196,
-     null,
-     null,
-     null
-    ],
-    [
-     855.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     860.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     865.0,
-     1299.9745716622558,
-     null,
-     null,
-     null
-    ],
-    [
-     870.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     875.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     880.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     885.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     890.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     895.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     900.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     905.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     910.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     915.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     920.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     925.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     930.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     935.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     940.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     945.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     950.0,
-     0.0,
-     null,
-     null,
-     null
-    ]
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 550.0,
+     "value": -4643.875465896241
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 555.0,
+     "value": -3767.299934530464
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 560.0,
+     "value": -3539.84480967024
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 565.0,
+     "value": -290.8511482659839
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 570.0,
+     "value": -1494.3948810111358
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 575.0,
+     "value": -1354.8302283790078
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 580.0,
+     "value": -309.79990443312
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 585.0,
+     "value": -3309.6401887672796
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 590.0,
+     "value": -4162.491830711231
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 595.0,
+     "value": -710.3623661326079
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 600.0,
+     "value": -2761.98844513824
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 605.0,
+     "value": -3023.89107774408
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 610.0,
+     "value": -137.38723856855998
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 615.0,
+     "value": -16.292661263855997
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 620.0,
+     "value": -156.77381257689598
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 625.0,
+     "value": -391.9170187285919
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 630.0,
+     "value": -9175.821341296894
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 635.0,
+     "value": -1530.6286855488481
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 640.0,
+     "value": -31451.199191867516
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 645.0,
+     "value": -42017.08634140319
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 650.0,
+     "value": -22028.261785854913
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 655.0,
+     "value": -69736.96838771568
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 660.0,
+     "value": -3245.6895960959996
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 665.0,
+     "value": -97896.62969915674
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 670.0,
+     "value": -3135.0092458406393
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 675.0,
+     "value": -9105.91058841408
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 680.0,
+     "value": -51991.95443074618
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 685.0,
+     "value": -20074.05309530189
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 690.0,
+     "value": -30879.607568681666
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 695.0,
+     "value": -31458.717983593728
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 700.0,
+     "value": -40055.8842405334
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 705.0,
+     "value": -35551.88281854374
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 710.0,
+     "value": -146486.6694529243
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 715.0,
+     "value": -126818.10572942822
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 720.0,
+     "value": -287152.1712649656
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 725.0,
+     "value": -246250.50468123078
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 729.0,
+     "value": -237684.48770429968
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 730.0,
+     "value": -555854.3075844918
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 731.0,
+     "value": -276556.85108135885
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 732.0,
+     "value": -48605.47429206269
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 733.0,
+     "value": -354845.872975657
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 734.0,
+     "value": -709079.5481827494
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 735.0,
+     "value": -1013472.0870482037
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 736.0,
+     "value": -357758.0329403268
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 737.0,
+     "value": -983105.36848656
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 738.0,
+     "value": -843419.3177234238
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 739.0,
+     "value": -1595177.2906906372
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 740.0,
+     "value": -3311938.919235859
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 741.0,
+     "value": -1842735.1194456911
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 742.0,
+     "value": -2370378.0156499124
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 743.0,
+     "value": -2164492.599681384
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 744.0,
+     "value": -1514335.1486493093
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 745.0,
+     "value": -1684765.1243133533
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 746.0,
+     "value": -1099785.527737155
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 747.0,
+     "value": -3432805.1774551626
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 748.0,
+     "value": -1137146.4505252521
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 749.0,
+     "value": -5146601.261446944
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 750.0,
+     "value": -3344600.387042512
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 751.0,
+     "value": -3449544.331191045
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 752.0,
+     "value": -5037103.836622793
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 753.0,
+     "value": -3444581.233980774
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 754.0,
+     "value": -2466747.910323521
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 755.0,
+     "value": -4889838.207504378
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 756.0,
+     "value": -4476637.059705549
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 757.0,
+     "value": -8252026.776315569
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 758.0,
+     "value": -10434533.618738405
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 759.0,
+     "value": -31943123.320767276
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 760.0,
+     "value": -60729170.27903403
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 761.0,
+     "value": -88440750.57521853
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 762.0,
+     "value": -179655618.00206193
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 763.0,
+     "value": -279566862.5746526
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 764.0,
+     "value": -1316801139.68217
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 765.0,
+     "value": -430387634.2433901
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 766.0,
+     "value": -235924646.15449694
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 767.0,
+     "value": -59174433.31751149
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 768.0,
+     "value": -39931287.640042946
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 769.0,
+     "value": -16523703.255162042
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 770.0,
+     "value": -5379257.901601046
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 771.0,
+     "value": 4846865.9310600385
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 772.0,
+     "value": -10893452.32429789
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 773.0,
+     "value": 938375.7204155028
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 774.0,
+     "value": 5197339.936038183
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 775.0,
+     "value": 12158454.964166764
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 776.0,
+     "value": 23173260.295047093
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 777.0,
+     "value": 5275141.800939364
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 778.0,
+     "value": 5617988.353640684
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 779.0,
+     "value": 7009462.72695089
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 780.0,
+     "value": 11486891.022734197
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 781.0,
+     "value": 4128564.6081753843
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 782.0,
+     "value": 9990312.849225275
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 783.0,
+     "value": 4511990.803681879
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 784.0,
+     "value": 4985124.835762575
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 785.0,
+     "value": 3594090.4868954895
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 786.0,
+     "value": 1866685.4599301263
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 787.0,
+     "value": 1191402.4135509848
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 788.0,
+     "value": 1445119.8489757404
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 789.0,
+     "value": 818880.4508217056
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 790.0,
+     "value": 1028075.4077402902
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 791.0,
+     "value": 566442.1556769421
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 792.0,
+     "value": 141653.6333293448
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 793.0,
+     "value": 270535.8108396112
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 794.0,
+     "value": 211257.3825043402
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 795.0,
+     "value": 183310.01030774013
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 796.0,
+     "value": 123678.7241427468
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 797.0,
+     "value": 120815.63480171864
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 798.0,
+     "value": 231851.0494887206
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 799.0,
+     "value": 57532.02550486516
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 800.0,
+     "value": 73885.92872834821
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 801.0,
+     "value": 330038.01079230505
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 802.0,
+     "value": 384632.9907664066
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 803.0,
+     "value": 257933.31768180864
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 804.0,
+     "value": 490254.84622268274
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 805.0,
+     "value": 28105.45362512928
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 806.0,
+     "value": 227687.4368443359
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 807.0,
+     "value": 165293.99294463906
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 808.0,
+     "value": 552659.0721164155
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 809.0,
+     "value": 53420.01115245868
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 810.0,
+     "value": 156686.1089069468
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 815.0,
+     "value": 79326.55093923144
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 820.0,
+     "value": 11290.91349456288
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 825.0,
+     "value": 27439.47431295192
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 830.0,
+     "value": 49968.080165301406
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 835.0,
+     "value": 55456.646348581635
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 840.0,
+     "value": 4037.818822251119
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 845.0,
+     "value": 51196.36936243118
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 850.0,
+     "value": 406.21906820779196
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 855.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 860.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 865.0,
+     "value": 1299.9745716622558
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 870.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 875.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 880.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 885.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 890.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 895.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 900.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 905.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 910.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 915.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 920.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 925.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 930.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 935.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 940.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 945.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 950.0,
+     "value": 0.0
+    }
    ],
    "shrank": [],
    "volume_total": 9570957.0
@@ -1224,1028 +1224,1028 @@
    "compared": false,
    "grew": [],
    "rows": [
-    [
-     550.0,
-     -4643.875465896241,
-     null,
-     null,
-     null
-    ],
-    [
-     555.0,
-     -3767.299934530464,
-     null,
-     null,
-     null
-    ],
-    [
-     560.0,
-     -3539.84480967024,
-     null,
-     null,
-     null
-    ],
-    [
-     565.0,
-     -290.8511482659839,
-     null,
-     null,
-     null
-    ],
-    [
-     570.0,
-     -1494.3948810111358,
-     null,
-     null,
-     null
-    ],
-    [
-     575.0,
-     -1354.8302283790078,
-     null,
-     null,
-     null
-    ],
-    [
-     580.0,
-     -309.79990443312,
-     null,
-     null,
-     null
-    ],
-    [
-     585.0,
-     -3309.6401887672796,
-     null,
-     null,
-     null
-    ],
-    [
-     590.0,
-     -4162.491830711231,
-     null,
-     null,
-     null
-    ],
-    [
-     595.0,
-     -710.3623661326079,
-     null,
-     null,
-     null
-    ],
-    [
-     600.0,
-     -2761.98844513824,
-     null,
-     null,
-     null
-    ],
-    [
-     605.0,
-     -3023.89107774408,
-     null,
-     null,
-     null
-    ],
-    [
-     610.0,
-     -137.38723856855998,
-     null,
-     null,
-     null
-    ],
-    [
-     615.0,
-     -16.292661263855997,
-     null,
-     null,
-     null
-    ],
-    [
-     620.0,
-     -156.77381257689598,
-     null,
-     null,
-     null
-    ],
-    [
-     625.0,
-     -391.9170187285919,
-     null,
-     null,
-     null
-    ],
-    [
-     630.0,
-     -9175.821341296894,
-     null,
-     null,
-     null
-    ],
-    [
-     635.0,
-     -1530.6286855488481,
-     null,
-     null,
-     null
-    ],
-    [
-     640.0,
-     -31451.199191867516,
-     null,
-     null,
-     null
-    ],
-    [
-     645.0,
-     -42017.08634140319,
-     null,
-     null,
-     null
-    ],
-    [
-     650.0,
-     -22028.261785854913,
-     null,
-     null,
-     null
-    ],
-    [
-     655.0,
-     -69736.96838771568,
-     null,
-     null,
-     null
-    ],
-    [
-     660.0,
-     -3245.6895960959996,
-     null,
-     null,
-     null
-    ],
-    [
-     665.0,
-     -97896.62969915674,
-     null,
-     null,
-     null
-    ],
-    [
-     670.0,
-     -3135.0092458406393,
-     null,
-     null,
-     null
-    ],
-    [
-     675.0,
-     -9105.91058841408,
-     null,
-     null,
-     null
-    ],
-    [
-     680.0,
-     -51991.95443074618,
-     null,
-     null,
-     null
-    ],
-    [
-     685.0,
-     -20074.05309530189,
-     null,
-     null,
-     null
-    ],
-    [
-     690.0,
-     -30879.607568681666,
-     null,
-     null,
-     null
-    ],
-    [
-     695.0,
-     -31458.717983593728,
-     null,
-     null,
-     null
-    ],
-    [
-     700.0,
-     -40055.8842405334,
-     null,
-     null,
-     null
-    ],
-    [
-     705.0,
-     -35551.88281854374,
-     null,
-     null,
-     null
-    ],
-    [
-     710.0,
-     -146486.6694529243,
-     null,
-     null,
-     null
-    ],
-    [
-     715.0,
-     -126818.10572942822,
-     null,
-     null,
-     null
-    ],
-    [
-     720.0,
-     -287152.1712649656,
-     null,
-     null,
-     null
-    ],
-    [
-     725.0,
-     -246250.50468123078,
-     null,
-     null,
-     null
-    ],
-    [
-     729.0,
-     -237684.48770429968,
-     null,
-     null,
-     null
-    ],
-    [
-     730.0,
-     -555854.3075844918,
-     null,
-     null,
-     null
-    ],
-    [
-     731.0,
-     -276556.85108135885,
-     null,
-     null,
-     null
-    ],
-    [
-     732.0,
-     -48605.47429206269,
-     null,
-     null,
-     null
-    ],
-    [
-     733.0,
-     -354845.872975657,
-     null,
-     null,
-     null
-    ],
-    [
-     734.0,
-     -709079.5481827494,
-     null,
-     null,
-     null
-    ],
-    [
-     735.0,
-     -1013472.0870482037,
-     null,
-     null,
-     null
-    ],
-    [
-     736.0,
-     -357758.0329403268,
-     null,
-     null,
-     null
-    ],
-    [
-     737.0,
-     -983105.36848656,
-     null,
-     null,
-     null
-    ],
-    [
-     738.0,
-     -843419.3177234238,
-     null,
-     null,
-     null
-    ],
-    [
-     739.0,
-     -1595177.2906906372,
-     null,
-     null,
-     null
-    ],
-    [
-     740.0,
-     -3311938.919235859,
-     null,
-     null,
-     null
-    ],
-    [
-     741.0,
-     -1842735.1194456911,
-     null,
-     null,
-     null
-    ],
-    [
-     742.0,
-     -2370378.0156499124,
-     null,
-     null,
-     null
-    ],
-    [
-     743.0,
-     -2164492.599681384,
-     null,
-     null,
-     null
-    ],
-    [
-     744.0,
-     -1514335.1486493093,
-     null,
-     null,
-     null
-    ],
-    [
-     745.0,
-     -1684765.1243133533,
-     null,
-     null,
-     null
-    ],
-    [
-     746.0,
-     -1099785.527737155,
-     null,
-     null,
-     null
-    ],
-    [
-     747.0,
-     -3432805.1774551626,
-     null,
-     null,
-     null
-    ],
-    [
-     748.0,
-     -1137146.4505252521,
-     null,
-     null,
-     null
-    ],
-    [
-     749.0,
-     -5146601.261446944,
-     null,
-     null,
-     null
-    ],
-    [
-     750.0,
-     -3344600.387042512,
-     null,
-     null,
-     null
-    ],
-    [
-     751.0,
-     -3449544.331191045,
-     null,
-     null,
-     null
-    ],
-    [
-     752.0,
-     -5037103.836622793,
-     null,
-     null,
-     null
-    ],
-    [
-     753.0,
-     -3444581.233980774,
-     null,
-     null,
-     null
-    ],
-    [
-     754.0,
-     -2466747.910323521,
-     null,
-     null,
-     null
-    ],
-    [
-     755.0,
-     -4889838.207504378,
-     null,
-     null,
-     null
-    ],
-    [
-     756.0,
-     -4476637.059705549,
-     null,
-     null,
-     null
-    ],
-    [
-     757.0,
-     -8252026.776315569,
-     null,
-     null,
-     null
-    ],
-    [
-     758.0,
-     -10434533.618738405,
-     null,
-     null,
-     null
-    ],
-    [
-     759.0,
-     -31943123.320767276,
-     null,
-     null,
-     null
-    ],
-    [
-     760.0,
-     -60729170.27903403,
-     null,
-     null,
-     null
-    ],
-    [
-     761.0,
-     -88440750.57521853,
-     null,
-     null,
-     null
-    ],
-    [
-     762.0,
-     -179655618.00206193,
-     null,
-     null,
-     null
-    ],
-    [
-     763.0,
-     -279566862.5746526,
-     null,
-     null,
-     null
-    ],
-    [
-     764.0,
-     -1316801139.68217,
-     null,
-     null,
-     null
-    ],
-    [
-     765.0,
-     -430387634.2433901,
-     null,
-     null,
-     null
-    ],
-    [
-     766.0,
-     -235924646.15449694,
-     null,
-     null,
-     null
-    ],
-    [
-     767.0,
-     -59174433.31751149,
-     null,
-     null,
-     null
-    ],
-    [
-     768.0,
-     -39931287.640042946,
-     null,
-     null,
-     null
-    ],
-    [
-     769.0,
-     -16523703.255162042,
-     null,
-     null,
-     null
-    ],
-    [
-     770.0,
-     -5379257.901601046,
-     null,
-     null,
-     null
-    ],
-    [
-     771.0,
-     4846865.9310600385,
-     null,
-     null,
-     null
-    ],
-    [
-     772.0,
-     -10893452.32429789,
-     null,
-     null,
-     null
-    ],
-    [
-     773.0,
-     938375.7204155028,
-     null,
-     null,
-     null
-    ],
-    [
-     774.0,
-     5197339.936038183,
-     null,
-     null,
-     null
-    ],
-    [
-     775.0,
-     12158454.964166764,
-     null,
-     null,
-     null
-    ],
-    [
-     776.0,
-     23173260.295047093,
-     null,
-     null,
-     null
-    ],
-    [
-     777.0,
-     5275141.800939364,
-     null,
-     null,
-     null
-    ],
-    [
-     778.0,
-     5617988.353640684,
-     null,
-     null,
-     null
-    ],
-    [
-     779.0,
-     7009462.72695089,
-     null,
-     null,
-     null
-    ],
-    [
-     780.0,
-     11486891.022734197,
-     null,
-     null,
-     null
-    ],
-    [
-     781.0,
-     4128564.6081753843,
-     null,
-     null,
-     null
-    ],
-    [
-     782.0,
-     9990312.849225275,
-     null,
-     null,
-     null
-    ],
-    [
-     783.0,
-     4511990.803681879,
-     null,
-     null,
-     null
-    ],
-    [
-     784.0,
-     4985124.835762575,
-     null,
-     null,
-     null
-    ],
-    [
-     785.0,
-     3594090.4868954895,
-     null,
-     null,
-     null
-    ],
-    [
-     786.0,
-     1866685.4599301263,
-     null,
-     null,
-     null
-    ],
-    [
-     787.0,
-     1191402.4135509848,
-     null,
-     null,
-     null
-    ],
-    [
-     788.0,
-     1445119.8489757404,
-     null,
-     null,
-     null
-    ],
-    [
-     789.0,
-     818880.4508217056,
-     null,
-     null,
-     null
-    ],
-    [
-     790.0,
-     1028075.4077402902,
-     null,
-     null,
-     null
-    ],
-    [
-     791.0,
-     566442.1556769421,
-     null,
-     null,
-     null
-    ],
-    [
-     792.0,
-     141653.6333293448,
-     null,
-     null,
-     null
-    ],
-    [
-     793.0,
-     270535.8108396112,
-     null,
-     null,
-     null
-    ],
-    [
-     794.0,
-     211257.3825043402,
-     null,
-     null,
-     null
-    ],
-    [
-     795.0,
-     183310.01030774013,
-     null,
-     null,
-     null
-    ],
-    [
-     796.0,
-     123678.7241427468,
-     null,
-     null,
-     null
-    ],
-    [
-     797.0,
-     120815.63480171864,
-     null,
-     null,
-     null
-    ],
-    [
-     798.0,
-     231851.0494887206,
-     null,
-     null,
-     null
-    ],
-    [
-     799.0,
-     57532.02550486516,
-     null,
-     null,
-     null
-    ],
-    [
-     800.0,
-     73885.92872834821,
-     null,
-     null,
-     null
-    ],
-    [
-     801.0,
-     330038.01079230505,
-     null,
-     null,
-     null
-    ],
-    [
-     802.0,
-     384632.9907664066,
-     null,
-     null,
-     null
-    ],
-    [
-     803.0,
-     257933.31768180864,
-     null,
-     null,
-     null
-    ],
-    [
-     804.0,
-     490254.84622268274,
-     null,
-     null,
-     null
-    ],
-    [
-     805.0,
-     28105.45362512928,
-     null,
-     null,
-     null
-    ],
-    [
-     806.0,
-     227687.4368443359,
-     null,
-     null,
-     null
-    ],
-    [
-     807.0,
-     165293.99294463906,
-     null,
-     null,
-     null
-    ],
-    [
-     808.0,
-     552659.0721164155,
-     null,
-     null,
-     null
-    ],
-    [
-     809.0,
-     53420.01115245868,
-     null,
-     null,
-     null
-    ],
-    [
-     810.0,
-     156686.1089069468,
-     null,
-     null,
-     null
-    ],
-    [
-     815.0,
-     79326.55093923144,
-     null,
-     null,
-     null
-    ],
-    [
-     820.0,
-     11290.91349456288,
-     null,
-     null,
-     null
-    ],
-    [
-     825.0,
-     27439.47431295192,
-     null,
-     null,
-     null
-    ],
-    [
-     830.0,
-     49968.080165301406,
-     null,
-     null,
-     null
-    ],
-    [
-     835.0,
-     55456.646348581635,
-     null,
-     null,
-     null
-    ],
-    [
-     840.0,
-     4037.818822251119,
-     null,
-     null,
-     null
-    ],
-    [
-     845.0,
-     51196.36936243118,
-     null,
-     null,
-     null
-    ],
-    [
-     850.0,
-     406.21906820779196,
-     null,
-     null,
-     null
-    ],
-    [
-     855.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     860.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     865.0,
-     1299.9745716622558,
-     null,
-     null,
-     null
-    ],
-    [
-     870.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     875.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     880.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     885.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     890.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     895.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     900.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     905.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     910.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     915.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     920.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     925.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     930.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     935.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     940.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     945.0,
-     0.0,
-     null,
-     null,
-     null
-    ],
-    [
-     950.0,
-     0.0,
-     null,
-     null,
-     null
-    ]
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 550.0,
+     "value": -4643.875465896241
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 555.0,
+     "value": -3767.299934530464
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 560.0,
+     "value": -3539.84480967024
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 565.0,
+     "value": -290.8511482659839
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 570.0,
+     "value": -1494.3948810111358
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 575.0,
+     "value": -1354.8302283790078
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 580.0,
+     "value": -309.79990443312
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 585.0,
+     "value": -3309.6401887672796
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 590.0,
+     "value": -4162.491830711231
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 595.0,
+     "value": -710.3623661326079
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 600.0,
+     "value": -2761.98844513824
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 605.0,
+     "value": -3023.89107774408
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 610.0,
+     "value": -137.38723856855998
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 615.0,
+     "value": -16.292661263855997
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 620.0,
+     "value": -156.77381257689598
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 625.0,
+     "value": -391.9170187285919
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 630.0,
+     "value": -9175.821341296894
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 635.0,
+     "value": -1530.6286855488481
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 640.0,
+     "value": -31451.199191867516
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 645.0,
+     "value": -42017.08634140319
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 650.0,
+     "value": -22028.261785854913
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 655.0,
+     "value": -69736.96838771568
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 660.0,
+     "value": -3245.6895960959996
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 665.0,
+     "value": -97896.62969915674
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 670.0,
+     "value": -3135.0092458406393
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 675.0,
+     "value": -9105.91058841408
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 680.0,
+     "value": -51991.95443074618
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 685.0,
+     "value": -20074.05309530189
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 690.0,
+     "value": -30879.607568681666
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 695.0,
+     "value": -31458.717983593728
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 700.0,
+     "value": -40055.8842405334
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 705.0,
+     "value": -35551.88281854374
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 710.0,
+     "value": -146486.6694529243
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 715.0,
+     "value": -126818.10572942822
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 720.0,
+     "value": -287152.1712649656
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 725.0,
+     "value": -246250.50468123078
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 729.0,
+     "value": -237684.48770429968
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 730.0,
+     "value": -555854.3075844918
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 731.0,
+     "value": -276556.85108135885
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 732.0,
+     "value": -48605.47429206269
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 733.0,
+     "value": -354845.872975657
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 734.0,
+     "value": -709079.5481827494
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 735.0,
+     "value": -1013472.0870482037
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 736.0,
+     "value": -357758.0329403268
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 737.0,
+     "value": -983105.36848656
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 738.0,
+     "value": -843419.3177234238
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 739.0,
+     "value": -1595177.2906906372
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 740.0,
+     "value": -3311938.919235859
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 741.0,
+     "value": -1842735.1194456911
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 742.0,
+     "value": -2370378.0156499124
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 743.0,
+     "value": -2164492.599681384
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 744.0,
+     "value": -1514335.1486493093
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 745.0,
+     "value": -1684765.1243133533
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 746.0,
+     "value": -1099785.527737155
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 747.0,
+     "value": -3432805.1774551626
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 748.0,
+     "value": -1137146.4505252521
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 749.0,
+     "value": -5146601.261446944
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 750.0,
+     "value": -3344600.387042512
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 751.0,
+     "value": -3449544.331191045
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 752.0,
+     "value": -5037103.836622793
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 753.0,
+     "value": -3444581.233980774
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 754.0,
+     "value": -2466747.910323521
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 755.0,
+     "value": -4889838.207504378
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 756.0,
+     "value": -4476637.059705549
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 757.0,
+     "value": -8252026.776315569
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 758.0,
+     "value": -10434533.618738405
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 759.0,
+     "value": -31943123.320767276
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 760.0,
+     "value": -60729170.27903403
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 761.0,
+     "value": -88440750.57521853
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 762.0,
+     "value": -179655618.00206193
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 763.0,
+     "value": -279566862.5746526
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 764.0,
+     "value": -1316801139.68217
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 765.0,
+     "value": -430387634.2433901
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 766.0,
+     "value": -235924646.15449694
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 767.0,
+     "value": -59174433.31751149
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 768.0,
+     "value": -39931287.640042946
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 769.0,
+     "value": -16523703.255162042
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 770.0,
+     "value": -5379257.901601046
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 771.0,
+     "value": 4846865.9310600385
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 772.0,
+     "value": -10893452.32429789
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 773.0,
+     "value": 938375.7204155028
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 774.0,
+     "value": 5197339.936038183
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 775.0,
+     "value": 12158454.964166764
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 776.0,
+     "value": 23173260.295047093
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 777.0,
+     "value": 5275141.800939364
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 778.0,
+     "value": 5617988.353640684
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 779.0,
+     "value": 7009462.72695089
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 780.0,
+     "value": 11486891.022734197
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 781.0,
+     "value": 4128564.6081753843
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 782.0,
+     "value": 9990312.849225275
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 783.0,
+     "value": 4511990.803681879
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 784.0,
+     "value": 4985124.835762575
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 785.0,
+     "value": 3594090.4868954895
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 786.0,
+     "value": 1866685.4599301263
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 787.0,
+     "value": 1191402.4135509848
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 788.0,
+     "value": 1445119.8489757404
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 789.0,
+     "value": 818880.4508217056
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 790.0,
+     "value": 1028075.4077402902
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 791.0,
+     "value": 566442.1556769421
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 792.0,
+     "value": 141653.6333293448
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 793.0,
+     "value": 270535.8108396112
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 794.0,
+     "value": 211257.3825043402
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 795.0,
+     "value": 183310.01030774013
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 796.0,
+     "value": 123678.7241427468
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 797.0,
+     "value": 120815.63480171864
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 798.0,
+     "value": 231851.0494887206
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 799.0,
+     "value": 57532.02550486516
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 800.0,
+     "value": 73885.92872834821
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 801.0,
+     "value": 330038.01079230505
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 802.0,
+     "value": 384632.9907664066
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 803.0,
+     "value": 257933.31768180864
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 804.0,
+     "value": 490254.84622268274
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 805.0,
+     "value": 28105.45362512928
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 806.0,
+     "value": 227687.4368443359
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 807.0,
+     "value": 165293.99294463906
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 808.0,
+     "value": 552659.0721164155
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 809.0,
+     "value": 53420.01115245868
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 810.0,
+     "value": 156686.1089069468
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 815.0,
+     "value": 79326.55093923144
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 820.0,
+     "value": 11290.91349456288
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 825.0,
+     "value": 27439.47431295192
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 830.0,
+     "value": 49968.080165301406
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 835.0,
+     "value": 55456.646348581635
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 840.0,
+     "value": 4037.818822251119
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 845.0,
+     "value": 51196.36936243118
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 850.0,
+     "value": 406.21906820779196
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 855.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 860.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 865.0,
+     "value": 1299.9745716622558
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 870.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 875.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 880.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 885.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 890.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 895.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 900.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 905.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 910.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 915.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 920.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 925.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 930.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 935.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 940.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 945.0,
+     "value": 0.0
+    },
+    {
+     "change": null,
+     "change_text": null,
+     "prior": null,
+     "strike": 950.0,
+     "value": 0.0
+    }
    ],
    "shrank": [],
    "volume_total": 9570957.0
@@ -2255,163 +2255,163 @@
  "ticker": "SPY",
  "today": {
   "all": [
-   [
-    768.0,
-    -39931287.640042946,
-    422376.0,
-    "-$39.93M",
-    "422.38K"
-   ],
-   [
-    769.0,
-    -16523703.255162042,
-    288663.0,
-    "-$16.52M",
-    "288.66K"
-   ],
-   [
-    770.0,
-    -5379257.901601046,
-    291441.0,
-    "-$5.38M",
-    "291.44K"
-   ],
-   [
-    771.0,
-    4846865.9310600385,
-    230826.0,
-    "$4.85M",
-    "230.83K"
-   ],
-   [
-    772.0,
-    -10893452.32429789,
-    156732.0,
-    "-$10.89M",
-    "156.73K"
-   ],
-   [
-    773.0,
-    938375.7204155028,
-    95213.0,
-    "$938.38K",
-    "95.21K"
-   ],
-   [
-    774.0,
-    5197339.936038183,
-    99846.0,
-    "$5.20M",
-    "99.85K"
-   ],
-   [
-    775.0,
-    12158454.964166764,
-    54431.0,
-    "$12.16M",
-    "54.43K"
-   ],
-   [
-    776.0,
-    23173260.295047093,
-    35540.0,
-    "$23.17M",
-    "35.54K"
-   ],
-   [
-    777.0,
-    5275141.800939364,
-    20667.0,
-    "$5.28M",
-    "20.67K"
-   ],
-   [
-    778.0,
-    5617988.353640684,
-    17001.0,
-    "$5.62M",
-    "17.00K"
-   ]
+   {
+    "strike": 768.0,
+    "text": "-$39.93M",
+    "value": -39931287.640042946,
+    "volume": 422376.0,
+    "volume_text": "422,376"
+   },
+   {
+    "strike": 769.0,
+    "text": "-$16.52M",
+    "value": -16523703.255162042,
+    "volume": 288663.0,
+    "volume_text": "288,663"
+   },
+   {
+    "strike": 770.0,
+    "text": "-$5.38M",
+    "value": -5379257.901601046,
+    "volume": 291441.0,
+    "volume_text": "291,441"
+   },
+   {
+    "strike": 771.0,
+    "text": "$4.85M",
+    "value": 4846865.9310600385,
+    "volume": 230826.0,
+    "volume_text": "230,826"
+   },
+   {
+    "strike": 772.0,
+    "text": "-$10.89M",
+    "value": -10893452.32429789,
+    "volume": 156732.0,
+    "volume_text": "156,732"
+   },
+   {
+    "strike": 773.0,
+    "text": "$938.38K",
+    "value": 938375.7204155028,
+    "volume": 95213.0,
+    "volume_text": "95,213"
+   },
+   {
+    "strike": 774.0,
+    "text": "$5.20M",
+    "value": 5197339.936038183,
+    "volume": 99846.0,
+    "volume_text": "99,846"
+   },
+   {
+    "strike": 775.0,
+    "text": "$12.16M",
+    "value": 12158454.964166764,
+    "volume": 54431.0,
+    "volume_text": "54,431"
+   },
+   {
+    "strike": 776.0,
+    "text": "$23.17M",
+    "value": 23173260.295047093,
+    "volume": 35540.0,
+    "volume_text": "35,540"
+   },
+   {
+    "strike": 777.0,
+    "text": "$5.28M",
+    "value": 5275141.800939364,
+    "volume": 20667.0,
+    "volume_text": "20,667"
+   },
+   {
+    "strike": 778.0,
+    "text": "$5.62M",
+    "value": 5617988.353640684,
+    "volume": 17001.0,
+    "volume_text": "17,001"
+   }
   ],
   "far": [],
   "near": [
-   [
-    768.0,
-    -39931287.640042946,
-    422376.0,
-    "-$39.93M",
-    "422.38K"
-   ],
-   [
-    769.0,
-    -16523703.255162042,
-    288663.0,
-    "-$16.52M",
-    "288.66K"
-   ],
-   [
-    770.0,
-    -5379257.901601046,
-    291441.0,
-    "-$5.38M",
-    "291.44K"
-   ],
-   [
-    771.0,
-    4846865.9310600385,
-    230826.0,
-    "$4.85M",
-    "230.83K"
-   ],
-   [
-    772.0,
-    -10893452.32429789,
-    156732.0,
-    "-$10.89M",
-    "156.73K"
-   ],
-   [
-    773.0,
-    938375.7204155028,
-    95213.0,
-    "$938.38K",
-    "95.21K"
-   ],
-   [
-    774.0,
-    5197339.936038183,
-    99846.0,
-    "$5.20M",
-    "99.85K"
-   ],
-   [
-    775.0,
-    12158454.964166764,
-    54431.0,
-    "$12.16M",
-    "54.43K"
-   ],
-   [
-    776.0,
-    23173260.295047093,
-    35540.0,
-    "$23.17M",
-    "35.54K"
-   ],
-   [
-    777.0,
-    5275141.800939364,
-    20667.0,
-    "$5.28M",
-    "20.67K"
-   ],
-   [
-    778.0,
-    5617988.353640684,
-    17001.0,
-    "$5.62M",
-    "17.00K"
-   ]
+   {
+    "strike": 768.0,
+    "text": "-$39.93M",
+    "value": -39931287.640042946,
+    "volume": 422376.0,
+    "volume_text": "422,376"
+   },
+   {
+    "strike": 769.0,
+    "text": "-$16.52M",
+    "value": -16523703.255162042,
+    "volume": 288663.0,
+    "volume_text": "288,663"
+   },
+   {
+    "strike": 770.0,
+    "text": "-$5.38M",
+    "value": -5379257.901601046,
+    "volume": 291441.0,
+    "volume_text": "291,441"
+   },
+   {
+    "strike": 771.0,
+    "text": "$4.85M",
+    "value": 4846865.9310600385,
+    "volume": 230826.0,
+    "volume_text": "230,826"
+   },
+   {
+    "strike": 772.0,
+    "text": "-$10.89M",
+    "value": -10893452.32429789,
+    "volume": 156732.0,
+    "volume_text": "156,732"
+   },
+   {
+    "strike": 773.0,
+    "text": "$938.38K",
+    "value": 938375.7204155028,
+    "volume": 95213.0,
+    "volume_text": "95,213"
+   },
+   {
+    "strike": 774.0,
+    "text": "$5.20M",
+    "value": 5197339.936038183,
+    "volume": 99846.0,
+    "volume_text": "99,846"
+   },
+   {
+    "strike": 775.0,
+    "text": "$12.16M",
+    "value": 12158454.964166764,
+    "volume": 54431.0,
+    "volume_text": "54,431"
+   },
+   {
+    "strike": 776.0,
+    "text": "$23.17M",
+    "value": 23173260.295047093,
+    "volume": 35540.0,
+    "volume_text": "35,540"
+   },
+   {
+    "strike": 777.0,
+    "text": "$5.28M",
+    "value": 5275141.800939364,
+    "volume": 20667.0,
+    "volume_text": "20,667"
+   },
+   {
+    "strike": 778.0,
+    "text": "$5.62M",
+    "value": 5617988.353640684,
+    "volume": 17001.0,
+    "volume_text": "17,001"
+   }
   ]
  },
  "today_side_sums": {

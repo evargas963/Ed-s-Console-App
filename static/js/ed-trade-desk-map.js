@@ -551,10 +551,10 @@
       ) +
       row(
         "ΔOI" + (f.older_et_date ? " since " + f.older_et_date : "") + " below / above",
-        num(f.doi_below, 0) + " / " + num(f.doi_above, 0),
+        orDash(f.doi_below_text) + " / " + orDash(f.doi_above_text),
       ) +
       row("DEX below / above", orDash(f.dex_below_text) + " / " + orDash(f.dex_above_text)) +
-      row("Charm below / above", num(f.charm_below, 4) + " / " + num(f.charm_above, 4))
+      row("Charm below / above", orDash(f.charm_below_text) + " / " + orDash(f.charm_above_text))
     );
   }
   // a card's facts: one compact line of served values
@@ -785,7 +785,7 @@
         state(c, t === undefined ? "LOADING" : "UNAVAILABLE", t === undefined ? "" : "warn");
         c.querySelector(".tdm-hero").innerHTML = "";
       } else {
-        state(c, "ATM IV " + num(im.iv_pct_atm, 1) + "%", "");
+        state(c, "ATM IV " + esc(im.iv_text) + "%", "");
         c.querySelector(".tdm-hero").innerHTML =
           "±" + num(im.points, 2) + " <small>implied 1-day move, 1σ</small>";
       }
@@ -859,8 +859,7 @@
   }
   function liqSpans(rd, view) {
     var s = function (k, side) {
-      var t = rd.venues[k].views[view]["span_" + side + "_text"];
-      return t == null ? "-" : "$" + esc(t);
+      return esc(orDash(rd.venues[k].views[view]["span_" + side + "_text"]));
     };
     return (
       "Top-" +
