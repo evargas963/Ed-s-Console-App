@@ -117,6 +117,30 @@ def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held)
     assert {p: s for p, s in served.items() if s != (LIVE, False)} == {}
 
 
+def test_the_page_reads_no_route_only_its_socket():
+    """Every value reaches the page on its one socket (docs/DATA_FLOW.md §1, AGENTS.md rule 4).
+
+    The routes left read nothing the page draws: the page and its icon, the launcher's health
+    and build (launch.py), and the operator's commands (an add or removal of a watchlist
+    ticker, the flow panel's contract), whose answers are their results.
+    """
+    routes = {
+        (method, r.path)
+        for r in server.app.routes
+        if isinstance(r, APIRoute)
+        for method in r.methods
+    }
+    assert routes == {
+        ("GET", "/"),
+        ("GET", "/favicon.ico"),
+        ("GET", "/api/health"),
+        ("GET", "/api/build"),
+        ("POST", "/api/watchlist"),
+        ("DELETE", "/api/watchlist/{ticker}"),
+        ("POST", "/api/flow-contract"),
+    }
+
+
 def test_strike_side_sums_split_at_the_live_spot(held):
     rows = held.snap.per_strike["all"]
     below = [r for r in rows if r[0] < LIVE]
