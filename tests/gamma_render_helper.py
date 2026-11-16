@@ -2,8 +2,8 @@
 
 A chain capture published
 by the levels producer (server._publish_levels, as at startup and on a closed market), served by
-the heatmap's answer at the capture's time (server.gamma_surface_payload) and drawn by the page's
-own render (static/js/ed-gamma.js, through tests/ed_gamma_cells_node.mjs).
+the heatmap's answer at the capture's time (push.surface.gamma_surface_payload) and drawn by the
+page's own render (static/js/ed-gamma.js, through tests/ed_gamma_cells_node.mjs).
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 import server
+from push import surface as push_surface
 from state import level_store
 
 
@@ -45,7 +46,9 @@ def drawn(
             ],
             now=now,
         )
-        surface = server.gamma_surface_payload(tk, "all", None, 0, None, None, now)
+        surface = push_surface.gamma_surface_payload(
+            tk, "all", None, 0, None, None, now, requested=False
+        )
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)

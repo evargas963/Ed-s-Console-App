@@ -22,6 +22,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming.capture import shown_first
 from option_contract import read_chain
+from push import surface as push_surface
 from state import level_store
 from tests.real_chains import NFLX
 from time_et import ET, record_markets
@@ -93,7 +94,7 @@ def test_the_chain_serves_each_last_trading_day_as_its_date_in_et():
 @pytest.mark.usefixtures("published")
 def test_the_heatmap_cell_of_a_large_gamma_has_its_gex():
     window = {"scope": "all", "centre": None, "shift": 0, "cols": None, "expiry": None}
-    body = server.gamma_surface("NVDA", time_et.now(), window)
+    body = push_surface.gamma_surface("NVDA", time_et.now(), window, requested=False)
     cell = next(r for r in body["cells"] if r["strike"] == 148.0)
     assert cell["gex"][0] is not None
     assert all(r["gex"][0] is not None for r in body["cells"])

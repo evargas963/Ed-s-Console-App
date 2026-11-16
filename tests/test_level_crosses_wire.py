@@ -25,6 +25,8 @@ from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
 from push import strikes as push_strikes
+from push import surface as push_surface
+from push import terrain as push_terrain
 from state import cross_store, level_store
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.conftest import MARKETS_ANSWERS
@@ -248,10 +250,10 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
     trade_ts = ofs.price_row("SPY", clock())["trade_ts"]
     try:
-        live = server.terrain("SPY", clock())
+        live = push_terrain.terrain("SPY", clock())
         lmp.record_feed_down()
         at = clock()
-        down = server.terrain("SPY", at)
+        down = push_terrain.terrain("SPY", at)
         levels = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
         matrix = server.confluence_payload(
@@ -340,16 +342,18 @@ def stopped_price_answers() -> dict:
     at = datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET)
     try:
         next_close = datetime(2026, 10, 23, 16, 30, tzinfo=ET)
-        surface = server.gamma_surface_payload("SPY", "auto", None, 0, None, None, at)
+        surface = push_surface.gamma_surface_payload(
+            "SPY", "auto", None, 0, None, None, at, requested=False
+        )
         surface.pop("surface_seq")  # the publication's revision, drawn from the wall clock
-        surface_next_close = server.gamma_surface_payload(
-            "SPY", "auto", None, 0, None, None, next_close
+        surface_next_close = push_surface.gamma_surface_payload(
+            "SPY", "auto", None, 0, None, None, next_close, requested=False
         )
         surface_next_close.pop("surface_seq")
         bodies = {
             "levels": server.levels_payload("SPY", "1", at),
             "confluence": server.confluence_payload("SPY", "2026-10-22", at),
-            "terrain": server.terrain("SPY", at.timestamp()),
+            "terrain": push_terrain.terrain("SPY", at.timestamp()),
             "strikes": push_strikes.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
             "surface": surface,
             "strikes_next_close": push_strikes.terrain_strikes_payload(

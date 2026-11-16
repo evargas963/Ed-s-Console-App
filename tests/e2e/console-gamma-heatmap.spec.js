@@ -47,7 +47,7 @@ function cut(cell, n) {
   return Object.fromEntries(Object.entries(cell).map(([k, v]) =>
     [k, k === 'text' ? Object.fromEntries(Object.entries(v).map(([m, t]) => [m, first(t)])) : first(v)]));
 }
-// a cell's GEX values and their served texts (server.HEAT_TEXT: numeric_contract.dollars_text)
+// a cell's GEX values and their served texts (push.surface.HEAT_TEXT: numeric_contract.dollars_text)
 function withGex(cell, values, texts) {
   return Object.assign(cell, { gex: values, text: Object.assign({}, cell.text, { gex: texts }) });
 }
@@ -832,8 +832,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('header paints the daemon price row the moment it arrives', async ({ page }) => {
     // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
     // (live_price_rows.price_row) straight to the page; the console is not in the path.
-    await socketWith(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
-      chg_pct_regular: 0.4 })]);
+    await socketWith(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25,
+      bid_text: '601.20', ask_text: '601.25', chg_pct: 0.5,
+      chg_pct_regular: 0.4, chg_pct_text: '+0.50%', chg_pct_regular_text: '+0.40%' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
@@ -844,7 +845,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('before the session the regular-session percent reads absent, the extended one live', async ({ page }) => {
-    await socketWith(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
+    await socketWith(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null,
+      chg_pct_text: '-0.50%', chg_pct_regular_text: null })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
     await expect(page.locator('#hChgReg')).toHaveText('REG -');
@@ -887,7 +889,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
-    await socketWith(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25, trade_time_ct: '14:00:01 CT' })]);
+    await socketWith(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25, chg_pct_text: '-1.25%',
+      trade_time_ct: '14:00:01 CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');

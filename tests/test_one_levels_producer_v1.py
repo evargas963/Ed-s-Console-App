@@ -33,6 +33,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS
 from math_exposure_core import bucket_metric, merge_exposure_books
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
+from push import terrain as push_terrain
 from state import level_store
 from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
@@ -192,7 +193,7 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     """
     _daemon()
     snap = _put_chain()
-    body = server.terrain(TK, time_et.now())
+    body = push_terrain.terrain(TK, time_et.now())
     assert json.loads(json.dumps(body)) == body
     assert snap.gamma_flip is not None
     assert body["call_wall"] == snap.call_wall and body["gamma_flip"] == snap.gamma_flip
@@ -518,7 +519,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     _put_chain()
     published = _cached().served()
     _daemon(price=None)  # the price is no longer live
-    out = server.terrain(TK, time_et.now())
+    out = push_terrain.terrain(TK, time_et.now())
     for k in ("regime", "net_gex_at_spot", "call_wall", "headline"):
         assert out[k] == published[k], k
     for k in ("call_wall_state", "call_wall_lean", "flip_relation", "pin_candidate"):
@@ -527,7 +528,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     assert _cached().spot_source == server.SPOT_SOURCE_PLANE
     assert out["spot"] is None and "spot_state" not in out
     _publish(_RECORDS, _T, chain_spot=(None, None))  # the next chain: no spot
-    out = server.terrain(TK, time_et.now())
+    out = push_terrain.terrain(TK, time_et.now())
     assert (
         out["regime"] == "UNAVAILABLE"
         and out["call_wall"] is None
