@@ -300,6 +300,11 @@ _GREEK_FIELD_UNREPORTED: dict[BucketField, tuple[UnreportedField, ...]] = {
     "net_vanna": ("call_vanna_unreported", "put_vanna_unreported"),
     "call_oi_mult": ("call_oi_mult_unreported",),
     "put_oi_mult": ("put_oi_mult_unreported",),
+    # sums no Greek prices: known or not by their own value (None)
+    "call_oi": (),
+    "put_oi": (),
+    "call_volume": (),
+    "put_volume": (),
 }
 
 
@@ -311,7 +316,7 @@ def bucket_metric(bucket: Bucket, key: BucketField) -> float | None:
     """
     if key not in bucket:
         return None
-    if any(bucket.get(u) for u in _GREEK_FIELD_UNREPORTED.get(key, ())):
+    if any(bucket.get(u) for u in _GREEK_FIELD_UNREPORTED[key]):
         return None
     return float_finite_or_none(bucket[key])
 
