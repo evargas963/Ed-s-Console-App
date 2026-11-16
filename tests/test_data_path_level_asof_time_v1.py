@@ -7,6 +7,7 @@ from datetime import datetime
 import pytest
 
 import server
+from push import levels as push_levels
 from tests.feed_live_helper import (
     daemon_bars,
     forget_bars,
@@ -29,7 +30,7 @@ def test_the_levels_page_carries_each_levels_time():
     try:
         stream_daemon_bars(_BARS)
         server._publish_price_levels("SPY", closed)
-        body = server.levels_payload("SPY", "1", closed)
+        body = push_levels.levels_payload("SPY", "1", closed)
         vwap = next(r for r in body["levels"] if r["id"] == "VWAP")
         as_of = vwap["staleness"]["as_of_ts_utc"]
         assert vwap["price"] is not None
@@ -58,7 +59,7 @@ def test_the_overnight_levels_name_the_sessions_they_span(now, window):
         stream_daemon_bars(_BARS)
         hold_schwab_daily("SPY")
         server._publish_price_levels("SPY", now)
-        body = server.levels_payload("SPY", "1", now)
+        body = push_levels.levels_payload("SPY", "1", now)
         overnight = [r for r in body["levels"] if r["family"] == "overnight"]
         assert {r["id"] for r in overnight} == {"OVERNIGHT_HIGH", "OVERNIGHT_LOW"}
         for row in overnight:

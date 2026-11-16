@@ -31,8 +31,10 @@ from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from numeric_contract import count_text, dollars_text, strike_text
 from option_contract import read_chain
+from push import chain as push_chain
 from push import expiries as push_expiries
 from push import strikes as push_strikes
+from push import surface as push_surface
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
@@ -167,7 +169,7 @@ def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
     col = [e["expiry"] for e in surf["expirations"]].index(EXPIRY)
     cells = {c["strike"]: c["gex"][col] for c in surf["cells"]}
     assert any(v is not None for v in cells.values()), "the real chain yields net GEX cells"
-    body = server.chain(TK, time_et.now(), {"expiry": EXPIRY})
+    body = push_chain.chain(TK, time_et.now(), {"expiry": EXPIRY})
     assert body["ladder"] and "net_gex_by_strike" not in body
     for row in body["ladder"]:
         assert row["net_gex"] == cells.get(row["strike"])
@@ -231,8 +233,10 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
 @pytest.mark.parametrize(
     "route",
     [
-        lambda: server.chain("SPY", time_et.now(), {"expiry": "2026-10-22"}),
-        lambda: server.gamma_surface("SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}),
+        lambda: push_chain.chain("SPY", time_et.now(), {"expiry": "2026-10-22"}),
+        lambda: push_surface.gamma_surface(
+            "SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}, requested=False
+        ),
         lambda: push_strikes.strikes("SPY", time_et.now(), AUTO),
     ],
     ids=["chain", "gamma-surface", "terrain-strikes"],
@@ -298,7 +302,9 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     )
     try:
         _publish(_AT.timestamp() - 10)
-        body = server.gamma_surface_payload(TK, "all", None, 0, None, None, _AT)
+        body = push_surface.gamma_surface_payload(
+            TK, "all", None, 0, None, None, _AT, requested=False
+        )
     finally:
         _forget()
     assert body["stream_by_expiry"][EXPIRY] == "partial"
@@ -314,7 +320,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
 @pytest.mark.usefixtures("held")
 def test_chain_flags_are_served():
     """ADJUSTED DELIVERABLE and duplicate contracts: served flags, not page rules."""
-    body = server.chain(TK, time_et.now(), {"expiry": EXPIRY})
+    body = push_chain.chain(TK, time_et.now(), {"expiry": EXPIRY})
     plain = [c["symbol"] for c in _CONTRACTS if len(c.get("optionDeliverablesList") or []) == 1]
     assert plain and not set(plain) & set(body["adjusted_deliverable_symbols"])
     assert body["has_duplicate_contracts"] is False
@@ -345,7 +351,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     )
     try:
         server._publish_levels("$SPX", read_chain(fx["contracts"]), fx["ts_utc"], now=at)
-        body = server.chain("$SPX", time_et.now(), {"expiry": "2026-10-16"})
+        body = push_chain.chain("$SPX", time_et.now(), {"expiry": "2026-10-16"})
     finally:
         with level_store._lock:
             level_store._levels.pop("$SPX", None)

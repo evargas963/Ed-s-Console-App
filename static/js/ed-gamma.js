@@ -1,7 +1,7 @@
 /* Ed Console — Options/Gamma heatmap view. PRESENTATION ONLY.
    Shows the page's socket's `surface` panel in the window it asks (scope, the columns it fits,
    the selected expiry, a pan) and draws exactly the cells the program sends: the server picks the
-   strikes and expiries (server._surface_view), counts the cells streaming, names the contracts to
+   strikes and expiries (push.surface._surface_view), counts the cells streaming, names the contracts to
    stream, marks the spot row and the front column, and sends each
    measure's colour scale. This module positions cells, formats each value, maps sign to colour and
    shade to the served scale. Pure helpers are exposed on globalThis.EdGamma for node tests. */
@@ -149,7 +149,7 @@
     _lastRevision = rev;
     var words = WORDS;
     var exps = surface.expirations,
-      cells = surface.cells; // always served (server._surface_view)
+      cells = surface.cells; // always served (push.surface._surface_view)
     var maxAbs = view.max_abs[measure],
       heat = window.EdShell.heatColors();
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
@@ -329,7 +329,7 @@
     var s = window.EdShell.getState();
     return s.workspace === "options" && _isGammaFamilySubview(s.subview) && s.view === "heatmap";
   }
-  // The heatmap is the `surface` panel (server.gamma_surface) the program sends on the page's
+  // The heatmap is the `surface` panel (push.surface.gamma_surface) the program sends on the page's
   // socket while the heatmap is on, in the window it asks (the scope, its pan, the columns it
   // fits, the selected expiry or null for all), at once and each time the levels change. Nothing
   // received yet for the ticker on screen is '-'.

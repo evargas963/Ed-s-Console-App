@@ -22,6 +22,8 @@ import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
+from push import surface as push_surface
+from push import terrain as push_terrain
 from server import ticker_storage_key
 from state import level_store
 from tests.feed_live_helper import daemon_status
@@ -40,7 +42,9 @@ _ON, _OFF = "ZZFRESHON", "ZZFRESHOFF"  # on the watchlist, and not
 def _call(tk):
     """Return the heatmap's panel for `tk` now: Auto, following the price, every column."""
     window = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
-    return server.gamma_surface(ticker_storage_key(tk), time_et.now(), window)
+    return push_surface.gamma_surface(
+        ticker_storage_key(tk), time_et.now(), window, requested=False
+    )
 
 
 def _daemon(price: float, at: float, *tickers) -> None:
@@ -90,7 +94,7 @@ def published():
 @pytest.mark.usefixtures("published")
 def test_the_live_surface_is_served_with_the_live_price():
     _daemon(206.0, _AT.timestamp(), _ON)  # the price has moved since
-    d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
+    d = push_surface.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT, requested=False)
     surface = level_store.published_levels(_ON).gamma_surface
     # 2026-09-02 has no /markets answer held: the levels, and so the surface, are not live
     assert d["source"] == "terrain_live_cache" and d["levels_state"] == "NOT LIVE"
@@ -139,7 +143,7 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
 
     The chain basis, and ATR (from the bars, none here) absent, with no sentence in its place.
     """
-    t = server.terrain(ticker_storage_key(tk), time_et.now())
+    t = push_terrain.terrain(ticker_storage_key(tk), time_et.now())
     assert t["chain_basis"] == CAPTURE_BASIS
     for horizon in ("daily", "weekly", "monthly"):
         assert t[f"atr_{horizon}"] is None and f"atr_{horizon}_reason" not in t, horizon
@@ -151,7 +155,7 @@ def test_with_no_levels_the_atr_is_absent():
 
     A ticker with no levels published still serves it (here absent, and no sentence in its place).
     """
-    t = server.terrain("ZZNOLEVELSATR", time_et.now())
+    t = push_terrain.terrain("ZZNOLEVELSATR", time_et.now())
     assert t["atr_daily"] is None and "atr_daily_reason" not in t
 
 

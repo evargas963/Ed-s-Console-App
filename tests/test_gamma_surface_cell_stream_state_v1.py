@@ -8,7 +8,7 @@ chip counting the cells drawn.
 End to end through the real code: the daemon's status (live_market_plane.record_feed_heartbeat),
 its pushed option messages applied by the console (streaming._ingest_pushed), its price row,
 the levels producer (server._publish_levels) and the heatmap route's answer at a time
-(server.gamma_surface_payload).
+(push.surface.gamma_surface_payload).
 Real data: CRWD's 2026-10-16 chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py, one
 expiration), valued at its capture; that day's sessions as Schwab's /markets sent them
 (tests/conftest.py). STAND-INS (named): each streamed value of a CRWD contract, and the daemon's
@@ -26,6 +26,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
+from push import surface as push_surface
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
@@ -86,7 +87,7 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
     server._publish_levels(
         TK, _CONTRACTS, at.timestamp() - 10.0, chain_spot=(_SPOT, at.timestamp()), now=at
     )
-    body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
+    body = push_surface.gamma_surface_payload(TK, "all", None, 0, None, None, at, requested=False)
     surface = level_store.published_levels(TK).gamma_surface
     return body["view"]["coverage"], surface
 
@@ -120,7 +121,7 @@ def test_every_cell_streaming_reads_all_streaming_and_one_cell_short_never_does(
     every = CALLS + PUTS
     cov, _ = _publish(every, every)
     assert (cov["state"], cov["label"], cov["live"], cov["cells"]) == (
-        server.COVERAGE_LIVE,
+        push_surface.COVERAGE_LIVE,
         "ALL STREAMING",
         len(CALLS),
         len(CALLS),

@@ -22,6 +22,8 @@ import server
 import time_et
 from app.market_data.schwab.streaming.capture import shown_first
 from option_contract import read_chain
+from push import chain as push_chain
+from push import surface as push_surface
 from state import level_store
 from tests.real_chains import NFLX
 from time_et import ET, record_markets
@@ -67,7 +69,7 @@ def published():
 
 @pytest.mark.usefixtures("published")
 def test_the_chain_serves_every_gamma_as_schwab_sent_it():
-    body = server.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
+    body = push_chain.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
     served = {c["symbol"]: c["gamma"] for c in body["contracts"]}
     sent = {k["symbol"]: k["gamma"] for k in NVDA["contracts"]}
     assert served[LARGE] == sent[LARGE] > 16
@@ -76,7 +78,7 @@ def test_the_chain_serves_every_gamma_as_schwab_sent_it():
 
 @pytest.mark.usefixtures("published")
 def test_the_chain_serves_each_last_trading_day_as_its_date_in_et():
-    body = server.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
+    body = push_chain.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
     sent = {
         k["symbol"]: k["lastTradingDay"]
         for k in NVDA["contracts"]
@@ -93,7 +95,7 @@ def test_the_chain_serves_each_last_trading_day_as_its_date_in_et():
 @pytest.mark.usefixtures("published")
 def test_the_heatmap_cell_of_a_large_gamma_has_its_gex():
     window = {"scope": "all", "centre": None, "shift": 0, "cols": None, "expiry": None}
-    body = server.gamma_surface("NVDA", time_et.now(), window)
+    body = push_surface.gamma_surface("NVDA", time_et.now(), window, requested=False)
     cell = next(r for r in body["cells"] if r["strike"] == 148.0)
     assert cell["gex"][0] is not None
     assert all(r["gex"][0] is not None for r in body["cells"])
@@ -136,7 +138,7 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
         now=NFLX.now,
     )
     try:
-        body = server.chain(tk, time_et.now(), {"expiry": expiry})
+        body = push_chain.chain(tk, time_et.now(), {"expiry": expiry})
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)

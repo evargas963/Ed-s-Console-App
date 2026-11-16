@@ -75,7 +75,7 @@ async function mockPriceSocket(page, rows = [], later = [], expiries = undefined
   };
 }
 // The chain panel's stand-in for `body`: the program answers each reader's expiry with that
-// expiry's chain (server.chain), and the front one's (the body's own) when it asks none
+// expiry's chain (push.chain), and the front one's (the body's own) when it asks none
 function chainAt(body) {
   return (key, params) => Object.assign({}, typeof body === 'function' ? body(key, params) : body,
     params.expiry ? { expiry: params.expiry } : {});

@@ -34,10 +34,15 @@ from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from push import bars as push_bars
+from push import book as push_book
+from push import chain as push_chain
 from push import forces as push_forces
+from push import levels as push_levels
 from push import strikes as push_strikes
+from push import surface as push_surface
 from push import tape as push_tape
-from state import bar_store, cross_store, level_store
+from push import terrain as push_terrain
+from state import bar_store, cross_store, level_store, price_level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
 from tests.feed_live_helper import ROUND_SEC, daemon_status
@@ -109,8 +114,8 @@ def _clear(tk: str) -> None:
         bar_store._bars.pop(tk, None)
         for key in [k for k in bar_store._series if k[0] == tk]:
             del bar_store._series[key]
-    for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-        del server._MATERIALIZED_SNAPSHOTS[key]
+    for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+        del price_level_store._MATERIALIZED_SNAPSHOTS[key]
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_down()
@@ -202,34 +207,42 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                 {
                     "strikes": push_strikes.strikes(tk, at, AUTO),
                     "strikes_wider": push_strikes.strikes(tk, at, {**AUTO, "scope": "wider"}),
-                    "terrain": server.terrain(tk, at),
-                    "surface": server.gamma_surface(tk, at, {**AUTO, "cols": None, "expiry": None}),
-                    "surface_missing_expiry": server.gamma_surface(
-                        tk, at, {**AUTO, "cols": None, "expiry": MISSING_EXPIRY}
+                    "terrain": push_terrain.terrain(tk, at),
+                    "surface": push_surface.gamma_surface(
+                        tk, at, {**AUTO, "cols": None, "expiry": None}, requested=False
+                    ),
+                    "surface_missing_expiry": push_surface.gamma_surface(
+                        tk, at, {**AUTO, "cols": None, "expiry": MISSING_EXPIRY}, requested=False
                     ),
                     # filtered to the chain's second expiry
-                    "surface_second_expiry": server.gamma_surface(
+                    "surface_second_expiry": push_surface.gamma_surface(
                         tk,
                         at,
                         {**AUTO, "cols": None, "expiry": real.captures[1]["rows"][1]["expiry"]},
+                        requested=False,
                     ),
                     # the All window, every strike, for the Gamma tests' ticker (AMZN's 88 strikes
                     # by 24 expiries; SPY's is 491 by 34, 3.5 MB)
                     **(
                         {
-                            "surface_all": server.gamma_surface(
-                                tk, at, {**AUTO, "scope": "all", "cols": None, "expiry": None}
+                            "surface_all": push_surface.gamma_surface(
+                                tk,
+                                at,
+                                {**AUTO, "scope": "all", "cols": None, "expiry": None},
+                                requested=False,
                             )
                         }
                         if real is AMZN
                         else {}
                     ),
-                    "chain": server.chain(tk, at, {"expiry": None}),
-                    "book": {venue: server.book(tk, at, {"venue": venue}) for venue in real.venues},
+                    "chain": push_chain.chain(tk, at, {"expiry": None}),
+                    "book": {
+                        venue: push_book.book(tk, at, {"venue": venue}) for venue in real.venues
+                    },
                     "liquidity": server.liquidity_snapshot(tk, now),
                     "forces": push_forces.forces(tk),
                     # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
-                    "levels": {tf: server.levels_payload(tk, tf, now) for tf in CHART_TFS},
+                    "levels": {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS},
                     "desk": {
                         venue: {
                             tf: server.desk_events_payload(tk, venue, tf, now) for tf in DESK_TFS

@@ -275,7 +275,7 @@ test.describe('D — Gamma Flow subview', () => {
     const ctx = makeContext();
     ctx.plane = { feed_health: { l1: { state: 'OFFLINE', text: 'OFFLINE' }, book: { state: 'OFFLINE', text: 'OFFLINE' }, replay: 'stale' } };
     ctx.mutate = (d) => {
-      // as the server stamps a book and quote of 09/25 06:59 PM CT, 4 s old (server._when_age)
+      // as the server stamps a book and quote of 09/25 06:59 PM CT, 4 s old (push.book._when_age)
       d.quote_when_age_text = 'Fri 09/25 06:59 PM CT · 4s';
       d.book_when_age_text = 'Fri 09/25 06:59 PM CT · 4s';
       d.top_outage = 'Schwab LEVELONE_OPTIONS feed down during RTH';

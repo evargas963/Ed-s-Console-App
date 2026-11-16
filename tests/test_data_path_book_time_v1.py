@@ -6,10 +6,10 @@ import json
 from pathlib import Path
 
 import live_market_plane as lmp
-import server
 import time_et
 from app.options.order_flow import state as of_state
 from app.options.order_flow.engine import book_age_sec
+from push import book as push_book
 from tests.feed_live_helper import mark_feed_live
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -46,7 +46,7 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
     now = time_et.now()
     try:
         lmp.record_feed_down()
-        body = server.order_flow_microstructure(_TK, "NASDAQ_BOOK", now)
+        body = push_book.order_flow_microstructure(_TK, "NASDAQ_BOOK", now)
     finally:
         lmp._by_ticker.pop(_TK, None)
         lmp._fields_by_ticker.pop(_TK, None)
@@ -66,7 +66,7 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
 def _served_book_age(content: dict, now: float) -> float | None:
     of_state.push_book(_TK, content, "NYSE_BOOK")
     try:
-        return server.order_flow_microstructure(_TK, "NYSE_BOOK", now)["ages"]["book_age_sec"]
+        return push_book.order_flow_microstructure(_TK, "NYSE_BOOK", now)["ages"]["book_age_sec"]
     finally:
         of_state._LIVE_STATE._book.pop(_TK, None)
 

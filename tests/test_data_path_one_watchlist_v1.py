@@ -29,13 +29,14 @@ from fastapi.testclient import TestClient
 import live_market_plane as lmp
 import server
 import time_et
-from app.market_data.schwab.streaming import capture
+from app.market_data.schwab.streaming import capture, live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow import streaming as ofs
 from feed import connection
 from feed.chain_sweep import ChainSweep, chain_messages
 from feed.schwab_client import build_client_from_token, flatten_chain_contracts
 from option_contract import read_chain
+from push import surface as push_surface
 from state import level_store
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import daemon_status
@@ -559,13 +560,15 @@ _HEATMAP = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry":
 
 
 def _surface(tk) -> dict:
-    return server.gamma_surface(tk, time_et.now(), _HEATMAP)
+    # the panel as the page's socket asks it: requested while a page has the ticker selected
+    requested = tk in live_ui.selected(server.app.state)
+    return push_surface.gamma_surface(tk, time_et.now(), _HEATMAP, requested=requested)
 
 
 def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so_first():
     """The gamma surface's reason for a ticker with no surface.
 
-    From server.gamma_surface: on the watchlist it warms (its chain is coming); off
+    From push.surface.gamma_surface: on the watchlist it warms (its chain is coming); off
     it, it says it is not on the watchlist; with the daemon's heartbeat late, the last list still
     stands and the reason says the daemon is not reporting; a chain Schwab refused says Schwab's
     answer.

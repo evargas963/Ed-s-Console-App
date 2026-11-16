@@ -15,8 +15,9 @@ from math_exposure_core import (
 )
 from micro_structure import Candle
 from option_contract import read_chain
+from push import levels as push_levels
 from push import strikes as push_strikes
-from state import bar_store, level_store
+from state import bar_store, level_store, price_level_store
 from tests.feed_live_helper import (
     daemon_bars,
     daemon_status,
@@ -111,7 +112,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
             bar_store.keep_bar(tk, _candle(b))
         srv._write_price_history({"symbol": tk, "series": "1d", "answer": {"candles": daily}})
         srv._publish_price_levels(tk, now)  # as the bar writer does
-        payload = srv.levels_payload(tk, "1", now)
+        payload = push_levels.levels_payload(tk, "1", now)
     finally:
         forget_bars(tk)
 
@@ -220,7 +221,7 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
         payloads = {}
         for tk in _PAIR:
             srv._publish_price_levels(tk, now)  # as the bar writer does
-            payloads[tk] = srv.levels_payload(tk, "1", now)
+            payloads[tk] = push_levels.levels_payload(tk, "1", now)
     finally:
         forget_bars(*_PAIR)
     for tk in _PAIR:
@@ -259,11 +260,14 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
             hold_schwab_daily(t)
 
         # nothing published yet: the levels are absent with their reason
-        none_yet = srv.levels_payload(tk, "1", now)
+        none_yet = push_levels.levels_payload(tk, "1", now)
         assert none_yet["levels"] == []
-        assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet[
+        assert {"family": "price_levels", "reason": push_levels.NO_PRICE_LEVELS_REASON} in none_yet[
             "families_absent"
         ]
+        # every field of the snapshot is unknown, none stood in for by an empty curve or list
+        unknown = ("snapshot_time_ct", "snapshot_age_text", "bar_source", "vwap_series")
+        assert [none_yet[k] for k in (*unknown, "volume_profile", "degraded")] == [None] * 6
 
         # a minute's bars arrive together (SPY and TSLA): each write is pushed as `liquidity` and
         # each ticker's levels published from its bars as `levels`, to the page open on it (the
@@ -275,16 +279,16 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
             told = {t: served.told(page, 5) for t, page in shown.items()}
             assert served.told(elsewhere) == set(), "a page on another ticker is told nothing"
         assert told == {tk: {"liquidity", "levels"}, other: {"liquidity", "levels"}}
-        served = srv.levels_payload(tk, "1", now)
+        served = push_levels.levels_payload(tk, "1", now)
         assert served["levels"]
         assert served["snapshot_time_ct"] == ct_label(pushed[tk]["bar_start_ms"] / 1000.0)
         assert (
-            srv.canonical_price_level_snapshot(other, now).as_of_ts_utc
+            price_level_store.canonical_price_level_snapshot(other, now).as_of_ts_utc
             == pushed[other]["bar_start_ms"] / 1000.0
         )
         # the route reads no bar: with the ticker's bars gone from memory it serves the same levels
         kept = bar_store._bars.pop(tk)
-        again = srv.levels_payload(tk, "15", now)
+        again = push_levels.levels_payload(tk, "15", now)
         assert [(r["id"], r["price"]) for r in again["levels"]] == [
             (r["id"], r["price"]) for r in served["levels"]
         ]
@@ -294,7 +298,7 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         # high 772.65, which the recorded stream's bars, topping at 772.49, missed)
         monday = _dt(2026, 10, 5, 7, 30, tzinfo=ET)  # pre-market (Schwab's: 07:00)
         srv._publish_missing_price_levels([tk], monday)
-        nextday = srv.levels_payload(tk, "1", monday)
+        nextday = push_levels.levels_payload(tk, "1", monday)
         assert {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"] == _sent_daily(
             tk, "2026-10-02"
         )["high"]

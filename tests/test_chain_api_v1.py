@@ -27,6 +27,7 @@ import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import GREEKS, LISTED, read_chain
+from push import chain as push_chain
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
@@ -131,7 +132,7 @@ def _as_shown(contracts):
 
 def _get(ticker, expiry=None):
     """Return the chain panel for `ticker` (as typed) at `expiry` (None: the front one), now."""
-    return srv.chain(srv.ticker_storage_key(ticker), time_et.now(), {"expiry": expiry})
+    return push_chain.chain(srv.ticker_storage_key(ticker), time_et.now(), {"expiry": expiry})
 
 
 def test_no_held_chain_is_unavailable_with_its_reason():
@@ -274,4 +275,4 @@ def test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it()
     assert json.loads(json.dumps(body)) == body and body["expiry"] == _TSLA_EXPIRY
     assert "/api/chain" not in {r.path for r in srv.app.routes}
     asked = Asked("TSLA", _AT.timestamp(), {"expiry": None})
-    assert srv.PAGE_PANELS["chain"](asked) == srv.chain("TSLA", asked.now, asked.params)
+    assert srv.PAGE_PANELS["chain"](asked) == push_chain.chain("TSLA", asked.now, asked.params)

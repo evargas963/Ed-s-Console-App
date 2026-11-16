@@ -5,7 +5,7 @@ The limit is live_market_plane.daemon_status's. A stamp after that time is a lat
 End to end through the real code: the daemon's status (record_feed_heartbeat), Schwab's SPY quote
 through the daemon's plane and its price row (record_from_level_one_equity,
 live_price_rows.price_row), the pushed option message (streaming._ingest_pushed), the levels
-producer (server._publish_levels) and the heatmap route (server.gamma_surface_payload).
+producer (server._publish_levels) and the heatmap route (push.surface.gamma_surface_payload).
 Real data: SPY's 2026-11-20 chain captured 2026-09-30 15:31:57 ET
 (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json, fetched at its capture), and
 Schwab's LEVELONE_EQUITIES SPY quote and LEVELONE_OPTIONS message for one of the chain's
@@ -30,6 +30,8 @@ import live_price_rows
 import server
 import time_et
 from option_contract import read_chain
+from push import book as push_book
+from push import surface as push_surface
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
@@ -97,7 +99,9 @@ def _states_when_the_status_was_sent(offset: float) -> list[str]:
     The daemon's status is stamped `offset` seconds from `_AT` (negative: earlier).
     """
     at = _priced_when_the_status_was_sent(offset)
-    return _leg_states(server.gamma_surface_payload(TK, "all", None, 0, None, None, at))
+    return _leg_states(
+        push_surface.gamma_surface_payload(TK, "all", None, 0, None, None, at, requested=False)
+    )
 
 
 def _leg_states(body: dict) -> list[str]:
@@ -164,8 +168,8 @@ def test_a_streamed_cell_is_not_live_after_its_own_option_close():
         at = datetime.fromisoformat(f"2026-10-05T{hhmm}:00-04:00").timestamp()
         _beat(at - 0.5, options=[SYM])
         server.restamp_open_surfaces(at)
-        body = server.gamma_surface_payload(
-            TK, "all", None, 0, None, None, datetime.fromtimestamp(at, ET)
+        body = push_surface.gamma_surface_payload(
+            TK, "all", None, 0, None, None, datetime.fromtimestamp(at, ET), requested=False
         )
         return _leg_states(body), body
 
@@ -193,7 +197,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
     kept = ofls.get_stream_greeks(SYM)
     _beat(_AT, socket_open=False, options=[])
     server.restamp_open_surfaces(_AT)
-    body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
+    body = push_surface.gamma_surface_payload(TK, "all", None, 0, None, None, at, requested=False)
     cells = [
         col
         for cell in body["cells"]
@@ -375,7 +379,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
             "NOT LIVE",
             "Schwab marks $SPX Closed",
         )
-        book = server.order_flow_microstructure("$SPX", "NYSE_BOOK", at)
+        book = push_book.order_flow_microstructure("$SPX", "NYSE_BOOK", at)
         assert (book["top_feed_label"], book["top_outage"]) == (
             "NOT LIVE",
             "Schwab marks $SPX Closed",

@@ -21,7 +21,7 @@
     return document.getElementById("obBody");
   }
 
-  // The book is the `book:dom` panel (server.book) the program sends on the page's socket while
+  // The book is the `book:dom` panel (push.book) the program sends on the page's socket while
   // this view is on, for the selected venue, at once and with each streamed quote or book.
   // Nothing received yet for the ticker on screen is '-'.
   var _bookTicker = null;

@@ -13,6 +13,7 @@ import pytest
 import live_market_plane as lmp
 import server as srv
 from liquidity_models import ZONE_DISPLAY
+from push import levels as push_levels
 from tests.feed_live_helper import daemon_status
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
 
@@ -21,7 +22,7 @@ def test_a_ticker_with_no_levels_published_gets_no_zones_and_the_reason():
     """Before the bar writer publishes a ticker's levels, the panel says so and draws no zone."""
     body = srv.liquidity_snapshot("ZZNOLV", FRIDAY)
     assert (body["available"], body["zones"]) == (False, [])
-    assert body["reason"] == srv.NO_PRICE_LEVELS_REASON
+    assert body["reason"] == push_levels.NO_PRICE_LEVELS_REASON
 
 
 @pytest.mark.usefixtures("published")

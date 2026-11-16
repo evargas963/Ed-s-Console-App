@@ -235,6 +235,16 @@ def last_beat() -> dict[str, Any] | None:
         return _feed["status"]
 
 
+def watchlist() -> list[str] | None:
+    """Return the watchlist: the tickers the capture daemon asks Schwab for.
+
+    A current heartbeat that carries a list is that list; one that carries none is unknown. A late
+    or missing heartbeat keeps the list of the last beat.
+    """
+    st = last_beat()
+    return None if st is None else list(st["watchlist"])
+
+
 @dataclass(frozen=True)
 class FeedNow:
     """One read of the daemon's heartbeat at a time.
