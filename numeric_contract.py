@@ -10,6 +10,7 @@ import math
 import numbers
 from typing import (
     Any,
+    overload,
 )
 
 
@@ -71,6 +72,12 @@ def price_text(value: float | None) -> str | None:
     return f"{float(value):.2f}"
 
 
+@overload
+def strike_text(value: float) -> str: ...
+@overload
+def strike_text(value: None) -> None: ...
+@overload
+def strike_text(value: float | None) -> str | None: ...
 def strike_text(value: float | None) -> str | None:
     """Return a strike as the heatmap lists it: to the cent, no trailing zeros (397.5, 400).
 
@@ -126,6 +133,12 @@ def compact_text(value: float | None) -> str | None:
     return f"{sign}{a:.0f}"
 
 
+@overload
+def dollars_text(value: float) -> str: ...
+@overload
+def dollars_text(value: None) -> None: ...
+@overload
+def dollars_text(value: float | None) -> str | None: ...
 def dollars_text(value: float | None) -> str | None:
     """Return dollars as the screen shows them, compact as compact_text: $1.23B, -$4.56M, $950.
 

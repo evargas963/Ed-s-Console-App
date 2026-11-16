@@ -15,6 +15,7 @@ from math_exposure_core import (
 )
 from micro_structure import Candle
 from option_contract import read_chain
+from push import strikes as push_strikes
 from state import bar_store, level_store
 from tests.feed_live_helper import (
     daemon_bars,
@@ -176,7 +177,9 @@ def test_strikes_payload_carries_server_side_sums():
         C.ticker, {"LAST_PRICE": C.spot, "TRADE_TIME_MILLIS": 1000}, received_ts=time_et.now()
     )
     try:
-        body = srv.strikes(C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
+        body = push_strikes.strikes(
+            C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0}
+        )
         live = srv.resolve_spot(C.ticker, now=time_et.now())[0]
     finally:
         with level_store._lock:
