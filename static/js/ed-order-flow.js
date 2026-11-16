@@ -12,7 +12,6 @@
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
   var num = window.EdShell.num,
-    int = window.EdShell.int,
     ticker = window.EdShell.ticker,
     classOf = window.EdShell.classOf;
   function isBook() {
@@ -71,7 +70,7 @@
       if (l.volume > maxVol) maxVol = l.volume;
     });
     function row(l, side) {
-      var s = window.EdShell.strength(l.volume, maxVol),
+      var s = window.EdDraw.strength(l.volume, maxVol),
         w = s == null ? 0 : s * 100;
       var isWall = wallSet[side + "@" + l.price];
       return (
@@ -85,7 +84,7 @@
         '<span class="dom-px">' +
         num(l.price) +
         '</span><span class="dom-sz">' +
-        int(l.volume) +
+        esc(orDash(l.volume_text)) +
         "</span></div>"
       );
     }
@@ -150,15 +149,15 @@
       "</span></div>";
 
     var rowsTob = [
-      ["Bid × size", num(tob.bid) + " × " + int(tob.bid_size), bk("top_of_book.bid")],
-      ["Ask × size", num(tob.ask) + " × " + int(tob.ask_size), bk("top_of_book.ask")],
+      ["Bid × size", num(tob.bid) + " × " + orDash(tob.bid_size_text), bk("top_of_book.bid")],
+      ["Ask × size", num(tob.ask) + " × " + orDash(tob.ask_size_text), bk("top_of_book.ask")],
     ];
     var rowsImb = [
       ["Depth 1 imbalance", num(depth["1"].imbalance, 3), bk("depth.*.imbalance")],
       ["Depth 3 imbalance", num(depth["3"].imbalance, 3), bk("depth.*.imbalance")],
       ["Depth 5 imbalance", num(depth["5"].imbalance, 3), bk("depth.*.imbalance")],
-      ["Bid total (5)", int(depth["5"].bid_total), bk("depth.*.bid_total")],
-      ["Ask total (5)", int(depth["5"].ask_total), bk("depth.*.ask_total")],
+      ["Bid total (5)", orDash(depth["5"].bid_total_text), bk("depth.*.bid_total")],
+      ["Ask total (5)", orDash(depth["5"].ask_total_text), bk("depth.*.ask_total")],
     ];
     var fresh = [
       [
@@ -181,7 +180,7 @@
               " @ " +
               num(w.price) +
               '</span><span class="v">' +
-              int(w.volume) +
+              esc(orDash(w.volume_text)) +
               ' <span class="sm">(' +
               num(w.median_mult, 1) +
               "× median)</span></span></div>"

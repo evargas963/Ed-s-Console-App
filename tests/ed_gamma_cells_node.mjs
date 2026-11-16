@@ -40,8 +40,10 @@ const ctx = {
 ctx.window = ctx;
 ctx.globalThis = ctx;
 vm.createContext(ctx);
-// the shell (ed-core.js) itself, its intensity rule and heat colours as the page has them; the
-// view it reports held at the heatmap, no pan, no expiry selected
+// in the page's order (static/index.html): the drawing module (ed-draw.js, the intensity rule and
+// the heat colour), then the shell (ed-core.js, the theme's heat colours) itself; the view it
+// reports held at the heatmap, no pan, no expiry selected
+vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-draw.js'), 'utf8'), ctx, { filename: 'ed-draw.js' });
 vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-core.js'), 'utf8'), ctx, { filename: 'ed-core.js' });
 Object.assign(ctx.EdShell, {
   getState: () => ({ workspace: 'options', subview: 'gamma', view: 'heatmap', ticker: surface.ticker }),

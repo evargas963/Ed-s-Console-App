@@ -333,13 +333,16 @@ def _microprice(
 
 def _book_pressure_curve(
     levels: list[tuple[float, float]], max_levels: int
-) -> list[dict[str, float]]:
-    """Cumulative displayed depth per level (best-first): the depth-pressure curve."""
-    out: list[dict[str, float]] = []
+) -> list[dict[str, float | str | None]]:
+    """Cumulative displayed depth per level (best-first): the depth-pressure curve.
+
+    Each level's size with its text as the screen shows it (count_text).
+    """
+    out: list[dict[str, float | str | None]] = []
     cum = 0.0
     for price, vol in levels[:max_levels]:
         cum += vol
-        out.append({"price": price, "volume": vol, "cum": cum})
+        out.append({"price": price, "volume": vol, "volume_text": count_text(vol), "cum": cum})
     return out
 
 
@@ -366,7 +369,15 @@ def _book_wall_candidates(
     out: list[dict[str, str | float]] = []
     for price, vol in lv:
         if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
-            out.append({"side": side, "price": price, "volume": vol, "median_mult": vol / median})
+            out.append(
+                {
+                    "side": side,
+                    "price": price,
+                    "volume": vol,
+                    "volume_text": count_text(vol),
+                    "median_mult": vol / median,
+                }
+            )
     return out
 
 
@@ -389,12 +400,14 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
     # totals and imbalance), carried.
     ladder = _readout(bid_levels, ask_levels, cb["book_time_ms"])["views"]
-    depth: dict[str, dict[str, float | None]] = {}
+    depth: dict[str, dict[str, float | str | None]] = {}
     for n in OF_MICRO_DEPTH_LADDER:
         lv = ladder[str(n)]
         depth[str(n)] = {
             "bid_total": lv["bid_total"],
             "ask_total": lv["ask_total"],
+            "bid_total_text": count_text(lv["bid_total"]),
+            "ask_total_text": count_text(lv["ask_total"]),
             "imbalance": lv["imbalance"],
         }
 

@@ -492,8 +492,8 @@
         gx = r.value,
         gy = m ? m.prior : null;
       var hasGy = gy != null && gx != null;
-      var sToday = window.EdShell.strength(gx, maxAbs),
-        sPrior = window.EdShell.strength(gy, maxAbs);
+      var sToday = window.EdDraw.strength(gx, maxAbs),
+        sPrior = window.EdDraw.strength(gy, maxAbs);
       var pos = gx != null && gx >= 0,
         wToday = sToday == null ? 0 : sToday * 100;
       var ghostBar = hasGy

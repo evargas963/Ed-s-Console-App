@@ -164,18 +164,17 @@
         var x = laneIndex * 138 + 7;
         var anchor = anchorY(lv.price, rows);
         var label = pos[index];
-        var connector =
-          Math.abs(label - anchor) > 0.1
-            ? '<path d="M' +
-              (x + 120) +
-              " " +
-              label +
-              " L" +
-              (x + 126) +
-              " " +
-              anchor +
-              '" fill="none" stroke="#8b9db5"/>'
-            : "";
+        var connector = window.EdDraw.apart(label, anchor)
+          ? '<path d="M' +
+            (x + 120) +
+            " " +
+            label +
+            " L" +
+            (x + 126) +
+            " " +
+            anchor +
+            '" fill="none" stroke="#8b9db5"/>'
+          : "";
         svg +=
           '<g class="level-pill" role="button" tabindex="0" data-price="' +
           esc(lv.price_text) +
@@ -223,8 +222,8 @@
   // strength rule in the theme's colours; a peak with no size shades as zero
   function shade(value, peak, heat) {
     if (value == null) return "";
-    var t = window.EdShell.strength(value, peak);
-    var c = t == null ? heat.zero : window.EdShell.heatFill(value, peak, heat);
+    var t = window.EdDraw.strength(value, peak);
+    var c = t == null ? heat.zero : window.EdDraw.heatFill(value, peak, heat);
     return (
       ' style="background:rgb(' +
       c.join(",") +

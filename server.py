@@ -111,6 +111,7 @@ from numeric_contract import (
     price_text,
     schwab_count,
     schwab_number,
+    strike_text,
 )
 from open_gap import (
     BAR_SECONDS,
@@ -1375,7 +1376,8 @@ def _surface_view(
         {**{k: pick(v) for k, v in cell.items()}, "spot": cell["strike"] == spot_strike}
         for cell in surf["cells"][lo : hi + 1]
     ]
-    for cell in cells:  # each measure's values as the screen shows them, column by column
+    for cell in cells:  # its strike and each measure's values as the screen shows them
+        cell["strike_text"] = strike_text(cell["strike"])
         cell["text"] = {
             m: [HEAT_TEXT[m](v) for v in _measure_values(cell, m)] for m in HEAT_MEASURES
         }
@@ -1392,6 +1394,7 @@ def _surface_view(
     }
     return window, {
         **view,
+        "centre_text": strike_text(view["centre"]),
         "scope": scope,
         "coverage": _stream_coverage(cells, streams, bool(picked) and not streams),
         "max_abs": max_abs,

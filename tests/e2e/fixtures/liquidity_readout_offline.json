@@ -39,17 +39,23 @@
  "depth": {
   "1": {
    "ask_total": 800.0,
+   "ask_total_text": "800",
    "bid_total": 360.0,
+   "bid_total_text": "360",
    "imbalance": -0.3793103448275862
   },
   "3": {
    "ask_total": 2280.0,
+   "ask_total_text": "2,280",
    "bid_total": 1720.0,
+   "bid_total_text": "1,720",
    "imbalance": -0.14
   },
   "5": {
    "ask_total": 2360.0,
+   "ask_total_text": "2,360",
    "bid_total": 2040.0,
+   "bid_total_text": "2,040",
    "imbalance": -0.07272727272727272
   }
  },
@@ -58,54 +64,64 @@
    {
     "cum": 800.0,
     "price": 760.06,
-    "volume": 800.0
+    "volume": 800.0,
+    "volume_text": "800"
    },
    {
     "cum": 2000.0,
     "price": 760.08,
-    "volume": 1200.0
+    "volume": 1200.0,
+    "volume_text": "1,200"
    },
    {
     "cum": 2280.0,
     "price": 760.09,
-    "volume": 280.0
+    "volume": 280.0,
+    "volume_text": "280"
    },
    {
     "cum": 2320.0,
     "price": 760.3,
-    "volume": 40.0
+    "volume": 40.0,
+    "volume_text": "40"
    },
    {
     "cum": 2360.0,
     "price": 760.36,
-    "volume": 40.0
+    "volume": 40.0,
+    "volume_text": "40"
    }
   ],
   "bid": [
    {
     "cum": 360.0,
     "price": 760.03,
-    "volume": 360.0
+    "volume": 360.0,
+    "volume_text": "360"
    },
    {
     "cum": 1560.0,
     "price": 760.02,
-    "volume": 1200.0
+    "volume": 1200.0,
+    "volume_text": "1,200"
    },
    {
     "cum": 1720.0,
     "price": 760.0,
-    "volume": 160.0
+    "volume": 160.0,
+    "volume_text": "160"
    },
    {
     "cum": 2000.0,
     "price": 759.99,
-    "volume": 280.0
+    "volume": 280.0,
+    "volume_text": "280"
    },
    {
     "cum": 2040.0,
     "price": 759.61,
-    "volume": 40.0
+    "volume": 40.0,
+    "volume_text": "40"
    }
   ]
  },
@@ -2868,13 +2884,15 @@
    "median_mult": 4.285714285714286,
    "price": 760.02,
    "side": "bid",
-   "volume": 1200.0
+   "volume": 1200.0,
+   "volume_text": "1,200"
   },
   {
    "median_mult": 4.285714285714286,
    "price": 760.08,
    "side": "ask",
-   "volume": 1200.0
+   "volume": 1200.0,
+   "volume_text": "1,200"
   }
  ]
 }

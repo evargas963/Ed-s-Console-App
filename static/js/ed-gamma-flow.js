@@ -18,7 +18,6 @@
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
   var num = window.EdShell.num,
-    int = window.EdShell.int,
     classOf = window.EdShell.classOf;
   function isFlow() {
     var s = window.EdShell.getState();
@@ -98,8 +97,8 @@
     var rowsTob = [
       ["Bid", num(tob.bid), "top_of_book.bid", bk("top_of_book.bid")],
       ["Ask", num(tob.ask), "top_of_book.ask", bk("top_of_book.ask")],
-      ["Bid size", int(tob.bid_size), "top_of_book.bid_size", bk("top_of_book.bid_size")],
-      ["Ask size", int(tob.ask_size), "top_of_book.ask_size", bk("top_of_book.ask_size")],
+      ["Bid size", orDash(tob.bid_size_text), "top_of_book.bid_size", bk("top_of_book.bid_size")],
+      ["Ask size", orDash(tob.ask_size_text), "top_of_book.ask_size", bk("top_of_book.ask_size")],
     ];
     var rowsBook = [
       ["Mark", num(d.mark), "mark", bk("mark")],
@@ -123,8 +122,18 @@
         "depth.5.imbalance",
         bk("depth.*.imbalance"),
       ],
-      ["Bid total (5)", int(depth["5"].bid_total), "depth.5.bid_total", bk("depth.*.bid_total")],
-      ["Ask total (5)", int(depth["5"].ask_total), "depth.5.ask_total", bk("depth.*.ask_total")],
+      [
+        "Bid total (5)",
+        orDash(depth["5"].bid_total_text),
+        "depth.5.bid_total",
+        bk("depth.*.bid_total"),
+      ],
+      [
+        "Ask total (5)",
+        orDash(depth["5"].ask_total_text),
+        "depth.5.ask_total",
+        bk("depth.*.ask_total"),
+      ],
     ];
     var rowsFlow = [
       [

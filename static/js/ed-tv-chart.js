@@ -158,7 +158,7 @@
           self.rows.forEach(function (r, i) {
             if (ys[i] == null) return;
             var y = ys[i] * vr,
-              f = window.EdShell.strength(r.value, mx); // unknown: no mark
+              f = window.EdDraw.strength(r.value, mx); // unknown: no mark
             c.fillStyle = r.color;
             c.globalAlpha = 0.85;
             if (f != null && self.style === "dots") {
@@ -515,7 +515,7 @@
               y2 = self._series.priceToCoordinate(cell.price - self.step / 2);
             if (x == null || y1 == null || y2 == null) return;
             // the served side: BID green, ASK red, EVEN (equal sizes) neutral
-            var a = window.EdShell.strength(cell.side === "ASK" ? cell.ask : cell.bid, h.max_size);
+            var a = window.EdDraw.strength(cell.side === "ASK" ? cell.ask : cell.bid, h.max_size);
             if (a == null) return; // an unknown size, or a book with no size: nothing to draw
             c.fillStyle =
               cell.side === "BID" ? self.up : cell.side === "ASK" ? self.down : self.even;

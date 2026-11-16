@@ -545,7 +545,7 @@
     document.addEventListener("mousemove", function (e) {
       var d = _axisDrag;
       if (!d) return;
-      var rows = Math.round((e.clientY - d.startY) / d.rowPx);
+      var rows = window.EdDraw.rowsMoved(e.clientY - d.startY, d.rowPx);
       if (rows === d.pan.shift && d.pan.centre === d.base) return;
       d.pan.centre = d.base;
       d.pan.shift = rows;
@@ -588,8 +588,7 @@
           e.preventDefault();
           var cur = SCOPE_MODES.indexOf(state.scope);
           if (cur === -1) cur = 0;
-          var next =
-            e.deltaY > 0 ? Math.min(SCOPE_MODES.length - 1, cur + 1) : Math.max(0, cur - 1);
+          var next = window.EdDraw.stepWithin(cur, e.deltaY > 0 ? 1 : -1, SCOPE_MODES.length);
           if (next !== cur) setScope(SCOPE_MODES[next]);
         },
         { passive: false },
@@ -1065,6 +1064,9 @@
   }
   // ---- the price socket (daemon -> browser) ----
   var PRICE_SILENCE_MS = 3000; // the daemon beats every 1 s; 3 s of nothing = the push is down
+  // the waits before each reconnect of the push, then the wait between every later one
+  var PRICE_RETRY_MS = [250, 500, 1000],
+    PRICE_RETRY_EVERY_MS = 2000;
   // the page reads no clock: a row arriving starts a PRICE_SILENCE_MS timer, and the push is
   // silent once it runs out with no newer row (_priceFresh); a ticker change is WAITING until one
   // runs out the same way (_priceConnecting). Its time of day is the program's (feed.clock_ct).
@@ -1214,7 +1216,9 @@
   }
   function schedulePriceReconnect() {
     // 0.25 s, 0.5 s, 1 s, then every 2 s: the daemon restarting is seen and recovered at once
-    var ms = Math.min(2000, 250 * Math.pow(2, _priceRetry++));
+    var ms =
+      _priceRetry < PRICE_RETRY_MS.length ? PRICE_RETRY_MS[_priceRetry] : PRICE_RETRY_EVERY_MS;
+    _priceRetry++;
     setTimeout(function () {
       if (!_priceWs) openPriceSocket();
     }, ms);
@@ -1486,13 +1490,7 @@
   if (document.readyState === "complete") init();
   else document.addEventListener("DOMContentLoaded", init);
 
-  // ---- the one intensity rule of every heatmap and bar: how strong a value draws against its
-  // served scale, the straight proportion in [0, 1]; null when the value is unknown or the scale
-  // has no size, which each panel draws as it draws unknown ----
-  function strength(value, scale) {
-    if (value == null || isNaN(value) || !(scale > 0)) return null;
-    return Math.min(1, Math.abs(value) / scale);
-  }
+  // ---- the theme's colours of every heatmap (the intensity and the mix: EdDraw) ----
   function _hex(h) {
     // a token's '#rrggbb'
     var n = parseInt(String(h).trim().slice(1), 16);
@@ -1506,19 +1504,6 @@
       neg: _hex(cs.getPropertyValue("--ed-heat-neg")),
       zero: _hex(cs.getPropertyValue("--ed-heat-zero")),
     };
-  }
-  // a heat cell's colour: the theme's zero toward its positive or negative colour by strength;
-  // null when strength is
-  function heatFill(value, scale, colors) {
-    var t = strength(value, scale);
-    if (t == null) return null;
-    var a = colors.zero,
-      b = value < 0 ? colors.neg : colors.pos;
-    return [
-      Math.round(a[0] + (b[0] - a[0]) * t),
-      Math.round(a[1] + (b[1] - a[1]) * t),
-      Math.round(a[2] + (b[2] - a[2]) * t),
-    ];
   }
   // the text colour that reads on a heat cell's colour: light on dark, dark on light
   function heatInk(c) {
@@ -1534,10 +1519,6 @@
   // the one way a value the console did not send is drawn: "-" (a 0 is a value and is drawn)
   function orDash(v) {
     return v == null || v === "" ? "-" : v;
-  }
-  // a whole number as served, "-" for a value not known
-  function int(n) {
-    return n == null || isNaN(n) ? "-" : String(Math.round(Number(n)));
   }
   // a panel as served: one not received yet, or one the program could not produce, is null
   function served(p) {
@@ -1576,7 +1557,6 @@
     served: served,
     notLive: notLive,
     num: fmt,
-    int: int,
     ticker: function () {
       return state.ticker;
     },
@@ -1610,9 +1590,7 @@
       return state.measure;
     },
     setSubview: setSubview,
-    strength: strength,
     heatColors: heatColors,
-    heatFill: heatFill,
     heatInk: heatInk,
   };
 })();

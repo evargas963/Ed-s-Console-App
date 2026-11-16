@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from numeric_contract import compact_text, count_text, dollars_text, iv_text
+from numeric_contract import compact_text, count_text, dollars_text, iv_text, strike_text
 
 FX = Path(__file__).parent / "fixtures"
 E2E = Path(__file__).parent / "e2e" / "fixtures"
@@ -113,6 +113,44 @@ def test_vanna_and_charm_are_compact_with_no_dollar_sign():
         assert rows, kind
         for r in rows:
             assert r["text"] == screen_text(r["value"], "compact"), kind
+
+
+def test_the_books_sizes_are_served_whole():
+    """SPY's real books (2026-10-22, offline): its top-5 totals, each level's and each wall's size.
+
+    Every size the order-flow screens draw is served (the page rounds none).
+    """
+    book = json.loads((E2E / "order_flow_book_offline_payload.json").read_text(encoding="utf-8"))
+    five = book["depth"]["5"]
+    assert (five["bid_total"], five["bid_total_text"]) == (800.0, "800")
+    assert (five["ask_total"], five["ask_total_text"]) == (2160.0, "2,160")
+    levels = book["depth_pressure"]["bid"] + book["depth_pressure"]["ask"]
+    walls = book["wall_candidates"]
+    assert levels and walls
+    for row in levels + walls:
+        assert row["volume_text"] == screen_text(row["volume"], "count")
+
+
+def test_the_heatmaps_strikes_are_served_as_listed():
+    """SPY's heatmap (2026-10-22): each row's strike to the cent with no trailing zeros, and the
+    window's centre the same."""
+    surface = json.loads(
+        (FX / "real_spy_gamma_surface_at_a_stopped_price_2026_10_22.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    rows = surface["cells"]
+    assert rows
+    for row in rows:
+        k = row["strike"]
+        assert row["strike_text"] == (str(int(k)) if k == int(k) else f"{k:g}")
+    centre = surface["view"]["centre"]
+    assert surface["view"]["centre_text"] == (None if centre is None else f"{centre:g}")
+    assert (strike_text(397.5), strike_text(400.0), strike_text(6812.25)) == (
+        "397.5",
+        "400",
+        "6812.25",
+    )
 
 
 def test_a_count_shows_every_unit_it_moves_by():

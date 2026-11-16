@@ -71,6 +71,16 @@ def price_text(value: float | None) -> str | None:
     return f"{float(value):.2f}"
 
 
+def strike_text(value: float | None) -> str | None:
+    """Return a strike as the heatmap lists it: to the cent, no trailing zeros (397.5, 400).
+
+    None when there is no strike.
+    """
+    if value is None:
+        return None
+    return f"{float(value):.2f}".rstrip("0").rstrip(".")
+
+
 def iv_text(value: float | None) -> str | None:
     """Return an implied volatility (a percent) as the screen shows it: two decimals, as a price.
 

@@ -9592,6 +9592,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "257.5",
     "text": {
      "gex": [
       "$109.49K"
@@ -9655,6 +9656,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "260",
     "text": {
      "gex": [
       "$2.97M"
@@ -9718,6 +9720,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "262.5",
     "text": {
      "gex": [
       "-$29.15K"
@@ -9781,6 +9784,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "265",
     "text": {
      "gex": [
       "$363.90K"
@@ -9844,6 +9848,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "267.5",
     "text": {
      "gex": [
       "$390.50K"
@@ -9907,6 +9912,7 @@
      }
     ],
     "spot": true,
+    "strike_text": "270",
     "text": {
      "gex": [
       "$2.03M"
@@ -9970,6 +9976,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "272.5",
     "text": {
      "gex": [
       "$944.41K"
@@ -10033,6 +10040,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "275",
     "text": {
      "gex": [
       "$1.26M"
@@ -10096,6 +10104,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "277.5",
     "text": {
      "gex": [
       "$698.61K"
@@ -10159,6 +10168,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "280",
     "text": {
      "gex": [
       "$2.30M"
@@ -10222,6 +10232,7 @@
      }
     ],
     "spot": false,
+    "strike_text": "282.5",
     "text": {
      "gex": [
       "$600.09K"
@@ -10253,6 +10264,7 @@
   "view": {
    "centre": 270.0,
    "note": null,
+   "centre_text": "270",
    "scope": "auto",
    "coverage": {
     "cells": 11,

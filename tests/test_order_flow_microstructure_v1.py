@@ -124,7 +124,16 @@ def test_wall_candidates_are_flagged_heuristic():
     m = _micro(_data(), now_ts=1787233772.0)
     # median top-5 bid size = 80; the 1000-share touch is 12.5x median -> a candidate. None on ask.
     bid_walls = [w for w in m["wall_candidates"] if w["side"] == "bid"]
-    assert bid_walls == [{"side": "bid", "price": 712.47, "volume": 1000.0, "median_mult": 12.5}]
+    # its size served as the screen shows it, whole with separators
+    assert bid_walls == [
+        {
+            "side": "bid",
+            "price": 712.47,
+            "volume": 1000.0,
+            "volume_text": "1,000",
+            "median_mult": 12.5,
+        }
+    ]
     # The API must NOT imply an objective wall: the field is 'wall_candidates', each candidate
     # carries how many times the median it is, and it is classified as a heuristic.
     assert "walls" not in m
