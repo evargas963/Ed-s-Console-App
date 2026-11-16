@@ -27,6 +27,7 @@
         { id: "confluence", label: "Confluence Matrix" },
         { id: "right-now", label: "Right Now" },
         { id: "plan", label: "Plan" },
+        { id: "experimental", label: "Experimental" },
         { id: "expression", label: "Expression", state: "na" },
       ],
       views: Object.create(null),

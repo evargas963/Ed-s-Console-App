@@ -4093,34 +4093,44 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
 LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")
 
 
-def _open_gap_served(record: OpenGapRecord) -> dict[str, Any]:
-    """One open-gap record as served: its numbers and its line in words."""
+def _open_gap_served(tk: str, record: OpenGapRecord) -> dict[str, Any]:
+    """One ticker's open-gap record as served: its numbers, and each as the page shows it."""
     share = record.matched / record.opens
     return {
+        "ticker": tk,
         "opens": record.opens,
         "matched": record.matched,
         "low": record.low,
         "high": record.high,
         "first_day": record.first_day.isoformat(),
         "last_day": record.last_day.isoformat(),
-        "line": (
-            f"EXPERIMENTAL · the overnight gap pointed the way the first 5 minutes went on "
-            f"{record.matched} of {record.opens} opens ({share:.0%}; 95% "
-            f"{record.low:.0%}-{record.high:.0%}), {record.first_day:%b %d} to "
-            f"{record.last_day:%b %d}"
-        ),
+        "share_text": f"{share:.0%}",
+        "range_text": f"{record.low:.0%}-{record.high:.0%}",
+        "count_text": f"{record.matched} of {record.opens}",
+        "span_text": f"{record.first_day:%b %d} to {record.last_day:%b %d}",
+        # the share's interval wholly above a coin flip
+        "above_half": record.low > 0.5,
     }
 
 
-def open_gap(tk: str) -> dict[str, Any]:
-    """The open-gap record of `tk` as the Desk shows it, labelled EXPERIMENTAL.
+def experimental() -> dict[str, Any]:
+    """The Trade Desk's Experimental tab: every ticker's open-gap record, EXPERIMENTAL.
 
-    `records` holds it once Schwab's 5-minute answer has arrived with an open that counts, and
-    is empty until then (the page shows "-").
+    Each ticker whose two Schwab answers have arrived with an open that counts, by ticker; the
+    others are not listed until then.
     """
-    key = ticker_storage_key(tk)
-    held = [_open_gap[key]] if key in _open_gap else []
-    return {"ticker": key, "records": [_open_gap_served(r) for r in held if r is not None]}
+    return {
+        "open_gap": [
+            _open_gap_served(tk, r) for tk, r in sorted(_open_gap.items()) if r is not None
+        ],
+        "method": (
+            "For each open in Schwab's 5-minute bars (about 6½ months back): did the overnight "
+            "gap (the last price before the open against the prior session's close) point the "
+            "way the first 5-minute bar went? Schwab's own regular-session bars mark each open. "
+            "The range is the 95% Wilson interval; recomputed each day as Schwab's answer "
+            "arrives. It says how often the gap called the open, not where today's will go."
+        ),
+    }
 
 
 #: every panel the page shows, sent by its socket for the page's selected ticker
@@ -4129,7 +4139,7 @@ def open_gap(tk: str) -> dict[str, Any]:
 #: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
 #: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
-    "opengap": lambda a: open_gap(a.ticker),
+    "experimental": lambda _a: experimental(),
     "expiries": lambda a: expiries(a.ticker, a.now),
     "vanna": lambda a: strike_bars("vanna_rows", a.ticker, a.now, a.params),
     "charm": lambda a: strike_bars("charm_rows", a.ticker, a.now, a.params),
