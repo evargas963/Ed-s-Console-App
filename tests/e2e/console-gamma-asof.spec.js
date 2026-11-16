@@ -18,7 +18,7 @@ const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
 const SURFACE = REAL.surface, TERRAIN = REAL.terrain, STRIKES = REAL.strikes;
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }),
-  // server.bars' newest minute, labelled by time_et.ct_label
+  // push.bars' newest minute, labelled by time_et.ct_label
   last_bar: { t: 1757000180, label: 'Thu 09/04 10:36 AM CT' } };
 const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
   adjusted_deliverable_symbols: [],
