@@ -85,31 +85,7 @@ def test_today_s_open_from_schwab_s_bars_is_the_record_s_own_once_its_bar_has_cl
     assert today_open(candles, today, prior, _et("2026-10-07 09:33")) is None, "bar not closed"
 
 
-def test_the_tab_serves_the_approved_mock_up_for_the_selected_ticker():
-    record = open_gap_record(TSLA["regular"], TSLA["extended"])
-    server._open_gap["TSLA"] = record
-    try:
-        weekend = server.experimental("TSLA", _et("2026-10-10 12:00"))
-        before_open = server.experimental("TSLA", _et("2026-10-07 09:00"))
-        other = server.experimental("SPY", _et("2026-10-07 09:00"))
-    finally:
-        server._open_gap.pop("TSLA", None)
-    assert weekend["today"]["when_text"] == "no regular session today in Schwab's market hours"
-    assert before_open["today"]["label"] == "Today's gap · before the open"
-    (rec,) = before_open["records"]
-    # no gap yet today: up gaps first, down gaps for reference
-    assert (rec["main"]["share_text"], rec["main"]["count_text"]) == ("58%", "43 of 74 opens")
-    assert rec["main"]["range_text"] == "95% range 47%-69%"
-    (down,) = rec["others"]
-    assert down["line"] == "Down gaps, for reference: down 42 of 65 (65%, range 52%-75%)"
-    assert [
-        (o["day_text"], o["gap_text"], o["five_text"], o["called"]) for o in rec["last"]
-    ] == LAST_10
-    assert rec["last_title"] == "Last 10 opens · the gap called 5 of 10"
-    assert other["records"] == [] and other["ticker"] == "SPY"  # each ticker its own
-
-
-def test_a_record_is_pushed_to_the_pages_showing_its_ticker():
+def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_the_mock_up():
     def answer(series: str, candles: list) -> dict:
         return {
             "src": "schwab_pricehistory",
@@ -134,8 +110,24 @@ def test_a_record_is_pushed_to_the_pages_showing_its_ticker():
             assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None
             assert on_socket.told(page, 0.2) == set(), "the same answer again tells nothing"
         assert ("TSLA", "5m365") not in server._series  # their candles are not held as series
+        weekend = server.experimental("TSLA", _et("2026-10-10 12:00"))
+        before_open = server.experimental("TSLA", _et("2026-10-07 09:00"))
+        spy = server.experimental("SPY", _et("2026-10-07 09:00"))
     finally:
         for key in [k for k in server._open_gap_answers if k[0] == "TSLA"]:
             del server._open_gap_answers[key]
         server._open_gap.pop("TSLA", None)
     assert server.PAGE_PANELS["experimental"]
+    assert weekend["today"]["when_text"] == "no regular session today in Schwab's market hours"
+    assert before_open["today"]["label"] == "Today's gap · before the open"
+    (rec,) = before_open["records"]
+    # no gap yet today: up gaps first, down gaps for reference
+    assert (rec["main"]["share_text"], rec["main"]["count_text"]) == ("58%", "43 of 74 opens")
+    assert rec["main"]["range_text"] == "95% range 47%-69%"
+    (down,) = rec["others"]
+    assert down["line"] == "Down gaps, for reference: down 42 of 65 (65%, range 52%-75%)"
+    assert [
+        (o["day_text"], o["gap_text"], o["five_text"], o["called"]) for o in rec["last"]
+    ] == LAST_10
+    assert rec["last_title"] == "Last 10 opens · the gap called 5 of 10"
+    assert spy["records"] == [] and spy["ticker"] == "SPY"  # each ticker its own
