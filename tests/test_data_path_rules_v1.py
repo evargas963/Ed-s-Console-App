@@ -800,6 +800,7 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
         "weekly1",
         "monthly1",
         "minute5",  # 5m365: a year of 5-minute bars with extended hours, for the open's study
+        "minute5",  # 5m365r: the same year, the regular session's bars alone
     ], "every series at the start"
     assert history_at("2026-10-01 20:00:30") == ["minute5", "minute15", "minute30"], (
         "the bars that ended the session"
@@ -810,6 +811,7 @@ def test_d5_the_price_history_once_a_day_and_the_chain_the_options_session(tmp_p
         "daily1",
         "weekly1",
         "monthly1",
+        "minute5",
         "minute5",
     ], "once on the next ET date"
     assert history_at("2026-10-02 03:45") == [], "not again that day"

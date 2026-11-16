@@ -103,6 +103,7 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         ("year", "2", "weekly", "1"),
         ("year", "2", "monthly", "1"),
         ("day", None, "minute", "5"),  # from a start date: a year of bars, extended hours
+        ("day", None, "minute", "5"),  # the same year, the regular session's bars alone
     ]
     for q, (series, (period_type, period, frequency_type, frequency)) in zip(
         first, PRICE_HISTORY.items()
@@ -128,6 +129,9 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         elif series == "5m365":  # 365 calendar days back, the pre-market and after-hours too
             assert q["startDate"] == str(end - 365 * 86_400_000)
             assert q["needExtendedHoursData"] == "true"
+        elif series == "5m365r":  # 365 calendar days back, the regular session's bars alone
+            assert q["startDate"] == str(end - 365 * 86_400_000)
+            assert q["needExtendedHoursData"] == "false"
         else:
             assert "startDate" not in q and q["needExtendedHoursData"] == "true", series
     assert later_today == [
@@ -153,6 +157,7 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
         "daily1",
         "weekly1",
         "monthly1",
+        "minute5",
         "minute5",
     ], "the next ET date, before any session opens"
 
