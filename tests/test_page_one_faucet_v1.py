@@ -35,6 +35,7 @@ from push import chain as push_chain
 from push import expiries as push_expiries
 from push import strikes as push_strikes
 from push import surface as push_surface
+from push import verdict as push_verdict
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
@@ -226,7 +227,9 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     assert (
         body["expiries"] is None  # unknown, never an empty list standing for it
         and body["reason"]
-        == server.terrain_staleness(None, "ZZNOLEVELS", now=time_et.now())["levels_stale_reason"]
+        == push_verdict.terrain_staleness(None, "ZZNOLEVELS", now=time_et.now())[
+            "levels_stale_reason"
+        ]
     )
 
 

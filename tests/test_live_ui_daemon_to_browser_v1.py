@@ -67,6 +67,7 @@ from instrument_identity import ticker_storage_key
 from numeric_contract import compact_text, count_text, dollars_text, strike_text
 from option_contract import read_chain
 from push import chain as push_chain
+from push import verdict as push_verdict
 from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import clock_from
@@ -694,7 +695,9 @@ def test_a_ticker_with_no_chain_yet_reads_unknown_with_the_levels_reason():
         async with connect(url) as ws:
             await _select(ws, CRWD.ticker)
             frame = await _next_list(ws)
-            reason = server.terrain_staleness(None, A, now=time_et.now())["levels_stale_reason"]
+            reason = push_verdict.terrain_staleness(None, A, now=time_et.now())[
+                "levels_stale_reason"
+            ]
             assert frame["ticker"] == A and frame["expiries"] is None and frame["labels"] is None
             assert frame["dte"] is None and frame["dte_text"] is None
             assert frame["reason"] == reason and reason

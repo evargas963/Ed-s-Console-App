@@ -76,7 +76,7 @@
   }
 
   function render(h, desired, d) {
-    // each always served: streaming_plane (server.options_microstructure), the book
+    // each always served: streaming_plane (push.contract.options_microstructure), the book
     // (engine.compute_book_microstructure) and the ONE flow block (live_payload.flow_block)
     var plane = d.streaming_plane;
     var ss = subState(plane);

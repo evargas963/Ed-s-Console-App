@@ -44,6 +44,7 @@ from liquidity_value_engine import bars_from_candles
 from push import bars as push_bars
 from push import book as push_book
 from push import levels as push_levels
+from push import verdict as push_verdict
 from state import bar_store, price_level_store
 from stream_spine import (
     LATEST,
@@ -879,14 +880,14 @@ def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_
 
     # the daemon reports its rounds (ROUND_SEC), which a chain in the session is judged by
     lmp.record_feed_heartbeat(daemon_status(et_ts("2026-10-07 16:10"), chain_round_sec=ROUND_SEC))
-    stands = server.terrain_staleness(
+    stands = push_verdict.terrain_staleness(
         et_ts("2026-10-07 16:20"), "SPY", now=et_ts("2026-10-07 17:00")
     )
     assert (stands["levels_state"], stands["levels_stale_reason"]) == ("CLOSE", "")
     assert (
-        server.terrain_staleness(et_ts("2026-10-07 15:00"), "SPY", now=et_ts("2026-10-07 16:10"))[
-            "levels_state"
-        ]
+        push_verdict.terrain_staleness(
+            et_ts("2026-10-07 15:00"), "SPY", now=et_ts("2026-10-07 16:10")
+        )["levels_state"]
         == "STALE"
     )
 
@@ -991,24 +992,24 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     # the daemon's last status stands, its round of the watchlist reported (ROUND_SEC, 245 s)
     lmp.record_feed_heartbeat(daemon_status(et_ts("2026-10-02 16:14"), chain_round_sec=ROUND_SEC))
     for now in (sat, monday_early):
-        st = server.terrain_staleness(et_ts("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
+        st = push_verdict.terrain_staleness(et_ts("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
         assert (st["levels_state"], st["levels_stale_reason"]) == ("CLOSE", ""), st
         # ZZCLOSED's options are stock options, whose own market closes at 16:00: its last values
         # while open are its close values (operator 2026-11-15) when current at the close, within
         # two rounds of it, as one fetched at 16:14 or 15:59 is; one from 15:30 was not
-        st = server.terrain_staleness(et_ts("2026-10-02 16:14"), "ZZCLOSED", now=now)
+        st = push_verdict.terrain_staleness(et_ts("2026-10-02 16:14"), "ZZCLOSED", now=now)
         assert st["levels_state"] == "CLOSE", st
-        st = server.terrain_staleness(et_ts("2026-10-02 15:59"), "ZZCLOSED", now=now)
+        st = push_verdict.terrain_staleness(et_ts("2026-10-02 15:59"), "ZZCLOSED", now=now)
         assert st["levels_state"] == "CLOSE", st
-        st = server.terrain_staleness(et_ts("2026-10-02 15:30"), "ZZCLOSED", now=now)
+        st = push_verdict.terrain_staleness(et_ts("2026-10-02 15:30"), "ZZCLOSED", now=now)
         assert st["levels_state"] == "STALE" and st["levels_stale_reason"] == (
             "this ticker's options are closed and its levels were not current at the close"
         ), st
-        st = server.terrain_staleness(None, "ZZCLOSED", now=now)
+        st = push_verdict.terrain_staleness(None, "ZZCLOSED", now=now)
         assert st["levels_state"] == "STALE" and st["levels_age_text"] is None  # absent, not zero
     # in session the daemon reports its rounds (ROUND_SEC), which a chain is judged by
     lmp.record_feed_heartbeat(daemon_status(et_ts("2026-10-01 11:00"), chain_round_sec=ROUND_SEC))
-    st = server.terrain_staleness(
+    st = push_verdict.terrain_staleness(
         et_ts("2026-10-01 10:00"), "ZZCLOSED", now=et_ts("2026-10-01 11:00")
     )
     assert (

@@ -1,6 +1,5 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
-import server
 from math_exposure_core import (
     bucket_metric_abs,
     compute_exposures_by_strike,
@@ -11,6 +10,7 @@ from math_exposure_core import (
     pick_volatility_point_strikes,
 )
 from option_contract import read_chain
+from push import confluence as push_confluence
 from terrain_engine import (
     OPTION_LEVELS,
     SAME_DAY_LEVELS,
@@ -135,9 +135,9 @@ def test_the_net_gamma_peaks_are_served_under_names_that_say_what_they_are():
         "pin_candidate",
     }
     for _key, label in OPTION_LEVELS:
-        assert label in server._OPTION_SHORT, label
-    assert server._option_abbrev("Net put Γ peak", same_day=False) == "Net PΓ"
-    assert server._option_abbrev("Net call Γ peak", same_day=True) == "0D Net CΓ"
+        assert label in push_confluence._OPTION_SHORT, label
+    assert push_confluence._option_abbrev("Net put Γ peak", same_day=False) == "Net PΓ"
+    assert push_confluence._option_abbrev("Net call Γ peak", same_day=True) == "0D Net CΓ"
 
 
 def test_volatility_points_one_sided_chain_returns_none_side():

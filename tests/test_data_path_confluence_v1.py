@@ -33,8 +33,10 @@ from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
 from push import chain as push_chain
+from push import confluence as push_confluence
 from push import levels as push_levels
 from push import strike_rows
+from push import verdict as push_verdict
 from state import level_store
 from stream_spine import verbatim_msg
 from terrain_engine import TerrainSnapshot, compute_terrain
@@ -123,11 +125,11 @@ def _spy_0dte_twice(
         server._publish_levels(
             tk, read_chain(SPY_0DTE.chain), first_at.timestamp(), chain_spot=spot, now=first_at
         )
-        first = server.confluence_payload(tk, expiry, first_at)
+        first = push_confluence.confluence_payload(tk, expiry, first_at)
         server._publish_levels(
             tk, read_chain(second), second_ts.timestamp(), chain_spot=spot, now=now
         )
-        return first, server.confluence_payload(tk, expiry, now)
+        return first, push_confluence.confluence_payload(tk, expiry, now)
     finally:
         _forget(tk)
 
@@ -318,7 +320,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     try:
         live = _publish_close()
         book = live.snap.books[("2026-10-22", 0.0)][0]
-        body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
+        body = push_confluence.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         level_store._levels.pop("SPY", None)
     assert body["available"] is True
@@ -359,7 +361,7 @@ def test_the_rail_sorts_and_places_each_level_against_the_shown_strikes():
     """
     try:
         _publish_close()
-        body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
+        body = push_confluence.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         level_store._levels.pop("SPY", None)
     top, bottom = body["rows"][0]["strike"], body["rows"][-1]["strike"]
@@ -381,7 +383,7 @@ def test_the_rail_sorts_and_places_each_level_against_the_shown_strikes():
     for lv in _rail_levels(body):
         assert lv["title"] in body["level_names"][lv["price_text"]].split(" + ")
     _forget("ZZNOCHAIN")
-    none = server.confluence_payload("ZZNOCHAIN", None, SPY_CLOSE.now)
+    none = push_confluence.confluence_payload("ZZNOCHAIN", None, SPY_CLOSE.now)
     assert none["available"] is False
     assert none["rail_lanes"] == {"session": [], "options": []}
     assert none["levels_above"] == none["levels_below"] == none["rail_lines"] == []
@@ -408,7 +410,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     try:
         live = _publish_close()
         bucket = live.snap.books[("2026-10-22", 0.0)][0][strike]
-        body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
+        body = push_confluence.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         level_store._levels.pop("SPY", None)
     assert magnitudes(bucket, charm[strike], None, SPY_CLOSE.spot)["CHARMM"] == 0.0
@@ -447,7 +449,7 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
             at.date().isoformat(),
             at,
         )
-        body = server.confluence_payload("SPY", fx["expiry"], at)
+        body = push_confluence.confluence_payload("SPY", fx["expiry"], at)
     finally:
         level_store._levels.pop("SPY", None)
     shown = [r for r in body["rows"] if r["strike"] in zero]
@@ -479,7 +481,7 @@ def _close_then_print(quote: dict) -> dict:
     try:
         _publish_close(tk)
         _chain_spot(tk, quote)
-        return server.confluence_payload(tk, "2026-10-22", at)
+        return push_confluence.confluence_payload(tk, "2026-10-22", at)
     finally:
         _forget(tk)
 
@@ -507,7 +509,7 @@ def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
     listed = sorted({float(c["strikePrice"]) for c in fx["chain"]})
     try:
         publish_capture(tk, fx["chain"], fx["ts_utc"], fx["spot"], at.date().isoformat(), at)
-        body = server.confluence_payload(tk, "2026-10-23", at)
+        body = push_confluence.confluence_payload(tk, "2026-10-23", at)
     finally:
         _forget(tk)
     on, middle = listed.index(fx["spot"]), len(listed) // 2
@@ -608,20 +610,21 @@ def mrvl_answers() -> dict:
     try:
         _publish_mrvl()
         by_expiry = {
-            e: server.confluence_payload("MRVL", e, MRVL.now) for e in ("2026-10-09", "2026-10-16")
+            e: push_confluence.confluence_payload("MRVL", e, MRVL.now)
+            for e in ("2026-10-09", "2026-10-16")
         }
-        front_passed = server.confluence_payload("MRVL", "2026-10-09", _SUNDAY)
+        front_passed = push_confluence.confluence_payload("MRVL", "2026-10-09", _SUNDAY)
     finally:
         level_store._levels.pop("MRVL", None)
     return json.loads(
         json.dumps(
             {
-                "source": "/api/confluence (server.confluence_payload) on MRVL's full chain "
-                "captured 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_full_chain_2026_10_07"
-                ".json), published as the stored capture at the price Schwab sent; no live price "
-                "row (spot absent). by_expiry: each expiry asked at the capture instant; "
-                "front_passed: the front expiry asked on Sunday 2026-10-11, after it passed. "
-                "Written by tests/test_data_path_confluence_v1.py write_mrvl_e2e_fixture.",
+                "source": "/api/confluence (push.confluence.confluence_payload) on MRVL's full "
+                "chain captured 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_full_chain_"
+                "2026_10_07.json), published as the stored capture at the price Schwab sent; no "
+                "live price row (spot absent). by_expiry: each expiry asked at the capture "
+                "instant; front_passed: the front expiry asked on Sunday 2026-10-11, after it "
+                "passed. Written by tests/test_data_path_confluence_v1.py write_mrvl_e2e_fixture.",
                 "by_expiry": by_expiry,
                 "front_passed": front_passed,
             }
@@ -667,8 +670,8 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     listed = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
     try:
         _publish_mrvl()
-        opened = server.confluence_payload(tk, None, _SUNDAY)
-        asked = server.confluence_payload(tk, listed[0], _SUNDAY)
+        opened = push_confluence.confluence_payload(tk, None, _SUNDAY)
+        asked = push_confluence.confluence_payload(tk, listed[0], _SUNDAY)
     finally:
         level_store._levels.pop(tk, None)
     assert listed[:2] == ["2026-10-09", "2026-10-16"]
@@ -704,7 +707,7 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
     try:
         levels = _published_0dte()
         _hold_with(levels, charm_by_expiry=levels.snap.charm_by_expiry | {expiry: earlier})
-        body = server.confluence_payload("SPY", expiry, held.now)
+        body = push_confluence.confluence_payload("SPY", expiry, held.now)
     finally:
         level_store._levels.pop("SPY", None)
     row = next(r for r in body["rows"] if r["strike"] == strike)
@@ -727,7 +730,7 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
     try:
         levels = _published_0dte()
         _hold_with(levels, iv_by_expiry=levels.snap.iv_by_expiry | {expiry: puts})
-        body = server.confluence_payload("SPY", expiry, held.now)
+        body = push_confluence.confluence_payload("SPY", expiry, held.now)
     finally:
         level_store._levels.pop("SPY", None)
     differ = [
@@ -819,7 +822,7 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
         snap = server._publish_levels(
             tk, read_chain(held.chain), at.timestamp(), chain_spot=spot, now=at
         )
-        body = server.confluence_payload(tk, expiry, at)
+        body = push_confluence.confluence_payload(tk, expiry, at)
     finally:
         _forget(tk)
     assert snap is not None
@@ -854,11 +857,11 @@ def test_an_expiry_settled_at_the_close_keeps_its_last_known_values_with_their_t
         alive = server._publish_levels(
             tk, read_chain(held.chain), before.timestamp(), chain_spot=spot, now=before
         )
-        live_rows = server.confluence_payload(tk, expiry, before)["rows"]
+        live_rows = push_confluence.confluence_payload(tk, expiry, before)["rows"]
         settled = server._publish_levels(
             tk, read_chain(held.chain), after.timestamp(), chain_spot=spot, now=after
         )
-        body = server.confluence_payload(tk, expiry, after)
+        body = push_confluence.confluence_payload(tk, expiry, after)
     finally:
         _forget(tk)
     assert _window_has(live_rows, "vanna_text") and _window_has(body["rows"], "vanna_text")
@@ -878,8 +881,8 @@ def test_the_matrix_says_the_levels_word_and_the_chains_time_and_age():
     """AGENTS rule 5: every value is shown with its time, and its age once it has stopped.
 
     SPY's captured chain, delivered after the index close and read an hour later: the matrix's
-    line says CLOSE (the levels' one verdict, server.terrain_staleness), the chain's time and its
-    age.
+    line says CLOSE (the levels' one verdict, push.verdict.terrain_staleness), the chain's time and
+    its age.
     """
     tk = "SPY"
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -890,8 +893,8 @@ def test_the_matrix_says_the_levels_word_and_the_chains_time_and_age():
         server._publish_levels(
             tk, read_chain(SPY_0DTE.chain), at.timestamp(), chain_spot=spot, now=at
         )
-        body = server.confluence_payload(tk, expiry, later)
-        verdict = server.terrain_staleness(at.timestamp(), tk, now=later.timestamp())
+        body = push_confluence.confluence_payload(tk, expiry, later)
+        verdict = push_verdict.terrain_staleness(at.timestamp(), tk, now=later.timestamp())
     finally:
         _forget(tk)
     assert verdict["levels_state"] == "CLOSE"
@@ -916,8 +919,8 @@ def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
         snap = server._publish_levels(
             tk, read_chain(held.chain), at.timestamp(), chain_spot=spot, now=at
         )
-        body = server.confluence_payload(tk, expiry, at)
-        again = server.confluence_payload(tk, expiry, at)
+        body = push_confluence.confluence_payload(tk, expiry, at)
+        again = push_confluence.confluence_payload(tk, expiry, at)
     finally:
         _forget(tk)
     assert snap is not None
@@ -1019,7 +1022,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
     try:
         spot = _chain_spot(tk, _AT_CAPTURE[held.ticker])
         server._publish_levels(tk, read_chain(fresh), now.timestamp(), chain_spot=spot, now=now)
-        first = server.confluence_payload(tk, expiry, now)
+        first = push_confluence.confluence_payload(tk, expiry, now)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
         kept = (shown["oi_text"], shown["volume_text"], shown["pc_vol_text"])
         with level_store._lock:
@@ -1028,7 +1031,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), now.timestamp(), chain_spot=spot, now=now
         )
-        second = server.confluence_payload(tk, expiry, now)
+        second = push_confluence.confluence_payload(tk, expiry, now)
         again = next(row for row in second["rows"] if row["strike"] == shown["strike"])
         assert (again["oi_text"], again["volume_text"], again["pc_vol_text"]) == kept
     finally:
@@ -1123,7 +1126,7 @@ def test_a_close_capture_of_zeros_is_the_balance_not_the_capture_before_it():
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), after.timestamp(), chain_spot=spot, now=after
         )
-        served = server.confluence_payload(tk, expiry, after)
+        served = push_confluence.confluence_payload(tk, expiry, after)
         assert served["rows"] and all(row["pc_vol_text"] is None for row in served["rows"])
     finally:
         _forget(tk)
@@ -1145,7 +1148,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
         server._publish_levels(
             tk, read_chain(fresh), before.timestamp(), chain_spot=spot, now=before
         )
-        first = server.confluence_payload(tk, expiry, before)
+        first = push_confluence.confluence_payload(tk, expiry, before)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
         kept = shown["pc_vol_text"]
         with level_store._lock:
@@ -1155,7 +1158,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), closed.timestamp(), chain_spot=spot, now=closed
         )
-        held_closed = server.confluence_payload(tk, expiry, closed)
+        held_closed = push_confluence.confluence_payload(tk, expiry, closed)
         assert (
             next(row for row in held_closed["rows"] if row["strike"] == shown["strike"])[
                 "pc_vol_text"
@@ -1165,7 +1168,7 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), before.timestamp(), chain_spot=spot, now=before
         )
-        second = server.confluence_payload(tk, expiry, before)
+        second = push_confluence.confluence_payload(tk, expiry, before)
         again = next(row for row in second["rows"] if row["strike"] == shown["strike"])
         assert again["pc_vol_text"] == kept
     finally:
@@ -1254,7 +1257,7 @@ def test_a_date_with_no_session_keeps_a_reported_zero():
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), unknown.timestamp(), chain_spot=spot, now=unknown
         )
-        body = server.confluence_payload(tk, expiry, unknown)
+        body = push_confluence.confluence_payload(tk, expiry, unknown)
         assert body["rows"]
         assert all(row["pc_vol_text"] is None for row in body["rows"])
     finally:
@@ -1376,7 +1379,7 @@ def test_an_after_hours_print_keeps_the_close_book():
     expiry = str(held.chain[0]["expirationDate"])[:10]
     try:
         _publish_close(tk)
-        first = server.confluence_payload(tk, expiry, held.now)
+        first = push_confluence.confluence_payload(tk, expiry, held.now)
         near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
         close_texts = (near["net_gex_text"], near["vanna_text"], near["charm_text"])
         assert close_texts[0] is not None and close_texts[1:] == (None, None)
@@ -1385,7 +1388,7 @@ def test_an_after_hours_print_keeps_the_close_book():
             daemon_status(at.timestamp(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
         )
         second_snap = server._publish_levels(tk, now=at)
-        second = server.confluence_payload(tk, expiry, at)
+        second = push_confluence.confluence_payload(tk, expiry, at)
         again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
     finally:
         _forget(tk)
@@ -1468,7 +1471,7 @@ def test_a_chain_whose_every_expiry_has_passed_says_so():
     sunday = datetime(2026, 10, 25, 12, 0, tzinfo=ET)
     try:
         _publish_close()
-        body = server.confluence_payload("SPY", None, sunday)
+        body = push_confluence.confluence_payload("SPY", None, sunday)
     finally:
         level_store._levels.pop("SPY", None)
     assert body["available"] is False
@@ -1493,7 +1496,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     )
     try:
         publish_capture(tk, CRWD.chain, at.timestamp(), CRWD.spot, at.date().isoformat(), at)
-        body = server.confluence_payload(tk, str(CRWD.chain[0]["expirationDate"])[:10], at)
+        body = push_confluence.confluence_payload(tk, str(CRWD.chain[0]["expirationDate"])[:10], at)
         levels = {r["id"]: r["price"] for r in push_levels.levels_payload(tk, "1", at)["levels"]}
     finally:
         _forget(tk)

@@ -116,7 +116,7 @@
     return height - 26;
   }
 
-  // the served rail (server._rail): each price line and each lane's levels inside the rows; the
+  // the served rail (push.confluence._rail): each price line and each lane's levels inside the rows; the
   // page places them
   function rails(rows, lines, lanes) {
     var n = rows.length;
@@ -200,7 +200,7 @@
     return svg + "</svg>";
   }
 
-  // the served levels past the shown strikes (server._rail: levels_above / levels_below)
+  // the served levels past the shown strikes (push.confluence._rail: levels_above / levels_below)
   function offButtons(list, side) {
     return list
       .map(function (lv) {

@@ -1,5 +1,5 @@
 {
- "source": "/api/confluence (server.confluence_payload) on MRVL's full chain captured 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_full_chain_2026_10_07.json), published as the stored capture at the price Schwab sent; no live price row (spot absent). by_expiry: each expiry asked at the capture instant; front_passed: the front expiry asked on Sunday 2026-10-11, after it passed. Written by tests/test_data_path_confluence_v1.py write_mrvl_e2e_fixture.",
+ "source": "/api/confluence (push.confluence.confluence_payload) on MRVL's full chain captured 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_full_chain_2026_10_07.json), published as the stored capture at the price Schwab sent; no live price row (spot absent). by_expiry: each expiry asked at the capture instant; front_passed: the front expiry asked on Sunday 2026-10-11, after it passed. Written by tests/test_data_path_confluence_v1.py write_mrvl_e2e_fixture.",
  "by_expiry": {
   "2026-10-09": {
    "preset": "WEEKLY",

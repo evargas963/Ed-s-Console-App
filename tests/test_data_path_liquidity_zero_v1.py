@@ -21,6 +21,7 @@ import server as srv
 from liquidity_models import ZoneType
 from micro_structure import Candle
 from option_contract import read_chain
+from push import liquidity as push_liquidity
 from state import bar_store, level_store
 from tests.feed_live_helper import daemon_status, price_history
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
@@ -58,7 +59,7 @@ def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> d
     ]
     srv._write_price_history({"symbol": TK, "series": "1d", "answer": {"candles": sent}})
     srv._publish_price_levels(TK, at)
-    return srv.liquidity_snapshot(TK, at)
+    return push_liquidity.liquidity_snapshot(TK, at)
 
 
 def _tags(zone: dict) -> list[str]:
@@ -81,7 +82,7 @@ def test_a_last_price_of_zero_is_a_price_every_zone_is_above():
         daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": 0}, received_ts=at)
-    body = srv.liquidity_snapshot(TK, FRIDAY)
+    body = push_liquidity.liquidity_snapshot(TK, FRIDAY)
     assert body["zones"] and all(z["zone_low"] > 0 for z in body["zones"])
     assert {z["zone_label"] for z in body["zones"]} == {"Resistance"}
     assert all("SPOT_LIVE" not in _tags(z) for z in body["zones"]), "the price is not a level"
@@ -112,7 +113,7 @@ def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
     )
     try:
         snap = level_store.published_levels(TK).snap
-        body = srv.liquidity_snapshot(TK, FRIDAY)
+        body = push_liquidity.liquidity_snapshot(TK, FRIDAY)
     finally:
         with level_store._lock:
             level_store._levels.pop(TK, None)

@@ -20,6 +20,7 @@ import server
 import time_et
 from app.options.order_flow import streaming as ofs
 from option_contract import read_chain
+from push import contract as push_contract
 from state import level_store
 from stream_spine import book_msg
 from tests.feed_live_helper import daemon_status
@@ -51,7 +52,7 @@ def _daemon_holds(*services: str, now: float | None = None) -> None:
 
 
 def _route() -> dict:
-    return json.loads(json.dumps(server.options_microstructure(CONTRACT, time_et.now())))
+    return json.loads(json.dumps(push_contract.options_microstructure(CONTRACT, time_et.now())))
 
 
 def test_the_flow_panel_shows_schwabs_newest_option_book_as_sent():
@@ -105,7 +106,7 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         )
 
     def served() -> dict:
-        return server.options_microstructure(contract, at)
+        return push_contract.options_microstructure(contract, at)
 
     with level_store._lock:
         level_store._levels.pop("SPY", None)

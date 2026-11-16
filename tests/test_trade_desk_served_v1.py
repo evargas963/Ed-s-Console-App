@@ -29,6 +29,7 @@ from db import LevelCrossEvent
 from liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
 from micro_structure import Candle
 from option_contract import read_chain
+from push import desk as push_desk
 from push import levels as push_levels
 from state import bar_store, cross_store, level_store, price_level_store
 from terrain_engine import (
@@ -89,7 +90,7 @@ def _desk_events(tk, crosses, now, tf):
     cross_store._crosses.pop(tk, None)
     cross_store.load([tk])
     try:
-        return server.desk_events_payload(tk, "NYSE_BOOK", tf, now), stored
+        return push_desk.desk_events_payload(tk, "NYSE_BOOK", tf, now), stored
     finally:
         cross_store._crosses.pop(tk, None)
 
@@ -130,7 +131,7 @@ def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each
         newest_at[it["price"]] = it
     want = {
         it["key"]
-        for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-server.DESK_MARKERS :]
+        for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-push_desk.DESK_MARKERS :]
     }
     assert {it["key"] for it in items if it["marker"]} == want
 
@@ -155,7 +156,7 @@ def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live()
             f"book.{tk}",
             {"symbol": tk, "ts_recv": fx["book"]["ts_recv"], "content": nat, "service": venue},
         )
-        body = server.desk_events_payload(tk, venue, "30", _WED_EVENING)
+        body = push_desk.desk_events_payload(tk, venue, "30", _WED_EVENING)
     finally:
         ofls.clear_all_live_state()
     walls = [it for it in body["items"] if it["key"].startswith("wall")]
@@ -186,7 +187,7 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     cross_store._crosses.pop(tk, None)
     cross_store.load([tk])
     try:
-        body = server.desk_events_payload(tk, "NYSE_BOOK", "30", _WED_EVENING)
+        body = push_desk.desk_events_payload(tk, "NYSE_BOOK", "30", _WED_EVENING)
     finally:
         cross_store._crosses.pop(tk, None)
     start = datetime(2026, 10, 7, 9, 30, tzinfo=time_et.ET).timestamp()
@@ -571,18 +572,21 @@ def test_the_desk_window_is_schwabs_last_session_open_and_its_words_are_served()
     """
     sat = datetime(2026, 10, 3, 11, 0, tzinfo=ET)  # Saturday: Friday's open
     assert (
-        server._desk_window_start("30", sat) == datetime(2026, 10, 2, 9, 30, tzinfo=ET).timestamp()
+        push_desk._desk_window_start("30", sat)
+        == datetime(2026, 10, 2, 9, 30, tzinfo=ET).timestamp()
     )
     mon = datetime(2026, 10, 5, 10, 0, tzinfo=ET)
     assert (
-        server._desk_window_start("30", mon) == datetime(2026, 10, 5, 9, 30, tzinfo=ET).timestamp()
+        push_desk._desk_window_start("30", mon)
+        == datetime(2026, 10, 5, 9, 30, tzinfo=ET).timestamp()
     )
-    assert server._desk_window_start("1", mon) == mon.timestamp() - 900
+    assert push_desk._desk_window_start("1", mon) == mon.timestamp() - 900
     # the reference's 5-minute Market Map lists the session's events (its queue: "since open")
     assert (
-        server._desk_window_start("5", mon) == datetime(2026, 10, 5, 9, 30, tzinfo=ET).timestamp()
+        push_desk._desk_window_start("5", mon)
+        == datetime(2026, 10, 5, 9, 30, tzinfo=ET).timestamp()
     )
-    words = {tf: words for tf, (_lb, words) in server.DESK_LOOKBACK.items()}
+    words = {tf: words for tf, (_lb, words) in push_desk.DESK_LOOKBACK.items()}
     assert words["30"] == words["5"] == "this session"
 
 

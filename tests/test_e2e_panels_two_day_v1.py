@@ -36,8 +36,10 @@ from calibration.complete_chain_capture import last_capture_per_day
 from push import bars as push_bars
 from push import book as push_book
 from push import chain as push_chain
+from push import desk as push_desk
 from push import forces as push_forces
 from push import levels as push_levels
+from push import liquidity as push_liquidity
 from push import strikes as push_strikes
 from push import surface as push_surface
 from push import tape as push_tape
@@ -239,13 +241,13 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "book": {
                         venue: push_book.book(tk, at, {"venue": venue}) for venue in real.venues
                     },
-                    "liquidity": server.liquidity_snapshot(tk, now),
+                    "liquidity": push_liquidity.liquidity_snapshot(tk, now),
                     "forces": push_forces.forces(tk),
                     # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
                     "levels": {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS},
                     "desk": {
                         venue: {
-                            tf: server.desk_events_payload(tk, venue, tf, now) for tf in DESK_TFS
+                            tf: push_desk.desk_events_payload(tk, venue, tf, now) for tf in DESK_TFS
                         }
                         for venue in real.venues
                     },
