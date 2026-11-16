@@ -860,7 +860,7 @@ SERVING = (
     "live_market_plane.py",
     "liquidity_value_engine.py",
     "terrain_engine.py",
-    "confluence_composite.py",
+    "calc/confluence_composite.py",
     "liquidity_models.py",
 )
 served = {

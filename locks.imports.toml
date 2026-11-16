@@ -50,14 +50,11 @@ allow_indirect_imports = true
 name = "The Calculators read no State, Push, Feed, database or network"
 type = "forbidden"
 source_modules = [
+    "head.calc",
     "head.terrain_engine",
     "head.terrain_read",
-    "head.terrain_atr",
     "head.math_exposure_core",
     "head.math_levels",
-    "head.math_volatility",
-    "head.math_forces",
-    "head.confluence_composite",
     "head.liquidity_value_engine",
     "head.liquidity_models",
     "head.micro_structure",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from math_forces import Forces, forces_absent
+from calc.math_forces import Forces, forces_absent
 from state.level_store import published_levels
 
 

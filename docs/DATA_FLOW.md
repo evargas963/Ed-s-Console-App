@@ -465,7 +465,7 @@ the program.
   the map `compute_terrain` stored (`iv_by_strike` once for the expiry). The ranking is
   `score_magnitudes` once for that expiry, every strike of it, stored with the publication. The
   matrix does not call any of them again; the request draws only its window's rows
-  (`confluence_composite.window_rows`). Vanna
+  (`calc.confluence_composite.window_rows`). Vanna
   is the book's `net_vanna`. After that ticker's option market has closed for the day
   (`time_et.option_market_open`), the publication is valued at that day's close
   (`time_et.valuation_instant`, the index close for a symbol on the exchanges' 4:15 p.m. ET list,
@@ -475,7 +475,7 @@ the program.
   0DTE level is made from a later expiry (operator 2026-10-25). A later
   equity print keeps the price that publication was priced at; the matrix's
   window (every per-strike panel's, Auto; "Strike windows" below), its spot, each row's distance
-  from it and the row it sits under are the live price's (`confluence_composite.at_price`). The
+  from it and the row it sits under are the live price's (`calc.confluence_composite.at_price`). The
   chain's own time stays `computed_ts_utc` and is the line above the matrix. The expiry is a
   dropdown; a same-day expiry is labeled 0DTE. Each level is sent at its own price and drawn on the
   rail. An expiry dated before today is not offered. A request that names a date before

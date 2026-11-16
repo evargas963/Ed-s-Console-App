@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any, NamedTuple, TypedDict
 
-from confluence_composite import iv_by_strike
+from calc.confluence_composite import iv_by_strike
 from math_exposure_core import (
     Bucket,
     ExposureDiagnostics,

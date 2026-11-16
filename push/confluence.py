@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from confluence_composite import at_price, build_matrix, window_rows
+from calc.confluence_composite import at_price, build_matrix, window_rows
 from math_exposure_core import merge_exposure_books
 from numeric_contract import price_text
 from push.answers import unavailable

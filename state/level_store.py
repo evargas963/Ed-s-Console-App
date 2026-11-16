@@ -11,8 +11,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from calc.math_forces import Forces
 from instrument_identity import ticker_storage_key
-from math_forces import Forces
 from option_contract import OptionContract
 from terrain_engine import StrikeValue, TerrainSnapshot
 

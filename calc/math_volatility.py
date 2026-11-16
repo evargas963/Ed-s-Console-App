@@ -1,7 +1,4 @@
-"""Volatility-derived transforms: the average true range.
-
-math_volatility.py
-"""
+"""Volatility-derived transforms: the average true range."""
 
 from __future__ import annotations
 
