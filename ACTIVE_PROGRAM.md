@@ -17,7 +17,7 @@ weekly distance check that would later move a weight is not part of this.
 
 A negative gamma leg leaves that factor missing. When open interest plus volume weights sum to
 zero, the volatility blend is the simple mean of the contracts that have a volatility. The header
-chip marks a price not live. The matrix's line is the levels' one verdict (`server.terrain_staleness`:
+chip marks a price not live. The matrix's line is the levels' one verdict (`push.verdict.terrain_staleness`:
 LIVE, CLOSE, STALE or NOT LIVE), the chain's time and age, and why when not LIVE or CLOSE (AGENTS
 rule 5; `tests/test_data_path_confluence_v1.py`). The window is every per-strike panel's (`docs/DATA_FLOW.md` "Strike windows", Auto:
 eleven strikes centred on the one nearest the live price; with no live price, the middle of the
@@ -286,7 +286,7 @@ Levels' Spot show the trade time without an age (the last served age is not the 
 page computes none); the equity book's live flag and the book badges take the price row's
 verdict; each option contract's own close (its market from the chain that lists it) is PR B.
 Operator 2026-10-25, on PR B: the levels, the chain and the heatmap carry one served levels verdict
-(`server.terrain_staleness`), judged by the ticker's own option market; after that market's close
+(`push.verdict.terrain_staleness`), judged by the ticker's own option market; after that market's close
 the levels read CLOSE with the close values' time and age. Operator 2026-10-25, on PR B's reviews:
 the three readers of Schwab's option windows are one, `time_et.option_market_open` (a day Schwab
 says is closed is outside every window, so Schwab's close counts stand on it, as after any close;

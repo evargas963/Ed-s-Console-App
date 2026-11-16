@@ -21,11 +21,11 @@ from pathlib import Path
 
 import pytest
 
-import server
 from app.options.order_flow import state
 from app.options.order_flow import streaming as S
 from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import RecentBooks, book_heatmap_for_ticker
+from push import bookmap as push_bookmap
 from stream_spine import book_msg
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -251,8 +251,10 @@ def test_a_window_outside_the_books_kept_is_refused_never_replaced():
     window the page did not ask.
     """
     for minutes in (0.5, 15, 60, 120, 240):
-        assert "available" in server.bookmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
+        assert "available" in push_bookmap.bookmap(
+            SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes}
+        )
     for minutes in (241, 0, -60, "abc"):
         with pytest.raises(ValueError) as refused:
-            server.bookmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
+            push_bookmap.bookmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
         assert repr(minutes) in str(refused.value), "the refusal names the window asked"

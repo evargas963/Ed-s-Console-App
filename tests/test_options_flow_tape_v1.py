@@ -29,6 +29,7 @@ from app.options.order_flow.history import recent_prints, tape_row
 from app.options.order_flow.state import OrderFlowState
 from app.options.order_flow.streaming import _ingest_pushed
 from option_contract import read_chain, read_contract
+from push import tape as push_tape
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.shared_helpers import fixture_json
@@ -232,7 +233,7 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
                     verbatim_msg(symbol=sym, content=item, src="schwab", ts_recv=ts),
                 )
         unlisted = (
-            server.tape("SPY", at),
+            push_tape.tape("SPY", at),
             [server.options_microstructure(sym, at)["put_call"] for sym in (CALL, PUT)],
         )
         server._publish_levels(
@@ -249,7 +250,7 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
             ],
             now=at_close,
         )
-        body = server.tape("SPY", at)
+        body = push_tape.tape("SPY", at)
         sides = [server.options_microstructure(sym, at)["put_call"] for sym in (CALL, PUT)]
     finally:
         with level_store._lock:

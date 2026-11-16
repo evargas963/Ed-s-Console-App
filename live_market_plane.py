@@ -8,7 +8,7 @@ its market trades.
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, TypedDict
@@ -320,6 +320,22 @@ def live_state(symbol: str, service: str, now: float) -> tuple[str, str | None]:
     current value; judging by arrival age blanks quiet names on a healthy feed.
     """
     return _judge(feed_now(now), symbol, service, now)
+
+
+def held_option_symbols(
+    listed: Collection[str], now: float, feed: FeedNow | None = None
+) -> list[str]:
+    """Every contract of a ticker's chain (`listed`) on the daemon's latest LEVELONE_OPTIONS beat.
+
+    A missing or too-old beat keeps that set; it does not say the feed is live.
+    `feed` is one read of that heartbeat; omitted, this call reads it.
+    """
+    if feed is None:
+        feed = feed_now(now)
+    opts = feed.held.get("LEVELONE_OPTIONS")
+    if not opts:
+        return []
+    return [sym for sym in opts if sym in listed]
 
 
 def live_symbols(feed: FeedNow, symbols: Iterable[str], service: str, now: float) -> set[str]:
