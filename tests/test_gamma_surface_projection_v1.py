@@ -24,6 +24,7 @@ from math_exposure_core import (
 )
 from option_contract import OptionContract, read_chain
 from server import project_gamma_surface, ticker_storage_key
+from state import level_store
 from tests.real_chains import MRVL
 from time_et import sessions
 
@@ -393,8 +394,8 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
         window = {"scope": "all", "centre": None, "shift": 0}
         measures = server.strikes("MRVL", NOW.timestamp(), window)["measures"]
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop("MRVL", None)
+        with level_store._lock:
+            level_store._levels.pop("MRVL", None)
     assert measures["dex"]["rows"] and measures["oi"]["rows"]
     cols = len(surface["expirations"])
     for m, cell_value in (("dex", lambda c: c), ("oi", lambda c: c["total"])):

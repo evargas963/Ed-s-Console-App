@@ -35,6 +35,7 @@ from app.options.order_flow import streaming as ofs
 from feed import connection, stream
 from feed.chain_sweep import chain_messages
 from option_contract import read_chain, read_contract
+from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.real_chains import MRVL
 from tests.schwab_rest_standin import LocalSchwab
@@ -142,7 +143,7 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
             for topic, msg in delivered:
                 bus.publish(topic, msg)
             await _until(
-                lambda: tk in daemon._ranked and server.published_levels(tk) is not None, 120
+                lambda: tk in daemon._ranked and level_store.published_levels(tk) is not None, 120
             )
             return [ct for _topic, msg in delivered for ct in msg["contracts"]]
         finally:
@@ -158,9 +159,9 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
         mon.free_tool_id(tool)
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop(tk, None)
-        levels = server.published_levels(tk)
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        levels = level_store.published_levels(tk)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
         server._last_feed_stamp.clear()
     assert len(reads) == len(MRVL.chain) == len(read), "each contract read once"
     assert all(a is b for a, b in zip(levels.chain, read, strict=True)), "the levels: that read"
@@ -314,14 +315,14 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
             await _until(
                 lambda: (
                     conn.held["LEVELONE_OPTIONS"]
-                    and server.published_levels("SPY") is not None
-                    and server.published_levels("SPY").gamma_surface is not None
+                    and level_store.published_levels("SPY") is not None
+                    and level_store.published_levels("SPY").gamma_surface is not None
                 ),
                 180,
                 lambda: {
                     "held": len(conn.held["LEVELONE_OPTIONS"]),
                     "options": len(daemon.option_order),
-                    "levels": server.published_levels("SPY") is not None,
+                    "levels": level_store.published_levels("SPY") is not None,
                     "why": server._terrain_refresh_last_error.get("SPY"),
                 },
             )
@@ -368,8 +369,8 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
         rest.close()
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("SPY", None)
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop("SPY", None)
+        with level_store._lock:
+            level_store._levels.pop("SPY", None)
         server._last_feed_stamp.clear()
     # no cap of ours: every SPY contract the rule ranks is asked, Schwab's answer decides
     wanted = daemon.wanted()["LEVELONE_OPTIONS"]

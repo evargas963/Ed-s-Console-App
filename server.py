@@ -123,6 +123,8 @@ from open_gap import (
     today_open,
 )
 from option_contract import OptionContract, chain_row
+from state import bar_store, cross_store, level_store
+from state.level_store import PublishedLevels, published_levels
 from terrain_atr import Atr, compute_atrs
 from terrain_engine import (
     OPTION_LEVELS,
@@ -242,25 +244,6 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
     return None, outage, None
 
 
-#: one RTH day of 1-minute bars
-CANDLE_1M_MAX_BARS: int = 390
-
-
-#: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT: Schwab's own
-#: 1-minute price history (MINUTE_SERIES: its last 10 days with extended hours, and 90 days of the
-#: regular session, from the capture daemon's /pricehistory requests each ET date) with Schwab's
-#: streamed CHART_EQUITY bars on top, a streamed minute replacing Schwab's history of it. Owned by
-#: the bar writer (_bar_writer). Every live reader reads this, never a database (docs/DATA_FLOW.md
-#: §2 D6). 40,000 holds 62 sessions of 390 regular bars and 10 days of extended hours (~9,600).
-BARS_KEPT = 40_000
-#: the daemon's /pricehistory series of 1-minute bars, both kept in the ticker's bars
-MINUTE_SERIES = ("1m", "1m60")
-_bars: dict[str, list[Candle]] = {}
-#: every ticker's other series of Schwab's /pricehistory, each its newest answer as sent
-#: ((ticker, series) -> candles, oldest first; every series of the daemon's PRICE_HISTORY but
-#: MINUTE_SERIES). Owned by the bar writer; the bars panel and the ATR (_atr) read them.
-_series: dict[tuple[str, str], list[Candle]] = {}
-_bars_lock = threading.Lock()
 #: the series the open-gap record is computed from, in open_gap_record's order: Schwab's 5-minute
 #: bars of the regular session and with extended hours, each asked once a day; each ticker's
 #: newest answer of each, and its record from both (None: no open counted). Owned by the bar
@@ -317,17 +300,16 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     held taken (a held minute, a streamed bar or an earlier history's, stands over Schwab's
     history of it); any other series replacing the one held. A candle without a valid field is
     not kept. The ticker when the bars or candles it holds changed, else None. Runs on the bar
-    writer, the one writer of _bars and _series.
+    writer, the one writer of state.bar_store.
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
     if msg["series"] in OPEN_GAP_SERIES:  # no bars or candles held: the open-gap record's input
         _take_open_gap(tk, msg["series"], sent)
         return None
-    if msg["series"] not in {*MINUTE_SERIES, *SCHWAB_SERIES.values(), "1w", "1mo"}:
+    if msg["series"] not in {*bar_store.MINUTE_SERIES, *SCHWAB_SERIES.values(), "1w", "1mo"}:
         return None  # a series no screen reads: the daemon records it, the console holds none
-    if msg["series"] not in MINUTE_SERIES:
-        key = (tk, msg["series"])
+    if msg["series"] not in bar_store.MINUTE_SERIES:
         candles = [
             b
             for b in (
@@ -343,13 +325,8 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
             )
             if b is not None
         ]
-        if key in _series and _series[key] == candles:
-            return None
-        with _bars_lock:
-            _series[key] = candles
-        return tk
-    held = _bars[tk] if tk in _bars else []
-    held_minutes = {b.ts for b in held}
+        return tk if bar_store.put_series(tk, msg["series"], candles) else None
+    held_minutes = bar_store.held_minutes(tk)
     taken: dict[float, Candle] = {}
     for c in sent:
         start = schwab_number(c.get("datetime"))
@@ -360,41 +337,7 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
         )
         if b is not None:
             taken[b.ts] = b
-    if not taken:
-        return None
-    bars = sorted([*held, *taken.values()], key=lambda b: b.ts)[-BARS_KEPT:]
-    with _bars_lock:
-        _bars[tk] = bars
-    return tk if any(t >= bars[0].ts for t in taken) else None
-
-
-def _keep_bar(tk: str, bar: Candle) -> None:
-    """Put a streamed bar into `tk`'s bars.
-
-    A minute already held is replaced (Schwab's newest bar for it), a new one takes its place in
-    time; the oldest beyond BARS_KEPT leave.
-    """
-    with _bars_lock:
-        held = _bars.setdefault(tk, [])
-        i = len(held)  # bars arrive in time order: found at once
-        while i and held[i - 1].ts > bar.ts:
-            i -= 1
-        if i and held[i - 1].ts == bar.ts:
-            held[i - 1] = bar
-        else:
-            held.insert(i, bar)
-        del held[:-BARS_KEPT]
-
-
-def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> list[Candle]:
-    """`tk`'s completed 1-minute bars, oldest first.
-
-    Schwab's streamed CHART_EQUITY bars as the bar writer keeps them. A minute the stream did not
-    deliver is absent, never filled in.
-    """
-    key = ticker_storage_key(tk)
-    with _bars_lock:
-        return list(_bars[key][-int(limit) :]) if key in _bars else []
+    return tk if bar_store.take_history(tk, list(taken.values())) else None
 
 
 def _bar_dict(c: Candle) -> dict[str, Any]:
@@ -419,7 +362,7 @@ def _write_streamed_bar(msg: dict[str, Any]) -> bool:
         log.warning("streamed bar for %s lacks a valid field, not kept: %s", msg["symbol"], msg)
         return False
     tk = ticker_storage_key(msg["symbol"])
-    _keep_bar(tk, bar)  # what every live reader reads
+    bar_store.keep_bar(tk, bar)  # what every live reader reads
     live_ui.changed(app.state, tk, *BARS_PANELS)
     return True
 
@@ -454,7 +397,7 @@ def _write_streamed_bars(msgs: list[dict[str, Any]], now: datetime) -> None:
 
 
 def _bar_writer() -> None:
-    """Run the bar writer, the one owner of the bars and candles in memory (_bars, _series).
+    """Run the bar writer, the one writer of the bars and candles in memory (state.bar_store).
 
     It writes every streamed bar and price history the capture daemon pushes, as it arrives, with
     those already waiting behind it. Ends at stop_bar_writer's None, once everything queued before
@@ -642,59 +585,6 @@ def favicon() -> Response:
 _CROSS_WORD = {"up": "above", "down": "below"}
 
 
-#: every ticker's newest CROSSES_KEPT level crosses, newest last, as stored rows: loaded from
-#: level_crosses once the watchlist is known (_load_crosses), then each cross as it is recorded
-#: (_log_level_crosses). Every live reader reads this, never the database (DATA_FLOW §2 D6).
-CROSSES_KEPT = 1600
-_crosses: dict[str, list[dict[str, Any]]] = {}
-_crosses_lock = threading.Lock()
-
-
-def _held_crosses(tk: str) -> list[dict[str, Any]]:
-    """Return the ticker's held level crosses, oldest first.
-
-    The one database read of them, the first time they are needed (the console's start, or a
-    cross found before it), then fed live. Called holding _crosses_lock.
-    """
-    if tk not in _crosses:
-        _crosses[tk] = get_db().get_recent_crosses(ticker=tk, n=CROSSES_KEPT)[::-1]
-    return _crosses[tk]
-
-
-def _load_crosses(watchlist: list[str]) -> None:
-    """Load the watchlist's held level crosses, at the console's start."""
-    with _crosses_lock:
-        for tk in watchlist:
-            _held_crosses(tk)
-
-
-def _merged_recent_crosses(ticker: str, n: int) -> list[dict[str, Any]]:
-    """Return the newest `n` level crosses, each (time, value, direction) one event.
-
-    Each event carries every level named there in `level_names`. The one reader of level crosses
-    for every route. Price crossing one strike writes one stored row per named level sitting
-    there; they are merged here, at the read, so the stored history keeps its per-level rows.
-    """
-    with _crosses_lock:
-        raw = _crosses[ticker][::-1][: max(int(n) * 8, 64)] if ticker in _crosses else []
-    merged: list[dict[str, Any]] = []
-    seen: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
-    # each row has every LevelCrossEvent field and its cross_id (db.get_recent_crosses, or the
-    # row record_level_crosses returned)
-    for r in raw:
-        key = (r["ts_utc"], r["level_value"], r["direction"])
-        hit = seen.get(key)
-        if hit is None:
-            row = dict(r)
-            row["level_names"] = [r["level_name"]]
-            seen[key] = row
-            merged.append(row)
-            continue
-        if r["level_name"] not in hit["level_names"]:
-            hit["level_names"].append(r["level_name"])
-    return merged[:n]
-
-
 def unavailable(ticker: str, reason: str, **fields: Any) -> dict[str, Any]:
     """Return a route's answer when the value it serves is not held for `ticker`.
 
@@ -704,61 +594,12 @@ def unavailable(ticker: str, reason: str, **fields: Any) -> dict[str, Any]:
 
 
 # ── THE LEVELS (from the chains the capture daemon fetches) ──────────────────
-@dataclass(frozen=True)
-class PublishedLevels:
-    """A ticker's levels as _publish_levels published them, with what they were priced from."""
-
-    snap: TerrainSnapshot
-    #: when the chain was fetched: a reprice on a kept chain does not make the chain newer
-    computed_ts_utc: float
-    #: the newest Schwab option value in them: the chain, or a value pushed since
-    levels_ts_utc: float
-    #: Schwab's label of the chain's completeness (CAPTURE_BASIS, or a capture's own)
-    chain_basis: str
-    #: the price the levels were computed at, its source and its time
-    spot_source: str
-    spot_as_of_ts_utc: float | None
-    #: the price as resolved for this publication: (price, source, time)
-    priced_at: tuple[float | None, str, float | None]
-    #: the heatmap grid (project_gamma_surface); None without a price or a book
-    gamma_surface: dict[str, Any] | None
-    vanna_rows: list[StrikeValue]
-    charm_rows: list[StrikeValue]
-    #: the chain as Schwab sent it, and as priced with the values pushed since
-    chain: list[OptionContract]
-    priced_chain: list[OptionContract]
-    #: the contracts Schwab listed in the newest chain, each record by its symbol
-    contracts: Mapping[str, OptionContract]
-    #: read from the stored captures, recomputed only when `captures_key` changes
-    forces: dict[str, Any]
-    prior_day: TerrainSnapshot | None
-    captures_key: tuple[float | None, str]
-
-    def served(self) -> dict[str, Any]:
-        """Return the levels as the terrain panel sends them, before the live price's relations."""
-        return self.snap.to_dict() | {
-            "computed_ts_utc": self.computed_ts_utc,
-            "levels_ts_utc": self.levels_ts_utc,
-            "chain_basis": self.chain_basis,
-            "spot_source": self.spot_source,
-            "spot_as_of_ts_utc": self.spot_as_of_ts_utc,
-        }
-
-
-_terrain_cache: dict[str, PublishedLevels] = {}
-_terrain_cache_lock = threading.Lock()
 #: Why the ticker's newest chain is not priced: the daemon's chain fetch failed with Schwab's
 #: answer, or a chain arrived incomplete. Cleared by the next chain priced.
 _terrain_refresh_last_error: dict[str, str] = {}
 
 _terrain_loop_running: bool = False
 _terrain_loop_thread: threading.Thread | None = None
-
-
-def published_levels(ticker: str) -> PublishedLevels | None:
-    """Return the ticker's levels as last published, or None before the first."""
-    with _terrain_cache_lock:
-        return _terrain_cache.get(ticker_storage_key(ticker))
 
 
 def terrain_cache_get(ticker: str, now: float) -> tuple[PublishedLevels | None, LevelsVerdict]:
@@ -1214,12 +1055,10 @@ def restamp_open_surfaces(now: float) -> None:
     option market (live_market_plane.live_symbols): a socket that has closed, a contract the daemon
     no longer holds and an option market that has closed are not live. A surface is restamped,
     and the page told, only when that changes for its own contracts. It runs on the pricing
-    thread, the one writer of the levels, so the cache's lock is held only to read and to store.
+    thread, the one writer of the levels.
     """
     feed = lmp.feed_now(now)
-    with _terrain_cache_lock:
-        cached = list(_terrain_cache.items())
-    for tk, levels in cached:
+    for tk, levels in level_store.every_published():
         surface = levels.gamma_surface
         if surface is None:  # this ticker's levels hold no surface (no price or no book)
             continue
@@ -1237,8 +1076,7 @@ def restamp_open_surfaces(now: float) -> None:
         live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
         stamped = _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held)
         stamped["surface_seq"] = _next_gamma_surface_seq(tk, now)
-        with _terrain_cache_lock:
-            _terrain_cache[tk] = replace(levels, gamma_surface=stamped)
+        level_store.publish(tk, replace(levels, gamma_surface=stamped))
         _levels_changed(tk)
 
 
@@ -1400,19 +1238,6 @@ def _surface_view(
         "max_abs": max_abs,
         "missing_expiry": expiry if expiry and not picked else None,
     }
-
-
-def _contract_ticker(sym: str) -> str | None:
-    """Return the ticker whose chain Schwab listed `sym` in, or None.
-
-    The same rule for every instrument, whatever the contract's root (SPXW and SPX are both
-    $SPX's).
-    """
-    with _terrain_cache_lock:
-        return next(
-            (tk for tk, levels in _terrain_cache.items() if sym in levels.contracts),
-            None,
-        )
 
 
 def _closed_since(now: datetime, product: str) -> datetime | None:
@@ -1608,8 +1433,7 @@ def _publish_levels(
         prior_day=prior,
         captures_key=captures_key,
     )
-    with _terrain_cache_lock:
-        _terrain_cache[tk] = levels
+    level_store.publish(tk, levels)
     _levels_changed(tk)
     if new_chain:
         live_ui.changed(app.state, tk, *CHAIN_PANELS)
@@ -1674,10 +1498,7 @@ def _log_level_crosses(
         log.exception("level crosses of %s at %s not stored: %s", tk, spot, crosses)
         return
     if logged:
-        with _crosses_lock:
-            held = _held_crosses(tk)
-            held.extend(logged)
-            del held[:-CROSSES_KEPT]
+        cross_store.add(tk, logged)
         _levels_changed(tk)
 
 
@@ -1697,7 +1518,7 @@ def _tick_ticker(sym: str) -> str | None:
     """
     if not vendor_option_root(sym):
         return ticker_storage_key(sym)
-    return _contract_ticker(sym)
+    return level_store.listing_ticker(sym)
 
 
 def _on_stream_tick(sym: str) -> None:
@@ -1954,8 +1775,7 @@ def _status_line(now: float) -> str:
         prices = f"live prices: {priced} of {len(watchlist)} watchlist tickers"
     else:  # no list has arrived: the list is unknown
         prices = "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"
-    with _terrain_cache_lock:
-        as_of = [levels.levels_ts_utc for levels in _terrain_cache.values()]
+    as_of = [levels.levels_ts_utc for _, levels in level_store.every_published()]
     newest = ct_label(max(as_of)) if as_of else "none"
     round_sec = None if st is None else st["chain_round_sec"]
     return " | ".join(
@@ -2029,7 +1849,7 @@ def _terrain_loop() -> None:
         lambda: _watchlist() is not None,
     )
     watchlist = _watchlist()
-    _load_crosses(watchlist)
+    cross_store.load(watchlist)
     started = datetime.fromtimestamp(time_et.now(), ET)
     _publish_missing_price_levels(watchlist, started)
     queued = _load_stored_levels(watchlist)
@@ -2148,15 +1968,14 @@ def _todays_candles(tk: str, now: datetime) -> list[Candle]:
 def _daily_candles(tk: str, now: datetime) -> list[Candle]:
     """`tk`'s daily candles through today, every one Schwab's: the ATR's and the daily chart's.
 
-    Schwab's /pricehistory series as the bar writer holds it (_series; none from Schwab yet: none
-    held), today's candle of it once Schwab's regular window for today has ended and Schwab has
-    sent it. Until then today's is the one Schwab pushes (_todays_candles).
+    Schwab's /pricehistory series as the bar writer holds it (state.bar_store; none from Schwab
+    yet: none held), today's candle of it once Schwab's regular window for today has ended and
+    Schwab has sent it. Until then today's is the one Schwab pushes (_todays_candles).
     """
     today = now.astimezone(ET).date()
     s = session(today.isoformat())
     ended = s is not None and bool(s.regular) and now >= s.regular[-1][1]
-    with _bars_lock:
-        sent = list(_series[(tk, "1d")]) if (tk, "1d") in _series else []
+    sent = bar_store.series(tk, "1d")
     daily = [
         c
         for day, c in ((datetime.fromtimestamp(c.ts, ET).date(), c) for c in sent)
@@ -2171,14 +1990,12 @@ def _atr(ticker: str, now: datetime) -> Atr:
     """Return the ticker's daily, weekly and monthly ATR at `now`, each from Schwab's candles.
 
     The daily from _daily_candles; the weekly and monthly from Schwab's own weekly and monthly
-    /pricehistory series as the bar writer holds them (_series). Too few reads as None.
+    /pricehistory series as the bar writer holds them (state.bar_store). Too few reads as None.
     """
     tk = ticker_storage_key(ticker)
-    with _bars_lock:
-        weekly, monthly = (
-            list(_series[(tk, s)]) if (tk, s) in _series else [] for s in ("1w", "1mo")
-        )
-    return compute_atrs(_daily_candles(tk, now), weekly, monthly)
+    return compute_atrs(
+        _daily_candles(tk, now), bar_store.series(tk, "1w"), bar_store.series(tk, "1mo")
+    )
 
 
 def _atr_fields(tk: str, now: datetime) -> dict[str, float | None]:
@@ -2395,7 +2212,7 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
 
     The page's socket sends it (live_ui, PAGE_PANELS) to every chart, at once and with each new
     bar (BARS_PANELS). [{t,o,h,l,c,v}] epoch-seconds bar starts (chart_bars), over the span of its
-    newest `limit` 1-minute bars, from the bars the console holds (_bars_1m): no database, no
+    newest `limit` 1-minute bars, from the bars the console holds (state.bar_store): no database, no
     Schwab call; each bar with its start as the screen shows it (`time_ct`, the chart's readout
     and crosshair) and as its time axis marks it (`ticks`, time_et.ct_ticks).
     `last_bar`: the newest completed minute and its label. A `tf` not in
@@ -2405,7 +2222,7 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     tf, limit = _tf_asked(params), params.get("limit")
     if type(limit) is not int or not 1 <= limit <= BARS_LIMIT_MAX:
         raise ValueError(f"limit {limit!r} is not a count from 1 to {BARS_LIMIT_MAX}")
-    held = [_bar_dict(c) for c in _bars_1m(ticker, limit)]
+    held = [_bar_dict(c) for c in bar_store.bars_1m(ticker, limit)]
     shown = chart_bars(ticker, tf, held, datetime.fromtimestamp(now, ET))
     return {
         "bars": [
@@ -2474,9 +2291,7 @@ def chart_bars(
             for c in _daily_candles(tk, now)
             if first_day is None or first_day <= datetime.fromtimestamp(c.ts, ET).date()
         ]
-    key = (tk, SCHWAB_SERIES[tf]) if tf in SCHWAB_SERIES else None
-    with _bars_lock:
-        sent = list(_series[key]) if key in _series else []
+    sent = bar_store.series(tk, SCHWAB_SERIES[tf]) if tf in SCHWAB_SERIES else []
     if not sent:
         return aggregate_bars(minutes, tf)
     newest = sent[-1].ts
@@ -3104,7 +2919,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     item. The page draws it; it selects, numbers and orders nothing.
     """
     start = _desk_window_start(tf, now)
-    crosses = _merged_recent_crosses(tk, 200)
+    crosses = cross_store.merged_recent(tk, 200)
     in_window = sorted(
         (c for c in crosses if c["ts_utc"] >= start),
         key=lambda c: c["ts_utc"],
@@ -3412,7 +3227,7 @@ def options_microstructure(c: str, now: float) -> dict[str, Any]:
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
     # the side of the contract's chain record; None while no chain the console holds lists it
-    tk = _contract_ticker(c)
+    tk = level_store.listing_ticker(c)
     payload["put_call"] = None if tk is None else published_levels(tk).contracts[c].side
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
@@ -3482,7 +3297,7 @@ async def post_flow_contract(selected: FlowContract):
     contract Schwab listed in a chain the console holds is taken.
     """
     contract = selected.contract
-    if contract is not None and _contract_ticker(contract) is None:
+    if contract is not None and level_store.listing_ticker(contract) is None:
         return JSONResponse(
             {
                 "ok": False,
@@ -3767,13 +3582,11 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
     tk = ticker_storage_key(ticker)
     before = canonical_price_level_snapshot(tk, now)
     try:
-        with _bars_lock:
-            daily = list(_series[(tk, "1d")]) if (tk, "1d") in _series else []
         snap = materialize_price_level_snapshot(
             tk,
             market_session_date(now),
-            bars_from_candles(_bars_1m(tk, 2500)),
-            daily=daily,
+            bars_from_candles(bar_store.bars_1m(tk, 2500)),
+            daily=bar_store.series(tk, "1d"),
             bar_source=BAR_SOURCE,
             config=PlaybookConfig(),
         )
@@ -3803,8 +3616,8 @@ def materialize_price_level_snapshot(
     """Build once per input; return the SAME object while the input is the same.
 
     Built by the calculator (liquidity_value_engine.build_price_level_snapshot) from normalized
-    bars (bars_from_candles) and Schwab's daily candles (`daily`, _series), and held here, the
-    one store of it. A new input (the bars, the prior session's candle or the regular hours
+    bars (bars_from_candles) and Schwab's daily candles (`daily`, state.bar_store), and held here,
+    the one store of it. A new input (the bars, the prior session's candle or the regular hours
     Schwab's /markets sent changed) builds exactly once; every later ask with that input is a read,
     never a recomputation.
     """
@@ -4288,7 +4101,7 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
             "results": [],
         }
     prior = _prior_session(day)
-    candles = _series[(tk, "5m")] if (tk, "5m") in _series else []
+    candles = bar_store.series(tk, "5m")
     opened = [today_open(candles, today, p, now) for p in [prior] if p is not None]
     if not opened or opened[0] is None:
         return _today_waiting("Today's gap · at the open", "waiting for Schwab's open bar to close")
@@ -4601,11 +4414,12 @@ def hold_rates(tk: str, now: datetime) -> list[dict[str, str]]:
     liquidity_value_engine.hold_counts over every 1-minute bar the bar writer holds and Schwab's
     daily candles.
     """
-    with _bars_lock:
-        bars = list(_bars[tk]) if tk in _bars else []
-        daily = list(_series[(tk, "1d")]) if (tk, "1d") in _series else []
     counts = hold_counts(
-        bars_from_candles(bars), daily, now, sessions=sessions(), config=PlaybookConfig()
+        bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT)),
+        bar_store.series(tk, "1d"),
+        now,
+        sessions=sessions(),
+        config=PlaybookConfig(),
     )
     return [
         {

@@ -33,6 +33,7 @@ import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
 from feed.chain_sweep import PRICE_HISTORY, ChainSweep, price_history_message
+from state import bar_store
 from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.page_on_socket import pages
 from tests.schwab_rest_standin import HISTORY, PRICEHISTORY, LocalSchwab
@@ -258,7 +259,7 @@ def test_today_s_candle_is_the_one_schwab_pushes():
         ofs._ingest_pushed(topic, msg)
         server._write_streamed_bars([ofs.streamed_bars.get_nowait()], after)
 
-    server._series.pop((tk, "1d"), None)
+    bar_store._series.pop((tk, "1d"), None)
     try:
         series(before)
         pushed(opened)  # the reset to 0 and the prior session's last: no regular trade yet
@@ -292,7 +293,7 @@ def test_today_s_candle_is_the_one_schwab_pushes():
             "v": schwabs["volume"],
         }
     finally:
-        server._series.pop((tk, "1d"), None)
+        bar_store._series.pop((tk, "1d"), None)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
 
@@ -322,7 +323,7 @@ def test_the_atr_and_the_daily_chart_read_one_candle_for_today():
         ofs._ingest_pushed(topic, msg)
         server._write_streamed_bars([ofs.streamed_bars.get_nowait()], after)
 
-    server._series.pop((tk, "1d"), None)
+    bar_store._series.pop((tk, "1d"), None)
     try:
         for q in day["quotes"]:
             lmp.record_from_level_one_equity(tk, q["native"], received_ts=q["ts_recv"])
@@ -334,7 +335,7 @@ def test_the_atr_and_the_daily_chart_read_one_candle_for_today():
         assert server.chart_bars(tk, "D", [], after)[-1]["l"] == sent[-1]["low"] == 500.25
         assert server._atr(tk, after).daily == _wilder_atr(sent)
     finally:
-        server._series.pop((tk, "1d"), None)
+        bar_store._series.pop((tk, "1d"), None)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
 
@@ -358,8 +359,8 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
     while not ofs.streamed_bars.empty():
         ofs.streamed_bars.get_nowait()
     for tk, series in asked:
-        server._bars.pop(tk, None)
-        server._series.pop((tk, series), None)
+        bar_store._bars.pop(tk, None)
+        bar_store._series.pop((tk, series), None)
     try:
         assert len(sub.changed) == 8, "each series asked, its current record on the bus"
         for key in list(sub.changed):
@@ -376,7 +377,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
             minutes = HISTORY[(tk, "minute", "1")]["body"]["candles"]
             got = [
                 (b.ts, b.open, b.high, b.low, b.close, b.volume)
-                for b in server._bars_1m(tk, server.BARS_KEPT)
+                for b in bar_store.bars_1m(tk, bar_store.BARS_KEPT)
             ]
             assert got == [
                 (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
@@ -393,8 +394,8 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
         assert (tsla.weekly, tsla.monthly) == (None, None), "not arrived: no ATR, none made up"
     finally:
         for tk, series in asked:
-            server._bars.pop(tk, None)
-            server._series.pop((tk, series), None)
+            bar_store._bars.pop(tk, None)
+            bar_store._series.pop((tk, series), None)
 
 
 def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
@@ -406,15 +407,15 @@ def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
     """
     for tk in ("SPY", "TSLA"):
         now = datetime.fromtimestamp(HISTORY[(tk, "minute", "1")]["answered_utc"], ET)
-        server._bars.pop(tk, None)
+        bar_store._bars.pop(tk, None)
         try:
             first, again = _told(tk, [partial(_held, tk, "1m", now)] * 2)
             got = [
                 (b.ts, b.open, b.high, b.low, b.close, b.volume)
-                for b in server._bars_1m(tk, server.BARS_KEPT)
+                for b in bar_store.bars_1m(tk, bar_store.BARS_KEPT)
             ]
         finally:
-            server._bars.pop(tk, None)
+            bar_store._bars.pop(tk, None)
         assert "liquidity" in first, tk
         assert again == set(), (tk, again)
         assert got == [
@@ -433,16 +434,16 @@ def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
         sent = HISTORY[(tk, "minute", "1")]["body"]["candles"]
         earlier = [c for i, c in enumerate(sent[:-390]) if i % 7]
         now = datetime.fromtimestamp(HISTORY[(tk, "minute", "1")]["answered_utc"], ET)
-        server._bars.pop(tk, None)
+        bar_store._bars.pop(tk, None)
         try:
             _held(tk, "1m", now, earlier)
             (told,) = _told(tk, [partial(_held, tk, "1m", now)])
             got = [
                 (b.ts, b.open, b.high, b.low, b.close, b.volume)
-                for b in server._bars_1m(tk, server.BARS_KEPT)
+                for b in bar_store.bars_1m(tk, bar_store.BARS_KEPT)
             ]
         finally:
-            server._bars.pop(tk, None)
+            bar_store._bars.pop(tk, None)
         assert "liquidity" in told, tk
         assert got == [
             (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
@@ -460,15 +461,15 @@ def test_new_daily_candles_reach_the_open_page_and_the_same_candles_again_do_not
     for tk in ("SPY", "TSLA"):
         sent = HISTORY[(tk, "daily", "1")]["body"]["candles"]
         now = datetime.fromtimestamp(HISTORY[(tk, "daily", "1")]["answered_utc"], ET)
-        server._series.pop((tk, "1d"), None)
+        bar_store._series.pop((tk, "1d"), None)
         try:
             _held(tk, "1d", now, sent[:-1])
             newer, again = _told(tk, [partial(_held, tk, "1d", now)] * 2)
             held = [
-                (c.ts, c.open, c.high, c.low, c.close, c.volume) for c in server._series[(tk, "1d")]
+                (c.ts, c.open, c.high, c.low, c.close, c.volume) for c in bar_store.series(tk, "1d")
             ]
         finally:
-            server._series.pop((tk, "1d"), None)
+            bar_store._series.pop((tk, "1d"), None)
         assert "liquidity" in newer, tk
         assert again == set(), (tk, again)
         assert held == [
@@ -485,6 +486,7 @@ import json, sys
 sys.path.insert(0, sys.argv[1])
 from datetime import datetime
 import server
+from state import bar_store
 from tests.schwab_rest_standin import HISTORY
 from time_et import ET
 msgs = [{"src": "schwab_pricehistory", "symbol": tk, "series": "1m", """
@@ -494,7 +496,8 @@ now = datetime.fromtimestamp(msgs[0]["ts_recv"], ET)
 before = set(sys.modules)
 server._write_streamed_bars(msgs, now)
 print(json.dumps({"loaded": sorted(set(sys.modules) - before),
-                  "bars": [len(server._bars_1m(tk, server.BARS_KEPT)) for tk in ("SPY", "TSLA")],
+                  "bars": [len(bar_store.bars_1m(tk, bar_store.BARS_KEPT))
+                           for tk in ("SPY", "TSLA")],
                   "levels": [server.canonical_price_level_snapshot(tk, now) is not None """
     """for tk in ("SPY", "TSLA")]}))
 """

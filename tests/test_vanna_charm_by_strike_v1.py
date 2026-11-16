@@ -27,6 +27,7 @@ import time_et
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from option_contract import read_chain
+from state import level_store
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_live
 from tests.real_chains import CRWD
@@ -45,8 +46,8 @@ ALL = {**AUTO, "scope": "all"}
 
 
 def _clear():
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
     server._gamma_surface_seq.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)

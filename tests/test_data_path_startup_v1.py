@@ -42,6 +42,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS
 from feed.chain_sweep import chain_messages
 from feed.schwab_client import build_client_from_token
 from option_contract import read_chain
+from state import level_store
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.call_count import calls
 from tests.capture_store import store_capture
@@ -901,9 +902,9 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
     contracts = [dict(ct) for ct in CRWD.chain]
     for chain in stored:
         _store_as_the_daemon_writes(chain)
-    with server._terrain_cache_lock:  # held by another test on this worker
+    with level_store._lock:  # held by another test on this worker
         for name in names:
-            server._terrain_cache.pop(name, None)
+            level_store._levels.pop(name, None)
     with server._chains_waiting_lock:
         server._chains_delivered.difference_update(names)
     served = Pages()
@@ -918,8 +919,8 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
     ticker = threading.Thread(target=ticks, daemon=True)
 
     def priced() -> set[str]:
-        with server._terrain_cache_lock:
-            return {name for name in names if name in server._terrain_cache}
+        with level_store._lock:
+            return {name for name in names if name in level_store._levels}
 
     try:
         server._on_chain(
@@ -946,9 +947,9 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
     finally:
         _drain()  # what still waits is priced
         served.stop()
-        with server._terrain_cache_lock:
+        with level_store._lock:
             for name in (tk, *names):
-                server._terrain_cache.pop(name, None)
+                level_store._levels.pop(name, None)
         with server._chains_waiting_lock:
             server._chains_delivered.discard(tk)
         with sqlite3.connect(
@@ -975,9 +976,9 @@ def test_the_stop_drops_what_waits_to_be_priced_so_the_exit_waits_on_no_pricing(
     names = (MRVL.ticker, NFLX.ticker)
     for chain in (MRVL, NFLX):
         _store_as_the_daemon_writes(chain)
-    with server._terrain_cache_lock:  # held by another test on this worker
+    with level_store._lock:  # held by another test on this worker
         for name in names:
-            server._terrain_cache.pop(name, None)
+            level_store._levels.pop(name, None)
     with server._chains_waiting_lock:
         server._chains_delivered.difference_update(names)
     running = threading.Event()
@@ -989,8 +990,8 @@ def test_the_stop_drops_what_waits_to_be_priced_so_the_exit_waits_on_no_pricing(
         running.set()
         held.result(timeout=60)
         server._chain_pricing.submit(lambda: None).result(timeout=60)  # what was queued has run
-        with server._terrain_cache_lock:
-            priced = {name for name in names if server._terrain_cache.pop(name, None) is not None}
+        with level_store._lock:
+            priced = {name for name in names if level_store._levels.pop(name, None) is not None}
         with sqlite3.connect(server.get_db().db_path) as conn:  # later tests read the newest
             conn.executemany(
                 "DELETE FROM complete_chain_captures WHERE ticker=? AND ts_utc=?",

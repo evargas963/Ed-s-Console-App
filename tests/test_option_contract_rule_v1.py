@@ -37,6 +37,7 @@ from app.options.order_flow import streaming as ofs
 from feed.chain_sweep import chain_messages
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import read_chain
+from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from terrain_engine import strike_window
 from tests.real_chains import CRWD, MRVL, SPY_FULL, TSLA
@@ -586,8 +587,8 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
         market.run(steps)
     finally:
         ofs._daemon = None
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop("MRVL", None)
+        with level_store._lock:
+            level_store._levels.pop("MRVL", None)
     assert far in held[L1] and far in held[BOOK]
     # the rule alone streams it on LEVELONE_OPTIONS and not on OPTIONS_BOOK: the selection did
     assert far in rule_alone[L1] and far not in rule_alone[BOOK]
