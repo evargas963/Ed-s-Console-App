@@ -36,7 +36,10 @@ def with_change(bar: dict[str, Any]) -> dict[str, Any]:
     chg = bar["c"] - bar["o"]
     pct = chg / bar["o"] * 100 if bar["o"] else None
     bar["chg"], bar["chg_pct"] = chg, pct
-    bar["chg_text"] = f"{chg:+.2f}" + ("" if pct is None else f" ({pct:+.2f}%)")
+    text = f"{chg:+.2f}"
+    if pct is not None:  # its percent beside it, when it is a number
+        text += f" ({pct:+.2f}%)"
+    bar["chg_text"] = text
     return bar
 
 
