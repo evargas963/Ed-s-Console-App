@@ -32,7 +32,6 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from datetime import time as dtime
 from pathlib import Path
 from typing import IO, Any
 
@@ -740,15 +739,16 @@ KEPT_BY_TIME = (
 #: rows removed in one transaction, so a live write never waits behind a long delete
 PRUNE_ROWS = 20000
 #: the tables whose rows received before the newest five sessions move into stream_archive, each
-#: with the parts of the ET day kept (None: all of it); a row outside them is not kept. The order
-#: books keep the pre-market and the open (04:00-10:00) and the close (15:30-16:00) (operator
-#: 2026-11-15: "Yes, windows + compress"; ACTIVE_PROGRAM.md STORE-ENOUGH)
-BOOK_WINDOWS = ((dtime(4, 0), dtime(10, 0)), (dtime(15, 30), dtime(16, 0)))
-ARCHIVED: dict[str, tuple[tuple[dtime, dtime], ...] | None] = {
-    "stream_quotes_raw": None,
-    "stream_options_quotes_raw": None,
-    "stream_bars_raw": None,
-    "stream_news_raw": None,
+#: with the parts of the ET day kept, in seconds of the day [start, end); a row outside them is
+#: not kept. The order books keep the pre-market and the open (04:00-10:00) and the close
+#: (15:30-16:00) (operator 2026-11-15: "Yes, windows + compress"; ACTIVE_PROGRAM.md STORE-ENOUGH)
+WHOLE_DAY = ((0.0, 86_400.0),)
+BOOK_WINDOWS = ((4 * 3600.0, 10 * 3600.0), (15.5 * 3600, 16 * 3600.0))
+ARCHIVED: dict[str, tuple[tuple[float, float], ...]] = {
+    "stream_quotes_raw": WHOLE_DAY,
+    "stream_options_quotes_raw": WHOLE_DAY,
+    "stream_bars_raw": WHOLE_DAY,
+    "stream_news_raw": WHOLE_DAY,
     "stream_book_raw": BOOK_WINDOWS,
 }
 #: rows taken into one archive block, in one transaction (a book block is about 13 MB before
@@ -756,11 +756,11 @@ ARCHIVED: dict[str, tuple[tuple[dtime, dtime], ...] | None] = {
 ARCHIVE_ROWS = 5000
 
 
-def _in_windows(ts: float, windows: tuple[tuple[dtime, dtime], ...] | None) -> bool:
-    if windows is None:
-        return True
-    at = datetime.fromtimestamp(ts, ET).time()
-    return any(start <= at < end for start, end in windows)
+def _in_windows(ts: float, windows: tuple[tuple[float, float], ...]) -> bool:
+    """Whether receipt time `ts` falls in one of `windows`, seconds of its ET day [start, end)."""
+    t = datetime.fromtimestamp(ts, ET)
+    second = t.hour * 3600 + t.minute * 60 + t.second + t.microsecond / 1e6
+    return any(start <= second < end for start, end in windows)
 
 
 def archive_block(rows: list[tuple[Any, ...]]) -> bytes:
