@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -86,6 +88,48 @@ def test_a_stop_asked_twice_stops_the_program_once(tmp_path, caplog):
     said = [r.getMessage() for r in caplog.records if "stop requested" in r.getMessage()]
     assert stopped
     assert said == ["capture daemon: stop requested (launch.py stop)"], said
+
+
+def test_a_stop_is_taken_while_every_shared_worker_thread_is_busy(tmp_path):
+    """The program's shared worker threads all busy, as the panels and the chain sweep keep them
+    in market hours: a stop asked is still taken at once.
+
+    Induced: the loop's default pool (the one asyncio.to_thread and the page's panels use) is
+    two threads, both held by work that does not end until the test lets it; the stop is asked
+    and must end the waiter well within launch.py stop's wait. On 2026-11-16 a stop asked at
+    12:16 in market hours was not taken for over 30 s, and launch.py stop said "still running".
+    """
+    db = tmp_path / "stream_capture.db"
+    request = StopRequest(db)
+    fd, lock = acquire_owner_lock(db)
+    release = threading.Event()
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=2))
+        busy = [asyncio.to_thread(release.wait, 60) for _ in range(2)]
+        busy = [asyncio.ensure_future(b) for b in busy]
+        await asyncio.sleep(0.1)  # both shared threads are held
+        stop = asyncio.Event()
+        waiter = asyncio.create_task(capture.stop_on_request(stop, request))
+        await asyncio.sleep(0.1)
+        ask_to_stop(db)
+        started = time_et.elapsed()
+        try:
+            await asyncio.wait_for(waiter, timeout=5)
+            return time_et.elapsed() - started, stop.is_set()
+        finally:
+            release.set()
+            await asyncio.gather(*busy)
+
+    try:
+        took, stopped = asyncio.run(go())
+    finally:
+        release.set()
+        release_owner_lock(fd, lock)
+        request.close()
+    assert stopped
+    assert took < capture.STOP_WAIT_SEC + 1.0, f"the stop was taken {took:.2f} s after it was asked"
 
 
 def test_the_programs_own_stop_ends_the_waiter_at_once(tmp_path):
