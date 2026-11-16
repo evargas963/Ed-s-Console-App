@@ -4079,32 +4079,16 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
 LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")
 
 
-#: every panel the page shows, sent by its socket for the page's selected ticker
-#: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
-#: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
-#: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
-#: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
-def open_gap(tk: str) -> dict[str, Any]:
-    """The open-gap record of `tk` as the Desk shows it, labelled EXPERIMENTAL.
-
-    `line` is the record in words; absent ("-") until Schwab's 5-minute answer has arrived, or
-    when it holds no open that counts.
-    """
-    key = ticker_storage_key(tk)
-    record = _open_gap[key] if key in _open_gap else None
-    if record is None:
-        return {"ticker": key, "record": None, "line": "-"}
+def _open_gap_served(record: OpenGapRecord) -> dict[str, Any]:
+    """One open-gap record as served: its numbers and its line in words."""
     share = record.matched / record.opens
     return {
-        "ticker": key,
-        "record": {
-            "opens": record.opens,
-            "matched": record.matched,
-            "low": record.low,
-            "high": record.high,
-            "first_day": record.first_day.isoformat(),
-            "last_day": record.last_day.isoformat(),
-        },
+        "opens": record.opens,
+        "matched": record.matched,
+        "low": record.low,
+        "high": record.high,
+        "first_day": record.first_day.isoformat(),
+        "last_day": record.last_day.isoformat(),
         "line": (
             f"EXPERIMENTAL · the overnight gap pointed the way the first 5 minutes went on "
             f"{record.matched} of {record.opens} opens ({share:.0%}; 95% "
@@ -4114,6 +4098,22 @@ def open_gap(tk: str) -> dict[str, Any]:
     }
 
 
+def open_gap(tk: str) -> dict[str, Any]:
+    """The open-gap record of `tk` as the Desk shows it, labelled EXPERIMENTAL.
+
+    `records` holds it once Schwab's 5-minute answer has arrived with an open that counts, and
+    is empty until then (the page shows "-").
+    """
+    key = ticker_storage_key(tk)
+    held = [_open_gap[key]] if key in _open_gap else []
+    return {"ticker": key, "records": [_open_gap_served(r) for r in held if r is not None]}
+
+
+#: every panel the page shows, sent by its socket for the page's selected ticker
+#: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
+#: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
+#: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
+#: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "opengap": lambda a: open_gap(a.ticker),
     "expiries": lambda a: expiries(a.ticker, a.now),

@@ -1293,7 +1293,9 @@
       m = S.micro,
       L = S.levels;
     host.innerHTML = [
-      "Open gap: <b>" + esc(S.opengap ? S.opengap.line : "-") + "</b>",
+      "Open gap: <b>" +
+        esc(S.opengap && S.opengap.records.length ? S.opengap.records[0].line : "-") +
+        "</b>",
       "Bars: <b>" + (S.bars.length ? "streamed 1m bars" : "-") + "</b>",
       "Book: <b>" + esc(orDash(m && m.provenance && m.provenance.book_source)) + "</b>",
       "Levels: <b>" + esc(orDash(L && L.bar_source)) + "</b>",

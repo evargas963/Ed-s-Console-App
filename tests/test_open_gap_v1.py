@@ -51,14 +51,14 @@ def test_the_console_keeps_the_record_from_the_daily_answer_and_serves_it_experi
     }
     server._open_gap.pop("TSLA", None)
     try:
-        assert server.open_gap("TSLA")["line"] == "-"
+        assert server.open_gap("TSLA")["records"] == []  # absent until the answer arrives
         assert server._write_price_history(msg) == "TSLA"
         assert server._write_price_history(msg) is None  # the same answer again changes nothing
         assert ("TSLA", "5m365") not in server._series  # its candles are not held
-        served = server.open_gap("TSLA")
+        (served,) = server.open_gap("TSLA")["records"]
     finally:
         server._open_gap.pop("TSLA", None)
-    assert served["record"]["opens"] == 138 and served["record"]["matched"] == 84
+    assert served["opens"] == 138 and served["matched"] == 84
     assert served["line"] == (
         "EXPERIMENTAL · the overnight gap pointed the way the first 5 minutes went on 84 of "
         "138 opens (61%; 95% 53%-69%), Apr 30 to Nov 13"
