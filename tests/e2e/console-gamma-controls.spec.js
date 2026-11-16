@@ -43,6 +43,17 @@ test.describe('ticker / expiry / measure controls', () => {
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
   });
 
+  test('the chart\'s time axis and crosshair read the served labels of SPY\'s real bars', async ({ page }) => {
+    // each bar's marks and crosshair time are served (server.bars: time_et.ct_ticks, ct_label);
+    // the page formats no time
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    const first = SETS.SPY.bars['1'].bars[0];
+    await expect.poll(() => page.evaluate(() => window.EdGammaChart.state()?.firstTime))
+      .toEqual({ day: first.ticks[2], crosshair: first.time_ct });
+    expect(first.ticks[2]).toMatch(/^Nov \d+$/);
+  });
+
   test('controls are real dropdowns (value is the control, no SYM/EXPIRY/MEASURE chips)', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#symInput')).toBeVisible();   // #9: a typed instrument control, not a watchlist-bound select

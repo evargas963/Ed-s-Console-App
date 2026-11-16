@@ -21,29 +21,6 @@
   "use strict";
   var LWC = window.LightweightCharts;
 
-  var CT_TIME = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  var CT_DAY = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    month: "short",
-    day: "numeric",
-  });
-  var CT_FULL = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  var CT_YEAR = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric" });
-  var CT_MONTH = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "short" });
-
   var esc = window.EdShell.esc,
     num = window.EdShell.num,
     orDash = window.EdShell.orDash;
@@ -533,7 +510,7 @@
             vr = s.verticalPixelRatio;
           var bw = Math.max(1, ts.options().barSpacing);
           h.cells.forEach(function (cell) {
-            var x = ts.timeToCoordinate(h.since_ts + cell.t * h.bucket_sec);
+            var x = ts.timeToCoordinate(h.bucket_ts[cell.t]);
             var y1 = self._series.priceToCoordinate(cell.price + self.step / 2),
               y2 = self._series.priceToCoordinate(cell.price - self.step / 2);
             if (x == null || y1 == null || y2 == null) return;
@@ -709,6 +686,29 @@
       btnLatest = host.querySelector(".tvc-latest"),
       btnAuto = host.querySelector(".tvc-auto"),
       btnLog = host.querySelector(".tvc-log");
+    // each time the chart holds, a bar's or a heatmap bucket's, and its served labels: the axis
+    // marks by kind (`ticks`: year, month, day, time) and the crosshair's time (`full`)
+    var barLabels = [],
+      heatLabels = [],
+      labels = new Map();
+    function served(t) {
+      return labels.get(t);
+    }
+    function heldLabels(bars, heat) {
+      barLabels = bars;
+      heatLabels = heat;
+      labels = new Map(barLabels.concat(heatLabels));
+    }
+    // the time axis's mark at `t` (its kind: 0 year, 1 month, 2 day, 3 time, 4 with seconds,
+    // which the axis does not show), and the crosshair's time: as served, "-" where none was
+    function tickLabel(t, type) {
+      var l = served(t);
+      return l && l.ticks ? l.ticks[type > 3 ? 3 : type] : "-";
+    }
+    function crossLabel(t) {
+      var l = served(t);
+      return l && l.full != null ? l.full : "-";
+    }
 
     var chart = LWC.createChart(plot, {
       autoSize: true,
@@ -731,19 +731,9 @@
         secondsVisible: false,
         rightOffset: 8,
         borderColor: P.edge,
-        tickMarkFormatter: function (t, type) {
-          var d = new Date(t * 1000);
-          if (type === 0) return CT_YEAR.format(d);
-          if (type === 1) return CT_MONTH.format(d);
-          if (type === 2) return CT_DAY.format(d);
-          return CT_TIME.format(d);
-        },
+        tickMarkFormatter: tickLabel,
       },
-      localization: {
-        timeFormatter: function (t) {
-          return CT_FULL.format(new Date(t * 1000)) + " CT";
-        },
-      },
+      localization: { timeFormatter: crossLabel },
       handleScroll: {
         mouseWheel: true,
         pressedMouseMove: true,
@@ -1463,6 +1453,12 @@
             v_text: b.v_text,
           };
         });
+        heldLabels(
+          bars.map(function (b) {
+            return [Number(b.t), { ticks: b.ticks, full: b.time_ct }];
+          }),
+          heatLabels,
+        );
         S.tf = tf;
         S.symbol = symbol;
         candles.setData(
@@ -1652,6 +1648,10 @@
           drawings: draw.lines.length + S.hlines.length,
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
           heatCells: heat.h ? heat.h.cells.length : 0,
+          // the first time the chart holds, as its axis marks it by day and its crosshair reads it
+          firstTime: (function (t) {
+            return t == null ? null : { day: tickLabel(t, 2), crosshair: crossLabel(t) };
+          })(S.bars.length ? S.bars[0].t : heat.h ? heat.h.bucket_ts[0] : null),
           zones: zones.zones.length,
           volumeProfileBins: vprofile.rows.length,
           levels: S.priceLines.map(function (l) {
@@ -1692,21 +1692,28 @@
       setZones: function (list) {
         zones.set(list);
       },
-      // the book heatmap ({cells, since_ts, bucket_sec, n_buckets, max_size, display_lo, display_hi}
-      // as served) or null: its buckets become the time axis
+      // the book heatmap ({cells, bucket_ts, bucket_ct, bucket_ticks, max_size, display_lo,
+      // display_hi} as served) or null: its buckets become the time axis
       setHeatmap: function (h) {
         heat.set(h, P.up, P.down, P.ink3);
+        heldLabels(
+          barLabels,
+          (h ? h.bucket_ts : []).map(function (t, i) {
+            return [t, { ticks: h.bucket_ticks[i], full: h.bucket_ct[i] }];
+          }),
+        );
         // the axes need series values to exist: the first bucket carries the served window's low,
         // the last its high, on an invisible line (sizing only; never drawn, labelled or read)
-        var pts = [];
-        if (h)
-          for (var i = 0; i < h.n_buckets; i++) {
-            var pt = { time: h.since_ts + i * h.bucket_sec };
-            if (i === 0) pt.value = h.display_lo;
-            else if (i === h.n_buckets - 1) pt.value = h.display_hi;
-            pts.push(pt);
-          }
-        timeline.setData(pts);
+        var last = h ? h.bucket_ts.length - 1 : -1;
+        timeline.setData(
+          (h ? h.bucket_ts : []).map(function (t, i) {
+            return i === 0
+              ? { time: t, value: h.display_lo }
+              : i === last
+                ? { time: t, value: h.display_hi }
+                : { time: t };
+          }),
+        );
         chart.priceScale("right").applyOptions({ autoScale: true });
         chart.timeScale().fitContent();
       },

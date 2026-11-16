@@ -27,6 +27,12 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   // the window as served (history.book_heatmap_for_ticker's time_et.ct_label of each end)
   await expect(page.locator('#ofhBody .ofh-foot')).toContainText('Fri 09/25 06:55 PM CT – Fri 09/25 07:00 PM CT');
   await expect.poll(() => page.evaluate(() => window.EdBookHeatmap.state()?.heatCells)).toBe(HEAT.cells.length);
+  // the time axis and the crosshair read each bucket's served labels; the page formats no time
+  expect(await page.evaluate(() => window.EdBookHeatmap.state().firstTime)).toEqual({
+    day: HEAT.bucket_ticks[0][2],
+    crosshair: HEAT.bucket_ct[0],
+  });
+  expect(HEAT.bucket_ticks[0][2]).toBe('Sep 25');
   await expect.poll(() => plot.evaluate((p) => {
     let green = 0, red = 0;
     p.querySelectorAll('canvas').forEach((c) => {

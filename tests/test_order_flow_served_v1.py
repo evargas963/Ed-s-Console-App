@@ -138,3 +138,7 @@ def test_the_heatmap_the_browser_draws_is_the_producers_own(heat):
     # each bucket's start as the screen shows it, the first at the window's start
     assert len(heat["bucket_ct"]) == heat["n_buckets"]
     assert heat["bucket_ct"][0] == heat["since_ct"] == "Fri 09/25 06:55 PM CT"
+    # each bucket's start served as its time and its marks on the chart's time axis
+    assert heat["bucket_ts"][0] == heat["since_ts"]
+    assert len(heat["bucket_ts"]) == len(heat["bucket_ticks"]) == heat["n_buckets"]
+    assert heat["bucket_ticks"][0] == ["2026", "Sep", "Sep 25", "18:55"]
