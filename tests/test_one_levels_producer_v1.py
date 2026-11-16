@@ -32,6 +32,7 @@ import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from math_exposure_core import bucket_metric, merge_exposure_books
 from option_contract import read_chain
+from push import strike_bars as push_strike_bars
 from state import level_store
 from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
@@ -485,12 +486,12 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     snap = server._publish_levels(TK, _RECORDS, _T, chain_spot=(_SPOT, _T), now=valued)
     _daemon(at=time_et.now())  # live now, as the routes read it
     every = {"scope": "all", "centre": None, "shift": 0}
-    charm = server.strike_bars("charm_rows", TK, time_et.now(), every)
+    charm = push_strike_bars.strike_bars("charm_rows", TK, time_et.now(), every)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(
         1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None
     )
-    vanna = server.strike_bars("vanna_rows", TK, time_et.now(), every)
+    vanna = push_strike_bars.strike_bars("vanna_rows", TK, time_et.now(), every)
     assert vanna["available"] and vanna["rows"]
 
 
