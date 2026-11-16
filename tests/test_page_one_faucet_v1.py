@@ -32,6 +32,7 @@ from instrument_identity import ticker_storage_key
 from numeric_contract import count_text, dollars_text, strike_text
 from option_contract import read_chain
 from push import expiries as push_expiries
+from push import strikes as push_strikes
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
@@ -149,7 +150,7 @@ def test_strike_side_sums_split_at_the_live_spot(held):
     below = [r for r in rows if r[0] < LIVE]
     above = [r for r in rows if r[0] > LIVE]
     assert below and above, "the real chain has strikes on both sides of the live price"
-    body = server.strikes(TK, time_et.now(), AUTO)
+    body = push_strikes.strikes(TK, time_et.now(), AUTO)
     sums = body["today_side_sums"]
     assert server.resolve_spot(TK, now=time_et.now())[0] == LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
@@ -232,7 +233,7 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     [
         lambda: server.chain("SPY", time_et.now(), {"expiry": "2026-10-22"}),
         lambda: server.gamma_surface("SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}),
-        lambda: server.strikes("SPY", time_et.now(), AUTO),
+        lambda: push_strikes.strikes("SPY", time_et.now(), AUTO),
     ],
     ids=["chain", "gamma-surface", "terrain-strikes"],
 )
@@ -360,7 +361,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
 
 def test_the_largest_gex_strike_is_served(held):
     rows = held.snap.per_strike["all"]
-    body = server.strikes(TK, time_et.now(), AUTO)
+    body = push_strikes.strikes(TK, time_et.now(), AUTO)
     top = max(rows, key=lambda r: abs(r.value))
     # the row by name, with its net GEX and volume as the screen shows them
     assert body["max_abs_row"] == {

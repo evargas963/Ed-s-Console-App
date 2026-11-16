@@ -17,6 +17,7 @@ import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
 from numeric_contract import dollars_text
 from option_contract import read_chain
+from push import strikes as push_strikes
 from state import level_store
 from terrain_engine import compute_terrain, level_moves, positioning_migration
 from tests.capture_store import store_capture
@@ -136,7 +137,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
             )
             is not None
         )
-        body = server.strikes("PCG", time_et.now(), _AUTO)
+        body = push_strikes.strikes("PCG", time_et.now(), _AUTO)
         # a new market day's first chain (Monday 2026-09-28 10:00 ET), before that day's first
         # capture: the prior day is recomputed against the new day
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
@@ -148,7 +149,9 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
             now=monday,
         )
         monday_prior = level_store.published_levels("PCG").prior_day.per_strike
-        monday_migration = server.strikes("PCG", monday.timestamp(), _AUTO)["migration"]["all"]
+        monday_migration = push_strikes.strikes("PCG", monday.timestamp(), _AUTO)["migration"][
+            "all"
+        ]
     finally:
         with level_store._lock:
             level_store._levels.pop("PCG", None)

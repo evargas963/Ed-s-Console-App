@@ -28,6 +28,7 @@ from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
+from push import strikes as push_strikes
 from push import tape as push_tape
 from state import level_store
 from tests.conftest import MARKETS_ANSWERS
@@ -175,9 +176,9 @@ def build_e2e_panels() -> dict:
                 {
                     "vanna": push_strike_bars.strike_bars("vanna_rows", TK, at, AUTO),
                     "charm": push_strike_bars.strike_bars("charm_rows", TK, at, AUTO),
-                    "strikes": server.strikes(TK, chain_at, AUTO),
-                    "strikes_wider": server.strikes(TK, chain_at, {**AUTO, "scope": "wider"}),
-                    "strikes_all": server.strikes(TK, chain_at, ALL),
+                    "strikes": push_strikes.strikes(TK, chain_at, AUTO),
+                    "strikes_wider": push_strikes.strikes(TK, chain_at, {**AUTO, "scope": "wider"}),
+                    "strikes_all": push_strikes.strikes(TK, chain_at, ALL),
                     "terrain": server.terrain(TK, chain_at),
                     "surface": server.gamma_surface(
                         TK, chain_at, {**AUTO, "cols": None, "expiry": None}
