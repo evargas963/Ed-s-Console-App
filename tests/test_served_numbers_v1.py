@@ -43,6 +43,15 @@ def test_spys_net_gamma_and_contracts_are_served_by_the_operators_formats():
     assert terrain["net_gex_at_spot"] == -2718991225.452607
     assert terrain["net_gex_at_spot_text"] == "-$2.72B"
     assert (terrain["contracts_used"], terrain["contracts_used_text"]) == (292, "292")
+    # no one-day move at that stopped price: no ATM IV text
+    assert terrain["implied_1d_move"] is None and terrain["atm_iv_text"] is None
+
+
+def test_the_atm_iv_is_served_with_two_decimals():
+    """AMZN's levels the browser tests draw: the front expiry's ATM IV, 40.31862554, as 40.32."""
+    terrain = json.loads((E2E / "panels_amzn_two_day.json").read_text(encoding="utf-8"))["terrain"]
+    assert terrain["implied_1d_move"]["iv_pct_atm"] == 40.31862554
+    assert terrain["atm_iv_text"] == "40.32"
 
 
 def test_every_strike_row_of_both_tickers_carries_its_numbers_as_the_formats_make_them():

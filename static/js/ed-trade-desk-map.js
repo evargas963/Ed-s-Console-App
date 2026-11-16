@@ -785,7 +785,7 @@
         state(c, t === undefined ? "LOADING" : "UNAVAILABLE", t === undefined ? "" : "warn");
         c.querySelector(".tdm-hero").innerHTML = "";
       } else {
-        state(c, "ATM IV " + esc(im.iv_text) + "%", "");
+        state(c, "ATM IV " + esc(t.atm_iv_text) + "%", "");
         c.querySelector(".tdm-hero").innerHTML =
           "±" + num(im.points, 2) + " <small>implied 1-day move, 1σ</small>";
       }

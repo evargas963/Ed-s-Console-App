@@ -276,6 +276,9 @@ class TerrainSnapshot:
             **{k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS},
             "net_gex_at_spot_text": dollars_text(self.net_gex_at_spot),
             "contracts_used_text": count_text(self.contracts_used),
+            "atm_iv_text": None
+            if self.implied_1d_move is None
+            else iv_text(self.implied_1d_move["iv_pct_atm"]),
         }
 
 
@@ -545,7 +548,7 @@ def compute_implied_one_day_move(
     schwab_iv_to_sigma. Fails closed: no usable ATM IV means None, never a fabricated band (a
     made-up sigma is worse than no sigma).
 
-    Returns {points, iv_pct_atm, iv_text, dte_used, method} — `points` is the one-sigma HALF-width
+    Returns {points, iv_pct_atm, dte_used, method} — `points` is the one-sigma HALF-width
     in price points; the client centers it on the LIVE spot so the band can never disagree
     with the price beside it.
     """
@@ -566,7 +569,6 @@ def compute_implied_one_day_move(
     return {
         "points": em,
         "iv_pct_atm": sigma * 100.0,
-        "iv_text": iv_text(sigma * 100.0),
         "dte_used": front,
         "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); "
         "sigma = mean ATM call/put implied vol of the first expiry at least a day out",

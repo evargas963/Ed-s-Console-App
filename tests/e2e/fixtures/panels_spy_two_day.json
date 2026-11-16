@@ -17780,7 +17780,6 @@
   "implied_1d_move": {
    "points": 8.391520212971177,
    "iv_pct_atm": 17.58726927,
-   "iv_text": "17.59",
    "dte_used": 1.0,
    "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); sigma = mean ATM call/put implied vol of the first expiry at least a day out"
   },
@@ -17976,6 +17975,7 @@
   "computed_ts_utc": 1794497441.9345267,
   "net_gex_at_spot_text": "-$7.63B",
   "contracts_used_text": "12,996",
+  "atm_iv_text": "17.59",
   "levels_ts_utc": 1794497441.9345267,
   "chain_basis": "every_expiry_strike_range_ALL",
   "spot_source": "streaming_plane",
