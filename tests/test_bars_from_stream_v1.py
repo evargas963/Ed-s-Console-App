@@ -110,9 +110,11 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
     (server._write_streamed_bars, as the daemon pushes it): each minute is Schwab's candle with
     every field as sent, the pre-market and after-hours minutes included. Prompt by two measures
     no other program on the machine can move: the writer's own work (its thread's CPU time)
-    under a second, and beside a busy pure-Python thread at most 4 times its time alone (a
-    writer that waits on the other thread, as one that hashed its whole input piecemeal did
-    27 s, fails it; sharing the interpreter fairly is about 2 times).
+    under a second in every write, and beside a busy pure-Python thread at most 4 times its time
+    alone (a writer that waits on the other thread, as one that hashed its whole input piecemeal
+    did 27 s, fails it; sharing the interpreter fairly is about 2 times). Five writes alone and
+    five beside the thread, taken in turn, each compared at its fastest: another program only
+    ever lengthens a write, so the fastest is the one it left alone (Python's `timeit` docs).
     """
     answers = {tk: price_history(tk, "1m") for tk in ("SPY", "TSLA")}
 
@@ -137,41 +139,49 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
         read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in answers}
         return time_et.elapsed() - t0, time_et.worked() - w0, read
 
-    busy = threading.Event()
+    def beside_busy() -> tuple[float, float, dict]:
+        busy = threading.Event()
 
-    def price_options():
-        x = 0
-        while not busy.is_set():
-            for i in range(1000):
-                x += i * i
+        def price_options():
+            x = 0
+            while not busy.is_set():
+                for i in range(1000):
+                    x += i * i
 
-    try:
-        alone, _work, _read = take()
         t = threading.Thread(target=price_options, daemon=True)
         t.start()
         try:
-            took, work, read = take()
+            return take()
         finally:
             busy.set()
             t.join()
+
+    try:
+        pairs = [(take(), beside_busy()) for _ in range(5)]
     finally:
         for tk in answers:
             server._bars.pop(tk, None)
-    for tk, a in answers.items():
-        got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in read[tk]]
-        want = [
-            (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
-            for c in a["body"]["candles"]
-        ]
-        assert got == want, tk
-        assert any(datetime.fromtimestamp(ts, ET).hour < 9 for ts, *_ in got), (
-            f"{tk}: no pre-market minute kept"
-        )
-        assert any(datetime.fromtimestamp(ts, ET).hour >= 17 for ts, *_ in got), (
-            f"{tk}: no after-hours minute kept"
-        )
-    candles = sum(len(v) for v in read.values())
+    samples = [s for pair in pairs for s in pair]
+    for _took, _work, read in samples:
+        for tk, a in answers.items():
+            got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in read[tk]]
+            want = [
+                (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                for c in a["body"]["candles"]
+            ]
+            assert got == want, tk
+            assert any(datetime.fromtimestamp(ts, ET).hour < 9 for ts, *_ in got), (
+                f"{tk}: no pre-market minute kept"
+            )
+            assert any(datetime.fromtimestamp(ts, ET).hour >= 17 for ts, *_ in got), (
+                f"{tk}: no after-hours minute kept"
+            )
+    candles = sum(len(v) for v in samples[0][2].values())
+    work = max(w for _t, w, _r in samples)
     assert work < 1.0, f"{candles} candles cost the writer {work:.2f} s of its own CPU"
+    # each time at its fastest, the others lengthened by whatever else the machine ran then
+    alone = min(a[0] for a, _b in pairs)
+    took = min(b[0] for _a, b in pairs)
     assert took < 4 * alone, (
         f"{candles} candles took {took:.2f} s beside a busy thread, {alone:.2f} s alone"
     )
