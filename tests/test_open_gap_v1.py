@@ -19,6 +19,7 @@ from pathlib import Path
 
 import server
 from open_gap import open_gap_record, wilson
+from tests.page_on_socket import pages
 
 TSLA = json.loads(
     (Path(__file__).parent / "fixtures" / "real_tsla_5m365_answers_2026_11_15.json").read_text(
@@ -60,11 +61,18 @@ def test_the_console_keeps_the_record_once_both_answers_are_in_and_serves_it_exp
         del server._open_gap_answers[key]
     server._open_gap.pop("TSLA", None)
     try:
-        assert tsla_rows() == []  # absent until both answers arrive
-        assert server._write_price_history(answer("5m365", TSLA["extended"])) is None
-        assert tsla_rows() == []  # one answer is not the record
-        assert server._write_price_history(answer("5m365r", TSLA["regular"])) == "TSLA"
-        assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None  # same
+        with pages() as on_socket:
+            # a page showing another ticker: the Experimental panel holds every ticker's record
+            page = on_socket.open("SPY", "experimental")
+            assert tsla_rows() == []  # absent until both answers arrive
+            assert server._write_price_history(answer("5m365", TSLA["extended"])) is None
+            assert tsla_rows() == []  # one answer is not the record
+            assert on_socket.told(page) == set()
+            # no bars or candles are held from either: no ticker's bars changed
+            assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None
+            assert on_socket.told(page, 0.5) == {"experimental"}, "the page is told at once"
+            assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None
+            assert on_socket.told(page, 0.2) == set(), "the same answer again tells nothing"
         assert ("TSLA", "5m365") not in server._series  # their candles are not held as series
         (served,) = tsla_rows()
     finally:

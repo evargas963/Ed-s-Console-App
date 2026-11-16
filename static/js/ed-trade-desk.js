@@ -722,38 +722,48 @@
       return;
     }
     var selected = ticker();
-    var rows = d.open_gap
+    // one card per ticker, Right Now's own card: the share of opens the gap called as its hero;
+    // the edge blue for the selected ticker, green when the whole 95% range is above a coin flip
+    var cards = d.open_gap
       .map(function (r) {
+        var accent =
+          r.ticker === selected
+            ? "td-accent-blue"
+            : r.above_half
+              ? "td-accent-green"
+              : "td-accent-amber";
         return (
-          "<tr" +
-          (r.ticker === selected ? ' class="xp-selected"' : "") +
-          "><td>" +
+          '<div class="td-stage ' +
+          accent +
+          '"><div class="td-stage-h"><span class="td-stage-title">' +
           esc(r.ticker) +
-          "</td><td>" +
-          esc(r.count_text) +
-          '</td><td class="' +
+          '</span></div><div class="td-hero"><span class="' +
           (r.above_half ? "pos" : "") +
           '">' +
           esc(r.share_text) +
-          "</td><td>" +
+          '</span><span class="unit"> of opens called</span></div>' +
+          '<div class="fl-row"><span class="k">Opens the gap called</span><span class="v">' +
+          esc(r.count_text) +
+          "</span></div>" +
+          '<div class="fl-row"><span class="k">95% range</span><span class="v">' +
           esc(r.range_text) +
-          "</td><td>" +
+          "</span></div>" +
+          '<div class="fl-row"><span class="k">Days</span><span class="v">' +
           esc(r.span_text) +
-          "</td></tr>"
+          "</span></div></div>"
         );
       })
       .join("");
     h.innerHTML =
-      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Open gap</span>' +
-      '<span class="fl-meta">did the overnight gap point the way the first 5 minutes went?</span>' +
+      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Open gap · experimental</span>' +
+      '<span class="fl-sym">Did the overnight gap point the way the first 5 minutes went?</span>' +
       "</div></div>" +
-      '<table class="xp-table"><thead><tr><th>Ticker</th><th>Opens it called</th>' +
-      "<th>Share</th><th>95% range</th><th>Days</th></tr></thead><tbody>" +
-      rows +
-      "</tbody></table>" +
-      '<div class="notproven" style="margin-top:14px;">EXPERIMENTAL. ' +
+      '<div class="td-grid">' +
+      cards +
+      "</div>" +
+      '<div class="fl-row" style="margin-top:14px;"><span class="k">' +
       esc(d.method) +
-      "</div>";
+      "</span></div>";
   }
   document.addEventListener("ed:panel", function (e) {
     if (e.detail.type !== "experimental") return;
