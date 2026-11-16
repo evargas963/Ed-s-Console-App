@@ -36,6 +36,7 @@ from math_exposure_core import (
     strike_total_volume,
 )
 from math_levels import (
+    CharmBucket,
     compute_charm_by_strike,
     compute_gamma_flip_v2,
     compute_gamma_profile,
@@ -203,7 +204,7 @@ class TerrainSnapshot:
 
     #: The levels on a 0DTE basis (same_day_levels). Keys are SAME_DAY_LEVELS.
     #: absolute_gamma_strike in this dict is the one 0DTE pin.
-    same_day: dict[str, float | None] = field(default_factory=dict)
+    same_day: dict[str, float | None] = field(default_factory=dict[str, float | None])
     #: the expiry the same-day levels were re-priced from to today's close (a model, said on
     #: hover); None when they are today's own expiry as held, or absent
     same_day_repriced_from: str | None = None
@@ -229,7 +230,9 @@ class TerrainSnapshot:
     error: str = ""
 
     #: (price, net dealer gamma) samples; kept OUT of to_dict() (~240 pairs).
-    profile: list[tuple[float, float]] = field(default_factory=list, repr=False)
+    profile: list[tuple[float, float]] = field(
+        default_factory=list[tuple[float, float]], repr=False
+    )
 
     #: The LIVE per-strike map the walls were picked from; the per-strike panel reads it, at
     #: no additional vendor cost — the chain is already in hand. Kept OUT of to_dict() for the
@@ -239,34 +242,35 @@ class TerrainSnapshot:
     #: The exposure_books every number above was priced from ({(expiry, dte): (book, diag)}):
     #: the gamma-surface grid is shaped from them, so levels, per-strike rows and heatmap
     #: cells come from one pricing pass.
-    books: dict[ExpiryKey, Book] = field(default_factory=dict, repr=False)
+    books: dict[ExpiryKey, Book] = field(default_factory=dict[ExpiryKey, Book], repr=False)
     #: {strike: charm bucket} from compute_charm_by_strike -- the charm walls above and the
     #: charm-by-strike panel read the same map.
-    charm_by_strike: dict[float, Bucket] = field(default_factory=dict, repr=False)
+    charm_by_strike: dict[float, CharmBucket] = field(
+        default_factory=dict[float, CharmBucket], repr=False
+    )
     #: {expiry: {strike: charm bucket}} from the same function, one call per expiry.
     #: The confluence matrix reads the expiry it shows and does not call the function again.
-    charm_by_expiry: dict[str | None, dict[float, Bucket]] = field(default_factory=dict, repr=False)
+    charm_by_expiry: dict[str | None, dict[float, CharmBucket]] = field(
+        default_factory=dict[str | None, dict[float, CharmBucket]], repr=False
+    )
     #: {expiry: {strike: vol points}} from iv_by_strike, one call per expiry.
     #: The confluence matrix reads the expiry it shows and does not call the blend again.
     iv_by_expiry: dict[str | None, dict[float, float | None]] = field(
-        default_factory=dict, repr=False
+        default_factory=dict[str | None, dict[float, float | None]], repr=False
     )
-    #: {expiry: put OI / call OI} for each listed expiry
-    pcr_by_expiry: dict[str, float | None] = field(
-        default_factory=dict
-    )  # put/call OI (positions held)
+    #: {expiry: put OI / call OI} for each listed expiry: put/call OI (positions held)
+    pcr_by_expiry: dict[str, float | None] = field(default_factory=dict[str, float | None])
     #: each expiry's ATM implied vol, percent (atm_sigma_by_expiry); None when a leg has no IV
-    atm_iv_pct_by_expiry: dict[str, float | None] = field(default_factory=dict)
-    pcr_volume_by_expiry: dict[str, float | None] = field(
-        default_factory=dict
-    )  # put/call volume (today's trading)
+    atm_iv_pct_by_expiry: dict[str, float | None] = field(default_factory=dict[str, float | None])
+    #: {expiry: put volume / call volume} (today's trading)
+    pcr_volume_by_expiry: dict[str, float | None] = field(default_factory=dict[str, float | None])
     #: the same two ratios over the whole book (every expiry)
     pcr_all: float | None = None
     pcr_volume_all: float | None = None
     #: every expiry the chain lists, ascending
-    expiries: list[str] = field(default_factory=list)
+    expiries: list[str] = field(default_factory=list[str])
     #: {expiry: Schwab's daysToExpiration as sent with this chain}
-    expiry_dte: dict[str, float | None] = field(default_factory=dict)
+    expiry_dte: dict[str, float | None] = field(default_factory=dict[str, float | None])
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
@@ -619,7 +623,7 @@ def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
     dollarized = bool(exposures) and exposures_have_dollar_gex(exposures)
     for k, b in exposures.items():
         sk = float_finite_or_none(k)
-        if sk is None or not isinstance(b, dict):
+        if sk is None:
             continue
         d = float_finite_or_none(bucket_metric(b, "net_dex_dollars")) if dollarized else None
         if d is not None:
@@ -733,9 +737,9 @@ def wall_lean(
     earn = regime != "UNAVAILABLE" and confidence == "TRUSTED"
 
     def one(wall: float | None, side: str, lean: str) -> str | None:
-        state = wall_geometry_state(price, wall, side)
-        if state == WALL_BREACHED:
-            return f"BREACHED — spot {price_side(wall, price).lower()}"
+        state, where = wall_geometry_state(price, wall, side), price_side(wall, price)
+        if state == WALL_BREACHED and where is not None:  # breached: the wall and price known
+            return f"BREACHED — spot {where.lower()}"
         return lean if state == WALL_CONTAINS and earn else None
 
     return one(call_wall, "call", "DEALERS SELL"), one(put_wall, "put", "DEALERS BUY")
@@ -850,7 +854,7 @@ def same_day_levels(
     sessions: Mapping[str, Session],
     product: str,
     books: dict[ExpiryKey, Book],
-    charm_by_expiry: dict[str | None, dict[float, Bucket]],
+    charm_by_expiry: dict[str | None, dict[float, CharmBucket]],
 ) -> tuple[dict[str, float | None], str | None]:
     """Return the whole book's levels on a 0DTE basis, read on the nearest listed expiry alone.
 
@@ -949,7 +953,7 @@ def compute_terrain(
     books = exposure_books(contracts, spot=spot, now=now, sessions=sessions, product=product)
     exposures, diag = merge_exposure_books(books.values())
     dated: dict[tuple[str, float | None], Book] = {
-        k: b for k, b in books.items() if k[0] is not None
+        (e, d): b for (e, d), b in books.items() if e is not None
     }
     _dtes = [d for (_e, d) in books if d is not None]
     _front_dte = min(_dtes, default=None)
@@ -991,7 +995,7 @@ def compute_terrain(
     # each expiry's ATM implied vol, once: the one-day move's and the per-expiry ATM IV's
     atm_sigma = atm_sigma_by_expiry(contracts, spot)
 
-    charm_by_expiry: dict[str | None, dict[float, Bucket]] = {}
+    charm_by_expiry: dict[str | None, dict[float, CharmBucket]] = {}
     iv_by_expiry: dict[str | None, dict[float, float | None]] = {}
     expiry_rows: dict[str | None, list[OptionContract]] = {}
     for c in contracts:

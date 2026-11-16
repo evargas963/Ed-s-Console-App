@@ -113,8 +113,6 @@ def volume_profile(
     vol_by_idx: dict[int, float] = defaultdict(float)
     no_volume = 0
     for b in bars:
-        if not isinstance(b, dict):
-            continue
         hi, lo, vol = (
             schwab_number(b.get("high")),
             schwab_number(b.get("low")),

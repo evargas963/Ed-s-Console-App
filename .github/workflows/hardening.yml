@@ -34,6 +34,10 @@ jobs:
         run: python -P -m ruff format --check .
       - name: compileall
         run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__)[\\/])' .
+      - name: typed records, pyright strict (AGENTS.md rule 12; pyproject.toml's files)
+        run: |
+          python -m pip install -r requirements.txt "$(grep '^pyright==' requirements-dev.txt)"
+          python -m pyright
       - name: one module reads each Schwab field (AGENTS.md rule 3, ENF-23)
         if: github.event_name == 'pull_request'
         env:

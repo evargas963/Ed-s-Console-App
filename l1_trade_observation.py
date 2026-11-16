@@ -224,8 +224,12 @@ def compute_tape_pressure(
     The window is the `window_sec` before `now_ms` (_signed_walk); None when no signed print
     traded in it. The unsigned prints' share is unsigned_share's, served beside it.
     """
-    walk = [w for w in _signed_walk(prints, now_ms - int(window_sec * 1000)) if w[2] is not None]
-    total_sz = sum(size for _x, size, _signed in walk)
+    walk = [
+        (size, signed)
+        for _x, size, signed in _signed_walk(prints, now_ms - int(window_sec * 1000))
+        if signed is not None
+    ]
+    total_sz = sum(size for size, _signed in walk)
     if total_sz <= 0:
         return None
-    return sum(signed for _x, _size, signed in walk) / total_sz
+    return sum(signed for _size, signed in walk) / total_sz

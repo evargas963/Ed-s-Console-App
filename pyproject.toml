@@ -41,6 +41,31 @@ quote-style = "double"
 branch = true
 omit = ["tests/*", "*/node_modules/*"]
 
+# AGENTS.md rule 12 (SHAPE step 6): a value that crosses a module boundary is a typed record, held
+# by pyright's strict mode over the Calculators and State (the Push files join as their slice lands)
+[tool.pyright]
+pythonVersion = "3.13"
+include = [
+  "terrain_engine.py",
+  "terrain_read.py",
+  "terrain_atr.py",
+  "math_exposure_core.py",
+  "math_levels.py",
+  "math_volatility.py",
+  "confluence_composite.py",
+  "liquidity_value_engine.py",
+  "liquidity_models.py",
+  "micro_structure.py",
+  "l1_trade_observation.py",
+  "app/options/order_flow/engine.py",
+  "live_market_plane.py",
+  "live_price_rows.py",
+  "math_forces.py",
+  "state",
+  "push",
+]
+typeCheckingMode = "strict"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["node_modules", ".venv"]
