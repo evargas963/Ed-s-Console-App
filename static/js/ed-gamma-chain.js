@@ -127,7 +127,7 @@
       '<table class="chn chn-bodytbl">' +
       COLGROUP +
       "<tbody>";
-    // open interest, volume and IV: the served texts
+    // open interest, volume, IV, bid and ask: the served texts; delta and gamma as Schwab sent them
     var CALL = ["oi_text", "volume_text", "iv_text", "delta", "gamma", "bid_text", "ask_text"];
     var PUT = ["bid_text", "ask_text", "gamma", "delta", "iv_text", "volume_text", "oi_text"];
     function side(c, cls, itm, cols) {

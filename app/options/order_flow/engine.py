@@ -1005,37 +1005,30 @@ class OrderFlowEngine:
         # the book, extracted once by its one producer; `ticker` lets the route serialize this
         # same computed state (carry, not recompute)
         book_micro = compute_book_microstructure(data, now_ts=now, ticker=ticker)
-        # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
-        top_book_pressure = _compute_top_book_pressure(data)
-
-        # Tape metrics
-        tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC, now)
-        tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC, now)
-        tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC, now)
-
-        # Cumulative delta
-        cum_delta_proxy = _compute_cum_delta_proxy(data)
         cum_first, cum_last = cum_delta_window(canonical_tape_prints(data["content"]))
-        cum_delta_slope = _compute_cum_delta_slope(data, now)
-        unsigned = {
-            "tape_unsigned_30s": _compute_unsigned(data, OF_TAPE_WINDOW_30S_SEC, now),
-            "tape_unsigned_2m": _compute_unsigned(data, OF_TAPE_WINDOW_2M_SEC, now),
-            "tape_unsigned_5m": _compute_unsigned(data, OF_TAPE_WINDOW_5M_SEC, now),
-            "cum_delta_unsigned": _compute_unsigned(data, None, now),
+        # each flow number and the decimals the screen shows it with: the pressures, each
+        # value's unsigned share of the size it covers, the cumulative delta
+        flow = {
+            # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
+            "top_book_pressure": (_compute_top_book_pressure(data), 3),
+            "tape_pressure_30s": (_compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC, now), 3),
+            "tape_pressure_2m": (_compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC, now), 3),
+            "tape_pressure_5m": (_compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC, now), 3),
+            "tape_unsigned_30s": (_compute_unsigned(data, OF_TAPE_WINDOW_30S_SEC, now), 2),
+            "tape_unsigned_2m": (_compute_unsigned(data, OF_TAPE_WINDOW_2M_SEC, now), 2),
+            "tape_unsigned_5m": (_compute_unsigned(data, OF_TAPE_WINDOW_5M_SEC, now), 2),
+            "cum_delta_unsigned": (_compute_unsigned(data, None, now), 2),
+            "cum_delta_proxy": (_compute_cum_delta_proxy(data), 1),
+            "cum_delta_slope": (_compute_cum_delta_slope(data, now), 3),
         }
 
         return {
             # Carry the single canonical microstructure state so the route serializes THIS
             # computed result (same book) rather than recomputing from raw data.
             "book_microstructure": book_micro,
-            "top_book_pressure": top_book_pressure,
-            "tape_pressure_30s": tape_pressure_30s,
-            "tape_pressure_2m": tape_pressure_2m,
-            "tape_pressure_5m": tape_pressure_5m,
-            # each value's unsigned share of the size it covers, served beside it
-            **unsigned,
-            **{f"{k}_text": fixed_text(v, 2) for k, v in unsigned.items()},
-            "cum_delta_proxy": cum_delta_proxy,
+            # each flow number, and beside it its text as the screen shows it
+            **{name: value for name, (value, _places) in flow.items()},
+            **{f"{name}_text": fixed_text(value, places) for name, (value, places) in flow.items()},
             # the window the cumulative delta sums: the tape's first and last print (Schwab trade
             # time), served beside the number
             "cum_delta_window": (
@@ -1043,12 +1036,4 @@ class OrderFlowEngine:
                 if cum_first is not None
                 else None
             ),
-            "cum_delta_slope": cum_delta_slope,
-            # each as the screen shows it
-            "top_book_pressure_text": fixed_text(top_book_pressure, 3),
-            "tape_pressure_30s_text": fixed_text(tape_pressure_30s, 3),
-            "tape_pressure_2m_text": fixed_text(tape_pressure_2m, 3),
-            "tape_pressure_5m_text": fixed_text(tape_pressure_5m, 3),
-            "cum_delta_proxy_text": fixed_text(cum_delta_proxy, 1),
-            "cum_delta_slope_text": fixed_text(cum_delta_slope, 3),
         }

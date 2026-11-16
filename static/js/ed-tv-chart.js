@@ -23,9 +23,10 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  // the price under the operator's click: a place on this chart's own scale, not a served value
+  // the price under the operator's click: a place on this chart's own scale, not a served value;
+  // none where the scale has no price (the library's coordinateToPrice gives null there)
   function cursorPrice(p) {
-    return p.toFixed(2);
+    return orDash(p == null ? null : p.toFixed(2));
   }
   function tok(name, fallback) {
     var v = getComputedStyle(document.documentElement).getPropertyValue(name);

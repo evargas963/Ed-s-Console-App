@@ -2003,14 +2003,8 @@ def _atr_fields(tk: str, now: datetime) -> dict[str, float | str | None]:
     A horizon that cannot be computed is None.
     """
     a = _atr(tk, now)
-    return {
-        "atr_daily": a.daily,
-        "atr_weekly": a.weekly,
-        "atr_monthly": a.monthly,
-        "atr_daily_text": price_text(a.daily),
-        "atr_weekly_text": price_text(a.weekly),
-        "atr_monthly_text": price_text(a.monthly),
-    }
+    atrs = {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly}
+    return atrs | {f"{name}_text": price_text(value) for name, value in atrs.items()}
 
 
 # ── Per-strike gamma and volume bars for the histogram panel ─────────────────
@@ -2085,20 +2079,27 @@ def _served_migration(row: MigrationRow) -> dict[str, Any]:
 def served_level_move(move: dict[str, Any]) -> dict[str, Any]:
     """Return one level's move since the prior day with its texts, as the screen shows them.
 
-    Each day as its strike (None: not known); the change signed ('+5', '-2.5'), 'unchanged' for
-    none, None unless both days are known.
+    Each day as its strike (None: not known), and the change (level_change_text).
     """
-    change = move["change"]
     return {
         **move,
         "prior_text": strike_text(move["prior"]),
         "today_text": strike_text(move["today"]),
-        "change_text": None
-        if change is None
-        else "unchanged"
-        if change == 0
-        else ("+" if change > 0 else "-") + strike_text(abs(change)),
+        "change_text": level_change_text(move["change"]),
     }
+
+
+def level_change_text(change: float | None) -> str | None:
+    """Return a level's move since the prior day as the screen shows it.
+
+    Signed, as a strike is listed ('+5', '-2.5'); 'unchanged' for none; None unless both days
+    are known.
+    """
+    if change is None:
+        return None
+    if change == 0:
+        return "unchanged"
+    return ("+" if change > 0 else "-") + strike_text(abs(change))
 
 
 def migration_change_text(change: float | None) -> str | None:

@@ -627,14 +627,14 @@
       levelsSent = _panels["levels:desk"];
     var terrain = served(sent),
       levelsD = served(levelsSent);
-    // the spot is the levels panel's alone; none yet, or a null/'' spot, is absent, never 0
-    var spot = levelsD && levelsD.spot != null && levelsD.spot !== "" ? Number(levelsD.spot) : NaN;
+    // the spot is the levels panel's alone, as served; none yet, or none sent, is absent, never 0
+    var spotText = levelsD ? levelsD.spot_text : null;
     var when = levelsD && levelsD.spot_time_ct ? " · last trade " + esc(levelsD.spot_time_ct) : "";
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' +
       esc(tk) +
       '</span><span class="fl-meta">' +
-      (isFinite(spot) ? "spot " + levelsD.spot_text + when : "") +
+      (spotText != null ? "spot " + esc(spotText) + when : "") +
       "</span></div></div>" +
       '<div class="td-grid">' +
       detectStage(_panels["book:desk"]) +
