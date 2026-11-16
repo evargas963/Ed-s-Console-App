@@ -113,8 +113,10 @@
     "top_of_book": {
       "ask": 2.03,
       "ask_size": 79.0,
+      "ask_size_text": "79",
       "bid": 2.02,
-      "bid_size": 16.0
+      "bid_size": 16.0,
+      "bid_size_text": "16"
     },
     "top_outage": null,
     "wall_candidates": []
@@ -233,8 +235,10 @@
     "top_of_book": {
       "ask": 3.06,
       "ask_size": 57.0,
+      "ask_size_text": "57",
       "bid": 3.04,
-      "bid_size": 38.0
+      "bid_size": 38.0,
+      "bid_size_text": "38"
     },
     "top_outage": null,
     "wall_candidates": []

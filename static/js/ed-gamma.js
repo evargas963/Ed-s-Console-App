@@ -8,36 +8,6 @@
 (function () {
   "use strict";
 
-  // ---- pure formatter: compact signed USD ($958.6K, $7.6M, -$264.5K) ----
-  function formatUsd(n) {
-    if (n == null || isNaN(n)) return "-";
-    var v = Number(n),
-      a = Math.abs(v),
-      sign = v < 0 ? "-" : "";
-    var s;
-    if (a >= 1e9) s = (a / 1e9).toFixed(1) + "B";
-    else if (a >= 1e6) s = (a / 1e6).toFixed(1) + "M";
-    else if (a >= 1e3) s = (a / 1e3).toFixed(1) + "K";
-    else s = a.toFixed(0);
-    return sign + "$" + s;
-  }
-  // ---- compact contract count (1.0K, 23.1K): open interest and volume are counts, not dollars ----
-  function formatCount(n) {
-    if (n == null || isNaN(n)) return "-";
-    var v = Number(n),
-      a = Math.abs(v),
-      sign = v < 0 ? "-" : "";
-    var s;
-    if (a >= 1e9) s = (a / 1e9).toFixed(1) + "B";
-    else if (a >= 1e6) s = (a / 1e6).toFixed(1) + "M";
-    else if (a >= 1e3) s = (a / 1e3).toFixed(1) + "K";
-    else s = a.toFixed(0);
-    return sign + s;
-  }
-  function formatMeasureValue(n, measure) {
-    return measure === "oi" || measure === "volume" ? formatCount(n) : formatUsd(n);
-  }
-
   // ---- theme colour: sign -> green/red, shade -> the shell's one strength rule against the
   // served scale (EdShell.heatFill) ----
   function _rgb(c) {
@@ -242,7 +212,9 @@
             '" data-gex="' +
             (v == null ? "" : v) +
             '">' +
-            (st.empty ? '<span class="absent">-</span>' : formatMeasureValue(v, measure)) +
+            (st.empty
+              ? '<span class="absent">-</span>'
+              : escapeHtml(orDash(row.text[measure][j]))) + // served text
             "</td>";
         });
         tbl += "</tr>";
@@ -349,7 +321,8 @@
   function fmtStrike(k) {
     return (Math.round(k * 100) / 100).toString();
   }
-  var escapeHtml = window.EdShell.esc;
+  var escapeHtml = window.EdShell.esc,
+    orDash = window.EdShell.orDash;
 
   // gamma, dex and oi are the same heatmap pane under three subview ids
   function _isGammaFamilySubview(sv) {
@@ -419,8 +392,4 @@
     document.addEventListener("ed:scope", load);
     document.addEventListener("ed:resize", load); // the columns it fits change with the width
   }
-
-  var _root =
-    typeof window !== "undefined" ? window : typeof globalThis !== "undefined" ? globalThis : this;
-  _root.EdGamma = { formatUsd: formatUsd, formatCount: formatCount };
 })();

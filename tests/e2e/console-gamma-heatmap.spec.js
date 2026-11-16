@@ -43,7 +43,13 @@ const MISSING = REAL.surface_missing_expiry.view.missing_expiry;   // 2026-11-14
 const CELL_K = SURFACE.cells.find((c) => c.strike === K);
 // a served cell cut to its first `n` columns
 function cut(cell, n) {
-  return Object.fromEntries(Object.entries(cell).map(([k, v]) => [k, Array.isArray(v) ? v.slice(0, n) : v]));
+  const first = (v) => (Array.isArray(v) ? v.slice(0, n) : v);
+  return Object.fromEntries(Object.entries(cell).map(([k, v]) =>
+    [k, k === 'text' ? Object.fromEntries(Object.entries(v).map(([m, t]) => [m, first(t)])) : first(v)]));
+}
+// a cell's GEX values and their served texts (server.HEAT_TEXT: numeric_contract.dollars_text)
+function withGex(cell, values, texts) {
+  return Object.assign(cell, { gex: values, text: Object.assign({}, cell.text, { gex: texts }) });
 }
 function view(over = {}) { return Object.assign({}, SURFACE.view, over); }
 // the heatmap cell at the price in the front expiry (51,735,223.55), and the surface's most
@@ -92,8 +98,8 @@ function surfaceWithStreamState(perCol) {
   });
   return Object.assign({}, SURFACE, {
     expirations: expirations, strikes: [strike],
-    cells: [Object.assign(cut(CELL_K, perCol.length), { gex: perCol.map(function () { return 12345; }),
-      contracts: contracts, stream: stream })],
+    cells: [Object.assign(withGex(cut(CELL_K, perCol.length), perCol.map(function () { return 12345; }),
+      perCol.map(function () { return '$12.35K'; })), { contracts: contracts, stream: stream })],
     view: view({ max_abs: { gex: 12345 } }),
   });
 }
@@ -155,24 +161,24 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   // induced: the real surface cut to one cell, the strike at the price in the front expiry,
-  // holding `value` (the program's surface of a ticker)
-  function oneCell(value, seq, tk) {
+  // holding `value` and its served `text` (the program's surface of a ticker)
+  function oneCell(value, text, seq, tk) {
     return Object.assign({}, SURFACE, tk ? { ticker: tk, symbol: tk } : {}, {
       strikes: [K], expirations: SURFACE.expirations.slice(0, 1),
-      cells: [Object.assign(cut(CELL_K, 1), { gex: [value] })], surface_seq: seq });
+      cells: [withGex(cut(CELL_K, 1), [value], [text])], surface_seq: seq });
   }
 
   test('new levels reach the heatmap on the page\'s socket, with no read and no event of the page', async ({ page }) => {
     // Delivery, not rendering: the program sends the surface again when the levels change
     // (server._levels_changed), and the page asks for nothing
-    panels.surface = oneCell(1000, 1);
+    panels.surface = oneCell(1000, '$1.00K', 1);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$1.0K');
+    await expect(cell).toHaveText('$1.00K');
     const asked = sock.subscribes.length;
-    panels.surface = oneCell(2000, 2);
+    panels.surface = oneCell(2000, '$2.00K', 2);
     sock.changed('surface');
-    await expect(cell).toHaveText('$2.0K', { timeout: 3000 });
+    await expect(cell).toHaveText('$2.00K', { timeout: 3000 });
     expect(sock.subscribes.length).toBe(asked);
   });
 
@@ -181,25 +187,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // the last one stands. The mid-burst read below is a single instantaneous DOM snapshot
     // (`textContent()`, no auto-retry) taken while frames are still arriving: it tells "frozen
     // through the whole burst" from "kept converging".
-    panels.surface = oneCell(1000, 1);
+    panels.surface = oneCell(1000, '$1.00K', 1);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$1.0K');   // the initial render
+    await expect(cell).toHaveText('$1.00K');   // the initial render
     let call = 1;
     for (let i = 0; i < 6; i++) {
       call += 1;
-      panels.surface = oneCell(call * 1000, call);
+      panels.surface = oneCell(call * 1000, '$' + call + '.00K', call);
       sock.changed('surface');
       if (i === 2) {
-        await expect(cell).not.toHaveText('$1.0K');
+        await expect(cell).not.toHaveText('$1.00K');
         const midBurstText = await cell.textContent();
-        expect(midBurstText, 'display must already be tracking updates mid-burst, not frozen at its starting value').not.toBe('$1.0K');
+        expect(midBurstText, 'display must already be tracking updates mid-burst, not frozen at its starting value').not.toBe('$1.00K');
       }
       await page.waitForTimeout(40);
     }
-    await expect(cell).toHaveText('$' + call.toFixed(1) + 'K');
+    await expect(cell).toHaveText('$' + call + '.00K');   // the last frame's served text stands
     const finalText = await cell.textContent();
-    expect(finalText).toBe('$' + call.toFixed(1) + 'K');
+    expect(finalText).toBe('$' + call + '.00K');
   });
 
   test('a surface still on its way for an abandoned ticker does not block the newly selected one, and is never drawn under it', async ({ page }) => {
@@ -212,8 +218,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         if (req.op !== 'subscribe') return;
         ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
         if (!req.panels || !req.panels.surface) return;
-        if (req.ticker === 'SPY') sendSpy = () => ws.send(panelFrame('surface', 'SPY', oneCell(1000, 1, 'SPY')));
-        else ws.send(panelFrame('surface', req.ticker, oneCell(9000, 1, req.ticker)));
+        if (req.ticker === 'SPY') sendSpy = () => ws.send(panelFrame('surface', 'SPY', oneCell(1000, '$1.00K', 1, 'SPY')));
+        else ws.send(panelFrame('surface', req.ticker, oneCell(9000, '$9.00K', 1, req.ticker)));
       });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -221,10 +227,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.locator('#symInput').fill('AAPL');
     await page.locator('#symInput').press('Enter');
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$9.0K', { timeout: 3000 });
+    await expect(cell).toHaveText('$9.00K', { timeout: 3000 });
     sendSpy();                                                 // SPY's, late
     await page.waitForTimeout(200);
-    await expect(cell).toHaveText('$9.0K');
+    await expect(cell).toHaveText('$9.00K');
   });
 
   test('Strike Detail keeps following the workspace expiry filter after a selection, never reverting on refresh (2026-09-13, independent-review finding)', async ({ page }) => {
@@ -251,10 +257,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // unavailable render untouched, so a LATER presentation-only event (ed:theme here; also
     // ed:expiry/ed:scope) reused it as if still current -- repainting the stale AVAILABLE data.
     const requests = watchRequests(page);
-    panels.surface = oneCell(1000, 1);
+    panels.surface = oneCell(1000, '$1.00K', 1);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$1.0K');
+    await expect(cell).toHaveText('$1.00K');
 
     panels.surface = { available: false, reason: 'not currently active for this symbol' };
     sock.changed('surface');
@@ -264,7 +270,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.evaluate(() => window.EdShell.setTheme('dark'));
     await requests.settled();   // the theme change's work, and any read it made, has run
     const html = await page.locator('#heatBody').innerHTML();
-    expect(html).not.toContain('$1.0K');
+    expect(html).not.toContain('$1.00K');
     expect(html).toContain('Gamma surface unavailable');
   });
 
@@ -450,7 +456,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     let value = 1000;
     panels.surface = (key, params) => {
       asked.push(params.scope);
-      return Object.assign(oneCell(value, asked.length), { view: view({ scope: params.scope }) });
+      return Object.assign(oneCell(value, '$' + value / 1000 + '.00K', asked.length),
+        { view: view({ scope: params.scope }) });
     };
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => asked[0]).toBe('auto');
@@ -460,7 +467,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     value = 2000;                                      // the push's publication has a new value
     sock.changed('surface');                           // after the scope switch
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$2.0K', { timeout: 5000 });   // the push's surface landed
+    await expect(cell).toHaveText('$2.00K', { timeout: 5000 });   // the push's surface landed
     expect(asked.slice(fromPush)).toEqual(asked.slice(fromPush).map(() => 'wider'));
     expect(asked.length).toBeGreaterThan(fromPush);
     expect(await page.evaluate(() => window.EdShell.getScope())).toBe('wider');
@@ -475,10 +482,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // AMZN's real rows: 32,975 contracts traded at 270, 2,260 at 257.5
     const rowK = page.locator('.gbs-row[data-strike="' + K + '"]');
-    await expect(rowK.locator('.gbs-vol')).toHaveText('33.0K');
+    await expect(rowK.locator('.gbs-vol')).toHaveText('32.98K');   // served, two decimals
     await expect(rowK).toHaveAttribute('data-volume', '32975');
     const rowLow = page.locator('.gbs-row[data-strike="257.5"]');
-    await expect(rowLow.locator('.gbs-vol')).toHaveText('2.3K');
+    await expect(rowLow.locator('.gbs-vol')).toHaveText('2.26K');
   });
 
   test('Strike Detail redraws on the program\'s next chain, not just on a new strike selection', async ({ page }) => {
@@ -505,20 +512,22 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // One value, one producer (2026-09-27): the Net row sits beside ONE expiry's contracts, so it
     // shows that expiry's net GEX at the strike -- the heatmap's own cell, served in the same
     // chain panel. It used to read GEX-by-Strike's rows (every expiry summed).
-    // AMZN's real answers: 270's net GEX in the front expiry is $51.7M (the chain panel's
-    // net_gex_by_strike, the heatmap's own cell); every expiry summed it is $156.8M (the strikes panel)
+    // AMZN's real answers: 270's net GEX in the front expiry is $51.74M (the chain panel's
+    // net_gex_by_strike, the heatmap's own cell); every expiry summed it is $156.77M (the strikes
+    // panel)
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator(CELL).click();
     await expect(page.locator('#sdCtx')).toContainText('270');
-    await expect(page.locator('#sdBody .sd-net td').nth(4)).toHaveText('$51.7M');   // Net, OI, Vol, Gamma, GEX$
+    await expect(page.locator('#sdBody .sd-net td').nth(4)).toHaveText('$51.74M');   // Net, OI, Vol, Gamma, GEX$
   });
 
   test('heatmap renders canonical cells verbatim (value == formatted payload; sign -> colour)', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cellPos = page.locator(CELL);       // 270 in the front expiry: 51,735,223.55
     const cellNeg = page.locator(CELL_NEG);   // 262.5 on 2026-11-20: -3,907,027.65
-    await expect(cellPos).toHaveText('$51.7M');    // E: formatting-only of the served value
-    await expect(cellNeg).toHaveText('-$3.9M');
+    // the served text, two decimals (operator 2026-11-16): 51,735,223.55 and -3,907,027.65
+    await expect(cellPos).toHaveText('$51.74M');
+    await expect(cellNeg).toHaveText('-$3.91M');
     // D: positive -> green-dominant fill, negative -> red-dominant fill (no inversion)
     const rgbOf = (s) => { const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(s); return [+m[1], +m[2], +m[3]]; };
     const bgPos = rgbOf(await cellPos.evaluate((el) => getComputedStyle(el).backgroundColor));
@@ -546,7 +555,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     panels.surface = surfaceWithStreamState([{ call: 'live', put: 'live' }]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$12.3K');
+    await expect(cell).toHaveText('$12.35K');
     await expect(cell).toHaveAttribute('data-cell-state', 'live');
     await expect(cell).not.toHaveClass(/state-partial|state-stale|state-unavailable/);
   });
@@ -557,7 +566,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     panels.surface = surfaceWithStreamState([{ call: 'stale', put: 'stale' }]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$12.3K');
+    await expect(cell).toHaveText('$12.35K');
     await expect(cell).toHaveAttribute('data-cell-state', 'stale');
     await expect(cell).toHaveAttribute('data-gex', '12345');
     await expect(cell).toHaveClass(/state-stale/);
@@ -571,7 +580,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     panels.surface = surfaceWithStreamState([{ call: 'unavailable', put: 'unavailable' }]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$12.3K');
+    await expect(cell).toHaveText('$12.35K');
     await expect(cell).toHaveAttribute('data-cell-state', 'unavailable');
     await expect(cell).toHaveAttribute('title', 'not streaming');
   });
@@ -590,7 +599,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     panels.surface = surfaceWithStreamState([{ call: 'live', put: 'unavailable' }]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$12.3K');   // ONE FAUCET: the already-computed value is not re-derived
+    await expect(cell).toHaveText('$12.35K');   // ONE FAUCET: the already-computed value is not re-derived
     await expect(cell).toHaveAttribute('data-cell-state', 'partial');
     await expect(cell).toHaveClass(/state-partial/);
   });
@@ -611,13 +620,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       surfaceWithStreamState([{ call: live ? 'live' : 'stale', put: live ? 'live' : 'stale' }]), { surface_seq: seq });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator(CELL);
-    await expect(cell).toHaveText('$12.3K');
+    await expect(cell).toHaveText('$12.35K');
     await expect(cell).toHaveAttribute('data-cell-state', 'live');
 
     live = false; seq = 2;   // the stream goes quiet -- no reload, no navigation, just the next push
     sock.changed('surface');
     await expect(cell).toHaveAttribute('data-cell-state', 'stale');
-    await expect(cell).toHaveText('$12.3K');   // the same valid value -- never blanked
+    await expect(cell).toHaveText('$12.35K');   // the same valid value -- never blanked
     await expect(cell).toHaveAttribute('title', 'this cell has stopped streaming');   // relabelled, not kept as live
   });
 
@@ -647,7 +656,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // AMZN's real levels: flip 243.9141, both walls at 270, net GEX at the price 937,341,251
     await expect(page.locator('#klCall')).toHaveText('270.00');
     await expect(page.locator('#klPut')).toHaveText('270.00');
-    await expect(page.locator('#klNet')).toHaveText('$937.3M');
+    await expect(page.locator('#klNet')).toHaveText('$937.34M');   // served, two decimals
     await expect(page.locator('#klRegime')).toContainText('Dealer Γ +'); // net GEX at the price > 0
     // the price levels are the levels panel's own rows (AMZN's real set): the expected move from
     // Schwab's implied volatility, the prior day's high, low and close, and VWAP
@@ -1010,7 +1019,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
     // induced: the real surface cut to one cell, with the named status and coverage
-    const live = (age, stale) => Object.assign(oneCell(958600, 1), {
+    const live = (age, stale) => Object.assign(oneCell(958600, '$958.60K', 1), {
       levels_state: stale ? 'STALE' : 'LIVE', levels_age_text: age + 's', levels_stale_reason: stale ? 'chain overdue' : '',
       view: view({ coverage: served.cov }) });
     const served = { cov: { state: 'partial', label: '50% STREAMING', title: '1 of 2 cells streaming · 1 stale' } };
@@ -1120,7 +1129,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // to one column
     missing = Object.assign({}, SURFACE, {
       expirations: [{ expiry: MISSING, dte: 2, expired: false, front: false }],
-      cells: SURFACE.cells.map((c) => Object.assign(cut(c, 1), { gex: [777000] })), surface_seq: 2,
+      cells: SURFACE.cells.map((c) => withGex(cut(c, 1), [777000], ['$777.00K'])), surface_seq: 2,
     });
     sock.changed('surface');
     await expect(page.locator('#heatBody .hexp')).toHaveCount(1);

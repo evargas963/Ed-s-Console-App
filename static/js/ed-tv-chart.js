@@ -22,15 +22,8 @@
   var LWC = window.LightweightCharts;
 
   var esc = window.EdShell.esc,
-    num = window.EdShell.num;
-  function fmtVol(n) {
-    if (n == null || isNaN(n)) return "-";
-    var a = Math.abs(Number(n));
-    if (a >= 1e9) return (a / 1e9).toFixed(2) + "B";
-    if (a >= 1e6) return (a / 1e6).toFixed(2) + "M";
-    if (a >= 1e3) return (a / 1e3).toFixed(1) + "K";
-    return String(Math.round(a));
-  }
+    num = window.EdShell.num,
+    orDash = window.EdShell.orDash;
   function tok(name, fallback) {
     var v = getComputedStyle(document.documentElement).getPropertyValue(name);
     return (v && v.trim()) || fallback;
@@ -1013,7 +1006,7 @@
         '">' +
         num(b.c) +
         "</b></span><span>Vol <b>" +
-        fmtVol(b.v) +
+        esc(orDash(b.v_text)) +
         "</b></span>"
       );
     }
@@ -1047,9 +1040,9 @@
           '<div class="tvc-pin-g"><span>Price</span><b>' +
           num(S.pinned.price) +
           "</b><span>Bid size</span><b>" +
-          (cell && cell.bid != null ? fmtVol(cell.bid) : "-") +
+          esc(orDash(cell ? cell.bid_text : null)) +
           "</b><span>Ask size</span><b>" +
-          (cell && cell.ask != null ? fmtVol(cell.ask) : "-") +
+          esc(orDash(cell ? cell.ask_text : null)) +
           "</b></div>";
         pinBox.querySelector(".tvc-pin-x").addEventListener("click", function () {
           unpin();
@@ -1083,7 +1076,7 @@
         (chg == null ? "-" : (chg >= 0 ? "+" : "") + chg.toFixed(2)) +
         (pct == null ? "" : " (" + (pct >= 0 ? "+" : "") + pct.toFixed(2) + "%)") +
         "</b><span>Volume</span><b>" +
-        fmtVol(b.v) +
+        esc(orDash(b.v_text)) +
         "</b>" +
         (S.pinned.price != null
           ? "<span>Price at click</span><b>" + num(S.pinned.price) + "</b>"
@@ -1457,6 +1450,7 @@
             chg: b.chg,
             chg_pct: b.chg_pct,
             time_ct: b.time_ct,
+            v_text: b.v_text,
           };
         });
         heldLabels(

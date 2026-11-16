@@ -8,11 +8,7 @@
 (function () {
   "use strict";
 
-  var usd = window.EdGamma.formatUsd;
   var px = window.EdShell.num;
-  var fmtVol = window.EdGamma.formatCount;
-  // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
-  // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
   function txt(id, v) {
     var e = document.getElementById(id);
     if (e) e.textContent = v;
@@ -159,7 +155,7 @@
     var net = document.getElementById("klNet");
     if (net) {
       var v = d.net_gex_at_spot;
-      net.textContent = usd(v);
+      net.textContent = orDash(d.net_gex_at_spot_text);
       net.style.color = v == null ? "" : v >= 0 ? "var(--ed-pos-ink)" : "var(--ed-neg-ink)";
     }
     var reg = document.getElementById("klRegime");
@@ -260,7 +256,7 @@
   // ([strike, value, ...], ascending), drawn highest strike first, each bar's length its |value|
   // against the served scale (view.max_abs). The strike labels pan the window (wireStrikeAxis ->
   // `reload`); a pan is never silent. `opts`: `top` html above the list, `attrs(r)` and `cells(r)`
-  // a row's extra attributes and cells, `value(v)` the value's text (dollars when not given).
+  // a row's extra attributes and cells, `text(r)` the value's served text.
   function drawStrikeBars(host, rows, view, pan, spotStrike, reload, opts) {
     window.EdShell.panServed(pan, view.centre);
     var maxAbs = view.max_abs; // at least |v| for every v drawn
@@ -302,7 +298,7 @@
           '<span class="gbs-v ' +
           (v == null ? "" : pos ? "pos" : "neg") +
           '">' +
-          (opts.value || usd)(v) +
+          esc(orDash(opts.text(r))) +
           "</span>" +
           (opts.cells ? opts.cells(r) : "") +
           "</div>";
@@ -355,24 +351,30 @@
     }
     // the strikes panel is aggregate across expiries; with one expiry selected, say so
     var expOn = window.EdShell.getExpiry();
-    // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change or null])
-    var chg = {};
-    d.migration.all.rows.forEach(function (m) {
-      chg[m[0]] = m[3];
-    });
-    // rows: [strike, net_gex_1pct$, session volume]; the volume is a count, never coloured
+    // yesterday's change per strike as served (migration.all.rows: [strike, today, prior,
+    // change, its text])
+    var chg = new Map(
+      d.migration.all.rows.map(function (m) {
+        return [m[0], m[4]];
+      }),
+    );
+    // rows: [strike, net_gex_1pct$, session volume, their texts]; the volume is a count, never
+    // coloured
     drawStrikeBars(host, rows, d.views.all, _gbsPan, d.spot_strike, loadGbs, {
       top: expOn ? '<div class="gbs-allexp">all expiries</div>' : "",
+      text: function (r) {
+        return r[3];
+      },
       attrs: function (r) {
         return ' data-volume="' + (r[2] == null ? "" : r[2]) + '"';
       },
       cells: function (r) {
         return (
           '<span class="gbs-vol" title="session volume">' +
-          fmtVol(r[2]) +
+          esc(orDash(r[4])) +
           "</span>" +
           '<span class="gbs-chg" title="net GEX change vs the previous session">' +
-          usd(chg[r[0]]) +
+          esc(orDash(chg.get(r[0]))) +
           "</span>"
         );
       },
@@ -498,7 +500,7 @@
       '<tr class="sd-net"><td class="side">Net</td><td>-</td><td>-</td><td>-</td><td class="' +
       netCls +
       '">' +
-      usd(net) +
+      esc(orDash(sd ? sd.net_gex_text : null)) +
       "</td><td>-</td><td>-</td></tr>" +
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · the chain</div>';
   }
@@ -541,7 +543,9 @@
       // vanna and charm are delta-shares (per vol point, per day), not dollars: no '$'
       drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, {
         top: "",
-        value: window.EdGamma.formatCount,
+        text: function (r) {
+          return r[2]; // [strike, value, its text]
+        },
       });
     }
     function ask() {
@@ -740,10 +744,10 @@
           fmtOfSize(r.size) +
           "</td>" +
           "<td>" +
-          usd(r.premium) +
+          esc(orDash(r.premium_text)) +
           "</td>" +
           "<td>" +
-          fmtVol(r.volume) +
+          esc(orDash(r.volume_text)) +
           "</td>" +
           "<td>" +
           fmtOfSize(r.oi) +

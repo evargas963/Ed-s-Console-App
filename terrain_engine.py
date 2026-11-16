@@ -46,7 +46,7 @@ from math_levels import (
     pick_charm_wall_strikes,
     repriced_to_close,
 )
-from numeric_contract import float_finite_or_none
+from numeric_contract import count_text, dollars_text, float_finite_or_none
 from option_contract import OptionContract
 from terrain_read import (
     LEVEL_ABOVE,
@@ -248,10 +248,15 @@ class TerrainSnapshot:
         """Return the per-poll payload.
 
         It holds every field except the heavy maps (profile, per_strike, books,
-        charm_by_strike), which the server reads off the snapshot.
+        charm_by_strike), which the server reads off the snapshot, and the net gamma at spot and
+        the contracts used as the screen shows them.
         """
         light = replace(self, **{n: None for n in _HEAVY_FIELDS})
-        return {k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS}
+        return {
+            **{k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS},
+            "net_gex_at_spot_text": dollars_text(self.net_gex_at_spot),
+            "contracts_used_text": count_text(self.contracts_used),
+        }
 
 
 _HEAVY_FIELDS = (

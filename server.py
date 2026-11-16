@@ -103,7 +103,13 @@ from math_exposure_core import (
 )
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
-from numeric_contract import price_text, schwab_count, schwab_number
+from numeric_contract import (
+    count_text,
+    dollars_text,
+    price_text,
+    schwab_count,
+    schwab_number,
+)
 from open_gap import (
     BAR_SECONDS,
     LAST_OPENS,
@@ -1292,6 +1298,8 @@ def _stream_coverage(
 #: the heatmap's measures: GEX and DEX are a value per cell, OI and volume {call, put, total};
 #: each None where not known
 HEAT_MEASURES = ("gex", "dex", "oi", "volume")
+#: each heatmap measure's text: GEX and DEX in dollars, open interest and volume counts
+HEAT_TEXT = {"gex": dollars_text, "dex": dollars_text, "oi": count_text, "volume": count_text}
 
 
 def _measure_values(cell: dict[str, Any], measure: str) -> list[float | None]:
@@ -1363,6 +1371,10 @@ def _surface_view(
         {**{k: pick(v) for k, v in cell.items()}, "spot": cell["strike"] == spot_strike}
         for cell in surf["cells"][lo : hi + 1]
     ]
+    for cell in cells:  # each measure's values as the screen shows them, column by column
+        cell["text"] = {
+            m: [HEAT_TEXT[m](v) for v in _measure_values(cell, m)] for m in HEAT_MEASURES
+        }
     streams = [i for i, j in enumerate(picked) if not exps[j]["expired"]]
     max_abs: dict[str, float | None] = {}
     for m in HEAT_MEASURES:
@@ -2205,6 +2217,38 @@ def _max_abs_row(rows: Sequence[Sequence[float | None]]) -> Sequence[float | Non
     return max(known, key=lambda r: abs(r[1])) if known else None
 
 
+#: a measure's numbers as the screen shows them: DEX in dollars, open interest a count
+MEASURE_TEXT = {"dex": dollars_text, "oi": count_text}
+
+
+def _texted(
+    rows: Sequence[Sequence[float | None]], *texts: Callable[[float | None], str | None]
+) -> list[list[Any]]:
+    """Return each row [strike, value, ...] with its values' screen text after it, in order.
+
+    texts[i] makes the text of row[i + 1]: [strike, gex, volume] with (dollars_text, count_text)
+    is served [strike, gex, volume, "$1.23M", "4.56K"]. The page draws the text; it formats none.
+    """
+    return [[*r, *(text(v) for text, v in zip(texts, r[1:], strict=False))] for r in rows]
+
+
+def _texted_row(
+    row: Sequence[float | None] | None, *texts: Callable[[float | None], str | None]
+) -> list[Any] | None:
+    """Return one row as _texted does; None (no row) stays None."""
+    return None if row is None else _texted([row], *texts)[0]
+
+
+def migration_change_text(change: float | None) -> str | None:
+    """Return a strike's net GEX change since the prior session as the screen shows it.
+
+    "▲$1.23M" grew, "▼$1.23M" shrank; None when either day has no value.
+    """
+    if change is None:
+        return None
+    return ("▲" if change >= 0 else "▼") + dollars_text(abs(change))
+
+
 def _windowed(
     rows: Sequence[Sequence[float | None]],
     spot_strike: float | None,
@@ -2261,13 +2305,17 @@ def terrain_strikes_payload(
     measures = {m: rows[m] for m in ("dex", "oi")}
 
     # the per-side GEX sums, against the spot this payload serves (the one aggregator)
-    def _side_sums(rows: list[StrikeRow], s: float | None) -> dict[str, float | None] | None:
+    def _side_sums(rows: list[StrikeRow], s: float | None) -> dict[str, Any] | None:
         if not rows or s is None:
             return None
         # each row as _per_strike_rows made it: a finite strike, its GEX finite or None
+        below = side_total([gx for k, gx, _v in rows if k < s])
+        above = side_total([gx for k, gx, _v in rows if k > s])
         return {
-            "gex_below": side_total([gx for k, gx, _v in rows if k < s]),
-            "gex_above": side_total([gx for k, gx, _v in rows if k > s]),
+            "gex_below": below,
+            "gex_above": above,
+            "gex_below_text": dollars_text(below),
+            "gex_above_text": dollars_text(above),
         }
 
     live_spot, _live_src, _live_ts = resolve_spot(tk, now=now)  # the one spot on every screen
@@ -2292,11 +2340,18 @@ def terrain_strikes_payload(
         windows[sc][1]["max_abs_with_prior"] = max(both) if both else None
     return {
         "ticker": tk,
-        "today": {sc: windows[sc][0] for sc in ("all", "near", "far")},
+        # each row [strike, net GEX $, volume] with its two numbers as the screen shows them
+        "today": {
+            sc: _texted(windows[sc][0], dollars_text, count_text) for sc in ("all", "near", "far")
+        },
         # the Chart view's DEX and OI profiles: each measure's window (terrain_engine
         # _per_strike_measure_rows) and its largest-magnitude row, on screen or not (the label)
         "measures": {
-            m: {"rows": windows[m][0], "view": windows[m][1], "max_abs_row": _max_abs_row(rows)}
+            m: {
+                "rows": _texted(windows[m][0], MEASURE_TEXT[m]),
+                "view": windows[m][1],
+                "max_abs_row": _texted_row(_max_abs_row(rows), MEASURE_TEXT[m]),
+            }
             for m, rows in measures.items()
         },
         # each scope's window: its centre strike and the largest |value| drawn
@@ -2304,8 +2359,12 @@ def terrain_strikes_payload(
         "today_side_sums": _side_sums(today["all"], live_spot),
         "spot_strike": nearest_strike([r[0] for r in today["all"]], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
-        "max_abs_row": _max_abs_row(today["all"]),
-        "migration": migration,
+        "max_abs_row": _texted_row(_max_abs_row(today["all"]), dollars_text, count_text),
+        # each row with its change as the screen shows it (migration_change_text)
+        "migration": {
+            sc: {**m, "rows": [[*r, migration_change_text(r[3])] for r in m["rows"]]}
+            for sc, m in migration.items()
+        },
         # the call wall, put wall and gamma flip today against the prior day's own
         "level_moves": level_moves(snap, prior_day),
         # the levels verdict these rows carry (LIVE, CLOSE, STALE, NOT LIVE), their time and age
@@ -2336,7 +2395,12 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     shown = chart_bars(ticker, tf, held, datetime.fromtimestamp(now, ET))
     return {
         "bars": [
-            {**_lpr.with_change(b), "time_ct": ct_label(b["t"]), "ticks": ct_ticks(b["t"])}
+            {
+                **_lpr.with_change(b),
+                "time_ct": ct_label(b["t"]),
+                "ticks": ct_ticks(b["t"]),
+                "v_text": count_text(b["v"]),
+            }
             for b in shown
         ],
         "tf": tf,
@@ -2452,8 +2516,9 @@ def strike_bar_payload(
 ) -> dict[str, Any]:
     """Return a per-strike bar panel's answer at `now` (vanna, charm).
 
-    The published rows `key`, windowed for the panel (_windowed), with the live price and the
-    strike nearest it.
+    The published rows `key`, windowed for the panel (_windowed), each with its value as the
+    screen shows it (delta-shares, a count: count_text), with the live price and the strike
+    nearest it.
     """
     method = STRIKE_BAR_METHODS[key]
     levels = published_levels(tk)
@@ -2468,7 +2533,7 @@ def strike_bar_payload(
         "available": bool(rows),
         "spot": spot,
         "spot_strike": spot_strike,
-        "rows": win,
+        "rows": _texted(win, count_text),
         "view": view,
         "scope": scope,
         "reason": None if rows else "no usable strikes for this chain",
@@ -2600,6 +2665,8 @@ def _forces_absent(tk: str) -> dict[str, Any]:
         "doi_above": None,
         "dex_below_dollars": None,
         "dex_above_dollars": None,
+        "dex_below_text": None,
+        "dex_above_text": None,
         "charm_below": None,
         "charm_above": None,
     }
@@ -2672,13 +2739,17 @@ def _forces_from_captures(
                 charm_above = side_total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
             except Exception as e:
                 log.warning("forces charm for %s failed (%s)", tk, e, exc_info=True)
+            dex_below = side_total([d for k, d in dex1.items() if k < spot1])
+            dex_above = side_total([d for k, d in dex1.items() if k > spot1])
             payload = {
                 "ticker": tk,
                 "available": True,
                 "doi_below": _oi_change(lambda k: k < spot1),
                 "doi_above": _oi_change(lambda k: k > spot1),
-                "dex_below_dollars": side_total([d for k, d in dex1.items() if k < spot1]),
-                "dex_above_dollars": side_total([d for k, d in dex1.items() if k > spot1]),
+                "dex_below_dollars": dex_below,
+                "dex_above_dollars": dex_above,
+                "dex_below_text": dollars_text(dex_below),
+                "dex_above_text": dollars_text(dex_above),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
                 "older_et_date": d0,
@@ -3508,6 +3579,7 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     net_gex = None if col is None else {c["strike"]: c["gex"][col] for c in surf["cells"]}
     for row in ladder:
         row["net_gex"] = None if net_gex is None else net_gex.get(row["strike"])
+        row["net_gex_text"] = dollars_text(row["net_gex"])
     return {
         "ticker": t,
         "spot": live_spot,

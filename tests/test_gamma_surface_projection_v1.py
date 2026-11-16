@@ -398,7 +398,7 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     assert measures["dex"]["rows"] and measures["oi"]["rows"]
     cols = len(surface["expirations"])
     for m, cell_value in (("dex", lambda c: c), ("oi", lambda c: c["total"])):
-        for strike, value in measures[m]["rows"]:
+        for strike, value, _text in measures[m]["rows"]:
             row = [r for r in surface["cells"] if r["strike"] == strike][0]
             cells = [cell_value(c) for c in row[m] if c is not None and cell_value(c) is not None]
             assert cells and abs(sum(cells) - value) <= 0.5 * cols + 0.1, (m, strike, value, cells)

@@ -19,7 +19,7 @@ from typing import Any
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
-from numeric_contract import price_text
+from numeric_contract import count_text, price_text
 from time_et import age_text, ct_label
 
 SPOT_SOURCE = "streaming_plane"
@@ -96,6 +96,8 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "quote_time_ct": ct_label(quote_ts) if quote_ts is not None else None,
         "last_size": field("last_size"),
         "total_volume": field("total_volume"),
+        "last_size_text": count_text(field("last_size")),
+        "total_volume_text": count_text(field("total_volume")),
         # Schwab's own percent changes vs the prior close: NET_CHANGE_PERCENT (extended hours
         # included) and REGULAR_MARKET_CHANGE_PERCENT
         "chg_pct": field("chg_pct"),

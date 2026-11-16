@@ -28,6 +28,7 @@ from l1_trade_observation import (
     compute_tape_pressure as _canonical_tape_pressure,
 )
 from numeric_contract import (
+    count_text,
     float_finite_or_none,
     percent_text,
     price_text,
@@ -400,7 +401,14 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "status": "ok" if cb["has_book"] else "no_book",
-        "top_of_book": {"bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size},
+        "top_of_book": {
+            "bid": bid,
+            "ask": ask,
+            "bid_size": bid_size,
+            "ask_size": ask_size,
+            "bid_size_text": count_text(bid_size),
+            "ask_size_text": count_text(ask_size),
+        },
         "crossed": crossed,
         "mark": mark,
         "microprice": microprice,
