@@ -105,8 +105,9 @@ from Schwab to the screen (daemon, console, page), are these:
   and
   past it on disk, growing with Schwab's rate. Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D4. The stream's tables in `ed.db` are the record of what the operator trades.** What Schwab
-  cannot send again is kept: quotes, option quotes, bars and news whole, the order books in the
-  pre-market and open (04:00-10:00 ET) and the close (15:30-16:00); after five sessions they move,
+  cannot send again is kept: quotes, option quotes, bars and news whole, the order books before
+  Schwab's regular open plus 30 minutes and in the regular session's last 30 minutes, by each
+  day's /markets answer (`stream_spine._book_kept`; a day whose answer is not held keeps them all); after five sessions they move,
   row for row, into `stream_archive` in gzip-compressed blocks (`stream_spine.ARCHIVED`,
   `archived_rows` reads them back exactly), and a book row outside those windows goes. Market
   hours and the watchlist stay in their tables. What Schwab can send again (price history), every

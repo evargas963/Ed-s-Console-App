@@ -655,20 +655,22 @@ def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_the
     """The keep moves what Schwab cannot send again into stream_archive, row for row.
 
     Operator 2026-11-15: "Yes, windows + compress". The mix (every message as Schwab sent it,
-    received 2026-10-05 15:00 ET), recorded twice a week earlier: INDUCED CONDITIONS: once at its
-    own time of day (15:00 ET, midday) and once 40 minutes later (15:40 ET, inside the close
-    window). After the keep, every quote, option quote, bar and news row of both is in the
-    archive exactly as it was stored, and so are the books of the close window alone; none of
-    them is left in its table.
+    received 2026-10-05 15:00 ET), recorded three times: INDUCED CONDITIONS: on 2026-09-30 at its
+    own time of day (15:00 ET, midday) and 40 minutes later (15:40 ET, inside the close window by
+    that day's session as Schwab's /markets answered it, held by tests/conftest.py), and on
+    2026-09-29, whose session is not held (Schwab answered 400, more than 7 days back). After the
+    keep, every quote, option quote, bar and news row is in the archive exactly as it was stored,
+    and so are the books of 09-30's close window and every book of 09-29 (its hours unknown,
+    never guessed); none is left in its table.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     conn = sqlite3.connect(db)
-    for shift in (0.0, 2400.0):
+    for shift in (-86_400.0, 0.0, 2400.0):
         for m in _MIX["messages"]:
             key = m["item"]["key"].upper()
             kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"])
-            msg["ts_recv"] = m["ts_recv"] - 7 * 86_400 + shift
+            msg["ts_recv"] = m["ts_recv"] - 5 * 86_400 + shift
             writer.insert(f"{kind}.{key}", msg, conn=conn)
     conn.commit()
     before = {t: conn.execute(f"SELECT * FROM {t} ORDER BY rowid").fetchall() for t in ARCHIVED}
@@ -687,8 +689,10 @@ def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_the
     asyncio.run(go())
     with sqlite3.connect(db) as read:
         archived = {t: archived_rows(read, t) for t in ARCHIVED}
-    close = _et("2026-09-28 15:30")
-    assert archived["stream_book_raw"] == [r for r in before["stream_book_raw"] if r[0] >= close]
+    unknown_day_ends, close = _et("2026-09-30 00:00"), _et("2026-09-30 15:30")
+    assert archived["stream_book_raw"] == [
+        r for r in before["stream_book_raw"] if r[0] < unknown_day_ends or r[0] >= close
+    ]
     assert before["stream_book_raw"] and archived["stream_book_raw"], "the window holds books"
     assert {t: archived[t] for t in ARCHIVED if t != "stream_book_raw"} == {
         t: before[t] for t in ARCHIVED if t != "stream_book_raw"
