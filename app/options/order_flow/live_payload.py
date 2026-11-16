@@ -14,27 +14,15 @@ from app.options.order_flow.engine import OrderFlowEngine
 from app.options.order_flow.state import get_content_for_symbol, option_top
 from l1_trade_observation import TAPE_NOTE
 
-_FLOW_KEYS = (
-    "tape_pressure_30s",
-    "tape_pressure_2m",
-    "tape_pressure_5m",
-    "tape_unsigned_30s",
-    "tape_unsigned_2m",
-    "tape_unsigned_5m",
-    "cum_delta_unsigned",
-    "cum_delta_proxy",
-    "cum_delta_window",
-    "cum_delta_slope",
-    "top_book_pressure",
-)
-
 
 def flow_block(of: dict[str, Any]) -> dict[str, Any]:
     """Return the labeled PROXY tape flow out of one OrderFlowEngine.compute result.
 
-    It is the same block for an option contract and an equity (Trade Desk Order Flow card).
+    Every flow number the engine computed, each with its text, and the window the cumulative
+    delta sums: the result but its book. It is the same block for an option contract and an
+    equity (Trade Desk Order Flow card).
     """
-    flow = {k: of.get(k) for k in _FLOW_KEYS}
+    flow = {k: v for k, v in of.items() if k != "book_microstructure"}
     flow["classification"] = {
         "tape_pressure_30s": "PROXY",
         "tape_pressure_2m": "PROXY",

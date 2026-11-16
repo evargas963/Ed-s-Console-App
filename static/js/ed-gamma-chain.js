@@ -6,8 +6,6 @@
 (function () {
   "use strict";
 
-  var px = window.EdShell.num;
-  var AS_SENT = "as_sent";
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
   function isChain() {
@@ -89,20 +87,14 @@
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : "") +
       "</span>" +
       "<span>spot " +
-      px(d.spot) +
+      orDash(d.spot_text) +
       (d.spot_source ? " · " + esc(d.spot_source) : "") +
       (d.spot_time_ct ? " · last trade " + esc(d.spot_time_ct) : "") +
       "</span></div>";
-    // dg: decimals, or AS_SENT: every digit Schwab sent (its Greeks)
-    function cell(c, k, dg) {
+    // a served text, or every digit Schwab sent (its Greeks)
+    function cell(c, k) {
       var v = c ? c[k] : null;
-      return v == null
-        ? "-"
-        : typeof v === "number"
-          ? dg === AS_SENT
-            ? String(v)
-            : v.toFixed(dg == null ? 2 : dg)
-          : esc(v);
+      return v == null ? "-" : esc(String(v));
     }
     function sym(c) {
       return c && c.symbol ? String(c.symbol) : "";
@@ -135,25 +127,9 @@
       '<table class="chn chn-bodytbl">' +
       COLGROUP +
       "<tbody>";
-    // open interest, volume and IV: the served texts
-    var CALL = [
-      ["oi_text"],
-      ["volume_text"],
-      ["iv_text"],
-      ["delta", AS_SENT],
-      ["gamma", AS_SENT],
-      ["bid", 2],
-      ["ask", 2],
-    ];
-    var PUT = [
-      ["bid", 2],
-      ["ask", 2],
-      ["gamma", AS_SENT],
-      ["delta", AS_SENT],
-      ["iv_text"],
-      ["volume_text"],
-      ["oi_text"],
-    ];
+    // open interest, volume, IV, bid and ask: the served texts; delta and gamma as Schwab sent them
+    var CALL = ["oi_text", "volume_text", "iv_text", "delta", "gamma", "bid_text", "ask_text"];
+    var PUT = ["bid_text", "ask_text", "gamma", "delta", "iv_text", "volume_text", "oi_text"];
     function side(c, cls, itm, cols) {
       // itm: served per row (strike vs the live spot)
       var klass =
@@ -166,7 +142,7 @@
             '"' +
             (j === 0 ? selAttr(c) : "") +
             ">" +
-            cell(c, f[0], f[1]) +
+            cell(c, f) +
             "</td>"
           );
         })
@@ -187,7 +163,7 @@
         ">" +
         side(c, "chn-call", r.call_itm, CALL) +
         '<td class="k">' +
-        (r.first ? px(k, k % 1 ? 2 : 0) : "·") +
+        (r.first ? r.strike_text : "·") +
         "</td>" +
         side(p, "chn-put", r.put_itm, PUT) +
         "</tr>";

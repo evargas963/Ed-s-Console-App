@@ -5,8 +5,8 @@
 (function () {
   "use strict";
 
-  var px = window.EdShell.num;
-  var esc = window.EdShell.esc;
+  var esc = window.EdShell.esc,
+    orDash = window.EdShell.orDash;
   // Two homes render the SAME canonical levels contract, same function, same host-id
   // resolution pattern -- Options > Gamma > Levels and Liquidity > Levels. Never two renderers
   // for one contract -- see this file's own docstring.
@@ -60,7 +60,7 @@
   }
   function pairRow(name, nowPrice, nowWhen, sameDay, sameWhen, paired, note) {
     var cls = paired ? "lv-row zd-row" : "lv-row";
-    var third = paired ? px(sameDay) : "-";
+    var third = paired ? orDash(sameDay) : "-";
     var thirdWhen = paired ? timeHtml(sameWhen) : "";
     return (
       '<tr class="' +
@@ -71,7 +71,7 @@
       esc(name) +
       "</td>" +
       '<td class="lv-px">' +
-      px(nowPrice) +
+      orDash(nowPrice) +
       timeHtml(nowWhen) +
       "</td>" +
       '<td class="lv-px">' +
@@ -91,7 +91,7 @@
         if (r.id != null) shown[r.id] = true;
         var st = r.staleness != null ? r.staleness : null;
         var when = st != null && st.as_of_time_ct != null ? st.as_of_time_ct : null;
-        body += pairRow(levelName(r), r.carried, when, r.price, when, true, r.note);
+        body += pairRow(levelName(r), r.carried_text, when, r.price_text, when, true, r.note);
       });
     }
     if (levels != null) {
@@ -100,7 +100,7 @@
         if (r.id != null && shown[r.id]) return;
         var st = r.staleness != null ? r.staleness : null;
         var when = st != null && st.as_of_time_ct != null ? st.as_of_time_ct : null;
-        body += pairRow(levelName(r), r.price, when, null, null, false, r.note);
+        body += pairRow(levelName(r), r.price_text, when, null, null, false, r.note);
       });
     }
     if (!body) {
@@ -124,7 +124,7 @@
     var head =
       '<div class="lv-head"><span>Levels</span>' +
       '<span class="lv-spot">spot ' +
-      px(d.spot) +
+      orDash(d.spot_text) +
       source +
       trade +
       "</span></div>";

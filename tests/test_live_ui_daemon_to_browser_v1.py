@@ -64,7 +64,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from instrument_identity import ticker_storage_key
-from numeric_contract import compact_text, count_text, dollars_text
+from numeric_contract import compact_text, count_text, dollars_text, strike_text
 from option_contract import read_chain
 from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
@@ -782,11 +782,16 @@ async def _next(ws, kind) -> dict:
 def _published_rows(tk, key) -> list:
     """Return the rows the levels producer published for `tk` (its vanna_rows or charm_rows).
 
-    As the panel serves them: each by name, with its value as the screen shows it (compact_text:
-    delta-shares).
+    As the panel serves them: each by name, with its strike as listed and its value as the screen
+    shows it (compact_text: delta-shares).
     """
     return [
-        {"strike": r.strike, "value": r.value, "text": compact_text(r.value)}
+        {
+            "strike": r.strike,
+            "value": r.value,
+            "strike_text": strike_text(r.strike),
+            "text": compact_text(r.value),
+        }
         for r in getattr(level_store.published_levels(tk), key)
     ]
 
@@ -1134,13 +1139,15 @@ AUTO = {"scope": "auto", "centre": None, "shift": 0}
 def _per_strike(tk) -> list:
     """Today's rows (strike, net GEX $ per 1%, volume) the producer published for `tk`.
 
-    As the panel serves them: each by name, with its two numbers as the screen shows them.
+    As the panel serves them: each by name, with its strike and its two numbers as the screen
+    shows them.
     """
     return [
         {
             "strike": r.strike,
             "value": r.value,
             "volume": r.volume,
+            "strike_text": strike_text(r.strike),
             "text": dollars_text(r.value),
             "volume_text": count_text(r.volume),
         }

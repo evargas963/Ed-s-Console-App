@@ -18,14 +18,15 @@ LOOSE = {"Γ": "(?:Γ|γ|gamma)", "Δ": "(?:Δ|δ|delta)", " ": "[ -]?"}
 Q = r"""['"]([^'"\n]+)['"]"""
 #: Where a page types a name beside the key of the value it prints: (name, key) or (key, name).
 #: Spacing and line breaks between the parts are the layout's, so any run of them is read.
+#: A page draws a level's served text (`<key>_text`, as the server formats it), read by its key.
 NAME_THEN_KEY = (
-    rf"\[\s*{Q}[^\],]*,\s*num\(d\.(\w+)\)",
-    rf"row\(\s*{Q},\s*num\(t\.(\w+)",
+    rf"\[\s*{Q}[^\],]*,\s*orDash\(d\.(\w+)_text\)",
+    rf"row\(\s*{Q},\s*orDash\(t\.(\w+)_text\)",
 )
 KEY_THEN_NAME = (
     rf"\b(\w+):\s*{Q}",
     rf"\b(\w+):\s*\[\s*{Q},\s*P\.",
-    rf"id:\s*{Q},\s*price:\s*[^,]+,\s*label:\s*{Q}",
+    rf"id:\s*{Q},\s*price:\s*[^,]+,\s*price_text:\s*[^,]+,\s*label:\s*{Q}",
 )
 
 
@@ -76,7 +77,9 @@ def test_a_name_typed_beside_a_levels_key_is_that_levels_name():
 
 def test_the_key_levels_card_names_each_row_by_the_level_it_prints():
     pages = _pages()
-    printed = dict(re.findall(rf"txt\(\s*{Q},\s*px\(d\.(\w+)\)\s*\)", pages["ed-gamma-panels.js"]))
+    printed = dict(
+        re.findall(rf"txt\(\s*{Q},\s*orDash\(d\.(\w+)_text\)\s*\)", pages["ed-gamma-panels.js"])
+    )
     rows = dict(
         (cell, name)
         for name, cell in re.findall(

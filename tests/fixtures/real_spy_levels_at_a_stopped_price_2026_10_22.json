@@ -32,6 +32,7 @@
    "label": "Net call \u0393 peak",
    "note": null,
    "price": 776.0,
+   "price_text": "776.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -52,6 +53,7 @@
    "label": "Key \u0394 strike",
    "note": null,
    "price": 772.0,
+   "price_text": "772.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -72,6 +74,7 @@
    "label": "Put \u0394 wall",
    "note": null,
    "price": 772.0,
+   "price_text": "772.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -92,6 +95,7 @@
    "label": "Max pain",
    "note": null,
    "price": 771.0,
+   "price_text": "771.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -112,6 +116,7 @@
    "label": "Call wall",
    "note": null,
    "price": 765.0,
+   "price_text": "765.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -132,6 +137,7 @@
    "label": "Abs \u0393",
    "note": null,
    "price": 765.0,
+   "price_text": "765.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -152,6 +158,7 @@
    "label": "Put wall",
    "note": null,
    "price": 764.0,
+   "price_text": "764.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -172,6 +179,7 @@
    "label": "Net put \u0393 peak",
    "note": null,
    "price": 764.0,
+   "price_text": "764.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -192,6 +200,7 @@
    "label": "Call \u0394 wall",
    "note": null,
    "price": 763.0,
+   "price_text": "763.00",
    "provenance": {
     "carried": true,
     "producer": "terrain_engine.compute_terrain"
@@ -215,6 +224,7 @@
  "spot_as_of_ts_utc": 1792701541.652,
  "spot_not_live_text": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",
  "spot_source": "streaming_plane",
+ "spot_text": "773.13",
  "spot_time_ct": "Thu 10/22 03:39 PM CT",
  "tf": "1",
  "ticker": "SPY",
@@ -223,10 +233,12 @@
  "zero_dte": [
   {
    "carried": 765.0,
+   "carried_text": "765.00",
    "id": "call_wall",
    "label": "Call wall",
    "note": null,
    "price": 765.0,
+   "price_text": "765.00",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -234,10 +246,12 @@
   },
   {
    "carried": 764.0,
+   "carried_text": "764.00",
    "id": "put_wall",
    "label": "Put wall",
    "note": null,
    "price": 764.0,
+   "price_text": "764.00",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -245,10 +259,12 @@
   },
   {
    "carried": null,
+   "carried_text": null,
    "id": "gamma_flip",
    "label": "\u0393 flip",
    "note": null,
    "price": null,
+   "price_text": null,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -256,10 +272,12 @@
   },
   {
    "carried": 765.0,
+   "carried_text": "765.00",
    "id": "absolute_gamma_strike",
    "label": "Abs \u0393",
    "note": null,
    "price": 765.0,
+   "price_text": "765.00",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -267,10 +285,12 @@
   },
   {
    "carried": null,
+   "carried_text": null,
    "id": "gsf",
    "label": "GSF",
    "note": null,
    "price": null,
+   "price_text": null,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -278,10 +298,12 @@
   },
   {
    "carried": null,
+   "carried_text": null,
    "id": "grc",
    "label": "GRC",
    "note": null,
    "price": null,
+   "price_text": null,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -289,10 +311,12 @@
   },
   {
    "carried": 764.0,
+   "carried_text": "764.00",
    "id": "hvp",
    "label": "Net put \u0393 peak",
    "note": null,
    "price": 764.0,
+   "price_text": "764.00",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -300,10 +324,12 @@
   },
   {
    "carried": 776.0,
+   "carried_text": "776.00",
    "id": "lvp",
    "label": "Net call \u0393 peak",
    "note": null,
    "price": 776.0,
+   "price_text": "776.00",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -311,10 +337,12 @@
   },
   {
    "carried": 772.0,
+   "carried_text": "772.00",
    "id": "key_delta_strike",
    "label": "Key \u0394 strike",
    "note": null,
    "price": 772.0,
+   "price_text": "772.00",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -322,10 +350,12 @@
   },
   {
    "carried": 763.0,
+   "carried_text": "763.00",
    "id": "call_delta_wall",
    "label": "Call \u0394 wall",
    "note": null,
    "price": 763.0,
+   "price_text": "763.00",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -333,10 +363,12 @@
   },
   {
    "carried": 772.0,
+   "carried_text": "772.00",
    "id": "put_delta_wall",
    "label": "Put \u0394 wall",
    "note": null,
    "price": 772.0,
+   "price_text": "772.00",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -344,10 +376,12 @@
   },
   {
    "carried": null,
+   "carried_text": null,
    "id": "call_charm_wall",
    "label": "Call charm wall",
    "note": null,
    "price": null,
+   "price_text": null,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
@@ -355,10 +389,12 @@
   },
   {
    "carried": null,
+   "carried_text": null,
    "id": "put_charm_wall",
    "label": "Put charm wall",
    "note": null,
    "price": null,
+   "price_text": null,
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT",
     "as_of_ts_utc": 1792700224.362402
