@@ -112,6 +112,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
                     symbol=rc.ticker,
                     last=rc.spot,
                     src="schwab_l1",
+                    ts_recv=rc.now.timestamp(),
                     native={"key": rc.ticker, "LAST_PRICE": rc.spot},
                 ),
             )
@@ -121,14 +122,21 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
             bus.publish(
                 f"optquote.{sym}",
                 verbatim_msg(
-                    symbol=sym, content={"key": sym, "MARK": 1.0}, src="schwab_options_l1"
+                    symbol=sym,
+                    content={"key": sym, "MARK": 1.0},
+                    src="schwab_options_l1",
+                    ts_recv=daemon.clock(),
                 ),
             )
         for sym in (near, far):
             bus.publish(
                 f"book.{sym}",
                 book_msg(
-                    symbol=sym, service="OPTIONS_BOOK", content={"key": sym}, src="schwab_book"
+                    symbol=sym,
+                    service="OPTIONS_BOOK",
+                    content={"key": sym},
+                    src="schwab_book",
+                    ts_recv=daemon.clock(),
                 ),
             )
         bus.publish(
@@ -137,6 +145,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
                 symbol="SPY",
                 last=776.62,
                 src="schwab_l1",
+                ts_recv=daemon.clock(),
                 native={"key": "SPY", "LAST_PRICE": 776.62},
             ),
         )
@@ -190,8 +199,11 @@ def _recorded(bus) -> None:
             ),
         )
     for when in ("2026-09-29 12:00", "2026-09-30 12:00"):  # both before; the newest stays
-        topic, msg = capture.watchlist_message(["SPY"], op="added", ticker="SPY", request_id=when)
-        bus.publish(topic, {**msg, "ts_recv": _et(when)})
+        bus.publish(
+            *capture.watchlist_message(
+                ["SPY"], op="added", ticker="SPY", request_id=when, ts_recv=_et(when)
+            )
+        )
 
 
 def _kept_at(tmp_path, clock: str, wait: float) -> str:
@@ -299,15 +311,15 @@ def _old_file(tmp_path_factory) -> Path:
 
 
 def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> int:
-    """Publish the mix's messages of `services`, received now; return how many were published.
+    """Publish the mix's messages of `services`, each received at its recorded time; return how
+    many were published.
 
     Each frame is decoded from its JSON through the daemon's handler for its service.
     """
     health = HealthRegistry()
-    handlers = {s: connection._publisher(s, bus, health) for s in services}
     sent = [m for m in _MIX["messages"] if m["service"] in services][:limit]
     for m in sent:
-        handlers[m["service"]](
+        connection._publisher(m["service"], bus, health, lambda t=m["ts_recv"]: t)(
             json.loads(json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}))
         )
     return len(sent)
@@ -580,7 +592,8 @@ def _dies_holding(db, cap: int, eleventh: dict, *, stop: bool) -> dict:
 
 def _eleventh() -> dict:
     m = [m for m in _MIX["messages"] if m["service"] == "LEVELONE_EQUITIES"][10]
-    return connection._message(m["service"], m["item"]["key"].upper(), m["item"], m["schwab_ts"])[1]
+    key = m["item"]["key"].upper()
+    return connection._message(m["service"], key, m["item"], m["schwab_ts"], m["ts_recv"])[1]
 
 
 def test_a_writer_that_dies_while_spilling_counts_as_not_recorded_only_what_was_not_yet_held(
@@ -669,8 +682,8 @@ def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_the
     for shift in (-86_400.0, 0.0, 2400.0):
         for m in _MIX["messages"]:
             key = m["item"]["key"].upper()
-            kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"])
-            msg["ts_recv"] = m["ts_recv"] - 5 * 86_400 + shift
+            at = m["ts_recv"] - 5 * 86_400 + shift
+            kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"], at)
             writer.insert(f"{kind}.{key}", msg, conn=conn)
     conn.commit()
     before = {t: conn.execute(f"SELECT * FROM {t} ORDER BY rowid").fetchall() for t in ARCHIVED}

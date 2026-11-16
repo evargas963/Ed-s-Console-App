@@ -65,8 +65,9 @@ The facts below hold today and in the design, except where a bullet says what to
   `tests/test_data_path_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,
   `test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it`).
-- Data is pushed at every hop. Nothing polls. Today the page still re-reads routes after each push
-  (§3.2) until SHAPE step 4. Enforced by: no machine check — ENF-15.
+- Data is pushed at every hop. Nothing polls. The page asks for each panel once on its socket and
+  is sent it again on each change (`live_ui.changed`); no route serves it data. Enforced by:
+  `tests/test_page_one_faucet_v1.py` (`test_the_page_reads_no_route_only_its_socket`).
 - The databases are history, written in the background (two writers today, §3.5). Nothing on screen
   waits on them.
   Enforced by: D4 and D6 below.
@@ -458,9 +459,8 @@ the program.
   The panels serve what it published and build nothing. The confluence panel reads the ranking
   `_publish_levels` stored for the expiry the operator picks. It does not rank again. It does not
   read a
-  chain, the database, or Schwab. It has no loop of its own. The page asks again when the
-  console pushes `levels` or `chain` for that ticker, the same re-read ENF-15 still owes for
-  every pane. Charm for that expiry is the map `compute_terrain` stored
+  chain, the database, or Schwab. It has no loop of its own. The console sends it again to the
+  pages showing it when that ticker's levels or chain change, as every pane. Charm for that expiry is the map `compute_terrain` stored
   (`compute_charm_by_strike` once for the expiry). The volatility blend for that expiry is
   the map `compute_terrain` stored (`iv_by_strike` once for the expiry). The ranking is
   `score_magnitudes` once for that expiry, every strike of it, stored with the publication. The

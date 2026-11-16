@@ -28,7 +28,7 @@ _MIX = json.loads(
     )
 )
 _BURST = [
-    connection._message(m["service"], m["item"]["key"], m["item"], m["schwab_ts"])
+    connection._message(m["service"], m["item"]["key"], m["item"], m["schwab_ts"], m["ts_recv"])
     for m in _MIX["messages"]
     if m["service"] in ("LEVELONE_EQUITIES", "LEVELONE_OPTIONS")
 ]

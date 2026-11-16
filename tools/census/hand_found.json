@@ -132,7 +132,7 @@
     },
     {
       "category": "needs market",
-      "item": "live update speed, page refetches per tick (ENF-15), full chain reprice on unchanged inputs"
+      "item": "live update speed, full chain reprice on unchanged inputs"
     },
     {
       "category": "contradiction: rule vs guard",

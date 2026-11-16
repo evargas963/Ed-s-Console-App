@@ -132,6 +132,7 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
                     symbol=tk,
                     last=MRVL.spot,
                     src="schwab_l1",
+                    ts_recv=now,
                     native={"key": tk, "LAST_PRICE": MRVL.spot},
                 ),
             )
@@ -293,6 +294,7 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                     symbol="SPY",
                     last=SPY["spot"],
                     src="schwab_l1",
+                    ts_recv=daemon.clock(),
                     native={"key": "SPY", "LAST_PRICE": SPY["spot"]},
                 ),
             )

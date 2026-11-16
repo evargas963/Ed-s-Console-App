@@ -49,20 +49,26 @@ def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_a
         "LAST_MIC_ID": "XADF",
         "TOTAL_VOLUME": 9,
     }
-    connection._publisher("LEVELONE_EQUITIES", bus, health)({"content": [item]})
+
+    def handler(service: str):  # the handler reads the connection's clock, here a fixed instant
+        return connection._publisher(service, bus, health, lambda: RTH_INSTANT)
+
+    handler("LEVELONE_EQUITIES")({"content": [item]})
     topic, q = sub.queue.get_nowait()
     assert topic == "quote.SPY" and q["bid"] == 1.0 and q["last"] == 2.0 and q["native"] == item
+    assert q["ts_recv"] == RTH_INSTANT, "each message carries the time its frame was received"
     book = {"key": "SPY", "BOOK_TIME": 1, "BIDS": [], "ASKS": []}
-    connection._publisher("NYSE_BOOK", bus, health)({"content": [book, {"BIDS": []}]})
+    handler("NYSE_BOOK")({"content": [book, {"BIDS": []}]})
     topic, b = sub.queue.get_nowait()
     assert topic == "book.SPY" and b["content"] == book and b["service"] == "NYSE_BOOK"
+    assert b["ts_recv"] == RTH_INSTANT
     assert sub.queue.empty(), "an item with no symbol is skipped"
     news = {"key": "SPY", "4": "headline"}
-    connection._publisher("NEWS_HEADLINE", bus, health)({"content": [news]})
+    handler("NEWS_HEADLINE")({"content": [news]})
     assert sub.queue.get_nowait()[1]["content"] == news
-    connection._publisher("LEVELONE_OPTIONS", bus, health)({"content": [{"BIDS": []}]})
+    handler("LEVELONE_OPTIONS")({"content": [{"BIDS": []}]})
     assert health.last("LEVELONE_OPTIONS") is None, "a frame that delivered nothing is not data"
-    assert health.last("NYSE_BOOK") is not None
+    assert health.last("NYSE_BOOK") == RTH_INSTANT, "the beat is the frame's receive time"
 
 
 # ------------------------------------------------------------------ the database
@@ -71,12 +77,20 @@ def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_a
 def test_news_and_every_subscription_answer_are_written(tmp_path):
     w = ss.CaptureWriter(tmp_path / "s.db")
     w.insert(
-        "news.SPY", ss.verbatim_msg(symbol="SPY", content={"4": "headline"}, src="schwab_news")
+        "news.SPY",
+        ss.verbatim_msg(
+            symbol="SPY", content={"4": "headline"}, src="schwab_news", ts_recv=RTH_INSTANT
+        ),
     )
     w.insert(
         "sub.NYSE_BOOK",
         ss.subscription_msg(
-            service="NYSE_BOOK", command="ADD", symbols=["SPY"], code=19, reason="limit"
+            service="NYSE_BOOK",
+            command="ADD",
+            symbols=["SPY"],
+            code=19,
+            reason="limit",
+            ts=RTH_INSTANT,
         ),
     )
     con = sqlite3.connect(tmp_path / "s.db")
