@@ -18,6 +18,7 @@ from pathlib import Path
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
+from push import strike_bars as push_strike_bars
 from state import level_store
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
@@ -64,8 +65,8 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         listed = [r["strike"] for r in strikes["today"]["all"]]
         assert strikes["spot_strike"] == min(listed, key=lambda k: abs(k - last))
         assert all(v["note"] is None for v in strikes["views"].values() if v["centre"] is not None)
-        for key in server.STRIKE_BAR_METHODS:
-            bars = server.strike_bar_payload(tk, key, "auto", None, 0, at)
+        for key in push_strike_bars.STRIKE_BAR_METHODS:
+            bars = push_strike_bars.strike_bar_payload(tk, key, "auto", None, 0, at)
             assert bars["available"] and bars["spot"] == last and bars["view"]["note"] is None, key
     finally:
         _clear(tk)

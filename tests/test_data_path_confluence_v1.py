@@ -32,6 +32,7 @@ from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
+from push import strike_rows
 from state import level_store
 from stream_spine import verbatim_msg
 from terrain_engine import TerrainSnapshot, compute_terrain
@@ -511,7 +512,7 @@ def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
     assert abs(on - middle) > 10
     assert body["spot"] is None and "priced_at_spot" not in body
     assert sorted(r["strike"] for r in body["rows"]) == listed[middle - 5 : middle + 6]
-    assert body["notes"][-1] == server.WINDOW_NO_PRICE
+    assert body["notes"][-1] == strike_rows.WINDOW_NO_PRICE
     assert not any(r["spot_line"] for r in body["rows"])
 
 

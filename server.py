@@ -114,9 +114,12 @@ from push import bookmap as push_bookmap
 from push import experimental as push_experimental
 from push import expiries as push_expiries
 from push import forces as push_forces
+from push import strike_bars as push_strike_bars
 from push import tape as push_tape
 from push.answers import unavailable
 from push.asked import tf_asked, venue_asked
+from push.spot import SPOT_SOURCE_NONE, SPOT_SOURCE_PLANE, price_mark, resolve_spot
+from push.strike_rows import max_abs_served, served, window, window_asked, windowed
 from push.verdict import (
     LEVELS_STALE,
     LevelsVerdict,
@@ -145,7 +148,6 @@ from terrain_engine import (
     positioning_migration,
     price_relations,
     side_total,
-    strike_window,
 )
 from terrain_read import LEVEL_ABOVE, LEVEL_BELOW, crossed, from_spot_text, level_side, within
 from time_et import (
@@ -177,59 +179,12 @@ APP_DIR = str(Path(__file__).parent.resolve())
 # Its lines go to the program's one log (capture._start_log: the day's file and the window).
 log = logging.getLogger("ed_server")
 
-#: Precedence for the ONE spot authority. Highest wins; every entry records where the
-#: number came from so a caller can never silently accept a lower-confidence source.
-SPOT_SOURCE_PLANE = (
-    "streaming_plane"  # live_market_plane.get_quote — the freshest real trade this process has seen
-)
-SPOT_SOURCE_NONE = "none"  # Schwab has sent no price
-
-
-class PriceMark(TypedDict):
-    """The live price's trade time and, while the price is not live, the mark beside its values."""
-
-    spot_time_ct: str | None
-    spot_not_live_text: str | None
-
 
 class LevelsMark(TypedDict):
     """The one word the Key Levels line shows, and why (levels_mark)."""
 
     levels_mark: str
     levels_mark_reason: str | None
-
-
-def price_mark(ticker: str, spot_ts: float | None, now: float) -> PriceMark:
-    """Return the live price's trade time and, while not live at `now` (price_state), its mark.
-
-    Served beside every value computed from that price, so a value from a price that has stopped
-    stands marked not live (AGENTS rule 5): `spot_not_live_text` is the mark the page prints
-    beside each such value, with the trade's time and age, None while the price is live.
-    """
-    mark = ["not live"]
-    if spot_ts is not None:
-        mark.append(f"last trade {ct_label(spot_ts)}, {age_text(now - spot_ts)} old")
-    return {
-        "spot_time_ct": None if spot_ts is None else ct_label(spot_ts),
-        "spot_not_live_text": (
-            None if price_state(ticker, now)[0] == lmp.LIVE else " · ".join(mark)
-        ),
-    }
-
-
-def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float | None]:
-    """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent.
-
-    With its trade time. Why it is not live (price_state) does not remove it; the number stays.
-    (None, the outage reason or SPOT_SOURCE_NONE, None) until Schwab has sent one.
-    """
-    row = price_row(ticker, now)
-    if row["spot"] is not None:
-        return row["spot"], SPOT_SOURCE_PLANE, row["trade_ts"]
-    outage = price_state(ticker, now)[1]
-    if outage is None:
-        return None, SPOT_SOURCE_NONE, None
-    return None, outage, None
 
 
 #: where the bars come from, named in every level's provenance
@@ -956,29 +911,6 @@ def _measure_values(cell: dict[str, Any], measure: str) -> list[float | None]:
     return list(cell[measure])
 
 
-#: why a strike window is not around the price
-WINDOW_NO_PRICE = "no live price: the middle strikes of the chain"
-
-
-def _window(
-    strikes: Collection[float],
-    spot_strike: float | None,
-    scope: str,
-    centre: float | None,
-    shift: int,
-) -> tuple[int, int, dict[str, Any]]:
-    """Every per-strike panel's rows.
-
-    strike_window around the operator's panned `centre`, else the strike nearest the live price
-    (`spot_strike`), moved `shift` rows. Returns (first index,
-    last index, the view's {centre, note}): `note` says why the rows are not around the price
-    (no price and no pan), else None.
-    """
-    lo, hi, c = strike_window(strikes, spot_strike if centre is None else centre, scope, shift)
-    note = WINDOW_NO_PRICE if centre is None and spot_strike is None and strikes else None
-    return lo, hi, {"centre": c, "centre_text": strike_text(c), "note": note}
-
-
 def _surface_view(
     surf: dict[str, Any],
     spot_strike: float | None,
@@ -1009,7 +941,7 @@ def _surface_view(
         picked = sorted((unexpired + [j for j in every if j not in unexpired])[: 2 * cols])
     else:
         picked = (unexpired or every)[:cols]
-    lo, hi, view = _window(surf["strikes"], spot_strike, scope, centre, shift)
+    lo, hi, view = window(surf["strikes"], spot_strike, scope, centre, shift)
 
     def pick(v: Any) -> Any:
         return [v[j] for j in picked] if isinstance(v, list) else v
@@ -1028,13 +960,13 @@ def _surface_view(
     for m in HEAT_MEASURES:
         known = [abs(v) for cell in cells for v in _measure_values(cell, m) if v is not None]
         max_abs[m] = max(known) if known else None
-    window = {
+    shown = {
         **surf,
         "strikes": surf["strikes"][lo : hi + 1],
         "expirations": [exps[j] for j in picked],
         "cells": cells,
     }
-    return window, {
+    return shown, {
         **view,
         "scope": scope,
         "coverage": _stream_coverage(cells, streams, bool(picked) and not streams),
@@ -1839,42 +1771,6 @@ def _prior_day(tk: str, captures: list[dict[str, Any]], chain_ts: float) -> Terr
     )
 
 
-#: a per-strike bar's row: each strike's value, with the GEX rows' volume beside it
-type BarRow = StrikeValue | StrikeRow
-
-
-def _max_abs_row[R: BarRow](rows: Sequence[R]) -> R | None:
-    """Return the row with the largest |value| of every strike; None with no known value."""
-    known = [r for r in rows if r.value is not None]
-    return max(known, key=lambda r: abs(r.value)) if known else None
-
-
-#: each per-strike value as the screen shows it: GEX and DEX in dollars; open interest a count;
-#: vanna and charm (delta-shares) compact
-VALUE_TEXT = {
-    "gex": dollars_text,
-    "dex": dollars_text,
-    "oi": count_text,
-    "vanna_rows": compact_text,
-    "charm_rows": compact_text,
-}
-
-
-def _served(row: BarRow, measure: str) -> dict[str, Any]:
-    """Return a per-strike row as the page draws it: its fields by name, its value's text.
-
-    A GEX row's volume is served with its text too. The page draws the texts; it formats none.
-    """
-    served = {
-        **row._asdict(),
-        "strike_text": strike_text(row.strike),
-        "text": VALUE_TEXT[measure](row.value),
-    }
-    if isinstance(row, StrikeRow):
-        served["volume_text"] = count_text(row.volume)
-    return served
-
-
 def _served_migration(row: MigrationRow) -> dict[str, Any]:
     """Return a migration row as the page draws it: its fields by name, its change's text."""
     return {**row._asdict(), "change_text": migration_change_text(row.change)}
@@ -1916,25 +1812,6 @@ def migration_change_text(change: float | None) -> str | None:
     return ("▲" if change >= 0 else "▼") + dollars_text(abs(change))
 
 
-def _windowed[R: BarRow](
-    rows: Sequence[R],
-    spot_strike: float | None,
-    scope: str,
-    centre: float | None,
-    shift: int,
-) -> tuple[Sequence[R], dict[str, Any]]:
-    """`rows` (ascending by strike) as a panel draws them.
-
-    _window's rows, with its view {centre, note, max_abs}: the centre strike (send it back to pan
-    from it), why the rows are not around the price, and the largest |value| in the window (the
-    bar and colour scale), None when no value is known.
-    """
-    lo, hi, view = _window([r.strike for r in rows], spot_strike, scope, centre, shift)
-    win = rows[lo : hi + 1]
-    known = [abs(r.value) for r in win if r.value is not None]
-    return win, {**view, "max_abs": max(known) if known else None}
-
-
 def strikes(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     """Return the per-strike rows at `now` in the window `params` ask for (the `strikes` panel).
 
@@ -1942,10 +1819,10 @@ def strikes(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     socket sends it to GEX by Strike, the Gamma chart's profile, Right Now's migration and the
     Desk map, each its own panel with its own window (terrain_strikes_payload).
     """
-    window = _window_asked(params)
-    if isinstance(window, str):
-        return unavailable(ticker, window)
-    return terrain_strikes_payload(ticker, *window, now)
+    asked = window_asked(params)
+    if isinstance(asked, str):
+        return unavailable(ticker, asked)
+    return terrain_strikes_payload(ticker, *asked, now)
 
 
 def terrain_strikes_payload(
@@ -1991,7 +1868,7 @@ def terrain_strikes_payload(
     }
     lists = {**today, **measures}
     windows = {
-        name: _windowed(
+        name: windowed(
             rows, nearest_strike([r.strike for r in rows], live_spot), scope, centre, shift
         )
         for name, rows in lists.items()
@@ -2007,18 +1884,17 @@ def terrain_strikes_payload(
         ]
         both += [windows[sc][1]["max_abs"]] if windows[sc][1]["max_abs"] is not None else []
         windows[sc][1]["max_abs_with_prior"] = max(both) if both else None
-    top = _max_abs_row(today["all"])
     return {
         "ticker": tk,
-        # each strike's net GEX $ and volume, by name, with their texts (_served)
-        "today": {sc: [_served(r, "gex") for r in windows[sc][0]] for sc in ("all", "near", "far")},
+        # each strike's net GEX $ and volume, by name, with their texts (served)
+        "today": {sc: [served(r, "gex") for r in windows[sc][0]] for sc in ("all", "near", "far")},
         # the Chart view's DEX and OI profiles: each measure's window (terrain_engine
         # _per_strike_measure_rows) and its largest-magnitude row, on screen or not (the label)
         "measures": {
             m: {
-                "rows": [_served(r, m) for r in windows[m][0]],
+                "rows": [served(r, m) for r in windows[m][0]],
                 "view": windows[m][1],
-                "max_abs_row": None if (mt := _max_abs_row(rows)) is None else _served(mt, m),
+                "max_abs_row": max_abs_served(rows, m),
             }
             for m, rows in measures.items()
         },
@@ -2027,7 +1903,7 @@ def terrain_strikes_payload(
         "today_side_sums": _side_sums(today["all"], live_spot),
         "spot_strike": nearest_strike([r.strike for r in today["all"]], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
-        "max_abs_row": None if top is None else _served(top, "gex"),
+        "max_abs_row": max_abs_served(today["all"], "gex"),
         # each row with its change as the screen shows it (_served_migration), and the strikes
         # that grew, shrank and traded most, each list as the screen shows it
         "migration": {
@@ -2177,72 +2053,6 @@ def aggregate_bars(bars: list[dict[str, Any]], tf: str) -> list[dict[str, Any]]:
     if cur is not None:
         out.append(cur)
     return out
-
-
-#: each per-strike bar panel's published rows and how they are made
-STRIKE_BAR_METHODS = {
-    "vanna_rows": "the published levels' exposure book -> call_vanna - put_vanna",
-    "charm_rows": "the published levels' charm map -> call_charm - put_charm",
-}
-
-
-def strike_bar_payload(
-    tk: str, key: str, scope: str, centre: float | None, shift: int, now: float
-) -> dict[str, Any]:
-    """Return a per-strike bar panel's answer at `now` (vanna, charm).
-
-    The published rows `key`, windowed for the panel (_windowed), each as the page draws it
-    (_served: delta-shares, compact), with the live price and the strike nearest it.
-    """
-    method = STRIKE_BAR_METHODS[key]
-    levels = published_levels(tk)
-    if levels is None:
-        return unavailable(tk, "no levels published for this ticker yet")
-    rows = getattr(levels, key)
-    spot = resolve_spot(tk, now=now)[0]
-    spot_strike = nearest_strike([r.strike for r in rows], spot)
-    win, view = _windowed(rows, spot_strike, scope, centre, shift)
-    return {
-        "ticker": tk,
-        "available": bool(rows),
-        "spot": spot,
-        "spot_strike": spot_strike,
-        "rows": [_served(r, key) for r in win],
-        "view": view,
-        "scope": scope,
-        "reason": None if rows else "no usable strikes for this chain",
-        "method": method,
-    }
-
-
-def _window_asked(params: dict[str, Any]) -> tuple[str, float | None, int] | str:
-    """Return the window a page's panel parameters ask for: (scope, centre, shift).
-
-    The page sends all three: the scope, one of SCOPES; the centre, a strike or None (follow the
-    price); the shift, a whole number of rows. Parameters that ask for none of these: the words
-    saying which.
-    """
-    scope, centre, shift = params.get("scope"), params.get("centre"), params.get("shift")
-    if scope not in SCOPES:
-        return f"scope {scope!r} is not one of {', '.join(SCOPES)}"
-    if centre is not None and (isinstance(centre, bool) or not isinstance(centre, int | float)):
-        return f"centre {centre!r} is not a strike"
-    if isinstance(shift, bool) or not isinstance(shift, int):
-        return f"shift {shift!r} is not a whole number of rows"
-    return scope, centre, shift
-
-
-def strike_bars(key: str, tk: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
-    """Return the per-strike bar panel `key` of `tk` at `now` in the window `params` ask for.
-
-    "vanna_rows": net_vanna = call_vanna - put_vanna per strike, across every expiry (the Vanna
-    panel). "charm_rows": the charm walls' own map, net_charm = call_charm - put_charm per strike,
-    delta-shares/day (the Charm panel).
-    """
-    window = _window_asked(params)
-    if isinstance(window, str):
-        return unavailable(tk, window)
-    return strike_bar_payload(tk, key, *window, now)
 
 
 def _forces_from_captures(
@@ -2483,17 +2293,17 @@ def gamma_surface(ticker: str, now: float, params: dict[str, Any]) -> dict[str, 
     contracts to stream and the colour scale. Parameters that ask for none of these: the words
     saying which. `ticker` is the levels' own key.
     """
-    window = _window_asked(params)
+    asked = window_asked(params)
     cols, expiry = params.get("cols"), params.get("expiry")
-    if isinstance(window, str):
-        return unavailable(ticker, window)
+    if isinstance(asked, str):
+        return unavailable(ticker, asked)
     if "cols" not in params or "expiry" not in params:
         return unavailable(ticker, "the heatmap's window names no cols or no expiry")
     if cols is not None and (isinstance(cols, bool) or not isinstance(cols, int) or cols < 1):
         return unavailable(ticker, f"cols {cols!r} is not a whole number of columns")
     if expiry is not None and not isinstance(expiry, str):
         return unavailable(ticker, f"expiry {expiry!r} is not an expiry date")
-    return gamma_surface_payload(ticker, *window, cols, expiry, datetime.fromtimestamp(now, ET))
+    return gamma_surface_payload(ticker, *asked, cols, expiry, datetime.fromtimestamp(now, ET))
 
 
 def gamma_surface_payload(
@@ -3696,7 +3506,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     em_dn = _level_named(levels, "EM−")
     body = {key: value for key, value in stored.items() if key not in ("ranked", "strikes")}
     ranked = sorted(stored["ranked"])
-    lo, hi, view = _window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
+    lo, hi, view = window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
     body["rows"] = window_rows(stored, ranked[lo : hi + 1])
     if view["note"] is not None:
         body["notes"] = [*body["notes"], view["note"]]
@@ -3743,8 +3553,8 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "experimental": lambda a: push_experimental.experimental(a.ticker, a.now),
     "expiries": lambda a: push_expiries.expiries(a.ticker, a.now),
-    "vanna": lambda a: strike_bars("vanna_rows", a.ticker, a.now, a.params),
-    "charm": lambda a: strike_bars("charm_rows", a.ticker, a.now, a.params),
+    "vanna": lambda a: push_strike_bars.strike_bars("vanna_rows", a.ticker, a.now, a.params),
+    "charm": lambda a: push_strike_bars.strike_bars("charm_rows", a.ticker, a.now, a.params),
     "terrain": lambda a: terrain(a.ticker, a.now),
     "strikes": lambda a: strikes(a.ticker, a.now, a.params),
     "surface": lambda a: gamma_surface(a.ticker, a.now, a.params),
