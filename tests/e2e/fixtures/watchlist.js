@@ -12,6 +12,7 @@
 // would for another page.
 const lists = new WeakMap();
 const socketed = new WeakSet();   // the pages whose socket a stand-in already answers
+const beats = new WeakMap();      // each page's beat, sent on demand by beatNow
 
 // the program's beat to the page on `ws`: at once, then every second, the list kept for `page`
 function beat(page, ws) {
@@ -20,10 +21,17 @@ function beat(page, ws) {
     // (`session`: the daemon's word while Schwab's /markets answer for today is not held)
     if (list) ws.send(JSON.stringify({ type: 'feed', feed: { ts: Date.now() / 1000, watchlist: list.slice(), session: 'Unknown' } }));
   };
+  beats.set(page, send);
   send();
   const timer = setInterval(send, 1000);
   timer.unref();
   ws.onClose(() => clearInterval(timer));
+}
+
+// The program's next beat to `page`, sent now: a test that changes the daemon's list sends the
+// beat that carries it, and does not wait on this runner's timer (late on a loaded machine)
+function beatNow(page) {
+  beats.get(page)();
 }
 
 async function routeWatchlist(page, tickers = [], invalid = []) {
@@ -57,4 +65,4 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
   });
   return list;
 }
-module.exports = { routeWatchlist, beat, socketed };
+module.exports = { routeWatchlist, beat, beatNow, socketed };
