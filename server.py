@@ -27,14 +27,12 @@ import runtime_layout
 import time_et
 from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
-from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import (
     get_stream_greeks,
     option_top,
     rest_quotes,
 )
 from app.options.order_flow.streaming import (
-    get_option_contract_streaming_diagnostics,
     price_state,
     select_flow_contract,
     start_order_flow_stream,
@@ -93,6 +91,8 @@ from push import bars as push_bars
 from push import book as push_book
 from push import bookmap as push_bookmap
 from push import chain as push_chain
+from push import contract as push_contract
+from push import desk as push_desk
 from push import experimental as push_experimental
 from push import expiries as push_expiries
 from push import forces as push_forces
@@ -104,12 +104,10 @@ from push import tape as push_tape
 from push import terrain as push_terrain
 from push.answers import unavailable
 from push.asked import tf_asked, venue_asked
-from push.book import order_flow_microstructure, stamp_book_times
 from push.levels import NO_PRICE_LEVELS_REASON, expected_move, pin_note
 from push.spot import SPOT_SOURCE_NONE, SPOT_SOURCE_PLANE, price_mark, resolve_spot
 from push.strike_rows import window
 from push.verdict import (
-    LEVELS_STALE,
     LevelsVerdict,
     terrain_cache_get,
     terrain_staleness,
@@ -138,7 +136,6 @@ from time_et import (
     age_text,
     ct_label,
     et_date_str_from_ts_utc,
-    last_open,
     market_session_date,
     option_close_product,
     option_market_open,
@@ -475,7 +472,6 @@ def favicon() -> Response:
 
 
 #: the stored cross direction in words; a direction not stored reads "through", never a side
-_CROSS_WORD = {"up": "above", "down": "below"}
 
 
 # ── THE LEVELS (from the chains the capture daemon fetches) ──────────────────
@@ -1733,171 +1729,6 @@ def project_gamma_surface(
     }
 
 
-#: The Trade Desk's lookback per chart timeframe: seconds, or "session" (the latest regular
-#: session), with the words the page shows for it.
-DESK_LOOKBACK = {
-    "1": (900, "last 15 min"),
-    "3": (1800, "last 30 min"),
-    "5": ("session", "this session"),
-    "15": (14400, "last 4 h"),
-    "30": ("session", "this session"),
-    "60": (172800, "last 2 days"),
-    "D": (1728000, "last 20 days"),
-}
-
-
-def _desk_window_start(tf: str, now: datetime) -> float:
-    """Start of the Trade Desk's event window for chart timeframe `tf`.
-
-    `now` minus its lookback, or the open of the latest regular session that has begun (Schwab's
-    /markets, time_et.last_open).
-    """
-    lb = DESK_LOOKBACK[tf][0]
-    if lb != "session":
-        return now.timestamp() - lb
-    start = last_open(now)
-    if start is None:
-        raise ValueError(
-            f"Schwab's /markets has sent no regular session that began by {now.isoformat()}"
-        )
-    return start.timestamp()
-
-
-def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str, Any]:
-    """Return the Trade Desk's attention queue at `now`.
-
-    Level crosses in the timeframe's window as recorded (level, direction, price, spot, time),
-    numbered oldest first, the newest cross at each level for the newest DESK_MARKERS levels
-    flagged for the chart; wall breaches and stale levels from the terrain; the book's size walls
-    at the book's own time -- newest first, an item with no time last -- plus the window's up/down
-    cross counts. One item is one event: the chart's marker and the queue's entry are the same
-    item. The page draws it; it selects, numbers and orders nothing.
-    """
-    start = _desk_window_start(tf, now)
-    crosses = cross_store.merged_recent(tk, 200)
-    in_window = sorted(
-        (c for c in crosses if c["ts_utc"] >= start),
-        key=lambda c: c["ts_utc"],
-    )
-    items: list[dict[str, Any]] = []
-    for i, c in enumerate(in_window):
-        names = " + ".join(c["level_names"])
-        items.append(
-            {
-                "key": f"x{c['cross_id']}",
-                "n": i + 1,
-                "ts": c["ts_utc"],
-                "dom": "LEVELS",
-                "price": c["level_value"],
-                "dir": c["direction"],
-                "marker": False,
-                "title": f"Crossed {_CROSS_WORD[c['direction']]} {names}",
-                "detail": f"{price_text(c['level_value'])} · spot "
-                f"{price_text(c['spot_at_cross'])} at the cross",
-                "src": "level_crosses",
-            }
-        )
-    # the chart's few: the newest cross at each level, for the newest DESK_MARKERS levels
-    newest_at = {it["price"]: it for it in items}
-    for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
-        it["marker"] = True
-    t = push_terrain.terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
-    tts = t.get("levels_ts_utc")
-    for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
-        if t.get(f"{side}_wall_state") == "breached":  # at the live price (price_relations)
-            items.append(
-                {
-                    "key": key,
-                    "ts": t.get("spot_as_of_ts_utc"),
-                    "dom": "OPTIONS",
-                    "dir": "up" if side == "call" else "down",
-                    "title": f"Spot through the {word} wall",
-                    "detail": f"{word} wall {price_text(t[f'{side}_wall'])} · spot "
-                    f"{price_text(t['spot'])}",
-                    "src": "gamma levels",
-                }
-            )
-    if t.get("levels_state") == LEVELS_STALE:
-        items.append(
-            {
-                "key": "ls",
-                "ts": tts,
-                "dom": "DATA",
-                "dir": None,
-                "warn": True,
-                "title": "Gamma levels are stale",
-                "detail": t["levels_stale_reason"],
-                "src": "gamma levels",
-            }
-        )
-    # the book's size walls, stamped with the book's own time (BOOK_TIME); a book that is not live
-    # is a past observation and says so
-    micro = order_flow_microstructure(tk, venue, now.timestamp())
-    book_ms = micro["provenance"]["book_time_ms"]
-    live_book = micro["ages"]["book_stale"] is False
-    for i, w in enumerate(micro["wall_candidates"][:3]):
-        items.append(
-            {
-                "key": f"wall{i}",
-                "ts": None if book_ms is None else book_ms / 1000.0,
-                "dom": "LIQUIDITY",
-                "dir": "up" if w.get("side") == "bid" else "down",
-                "warn": not live_book,
-                "title": f"{venue} size wall · {w['side']} {w['price_text']}"
-                + ("" if live_book else " (not live)"),
-                "detail": f"{w['volume_text']} shown · {w['median_mult_text']}× the median level"
-                + ("" if live_book else " · a past book, not the current one"),
-                "src": "equity book",
-            }
-        )
-    # newest first; an event with no time of its own after every timed one
-    items = sorted((it for it in items if it["ts"] is not None), key=lambda it: -it["ts"]) + [
-        it for it in items if it["ts"] is None
-    ]
-    for it in items:  # each event's own time as the screen shows it
-        it["time_ct"] = None if it["ts"] is None else ct_label(it["ts"])
-    return {
-        "ticker": tk,
-        "tf": tf,
-        "window_start_ts_utc": start,
-        "window_label": DESK_LOOKBACK[tf][1],
-        "items": items,
-        "cross_counts": {
-            d: sum(1 for c in in_window if c.get("direction") == d) for d in ("up", "down")
-        },
-    }
-
-
-#: the chart draws the newest cross at each level, for the newest this-many levels (the queue
-#: lists every cross)
-DESK_MARKERS = 6
-
-
-def _contract_asked(params: dict[str, Any]) -> str:
-    """Return the option contract a panel's `params` name; none named raises.
-
-    `contract` is a chain answer's own "symbol" (OSI, e.g. "SPY   260820C00767000"), served as the
-    console holds it for that literal string (options_microstructure).
-    """
-    symbol = params.get("contract")
-    if type(symbol) is not str or not symbol.strip():
-        raise ValueError("contract is required")
-    return symbol.strip()
-
-
-def options_microstructure(c: str, now: float) -> dict[str, Any]:
-    """Return the Flow panel's payload for contract `c` at `now`, judged by the one live rule."""
-    payload = options_live_payload(ticker_storage_key(c), now)
-    payload["contract"] = c
-    # the side of the contract's chain record; None while no chain the console holds lists it
-    tk = level_store.listing_ticker(c)
-    payload["put_call"] = None if tk is None else published_levels(tk).contracts[c].side
-    # whether the daemon streams this contract (the option rule) and is receiving it
-    payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
-    stamp_book_times(payload)
-    return payload
-
-
 async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
     """Ask the daemon for an add or a removal (streaming.watchlist_request).
 
@@ -2447,9 +2278,11 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "tape": lambda a: push_tape.tape(a.ticker, a.now),
     "book": lambda a: push_book.book(a.ticker, a.now, a.params),
     "bookmap": lambda a: push_bookmap.bookmap(a.ticker, a.params),
-    "contract": lambda a: options_microstructure(_contract_asked(a.params), a.now),
+    "contract": lambda a: push_contract.options_microstructure(
+        push_contract.contract_asked(a.params), a.now
+    ),
     "forces": lambda a: push_forces.forces(a.ticker),
-    "desk": lambda a: desk_events_payload(
+    "desk": lambda a: push_desk.desk_events_payload(
         a.ticker, venue_asked(a.params), tf_asked(a.params), a.at
     ),
     "confluence": lambda a: confluence_payload(a.ticker, a.params.get("expiry"), a.at),

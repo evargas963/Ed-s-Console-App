@@ -2,7 +2,7 @@
 
 End to end through the real code: the daemon's status (live_market_plane.record_feed_heartbeat),
 Schwab's LEVELONE_OPTIONS message (streaming._ingest_pushed), and the Flow panel
-(server.options_microstructure).
+(push.contract.options_microstructure).
 Real data: one LEVELONE_OPTIONS message received 2026-10-05 14:00 CT
 (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json). The daemon's status is the console's
 own message, built here in its shape (no status is captured).
@@ -16,7 +16,7 @@ from pathlib import Path
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-import server
+from push import contract as push_contract
 from stream_spine import verbatim_msg
 
 _MIX = json.loads(
@@ -57,7 +57,7 @@ def test_a_released_contract_keeps_its_last_bid_and_is_not_streamed():
                 "held": {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []},
             }
         )
-        body = server.options_microstructure(_SYM, _AT)
+        body = push_contract.options_microstructure(_SYM, _AT)
     finally:
         ofls.clear_all_live_state()
         lmp.record_feed_down()

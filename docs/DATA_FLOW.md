@@ -912,7 +912,7 @@ the program.
   each cross as recorded, from memory, and flags the
   newest cross at each level, for the newest six levels, as the chart's numbered callouts (one
   served item is both a callout and its queue entry). The window is the timeframe's
-  (`server.DESK_LOOKBACK`; 5m and 30m: this session). No proximity alerts. Absorption,
+  (`push.desk.DESK_LOOKBACK`; 5m and 30m: this session). No proximity alerts. Absorption,
   liquidity pull and replenishment are not produced (open; `ACTIVE_PROGRAM.md` DESK-GAPS).
 - **Market session.** Schwab's GET /markets?markets=equity,option, asked by the daemon's chain
   sweep (`ChainSweep.fetch_markets`) once per date per ET day -- today, the 7 days before it
@@ -999,7 +999,7 @@ the program.
    beside `top_outage`); the book badge says the book's (`book_feed_label`).
    The book's quote time and book time stay on that panel (`push.book.order_flow_microstructure`,
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time
-   (`server.options_microstructure`, `static/js/ed-gamma-flow.js`). A contract
+   (`push.contract.options_microstructure`, `static/js/ed-gamma-flow.js`). A contract
    the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing
    heartbeat keeps that last subscription, and the panel says OFFLINE; a held contract whose option
    market is closed says NOT LIVE (`streaming.get_option_contract_streaming_diagnostics`, the Flow

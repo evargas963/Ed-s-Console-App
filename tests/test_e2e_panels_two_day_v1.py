@@ -36,6 +36,7 @@ from calibration.complete_chain_capture import last_capture_per_day
 from push import bars as push_bars
 from push import book as push_book
 from push import chain as push_chain
+from push import desk as push_desk
 from push import forces as push_forces
 from push import levels as push_levels
 from push import strikes as push_strikes
@@ -245,7 +246,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "levels": {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS},
                     "desk": {
                         venue: {
-                            tf: server.desk_events_payload(tk, venue, tf, now) for tf in DESK_TFS
+                            tf: push_desk.desk_events_payload(tk, venue, tf, now) for tf in DESK_TFS
                         }
                         for venue in real.venues
                     },
