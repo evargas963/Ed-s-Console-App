@@ -6,6 +6,7 @@ import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
+from state import level_store
 from tests.test_one_levels_producer_v1 import (
     _A,
     _AT,
@@ -56,5 +57,5 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
             lmp._feed["held"] = {}
         lmp._by_ticker.pop(TK, None)
         lmp._fields_by_ticker.pop(TK, None)
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(TK, None)
+        with level_store._lock:
+            level_store._levels.pop(TK, None)

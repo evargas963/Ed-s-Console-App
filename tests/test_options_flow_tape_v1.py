@@ -29,6 +29,7 @@ from app.options.order_flow.history import recent_prints, tape_row
 from app.options.order_flow.state import OrderFlowState
 from app.options.order_flow.streaming import _ingest_pushed
 from option_contract import read_chain, read_contract
+from state import level_store
 from stream_spine import verbatim_msg
 from tests.shared_helpers import fixture_json
 from time_et import ET
@@ -238,8 +239,8 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
         body = server.tape("SPY", at)
         sides = [server.options_microstructure(sym, at)["put_call"] for sym in (CALL, PUT)]
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop("SPY", None)
+        with level_store._lock:
+            level_store._levels.pop("SPY", None)
         lmp.record_feed_down()
         state.clear_all_live_state()
     assert unlisted[0]["available"] is False and unlisted[0]["rows"] == []

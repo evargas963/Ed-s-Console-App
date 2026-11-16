@@ -66,6 +66,7 @@ from app.market_data.schwab.streaming import capture, live_ui
 from instrument_identity import ticker_storage_key
 from numeric_contract import compact_text, count_text, dollars_text
 from option_contract import read_chain
+from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import clock_from
 from tests.real_chains import CRWD, MRVL
@@ -580,9 +581,9 @@ def _publish(real) -> None:
 
 
 def _forget_levels() -> None:
-    with server._terrain_cache_lock:
+    with level_store._lock:
         for tk in (A, B):
-            server._terrain_cache.pop(tk, None)
+            level_store._levels.pop(tk, None)
     lmp.record_feed_down()
 
 
@@ -786,7 +787,7 @@ def _published_rows(tk, key) -> list:
     """
     return [
         {"strike": r.strike, "value": r.value, "text": compact_text(r.value)}
-        for r in getattr(server.published_levels(tk), key)
+        for r in getattr(level_store.published_levels(tk), key)
     ]
 
 
@@ -918,7 +919,7 @@ def test_a_producer_held_on_the_levels_lock_does_not_stall_the_beat():
     release = threading.Event()
 
     def hold(held: threading.Event) -> None:
-        with server._terrain_cache_lock:
+        with level_store._lock:
             held.set()
             release.wait(5)
 
@@ -956,8 +957,7 @@ def test_a_producer_that_raises_fails_its_panel_alone_in_words():
     raises reading them, as a defect in a producer would.
     """
     _publish(CRWD)
-    with server._terrain_cache_lock:
-        server._terrain_cache[A] = replace(server._terrain_cache[A], vanna_rows=None)
+    level_store.publish(A, replace(level_store.published_levels(A), vanna_rows=None))
 
     async def body(url):
         async with connect(url) as ws:
@@ -1000,7 +1000,7 @@ TERRAIN_READERS = {"terrain:levels": {}, "terrain:chart": {}}
 
 def _published_terrain(tk) -> dict:
     """Return the levels the producer published for `tk`: what every terrain panel carries."""
-    snap = server.published_levels(tk).snap
+    snap = level_store.published_levels(tk).snap
     return {"call_wall": snap.call_wall, "put_wall": snap.put_wall, "gamma_flip": snap.gamma_flip}
 
 
@@ -1101,11 +1101,8 @@ def test_a_terrain_producer_that_raises_fails_its_panel_alone_in_words():
     the terrain raises copying it, as a defect in its producer would.
     """
     _publish(CRWD)
-    with server._terrain_cache_lock:
-        held = server._terrain_cache[A]
-        server._terrain_cache[A] = replace(
-            held, snap=replace(held.snap, flip_note=threading.Lock())
-        )
+    held = level_store.published_levels(A)
+    level_store.publish(A, replace(held, snap=replace(held.snap, flip_note=threading.Lock())))
 
     async def body(url):
         async with connect(url) as ws:
@@ -1147,7 +1144,7 @@ def _per_strike(tk) -> list:
             "text": dollars_text(r.value),
             "volume_text": count_text(r.volume),
         }
-        for r in server.published_levels(tk).snap.per_strike["all"]
+        for r in level_store.published_levels(tk).snap.per_strike["all"]
     ]
 
 
@@ -1248,8 +1245,7 @@ def test_a_page_that_drops_and_returns_gets_its_strikes_again():
 def test_a_strikes_producer_that_raises_fails_its_panel_alone_in_words():
     """Induced condition: CRWD's publication holds a prior day with no rows: the strikes raise."""
     _publish(CRWD)
-    with server._terrain_cache_lock:
-        server._terrain_cache[A] = replace(server._terrain_cache[A], prior_day=object())
+    level_store.publish(A, replace(level_store.published_levels(A), prior_day=object()))
 
     async def body(url):
         async with connect(url) as ws:
@@ -1276,7 +1272,7 @@ HEATMAP = {**ALL, "cols": None, "expiry": None}
 
 def _surface_expiries(tk) -> list:
     """Return the expiries of the surface the producer published for `tk`, in column order."""
-    return [e["expiry"] for e in server.published_levels(tk).gamma_surface["expirations"]]
+    return [e["expiry"] for e in level_store.published_levels(tk).gamma_surface["expirations"]]
 
 
 @pytest.mark.usefixtures("no_levels")
@@ -1362,10 +1358,9 @@ def test_a_switch_and_a_reconnect_send_the_surface_of_the_ticker_on_screen_only(
 def test_a_surface_producer_that_raises_fails_its_panel_alone_in_words():
     """Induced condition: CRWD's published surface holds no strikes (None), so the window raises."""
     _publish(CRWD)
-    with server._terrain_cache_lock:
-        held = server._terrain_cache[A]
-        surface = {**held.gamma_surface, "strikes": None}
-        server._terrain_cache[A] = replace(held, gamma_surface=surface)
+    held = level_store.published_levels(A)
+    surface = {**held.gamma_surface, "strikes": None}
+    level_store.publish(A, replace(held, gamma_surface=surface))
 
     async def body(url):
         async with connect(url) as ws:
@@ -1395,7 +1390,7 @@ async def _frames_of(ws, kinds) -> dict:
 @pytest.mark.usefixtures("no_levels")
 def test_each_chain_reader_gets_its_own_expiry_at_once_with_no_get():
     _publish(MRVL)
-    exps = server.published_levels(B).snap.expiries
+    exps = level_store.published_levels(B).snap.expiries
     assert len(exps) > 1
 
     async def body(url):
@@ -1443,7 +1438,7 @@ def test_new_levels_reach_only_the_pages_showing_the_chain_on_that_ticker():
             await asyncio.to_thread(_publish, CRWD)
             frame = await _next(on_a, "chain:ladder")
             assert frame["ticker"] == A and frame["status"] == "ok"
-            assert frame["expiry"] == server.published_levels(A).snap.expiries[0]
+            assert frame["expiry"] == level_store.published_levels(A).snap.expiries[0]
             assert _kind(await _select(on_b, B, {}), "chain:ladder") == []
             assert _kind(await _select(list_only, A), "chain:ladder") == []
 
@@ -1454,9 +1449,8 @@ def test_new_levels_reach_only_the_pages_showing_the_chain_on_that_ticker():
 def test_a_chain_producer_that_raises_fails_its_panel_alone_in_words():
     """Induced condition: CRWD's priced chain holds a contract that is None, so the chain raises."""
     _publish(CRWD)
-    with server._terrain_cache_lock:
-        held = server._terrain_cache[A]
-        server._terrain_cache[A] = replace(held, priced_chain=[None, *held.priced_chain])
+    held = level_store.published_levels(A)
+    level_store.publish(A, replace(held, priced_chain=[None, *held.priced_chain]))
 
     async def body(url):
         async with connect(url) as ws:

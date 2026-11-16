@@ -33,6 +33,7 @@ import time_et
 from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
+from state import bar_store, cross_store, level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
 from tests.feed_live_helper import ROUND_SEC, daemon_status
@@ -97,13 +98,13 @@ SETS = pytest.mark.parametrize("real", [AMZN, SPY], ids=lambda real: real.ticker
 
 
 def _clear(tk: str) -> None:
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with level_store._lock:
+        level_store._levels.pop(tk, None)
     server._gamma_surface_seq.pop(tk, None)
-    with server._bars_lock:
-        server._bars.pop(tk, None)
-        for key in [k for k in server._series if k[0] == tk]:
-            del server._series[key]
+    with bar_store._lock:
+        bar_store._bars.pop(tk, None)
+        for key in [k for k in bar_store._series if k[0] == tk]:
+            del bar_store._series[key]
     for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
         del server._MATERIALIZED_SNAPSHOTS[key]
     lmp._by_ticker.pop(tk, None)
@@ -111,8 +112,8 @@ def _clear(tk: str) -> None:
     lmp.record_feed_down()
     ofls.clear_all_live_state()
     history.LEAN.forget(tk)
-    with server._crosses_lock:
-        server._crosses.pop(tk, None)
+    with cross_store._lock:
+        cross_store._crosses.pop(tk, None)
 
 
 def build_e2e_panels(real: RealSet, folder: Path) -> dict:
@@ -188,9 +189,10 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
             + real.desk["bars"],
             now,
         )
-        # the day's level crosses as recorded, oldest first, as a start loads them (_load_crosses)
-        with server._crosses_lock:
-            server._crosses[tk] = list(real.desk["crosses"])
+        # the day's level crosses as recorded, oldest first, as a start loads them
+        # (cross_store.load)
+        with cross_store._lock:
+            cross_store._crosses[tk] = list(real.desk["crosses"])
         server._publish_levels(tk, captures=captures, now=now)
         return json.loads(
             json.dumps(

@@ -26,6 +26,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
+from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD, MRVL
@@ -49,8 +50,8 @@ def _clean():
     lmp.record_feed_down()
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
 
 
 def _publish(held, ticked, *, at=_AT, socket_open=True):
@@ -86,7 +87,7 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
         TK, _CONTRACTS, at.timestamp() - 10.0, chain_spot=(_SPOT, at.timestamp()), now=at
     )
     body = server.gamma_surface_payload(TK, "all", None, 0, None, None, at)
-    surface = server.published_levels(TK).gamma_surface
+    surface = level_store.published_levels(TK).gamma_surface
     return body["view"]["coverage"], surface
 
 
@@ -173,10 +174,10 @@ def test_a_strike_an_expiry_does_not_list_has_no_stream_state():
             chain_spot=(MRVL.spot, MRVL.now.timestamp()),
             now=MRVL.now,
         )
-        surface = server.published_levels(tk).gamma_surface
+        surface = level_store.published_levels(tk).gamma_surface
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
     stamped = [
         (bool(pair["call"] or pair["put"]), col)
         for cell in surface["cells"]

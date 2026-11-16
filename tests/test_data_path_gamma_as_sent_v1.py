@@ -22,6 +22,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming.capture import shown_first
 from option_contract import read_chain
+from state import level_store
 from tests.real_chains import NFLX
 from time_et import ET, record_markets
 
@@ -60,8 +61,8 @@ def published():
         now=at,
     )
     yield
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop("NVDA", None)
+    with level_store._lock:
+        level_store._levels.pop("NVDA", None)
 
 
 @pytest.mark.usefixtures("published")
@@ -137,8 +138,8 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
     try:
         body = server.chain(tk, time_et.now(), {"expiry": expiry})
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
     no_value = {
         c["symbol"]
         for c in NFLX.chain

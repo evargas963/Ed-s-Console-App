@@ -17,10 +17,10 @@ import json
 from collections import Counter
 from pathlib import Path
 
-import server
 from app.options.order_flow.engine import OF_TAPE_WINDOW_5M_SEC
 from app.options.order_flow.state import MAX_TAPE_PRINTS
 from liquidity_value_engine import HOLD_WINDOW_SESSIONS
+from state import bar_store
 from tests.feed_live_helper import price_history
 from time_et import sessions
 
@@ -68,4 +68,4 @@ def test_the_bars_hold_the_sessions_the_hold_rates_read_and_schwabs_extended_hou
     regular = next(s for s in held.values() if s.regular)
     minutes = sum((end - start).total_seconds() for start, end in regular.regular) / 60.0
     extended = len(price_history("SPY", "1m")["body"]["candles"])
-    assert HOLD_WINDOW_SESSIONS * minutes + extended <= server.BARS_KEPT
+    assert HOLD_WINDOW_SESSIONS * minutes + extended <= bar_store.BARS_KEPT

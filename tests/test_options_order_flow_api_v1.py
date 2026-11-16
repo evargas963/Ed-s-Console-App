@@ -20,6 +20,7 @@ import server
 import time_et
 from app.options.order_flow import streaming as ofs
 from option_contract import read_chain
+from state import level_store
 from stream_spine import book_msg
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import SPY_0DTE
@@ -106,8 +107,8 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     def served() -> dict:
         return server.options_microstructure(contract, at)
 
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop("SPY", None)
+    with level_store._lock:
+        level_store._levels.pop("SPY", None)
     try:
         holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
         server._publish_levels(
@@ -131,8 +132,8 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         down = served()["streaming_plane"]
     finally:
         lmp.record_feed_down()
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop("SPY", None)
+        with level_store._lock:
+            level_store._levels.pop("SPY", None)
     assert held["subscription_state"] == "SUBSCRIBED"
     assert (held["feed_health"]["l1"]["state"], held["feed_health"]["book"]["state"]) == (
         "LIVE",

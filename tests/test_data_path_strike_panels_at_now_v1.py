@@ -18,6 +18,7 @@ from pathlib import Path
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
+from state import level_store
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
 
@@ -29,8 +30,8 @@ _QUOTE = json.loads(
 
 
 def _clear(tk):
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with level_store._lock:
+        level_store._levels.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_down()

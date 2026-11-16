@@ -2,7 +2,7 @@
 
 The price history is /pricehistory, which the capture daemon asks for each ET date; the streamed
 bars the daemon records (stream_capture.db stream_bars_raw) and forwards. The console keeps them
-in memory (server._bars: the history, each pushed bar on top); every live reader reads memory.
+in memory (state.bar_store: the history, each pushed bar on top); every live reader reads memory.
 Only completed bars are served. A minute Schwab sent neither way stays missing.
 """
 
@@ -17,6 +17,7 @@ import app.options.order_flow.streaming as ofs
 import server
 import time_et
 from app.market_data.schwab.streaming.live_push import is_forwarded
+from state import bar_store
 from stream_spine import bar_msg
 from tests.feed_live_helper import price_history
 from time_et import ET, ct_label
@@ -40,7 +41,7 @@ def _bar(start: float, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0) -> dict:
 
 
 def _clear():
-    server._bars.pop(TK, None)
+    bar_store._bars.pop(TK, None)
 
 
 def setup_function(_fn):
@@ -65,19 +66,19 @@ def test_the_feed_hands_each_streamed_bar_to_the_writer():
 
 def test_a_streamed_bar_is_written_and_read_back_exactly():
     assert server._write_streamed_bar(_bar(T0, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0))
-    (b,) = server._bars_1m(TK)
+    (b,) = bar_store.bars_1m(TK)
     assert (b.ts, b.open, b.high, b.low, b.close, b.volume) == (T0, 10.0, 11.0, 9.5, 10.5, 100.0)
 
 
 def test_a_bar_missing_a_field_is_not_written():
     assert not server._write_streamed_bar(dict(_bar(T0), close=None))
-    assert server._bars_1m(TK) == []
+    assert bar_store.bars_1m(TK) == []
 
 
 def test_a_bar_without_its_volume_is_written_with_its_volume_absent():
     """A missing volume is absent, never 0; the price levels take the bar as written."""
     assert server._write_streamed_bar(dict(_bar(T0), volume=None))
-    (b,) = server._bars_1m(TK)
+    (b,) = bar_store.bars_1m(TK)
     assert b.volume is None and (b.open, b.close) == (10.0, 10.5)
 
 
@@ -85,20 +86,20 @@ def test_a_price_that_is_not_a_number_is_not_written():
     """AGENTS.md rule 2: -999, text, NaN and infinity are not numbers."""
     for bad in (-999, "10.0", float("nan"), float("inf")):
         assert not server._write_streamed_bar(dict(_bar(T0), low=bad)), bad
-    assert server._bars_1m(TK) == []
+    assert bar_store.bars_1m(TK) == []
 
 
 def test_a_reported_zero_is_written_as_sent():
     """Operator ruling 2026-09-27: take what Schwab sends; a 0 price or volume is 0."""
     assert server._write_streamed_bar(_bar(T0, lo=0.0, v=0.0))
-    (b,) = server._bars_1m(TK)
+    (b,) = bar_store.bars_1m(TK)
     assert (b.low, b.volume) == (0.0, 0.0)
 
 
 def test_a_minute_the_stream_did_not_deliver_stays_missing():
     for m in (0, 1, 3):  # minute 2 never arrived
         server._write_streamed_bar(_bar(T0 + 60 * m))
-    assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
+    assert [b.ts for b in bar_store.bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
 
 @pytest.mark.alone
@@ -121,7 +122,7 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
     def take() -> tuple[float, float, dict]:
         """(seconds taken, seconds of the writer's own CPU, the bars read) of one write."""
         for tk in answers:
-            server._bars.pop(tk, None)
+            bar_store._bars.pop(tk, None)
         t0, w0 = time_et.elapsed(), time_et.worked()
         server._write_streamed_bars(
             [
@@ -136,7 +137,7 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
             ],
             datetime.fromtimestamp(answers["SPY"]["answered_utc"], ET),
         )
-        read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in answers}
+        read = {tk: bar_store.bars_1m(tk, bar_store.BARS_KEPT) for tk in answers}
         return time_et.elapsed() - t0, time_et.worked() - w0, read
 
     def beside_busy() -> tuple[float, float, dict]:
@@ -160,7 +161,7 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
         pairs = [(take(), beside_busy()) for _ in range(5)]
     finally:
         for tk in answers:
-            server._bars.pop(tk, None)
+            bar_store._bars.pop(tk, None)
     samples = [s for pair in pairs for s in pair]
     for _took, _work, read in samples:
         for tk, a in answers.items():

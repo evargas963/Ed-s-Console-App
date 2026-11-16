@@ -23,6 +23,7 @@ import pytest
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
+from state import level_store
 from terrain_engine import SCOPE_ROWS, strike_window
 from tests.feed_live_helper import daemon_status
 from time_et import ET
@@ -62,8 +63,8 @@ def _price(spot):
 
 @pytest.fixture(autouse=True)
 def _published():
-    with server._terrain_cache_lock:  # this test's chain, never one an earlier test left
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:  # this test's chain, never one an earlier test left
+        level_store._levels.pop(TK, None)
     _price(_SPOT)
     assert (
         server._publish_levels(
@@ -72,8 +73,8 @@ def _published():
         is not None
     )
     yield
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     lmp.record_feed_down()
