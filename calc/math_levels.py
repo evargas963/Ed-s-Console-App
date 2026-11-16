@@ -97,7 +97,7 @@ def compute_charm_by_strike(
             continue
         out.setdefault(c.strike, {"call_charm": 0.0, "put_charm": 0.0, "net_charm": 0.0})
         row = _profile_row(c, years)
-        if row == "zero_open_interest":  # no contract open: it adds nothing to its strike's 0
+        if row == ZERO_OPEN_INTEREST:  # no contract open: it adds nothing to its strike's 0
             continue
         slot.append((c.strike, c.side == "CALL"))
         inputs.append(row[1:] if isinstance(row, tuple) else (np.nan,) * 7)
@@ -175,6 +175,15 @@ def pick_charm_wall_strikes(
 
 _CHARM_SIDES: tuple[CharmSide, ...] = ("call_charm", "put_charm")
 
+#: why a contract is not priced: the keys of contract_inputs' unpriced counts
+ZERO_OPEN_INTEREST = "zero_open_interest"
+SETTLED = "settled"
+NO_OPEN_INTEREST = "no_open_interest"
+INVALID = "invalid"
+NO_VOLATILITY = "no_volatility"
+NO_EXPIRY = "no_expiry"
+NO_RATE = "no_rate"
+
 
 def contract_inputs(
     contracts: list[OptionContract],
@@ -197,7 +206,7 @@ def contract_inputs(
         row = _profile_row(c, tte(c.expiration, c.settlement))
         if isinstance(row, tuple):
             priced.append(row)
-        elif row != "zero_open_interest":
+        elif row != ZERO_OPEN_INTEREST:
             unpriced[row] = unpriced.get(row, 0) + 1
     return priced, unpriced
 
@@ -208,13 +217,13 @@ def _profile_row(c: OptionContract, t_years: float | None) -> ProfileRow | str:
     The row is _contract_inputs' (strike, oi, mult, t_years, sigma, sign) and then the contract's
     rate and dividend yield as decimals: Schwab's /chains `interestRate` (OptionChain,
     docs/schwab/schwab_market_data_api_spec.pdf p. 27) and `dividendYield`, percents as sent. A
-    contract sent without either is not priced ("no_rate").
+    contract sent without either is not priced (NO_RATE).
     """
     row = _contract_inputs(c, t_years)
     rate, dividend = c.interest_rate, c.dividend_yield
     if isinstance(row, tuple) and rate is not None and dividend is not None:
         return (*row, rate / 100.0, dividend / 100.0)
-    return row if isinstance(row, str) else "no_rate"
+    return row if isinstance(row, str) else NO_RATE
 
 
 def repriced_to_close(
@@ -244,22 +253,22 @@ def _contract_inputs(
 
     `t_years` is the contract's INTRADAY time-to-expiry, as its caller took it once
     (math_exposure_core.expiry_years, time_et.time_to_expiry_years) or the horizon it prices at
-    (repriced_to_close); None: not known, so the contract is not priced ("no_expiry").
+    (repriced_to_close); None: not known, so the contract is not priced (NO_EXPIRY).
     """
     strike, oi, mult = c.strike, c.open_interest, c.multiplier
     if oi == 0:
-        return "zero_open_interest"
+        return ZERO_OPEN_INTEREST
     if t_years == 0:
-        return "settled"
+        return SETTLED
     if oi is None:
-        return "no_open_interest"
+        return NO_OPEN_INTEREST
     if strike is None or strike <= 0 or mult is None or c.side is None:
-        return "invalid"
+        return INVALID
     sigma = schwab_iv_to_sigma(c.volatility)
     if sigma is None or sigma <= 0:
-        return "no_volatility"
+        return NO_VOLATILITY
     if t_years is None:
-        return "no_expiry"
+        return NO_EXPIRY
     return strike, oi, mult, t_years, sigma, (1 if c.side == "CALL" else -1)
 
 
@@ -403,11 +412,9 @@ def compute_gamma_support_levels(
     if not profile or spot is None or spot <= 0:
         return {"gsf": None, "grc": None}
     n_spot = gamma_at_price(profile, float(spot))
-    if n_spot is None:
-        return {"gsf": None, "grc": None}
     max_abs = max(abs(v) for _, v in profile)
     eps = eps_frac * max_abs if max_abs > 0 else 0.0
-    if n_spot <= eps:
+    if n_spot is None or n_spot <= eps:
         return {"gsf": None, "grc": None}
     target = phi * n_spot
 
