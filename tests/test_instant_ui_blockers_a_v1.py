@@ -20,6 +20,7 @@ import live_price_rows
 import server as srv
 import time_et
 from feed import schwab_client as sc
+from push import bars as push_bars
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, spy_minutes
 from tests.page_on_socket import Pages
 
@@ -115,7 +116,7 @@ def test_the_client_never_sends_more_requests_at_once_than_its_setting(tmp_path)
 def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
     m = spy_minutes()[-10:]
     assert m[-1]["v"] is None and all(b["v"] is not None for b in m[:-1])
-    out = srv.aggregate_bars(m, "5")
+    out = push_bars.aggregate_bars(m, "5")
     assert [b["t"] for b in out] == [m[0]["t"], m[5]["t"]]
     first, second = out
     head, tail = m[:5], m[5:]
@@ -135,13 +136,13 @@ def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
     assert second["v"] is None, (
         "a bucket with an unreported minute has unknown volume, not a partial sum"
     )
-    assert srv.aggregate_bars(m, "1") == m
+    assert push_bars.aggregate_bars(m, "1") == m
 
 
 def test_daily_roll_up_is_keyed_on_the_et_trading_date():
     m = spy_minutes()
     thursday, friday = m[:390], m[390:]
-    out = srv.aggregate_bars(m, "D")
+    out = push_bars.aggregate_bars(m, "D")
     assert len(out) == 2 and out[0]["h"] == max(b["h"] for b in thursday)
     assert out[0]["v"] == sum(b["v"] for b in thursday)
     assert [b["t"] for b in out] == [thursday[0]["t"], friday[0]["t"]]

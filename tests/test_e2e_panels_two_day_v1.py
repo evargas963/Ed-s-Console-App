@@ -33,6 +33,7 @@ import time_et
 from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
+from push import bars as push_bars
 from push import forces as push_forces
 from push import strikes as push_strikes
 from push import tape as push_tape
@@ -236,10 +237,10 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         for venue in real.venues
                     },
                     "bars": {
-                        tf: server.bars(tk, at, {"tf": tf, "limit": limit})
+                        tf: push_bars.bars(tk, at, {"tf": tf, "limit": limit})
                         for tf, limit in CHART_TFS.items()
                     },
-                    "bars_flow": server.bars(tk, at, FLOW_BARS),
+                    "bars_flow": push_bars.bars(tk, at, FLOW_BARS),
                     # the option tape: the daemon streams none of these contracts, and says so
                     "tape": push_tape.tape(tk, at),
                 }
