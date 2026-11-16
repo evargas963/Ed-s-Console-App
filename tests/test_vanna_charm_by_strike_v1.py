@@ -27,6 +27,7 @@ import time_et
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from option_contract import read_chain
+from push import tape as push_tape
 from state import level_store
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_live
@@ -180,7 +181,7 @@ def build_e2e_panels() -> dict:
                     "surface": server.gamma_surface(
                         TK, chain_at, {**AUTO, "cols": None, "expiry": None}
                     ),
-                    "tape": server.tape(TK, chain_at),
+                    "tape": push_tape.tape(TK, chain_at),
                 }
             )
         )

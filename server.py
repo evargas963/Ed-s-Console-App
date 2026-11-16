@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import heapq
 import json
 import logging
 import os
@@ -38,13 +37,7 @@ from app.options.order_flow.engine import (
     readout_card,
 )
 from app.options.order_flow.history import (
-    BOOKS_KEPT_SEC,
     LEAN,
-    BookHeatmap,
-    NoHeatmap,
-    book_heatmap_for_ticker,
-    recent_prints,
-    tape_row,
 )
 from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import (
@@ -72,7 +65,6 @@ from confluence_composite import at_price, build_matrix, window_rows
 from db import LevelCrossEvent, get_db
 from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
-from l1_trade_observation import canonical_tape_prints
 from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 from liquidity_value_engine import (
     HOLD_BASELINE_LEVELS,
@@ -101,6 +93,7 @@ from math_exposure_core import (
     strike_total_oi,
     strike_volume_legs,
 )
+from math_forces import Forces, forces_absent
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import (
@@ -114,15 +107,22 @@ from numeric_contract import (
     strike_text,
 )
 from open_gap import (
-    BAR_SECONDS,
-    LAST_OPENS,
-    Followed,
-    Open,
-    OpenGapRecord,
     open_gap_record,
-    today_open,
 )
 from option_contract import OptionContract, chain_row
+from push import bookmap as push_bookmap
+from push import experimental as push_experimental
+from push import expiries as push_expiries
+from push import forces as push_forces
+from push import tape as push_tape
+from push.answers import unavailable
+from push.asked import tf_asked, venue_asked
+from push.verdict import (
+    LEVELS_STALE,
+    LevelsVerdict,
+    terrain_cache_get,
+    terrain_staleness,
+)
 from state import bar_store, cross_store, level_store
 from state.level_store import PublishedLevels, published_levels
 from terrain_atr import Atr, compute_atrs
@@ -152,7 +152,6 @@ from time_et import (
     CLOSE_AUCTION,
     ET,
     OPEN_AUCTION,
-    Session,
     age_text,
     auction,
     ct_label,
@@ -162,10 +161,8 @@ from time_et import (
     market_session_date,
     option_close_product,
     option_market_open,
-    option_window_began,
     options_closed_at,
     options_open,
-    options_opened,
     record_markets,
     session,
     session_label,
@@ -193,15 +190,6 @@ class PriceMark(TypedDict):
 
     spot_time_ct: str | None
     spot_not_live_text: str | None
-
-
-class LevelsVerdict(TypedDict):
-    """The levels' verdict every screen shows (terrain_staleness)."""
-
-    levels_state: str
-    levels_stale_reason: str | None
-    levels_age_text: str | None
-    levels_time_ct: str | None
 
 
 class LevelsMark(TypedDict):
@@ -244,13 +232,6 @@ def resolve_spot(ticker: str, *, now: float) -> tuple[float | None, str, float |
     return None, outage, None
 
 
-#: the series the open-gap record is computed from, in open_gap_record's order: Schwab's 5-minute
-#: bars of the regular session and with extended hours, each asked once a day; each ticker's
-#: newest answer of each, and its record from both (None: no open counted). Owned by the bar
-#: writer; the opengap panel reads the record.
-OPEN_GAP_SERIES = ("5m365r", "5m365")
-_open_gap_answers: dict[tuple[str, str], list[dict[str, Any]]] = {}
-_open_gap: dict[str, OpenGapRecord | None] = {}
 #: where the bars come from, named in every level's provenance
 BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
 
@@ -278,19 +259,14 @@ def _schwab_bar(
 def _take_open_gap(tk: str, series: str, sent: list[dict[str, Any]]) -> None:
     """Take one of the open-gap record's two answers.
 
-    Each answer is held until both are in, then the record is computed from the newest of each.
-    A record that changed is pushed to the pages showing that ticker (no bars or candles changed,
-    so no levels are built).
+    Each answer is held (state.bar_store) until both are in, then the record is computed from the
+    newest of each. A record that changed is pushed to the pages showing that ticker (no bars or
+    candles changed, so no levels are built).
     """
-    _open_gap_answers[(tk, series)] = sent
-    both = [(tk, s) for s in OPEN_GAP_SERIES if (tk, s) in _open_gap_answers]
-    if len(both) < len(OPEN_GAP_SERIES):
-        return
-    record = open_gap_record(*(_open_gap_answers[k] for k in both))
-    if tk in _open_gap and _open_gap[tk] == record:
-        return
-    _open_gap[tk] = record
-    live_ui.changed(app.state, tk, "experimental")
+    if bar_store.take_open_gap_answer(tk, series, sent) and bar_store.hold_open_gap(
+        tk, open_gap_record(*bar_store.open_gap_answers(tk))
+    ):
+        live_ui.changed(app.state, tk, "experimental")
 
 
 def _write_price_history(msg: dict[str, Any]) -> str | None:
@@ -304,7 +280,7 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
-    if msg["series"] in OPEN_GAP_SERIES:  # no bars or candles held: the open-gap record's input
+    if msg["series"] in bar_store.OPEN_GAP_SERIES:  # no bars or candles: the open-gap record's
         _take_open_gap(tk, msg["series"], sent)
         return None
     if msg["series"] not in {*bar_store.MINUTE_SERIES, *SCHWAB_SERIES.values(), "1w", "1mo"}:
@@ -585,165 +561,9 @@ def favicon() -> Response:
 _CROSS_WORD = {"up": "above", "down": "below"}
 
 
-def unavailable(ticker: str, reason: str, **fields: Any) -> dict[str, Any]:
-    """Return a route's answer when the value it serves is not held for `ticker`.
-
-    It says why, with the route's own `fields`.
-    """
-    return {"ticker": ticker, "available": False, **fields, "reason": reason}
-
-
 # ── THE LEVELS (from the chains the capture daemon fetches) ──────────────────
-#: Why the ticker's newest chain is not priced: the daemon's chain fetch failed with Schwab's
-#: answer, or a chain arrived incomplete. Cleared by the next chain priced.
-_terrain_refresh_last_error: dict[str, str] = {}
-
 _terrain_loop_running: bool = False
 _terrain_loop_thread: threading.Thread | None = None
-
-
-def terrain_cache_get(ticker: str, now: float) -> tuple[PublishedLevels | None, LevelsVerdict]:
-    """Return the ticker's published levels (None before the first) and their verdict at `now`.
-
-    The verdict is terrain_staleness's: the cache holds the chain's time, never a verdict.
-    """
-    levels = published_levels(ticker)
-    if levels is None:
-        return None, terrain_staleness(None, ticker, now=now)
-    return levels, terrain_staleness(
-        levels.computed_ts_utc, ticker, now=now, levels_ts_utc=levels.levels_ts_utc
-    )
-
-
-def terrain_staleness(
-    computed_ts_utc: float | None,
-    ticker: str,
-    *,
-    now: float,
-    levels_ts_utc: float | None = None,
-) -> LevelsVerdict:
-    """Return the levels' state at `now`, THE levels verdict every screen shows (`levels_state`).
-
-    LIVE from the market day's start (time_et.options_open) until the ticker's own option market
-    closes (time_et.option_close_product: stock options at 16:00 ET, index-close options at 16:15)
-    with its chain current; CLOSE once that market has closed, and through the day's first round,
-    with a chain fetched after its close, however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY,
-    when the chain is overdue or the close values were never fetched; NOT LIVE when Schwab's
-    /markets answer for today is not held. The daemon's last answer for the ticker's chain (a
-    failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
-    (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option market
-    is open the daemon fetches every watchlist ticker's chain without end, so age past two of its
-    delivered rounds is a gap, never a schedule. Served beside it: the time of the newest Schwab
-    option value the levels hold (`levels_ts_utc`: the chain, or a value pushed since) and its
-    age.
-    """
-    failure = _terrain_refresh_last_error.get(ticker_storage_key(ticker))
-    state, reason = _levels_state(computed_ts_utc, ticker, now, failure)
-    age = None if levels_ts_utc is None else now - float(levels_ts_utc)
-    return {
-        "levels_state": state,
-        "levels_stale_reason": reason,
-        "levels_age_text": None if age is None else age_text(age),
-        "levels_time_ct": None if levels_ts_utc is None else ct_label(levels_ts_utc),
-    }
-
-
-def _in_first_round(
-    computed_ts_utc: float, opened: float, now: float, stale_after: float | None
-) -> bool:
-    """Whether a chain from before today's open stands while the day's first round runs.
-
-    The round runs until two of the daemon's reported rounds have passed since the open; with
-    none reported yet, it is still running. Yesterday's close values stand meanwhile.
-    """
-    return float(computed_ts_utc) < opened and (stale_after is None or now - opened <= stale_after)
-
-
-def _current_at(computed_ts_utc: float, close: float, stale_after: float | None) -> bool:
-    """Whether levels computed at `computed_ts_utc` were current at the option `close`.
-
-    Its last values while it was open are the close values (operator 2026-11-15: "keep the last
-    known data on the screen until we get new data"): current when computed at or after the
-    close, or within two of the daemon's rounds (`stale_after`) before it; with no round
-    reported, only at or after it.
-    """
-    behind = close - float(computed_ts_utc)
-    return behind <= 0 or (stale_after is not None and behind <= stale_after)
-
-
-def _levels_state(
-    computed_ts_utc: float | None, ticker: str, now: float, failure: str | None
-) -> tuple[str, str]:
-    """(levels_state, why it is not LIVE or CLOSE) for terrain_staleness.
-
-    While the daemon asks Schwab for nothing (its status's `chains_waiting`: a refused sign-in),
-    that is the why.
-    """
-    status = lmp.daemon_status(now)
-    waiting = None if status is None else status["chains_waiting"]
-    if waiting:
-        failure = f"no chain is fetched: {waiting}"
-    sep = f" — {failure}" if failure else ""
-    if computed_ts_utc is None:
-        return LEVELS_STALE, "no terrain snapshot has been computed yet" + sep
-    at = datetime.fromtimestamp(now, ET)
-    product = option_close_product(ticker)
-    market_open = options_open(at)
-    if market_open is None:
-        return lmp.NOT_LIVE, "the market session is unknown" + sep
-    age = now - float(computed_ts_utc)
-    # judged against the round the daemon's chain sweep last reported (every watchlist ticker
-    # once), and nothing of ours: a chain is overdue past two of them (one missed round is
-    # jitter, two a gap). A chain's age is its own, and a late heartbeat does not shorten the
-    # round; with no round reported yet, the first is in progress.
-    last = lmp.last_beat()
-    round_sec = None if last is None else last["chain_round_sec"]
-    stale_after = None if round_sec is None else 2.0 * float(round_sec)
-    closed = options_closed_at(at, product)
-    if (
-        not market_open
-        or (closed is not None and closed.date() == at.date())  # its own market has closed today
-        or _in_first_round(computed_ts_utc, options_opened(at).timestamp(), now, stale_after)
-    ):
-        if closed is None or not _current_at(computed_ts_utc, closed.timestamp(), stale_after):
-            return (
-                LEVELS_STALE,
-                "this ticker's options are closed and its levels were not current at the close"
-                + sep,
-            )
-        return LEVELS_CLOSE, ""
-    if stale_after is None:
-        return lmp.NOT_LIVE, "the daemon's first round of the watchlist is in progress" + sep
-    if age <= stale_after:
-        return lmp.LIVE, ""
-    if waiting:
-        return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
-    return LEVELS_STALE, _overdue_why(computed_ts_utc, at, now, stale_after, failure)
-
-
-def _overdue_why(
-    computed_ts_utc: float, at: datetime, now: float, stale_after: float, failure: str | None
-) -> str:
-    """Why levels past two of the daemon's rounds (`stale_after`) are overdue (_levels_state)."""
-    age = now - float(computed_ts_utc)
-    if failure:
-        return f"levels are {age:.0f}s old and every chain since has failed — {failure}"
-    began = option_window_began(at).timestamp()
-    if float(computed_ts_utc) < began and now - began <= stale_after:
-        # no chain is asked for between two of Schwab's option windows: the first since is due
-        return (
-            f"levels are {age:.0f}s old: Schwab's option session reopened {ct_label(began)} and "
-            "its first chain since has not arrived"
-        )
-    return (
-        f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
-        f"ticker in two of its rounds ({stale_after / 2:.0f}s each)"
-    )
-
-
-#: the levels' words beside the price's (live_market_plane LIVE / NOT_LIVE): the close values of the
-#: ticker's own option market stand; the chain is overdue or the close values were never fetched
-LEVELS_CLOSE, LEVELS_STALE = "CLOSE", "STALE"
 
 
 def levels_mark(levels: Mapping[str, Any], ticker: str, now: float) -> LevelsMark:
@@ -795,27 +615,11 @@ def _streamed_greeks_for_ticker(
     heartbeat; omitted, this call reads it.
     """
     out: dict[str, dict[str, Any]] = {}
-    for sym in _held_option_symbols_for_ticker(listed, now, feed):
+    for sym in lmp.held_option_symbols(listed, now, feed):
         held = [r for r in (get_stream_greeks(sym), option_top(sym)) if r is not None]
         if held:
             out[sym] = {k: v for r in held for k, v in r.items()}
     return out
-
-
-def _held_option_symbols_for_ticker(
-    listed: Collection[str], now: float, feed: lmp.FeedNow | None = None
-) -> list[str]:
-    """Every contract of the ticker's chain (`listed`) on the daemon's latest LEVELONE_OPTIONS beat.
-
-    A missing or too-old beat keeps that set; it does not say the feed is live.
-    `feed` is one read of that heartbeat; omitted, this call reads it.
-    """
-    if feed is None:
-        feed = lmp.feed_now(now)
-    opts = feed.held.get("LEVELONE_OPTIONS")
-    if not opts:
-        return []
-    return [sym for sym in opts if sym in listed]
 
 
 def _overlaid_symbols(pre: list[OptionContract], post: list[OptionContract]) -> list[str]:
@@ -888,7 +692,7 @@ def _stamp_gamma_surface_cell_stream_state(
     `streamed`: the streamed values of the contracts the daemon's latest beat holds of this
     ticker (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
     (live_market_plane.live_on, the one live rule); `held_symbols`: every contract on that
-    beat, ticked or not (_held_option_symbols_for_ticker). A missing beat is not live: those
+    beat, ticked or not (live_market_plane.held_option_symbols). A missing beat is not live: those
     cells keep the last streamed value and are not live. Each leg carries the time it was last
     received (`ts_recv`), never an age: the stamp stands until the feed next changes.
       'live'         — the feed is delivering this symbol now.
@@ -1363,7 +1167,7 @@ def _publish_levels(
     feed = lmp.feed_now(now.timestamp())
     streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
-    held = set(_held_option_symbols_for_ticker(listed, now.timestamp(), feed))
+    held = set(lmp.held_option_symbols(listed, now.timestamp(), feed))
     # inside the window each contract's newest values (the stream's, or its /quotes answer's
     # when that was received since this chain began); the close values are the chain as sent.
     # The cell stamp says whether that stream is live.
@@ -1636,7 +1440,7 @@ def _on_chain(
     """
     tk = ticker_storage_key(ticker)
     if contracts is None:
-        _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
+        level_store.chain_failed(tk, f"chain fetch failed ({reason})")
         return
     _wait_to_price(tk, DELIVERED, contracts, ts, spot)
 
@@ -1714,9 +1518,9 @@ def _price_chain(
             return
         # the chain as the sweep read it, once (complete_chain_capture.chain_messages)
         _publish_levels(tk, contracts, fetched_ts, chain_spot=spot, now=now)
-        _terrain_refresh_last_error.pop(tk, None)
+        level_store.chain_priced(tk)
     except Exception as e:  # kept as the ticker's reason, and logged
-        _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
+        level_store.chain_failed(tk, f"pricing the chain failed: {type(e).__name__}: {e}")
         log.warning("pricing the chain of %s failed: %s", tk, e, exc_info=True)
 
 
@@ -2260,7 +2064,7 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     LEVEL_TIMEFRAMES or a `limit` not a count up to BARS_LIMIT_MAX raises: the socket sends that
     panel's words. `ticker` is the levels' own key.
     """
-    tf, limit = _tf_asked(params), params.get("limit")
+    tf, limit = tf_asked(params), params.get("limit")
     if type(limit) is not int or not 1 <= limit <= BARS_LIMIT_MAX:
         raise ValueError(f"limit {limit!r} is not a count from 1 to {BARS_LIMIT_MAX}")
     held = [_bar_dict(c) for c in bar_store.bars_1m(ticker, limit)]
@@ -2441,116 +2245,11 @@ def strike_bars(key: str, tk: str, now: float, params: dict[str, Any]) -> dict[s
     return strike_bar_payload(tk, key, *window, now)
 
 
-#: the most prints the `tape` panel shows
-TAPE_ROWS = 100
-
-
-def tape(ticker: str, now: float) -> dict[str, Any]:
-    """Return the `tape` panel at `now`: the newest option trade prints of the ticker.
-
-    The prints the console builds from Schwab's LEVELONE_OPTIONS as the daemon pushes them
-    (the live state's prints, history.recent_prints), of every contract of `ticker` the daemon
-    streams
-    (_held_option_symbols_for_ticker), merged newest trade first by Schwab's own trade time
-    (TRADE_TIME_MILLIS; operator 2026-11-12: "yes we should use schwab's data"), prints of one
-    trade time in the order received, a print Schwab sent no trade time with after every one
-    that has one; capped at TAPE_ROWS across the merge, each with its contract's terms and open
-    interest from the chain record and its premium (history.tape_row). No aggressor side.
-    `ticker` is the levels' own key.
-    """
-    held = published_levels(ticker)
-    if held is None:
-        return unavailable(ticker, "the console holds no chain of this ticker yet", rows=[])
-    symbols = _held_option_symbols_for_ticker(held.contracts, now)
-    if not symbols:
-        return unavailable(ticker, "the daemon streams no option contract of this ticker", rows=[])
-    # the newest TAPE_ROWS of all the contracts' kept prints are picked first, and only those are
-    # made rows: each contract's last TAPE_ROWS received are the ones looked at
-    newest = heapq.nlargest(
-        TAPE_ROWS,
-        (
-            (p, sym)
-            for sym in symbols
-            for p in reversed(canonical_tape_prints(get_content_for_symbol(sym))[-TAPE_ROWS:])
-        ),
-        key=lambda kept: (
-            kept[0]["time_millis"] is not None,
-            kept[0]["time_millis"],
-            kept[0]["server_received_ts"],
-        ),
-    )
-    rows = [tape_row(recent_prints(sym, [p], 1)[0], held.contracts[sym]) for p, sym in newest]
-    return {
-        "available": bool(rows),
-        "rows": rows,
-        "reason": None if rows else "no trade prints for these contracts since the console started",
-    }
-
-
-def _venue_asked(params: dict[str, Any]) -> str:
-    """Return the Schwab book a panel's `params` name; another raises (the socket sends why)."""
-    venue = params.get("venue")
-    if venue not in BOOK_VENUES:
-        raise ValueError(f"venue {venue!r} is not one of {', '.join(BOOK_VENUES)}")
-    return venue
-
-
-def _tf_asked(params: dict[str, Any]) -> str:
-    """Return the chart timeframe a panel's `params` name; another raises."""
-    tf = params.get("tf")
-    if tf not in LEVEL_TIMEFRAMES:
-        raise ValueError(f"tf {tf!r} is not one of {', '.join(LEVEL_TIMEFRAMES)}")
-    return tf
-
-
-def bookmap(ticker: str, params: dict[str, Any]) -> BookHeatmap | NoHeatmap:
-    """Return the `bookmap` panel: the depth heatmap of the ticker's Schwab book `venue`.
-
-    history.book_heatmap_for_ticker bins the venue's recent books in the console's memory into a
-    time x price grid over the newest `minutes`. The window ends at the newest book, never at
-    the time of asking. A window not above 0, or longer than the books the console keeps
-    (history.BOOKS_KEPT_SEC), raises.
-    """
-    minutes = params.get("minutes")
-    if type(minutes) not in (int, float) or not 0 < minutes <= BOOKS_KEPT_SEC / 60:
-        raise ValueError(f"minutes {minutes!r} is not above 0 and at most {BOOKS_KEPT_SEC / 60:g}")
-    return book_heatmap_for_ticker(ticker, _venue_asked(params), minutes=minutes)
-
-
-def forces(ticker: str) -> dict[str, Any]:
-    """Return the `forces` panel: the ticker's forces, as the levels producer computed them."""
-    held = published_levels(ticker)
-    return _forces_absent(ticker) if held is None else held.forces
-
-
-def _forces_absent(tk: str) -> dict[str, Any]:
-    """Return the forces numbers before two market days of captures exist, or when the read fails.
-
-    Each number is None. Nothing stands in for it.
-    """
-    return {
-        "ticker": tk,
-        "available": False,
-        "doi_below": None,
-        "doi_above": None,
-        "doi_below_text": None,
-        "doi_above_text": None,
-        "dex_below_dollars": None,
-        "dex_above_dollars": None,
-        "dex_below_text": None,
-        "dex_above_text": None,
-        "charm_below": None,
-        "charm_above": None,
-        "charm_below_text": None,
-        "charm_above_text": None,
-    }
-
-
 def _forces_from_captures(
     tk: str,
     captures: list[dict[str, Any]],
     charm_by_strike: dict[float, Bucket] | None = None,
-) -> dict[str, Any]:
+) -> Forces:
     """Build the forces rows from banked chains.
 
     Each day's OI totalled by side of the NEWER capture's spot — bucketing each day by its own
@@ -2561,7 +2260,7 @@ def _forces_from_captures(
     Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
     newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
-    payload: dict[str, Any] = _forces_absent(tk)
+    payload = forces_absent(tk)
     try:
         rows = [
             (c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
@@ -2641,7 +2340,7 @@ def _forces_from_captures(
             }
     except Exception as e:
         log.warning("forces for %s failed (%s)", tk, e, exc_info=True)
-        payload = _forces_absent(tk)
+        payload = forces_absent(tk)
     return payload
 
 
@@ -2898,7 +2597,7 @@ def terrain(tk: str, now: float) -> dict[str, Any]:
         out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
         return out | levels_mark(out, tk, now)
     spot, spot_source, spot_ts = resolve_spot(tk, now=now)
-    _why = _terrain_refresh_last_error.get(tk)
+    _why = level_store.chain_failure(tk)
     empty = compute_terrain(tk, None, spot, now=at, sessions=sessions()).to_dict()
     mark = price_mark(tk, spot_ts, now)
     return (
@@ -3062,7 +2761,7 @@ DESK_MARKERS = 6
 
 def book(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     """Return the `book` panel at `now`: the ticker's quote and Schwab book `venue`."""
-    return order_flow_microstructure(ticker, _venue_asked(params), now)
+    return order_flow_microstructure(ticker, venue_asked(params), now)
 
 
 def _when_age(when: str | None, sec: float | None) -> str | None:
@@ -3352,42 +3051,6 @@ async def post_flow_contract(selected: FlowContract):
     return {"ok": True, "contract": contract}
 
 
-class Expiries(TypedDict):
-    """The expiries panel: each listed expiry with its dropdown texts, or why there are none."""
-
-    expiries: list[str] | None
-    dte: dict[str, float | None] | None
-    labels: dict[str, str] | None
-    dte_text: dict[str, str | None] | None
-    reason: str | None
-
-
-def expiries(ticker: str, now: float) -> Expiries:
-    """Return the ticker's listed expiries at `now`, each with its dropdown texts.
-
-    `ticker` is the levels' own key ($SPX). Each expiry's label is its date, MM/DD/YYYY, and its
-    `dte_text` Schwab's daysToExpiration as sent (18DTE), None when Schwab sent none. Before the
-    ticker's first chain is priced the list is unknown (None), with the levels' own reason; a
-    chain listing none is an empty list with its reason. The page's socket sends it (live_ui,
-    PAGE_PANELS) when the page subscribes on the ticker and on each new chain.
-    """
-    levels, verdict = terrain_cache_get(ticker, now)
-    exps = dte = labels = dte_text = None
-    reason = verdict["levels_stale_reason"]
-    if levels is not None:
-        exps, dte = levels.snap.expiries, levels.snap.expiry_dte
-        labels = {e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" for e in exps}
-        dte_text = {e: None if dte[e] is None else f"{dte[e]:g}DTE" for e in exps}
-        reason = None if exps else "no expiry listed in the published chain"
-    return {
-        "expiries": exps,
-        "dte": dte,
-        "labels": labels,
-        "dte_text": dte_text,
-        "reason": reason,
-    }
-
-
 #: the chain panel's reason while no chain of the ticker is held and no chain error is recorded
 NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
 
@@ -3427,9 +3090,9 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
         return _unavailable(f"expiry {expiry!r} is not an expiry date or null")
     if held is None:
-        return _unavailable(_terrain_refresh_last_error.get(t) or NO_CHAIN_YET)
+        return _unavailable(level_store.chain_failure(t) or NO_CHAIN_YET)
     if not held.priced_chain:
-        return _unavailable(held.snap.error or _terrain_refresh_last_error.get(t) or NO_CHAIN_YET)
+        return _unavailable(held.snap.error or level_store.chain_failure(t) or NO_CHAIN_YET)
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")
     # the contracts as the levels priced them (_publish_levels, each with its newest values):
@@ -4072,175 +3735,29 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     return body
 
 
-#: the chart timeframes the levels' VWAP curve is served in (aggregate_vwap)
-LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")
-
-
-def _moved_text(fraction: float) -> str:
-    """A gap or a move as the tab shows it: its arrow and its signed percent."""
-    return f"{'▲' if fraction > 0 else '▼'} {fraction:+.2%}"
-
-
-def _followed_served(direction: str, f: Followed) -> dict[str, Any]:
-    """How one gap direction was followed, as the tab shows it."""
-    share = f.matched / f.opens
-    return {
-        "title": f"When the gap was {direction}, the first 5 minutes went {direction}",
-        "share_text": f"{share:.0%}",
-        "count_text": f"{f.matched} of {f.opens} opens",
-        "range_text": f"95% range {f.low:.0%}-{f.high:.0%}",
-        "line": (
-            f"{direction.capitalize()} gaps, for reference: {direction} {f.matched} of "
-            f"{f.opens} ({share:.0%}, range {f.low:.0%}-{f.high:.0%})"
-        ),
-        # the bar's band, its mark and the coin flip, in percent of its width
-        "band_left": f.low * 100,
-        "band_width": (f.high - f.low) * 100,
-        "mark": share * 100,
-        "above_half": f.low > 0.5,
-    }
-
-
-def _open_served(o: Open) -> dict[str, Any]:
-    return {
-        "day_text": f"{o.day:%a %b %d}",
-        "gap_text": _moved_text(o.gap),
-        "gap_up": o.gap > 0,
-        "five_text": _moved_text(o.first_five),
-        "five_up": o.first_five > 0,
-        "called": o.called,
-    }
-
-
-def _prior_session(day: str) -> Session | None:
-    """The newest regular session before `day` (YYYY-MM-DD) Schwab's /markets answered."""
-    held = sessions()
-    before = [held[d] for d in sorted(held) if d < day and held[d].regular]
-    return before[-1] if before else None
-
-
-def _today_waiting(label: str, why: str) -> dict[str, Any]:
-    """Today's card while it has no gap to show, saying why."""
-    return {"label": label, "gap_text": "-", "gap_up": None, "when_text": why, "results": []}
-
-
-def _today_served(tk: str, now: float) -> dict[str, Any]:
-    """Today's gap: Schwab's live change before the open, then the open as the record defines it.
-
-    `results` holds today's 9:30-9:35 result once Schwab's open bar has closed.
-    """
-    day = datetime.fromtimestamp(now, ET).date().isoformat()
-    held = sessions()
-    if day not in held or not held[day].regular:
-        return _today_waiting("Today", "no regular session today in Schwab's market hours")
-    today = held[day]
-    if now < today.regular[0][0].timestamp():
-        row = price_row(tk, now)
-        live = row["chg_pct"]
-        if live is None:
-            return _today_waiting("Today's gap · before the open", "no trade from Schwab yet")
-        return {
-            "label": "Today's gap · before the open",
-            "gap_text": _moved_text(live / 100),
-            "gap_up": live > 0,
-            "when_text": f"vs. prior close · Schwab, live · {row['trade_time_ct']}",
-            "results": [],
-        }
-    prior = _prior_session(day)
-    candles = bar_store.series(tk, "5m")
-    opened = [today_open(candles, today, p, now) for p in [prior] if p is not None]
-    if not opened or opened[0] is None:
-        return _today_waiting("Today's gap · at the open", "waiting for Schwab's open bar to close")
-    o = opened[0]
-    went = "up" if o.first_five > 0 else "down"
-    bar_start = today.regular[0][0]
-    bar_end = datetime.fromtimestamp(bar_start.timestamp() + BAR_SECONDS, ET)
-    return {
-        "label": "Today's gap · at the open",
-        "gap_text": _moved_text(o.gap),
-        "gap_up": o.gap > 0,
-        "when_text": "vs. prior close · Schwab's 5-minute bars",
-        "results": [
-            {
-                "label": f"Today {bar_start:%H:%M}–{bar_end:%H:%M} ET",
-                "five_text": _moved_text(o.first_five),
-                "five_up": o.first_five > 0,
-                "called": o.called,
-                "called_text": (
-                    "✓ the open went the way the gap pointed"
-                    if o.called
-                    else f"✗ the gap pointed {'up' if o.gap > 0 else 'down'}, the open went {went}"
-                ),
-            }
-        ],
-    }
-
-
-def experimental(tk: str, now: float) -> dict[str, Any]:
-    """The Trade Desk's Experimental tab for the selected ticker, as the approved mock-up shows it.
-
-    Today's gap; how gaps in today's direction (up, before any today) were followed, with the
-    other direction for reference; today's result once Schwab's open bar has closed; the last 10
-    opens. Every word and value served; `record` is absent until the ticker's two Schwab answers
-    have arrived with an open that counts.
-    """
-    key = ticker_storage_key(tk)
-    today = _today_served(key, now)
-    held = [_open_gap[key]] if key in _open_gap else []
-    return {
-        "ticker": key,
-        "today": today,
-        "records": [
-            _record_served(r, down_first=today["gap_up"] is False) for r in held if r is not None
-        ],
-    }
-
-
-def _record_served(record: OpenGapRecord, *, down_first: bool) -> dict[str, Any]:
-    """The record as the tab shows it: today's direction first (up before any today)."""
-    sides = [("down", record.down), ("up", record.up)]
-    if not down_first:
-        sides.reverse()
-    blocks = [_followed_served(d, f) for d, f in sides if f is not None]
-    last = list(record.opens[-LAST_OPENS:])[::-1]
-    return {
-        "main": blocks[0],
-        "others": blocks[1:],
-        "last": [_open_served(o) for o in last],
-        "last_title": (
-            f"Last {len(last)} opens · the gap called {sum(o.called for o in last)} of {len(last)}"
-        ),
-        "footer": (
-            f"Schwab's 5-minute bars, {record.opens[0].day:%b %d} – "
-            f"{record.opens[-1].day:%b %d} ({len(record.opens)} opens). Says how often the gap "
-            "called the open, not where today's will go."
-        ),
-    }
-
-
 #: every panel the page shows, sent by its socket for the page's selected ticker
 #: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
 #: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
 #: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
 #: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
-    "experimental": lambda a: experimental(a.ticker, a.now),
-    "expiries": lambda a: expiries(a.ticker, a.now),
+    "experimental": lambda a: push_experimental.experimental(a.ticker, a.now),
+    "expiries": lambda a: push_expiries.expiries(a.ticker, a.now),
     "vanna": lambda a: strike_bars("vanna_rows", a.ticker, a.now, a.params),
     "charm": lambda a: strike_bars("charm_rows", a.ticker, a.now, a.params),
     "terrain": lambda a: terrain(a.ticker, a.now),
     "strikes": lambda a: strikes(a.ticker, a.now, a.params),
     "surface": lambda a: gamma_surface(a.ticker, a.now, a.params),
     "chain": lambda a: chain(a.ticker, a.now, a.params),
-    "levels": lambda a: levels_payload(a.ticker, _tf_asked(a.params), a.at),
+    "levels": lambda a: levels_payload(a.ticker, tf_asked(a.params), a.at),
     "bars": lambda a: bars(a.ticker, a.now, a.params),
-    "tape": lambda a: tape(a.ticker, a.now),
+    "tape": lambda a: push_tape.tape(a.ticker, a.now),
     "book": lambda a: book(a.ticker, a.now, a.params),
-    "bookmap": lambda a: bookmap(a.ticker, a.params),
+    "bookmap": lambda a: push_bookmap.bookmap(a.ticker, a.params),
     "contract": lambda a: options_microstructure(_contract_asked(a.params), a.now),
-    "forces": lambda a: forces(a.ticker),
+    "forces": lambda a: push_forces.forces(a.ticker),
     "desk": lambda a: desk_events_payload(
-        a.ticker, _venue_asked(a.params), _tf_asked(a.params), a.at
+        a.ticker, venue_asked(a.params), tf_asked(a.params), a.at
     ),
     "confluence": lambda a: confluence_payload(a.ticker, a.params.get("expiry"), a.at),
     "liquidity": lambda a: liquidity_snapshot(a.ticker, a.at),
