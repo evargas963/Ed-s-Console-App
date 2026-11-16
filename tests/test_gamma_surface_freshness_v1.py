@@ -22,6 +22,7 @@ import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
+from push import surface as push_surface
 from push import terrain as push_terrain
 from server import ticker_storage_key
 from state import level_store
@@ -41,7 +42,9 @@ _ON, _OFF = "ZZFRESHON", "ZZFRESHOFF"  # on the watchlist, and not
 def _call(tk):
     """Return the heatmap's panel for `tk` now: Auto, following the price, every column."""
     window = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
-    return server.gamma_surface(ticker_storage_key(tk), time_et.now(), window)
+    return push_surface.gamma_surface(
+        ticker_storage_key(tk), time_et.now(), window, requested=False
+    )
 
 
 def _daemon(price: float, at: float, *tickers) -> None:
@@ -91,7 +94,7 @@ def published():
 @pytest.mark.usefixtures("published")
 def test_the_live_surface_is_served_with_the_live_price():
     _daemon(206.0, _AT.timestamp(), _ON)  # the price has moved since
-    d = server.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT)
+    d = push_surface.gamma_surface_payload(_ON, "all", None, 0, None, None, _AT, requested=False)
     surface = level_store.published_levels(_ON).gamma_surface
     # 2026-09-02 has no /markets answer held: the levels, and so the surface, are not live
     assert d["source"] == "terrain_live_cache" and d["levels_state"] == "NOT LIVE"

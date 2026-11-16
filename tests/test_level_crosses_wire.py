@@ -26,6 +26,7 @@ from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
 from push import levels as push_levels
 from push import strikes as push_strikes
+from push import surface as push_surface
 from push import terrain as push_terrain
 from state import cross_store, level_store
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
@@ -342,10 +343,12 @@ def stopped_price_answers() -> dict:
     at = datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET)
     try:
         next_close = datetime(2026, 10, 23, 16, 30, tzinfo=ET)
-        surface = server.gamma_surface_payload("SPY", "auto", None, 0, None, None, at)
+        surface = push_surface.gamma_surface_payload(
+            "SPY", "auto", None, 0, None, None, at, requested=False
+        )
         surface.pop("surface_seq")  # the publication's revision, drawn from the wall clock
-        surface_next_close = server.gamma_surface_payload(
-            "SPY", "auto", None, 0, None, None, next_close
+        surface_next_close = push_surface.gamma_surface_payload(
+            "SPY", "auto", None, 0, None, None, next_close, requested=False
         )
         surface_next_close.pop("surface_seq")
         bodies = {

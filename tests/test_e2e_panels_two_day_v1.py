@@ -37,6 +37,7 @@ from push import bars as push_bars
 from push import forces as push_forces
 from push import levels as push_levels
 from push import strikes as push_strikes
+from push import surface as push_surface
 from push import tape as push_tape
 from push import terrain as push_terrain
 from state import bar_store, cross_store, level_store, price_level_store
@@ -205,22 +206,28 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "strikes": push_strikes.strikes(tk, at, AUTO),
                     "strikes_wider": push_strikes.strikes(tk, at, {**AUTO, "scope": "wider"}),
                     "terrain": push_terrain.terrain(tk, at),
-                    "surface": server.gamma_surface(tk, at, {**AUTO, "cols": None, "expiry": None}),
-                    "surface_missing_expiry": server.gamma_surface(
-                        tk, at, {**AUTO, "cols": None, "expiry": MISSING_EXPIRY}
+                    "surface": push_surface.gamma_surface(
+                        tk, at, {**AUTO, "cols": None, "expiry": None}, requested=False
+                    ),
+                    "surface_missing_expiry": push_surface.gamma_surface(
+                        tk, at, {**AUTO, "cols": None, "expiry": MISSING_EXPIRY}, requested=False
                     ),
                     # filtered to the chain's second expiry
-                    "surface_second_expiry": server.gamma_surface(
+                    "surface_second_expiry": push_surface.gamma_surface(
                         tk,
                         at,
                         {**AUTO, "cols": None, "expiry": real.captures[1]["rows"][1]["expiry"]},
+                        requested=False,
                     ),
                     # the All window, every strike, for the Gamma tests' ticker (AMZN's 88 strikes
                     # by 24 expiries; SPY's is 491 by 34, 3.5 MB)
                     **(
                         {
-                            "surface_all": server.gamma_surface(
-                                tk, at, {**AUTO, "scope": "all", "cols": None, "expiry": None}
+                            "surface_all": push_surface.gamma_surface(
+                                tk,
+                                at,
+                                {**AUTO, "scope": "all", "cols": None, "expiry": None},
+                                requested=False,
                             )
                         }
                         if real is AMZN

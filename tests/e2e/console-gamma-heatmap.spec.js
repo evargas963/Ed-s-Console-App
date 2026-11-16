@@ -47,7 +47,7 @@ function cut(cell, n) {
   return Object.fromEntries(Object.entries(cell).map(([k, v]) =>
     [k, k === 'text' ? Object.fromEntries(Object.entries(v).map(([m, t]) => [m, first(t)])) : first(v)]));
 }
-// a cell's GEX values and their served texts (server.HEAT_TEXT: numeric_contract.dollars_text)
+// a cell's GEX values and their served texts (push.surface.HEAT_TEXT: numeric_contract.dollars_text)
 function withGex(cell, values, texts) {
   return Object.assign(cell, { gex: values, text: Object.assign({}, cell.text, { gex: texts }) });
 }

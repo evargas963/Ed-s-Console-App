@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import live_market_plane as lmp
-import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import stored_watchlist
@@ -32,7 +31,7 @@ def test_the_console_and_the_daemon_hold_one_watchlist(tmp_path):
     d = capture.Daemon(MessageBus(), HealthRegistry(), capture.stored_watchlist(db))
     status = d.status(now)
     lmp.record_feed_heartbeat(status)
-    assert d.watchlist == server._watchlist() == ["SPY", "TSLA", "$SPX"]
+    assert d.watchlist == lmp.watchlist() == ["SPY", "TSLA", "$SPX"]
 
 
 def test_a_first_run_with_no_database_starts_with_an_empty_watchlist(tmp_path):
