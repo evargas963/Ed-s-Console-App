@@ -31,7 +31,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO, Any
 
@@ -738,29 +738,45 @@ KEPT_BY_TIME = (
 )
 #: rows removed in one transaction, so a live write never waits behind a long delete
 PRUNE_ROWS = 20000
+#: how long after Schwab's regular open, and before its regular close, the order books are kept
+#: (operator 2026-11-15: "Yes, windows + compress"; ACTIVE_PROGRAM.md STORE-ENOUGH)
+BOOK_OPEN_WINDOW = timedelta(minutes=30)
+BOOK_CLOSE_WINDOW = timedelta(minutes=30)
+
+
+def _whole_day(_ts: float) -> bool:
+    return True
+
+
+def _book_kept(ts: float) -> bool:
+    """Whether a book received at `ts` is kept: in its day's pre-market or open, or its close.
+
+    By that day's session as Schwab's /markets answered it (time_et.sessions; AGENTS.md rule 8):
+    every book before the regular open plus BOOK_OPEN_WINDOW, and the last BOOK_CLOSE_WINDOW of
+    the regular session. A day whose session is not held, or with no regular session, keeps
+    every book: its hours are unknown, never guessed.
+    """
+    at = datetime.fromtimestamp(ts, ET)
+    held = time_et.sessions()
+    day = at.date().isoformat()
+    if day not in held or not held[day].regular:
+        return True
+    opened, closed = held[day].regular[0][0], held[day].regular[-1][1]
+    return at < opened + BOOK_OPEN_WINDOW or closed - BOOK_CLOSE_WINDOW <= at < closed
+
+
 #: the tables whose rows received before the newest five sessions move into stream_archive, each
-#: with the parts of the ET day kept, in seconds of the day [start, end); a row outside them is
-#: not kept. The order books keep the pre-market and the open (04:00-10:00) and the close
-#: (15:30-16:00) (operator 2026-11-15: "Yes, windows + compress"; ACTIVE_PROGRAM.md STORE-ENOUGH)
-WHOLE_DAY = ((0.0, 86_400.0),)
-BOOK_WINDOWS = ((4 * 3600.0, 10 * 3600.0), (15.5 * 3600, 16 * 3600.0))
-ARCHIVED: dict[str, tuple[tuple[float, float], ...]] = {
-    "stream_quotes_raw": WHOLE_DAY,
-    "stream_options_quotes_raw": WHOLE_DAY,
-    "stream_bars_raw": WHOLE_DAY,
-    "stream_news_raw": WHOLE_DAY,
-    "stream_book_raw": BOOK_WINDOWS,
+#: with whether a row received at a time is kept (a row not kept goes)
+ARCHIVED: dict[str, Callable[[float], bool]] = {
+    "stream_quotes_raw": _whole_day,
+    "stream_options_quotes_raw": _whole_day,
+    "stream_bars_raw": _whole_day,
+    "stream_news_raw": _whole_day,
+    "stream_book_raw": _book_kept,
 }
 #: rows taken into one archive block, in one transaction (a book block is about 13 MB before
 #: compression, a fraction of a second's work between rounds of live writes)
 ARCHIVE_ROWS = 5000
-
-
-def _in_windows(ts: float, windows: tuple[tuple[float, float], ...]) -> bool:
-    """Whether receipt time `ts` falls in one of `windows`, seconds of its ET day [start, end)."""
-    t = datetime.fromtimestamp(ts, ET)
-    second = t.hour * 3600 + t.minute * 60 + t.second + t.microsecond / 1e6
-    return any(start <= second < end for start, end in windows)
 
 
 def archive_block(rows: list[tuple[Any, ...]]) -> bytes:
@@ -1740,7 +1756,7 @@ class CaptureWriter:
         names = [d[0] for d in cur.description][1:]
         taken = cur.fetchall()
         at = names.index(column)
-        kept = [r[1:] for r in taken if _in_windows(r[1 + at], ARCHIVED[table])]
+        kept = [r[1:] for r in taken if ARCHIVED[table](r[1 + at])]
         if kept:
             conn.execute(
                 "INSERT INTO stream_archive(source, first_ts, last_ts, rows, columns, body) "

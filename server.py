@@ -104,6 +104,7 @@ from math_exposure_core import (
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import price_text, schwab_count, schwab_number
+from open_gap import OpenGapRecord, open_gap_record
 from option_contract import OptionContract, chain_row
 from terrain_atr import Atr, compute_atrs
 from terrain_engine import (
@@ -239,6 +240,13 @@ _bars: dict[str, list[Candle]] = {}
 #: MINUTE_SERIES). Owned by the bar writer; the bars panel and the ATR (_atr) read them.
 _series: dict[tuple[str, str], list[Candle]] = {}
 _bars_lock = threading.Lock()
+#: the series the open-gap record is computed from, in open_gap_record's order: Schwab's 5-minute
+#: bars of the regular session and with extended hours, each asked once a day; each ticker's
+#: newest answer of each, and its record from both (None: no open counted). Owned by the bar
+#: writer; the opengap panel reads the record.
+OPEN_GAP_SERIES = ("5m365r", "5m365")
+_open_gap_answers: dict[tuple[str, str], list[dict[str, Any]]] = {}
+_open_gap: dict[str, OpenGapRecord | None] = {}
 #: where the bars come from, named in every level's provenance
 BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
 
@@ -263,6 +271,22 @@ def _schwab_bar(
     return Candle(start / 1000.0, o, h, lo, c, schwab_count(volume))
 
 
+def _take_open_gap(tk: str, series: str, sent: list[dict[str, Any]]) -> str | None:
+    """Take one of the open-gap record's two answers; the ticker when its record changed.
+
+    Each answer is held until both are in, then the record is computed from the newest of each.
+    """
+    _open_gap_answers[(tk, series)] = sent
+    both = [(tk, s) for s in OPEN_GAP_SERIES if (tk, s) in _open_gap_answers]
+    if len(both) < len(OPEN_GAP_SERIES):
+        return None
+    record = open_gap_record(*(_open_gap_answers[k] for k in both))
+    if tk in _open_gap and _open_gap[tk] == record:
+        return None
+    _open_gap[tk] = record
+    return tk
+
+
 def _write_price_history(msg: dict[str, Any]) -> str | None:
     """One series of a ticker's price history as Schwab's /pricehistory answered it.
 
@@ -274,6 +298,8 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
+    if msg["series"] in OPEN_GAP_SERIES:
+        return _take_open_gap(tk, msg["series"], sent)
     if msg["series"] not in {*MINUTE_SERIES, *SCHWAB_SERIES.values(), "1w", "1mo"}:
         return None  # a series no screen reads: the daemon records it, the console holds none
     if msg["series"] not in MINUTE_SERIES:
@@ -4066,12 +4092,44 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
 #: the chart timeframes the levels' VWAP curve is served in (aggregate_vwap)
 LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")
 
+
+def _open_gap_served(record: OpenGapRecord) -> dict[str, Any]:
+    """One open-gap record as served: its numbers and its line in words."""
+    share = record.matched / record.opens
+    return {
+        "opens": record.opens,
+        "matched": record.matched,
+        "low": record.low,
+        "high": record.high,
+        "first_day": record.first_day.isoformat(),
+        "last_day": record.last_day.isoformat(),
+        "line": (
+            f"EXPERIMENTAL · the overnight gap pointed the way the first 5 minutes went on "
+            f"{record.matched} of {record.opens} opens ({share:.0%}; 95% "
+            f"{record.low:.0%}-{record.high:.0%}), {record.first_day:%b %d} to "
+            f"{record.last_day:%b %d}"
+        ),
+    }
+
+
+def open_gap(tk: str) -> dict[str, Any]:
+    """The open-gap record of `tk` as the Desk shows it, labelled EXPERIMENTAL.
+
+    `records` holds it once Schwab's 5-minute answer has arrived with an open that counts, and
+    is empty until then (the page shows "-").
+    """
+    key = ticker_storage_key(tk)
+    held = [_open_gap[key]] if key in _open_gap else []
+    return {"ticker": key, "records": [_open_gap_served(r) for r in held if r is not None]}
+
+
 #: every panel the page shows, sent by its socket for the page's selected ticker
 #: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
 #: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
 #: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
 #: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
+    "opengap": lambda a: open_gap(a.ticker),
     "expiries": lambda a: expiries(a.ticker, a.now),
     "vanna": lambda a: strike_bars("vanna_rows", a.ticker, a.now, a.params),
     "charm": lambda a: strike_bars("charm_rows", a.ticker, a.now, a.params),
