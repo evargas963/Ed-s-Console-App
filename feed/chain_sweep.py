@@ -222,6 +222,37 @@ def markets_message(
     }
 
 
+def chain_answer_message(
+    ticker: str, expiry: date, resp: Answer, fetched_ts: float
+) -> tuple[str, dict[str, Any]]:
+    """One expiry's /chains answer as its bus message: the body exactly as received, its status.
+
+    Recorded by the daemon's writer (rest_chains_raw); no screen reads it.
+    """
+    return f"chainanswer.{ticker}", {
+        "src": "schwab_chains",
+        "symbol": ticker,
+        "expiry": expiry.isoformat(),
+        "ts_recv": fetched_ts,
+        "status": resp.status_code,
+        "body": resp.text,
+    }
+
+
+def quotes_answer_message(resp: Answer, fetched_ts: float) -> tuple[str, dict[str, Any]]:
+    """One /quotes answer as its bus message: the body exactly as received, its status.
+
+    Recorded by the daemon's writer (rest_quotes_raw); the console takes the quotes from
+    `optquotes`.
+    """
+    return "quotesanswer", {
+        "src": "schwab_quotes",
+        "ts_recv": fetched_ts,
+        "status": resp.status_code,
+        "body": resp.text,
+    }
+
+
 def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict[str, Any]]:
     """Return a failed fetch as its one bus message: part 0 of 1, with Schwab's answer or error."""
     return f"chain.{ticker}", {
@@ -254,6 +285,8 @@ class _Chain:
     pushed: int = 0  # contracts whose Greeks the stream pushed (LEVELONE_OPTIONS)
     requested: int = 0  # contracts asked for on /quotes for their Greeks
     answers_age: float = 0.0  # seconds from its /chains answers' request to its own (fetch_chain)
+    # expiry -> Schwab's /chains answer body, the text exactly as received
+    bodies: dict[str, str] = field(default_factory=dict[str, str])
 
     def contracts(self) -> list[dict[str, Any]]:
         return [ct for cts in self.by_expiry.values() for ct in cts]
@@ -262,8 +295,14 @@ class _Chain:
 #: a contract of a chain whose quote is not in, with its chain
 type _Queued = tuple[_Chain, dict[str, Any]]
 #: a ticker's /chains answers: (their capture window, when they were asked for, each expiry's
-#: underlyingPrice, each expiry's contracts as sent)
-type _Answers = tuple[float | None, float, dict[str, float | None], dict[str, list[dict[str, Any]]]]
+#: underlyingPrice, each expiry's contracts as sent, each expiry's answer body as received)
+type _Answers = tuple[
+    float | None,
+    float,
+    dict[str, float | None],
+    dict[str, list[dict[str, Any]]],
+    dict[str, str],
+]
 #: the daemon's Schwab client, built on each ask (capture.one_schwab_client): schwab-py's, untyped
 type _SchwabClient = Callable[[], Any]
 
@@ -625,6 +664,7 @@ class ChainSweep:
         if held is not None and chain.started - held[1] < CHAINS_AGAIN_SEC and held[0] == window:
             chain.answers_age, chain.spots = chain.started - held[1], dict(held[2])
             chain.by_expiry = {e: [dict(ct) for ct in cts] for e, cts in held[3].items()}
+            chain.bodies = dict(held[4])
             return self.take_greeks(chain)
         try:
             client = schwab_client()
@@ -643,6 +683,7 @@ class ChainSweep:
             for expiry, resp in zip(listed[1], answers, strict=True):
                 if resp is None:
                     return None
+                self.publish(*chain_answer_message(ticker, expiry, resp, self.clock()))
                 if resp.status_code != 200:
                     return self.fail(
                         [chain], f"chain for {expiry} returned HTTP {resp.status_code}"
@@ -651,12 +692,13 @@ class ChainSweep:
                 self._optioned.add(ticker)
                 chain.spots[expiry.isoformat()] = schwab_number(payload.get("underlyingPrice"))
                 chain.by_expiry[expiry.isoformat()] = flatten_chain_contracts(payload)
+                chain.bodies[expiry.isoformat()] = resp.text
         except Exception as e:  # that ticker's answer is the failure; the rotation goes on
             log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e, exc_info=True)
             return self.fail([chain], f"{type(e).__name__}: {e}")
         # as sent: take_greeks writes each chain's own Greeks and quote
         sent = {e: [dict(ct) for ct in cts] for e, cts in chain.by_expiry.items()}
-        self._answers[ticker] = (window, chain.started, dict(chain.spots), sent)
+        self._answers[ticker] = (window, chain.started, dict(chain.spots), sent, dict(chain.bodies))
         return self.take_greeks(chain)
 
     @staticmethod
@@ -739,6 +781,7 @@ class ChainSweep:
         chains = list({id(chain): chain for chain, _ct in batch}.values())
         try:
             resp = ask.result()
+            self.publish(*quotes_answer_message(resp, self.clock()))
             if resp.status_code != 200:
                 self.fail(
                     chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}"
@@ -892,6 +935,7 @@ class ChainSweep:
                         ts_utc=chain.started,
                         chain_spot=chain.spot,
                         chain_spot_ts=chain.spot_ts,
+                        chains_answer=chain.bodies[expiry],
                     )
         except Exception:
             self._written[ticker] = before  # unwritten: the window's next chain, if any, tries

@@ -36,6 +36,7 @@ from typing import IO, Any
 
 import time_et
 from db_authority import canonical_db_path
+from json_blob_codec import encode_text_blob
 from time_et import ct_label
 
 log = logging.getLogger(__name__)
@@ -100,6 +101,23 @@ CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
     native_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
+-- Schwab's /chains answers (one expiry each) and /quotes answers, every one the chain sweep asked
+-- for, the body exactly as received, gzip-compressed (json_blob_codec.encode_text_blob), with its
+-- HTTP status.
+CREATE TABLE IF NOT EXISTS rest_chains_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    expiry TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    body BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rcr_ts ON rest_chains_raw(ts_recv);
+CREATE TABLE IF NOT EXISTS rest_quotes_raw (
+    ts_recv REAL NOT NULL,
+    status INTEGER NOT NULL,
+    body BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rqr_ts ON rest_quotes_raw(ts_recv);
 -- Schwab's /markets answers, verbatim: one row per market date asked, its status and the whole
 -- answer.
 CREATE TABLE IF NOT EXISTS stream_markets_raw (
@@ -584,6 +602,20 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
         "INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json) VALUES(?,?,?,?)",
         lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"])),
     ),
+    "chainanswer": (
+        "INSERT INTO rest_chains_raw(ts_recv,symbol,expiry,status,body) VALUES(?,?,?,?,?)",
+        lambda m: (
+            m["ts_recv"],
+            m["symbol"],
+            m["expiry"],
+            m["status"],
+            encode_text_blob(m["body"]),
+        ),
+    ),
+    "quotesanswer": (
+        "INSERT INTO rest_quotes_raw(ts_recv,status,body) VALUES(?,?,?)",
+        lambda m: (m["ts_recv"], m["status"], encode_text_blob(m["body"])),
+    ),
     "markets": (
         "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json) VALUES(?,?,?,?)",
         lambda m: (m["ts_recv"], m["date"], m["status"], json.dumps(m["answer"])),
@@ -687,6 +719,8 @@ KEPT_BY_TIME = (
     ("stream_bars_raw", "ts_recv"),
     ("stream_news_raw", "ts_recv"),
     ("stream_pricehistory_raw", "ts_recv"),
+    ("rest_chains_raw", "ts_recv"),
+    ("rest_quotes_raw", "ts_recv"),
     ("stream_markets_raw", "ts_recv"),
     ("stream_watchlist", "ts_recv"),
     ("stream_subscriptions", "ts"),
