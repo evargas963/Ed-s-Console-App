@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-import server as srv
 import time_et
+from push import bars as push_bars
 from tests.feed_live_helper import spy_minutes
 from time_et import ET
 
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
     hour = spy_minutes()[:60]
-    out = srv.aggregate_bars(hour, "30")
+    out = push_bars.aggregate_bars(hour, "30")
     assert len(out) == 2
     first, second = out
     opening, next_half = hour[:30], hour[30:]
@@ -41,11 +41,11 @@ def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
 
 def test_the_bars_panel_accepts_30m_and_twelve_thousand_rows_and_nothing_beyond():
     now = time_et.now()
-    assert srv.bars("SPY", now, {"tf": "30", "limit": 12000})["tf"] == "30"
+    assert push_bars.bars("SPY", now, {"tf": "30", "limit": 12000})["tf"] == "30"
     with pytest.raises(ValueError, match="tf '31'"):
-        srv.bars("SPY", now, {"tf": "31", "limit": 12000})
+        push_bars.bars("SPY", now, {"tf": "31", "limit": 12000})
     with pytest.raises(ValueError, match="limit 12001"):
-        srv.bars("SPY", now, {"tf": "30", "limit": 12001})
+        push_bars.bars("SPY", now, {"tf": "30", "limit": 12001})
 
 
 def test_every_shipped_page_script_parses():

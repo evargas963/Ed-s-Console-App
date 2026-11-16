@@ -41,6 +41,7 @@ from feed.chain_sweep import (
     price_history_message,
 )
 from liquidity_value_engine import bars_from_candles
+from push import bars as push_bars
 from state import bar_store
 from stream_spine import (
     LATEST,
@@ -1250,7 +1251,7 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
 
 def _chart_bars(tk: str) -> list[dict]:
     """Return the bars the chart reads: the `bars` panel's 1-minute bars."""
-    return server.bars(tk, time_et.now(), {"tf": "1", "limit": 12000})["bars"]
+    return push_bars.bars(tk, time_et.now(), {"tf": "1", "limit": 12000})["bars"]
 
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────

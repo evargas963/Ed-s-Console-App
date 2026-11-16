@@ -92,7 +92,7 @@
   }
 
   // The bars at the toolbar's timeframe, the profile (the Gamma scope's window, unpanned) and the
-  // flip and walls: the `bars:chart`, `strikes:chart` and `terrain:chart` panels (server.bars,
+  // flip and walls: the `bars:chart`, `strikes:chart` and `terrain:chart` panels (push.bars,
   // server.strikes, server.terrain) the program sends on the page's socket while the chart is on,
   // at once and each time the bars or the levels change.
   var PANELS = { "bars:chart": "bars", "strikes:chart": "strikes", "terrain:chart": "terrain" };

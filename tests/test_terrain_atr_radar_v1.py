@@ -18,6 +18,7 @@ from pathlib import Path
 import server as srv
 import time_et
 from numeric_contract import count_text
+from push import bars as push_bars
 from push import strikes as push_strikes
 from state import bar_store
 
@@ -43,7 +44,7 @@ def test_the_bars_panel_serves_canonical_bars_shape():
         for b in fx:
             srv._write_streamed_bar({"symbol": "SPY", "bar_start_ms": b["timestamp"], **b})
         at = rows[-1][0] + 60.0
-        body = srv.bars("SPY", at, {"tf": "1", "limit": 5})
+        body = push_bars.bars("SPY", at, {"tf": "1", "limit": 5})
         assert body["tf"] == "1" and len(body["bars"]) == 5
         row = body["bars"][-1]
         # each bar carries its served change (live_price_rows.with_change: the bar change is
@@ -59,7 +60,7 @@ def test_the_bars_panel_serves_canonical_bars_shape():
         ts = [b["t"] for b in body["bars"]]
         assert ts == sorted(ts), "bars must be newest-last (ascending time)"
         # the chart's candles are Schwab's completed bars exactly as stored, never altered
-        full = srv.bars("SPY", at, {"tf": "1", "limit": len(rows)})["bars"]
+        full = push_bars.bars("SPY", at, {"tf": "1", "limit": len(rows)})["bars"]
         assert [(b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]) for b in full] == rows
     finally:
         bar_store._bars.pop("SPY", None)
